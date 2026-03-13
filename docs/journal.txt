@@ -26,3 +26,49 @@
 - Tests: 26/26 grün, 1 skip (GPU), keine Warnings
 - API-Key: OPENROUTER_API_KEY via GitHub Codespaces Secret / .env lokal
 - Offen: Ollama live-Test (heute Abend Tower), PC-Steuerung, TTS (Windows)
+
+## Abgeschlossen: Phase 1 – Bugfix: OllamaClient DEFAULT_MODEL
+- ollama_client.py: DEFAULT_MODEL von "llama3.1:14b" auf "phi4:14b" korrigiert
+- Ollama Live-Test erfolgreich: phi4:14b antwortet korrekt
+- LLMRouter Live-Test erfolgreich: wählt Ollama als Backend
+- Tests: 31/31 grün
+
+## Abgeschlossen: Phase 1 – Teilschritt 3/5 – PC-Steuerung (ActionController)
+- Branch: feature/phase-1-pc-steuerung
+- Architektur: ABC (ActionController) + plattformspezifische Implementierung
+- Dateien: src/elder_berry/actions/base.py (ABC + WindowInfo DTO)
+- Dateien: src/elder_berry/actions/windows_controller.py (WindowsActionController)
+- Dateien: tests/test_action_controller.py (21 Tests)
+- Fähigkeiten: Tastatur (press/type/hotkey), Maus (move/click), Fenster (focus/min/max/list), Lautstärke (get/set/mute)
+- Dependencies: pyautogui, PyGetWindow, pycaw, comtypes
+- Interface-Abstraktion für spätere Linux-Unterstützung / Open Source
+- Tests: 52/52 grün (21 neu + 31 bestehend)
+- Offen: TTS (Windows), Integration LLM → ActionController
+
+## Abgeschlossen: Phase 1 – Teilschritt 4/5 – Basis-TTS (Text to Speech)
+- Branch: feature/phase-1-pc-steuerung
+- Architektur: ABC (TTSEngine) + plattformspezifische Implementierung
+- Dateien: src/elder_berry/tts/base.py (ABC + VoiceInfo DTO)
+- Dateien: src/elder_berry/tts/windows_engine.py (WindowsTTSEngine via pyttsx3/SAPI5)
+- Dateien: tests/test_tts.py (15 Tests)
+- Fähigkeiten: speak, get/set rate, get/set volume, get/set voices
+- Dependencies: pyttsx3
+- Offline-fähig, kein API-Key nötig
+- Tests: 67/67 grün (15 neu + 52 bestehend)
+- Offen: Integration LLM → ActionController
+
+## Abgeschlossen: Phase 1 – Teilschritt 5/5 – Integration (Assistant-Klasse)
+- Branch: feature/phase-1-pc-steuerung
+- Dateien: src/elder_berry/core/assistant.py (Assistant + AssistantResult DTO)
+- Dateien: tests/test_assistant.py (23 Tests)
+- Ablauf: User-Input → LLM (mit System-Prompt + DB-Aktionen) → JSON-Parsing → ActionController → TTS
+- Alle Dependencies per DI: LLMClient, ActionsDB, ActionController, TTSEngine (optional)
+- Robustes JSON-Parsing: direkt, Block-Extraktion, Fallback auf Rohtext
+- Fehlerbehandlung: unbekannte Aktionen, fehlende Params, Controller-Fehler, TTS-Fehler
+- Tests: 90/90 grün (23 neu + 67 bestehend)
+
+## Phase 1 – Software Basic: ABGESCHLOSSEN
+- Alle 5 Teilschritte erledigt
+- Gesamtarchitektur: SystemMonitor, LLMRouter, ActionsDB, ActionController, TTSEngine, Assistant
+- Konsistentes Pattern: ABC + plattformspezifische Implementierung + DI
+- 90 Tests, alle grün

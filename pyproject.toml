@@ -12,6 +12,15 @@ dependencies = [
     "python-dotenv>=1.0",
 ]
 
+[project.optional-dependencies]
+windows = [
+    "pyautogui>=0.9",
+    "PyGetWindow>=0.0.9",
+    "pycaw>=20230407",
+    "comtypes>=1.2",
+    "pyttsx3>=2.90",
+]
+
 [tool.setuptools.packages.find]
 where = ["src"]
 
