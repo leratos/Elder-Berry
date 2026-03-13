@@ -2,7 +2,11 @@
 import logging
 import platform
 
-import pyttsx3
+try:
+    import pyttsx3
+except (ImportError, OSError):
+    # ImportError wenn Paket fehlt, OSError auf Linux ohne SAPI5.
+    pyttsx3 = None  # type: ignore[assignment]
 
 from .base import TTSEngine, VoiceInfo
 

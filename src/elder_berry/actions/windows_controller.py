@@ -2,16 +2,21 @@
 import logging
 import platform
 
-import pyautogui
-import pygetwindow as gw
+try:
+    import pyautogui
+    import pygetwindow as gw
+
+    pyautogui.FAILSAFE = True  # Maus in Ecke oben links → Abbruch
+    pyautogui.PAUSE = 0.05     # Kurze Pause zwischen Aktionen
+except (ImportError, KeyError):
+    # KeyError: 'DISPLAY' auf Linux ohne X11; ImportError wenn Paket fehlt.
+    # Wird erst zur Laufzeit relevant – _check_platform() fängt das ab.
+    pyautogui = None  # type: ignore[assignment]
+    gw = None  # type: ignore[assignment]
 
 from .base import ActionController, WindowInfo
 
 logger = logging.getLogger(__name__)
-
-# pyautogui Sicherheitseinstellungen
-pyautogui.FAILSAFE = True  # Maus in Ecke oben links → Abbruch
-pyautogui.PAUSE = 0.05     # Kurze Pause zwischen Aktionen
 
 
 def _check_platform() -> None:
@@ -92,7 +97,7 @@ class WindowsActionController(ActionController):
                 windows.append(WindowInfo(title=w.title, handle=w._hWnd))
         return windows
 
-    def _find_window(self, title: str) -> gw.Win32Window | None:
+    def _find_window(self, title: str):
         """Sucht ein Fenster per Teilstring (case-insensitive)."""
         title_lower = title.lower()
         for w in gw.getAllWindows():
