@@ -44,33 +44,58 @@ Logiklücken und Fehler hin.
 - Verwende objektorientierte Programmierung (OOP) – jede Komponente als eigene Klasse
 - Eine Klasse pro Datei, Dateiname = Klassenname (snake_case)
 - Klassen kommunizieren über definierte Interfaces, nicht direkt
-- Beispiel-Struktur:
-  - SensorManager    → verwaltet alle Sensor-Inputs
-  - ActionController → verwaltet PC-Aktionen und Aktions-DB
+- Kernklassen:
+  - SensorManager    → verwaltet alle Sensor-Inputs (RPi 5)
+  - ActionController → verwaltet PC-Aktionen und Aktions-DB (Tower)
   - LLMRouter        → entscheidet lokal (Ollama) oder remote (OpenRouter)
   - CharacterEngine  → steuert V-Tuber Charakter / Emotionen
-  - RobotController  → Mecanum-Antrieb, Akku-Monitoring
+  - RobotController  → Kommunikation Tower → RPi 5 → Pico 2W
 - Neue Komponenten immer als eigene Klasse, nie als Funktion in bestehende Datei kippen
 - Abhängigkeiten zwischen Klassen explizit über Konstruktor übergeben (Dependency Injection)
 
 ## UMGEBUNG
-- Tower (Windows, 16GB VRAM): C:\Dev\Elder-Berry\.venv, Python 3.12, absolute Windows-Pfade
+- Tower (Windows, 16GB VRAM): C:\Dev\Elder-Berry\.venv, Python 3.12
   - LLM: phi4:14b – läuft vollständig in VRAM
-- Laptop (Windows, 8GB VRAM): C:\Dev\Elder-Berry\.venv, Python 3.12, absolute Windows-Pfade
+- Laptop (Windows, 8GB VRAM): C:\Dev\Elder-Berry\.venv, Python 3.12
   - LLM: phi4:14b – läuft mit leichter RAM-Auslagerung, akzeptable Geschwindigkeit
-- RPi5 (Linux): /home/pi/elder-berry/, absolute Linux-Pfade – kein LLM
-- Gleiches Modell auf Tower und Laptop → identisches Verhalten, kein Unterschied im Output
+- RPi 5 (Linux): /home/pi/elder-berry/, Python 3.12, absolute Linux-Pfade
+- Pico 2W: MicroPython, zuständig für Motorsteuerung und Akku-Monitoring
+- Gleiches Modell auf Tower und Laptop → identisches Verhalten beim Testen
 - Verwende pathlib statt hartcodierte Slashes wo plattformübergreifend
 - Weise aktiv darauf hin wenn Code plattformspezifisch ist
 - Falls .venv nicht vorhanden: erstelle es mit py -3.12 -m venv .venv
 - Führe nach Code-Änderungen die betroffenen Tests aus und berichte das Ergebnis
 
 ## HARDWARE
-- Tower: RTX 4070 Ti Super (16GB VRAM), Ollama läuft lokal (phi4:14b)
-- Laptop: RTX 4070 Laptop (8GB VRAM), Ollama läuft lokal (phi4:14b)
-- RPi5: I/O-Controller (Sensoren, Motoren) – kein LLM
-- Kommunikation Tower ↔ RPi5: noch zu definieren (WLAN oder USB)
-- Roboter: Mecanum-Antrieb, 2x 18650 Akku, eigene Platine
+### Tower
+- RTX 4070 Ti Super (16GB VRAM)
+- Ollama lokal (phi4:14b)
+- Hauptrechner für LLM, Aktionslogik, PC-Steuerung
+
+### Laptop (Testplattform)
+- RTX 4070 Laptop (8GB VRAM)
+- Ollama lokal (phi4:14b)
+
+### RPi 5 (I/O-Hub)
+- Sensor-Integration: Kamera, IR, Temperatur
+- Kommunikation Tower ↔ RPi 5: WLAN (noch zu definieren)
+- Kommunikation RPi 5 ↔ Pico 2W: WLAN oder USB (noch zu definieren)
+- Kein LLM
+
+### Pico 2W (Motor-Controller)
+- Echtzeit-Motorsteuerung (kein OS-Latenz Problem)
+- Akku-Monitoring (2× 18650, 2S BMS)
+- Autonomes Laden: erkennt niedrigen Akkustand → fährt selbst zur Ladestation
+- Sicherheit: stoppt Motoren wenn RPi 5 nicht antwortet
+- MicroPython
+
+### Roboter-Chassis
+- Mecanum 4WD, eigene Platine
+- Adafruit DC Motor HAT (I²C) – aktuell auf RPi 5
+- Platinen-Redesign in Phase 4: RPi 5 + Pico 2W Integration prüfen
+- Akku: 2× 18650, 2S BMS mit Schutzschaltung und Ladefunktion
+- Kamera: aktuell fest montiert (Mecanum-Rotation als Kompensation)
+  → Pan/Tilt Servo Entscheidung offen – wird bei Platinen-Definition Phase 4 geklärt
 
 ## LLM-STRATEGIE
 - Lokal (Ollama): schnelle Aktionen, Sensor-Auswertung, PC-Steuerung, Dauerbetrieb
