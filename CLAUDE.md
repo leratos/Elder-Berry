@@ -54,15 +54,20 @@ Logiklücken und Fehler hin.
 - Abhängigkeiten zwischen Klassen explizit über Konstruktor übergeben (Dependency Injection)
 
 ## UMGEBUNG
-- Tower (Windows): C:\Dev\Elder-Berry\.venv, Python 3.12, absolute Windows-Pfade
-- RPi5 (Linux): /home/pi/elder-berry/, absolute Linux-Pfade
+- Tower (Windows, 16GB VRAM): C:\Dev\Elder-Berry\.venv, Python 3.12, absolute Windows-Pfade
+  - LLM: phi4:14b – läuft vollständig in VRAM
+- Laptop (Windows, 8GB VRAM): C:\Dev\Elder-Berry\.venv, Python 3.12, absolute Windows-Pfade
+  - LLM: phi4:14b – läuft mit leichter RAM-Auslagerung, akzeptable Geschwindigkeit
+- RPi5 (Linux): /home/pi/elder-berry/, absolute Linux-Pfade – kein LLM
+- Gleiches Modell auf Tower und Laptop → identisches Verhalten, kein Unterschied im Output
 - Verwende pathlib statt hartcodierte Slashes wo plattformübergreifend
 - Weise aktiv darauf hin wenn Code plattformspezifisch ist
 - Falls .venv nicht vorhanden: erstelle es mit py -3.12 -m venv .venv
 - Führe nach Code-Änderungen die betroffenen Tests aus und berichte das Ergebnis
 
 ## HARDWARE
-- Tower: RTX 4070 Ti Super (16GB VRAM), Ollama läuft lokal (bevorzugt 14B Modell)
+- Tower: RTX 4070 Ti Super (16GB VRAM), Ollama läuft lokal (phi4:14b)
+- Laptop: RTX 4070 Laptop (8GB VRAM), Ollama läuft lokal (phi4:14b)
 - RPi5: I/O-Controller (Sensoren, Motoren) – kein LLM
 - Kommunikation Tower ↔ RPi5: noch zu definieren (WLAN oder USB)
 - Roboter: Mecanum-Antrieb, 2x 18650 Akku, eigene Platine
@@ -71,6 +76,11 @@ Logiklücken und Fehler hin.
 - Lokal (Ollama): schnelle Aktionen, Sensor-Auswertung, PC-Steuerung, Dauerbetrieb
 - OpenRouter: Multimodal (Kamera-Input), komplexes Reasoning, Fallback
 - Modell-Wechsel nur mit expliziter Begründung vorschlagen
+
+## CHARAKTER
+- Elder-Berry ist eine virtuelle Assistentin mit eigenem Charakter (noch zu definieren)
+- Persönlichkeit, Name der Figur, Stimme und visueller Stil werden in Phase 3 festgelegt
+- Bis dahin: keine Annahmen über Charakter treffen, keine Namen oder Eigenschaften erfinden
 
 ## QUALITÄT
 - Weise aktiv auf fehlende Tests, Sicherheitslücken oder technische Schulden hin
