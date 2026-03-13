@@ -12,3 +12,12 @@
 - Dateien: src/elder_berry/system/info.py, tests/test_system_info.py, requirements.txt
 - Tests: 4/4 grün, GPU-Test korrekt übersprungen (nvidia-smi nicht im Devcontainer)
 - Offen: Ollama-Anbindung (heute Abend), PC-Steuerung, TTS (Windows)
+
+## Abgeschlossen: Phase 1 – Teilschritt 2/5 – LLM-Modul + Aktions-DB
+- LLMRouter: Ollama (lokal) → OpenRouter (Fallback), transparenter Wechsel
+- Dateien: src/elder_berry/llm/{base,ollama_client,openrouter_client,router}.py
+- Dateien: src/elder_berry/actions/db.py (SQLite, CRUD, use_count self-learning)
+- pyproject.toml angelegt (setuptools, pytest pythonpath konfiguriert)
+- Tests: 26/26 grün, 1 skip (GPU), keine Warnings
+- API-Key: OPENROUTER_API_KEY via GitHub Codespaces Secret / .env lokal
+- Offen: Ollama live-Test (heute Abend Tower), PC-Steuerung, TTS (Windows)
