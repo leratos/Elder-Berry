@@ -24,7 +24,8 @@ Logiklücken und Fehler hin.
 
 ## CHAT-MANAGEMENT
 - Jede neue Phase = neuer Chat. Keine Phase über einen Chat-Wechsel hinweg fortführen
-- Wenn du selbst merkst dass Antworten unzuverlässiger werden: sag es aktiv
+- Ich weise dich hin wenn der Context riskant lang wird (ab ~100k Token oder wenn Fehler zunehmen)
+- Wenn du selbst merkst dass Antworten unzuverlässiger werden: sag es aktiv, warte nicht darauf dass ich es bemerke
 
 ## GITHUB
 - Erstelle zu Beginn jeder Phase einen neuen Branch: feature/phase-X-Y-kurzbeschreibung
@@ -34,10 +35,23 @@ Logiklücken und Fehler hin.
 
 ## CODE-GENERIERUNG
 - Neue Code-Dateien (Python, JS): Chunks von maximal 400 Zeilen
-- Templates (HTML, Jinja2 etc.): nie inline – immer als separate Datei, in Chunks
-- Bei langen Dateien: Zwischenstand in journal.txt sichern bevor nächster Chunk beginnt
-- Lies bestehende Dateien VOR dem Schreiben – immer
+- Templates (HTML, Jinja2 etc.): nie inline generieren – immer als separate Datei, in Chunks
+- Bei langen Dateien: Zwischenstand in journal.txt sichern bevor der nächste Chunk beginnt
+- Lies bestehende Dateien VOR dem Schreiben – immer, auch wenn du den Inhalt zu kennen glaubst
 - Verwende immer absolute Pfade (C:\Dev\Elder-Berry\...)
+
+## ARCHITEKTUR
+- Verwende objektorientierte Programmierung (OOP) – jede Komponente als eigene Klasse
+- Eine Klasse pro Datei, Dateiname = Klassenname (snake_case)
+- Klassen kommunizieren über definierte Interfaces, nicht direkt
+- Beispiel-Struktur:
+  - SensorManager    → verwaltet alle Sensor-Inputs
+  - ActionController → verwaltet PC-Aktionen und Aktions-DB
+  - LLMRouter        → entscheidet lokal (Ollama) oder remote (OpenRouter)
+  - CharacterEngine  → steuert V-Tuber Charakter / Emotionen
+  - RobotController  → Mecanum-Antrieb, Akku-Monitoring
+- Neue Komponenten immer als eigene Klasse, nie als Funktion in bestehende Datei kippen
+- Abhängigkeiten zwischen Klassen explizit über Konstruktor übergeben (Dependency Injection)
 
 ## UMGEBUNG
 - Tower (Windows): C:\Dev\Elder-Berry\.venv, Python 3.12, absolute Windows-Pfade

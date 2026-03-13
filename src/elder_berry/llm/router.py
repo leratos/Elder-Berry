@@ -12,19 +12,28 @@ class LLMRouter(LLMClient):
     """
     Versucht zuerst Ollama (lokal). Wenn nicht erreichbar → OpenRouter.
     Der Rest des Systems spricht nur mit LLMRouter und merkt nichts vom Wechsel.
+
+    Abhängigkeiten werden explizit per Konstruktor übergeben (Dependency Injection).
+    Für den Standard-Anwendungsfall: LLMRouter.create_default()
     """
 
-    def __init__(
-        self,
+    def __init__(self, ollama: LLMClient, openrouter: LLMClient) -> None:
+        self._ollama = ollama
+        self._openrouter = openrouter
+
+    @classmethod
+    def create_default(
+        cls,
         ollama_model: str | None = None,
         openrouter_model: str | None = None,
-    ):
+    ) -> "LLMRouter":
+        """Erstellt Router mit Standard-Clients (Ollama lokal + OpenRouter Cloud)."""
         kwargs_ollama = {"model": ollama_model} if ollama_model else {}
         kwargs_or = {"model": openrouter_model} if openrouter_model else {}
-
-        self._ollama = OllamaClient(**kwargs_ollama)
-        self._openrouter = OpenRouterClient(**kwargs_or)
-        self._active: LLMClient | None = None
+        return cls(
+            ollama=OllamaClient(**kwargs_ollama),
+            openrouter=OpenRouterClient(**kwargs_or),
+        )
 
     def _select_client(self) -> LLMClient:
         if self._ollama.is_available():
