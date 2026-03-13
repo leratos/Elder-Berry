@@ -6,3 +6,9 @@
 - Repo erstellt
 - Projektstruktur angelegt
 - Phasen 1-5 definiert
+
+## Abgeschlossen: Phase 1 – Teilschritt 1/5 – Projektstruktur + Systemdaten-Modul
+- Branch: feature/phase-1-software-basic
+- Dateien: src/elder_berry/system/info.py, tests/test_system_info.py, requirements.txt
+- Tests: 4/4 grün, GPU-Test korrekt übersprungen (nvidia-smi nicht im Devcontainer)
+- Offen: Ollama-Anbindung (heute Abend), PC-Steuerung, TTS (Windows)
