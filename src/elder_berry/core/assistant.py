@@ -1,0 +1,181 @@
+"""Assistant – Orchestrierung: User-Input → LLM → Aktion → TTS."""
+import json
+import logging
+from dataclasses import dataclass
+
+from elder_berry.actions.base import ActionController
+from elder_berry.actions.db import ActionsDB
+from elder_berry.llm.base import LLMClient
+from elder_berry.tts.base import TTSEngine
+
+logger = logging.getLogger(__name__)
+
+SYSTEM_PROMPT_TEMPLATE = """\
+Du bist Elder-Berry, eine hilfreiche Assistentin.
+Du kannst PC-Aktionen ausführen. Antworte IMMER im folgenden JSON-Format:
+
+{{"action": "<action_type oder null>", "params": {{}}, "response": "<deine Antwort an den Nutzer>"}}
+
+Verfügbare Aktionen:
+- press_key: Taste drücken. params: {{"key": "enter"}}
+- type_text: Text tippen. params: {{"text": "hello"}}
+- hotkey: Tastenkombination. params: {{"keys": ["ctrl", "c"]}}
+- set_volume: Lautstärke setzen (0.0-1.0). params: {{"level": 0.5}}
+- mute: Stummschalten. params: {{"state": true}}
+- focus_window: Fenster fokussieren. params: {{"title": "Notepad"}}
+- minimize_window: Fenster minimieren. params: {{"title": "Notepad"}}
+- maximize_window: Fenster maximieren. params: {{"title": "Notepad"}}
+
+{action_list}
+
+Wenn keine Aktion nötig ist, setze "action" auf null.
+Antworte immer auf Deutsch.
+"""
+
+
+@dataclass
+class AssistantResult:
+    """Ergebnis einer Assistant.process()-Anfrage."""
+    response: str
+    action_executed: str | None
+    action_success: bool
+
+
+class Assistant:
+    """
+    Orchestriert den Ablauf: User-Input → LLM → Aktion → TTS.
+
+    Alle Abhängigkeiten werden per Konstruktor übergeben (DI).
+    """
+
+    def __init__(
+        self,
+        llm: LLMClient,
+        actions_db: ActionsDB,
+        controller: ActionController,
+        tts: TTSEngine | None = None,
+    ) -> None:
+        self._llm = llm
+        self._actions_db = actions_db
+        self._controller = controller
+        self._tts = tts
+
+    def process(self, user_input: str) -> AssistantResult:
+        """
+        Verarbeitet User-Input: LLM befragen → Aktion ausführen → Antwort.
+
+        Args:
+            user_input: Text-Eingabe des Nutzers.
+
+        Returns:
+            AssistantResult mit Antwort, ausgeführter Aktion und Erfolg.
+        """
+        if not user_input.strip():
+            return AssistantResult(
+                response="Leere Eingabe.", action_executed=None, action_success=False
+            )
+
+        system_prompt = self._build_system_prompt()
+        logger.debug("System-Prompt: %d Zeichen", len(system_prompt))
+
+        raw_response = self._llm.generate(user_input, system=system_prompt)
+        logger.debug("LLM-Antwort: %s", raw_response[:200])
+
+        parsed = self._parse_llm_response(raw_response)
+
+        action_type = parsed.get("action")
+        params = parsed.get("params", {})
+        response_text = parsed.get("response", raw_response)
+
+        action_success = False
+        if action_type:
+            action_success = self._execute_action(action_type, params)
+            # Nutzung in DB tracken falls die Aktion dort registriert ist
+            db_action = self._actions_db.get(action_type)
+            if db_action:
+                self._actions_db.record_use(action_type)
+
+        # TTS aussprechen (falls Engine vorhanden)
+        if self._tts and response_text:
+            try:
+                self._tts.speak(response_text)
+            except Exception as e:
+                logger.error("TTS fehlgeschlagen: %s", e)
+
+        return AssistantResult(
+            response=response_text,
+            action_executed=action_type,
+            action_success=action_success,
+        )
+
+    def _build_system_prompt(self) -> str:
+        """Generiert System-Prompt mit registrierten Aktionen aus der DB."""
+        db_actions = self._actions_db.list_all()
+        if db_actions:
+            lines = ["Registrierte Aktionen in der Datenbank:"]
+            for a in db_actions:
+                lines.append(f"- Trigger: \"{a.trigger}\" → Typ: {a.action_type}")
+            action_list = "\n".join(lines)
+        else:
+            action_list = "Keine zusätzlichen Aktionen in der Datenbank registriert."
+
+        return SYSTEM_PROMPT_TEMPLATE.format(action_list=action_list)
+
+    def _parse_llm_response(self, raw: str) -> dict:
+        """
+        Parst JSON aus der LLM-Antwort.
+
+        Versucht zuerst den gesamten String als JSON zu parsen.
+        Fallback: sucht nach dem ersten { und letzten } im String.
+        Letzter Fallback: gibt die rohe Antwort als response zurück.
+        """
+        # Versuch 1: Gesamter String
+        try:
+            return json.loads(raw)
+        except json.JSONDecodeError:
+            pass
+
+        # Versuch 2: JSON-Block extrahieren
+        start = raw.find("{")
+        end = raw.rfind("}")
+        if start != -1 and end != -1 and end > start:
+            try:
+                return json.loads(raw[start:end + 1])
+            except json.JSONDecodeError:
+                pass
+
+        # Fallback: Rohe Antwort als Text
+        logger.warning("LLM-Antwort konnte nicht als JSON geparst werden")
+        return {"action": None, "params": {}, "response": raw}
+
+    def _execute_action(self, action_type: str, params: dict) -> bool:
+        """Führt eine Aktion über den ActionController aus."""
+        try:
+            match action_type:
+                case "press_key":
+                    self._controller.press_key(params["key"])
+                case "type_text":
+                    self._controller.type_text(params["text"])
+                case "hotkey":
+                    self._controller.hotkey(*params["keys"])
+                case "set_volume":
+                    self._controller.set_volume(params["level"])
+                case "mute":
+                    self._controller.mute(params.get("state", True))
+                case "focus_window":
+                    return self._controller.focus_window(params["title"])
+                case "minimize_window":
+                    return self._controller.minimize_window(params["title"])
+                case "maximize_window":
+                    return self._controller.maximize_window(params["title"])
+                case _:
+                    logger.warning("Unbekannte Aktion: %s", action_type)
+                    return False
+            return True
+        except (KeyError, TypeError) as e:
+            logger.error("Aktion '%s' fehlgeschlagen – fehlende Parameter: %s",
+                         action_type, e)
+            return False
+        except Exception as e:
+            logger.error("Aktion '%s' fehlgeschlagen: %s", action_type, e)
+            return False
