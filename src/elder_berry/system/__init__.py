@@ -1,1 +1,1 @@
-from .info import get_system_info
+from .info import SystemMonitor

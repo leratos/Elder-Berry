@@ -13,6 +13,11 @@
 - Tests: 4/4 grün, GPU-Test korrekt übersprungen (nvidia-smi nicht im Devcontainer)
 - Offen: Ollama-Anbindung (heute Abend), PC-Steuerung, TTS (Windows)
 
+## Abgeschlossen: Phase 1 – OOP-Refactoring: SystemMonitor-Klasse + LLMRouter DI
+- system/info.py → SystemMonitor-Klasse (Funktionen → Methoden, DTOs bleiben)
+- llm/router.py → Strict DI: __init__(ollama, openrouter) + LLMRouter.create_default() Factory
+- Tests: 30/30 grün, 1 skip (GPU)
+
 ## Abgeschlossen: Phase 1 – Teilschritt 2/5 – LLM-Modul + Aktions-DB
 - LLMRouter: Ollama (lokal) → OpenRouter (Fallback), transparenter Wechsel
 - Dateien: src/elder_berry/llm/{base,ollama_client,openrouter_client,router}.py

@@ -3,9 +3,21 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+from elder_berry.llm.base import LLMClient
 from elder_berry.llm.ollama_client import OllamaClient
 from elder_berry.llm.openrouter_client import OpenRouterClient
 from elder_berry.llm.router import LLMRouter
+
+
+# ---------------------------------------------------------------------------
+# Hilfsfunktion: Mock-LLMClients erzeugen
+# ---------------------------------------------------------------------------
+
+def make_mock_client(available: bool = True, response: str = "ok") -> MagicMock:
+    mock = MagicMock(spec=LLMClient)
+    mock.is_available.return_value = available
+    mock.generate.return_value = response
+    return mock
 
 
 # ---------------------------------------------------------------------------
@@ -60,7 +72,6 @@ class TestOpenRouterClient:
     def test_is_not_available_without_key(self, monkeypatch):
         monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
         client = OpenRouterClient()
-        # _api_key wurde beim __init__ gelesen – manuell zurücksetzen
         client._api_key = None
         assert client.is_available() is False
 
@@ -84,44 +95,59 @@ class TestOpenRouterClient:
 
 
 # ---------------------------------------------------------------------------
-# LLMRouter
+# LLMRouter – Dependency Injection: Mocks werden per Konstruktor übergeben
 # ---------------------------------------------------------------------------
 
 class TestLLMRouter:
     def test_prefers_ollama_when_available(self):
-        router = LLMRouter()
-        router._ollama.is_available = MagicMock(return_value=True)
-        router._openrouter.is_available = MagicMock(return_value=True)
-        router._ollama.generate = MagicMock(return_value="Ollama-Antwort")
-        result = router.generate("test")
-        assert result == "Ollama-Antwort"
-        router._openrouter.generate.assert_not_called() if hasattr(
-            router._openrouter.generate, "assert_not_called"
-        ) else None
+        ollama = make_mock_client(available=True, response="Ollama-Antwort")
+        openrouter = make_mock_client(available=True, response="OR-Antwort")
+        router = LLMRouter(ollama=ollama, openrouter=openrouter)
+        assert router.generate("test") == "Ollama-Antwort"
+        openrouter.generate.assert_not_called()
 
     def test_falls_back_to_openrouter(self):
-        router = LLMRouter()
-        router._ollama.is_available = MagicMock(return_value=False)
-        router._openrouter.is_available = MagicMock(return_value=True)
-        router._openrouter.generate = MagicMock(return_value="OpenRouter-Antwort")
-        result = router.generate("test")
-        assert result == "OpenRouter-Antwort"
+        ollama = make_mock_client(available=False)
+        openrouter = make_mock_client(available=True, response="OpenRouter-Antwort")
+        router = LLMRouter(ollama=ollama, openrouter=openrouter)
+        assert router.generate("test") == "OpenRouter-Antwort"
 
     def test_raises_when_neither_available(self):
-        router = LLMRouter()
-        router._ollama.is_available = MagicMock(return_value=False)
-        router._openrouter.is_available = MagicMock(return_value=False)
-        with pytest.raises(RuntimeError, match="kein LLM-Backend" if False else "Kein LLM-Backend"):
+        router = LLMRouter(
+            ollama=make_mock_client(available=False),
+            openrouter=make_mock_client(available=False),
+        )
+        with pytest.raises(RuntimeError, match="Kein LLM-Backend"):
             router.generate("test")
 
-    def test_active_backend_property(self):
-        router = LLMRouter()
-        router._ollama.is_available = MagicMock(return_value=False)
-        router._openrouter.is_available = MagicMock(return_value=True)
+    def test_active_backend_ollama(self):
+        router = LLMRouter(
+            ollama=make_mock_client(available=True),
+            openrouter=make_mock_client(available=True),
+        )
+        assert router.active_backend == "ollama"
+
+    def test_active_backend_openrouter(self):
+        router = LLMRouter(
+            ollama=make_mock_client(available=False),
+            openrouter=make_mock_client(available=True),
+        )
         assert router.active_backend == "openrouter"
 
+    def test_active_backend_none(self):
+        router = LLMRouter(
+            ollama=make_mock_client(available=False),
+            openrouter=make_mock_client(available=False),
+        )
+        assert router.active_backend == "none"
+
     def test_is_available_true_if_one_works(self):
-        router = LLMRouter()
-        router._ollama.is_available = MagicMock(return_value=False)
-        router._openrouter.is_available = MagicMock(return_value=True)
+        router = LLMRouter(
+            ollama=make_mock_client(available=False),
+            openrouter=make_mock_client(available=True),
+        )
         assert router.is_available() is True
+
+    def test_create_default_returns_router_instance(self):
+        router = LLMRouter.create_default()
+        assert isinstance(router, LLMRouter)
