@@ -1,0 +1,8 @@
+# Elder-Berry Journal
+# Dieses Dokument ist die einzige laufende Quelle des Projektstands.
+# Format: ## [Status]: [Phase] – [Beschreibung]
+
+## Projekt initialisiert: 2026-03-13
+- Repo erstellt
+- Projektstruktur angelegt
+- Phasen 1-5 definiert
