@@ -1,0 +1,23 @@
+{
+  "name": "Elder-Berry",
+  "image": "mcr.microsoft.com/devcontainers/python:3.12",
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "ms-python.python",
+        "ms-python.pylint",
+        "ms-python.black-formatter",
+        "GitHub.copilot",
+        "eamodio.gitlens",
+        "donjayamanne.githistory"
+      ],
+      "settings": {
+        "python.defaultInterpreterPath": "/usr/local/bin/python",
+        "editor.formatOnSave": true,
+        "editor.defaultFormatter": "ms-python.black-formatter"
+      }
+    }
+  },
+  "postCreateCommand": "pip install --upgrade pip",
+  "remoteUser": "vscode"
+}
