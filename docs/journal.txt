@@ -72,3 +72,161 @@
 - Gesamtarchitektur: SystemMonitor, LLMRouter, ActionsDB, ActionController, TTSEngine, Assistant
 - Konsistentes Pattern: ABC + plattformspezifische Implementierung + DI
 - 90 Tests, alle grün
+
+## In Arbeit: Phase 3 – Charakter / V-Tuber (vorgezogen, Phase 2 RPi5 verschoben)
+- Branch: feature/phase-3-character-vtuber
+- Teilschritte: 4 geplant
+  1. CharacterEngine + Persönlichkeit Saleria Berry
+  2. Coqui XTTS v2 – CoquiTTSEngine (Voice Cloning)
+  3. Avatar-Display (PyGame Sprite Renderer)
+  4. Integration in Assistant
+- Voice Samples: 10 Arabella-WAVs → umbenannt zu Saleria (neutral, cheerful, sarcastic, motivated, thoughtful, whisper, shy, depressed, sad, angry)
+- Referenz: Open-LLM-VTuber Repo analysiert – Emotions-Tagging durch LLM übernommen, Speaker-WAV pro Emotion ist unser Vorteil
+- Nächster Schritt: TS 3 – Avatar-Display
+
+## Abgeschlossen: Phase 3 – Teilschritt 1/4 – CharacterEngine + Saleria Berry
+- Dateien: src/elder_berry/character/base.py (ABC + DTOs: Emotion, Personality, MoodState, EmotionMapping)
+- Dateien: src/elder_berry/character/saleria.py (SaleriaEngine)
+- Dateien: src/elder_berry/character/saleria.yaml (Persönlichkeit, Voice-Map, System-Prompt Template)
+- Dateien: tests/test_character_engine.py (39 Tests)
+- Emotions-Tagging: LLM setzt [emotion]-Tags → extract_emotion() parst → clean_response() entfernt
+- Voice-Samples: 10 WAVs in src/elder_berry/tts/voices/ (pro Emotion ein Sample)
+- Dependency: PyYAML>=6.0 in pyproject.toml hinzugefügt
+- Tests: 129/129 grün (39 neu + 90 bestehend)
+
+## Abgeschlossen: Phase 3 – Teilschritt 2/4 – CoquiTTSEngine (XTTS v2)
+- Dateien: src/elder_berry/tts/coqui_engine.py (CoquiTTSEngine – XTTS v2 Voice Cloning)
+- Dateien: src/elder_berry/tts/base.py (ABC erweitert: emotion-Parameter, load/unload, generate_audio)
+- Dateien: src/elder_berry/tts/windows_engine.py (speak-Signatur angepasst, rückwärtskompatibel)
+- Dateien: tests/test_coqui_tts.py (31 Tests)
+- Features: Voice-Map (Emotion→Speaker-WAV), VRAM-Management (load/unload), Auto-Load, GPU/CPU-Fallback
+- Audio-Playback: sounddevice + numpy (WAV lesen, normalisieren, abspielen)
+- Dependencies: TTS>=0.22, sounddevice>=0.4, numpy>=1.26 als [tts-neural] optional
+- Tests: 160/160 grün (31 neu + 129 bestehend)
+
+## Abgeschlossen: Phase 3 – Teilschritt 3/4 – Avatar-Display (SpriteRenderer)
+- Dateien: src/elder_berry/avatar/base.py (ABC AvatarRenderer)
+- Dateien: src/elder_berry/avatar/sprite_renderer.py (SpriteRenderer – PyGame)
+- Dateien: src/elder_berry/avatar/assets/ (10 Placeholder-Sprites, 512x512 PNG, transparent)
+- Dateien: scripts/generate_placeholder_sprites.py (Sprite-Generator via Pillow)
+- Dateien: tests/test_avatar_renderer.py (23 Tests)
+- Features: Sprite pro Emotion, Sprech-Indikator, 30 FPS, Quit-Event
+- Dependencies: pygame>=2.5 als [avatar] optional
+- Tests: 183/183 grün (23 neu + 160 bestehend)
+
+## Abgeschlossen: Phase 3 – Teilschritt 4/4 – Integration in Assistant
+- Dateien: src/elder_berry/core/assistant.py (erweitert: CharacterEngine + AvatarRenderer per DI)
+- Dateien: tests/test_assistant_integration.py (16 Tests)
+- Flow: Input → LLM (Saleria-Prompt) → [emotion]-Tag extrahieren → Tag entfernen → Aktion → TTS (mit Emotion→Speaker-WAV) → Avatar (Emotion + Sprech-Indikator) → Result
+- Rückwärtskompatibel: ohne CharacterEngine/Avatar verhält sich Assistant wie in Phase 1
+- AssistantResult erweitert: emotion-Feld (str | None)
+- Tests: 199/199 grün (16 neu + 183 bestehend)
+
+## Phase 3 – Charakter / V-Tuber: ABGESCHLOSSEN
+- Alle 4 Teilschritte erledigt
+- Neue Klassen: CharacterEngine (ABC), SaleriaEngine, CoquiTTSEngine, AvatarRenderer (ABC), SpriteRenderer
+- Charakter: Saleria Berry – "Charmant und melodisch mit spielerischer Gefahr"
+- 10 Voice-Samples (Emotion→Speaker-WAV), 10 Placeholder-Sprites
+- TTSEngine ABC erweitert (emotion, load/unload, generate_audio)
+- Konsistentes Pattern: ABC + Implementierung + DI (wie Phase 1)
+- 199 Tests, alle grün
+- Dependencies: PyYAML (core), coqui-tts+sounddevice+numpy (optional [tts-neural]), pygame (optional [avatar])
+- TTS→STT Roundtrip-Test: 96.3% Wort-Überlappung (neutral 89%, cheerful 100%, sarcastic 100%)
+- pyproject.toml korrigiert: TTS>=0.22 → coqui-tts>=0.27 (original TTS inkompatibel mit Python 3.12)
+- Live-Demo-Script: scripts/demo_tts_live.py (interaktiv Text eingeben, Emotion wählen, Saleria spricht)
+
+## Phase 3 – Display-Entscheidung + Hardware (2026-03-14)
+- Display-Typ: Pepper's Ghost (Acrylglas 45° + LCD)
+- Avatar-Sprites: Layered Component System (Body/Eyes/Brows/Mouth separat, runtime compositing)
+  - PSD in Arbeit, Export als 512×1024 PNGs mit transparentem Hintergrund
+  - 5 Body-Poses, 3 Augenzustände (L+R), 3 Augenbrauen (L+R), 3 Mundzustände
+  - LayeredSpriteRenderer noch zu implementieren (ersetzt aktuellen SpriteRenderer)
+
+### Gekaufte Hardware:
+| Teil                                    | Spezifikation                          | Preis   |
+|-----------------------------------------|----------------------------------------|---------|
+| Raspberry Pi 5 4GB                      | Einzelboard                            | ~86€    |
+| RPi Touch Display 2 (5")               | 720×1280, DSI, kapazitiv, Portrait     | ~43,50€ |
+| TECNOIOT 2S BMS (5 Stk.)              | 10A Dauer, 20A Limit, Tiefentladeschutz| ~15€    |
+| Acrylplatten 150×200×1mm (15 Stk.)    | Transparent, für Pepper's Ghost        | ~9€     |
+| microSD 32GB+                           | A2, Class 10 (noch zu kaufen)          | ~10€    |
+| **Gesamt**                              |                                        |**~164€**|
+
+### Display-Entscheidung Begründung:
+- DSI-Anschluss: GPIO bleibt frei für Adafruit Motor HAT
+- 720×1280 Portrait nativ: Perfekt für 512×1024 Sprite, kein Rotation-Hack
+- Display-Strom: Separater 5V-Anschluss auf eigener PCB (vom D36V50F5)
+- Pepper's Ghost: LCD horizontal, Acryl 45°, schwarzer Hintergrund → Sprite "schwebt"
+
+### Energiebudget:
+- 2× 18650 (35A E-Zig-Zellen, ohne Schutz) → 2S BMS → Sicherung 10A → PCB
+- D36V50F5: 5V/5.5A für RPi5 + Display (~2-3A normal)
+- Motoren: 4× TT-Motor direkt @ 7.4V (~0.8A normal, ~6A Stall)
+- Normalbetrieb gesamt: ~3A, Worst Case ~8.5A → Sicherung 10A passt
+
+### Gehäuse:
+- Eigenbau: Resin-Druck (12kg Material vorhanden)
+- Design in Phase 4 (Inventor), nach Hardware-Prototyp-Test
+
+## Abgeschlossen: Phase 3 – LayeredSpriteRenderer
+- Ersetzt SpriteRenderer: Component-basiertes Layering statt 1 PNG pro Emotion
+- Assets exportiert und vereinheitlicht (snake_case):
+  - body/: idle, angry, thinking (3 Poses)
+  - eye/: open, close, angry, sad, surprise, side (6 Varianten × L+R, Brauen eingebrannt)
+  - mouth/: neutral_close, idle_close, think_close, halfopen, open, angry_open (6 Varianten)
+- Blink-Animation nur bei Standard-Augen (open↔close), nicht bei angry/sad/surprise/side
+- Lip-Sync: Mund-Wechsel (close↔halfopen↔open) während show_speaking
+- Dateien: src/elder_berry/avatar/layered_renderer.py (LayeredSpriteRenderer)
+- Dateien: tests/test_layered_renderer.py (33 Tests)
+- Pepper's Ghost optimiert: schwarzer Hintergrund (0,0,0)
+- Tests: 232/232 grün (33 neu + 199 bestehend)
+
+## In Arbeit: Phase 2 – RPi5 Kommunikation (Software-Seite, Hardware simuliert)
+- Branch: feature/phase-2-rpi5-protocol
+- Teilschritte:
+  1. Protocol DTOs (gemeinsame Nachrichtentypen Tower ↔ RPi5)
+  2. RobotServer (FastAPI, läuft auf RPi5 / Simulator)
+  3. RobotClient (Tower-seitig, sendet Befehle)
+  4. Simulator (Mock-RPi5 lokal auf Tower)
+- Ordnerstruktur: chasis/electrik → hardware/electronics (+ enclosure, bom)
+- Dependencies: fastapi, uvicorn[standard]
+
+## Abgeschlossen: Phase 2 – TS 1-4 – Robot-Kommunikation (Simulator)
+- Dateien: src/elder_berry/robot/protocol.py (DTOs: Commands, Status, Enums)
+- Dateien: src/elder_berry/robot/server.py (FastAPI RobotServer + ABCs: MotorController, AvatarDisplay, SensorManager)
+- Dateien: src/elder_berry/robot/client.py (RobotClient – httpx Tower→RPi5)
+- Dateien: src/elder_berry/robot/simulator.py (SimulatedMotors/Avatar/Sensors)
+- Dateien: tests/test_robot_protocol.py (35 Tests)
+- Endpoints: /health, /status, /avatar/emotion, /motor/drive, /motor/stop, /sensor/battery, /sensor/all
+- Simulator startet mit: python -m elder_berry.robot.simulator → localhost:8000
+- Konsistentes Pattern: ABC + DI (MotorController, AvatarDisplay, SensorManager)
+- Tests: 267/267 grün (35 neu + 232 bestehend)
+
+## Abgeschlossen: Phase 2 – TS 5 – RobotClient → Assistant Integration
+- Datei: src/elder_berry/core/assistant.py (erweitert: robot DI-Parameter)
+- Datei: tests/test_assistant_robot.py (neu, 20 Tests)
+- Datei: scripts/demo_integration.py (neu: Live-Test mit Simulator)
+- Features:
+  - Neue Aktionen: robot_drive, robot_stop
+  - Emotion-Sync: Emotion automatisch an RPi5 weiterleiten
+  - Speaking-Sync: Lip-Sync auf RPi5 parallel zum lokalen Avatar
+  - Sensor-Status im System-Prompt (Akku-Warnung, Temperatur)
+  - Graceful Degradation bei Robot-Offline (alle Robot-Calls abgesichert)
+- Live-Test: 5/5 Szenarien bestanden (Simulator + Mock-LLM)
+- Tests: 287/287 grün (20 neu + 267 bestehend)
+
+## Phase 2 – RPi5 Integration (Software): ABGESCHLOSSEN
+- Alle 5 Teilschritte erledigt (Protocol, Server, Client, Simulator, Assistant-Integration)
+- Konsistentes Pattern: ABC + DI (wie Phase 1 und 3)
+- 287 Tests, alle grün
+- Hardware-Seite offen: echte RPi5-Klassen kommen wenn Hardware da ist
+
+## Architektur-Entscheidung: 3-Tier-System (2026-03-14)
+- Tower = Hirn (LLM + TTS-Generierung, immer an)
+- Laptop = Client (PC-Steuerung + Audio-Empfänger, wenn User auf Couch)
+- RPi5 = Robot-Körper (Motoren, Sensoren, Avatar-Display)
+- TTS wird auf Tower generiert, WAV an aktiven Client gestreamt
+- Laptop braucht AgentServer (FastAPI): /action/execute, /audio/play, /health
+- AgentServer wrapped existierenden WindowsActionController
+- RPi5 bekommt nur Lip-Sync-Signal, kein Audio (optional: Speaker für autonomen Betrieb)
+- Nächster Schritt: AgentServer + AgentClient (elder_berry/agent/)

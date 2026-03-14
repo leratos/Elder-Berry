@@ -34,7 +34,7 @@ class WindowsTTSEngine(TTSEngine):
         self._engine = pyttsx3.init()
         logger.info("WindowsTTSEngine initialisiert")
 
-    def speak(self, text: str) -> None:
+    def speak(self, text: str, emotion: str | None = None) -> None:
         if not text.strip():
             logger.warning("speak() mit leerem Text aufgerufen")
             return
