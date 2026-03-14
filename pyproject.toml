@@ -29,6 +29,10 @@ tts-neural = [
 avatar = [
     "pygame>=2.5",
 ]
+robot = [
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.32",
+]
 
 [tool.setuptools.packages.find]
 where = ["src"]

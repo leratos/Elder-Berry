@@ -201,3 +201,16 @@
 - Simulator startet mit: python -m elder_berry.robot.simulator → localhost:8000
 - Konsistentes Pattern: ABC + DI (MotorController, AvatarDisplay, SensorManager)
 - Tests: 267/267 grün (35 neu + 232 bestehend)
+
+## Abgeschlossen: Phase 2 – TS 5 – RobotClient → Assistant Integration
+- Datei: src/elder_berry/core/assistant.py (erweitert: robot DI-Parameter)
+- Datei: tests/test_assistant_robot.py (neu, 20 Tests)
+- Datei: scripts/demo_integration.py (neu: Live-Test mit Simulator)
+- Features:
+  - Neue Aktionen: robot_drive, robot_stop
+  - Emotion-Sync: Emotion automatisch an RPi5 weiterleiten
+  - Speaking-Sync: Lip-Sync auf RPi5 parallel zum lokalen Avatar
+  - Sensor-Status im System-Prompt (Akku-Warnung, Temperatur)
+  - Graceful Degradation bei Robot-Offline (alle Robot-Calls abgesichert)
+- Live-Test: 5/5 Szenarien bestanden (Simulator + Mock-LLM)
+- Tests: 287/287 grün (20 neu + 267 bestehend)

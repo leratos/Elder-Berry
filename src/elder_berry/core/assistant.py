@@ -1,4 +1,4 @@
-"""Assistant – Orchestrierung: User-Input → LLM → Aktion → TTS → Avatar."""
+"""Assistant – Orchestrierung: User-Input → LLM → Aktion → TTS → Avatar → Robot."""
 from __future__ import annotations
 
 import json
@@ -14,6 +14,7 @@ from elder_berry.tts.base import TTSEngine
 if TYPE_CHECKING:
     from elder_berry.avatar.base import AvatarRenderer
     from elder_berry.character.base import CharacterEngine
+    from elder_berry.robot.client import RobotClient
 
 logger = logging.getLogger(__name__)
 
@@ -32,8 +33,13 @@ Verfügbare Aktionen:
 - focus_window: Fenster fokussieren. params: {{"title": "Notepad"}}
 - minimize_window: Fenster minimieren. params: {{"title": "Notepad"}}
 - maximize_window: Fenster maximieren. params: {{"title": "Notepad"}}
+- robot_drive: Roboter fahren. params: {{"direction": "forward", "speed": 0.5}}
+  Richtungen: forward, backward, left, right, rotate_left, rotate_right
+- robot_stop: Roboter stoppen. params: {{"reason": "hindernis"}}
 
 {action_list}
+
+{robot_status}
 
 Wenn keine Aktion nötig ist, setze "action" auf null.
 Antworte immer auf Deutsch.
@@ -66,6 +72,7 @@ class Assistant:
         tts: TTSEngine | None = None,
         character: CharacterEngine | None = None,
         avatar: AvatarRenderer | None = None,
+        robot: RobotClient | None = None,
     ) -> None:
         self._llm = llm
         self._actions_db = actions_db
@@ -73,6 +80,7 @@ class Assistant:
         self._tts = tts
         self._character = character
         self._avatar = avatar
+        self._robot = robot
 
     def process(self, user_input: str) -> AssistantResult:
         """
@@ -108,9 +116,12 @@ class Assistant:
             emotion_str = emotion.value
             response_text = self._character.clean_response(response_text)
 
-            # Avatar aktualisieren
+            # Avatar aktualisieren (lokal)
             if self._avatar:
                 self._avatar.show_emotion(emotion)
+
+            # Avatar aktualisieren (Robot/RPi5)
+            self._robot_set_emotion(emotion_str)
 
         action_success = False
         if action_type:
@@ -123,6 +134,7 @@ class Assistant:
         if self._tts and response_text:
             if self._avatar:
                 self._avatar.show_speaking(True)
+            self._robot_set_speaking(True)
             try:
                 if emotion_str:
                     self._tts.speak(response_text, emotion=emotion_str)
@@ -133,6 +145,7 @@ class Assistant:
             finally:
                 if self._avatar:
                     self._avatar.show_speaking(False)
+                self._robot_set_speaking(False)
 
         return AssistantResult(
             response=response_text,
@@ -152,10 +165,20 @@ class Assistant:
         else:
             action_list = "Keine zusätzlichen Aktionen in der Datenbank registriert."
 
-        if self._character:
-            return self._character.build_system_prompt(available_actions=action_list)
+        robot_status = self._build_robot_status()
 
-        return SYSTEM_PROMPT_TEMPLATE.format(action_list=action_list)
+        if self._character:
+            prompt = self._character.build_system_prompt(
+                available_actions=action_list,
+            )
+            if robot_status:
+                prompt += f"\n\n{robot_status}"
+            return prompt
+
+        return SYSTEM_PROMPT_TEMPLATE.format(
+            action_list=action_list,
+            robot_status=robot_status,
+        )
 
     def _parse_llm_response(self, raw: str) -> dict:
         """
@@ -204,6 +227,13 @@ class Assistant:
                     return self._controller.minimize_window(params["title"])
                 case "maximize_window":
                     return self._controller.maximize_window(params["title"])
+                case "robot_drive":
+                    return self._robot_drive(
+                        params.get("direction", "forward"),
+                        params.get("speed", 0.5),
+                    )
+                case "robot_stop":
+                    return self._robot_stop(params.get("reason", "manual"))
                 case _:
                     logger.warning("Unbekannte Aktion: %s", action_type)
                     return False
@@ -215,3 +245,68 @@ class Assistant:
         except Exception as e:
             logger.error("Aktion '%s' fehlgeschlagen: %s", action_type, e)
             return False
+
+    # --- Robot-Integration ---
+
+    def _robot_drive(self, direction: str, speed: float) -> bool:
+        """Sendet Fahrbefehl an den Roboter. Gibt False zurück wenn nicht verbunden."""
+        if not self._robot:
+            logger.warning("robot_drive: Kein RobotClient verbunden")
+            return False
+        try:
+            resp = self._robot.drive(direction, speed)
+            return resp.success
+        except Exception as e:
+            logger.error("robot_drive fehlgeschlagen: %s", e)
+            return False
+
+    def _robot_stop(self, reason: str) -> bool:
+        """Stoppt den Roboter. Gibt False zurück wenn nicht verbunden."""
+        if not self._robot:
+            logger.warning("robot_stop: Kein RobotClient verbunden")
+            return False
+        try:
+            resp = self._robot.stop(reason)
+            return resp.success
+        except Exception as e:
+            logger.error("robot_stop fehlgeschlagen: %s", e)
+            return False
+
+    def _robot_set_emotion(self, emotion: str | None) -> None:
+        """Synchronisiert Emotion zum RPi5-Display (fire-and-forget)."""
+        if not self._robot or not emotion:
+            return
+        try:
+            self._robot.set_emotion(emotion)
+        except Exception as e:
+            logger.debug("Robot Emotion-Sync fehlgeschlagen: %s", e)
+
+    def _robot_set_speaking(self, is_speaking: bool) -> None:
+        """Synchronisiert Sprechzustand zum RPi5-Display (fire-and-forget)."""
+        if not self._robot:
+            return
+        try:
+            self._robot.set_speaking(is_speaking)
+        except Exception as e:
+            logger.debug("Robot Speaking-Sync fehlgeschlagen: %s", e)
+
+    def _build_robot_status(self) -> str:
+        """Baut Robot-Status-Info für den System-Prompt. Leer wenn kein Robot."""
+        if not self._robot:
+            return ""
+        try:
+            if not self._robot.is_online():
+                return "Roboter-Status: OFFLINE (nicht erreichbar)"
+            battery = self._robot.get_battery()
+            parts = [
+                "Roboter-Status: ONLINE",
+                f"  Akku: {battery.percentage}% ({battery.voltage}V)",
+            ]
+            if battery.is_low:
+                parts.append("  WARNUNG: Akku niedrig! Zur Ladestation fahren.")
+            if battery.is_charging:
+                parts.append("  Akku wird geladen.")
+            return "\n".join(parts)
+        except Exception as e:
+            logger.debug("Robot-Status Abfrage fehlgeschlagen: %s", e)
+            return "Roboter-Status: OFFLINE (Abfrage fehlgeschlagen)"

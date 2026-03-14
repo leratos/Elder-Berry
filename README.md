@@ -78,8 +78,11 @@ pip install -e ".[tts-neural]"
 # With avatar display
 pip install -e ".[avatar]"
 
+# With robot server/simulator
+pip install -e ".[robot]"
+
 # Everything
-pip install -e ".[windows,tts-neural,avatar]"
+pip install -e ".[windows,tts-neural,avatar,robot]"
 ```
 
 ## Testing
@@ -88,7 +91,7 @@ pip install -e ".[windows,tts-neural,avatar]"
 pytest tests/ -q
 ```
 
-232 tests, all passing.
+267 tests, all passing.
 
 ## Project Structure
 
@@ -100,6 +103,7 @@ src/elder_berry/
 ├── character/        # Character engine + Saleria personality
 ├── core/             # Assistant orchestrator
 ├── llm/              # LLM clients (Ollama, OpenRouter, Router)
+├── robot/            # RPi5 communication (server, client, simulator)
 ├── system/           # System monitoring
 └── tts/              # TTS engines (Windows SAPI, Coqui XTTS)
     └── voices/       # Voice samples per emotion
@@ -118,7 +122,7 @@ tests/                # Unit + integration tests
 | Phase | Name | Status |
 |---|---|---|
 | 1 | Software Basic (PC control, TTS, LLM, Assistant) | Done |
-| 2 | RPi5 Integration | Deferred (hardware pending) |
+| 2 | RPi5 Integration (protocol, simulator) | In Progress |
 | 3 | Character / V-Tuber (Saleria, XTTS, Avatar) | Done |
 | 4 | Body / Housing (enclosure, Pepper's Ghost) | Planned |
 | 5 | Software Advance (emotion state machine, multimodal) | Planned |
