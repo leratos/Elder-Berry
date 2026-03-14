@@ -1,12 +1,19 @@
-"""Assistant – Orchestrierung: User-Input → LLM → Aktion → TTS."""
+"""Assistant – Orchestrierung: User-Input → LLM → Aktion → TTS → Avatar."""
+from __future__ import annotations
+
 import json
 import logging
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from typing import TYPE_CHECKING
 
 from elder_berry.actions.base import ActionController
 from elder_berry.actions.db import ActionsDB
 from elder_berry.llm.base import LLMClient
 from elder_berry.tts.base import TTSEngine
+
+if TYPE_CHECKING:
+    from elder_berry.avatar.base import AvatarRenderer
+    from elder_berry.character.base import CharacterEngine
 
 logger = logging.getLogger(__name__)
 
@@ -39,13 +46,16 @@ class AssistantResult:
     response: str
     action_executed: str | None
     action_success: bool
+    emotion: str | None = None
 
 
 class Assistant:
     """
-    Orchestriert den Ablauf: User-Input → LLM → Aktion → TTS.
+    Orchestriert den Ablauf: User-Input → LLM → Aktion → TTS → Avatar.
 
     Alle Abhängigkeiten werden per Konstruktor übergeben (DI).
+    Optional: CharacterEngine für Persönlichkeit/Emotionen,
+    AvatarRenderer für visuelle Darstellung.
     """
 
     def __init__(
@@ -54,21 +64,25 @@ class Assistant:
         actions_db: ActionsDB,
         controller: ActionController,
         tts: TTSEngine | None = None,
+        character: CharacterEngine | None = None,
+        avatar: AvatarRenderer | None = None,
     ) -> None:
         self._llm = llm
         self._actions_db = actions_db
         self._controller = controller
         self._tts = tts
+        self._character = character
+        self._avatar = avatar
 
     def process(self, user_input: str) -> AssistantResult:
         """
-        Verarbeitet User-Input: LLM befragen → Aktion ausführen → Antwort.
+        Verarbeitet User-Input: LLM befragen → Aktion ausführen → TTS → Avatar.
 
         Args:
             user_input: Text-Eingabe des Nutzers.
 
         Returns:
-            AssistantResult mit Antwort, ausgeführter Aktion und Erfolg.
+            AssistantResult mit Antwort, ausgeführter Aktion, Erfolg und Emotion.
         """
         if not user_input.strip():
             return AssistantResult(
@@ -87,29 +101,48 @@ class Assistant:
         params = parsed.get("params", {})
         response_text = parsed.get("response", raw_response)
 
+        # Emotion extrahieren und Text bereinigen (falls CharacterEngine vorhanden)
+        emotion_str = None
+        if self._character:
+            emotion = self._character.extract_emotion(response_text)
+            emotion_str = emotion.value
+            response_text = self._character.clean_response(response_text)
+
+            # Avatar aktualisieren
+            if self._avatar:
+                self._avatar.show_emotion(emotion)
+
         action_success = False
         if action_type:
             action_success = self._execute_action(action_type, params)
-            # Nutzung in DB tracken falls die Aktion dort registriert ist
             db_action = self._actions_db.get(action_type)
             if db_action:
                 self._actions_db.record_use(action_type)
 
-        # TTS aussprechen (falls Engine vorhanden)
+        # TTS aussprechen
         if self._tts and response_text:
+            if self._avatar:
+                self._avatar.show_speaking(True)
             try:
-                self._tts.speak(response_text)
+                if emotion_str:
+                    self._tts.speak(response_text, emotion=emotion_str)
+                else:
+                    self._tts.speak(response_text)
             except Exception as e:
                 logger.error("TTS fehlgeschlagen: %s", e)
+            finally:
+                if self._avatar:
+                    self._avatar.show_speaking(False)
 
         return AssistantResult(
             response=response_text,
             action_executed=action_type,
             action_success=action_success,
+            emotion=emotion_str,
         )
 
     def _build_system_prompt(self) -> str:
-        """Generiert System-Prompt mit registrierten Aktionen aus der DB."""
+        """Generiert System-Prompt – aus CharacterEngine oder Fallback-Template."""
         db_actions = self._actions_db.list_all()
         if db_actions:
             lines = ["Registrierte Aktionen in der Datenbank:"]
@@ -118,6 +151,9 @@ class Assistant:
             action_list = "\n".join(lines)
         else:
             action_list = "Keine zusätzlichen Aktionen in der Datenbank registriert."
+
+        if self._character:
+            return self._character.build_system_prompt(available_actions=action_list)
 
         return SYSTEM_PROMPT_TEMPLATE.format(action_list=action_list)
 
