@@ -5,7 +5,6 @@ from dataclasses import asdict
 
 import httpx
 import pytest
-import uvicorn
 
 from elder_berry.robot.protocol import (
     ApiResponse,
@@ -19,8 +18,12 @@ from elder_berry.robot.protocol import (
     SensorReading,
     SensorType,
 )
-from elder_berry.robot.server import RobotServer
-from elder_berry.robot.simulator import (
+
+# Server + Simulator brauchen fastapi (optional dependency)
+fastapi = pytest.importorskip("fastapi", reason="fastapi nicht installiert")
+
+from elder_berry.robot.server import RobotServer  # noqa: E402
+from elder_berry.robot.simulator import (  # noqa: E402
     SimulatedAvatar,
     SimulatedMotors,
     SimulatedSensors,
