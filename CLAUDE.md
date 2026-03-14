@@ -44,20 +44,29 @@ Logiklücken und Fehler hin.
 - Verwende objektorientierte Programmierung (OOP) – jede Komponente als eigene Klasse
 - Eine Klasse pro Datei, Dateiname = Klassenname (snake_case)
 - Klassen kommunizieren über definierte Interfaces, nicht direkt
+- 3-Tier-System:
+  - Tower (Hirn): LLM + TTS-Generierung, Assistant-Orchestrator, immer an
+  - Laptop (Client): PC-Steuerung + Audio-Empfänger, AgentServer (FastAPI)
+  - RPi5 (Robot-Körper): Motoren, Sensoren, Avatar-Display, RobotServer (FastAPI)
 - Kernklassen:
-  - SensorManager    → verwaltet alle Sensor-Inputs (RPi 5)
-  - ActionController → verwaltet PC-Aktionen und Aktions-DB (Tower)
-  - LLMRouter        → entscheidet lokal (Ollama) oder remote (OpenRouter)
-  - CharacterEngine  → steuert V-Tuber Charakter / Emotionen
-  - RobotController  → Kommunikation Tower → RPi 5 → Pico 2W
+  - Assistant         → Orchestrator: LLM → Action → TTS → Avatar → Robot
+  - SaleriaEngine     → Charakter-Persönlichkeit, Emotion-Extraktion
+  - CoquiTTSEngine    → XTTS v2 Voice Cloning (pro Emotion ein Speaker-WAV)
+  - LayeredSpriteRenderer → Component-basiertes Avatar-Rendering (PyGame)
+  - WindowsActionController → PC-Steuerung (Tastatur, Maus, Fenster, Lautstärke)
+  - RobotClient/Server → Tower ↔ RPi5 Kommunikation (REST)
+  - LLMRouter         → entscheidet lokal (Ollama) oder remote (OpenRouter)
+  - ActionsDB         → SQLite Aktions-Registry mit Self-Learning
 - Neue Komponenten immer als eigene Klasse, nie als Funktion in bestehende Datei kippen
 - Abhängigkeiten zwischen Klassen explizit über Konstruktor übergeben (Dependency Injection)
 
 ## UMGEBUNG
 - Tower (Windows, 16GB VRAM): C:\Dev\Elder-Berry\.venv, Python 3.12
   - LLM: phi4:14b – läuft vollständig in VRAM
+  - Rolle: Hirn (LLM + TTS-Generierung), immer an
 - Laptop (Windows, 8GB VRAM): C:\Dev\Elder-Berry\.venv, Python 3.12
   - LLM: phi4:14b – läuft mit leichter RAM-Auslagerung, akzeptable Geschwindigkeit
+  - Rolle: Client (empfängt PC-Befehle + Audio vom Tower, wenn User auf Couch)
 - RPi 5 (Linux): /home/pi/elder-berry/, Python 3.12, absolute Linux-Pfade
 - Pico 2W: MicroPython, zuständig für Motorsteuerung und Akku-Monitoring
 - Gleiches Modell auf Tower und Laptop → identisches Verhalten beim Testen
@@ -103,9 +112,12 @@ Logiklücken und Fehler hin.
 - Modell-Wechsel nur mit expliziter Begründung vorschlagen
 
 ## CHARAKTER
-- Elder-Berry ist eine virtuelle Assistentin mit eigenem Charakter (noch zu definieren)
-- Persönlichkeit, Name der Figur, Stimme und visueller Stil werden in Phase 3 festgelegt
-- Bis dahin: keine Annahmen über Charakter treffen, keine Namen oder Eigenschaften erfinden
+- Saleria Berry – "Charmant und melodisch mit einem Hauch spielerischer Gefahr"
+- 10 Emotionen: neutral, cheerful, sarcastic, motivated, thoughtful, whisper, shy, depressed, sad, angry
+- Voice: Coqui XTTS v2 Voice Cloning, pro Emotion ein Speaker-WAV
+- Avatar: Layered Sprite System (Body + Eyes L/R + Mouth), Blink-Animation, Lip-Sync
+- Pepper's Ghost Hologramm: LCD horizontal + Acryl 45°, schwarzer Hintergrund (0,0,0)
+- Persönlichkeit definiert in: src/elder_berry/character/saleria.yaml
 
 ## QUALITÄT
 - Weise aktiv auf fehlende Tests, Sicherheitslücken oder technische Schulden hin

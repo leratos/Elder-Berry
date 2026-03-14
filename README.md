@@ -91,7 +91,7 @@ pip install -e ".[windows,tts-neural,avatar,robot]"
 pytest tests/ -q
 ```
 
-267 tests, all passing.
+287 tests, all passing.
 
 ## Project Structure
 
@@ -122,7 +122,7 @@ tests/                # Unit + integration tests
 | Phase | Name | Status |
 |---|---|---|
 | 1 | Software Basic (PC control, TTS, LLM, Assistant) | Done |
-| 2 | RPi5 Integration (protocol, simulator) | In Progress |
+| 2 | RPi5 Integration (protocol, simulator) | Done (software) |
 | 3 | Character / V-Tuber (Saleria, XTTS, Avatar) | Done |
 | 4 | Body / Housing (enclosure, Pepper's Ghost) | Planned |
 | 5 | Software Advance (emotion state machine, multimodal) | Planned |

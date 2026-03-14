@@ -214,3 +214,19 @@
   - Graceful Degradation bei Robot-Offline (alle Robot-Calls abgesichert)
 - Live-Test: 5/5 Szenarien bestanden (Simulator + Mock-LLM)
 - Tests: 287/287 grün (20 neu + 267 bestehend)
+
+## Phase 2 – RPi5 Integration (Software): ABGESCHLOSSEN
+- Alle 5 Teilschritte erledigt (Protocol, Server, Client, Simulator, Assistant-Integration)
+- Konsistentes Pattern: ABC + DI (wie Phase 1 und 3)
+- 287 Tests, alle grün
+- Hardware-Seite offen: echte RPi5-Klassen kommen wenn Hardware da ist
+
+## Architektur-Entscheidung: 3-Tier-System (2026-03-14)
+- Tower = Hirn (LLM + TTS-Generierung, immer an)
+- Laptop = Client (PC-Steuerung + Audio-Empfänger, wenn User auf Couch)
+- RPi5 = Robot-Körper (Motoren, Sensoren, Avatar-Display)
+- TTS wird auf Tower generiert, WAV an aktiven Client gestreamt
+- Laptop braucht AgentServer (FastAPI): /action/execute, /audio/play, /health
+- AgentServer wrapped existierenden WindowsActionController
+- RPi5 bekommt nur Lip-Sync-Signal, kein Audio (optional: Speaker für autonomen Betrieb)
+- Nächster Schritt: AgentServer + AgentClient (elder_berry/agent/)
