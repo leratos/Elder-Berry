@@ -133,3 +133,71 @@
 - Dependencies: PyYAML (core), coqui-tts+sounddevice+numpy (optional [tts-neural]), pygame (optional [avatar])
 - TTS→STT Roundtrip-Test: 96.3% Wort-Überlappung (neutral 89%, cheerful 100%, sarcastic 100%)
 - pyproject.toml korrigiert: TTS>=0.22 → coqui-tts>=0.27 (original TTS inkompatibel mit Python 3.12)
+- Live-Demo-Script: scripts/demo_tts_live.py (interaktiv Text eingeben, Emotion wählen, Saleria spricht)
+
+## Phase 3 – Display-Entscheidung + Hardware (2026-03-14)
+- Display-Typ: Pepper's Ghost (Acrylglas 45° + LCD)
+- Avatar-Sprites: Layered Component System (Body/Eyes/Brows/Mouth separat, runtime compositing)
+  - PSD in Arbeit, Export als 512×1024 PNGs mit transparentem Hintergrund
+  - 5 Body-Poses, 3 Augenzustände (L+R), 3 Augenbrauen (L+R), 3 Mundzustände
+  - LayeredSpriteRenderer noch zu implementieren (ersetzt aktuellen SpriteRenderer)
+
+### Gekaufte Hardware:
+| Teil                                    | Spezifikation                          | Preis   |
+|-----------------------------------------|----------------------------------------|---------|
+| Raspberry Pi 5 4GB                      | Einzelboard                            | ~86€    |
+| RPi Touch Display 2 (5")               | 720×1280, DSI, kapazitiv, Portrait     | ~43,50€ |
+| TECNOIOT 2S BMS (5 Stk.)              | 10A Dauer, 20A Limit, Tiefentladeschutz| ~15€    |
+| Acrylplatten 150×200×1mm (15 Stk.)    | Transparent, für Pepper's Ghost        | ~9€     |
+| microSD 32GB+                           | A2, Class 10 (noch zu kaufen)          | ~10€    |
+| **Gesamt**                              |                                        |**~164€**|
+
+### Display-Entscheidung Begründung:
+- DSI-Anschluss: GPIO bleibt frei für Adafruit Motor HAT
+- 720×1280 Portrait nativ: Perfekt für 512×1024 Sprite, kein Rotation-Hack
+- Display-Strom: Separater 5V-Anschluss auf eigener PCB (vom D36V50F5)
+- Pepper's Ghost: LCD horizontal, Acryl 45°, schwarzer Hintergrund → Sprite "schwebt"
+
+### Energiebudget:
+- 2× 18650 (35A E-Zig-Zellen, ohne Schutz) → 2S BMS → Sicherung 10A → PCB
+- D36V50F5: 5V/5.5A für RPi5 + Display (~2-3A normal)
+- Motoren: 4× TT-Motor direkt @ 7.4V (~0.8A normal, ~6A Stall)
+- Normalbetrieb gesamt: ~3A, Worst Case ~8.5A → Sicherung 10A passt
+
+### Gehäuse:
+- Eigenbau: Resin-Druck (12kg Material vorhanden)
+- Design in Phase 4 (Inventor), nach Hardware-Prototyp-Test
+
+## Abgeschlossen: Phase 3 – LayeredSpriteRenderer
+- Ersetzt SpriteRenderer: Component-basiertes Layering statt 1 PNG pro Emotion
+- Assets exportiert und vereinheitlicht (snake_case):
+  - body/: idle, angry, thinking (3 Poses)
+  - eye/: open, close, angry, sad, surprise, side (6 Varianten × L+R, Brauen eingebrannt)
+  - mouth/: neutral_close, idle_close, think_close, halfopen, open, angry_open (6 Varianten)
+- Blink-Animation nur bei Standard-Augen (open↔close), nicht bei angry/sad/surprise/side
+- Lip-Sync: Mund-Wechsel (close↔halfopen↔open) während show_speaking
+- Dateien: src/elder_berry/avatar/layered_renderer.py (LayeredSpriteRenderer)
+- Dateien: tests/test_layered_renderer.py (33 Tests)
+- Pepper's Ghost optimiert: schwarzer Hintergrund (0,0,0)
+- Tests: 232/232 grün (33 neu + 199 bestehend)
+
+## In Arbeit: Phase 2 – RPi5 Kommunikation (Software-Seite, Hardware simuliert)
+- Branch: feature/phase-2-rpi5-protocol
+- Teilschritte:
+  1. Protocol DTOs (gemeinsame Nachrichtentypen Tower ↔ RPi5)
+  2. RobotServer (FastAPI, läuft auf RPi5 / Simulator)
+  3. RobotClient (Tower-seitig, sendet Befehle)
+  4. Simulator (Mock-RPi5 lokal auf Tower)
+- Ordnerstruktur: chasis/electrik → hardware/electronics (+ enclosure, bom)
+- Dependencies: fastapi, uvicorn[standard]
+
+## Abgeschlossen: Phase 2 – TS 1-4 – Robot-Kommunikation (Simulator)
+- Dateien: src/elder_berry/robot/protocol.py (DTOs: Commands, Status, Enums)
+- Dateien: src/elder_berry/robot/server.py (FastAPI RobotServer + ABCs: MotorController, AvatarDisplay, SensorManager)
+- Dateien: src/elder_berry/robot/client.py (RobotClient – httpx Tower→RPi5)
+- Dateien: src/elder_berry/robot/simulator.py (SimulatedMotors/Avatar/Sensors)
+- Dateien: tests/test_robot_protocol.py (35 Tests)
+- Endpoints: /health, /status, /avatar/emotion, /motor/drive, /motor/stop, /sensor/battery, /sensor/all
+- Simulator startet mit: python -m elder_berry.robot.simulator → localhost:8000
+- Konsistentes Pattern: ABC + DI (MotorController, AvatarDisplay, SensorManager)
+- Tests: 267/267 grün (35 neu + 232 bestehend)
