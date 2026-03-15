@@ -50,6 +50,8 @@ def create_remote_handler():
 
     monitor = None
     controller = None
+    avatar_renderer = None
+    secret_store = None
 
     try:
         from elder_berry.system.info import SystemMonitor
@@ -65,9 +67,26 @@ def create_remote_handler():
     except Exception as e:
         logger.warning("ActionController nicht verfügbar: %s", e)
 
+    try:
+        from elder_berry.avatar.layered_renderer import LayeredSpriteRenderer
+        avatar_renderer = LayeredSpriteRenderer()
+        logger.info("AvatarRenderer geladen (Selfie-Command verfügbar)")
+    except Exception as e:
+        logger.warning("AvatarRenderer nicht verfügbar: %s", e)
+
+    try:
+        secret_store = SecretStore()
+    except Exception:
+        pass
+
+    project_root = Path(__file__).resolve().parent.parent
+
     handler = RemoteCommandHandler(
         system_monitor=monitor,
         controller=controller,
+        avatar_renderer=avatar_renderer,
+        secret_store=secret_store,
+        project_root=project_root,
     )
     logger.info("RemoteCommandHandler erstellt")
     return handler
@@ -222,10 +241,18 @@ async def run_remote_mode(channel: MatrixChannel) -> None:
                     await channel.send_image(msg.room_id, result.image_path)
                 except NotImplementedError:
                     await channel.send_text(
-                        msg.room_id, "Screenshot aufgenommen, Bild-Upload nicht verfügbar.",
+                        msg.room_id, "Bild-Upload nicht verfügbar.",
                     )
                 finally:
                     result.image_path.unlink(missing_ok=True)
+
+            if result.file_path and result.file_path.exists():
+                try:
+                    await channel.send_file(msg.room_id, result.file_path)
+                except NotImplementedError:
+                    await channel.send_text(
+                        msg.room_id, "Datei-Upload nicht verfügbar.",
+                    )
         else:
             # Kein Command → Echo
             await channel.send_text(msg.room_id, f"Echo: {msg.body}")
