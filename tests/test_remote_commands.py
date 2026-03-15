@@ -8,6 +8,8 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from elder_berry.comms.remote_commands import (
+    AVATAR_EMOTION_PATTERN,
+    AVATAR_EMOTIONS,
     CLIP_WRITE_PATTERN,
     DOCKER_PATTERN,
     DOWNLOAD_PATTERN,
@@ -263,6 +265,24 @@ class TestParseCommand:
         handler = RemoteCommandHandler()
         assert handler.parse_command("download") is None
         assert handler.parse_command("download ftp://bad.com") is None
+
+    # --- Avatar / Selfie ---
+    def test_avatar(self):
+        handler = RemoteCommandHandler()
+        assert handler.parse_command("avatar") == "avatar"
+        assert handler.parse_command("selfie") == "selfie"
+        assert handler.parse_command("Avatar") == "avatar"
+
+    def test_avatar_with_emotion(self):
+        handler = RemoteCommandHandler()
+        assert handler.parse_command("selfie angry") == "avatar"
+        assert handler.parse_command("avatar cheerful") == "avatar"
+
+    def test_avatar_keyword(self):
+        handler = RemoteCommandHandler()
+        assert handler.parse_command("zeig dich mal") == "avatar"
+        assert handler.parse_command("wie siehst du aus?") == "avatar"
+        assert handler.parse_command("schick ein bild von dir") == "avatar"
 
 
 # ---------------------------------------------------------------------------
@@ -1127,3 +1147,94 @@ class TestNewPatterns:
         assert DOWNLOAD_PATTERN.match("download http://example.com/data.csv")
         assert not DOWNLOAD_PATTERN.match("download")
         assert not DOWNLOAD_PATTERN.match("download ftp://bad.com")
+
+    def test_avatar_emotion_pattern(self):
+        m = AVATAR_EMOTION_PATTERN.match("selfie angry")
+        assert m and m.group(1) == "angry"
+        m = AVATAR_EMOTION_PATTERN.match("avatar cheerful")
+        assert m and m.group(1) == "cheerful"
+        assert not AVATAR_EMOTION_PATTERN.match("selfie")  # Nur Keyword, kein Match
+        assert not AVATAR_EMOTION_PATTERN.match("avatar")
+
+
+# ---------------------------------------------------------------------------
+# execute: avatar
+# ---------------------------------------------------------------------------
+
+class TestCmdAvatar:
+    def test_avatar_no_renderer(self):
+        handler = RemoteCommandHandler()
+        result = handler.execute("avatar", "avatar")
+
+        assert result.success is False
+        assert "nicht verfügbar" in result.text
+
+    def test_avatar_neutral(self, tmp_path):
+        mock_renderer = MagicMock()
+        mock_renderer.render_to_file.return_value = tmp_path / "avatar.png"
+
+        handler = RemoteCommandHandler(avatar_renderer=mock_renderer)
+        result = handler.execute("avatar", "avatar")
+
+        assert result.success is True
+        assert result.image_path is not None
+        assert "neutral" in result.text
+        mock_renderer.render_to_file.assert_called_once()
+
+    def test_avatar_with_emotion(self, tmp_path):
+        from elder_berry.character.base import Emotion
+
+        mock_renderer = MagicMock()
+        mock_renderer.render_to_file.return_value = tmp_path / "avatar.png"
+
+        handler = RemoteCommandHandler(avatar_renderer=mock_renderer)
+        result = handler.execute("avatar", "selfie angry")
+
+        assert result.success is True
+        assert "angry" in result.text
+        # Prüfe dass Emotion.ANGRY übergeben wurde
+        call_args = mock_renderer.render_to_file.call_args
+        assert call_args[0][1] == Emotion.ANGRY
+
+    def test_avatar_invalid_emotion_falls_to_neutral(self, tmp_path):
+        from elder_berry.character.base import Emotion
+
+        mock_renderer = MagicMock()
+        mock_renderer.render_to_file.return_value = tmp_path / "avatar.png"
+
+        handler = RemoteCommandHandler(avatar_renderer=mock_renderer)
+        result = handler.execute("avatar", "selfie foobar")
+
+        assert result.success is True
+        assert "neutral" in result.text
+        call_args = mock_renderer.render_to_file.call_args
+        assert call_args[0][1] == Emotion.NEUTRAL
+
+    def test_avatar_not_implemented(self):
+        mock_renderer = MagicMock()
+        mock_renderer.render_to_file.side_effect = NotImplementedError
+
+        handler = RemoteCommandHandler(avatar_renderer=mock_renderer)
+        result = handler.execute("avatar", "avatar")
+
+        assert result.success is False
+        assert "Datei-Rendering" in result.text
+
+    def test_avatar_render_error(self):
+        mock_renderer = MagicMock()
+        mock_renderer.render_to_file.side_effect = RuntimeError("pygame kaputt")
+
+        handler = RemoteCommandHandler(avatar_renderer=mock_renderer)
+        result = handler.execute("avatar", "avatar")
+
+        assert result.success is False
+        assert "fehlgeschlagen" in result.text
+
+    def test_selfie_alias(self):
+        mock_renderer = MagicMock()
+        mock_renderer.render_to_file.return_value = Path("/tmp/test.png")
+
+        handler = RemoteCommandHandler(avatar_renderer=mock_renderer)
+        result = handler.execute("selfie", "selfie")
+
+        assert result.success is True

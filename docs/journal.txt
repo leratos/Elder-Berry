@@ -593,3 +593,26 @@
 - Self-Intersection bei 3/6 Wurzeln → Welligkeit 0.3→0.12, Frequenz 1.5→1.0, Punkte 10→8
 - Wurzeln zu klein → Länge 4→6cm, Dicke 1.8→2.5cm, Absenkung 1.5→2.5cm, Anstieg 1.5→2.5cm
 - Fillet 0.5→0.8cm, Spitze 0.4→0.6cm
+
+## Update: RootPaths.iLogicVb v2 – Komplett-Rewrite (organischer)
+- Zwei Klassen: 4 Hauptwurzeln (Ø2.8cm, 6.5cm lang) + 5 Nebenwurzeln (Ø1.0cm, 4cm lang)
+- Variable Exponenten pro Wurzel: radialExp, anstiegExp, absenkExp → jede Wurzel anders
+- Flacher: Anstieg 1.2cm (Haupt) / 0.6cm (Neben) statt 2.5cm → horizontal statt Kralle
+- Absenkung spät (Exp 1.5–3.0) → Wurzel läuft erst flach, taucht dann sanft ab
+- Winkelvariation 0.7 → unregelmäßige Verteilung
+- Welligkeit 0.10cm, Frequenz 0.8–1.2 → kaum seitliche Kurven
+- Fillet nur bei Hauptwurzeln (Nebenwurzeln zu dünn)
+- Nebenwurzeln versetzt zwischen Hauptwurzeln platziert
+- Feature-Namen: Root_Main_XX / Root_Side_XX (unterscheidbar im Baum)
+
+## Abgeschlossen: Phase 7 – Avatar-Selfie Command
+- Branch: feature/phase-7-tier2-tier3-alerts
+- Neuer Command: "avatar" / "selfie" → Saleria rendert Avatar-Bild → Matrix
+- Optional mit Emotion: "selfie angry", "avatar cheerful" (10 Emotionen)
+- Keywords: "zeig dich", "wie siehst du aus", "bild von dir"
+- Datei: src/elder_berry/avatar/base.py (erweitert: render_to_file() ABC)
+- Datei: src/elder_berry/avatar/layered_renderer.py (erweitert: render_to_file + headless-Modus)
+  - _ensure_components_loaded(): lädt Sprites ohne Display-Fenster
+  - _blit_to(): generische Blit-Methode auf beliebige Surface
+- Datei: src/elder_berry/comms/remote_commands.py (erweitert: avatar DI + Command)
+- Tests: 697/697 grün (11 neu + 686 bestehend)

@@ -1,5 +1,6 @@
 """Abstrakte Basisklasse für Avatar-Renderer."""
 from abc import ABC, abstractmethod
+from pathlib import Path
 
 from elder_berry.character.base import Emotion
 
@@ -57,3 +58,20 @@ class AvatarRenderer(ABC):
     def is_running(self) -> bool:
         """Gibt True zurück wenn das Render-Fenster noch offen ist."""
         ...
+
+    def render_to_file(
+        self, output_path: Path, emotion: Emotion = Emotion.NEUTRAL,
+    ) -> Path:
+        """Rendert den Avatar mit gegebener Emotion als PNG-Datei.
+
+        Headless-Rendering: benötigt kein Fenster / Display.
+        Standardimplementierung wirft NotImplementedError.
+
+        Args:
+            output_path: Zielpfad für die PNG-Datei.
+            emotion: Darzustellende Emotion (default: NEUTRAL).
+
+        Returns:
+            Pfad zur erzeugten PNG-Datei.
+        """
+        raise NotImplementedError("render_to_file nicht implementiert")

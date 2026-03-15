@@ -266,6 +266,66 @@ class LayeredSpriteRenderer(AvatarRenderer):
             self._last_lip_switch = now
         return LIP_SYNC_MOUTHS[self._lip_sync_index]
 
+    def render_to_file(
+        self, output_path: Path, emotion: Emotion = Emotion.NEUTRAL,
+    ) -> Path:
+        """Rendert Avatar mit gegebener Emotion als PNG (headless, kein Fenster).
+
+        Lädt Komponenten bei Bedarf ohne Display-Fenster.
+        Erstellt einen offscreen-Surface, composited die Layer und
+        speichert das Ergebnis als PNG.
+        """
+        self._ensure_components_loaded()
+
+        layers = EMOTION_MAP.get(emotion, EMOTION_MAP[Emotion.NEUTRAL])
+
+        # Offscreen-Surface erstellen
+        surface = pygame.Surface((self._width, self._height))
+        surface.fill(BG_COLOR)
+
+        # Layers compositen (Body → Eyes → Mouth)
+        self._blit_to(surface, layers.body)
+        self._blit_to(surface, layers.eye_left)
+        self._blit_to(surface, layers.eye_right)
+        self._blit_to(surface, layers.mouth)
+
+        pygame.image.save(surface, str(output_path))
+        logger.debug("Avatar gerendert: %s (emotion=%s)", output_path, emotion.value)
+        return output_path
+
+    def _ensure_components_loaded(self) -> None:
+        """Stellt sicher dass Komponenten geladen sind (headless-kompatibel)."""
+        if self._components:
+            return
+
+        if not pygame.get_init():
+            pygame.init()
+
+        # Komponenten laden ohne convert_alpha (braucht kein Display)
+        subdirs = ("body", "eye", "mouth")
+        total = 0
+        for subdir_name in subdirs:
+            subdir = self._assets_dir / subdir_name
+            if not subdir.exists():
+                continue
+            for png_path in sorted(subdir.glob("*.png")):
+                key = png_path.stem
+                self._components[key] = pygame.image.load(str(png_path))
+                total += 1
+
+        self._scale_components()
+        logger.info("%d Komponenten geladen (headless)", total)
+
+    def _blit_to(self, target: pygame.Surface, component_key: str) -> None:
+        """Zeichnet eine Komponente zentriert auf eine beliebige Surface."""
+        surface = self._components.get(component_key)
+        if surface is None:
+            return
+        sw, sh = surface.get_size()
+        x = (self._width - sw) // 2
+        y = (self._height - sh) // 2
+        target.blit(surface, (x, y))
+
     def shutdown(self) -> None:
         self._running = False
         if pygame.get_init():

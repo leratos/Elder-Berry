@@ -43,6 +43,7 @@ from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from elder_berry.actions.base import ActionController
+    from elder_berry.avatar.base import AvatarRenderer
     from elder_berry.core.secret_store import SecretStore
     from elder_berry.system.info import SystemMonitor
 
@@ -60,7 +61,8 @@ MEDIA_KEYS = {
 
 # Commands die erkannt werden (ohne Parameter)
 SIMPLE_COMMANDS = (
-    {"status", "systemstatus", "screenshot", "screen", "clipboard", "wol"}
+    {"status", "systemstatus", "screenshot", "screen", "clipboard", "wol",
+     "avatar", "selfie"}
     | set(MEDIA_KEYS)
 )
 
@@ -74,6 +76,7 @@ KEYWORD_MAP: dict[str, list[str]] = {
     "skip": ["nächster song", "nächstes lied", "überspringen", "nächster track"],
     "clipboard": ["zwischenablage", "clipboard lesen", "was ist im clipboard"],
     "wol": ["weck tower", "tower aufwecken", "wake on lan", "tower starten"],
+    "avatar": ["zeig dich", "wie siehst du aus", "bild von dir", "schick ein bild von dir"],
 }
 
 # Regex für Volume-Command: "volume 50", "vol 75", "lautstärke 30"
@@ -125,6 +128,18 @@ DOWNLOAD_PATTERN = re.compile(
     r"^download\s+(https?://\S+)$",
     re.IGNORECASE,
 )
+
+# Regex für Avatar mit Emotion: "selfie angry", "avatar cheerful"
+AVATAR_EMOTION_PATTERN = re.compile(
+    r"^(?:avatar|selfie)\s+(\w+)$",
+    re.IGNORECASE,
+)
+
+# Gültige Emotionen für Avatar-Rendering (lowercase → Emotion-Name)
+AVATAR_EMOTIONS = {
+    "neutral", "cheerful", "angry", "sarcastic", "motivated",
+    "thoughtful", "whisper", "shy", "depressed", "sad",
+}
 
 # Whitelists für Sicherheit
 GIT_WHITELIST = {"status", "pull", "log", "diff"}
@@ -194,12 +209,14 @@ class RemoteCommandHandler:
         secret_store: SecretStore | None = None,
         project_root: Path | None = None,
         download_dir: Path | None = None,
+        avatar_renderer: AvatarRenderer | None = None,
     ) -> None:
         self._monitor = system_monitor
         self._controller = controller
         self._secret_store = secret_store
         self._project_root = project_root
         self._download_dir = download_dir or Path.home() / "Downloads"
+        self._avatar_renderer = avatar_renderer
 
     def parse_command(self, text: str) -> str | None:
         """Prüft ob der Text ein direkter Command ist.
@@ -257,6 +274,10 @@ class RemoteCommandHandler:
         if DOWNLOAD_PATTERN.match(normalized):
             return "download"
 
+        # Stufe 8b: Avatar mit Emotion ("selfie angry", "avatar cheerful")
+        if AVATAR_EMOTION_PATTERN.match(normalized):
+            return "avatar"
+
         # Stufe 9: Keyword-Suche in natürlicher Sprache
         for command, keywords in KEYWORD_MAP.items():
             for keyword in keywords:
@@ -313,6 +334,9 @@ class RemoteCommandHandler:
 
         if command == "download":
             return self._cmd_download(raw_text)
+
+        if command in ("avatar", "selfie"):
+            return self._cmd_avatar(raw_text)
 
         return CommandResult(
             command=command,
@@ -810,6 +834,57 @@ class RemoteCommandHandler:
                 command="wol",
                 success=False,
                 text=f"Wake-on-LAN fehlgeschlagen: {e}",
+            )
+
+    def _cmd_avatar(self, raw_text: str) -> CommandResult:
+        """Avatar-Bild rendern und als PNG zurückgeben."""
+        if not self._avatar_renderer:
+            return CommandResult(
+                command="avatar",
+                success=False,
+                text="AvatarRenderer nicht verfügbar.",
+            )
+
+        # Emotion aus Befehl extrahieren (optional)
+        from elder_berry.character.base import Emotion
+
+        emotion = Emotion.NEUTRAL
+        match = AVATAR_EMOTION_PATTERN.match(raw_text.strip())
+        if match:
+            emotion_str = match.group(1).lower()
+            if emotion_str in AVATAR_EMOTIONS:
+                try:
+                    emotion = Emotion(emotion_str)
+                except ValueError:
+                    pass
+
+        try:
+            tmp = tempfile.NamedTemporaryFile(
+                suffix=".png", prefix="avatar_", delete=False,
+            )
+            tmp_path = Path(tmp.name)
+            tmp.close()
+
+            self._avatar_renderer.render_to_file(tmp_path, emotion)
+
+            return CommandResult(
+                command="avatar",
+                success=True,
+                text=f"Saleria ({emotion.value})",
+                image_path=tmp_path,
+            )
+        except NotImplementedError:
+            return CommandResult(
+                command="avatar",
+                success=False,
+                text="Avatar-Renderer unterstützt kein Datei-Rendering.",
+            )
+        except Exception as e:
+            logger.error("Avatar-Rendering fehlgeschlagen: %s", e)
+            return CommandResult(
+                command="avatar",
+                success=False,
+                text=f"Avatar-Rendering fehlgeschlagen: {e}",
             )
 
     # ------------------------------------------------------------------
