@@ -412,3 +412,40 @@
 - Phase 6 (Matrix-Integration): ABGESCHLOSSEN
 - Gesamtarchitektur: 15 Kernklassen, konsistentes ABC+DI Pattern
 - Tests: 451 grün
+
+## Abgeschlossen: Quick-Win – SystemMonitor in Assistant integrieren
+- system_status Aktion: LLM kann PC-Zustand abfragen (CPU, RAM, GPU, Top-Prozesse)
+- SystemMonitor als optionaler DI-Parameter im Assistant
+- Formatierter Output: CPU%, RAM MB/%, GPU Name+Auslastung+VRAM+Temp, Top-5 Prozesse
+- Graceful Degradation: ohne Monitor → action_success=False, kein Crash
+- Datei: src/elder_berry/core/assistant.py (erweitert: system_monitor DI + _get_system_status)
+- Datei: tests/test_assistant_system.py (8 Tests, NEU)
+- Tests: 459/459 grün (8 neu + 451 bestehend)
+
+## Planung: Saleria Remote-Features + Claude-Agent-Mode (2026-03-15)
+- Konzept: docs/concepts/saleria-remote-features.md
+- Direkte Features (kein LLM): Systemstatus, Screenshot, Medien, Prozesse, Datei-Zugriff, WoL, Clipboard
+- Claude-Agent-Mode: Saleria nutzt Anthropic API (Sonnet) für komplexe Anfragen
+  - Structured JSON Output, Whitelist-Aktionen, Kontext aus CLAUDE.md + journal.txt
+  - Darf: docs/ lesen/schreiben, journal.txt appenden, Tests lesen, Status abfragen
+  - Darf NICHT: src/ ändern, Shell ausführen, Pakete installieren (→ das macht Claude Code)
+- Proaktive Alerts: Disk voll, Download fertig, Prozess crashed
+- Neue Klassen: ClaudeAgent, RemoteCommandHandler, SystemMonitor
+- Abgrenzung: Saleria = Augen/Ohren (Remote), Claude Code = Hirn (Entwicklung)
+
+## Hardware-Entscheidung: Motor-Upgrade TT → JGB37-520 (2026-03-15)
+- Grund: Gehäuse 1.138g + Elektronik ~760g + Chassis ~400g = ~2.3kg → TT-Motoren zu schwach
+- Neuer Motor: JGB37-520 (12V, Hall-Encoder, 2-10 kg·cm je nach Ratio)
+- Traglast mit 4× JGB37: 5-8kg → massig Reserve für ~3kg Roboter
+- Encoder ermöglicht PID-Regelung auf Pico 2W
+- Konsequenzen:
+  - Neues Chassis nötig (JGB37 = Ø37mm Getriebe, deutlich größer als TT)
+  - 4× Motor = 784g (statt 120g bei TT) → Gesamtgewicht steigt auf ~2.7-3kg
+  - Motor-Driver: Adafruit Motor HAT evtl. zu schwach (1.2A/Kanal, JGB37 Stall = 2.8A)
+    → Alternative evaluieren: L298N, BTS7960, oder Custom-Driver auf eigener PCB
+  - Akku: 2S (7.4V) läuft, aber JGB37 ist für 12V spezifiziert (60% Drehzahl bei 7.4V)
+    → 3S (11.1V) prüfen: BMS-Kompatibilität, D36V50F5 Eingangsbereich, PCB-Redesign
+  - Mecanum-Räder: 60mm oder 80mm mit 6mm D-Shaft Aufnahme
+- OFFEN: Akku 2S vs 3S → BMS und PCB prüfen
+- OFFEN: Motor-Driver Wahl → Phase 4 PCB-Redesign
+- OFFEN: Chassis-Design → nach Motor-Bestellung

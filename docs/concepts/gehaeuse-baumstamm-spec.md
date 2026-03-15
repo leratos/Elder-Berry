@@ -21,8 +21,8 @@ Rinden-Segmente. Geschlossene Decke mit Moos/Rinde-Optik.
 | Innendurchmesser | Ø204mm | Display 143mm + 45° Geometrie |
 | Außendurchmesser | ~220-230mm | +Wandstärke +Rindentextur |
 | Gesamthöhe | ~185-200mm | Kammer ~120mm + Sockel ~50mm + Deckel ~15-20mm |
-| Gewichtsbudget Gehäuse | max. 750g (Ziel: 500g) | TT-Motoren Traglast |
-| Gesamtgewicht (mit Elektronik) | max. 1.5kg (Ziel: 1.3kg) | Mecanum auf glattem Boden |
+| Gewichtsbudget Gehäuse | 1.138g (gewogen) | Akzeptabel mit JGB37-520 Motoren |
+| Gesamtgewicht (mit Elektronik) | ~2.7-3.0kg | JGB37-520 Traglast: 5-8kg → OK |
 | Wandstärke Kern (tragend) | 1.5-2mm | Strukturelle Integrität |
 | Wandstärke Rinde (nicht tragend) | 0.8-1.5mm | Gewichtsersparnis |
 | Innenwand Kammer | matt-schwarz | Pepper's Ghost Reflexionsreduktion |

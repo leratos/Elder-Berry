@@ -18,6 +18,7 @@ if TYPE_CHECKING:
     from elder_berry.avatar.base import AvatarRenderer
     from elder_berry.character.base import CharacterEngine
     from elder_berry.robot.client import RobotClient
+    from elder_berry.system.info import SystemMonitor
 
 logger = logging.getLogger(__name__)
 
@@ -36,6 +37,7 @@ Verfügbare Aktionen:
 - focus_window: Fenster fokussieren. params: {{"title": "Notepad"}}
 - minimize_window: Fenster minimieren. params: {{"title": "Notepad"}}
 - maximize_window: Fenster maximieren. params: {{"title": "Notepad"}}
+- system_status: PC-Zustand abfragen (CPU, RAM, GPU, Prozesse). params: {{}}
 - robot_drive: Roboter fahren. params: {{"direction": "forward", "speed": 0.5}}
   Richtungen: forward, backward, left, right, rotate_left, rotate_right
 - robot_stop: Roboter stoppen. params: {{"reason": "hindernis"}}
@@ -78,6 +80,7 @@ class Assistant:
         avatar: AvatarRenderer | None = None,
         robot: RobotClient | None = None,
         agent: AgentClient | None = None,
+        system_monitor: SystemMonitor | None = None,
     ) -> None:
         self._llm = llm
         self._actions_db = actions_db
@@ -87,6 +90,7 @@ class Assistant:
         self._avatar = avatar
         self._robot = robot
         self._agent = agent
+        self._system_monitor = system_monitor
 
     def process(
         self, user_input: str, audio_output: Path | None = None,
@@ -136,7 +140,16 @@ class Assistant:
 
         action_success = False
         if action_type:
-            action_success = self._execute_action(action_type, params)
+            # system_status: Daten abrufen und Response erweitern
+            if action_type == "system_status":
+                status_text = self._get_system_status()
+                if status_text:
+                    response_text = f"{response_text}\n\n{status_text}"
+                    action_success = True
+                else:
+                    action_success = False
+            else:
+                action_success = self._execute_action(action_type, params)
             db_action = self._actions_db.get(action_type)
             if db_action:
                 self._actions_db.record_use(action_type)
@@ -175,6 +188,47 @@ class Assistant:
             emotion=emotion_str,
             audio_path=generated_audio,
         )
+
+    def _get_system_status(self) -> str | None:
+        """Ruft Systemdaten ab und formatiert sie als lesbaren Text.
+
+        Returns:
+            Formatierter Status-String oder None wenn kein SystemMonitor.
+        """
+        if not self._system_monitor:
+            logger.warning("system_status: Kein SystemMonitor verfügbar")
+            return None
+
+        try:
+            info = self._system_monitor.get_info(top_processes=5)
+            lines = [
+                f"CPU: {info.cpu.usage_percent}% "
+                f"({info.cpu.core_count} Kerne, {info.cpu.thread_count} Threads"
+                + (f", {info.cpu.freq_mhz:.0f} MHz" if info.cpu.freq_mhz else "")
+                + ")",
+                f"RAM: {info.ram.used_mb:.0f} / {info.ram.total_mb:.0f} MB "
+                f"({info.ram.usage_percent}% belegt)",
+            ]
+
+            for gpu in info.gpus:
+                lines.append(
+                    f"GPU: {gpu.name} – {gpu.gpu_util_percent}% Auslastung, "
+                    f"VRAM {gpu.vram_used_mb:.0f}/{gpu.vram_total_mb:.0f} MB, "
+                    f"{gpu.temperature_c}°C"
+                )
+
+            if info.top_processes:
+                lines.append("Top-Prozesse (CPU):")
+                for p in info.top_processes:
+                    lines.append(
+                        f"  {p['name']}: CPU {p['cpu_percent']}%, "
+                        f"RAM {p['memory_percent']}%"
+                    )
+
+            return "\n".join(lines)
+        except Exception as e:
+            logger.error("SystemMonitor Abfrage fehlgeschlagen: %s", e)
+            return None
 
     def _tts_to_file(
         self, text: str, output_path: Path, emotion: str | None,

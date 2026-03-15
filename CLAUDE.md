@@ -111,10 +111,11 @@ Logiklücken und Fehler hin.
 - MicroPython
 
 ### Roboter-Chassis
-- Mecanum 4WD, eigene Platine
-- Adafruit DC Motor HAT (I²C) – aktuell auf RPi 5
-- Platinen-Redesign in Phase 4: RPi 5 + Pico 2W Integration prüfen
-- Akku: 2× 18650, 2S BMS mit Schutzschaltung und Ladefunktion
+- Mecanum 4WD, neues Chassis nötig (altes für TT-Motoren, nicht kompatibel)
+- Motoren: 4× JGB37-520 (12V, Hall-Encoder, Ø37mm, 6mm D-Shaft)
+  - Altes: TT-Motoren → zu schwach für ~3kg Gesamtgewicht
+- Motor-Driver: offen (Adafruit HAT evtl. zu schwach, Alternative in Phase 4)
+- Akku: 2× 18650, 2S BMS (7.4V) – 3S (11.1V) wird evaluiert
 - Kamera: aktuell fest montiert (Mecanum-Rotation als Kompensation)
   → Pan/Tilt Servo Entscheidung offen – wird bei Platinen-Definition Phase 4 geklärt
 
