@@ -35,6 +35,7 @@ class MockChannel(MessageChannel):
         self._sent_texts: list[tuple[str, str]] = []
         self._sent_audios: list[tuple[str, Path]] = []
         self._sent_images: list[tuple[str, Path]] = []
+        self._sent_files: list[tuple[str, Path]] = []
         self._sync_event = asyncio.Event()
 
     async def connect(self) -> None:
@@ -52,6 +53,9 @@ class MockChannel(MessageChannel):
 
     async def send_image(self, room_id: str, image_path: Path) -> None:
         self._sent_images.append((room_id, image_path))
+
+    async def send_file(self, room_id: str, file_path: Path) -> None:
+        self._sent_files.append((room_id, file_path))
 
     def on_message(self, callback) -> None:
         self._callbacks.append(callback)
@@ -541,6 +545,80 @@ class TestBridgeCommandRouting:
 
         run_async(_test())
 
+    def test_send_file_routes_file(self, tmp_path):
+        """send_file Command sendet Datei über send_file."""
+        async def _test():
+            channel = MockChannel()
+            assistant = self._make_assistant_mock()
+
+            file_path = tmp_path / "test.pdf"
+            file_path.write_bytes(b"%PDF" + b"\x00" * 50)
+
+            handler = self._make_remote_handler(
+                command="send_file",
+                result=CommandResult(
+                    command="send_file", success=True,
+                    text="Datei wird gesendet: test.pdf (0.1 KB)",
+                    file_path=file_path,
+                ),
+            )
+            bridge = MatrixBridge(
+                channel=channel, assistant=assistant, remote_commands=handler,
+            )
+            await channel.connect()
+
+            msg = IncomingMessage(
+                sender="@user:x", room_id="!r:x",
+                body=f"schick mir {file_path}", timestamp=1.0,
+            )
+            await bridge._handle_message(msg)
+
+            # Text + Datei gesendet
+            assert any("test.pdf" in t[1] for t in channel._sent_texts)
+            assert len(channel._sent_files) == 1
+            assert channel._sent_files[0][0] == "!r:x"
+            assistant.process.assert_not_called()
+
+        run_async(_test())
+
+    def test_send_file_not_implemented_fallback(self, tmp_path):
+        """send_file NotImplementedError → Fallback-Text."""
+        async def _test():
+            channel = MockChannel()
+
+            async def raise_not_impl(room_id, path):
+                raise NotImplementedError("not supported")
+            channel.send_file = raise_not_impl
+
+            assistant = self._make_assistant_mock()
+
+            file_path = tmp_path / "test.pdf"
+            file_path.write_bytes(b"%PDF" + b"\x00" * 50)
+
+            handler = self._make_remote_handler(
+                command="send_file",
+                result=CommandResult(
+                    command="send_file", success=True,
+                    text="Datei wird gesendet.",
+                    file_path=file_path,
+                ),
+            )
+            bridge = MatrixBridge(
+                channel=channel, assistant=assistant, remote_commands=handler,
+            )
+            await channel.connect()
+
+            msg = IncomingMessage(
+                sender="@user:x", room_id="!r:x",
+                body=f"schick mir {file_path}", timestamp=1.0,
+            )
+            await bridge._handle_message(msg)
+
+            texts = [t[1] for t in channel._sent_texts]
+            assert any("nicht unterstützt" in t for t in texts)
+
+        run_async(_test())
+
     def test_send_image_not_implemented_fallback(self):
         """Wenn send_image NotImplementedError wirft, kommt ein Fallback-Text."""
         async def _test():
@@ -874,3 +952,57 @@ class TestBridgeClaudeAgentRouting:
             assert "Agent-Fehler" in channel._sent_texts[0][1]
 
         run_async(_test())
+
+
+# ---------------------------------------------------------------------------
+# MatrixBridge – AlertMonitor Integration
+# ---------------------------------------------------------------------------
+
+class TestBridgeAlertMonitor:
+    def _make_assistant_mock(self):
+        assistant = MagicMock()
+        assistant.process.return_value = AssistantResult(
+            response="ok",
+            action_executed=None,
+            action_success=False,
+        )
+        return assistant
+
+    def test_bridge_with_alert_monitor(self):
+        """Bridge akzeptiert AlertMonitor als DI-Parameter."""
+        channel = MockChannel()
+        assistant = self._make_assistant_mock()
+        alert_monitor = MagicMock()
+        alert_monitor.is_running = False
+
+        bridge = MatrixBridge(
+            channel=channel,
+            assistant=assistant,
+            alert_monitor=alert_monitor,
+            alert_room_id="!alerts:x",
+        )
+        assert not bridge.is_running
+
+    def test_bridge_without_alert_monitor(self):
+        """Bridge funktioniert ohne AlertMonitor."""
+        channel = MockChannel()
+        assistant = self._make_assistant_mock()
+        bridge = MatrixBridge(channel=channel, assistant=assistant)
+        assert not bridge.is_running
+
+    def test_bridge_stop_stops_alert_monitor(self):
+        """Bridge.stop() stoppt auch AlertMonitor."""
+        channel = MockChannel()
+        assistant = self._make_assistant_mock()
+        alert_monitor = MagicMock()
+        alert_monitor.is_running = True
+
+        bridge = MatrixBridge(
+            channel=channel,
+            assistant=assistant,
+            alert_monitor=alert_monitor,
+        )
+        bridge._running = True
+        bridge.stop()
+
+        alert_monitor.stop.assert_called_once()

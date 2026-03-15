@@ -39,6 +39,7 @@ from typing import TYPE_CHECKING
 from elder_berry.comms.message_channel import IncomingMessage, MessageChannel
 
 if TYPE_CHECKING:
+    from elder_berry.comms.alert_monitor import AlertMonitor
     from elder_berry.comms.audio_converter import AudioConverter
     from elder_berry.comms.claude_agent import ClaudeAgent
     from elder_berry.comms.remote_commands import RemoteCommandHandler
@@ -91,12 +92,16 @@ class MatrixBridge:
         audio_converter: AudioConverter | None = None,
         remote_commands: RemoteCommandHandler | None = None,
         claude_agent: ClaudeAgent | None = None,
+        alert_monitor: AlertMonitor | None = None,
+        alert_room_id: str | None = None,
     ) -> None:
         self._channel = channel
         self._assistant = assistant
         self._audio_converter = audio_converter
         self._remote_commands = remote_commands
         self._claude_agent = claude_agent
+        self._alert_monitor = alert_monitor
+        self._alert_room_id = alert_room_id
         self._loop: asyncio.AbstractEventLoop | None = None
         self._thread: threading.Thread | None = None
         self._running = False
@@ -128,6 +133,10 @@ class MatrixBridge:
         """Stoppt die Bridge und wartet auf Thread-Ende."""
         if not self._running:
             return
+
+        # AlertMonitor stoppen
+        if self._alert_monitor and self._alert_monitor.is_running:
+            self._alert_monitor.stop()
 
         self._running = False
 
@@ -163,6 +172,10 @@ class MatrixBridge:
         await self._channel.connect()
         self._channel.on_message(self._handle_message)
         logger.info("Bridge verbunden, warte auf Nachrichten...")
+
+        # AlertMonitor starten (wenn vorhanden)
+        if self._alert_monitor and self._alert_room_id:
+            self._start_alert_monitor()
 
         try:
             await self._channel.sync_loop()
@@ -232,6 +245,18 @@ class MatrixBridge:
                     )
                 finally:
                     result.image_path.unlink(missing_ok=True)
+
+            # Datei senden (z.B. PDF)
+            if result.file_path and result.file_path.exists():
+                try:
+                    await self._channel.send_file(
+                        msg.room_id, result.file_path,
+                    )
+                except NotImplementedError:
+                    await self._channel.send_text(
+                        msg.room_id,
+                        "Datei-Upload nicht unterstützt.",
+                    )
 
         except Exception as e:
             logger.error("Remote-Command '%s' fehlgeschlagen: %s", command, e)
@@ -346,6 +371,23 @@ class MatrixBridge:
                 tmp_wav.unlink(missing_ok=True)
             if tmp_ogg and tmp_ogg.exists():
                 tmp_ogg.unlink(missing_ok=True)
+
+    def _start_alert_monitor(self) -> None:
+        """Konfiguriert und startet den AlertMonitor mit thread-safe Callback."""
+        loop = self._loop
+        room_id = self._alert_room_id
+        channel = self._channel
+
+        def send_alert(text: str) -> None:
+            """Thread-safe Alert-Sender: dispatcht in den async Event-Loop."""
+            if loop and loop.is_running():
+                asyncio.run_coroutine_threadsafe(
+                    channel.send_text(room_id, f"🔔 {text}"),
+                    loop,
+                )
+
+        self._alert_monitor._send_alert = send_alert
+        self._alert_monitor.start()
 
     async def _shutdown(self) -> None:
         """Async Shutdown: Disconnect und Loop stoppen."""
