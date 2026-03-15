@@ -15,7 +15,7 @@ Architektur:
 Command-Router (Phase 7):
     Nachricht rein → RemoteCommandHandler.parse_command()
       ├─ Command erkannt → execute() → send result (text/image)
-      └─ Kein Command → Assistant.process() (bestehender Flow)
+      └─ Kein Command → "claude" + "..." → ClaudeAgent → sonst lokales LLM
 
 Audio-Pipeline (wenn AudioConverter vorhanden):
     Assistant.process(audio_output=tmp.wav) → WAV → AudioConverter → OGG/Opus → Matrix
@@ -30,6 +30,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import re
 import tempfile
 import threading
 from pathlib import Path
@@ -39,10 +40,39 @@ from elder_berry.comms.message_channel import IncomingMessage, MessageChannel
 
 if TYPE_CHECKING:
     from elder_berry.comms.audio_converter import AudioConverter
+    from elder_berry.comms.claude_agent import ClaudeAgent
     from elder_berry.comms.remote_commands import RemoteCommandHandler
     from elder_berry.core.assistant import Assistant
 
 logger = logging.getLogger(__name__)
+
+# Regex: Text in Anführungszeichen extrahieren (erste Fundstelle)
+_QUOTED_TEXT_PATTERN = re.compile(r'"([^"]+)"')
+
+
+def extract_claude_message(text: str) -> str | None:
+    """Prüft ob eine Nachricht an den ClaudeAgent gerichtet ist.
+
+    Erkennung: Das Wort "claude" muss im Text vorkommen UND der eigentliche
+    Auftrag muss in Anführungszeichen stehen.
+
+    Beispiele:
+        "Sag Claude bitte \"Dokumentiere X im Journal\""  → "Dokumentiere X im Journal"
+        "Claude \"Was war der letzte Schritt?\""           → "Was war der letzte Schritt?"
+        "Wie geht's dir?"                                  → None (kein "claude")
+        "Claude mach mal was"                              → None (keine Anführungszeichen)
+
+    Returns:
+        Der extrahierte Text in Anführungszeichen oder None.
+    """
+    if "claude" not in text.lower():
+        return None
+
+    match = _QUOTED_TEXT_PATTERN.search(text)
+    if not match:
+        return None
+
+    return match.group(1)
 
 
 class MatrixBridge:
@@ -60,11 +90,13 @@ class MatrixBridge:
         assistant: Assistant,
         audio_converter: AudioConverter | None = None,
         remote_commands: RemoteCommandHandler | None = None,
+        claude_agent: ClaudeAgent | None = None,
     ) -> None:
         self._channel = channel
         self._assistant = assistant
         self._audio_converter = audio_converter
         self._remote_commands = remote_commands
+        self._claude_agent = claude_agent
         self._loop: asyncio.AbstractEventLoop | None = None
         self._thread: threading.Thread | None = None
         self._running = False
@@ -161,6 +193,13 @@ class MatrixBridge:
                 await self._handle_remote_command(msg, command)
                 return
 
+        # --- Claude Agent: nur bei explizitem "claude" + "..." ---
+        if self._claude_agent:
+            claude_text = extract_claude_message(msg.body)
+            if claude_text:
+                await self._handle_claude_agent(msg, claude_text)
+                return
+
         # --- LLM-Fallback: bestehender Assistant-Flow ---
         await self._handle_assistant_message(msg)
 
@@ -200,6 +239,62 @@ class MatrixBridge:
                 await self._channel.send_text(
                     msg.room_id,
                     f"Command-Fehler: {type(e).__name__}",
+                )
+            except Exception:
+                logger.error("Konnte Fehlermeldung nicht senden")
+
+    async def _handle_claude_agent(
+        self, msg: IncomingMessage, claude_text: str,
+    ) -> None:
+        """Delegiert an ClaudeAgent.process() für komplexe Anfragen.
+
+        Args:
+            msg: Original-Nachricht (für room_id).
+            claude_text: Extrahierter Text aus Anführungszeichen.
+        """
+        logger.info("ClaudeAgent verarbeitet: %s", claude_text[:100])
+
+        try:
+            loop = asyncio.get_running_loop()
+            result = await loop.run_in_executor(
+                None, self._claude_agent.process, claude_text,
+            )
+
+            # Zusammenfassung senden
+            if result.summary:
+                await self._channel.send_text(msg.room_id, result.summary)
+
+            # Details senden (z.B. Dateiinhalt, Testergebnis)
+            if result.details:
+                # Screenshot: Bild senden statt Pfad-Text
+                if result.action_taken == "screenshot" and result.success:
+                    image_path = Path(result.details)
+                    if image_path.exists():
+                        try:
+                            await self._channel.send_image(
+                                msg.room_id, image_path,
+                            )
+                        except NotImplementedError:
+                            await self._channel.send_text(
+                                msg.room_id,
+                                "Screenshot aufgenommen, aber Bild-Upload "
+                                "nicht unterstützt.",
+                            )
+                        finally:
+                            image_path.unlink(missing_ok=True)
+                else:
+                    # Lange Details kürzen für Matrix
+                    details = result.details
+                    if len(details) > 4000:
+                        details = details[:4000] + "\n... (gekürzt)"
+                    await self._channel.send_text(msg.room_id, details)
+
+        except Exception as e:
+            logger.error("ClaudeAgent Fehler: %s", e)
+            try:
+                await self._channel.send_text(
+                    msg.room_id,
+                    f"Agent-Fehler: {type(e).__name__}",
                 )
             except Exception:
                 logger.error("Konnte Fehlermeldung nicht senden")

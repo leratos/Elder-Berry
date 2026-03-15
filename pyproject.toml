@@ -47,6 +47,7 @@ matrix = [
     "pydub>=0.25",
 ]
 remote = [
+    "anthropic>=0.40",
     "mss>=9.0",
 ]
 

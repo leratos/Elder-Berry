@@ -29,16 +29,18 @@
 - Display: Pepper's Ghost Hologramm (LCD horizontal + Acryl 45°)
 - Display-Hardware: RPi Touch Display 2 (5", 720×1280, DSI, Portrait)
 
-## Phase 4 – Körper 🔧 IN ARBEIT (Hardware)
+## Phase 4 – Gehäuse + Drehteller 🔧 IN ARBEIT (Hardware)
 - Gehäuse: Holunder-Baumstamm (Resin-Druck, segmentiert)
   - Spec: docs/concepts/gehaeuse-baumstamm-spec.md
   - CAD: hardware/enclosure/ (Inventor)
-  - Zielgewicht: 500-600g Gehäuse, ~1.3kg gesamt
-- Mecanum 4WD Chassis (eigene Platine, Adafruit DC Motor HAT)
-- Akku: 2× 18650, 2S BMS mit Schutzschaltung
-- **Offen:** Platinen-Redesign (RPi5 + Pico 2W Integration)
-- **Offen:** Autonomes Laden (Ladestation, Akku-Monitoring via Pico 2W)
-- **Offen:** Pan/Tilt Servo Entscheidung für Kamera
+  - Gewicht: 1.138g (stationär → kein Limit)
+- ~~Mecanum 4WD~~ GESTRICHEN – stationär + drehbar statt mobil
+- Drehteller: 1× Servo (SG90/MG996R) + Kugellager unter dem Stamm
+- Stromversorgung: USB-C Netzteil (Dauerbetrieb) oder Akku – je nach Standort
+- Pepper's Ghost Kammer fertigstellen + testen
+- Ästhetik + Finish (Rinde bemalen, Moos-Details)
+- **Offen:** Standort (Schreibtisch, Regal, Sideboard)
+- **Offen:** Pico 2W Rolle (Sensoren ja, Motoren nein)
 
 ## Phase 5 – Software Advance
 - Vollständige Aktions-Logik ausarbeiten

@@ -48,7 +48,7 @@ Logiklücken und Fehler hin.
 - 3-Tier-System:
   - Tower (Hirn): LLM + TTS-Generierung, Assistant-Orchestrator, immer an
   - Laptop (Client): PC-Steuerung + Audio-Empfänger, AgentServer (FastAPI)
-  - RPi5 (Robot-Körper): Motoren, Sensoren, Avatar-Display, RobotServer (FastAPI)
+  - RPi5 (Display-Einheit): Sensoren, Avatar-Display, Drehteller-Servo
 - Kernklassen:
   - Assistant         → Orchestrator: LLM → Action → TTS → Avatar → Robot → Matrix
   - SaleriaEngine     → Charakter-Persönlichkeit, Emotion-Extraktion
@@ -80,7 +80,7 @@ Logiklücken und Fehler hin.
   - Unterwegs: kann Tower als LLM-Backend über NordVPN Meshnet nutzen
   - Fallback: eigenes Ollama lokal wenn Tower nicht erreichbar
 - RPi 5 (Linux): /home/pi/elder-berry/, Python 3.13 (System-Python Bookworm), absolute Linux-Pfade
-- Pico 2W: MicroPython, zuständig für Motorsteuerung und Akku-Monitoring
+- Pico 2W: MicroPython, Rolle wird evaluiert (Sensoren/Drehteller, keine Motorsteuerung mehr)
 - Gleiches Modell auf Tower und Laptop → identisches Verhalten beim Testen
 - Verwende pathlib statt hartcodierte Slashes wo plattformübergreifend
 - Weise aktiv darauf hin wenn Code plattformspezifisch ist
@@ -103,21 +103,19 @@ Logiklücken und Fehler hin.
 - Kommunikation RPi 5 ↔ Pico 2W: WLAN oder USB (noch zu definieren)
 - Kein LLM
 
-### Pico 2W (Motor-Controller)
-- Echtzeit-Motorsteuerung (kein OS-Latenz Problem)
-- Akku-Monitoring (2× 18650, 2S BMS)
-- Autonomes Laden: erkennt niedrigen Akkustand → fährt selbst zur Ladestation
-- Sicherheit: stoppt Motoren wenn RPi 5 nicht antwortet
+### Pico 2W (Rolle wird evaluiert)
+- Ursprünglich: Echtzeit-Motorsteuerung → GESTRICHEN mit Mecanum
+- Mögliche neue Rolle: Sensor-Hub (Temperatur, IR), Drehteller-Servo
+- Oder: komplett weglassen, Servo direkt über RPi5 GPIO
 - MicroPython
 
-### Roboter-Chassis
-- Mecanum 4WD, neues Chassis nötig (altes für TT-Motoren, nicht kompatibel)
-- Motoren: 4× JGB37-520 (12V, Hall-Encoder, Ø37mm, 6mm D-Shaft)
-  - Altes: TT-Motoren → zu schwach für ~3kg Gesamtgewicht
-- Motor-Driver: offen (Adafruit HAT evtl. zu schwach, Alternative in Phase 4)
-- Akku: 2× 18650, 2S BMS (7.4V) – 3S (11.1V) wird evaluiert
-- Kamera: aktuell fest montiert (Mecanum-Rotation als Kompensation)
-  → Pan/Tilt Servo Entscheidung offen – wird bei Platinen-Definition Phase 4 geklärt
+### Roboter-Chassis → GESTRICHEN (stationär + drehbar)
+- Mecanum-Antrieb gestrichen – Mehrwert zu gering
+- Stattdessen: Drehteller (Servo + Kugellager) unter dem Baumstamm
+- 1× Servo (SG90 oder MG996R) über RPi5 GPIO
+- Akku: optional (USB-C Netzteil für Dauerbetrieb möglich)
+- Pico 2W: Rolle wird evaluiert (Sensoren ja, Motoren nein)
+- Kamera: fest im Gehäuse
 
 ## LLM-STRATEGIE
 - Lokal (Ollama): schnelle Aktionen, Sensor-Auswertung, PC-Steuerung, Dauerbetrieb
