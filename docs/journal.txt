@@ -230,3 +230,45 @@
 - AgentServer wrapped existierenden WindowsActionController
 - RPi5 bekommt nur Lip-Sync-Signal, kein Audio (optional: Speaker für autonomen Betrieb)
 - Nächster Schritt: AgentServer + AgentClient (elder_berry/agent/)
+
+## Abgeschlossen: Phase 2 Erweiterung – AgentServer für Laptop-Steuerung
+- Branch: feature/phase-2-rpi5-protocol
+- Dateien: src/elder_berry/agent/protocol.py (DTOs: ActionRequest, ActionResult, AgentStatus, HealthResponse, ApiResponse)
+- Dateien: src/elder_berry/agent/server.py (AgentServer – FastAPI, wraps ActionController, Audio-Playback multipart)
+- Dateien: src/elder_berry/agent/client.py (AgentClient – httpx Tower→Laptop)
+- Dateien: tests/test_agent_protocol.py (35 Tests)
+- Dateien: tests/test_assistant_agent.py (14 Tests)
+- Dateien: src/elder_berry/core/assistant.py (erweitert: agent DI-Parameter)
+- Endpoints: /health, /status, /action/execute, /audio/play
+- Features:
+  - PC-Aktionen: Agent online → remote via AgentClient, offline → lokaler Fallback
+  - Audio-Streaming: Tower generiert WAV → multipart Upload an Laptop → sounddevice Playback
+  - TTS-Fallback: wenn generate_audio nicht verfügbar → lokales speak()
+  - Agent-Fehler: automatischer Fallback auf lokale Ausführung
+  - Robot-Aktionen gehen NICHT über Agent (direkt an RobotClient)
+  - Rückwärtskompatibel: ohne Agent verhält sich Assistant wie bisher
+- Dependencies: python-multipart>=0.0.18 (neu, für multipart Upload)
+- pyproject.toml: [agent] optional dependency group hinzugefügt
+- Eigene DTOs, unabhängig von robot/ (Entkopplung)
+- Konsistentes Pattern: ABC + DI (wie alle anderen Module)
+- Tests: 336/336 grün (49 neu + 287 bestehend)
+
+## Planung abgeschlossen: Phase 6 – Matrix-Integration (2026-03-15)
+- Konzeptdokument: docs/concepts/phase-6-matrix-integration.md (315 Zeilen)
+- Server-Setup-Anleitung: docs/matrix_setup.md (~350 Zeilen)
+- PROJECT_ROADMAP.md: Phase 6 ergänzt
+- CLAUDE.md: Verweis auf docs/concepts/ ergänzt
+- Domain: matrix.last-strawberry.com
+- Server-Name: matrix.last-strawberry.com → User-IDs: @saleria:matrix.last-strawberry.com
+- Synapse (Docker) + PostgreSQL 16 auf Plesk-Server
+- Federation: AUS, E2EE: AUS (Phase 1)
+- Teilschritte:
+  1. TS1 – Synapse Server-Setup (manuell, Anleitung in docs/matrix_setup.md)
+  2. TS2 – MessageChannel ABC + MatrixChannel (matrix-nio, async)
+  3. TS3 – Audio-Pipeline (WAV → OGG/Opus für Element-Sprachnachrichten)
+  4. TS4 – Assistant-Integration + Demo-Script
+- Neue Klassen: MessageChannel (ABC), MatrixChannel, AudioConverter
+- Neues Package: src/elder_berry/comms/
+- Dependencies: matrix-nio, pydub (+ ffmpeg als System-Dependency)
+- Branch: feature/phase-6-matrix-integration
+- Nächster Schritt: Nutzer führt TS1 (Server-Setup) manuell aus, dann TS2 in Claude Code
