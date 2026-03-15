@@ -269,6 +269,61 @@ class MatrixChannel(MessageChannel):
             "Bild gesendet an %s: %s (%d bytes)", room_id, filename, file_size,
         )
 
+    async def send_file(self, room_id: str, file_path: Path) -> None:
+        """Sendet eine beliebige Datei als m.file Nachricht.
+
+        Unterstützt alle Dateitypen. MIME-Type wird anhand der Endung ermittelt.
+        """
+        if not self._connected:
+            raise MatrixChannelError("Nicht verbunden")
+
+        if not file_path.exists():
+            raise FileNotFoundError(f"Datei nicht gefunden: {file_path}")
+
+        file_size = file_path.stat().st_size
+        mime_type = self._guess_file_mime_type(file_path)
+        filename = file_path.name
+
+        async with aiofiles.open(file_path, "rb") as f:
+            upload_response, _keys = await self._client.upload(
+                f,
+                content_type=mime_type,
+                filename=filename,
+                filesize=file_size,
+            )
+
+        if isinstance(upload_response, UploadError):
+            raise MatrixChannelError(
+                f"Datei-Upload fehlgeschlagen: {upload_response.message}"
+            )
+
+        content_uri = upload_response.content_uri
+
+        content: dict[str, Any] = {
+            "msgtype": "m.file",
+            "body": filename,
+            "url": content_uri,
+            "info": {
+                "mimetype": mime_type,
+                "size": file_size,
+            },
+        }
+
+        response = await self._client.room_send(
+            room_id=room_id,
+            message_type="m.room.message",
+            content=content,
+        )
+
+        if isinstance(response, RoomSendError):
+            raise MatrixChannelError(
+                f"Datei-Nachricht senden fehlgeschlagen: {response.message}"
+            )
+
+        logger.debug(
+            "Datei gesendet an %s: %s (%d bytes)", room_id, filename, file_size,
+        )
+
     def on_message(self, callback: MessageCallback) -> None:
         """Registriert einen Callback für eingehende Textnachrichten."""
         self._callbacks.append(callback)
@@ -389,5 +444,51 @@ class MatrixChannel(MessageChannel):
             ".gif": "image/gif",
             ".webp": "image/webp",
             ".bmp": "image/bmp",
+        }
+        return mime_map.get(suffix, "application/octet-stream")
+
+    @staticmethod
+    def _guess_file_mime_type(path: Path) -> str:
+        """Ermittelt MIME-Type für beliebige Dateien anhand der Dateiendung."""
+        suffix = path.suffix.lower()
+        mime_map = {
+            # Dokumente
+            ".pdf": "application/pdf",
+            ".doc": "application/msword",
+            ".docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            ".xls": "application/vnd.ms-excel",
+            ".xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            ".ppt": "application/vnd.ms-powerpoint",
+            ".pptx": "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+            ".txt": "text/plain",
+            ".csv": "text/csv",
+            ".json": "application/json",
+            ".xml": "application/xml",
+            ".md": "text/markdown",
+            ".yaml": "application/x-yaml",
+            ".yml": "application/x-yaml",
+            # Archive
+            ".zip": "application/zip",
+            ".tar": "application/x-tar",
+            ".gz": "application/gzip",
+            ".7z": "application/x-7z-compressed",
+            ".rar": "application/vnd.rar",
+            # Bilder (Fallback)
+            ".png": "image/png",
+            ".jpg": "image/jpeg",
+            ".jpeg": "image/jpeg",
+            ".gif": "image/gif",
+            ".webp": "image/webp",
+            # Code
+            ".py": "text/x-python",
+            ".js": "text/javascript",
+            ".html": "text/html",
+            ".css": "text/css",
+            # Audio/Video
+            ".mp3": "audio/mpeg",
+            ".wav": "audio/wav",
+            ".ogg": "audio/ogg",
+            ".mp4": "video/mp4",
+            ".mkv": "video/x-matroska",
         }
         return mime_map.get(suffix, "application/octet-stream")

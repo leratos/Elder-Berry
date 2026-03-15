@@ -69,6 +69,14 @@ class MessageChannel(ABC):
         """
         raise NotImplementedError("send_image nicht implementiert")
 
+    async def send_file(self, room_id: str, file_path: Path) -> None:
+        """Sendet eine beliebige Datei in den Raum.
+
+        Standardimplementierung wirft NotImplementedError.
+        Unterklassen können dies überschreiben.
+        """
+        raise NotImplementedError("send_file nicht implementiert")
+
     @abstractmethod
     def on_message(self, callback: MessageCallback) -> None:
         """Registriert einen Callback für eingehende Nachrichten.

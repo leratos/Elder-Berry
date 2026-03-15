@@ -546,3 +546,45 @@
 - Drehteller-Servo könnte als neuer Endpoint in RobotServer ergänzt werden
   - z.B. POST /servo/rotate {angle: 90} oder POST /servo/face_user
 - Bestehende Tests (robot_protocol) bleiben grün, nichts brechen
+
+## Abgeschlossen: Phase 7 – Tier 2 + Tier 3 + Proaktive Alerts
+- Branch: feature/phase-7-tier2-tier3-alerts
+- Fortsetzung von Phase 7 (Schritt 1-3 fertig: RemoteCommandHandler, Command-Router, ClaudeAgent)
+- Datei: src/elder_berry/comms/remote_commands.py (erweitert: 8 neue Commands)
+  - Tier 2: clipboard (lesen), clip_write (schreiben), send_file (Pfad→Matrix),
+    start_process (Whitelist), kill_process (Whitelist), wol (Magic Packet)
+  - Tier 3: git (status/pull/log/diff), docker (ps/restart/logs), download (httpx)
+  - Sicherheit: Start/Kill-Whitelists, Größenlimit (50MB), Pfad-Validierung, URL-Validierung
+- Datei: src/elder_berry/comms/message_channel.py (erweitert: send_file() ABC-Methode)
+- Datei: src/elder_berry/comms/matrix_channel.py (erweitert: send_file() + _guess_file_mime_type)
+- Datei: src/elder_berry/comms/bridge.py (erweitert: send_file Routing + AlertMonitor DI)
+- Datei: src/elder_berry/comms/alert_monitor.py (NEU: AlertMonitor + AlertConfig)
+  - Daemon-Thread, konfigurierbares Poll-Intervall
+  - Disk-Check: Warnung bei >90% Belegung (Schwellwert konfigurierbar)
+  - Prozess-Check: Warnung wenn überwachter Prozess crashed
+  - Alert-Deduplizierung: gleicher Alert wird nicht wiederholt
+  - Thread-safe Alert-Callback via asyncio.run_coroutine_threadsafe
+- Dependencies: pyperclip>=1.9 in [remote] optional group (pyproject.toml)
+- Tests: tests/test_remote_commands.py (97 Tests, 60 neu + 37 bestehend)
+- Tests: tests/test_comms.py (erweitert: 5 neue Tests – send_file Routing + AlertMonitor)
+- Tests: tests/test_alert_monitor.py (NEU, 14 Tests)
+- Tests: 686/686 grün (176 neu + 510 bestehend)
+- Konsistentes Pattern: DI + Graceful Degradation + Whitelists (wie alle Module)
+
+## In Arbeit: Gehäuse – RootPaths.iLogicVb (Wurzeln am Stammfuß)
+- Datei: hardware/enclosure/iLogic/RootPaths.iLogicVb (NEU)
+- 3D-Spline-Pfade für Wurzeln + Sweep-Profile (konisch) + Fillet-Versuch
+- Parametrisch: 6 Wurzeln, Länge 4cm, Dicke 1.8→0.4cm, Seed 99
+- Stil/API konsistent mit BarkPaths.iLogicVb
+
+## Abgeschlossen: Gehäuse – RootPaths.iLogicVb (Wurzeln am Stammfuß)
+- Datei: hardware/enclosure/iLogic/RootPaths.iLogicVb (260 Zeilen, NEU)
+- 6 Wurzeln als 3D-Spline-Pfade: radial nach außen (4cm) + unter Z=0 (-1.5cm)
+- Z-Kurve: startet bei Z=1.5cm am Stamm → Bodenniveau → -1.5cm (unter Boden)
+- Konisches Sweep-Profil: Ø1.8cm (Basis) → Ø0.4cm (Spitze) mit Taper-Winkel
+- Fallback-Kette: Taper-Sweep → einfacher Sweep → nur Spline-Pfad (manuell)
+- Fillet-Versuch am Wurzel-Fuß (Edge-Finding per Distanz, Try/Catch)
+- Cleanup: Re-Run löscht alle Root_-prefixed Elemente (Features → Sketches → WP)
+- Parametrisch: Anzahl, Länge, Dicke, Absenkung, Fillet, Seed (99 ≠ BarkPaths 42)
+- Stil konsistent mit BarkPaths.iLogicVb (gleiche API-Patterns)
+- Risiken: Taper-API und Fillet-Edge-Finding können je nach Inventor-Version/Geometrie fehlschlagen
