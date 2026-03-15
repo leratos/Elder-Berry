@@ -266,6 +266,18 @@ class TestParseCommand:
         assert handler.parse_command("download") is None
         assert handler.parse_command("download ftp://bad.com") is None
 
+    # --- Hilfe ---
+    def test_hilfe(self):
+        handler = RemoteCommandHandler()
+        assert handler.parse_command("hilfe") == "hilfe"
+        assert handler.parse_command("help") == "help"
+
+    def test_hilfe_keyword(self):
+        handler = RemoteCommandHandler()
+        assert handler.parse_command("was kannst du alles?") == "hilfe"
+        assert handler.parse_command("welche befehle gibt es") == "hilfe"
+        assert handler.parse_command("was geht so?") == "hilfe"
+
     # --- Avatar / Selfie ---
     def test_avatar(self):
         handler = RemoteCommandHandler()
@@ -1160,6 +1172,26 @@ class TestNewPatterns:
 # ---------------------------------------------------------------------------
 # execute: avatar
 # ---------------------------------------------------------------------------
+
+class TestCmdHilfe:
+    def test_hilfe_returns_help_text(self):
+        handler = RemoteCommandHandler()
+        result = handler.execute("hilfe", "hilfe")
+
+        assert result.success is True
+        assert result.command == "hilfe"
+        assert "status" in result.text
+        assert "screenshot" in result.text
+        assert "selfie" in result.text
+        assert "claude" in result.text.lower()
+
+    def test_help_alias(self):
+        handler = RemoteCommandHandler()
+        result = handler.execute("help", "help")
+
+        assert result.success is True
+        assert "status" in result.text
+
 
 class TestCmdAvatar:
     def test_avatar_no_renderer(self):

@@ -62,9 +62,48 @@ MEDIA_KEYS = {
 # Commands die erkannt werden (ohne Parameter)
 SIMPLE_COMMANDS = (
     {"status", "systemstatus", "screenshot", "screen", "clipboard", "wol",
-     "avatar", "selfie"}
+     "avatar", "selfie", "hilfe", "help"}
     | set(MEDIA_KEYS)
 )
+
+# Hilfe-Text: ALLE Commands hier auflisten!
+# (siehe CLAUDE.md – bei neuen Features nachtragen)
+HELP_TEXT = """Verfügbare Commands:
+
+Basis:
+  status / systemstatus – CPU, RAM, GPU, Disk, Top-Prozesse
+  screenshot / screen – Screenshot als Bild
+  hilfe / help – Diese Hilfe anzeigen
+
+Medien:
+  pause / play – Musik pausieren/fortsetzen
+  skip / next – Nächster Track
+  prev / previous – Vorheriger Track
+  volume <0-100> – Lautstärke setzen
+
+Avatar:
+  selfie / avatar – Bild von Saleria senden
+  selfie <emotion> – Mit Emotion (angry, cheerful, sad, ...)
+
+Clipboard:
+  clipboard – Zwischenablage lesen
+  clip: <text> – Text in Zwischenablage schreiben
+
+Dateien:
+  schick mir <pfad> – Datei senden (max 50 MB)
+  download <url> – Datei herunterladen
+
+Prozesse:
+  starte <programm> – Programm starten (Whitelist)
+  kill <prozess> – Prozess beenden (Whitelist)
+
+System:
+  wol – Wake-on-LAN (Tower aufwecken)
+  git status / git pull / git log / git diff
+  docker ps / docker restart <name> / docker logs <name>
+
+Claude-Agent:
+  claude "<Auftrag>" – Komplexe Anfrage an Claude API"""
 
 # Keyword-Erkennung: wenn eines dieser Wörter im Text vorkommt → Command
 # Wird nur geprüft wenn kein exakter Match vorliegt
@@ -77,6 +116,7 @@ KEYWORD_MAP: dict[str, list[str]] = {
     "clipboard": ["zwischenablage", "clipboard lesen", "was ist im clipboard"],
     "wol": ["weck tower", "tower aufwecken", "wake on lan", "tower starten"],
     "avatar": ["zeig dich", "wie siehst du aus", "bild von dir", "schick ein bild von dir", "selfie"],
+    "hilfe": ["was kannst du", "was geht", "welche befehle", "welche commands"],
 }
 
 # Regex für Volume-Command: "volume 50", "vol 75", "lautstärke 30"
@@ -296,6 +336,9 @@ class RemoteCommandHandler:
         Returns:
             CommandResult mit Ergebnis.
         """
+        if command in ("hilfe", "help"):
+            return CommandResult(command="hilfe", success=True, text=HELP_TEXT)
+
         if command in ("status", "systemstatus"):
             return self._cmd_status()
 

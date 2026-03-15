@@ -41,6 +41,11 @@ Logiklücken und Fehler hin.
 - Lies bestehende Dateien VOR dem Schreiben – immer, auch wenn du den Inhalt zu kennen glaubst
 - Verwende immer absolute Pfade (C:\Dev\Elder-Berry\...)
 
+## REMOTE-COMMANDS (Matrix)
+- Neue Commands immer auch in HELP_TEXT (remote_commands.py) nachtragen
+- HELP_TEXT ist die einzige Stelle die dem Nutzer alle Commands anzeigt
+- Vergiss das nicht – sonst weiß niemand dass das Feature existiert
+
 ## ARCHITEKTUR
 - Verwende objektorientierte Programmierung (OOP) – jede Komponente als eigene Klasse
 - Eine Klasse pro Datei, Dateiname = Klassenname (snake_case)
