@@ -12,6 +12,11 @@ Architektur:
     │  on_message(cb)     │<────│  → result         │
     └─────────────────────┘     └──────────────────┘
 
+Command-Router (Phase 7):
+    Nachricht rein → RemoteCommandHandler.parse_command()
+      ├─ Command erkannt → execute() → send result (text/image)
+      └─ Kein Command → Assistant.process() (bestehender Flow)
+
 Audio-Pipeline (wenn AudioConverter vorhanden):
     Assistant.process(audio_output=tmp.wav) → WAV → AudioConverter → OGG/Opus → Matrix
 
@@ -34,6 +39,7 @@ from elder_berry.comms.message_channel import IncomingMessage, MessageChannel
 
 if TYPE_CHECKING:
     from elder_berry.comms.audio_converter import AudioConverter
+    from elder_berry.comms.remote_commands import RemoteCommandHandler
     from elder_berry.core.assistant import Assistant
 
 logger = logging.getLogger(__name__)
@@ -53,10 +59,12 @@ class MatrixBridge:
         channel: MessageChannel,
         assistant: Assistant,
         audio_converter: AudioConverter | None = None,
+        remote_commands: RemoteCommandHandler | None = None,
     ) -> None:
         self._channel = channel
         self._assistant = assistant
         self._audio_converter = audio_converter
+        self._remote_commands = remote_commands
         self._loop: asyncio.AbstractEventLoop | None = None
         self._thread: threading.Thread | None = None
         self._running = False
@@ -134,8 +142,10 @@ class MatrixBridge:
     async def _handle_message(self, msg: IncomingMessage) -> None:
         """Callback für eingehende Nachrichten.
 
-        Delegiert Assistant.process() in den Thread-Pool (blockierend → async).
-        Sendet Antwort (Text + Audio) über den Kanal zurück.
+        Command-Router (Phase 7):
+        1. Prüft ob die Nachricht ein direkter Command ist (RemoteCommandHandler)
+        2. Wenn ja: execute → send result (text/image)
+        3. Wenn nein: weiter an Assistant (bestehender Flow)
 
         Audio-Pipeline (wenn AudioConverter vorhanden):
         1. Assistant generiert WAV in Temp-Datei (audio_output Parameter)
@@ -144,6 +154,58 @@ class MatrixBridge:
         """
         logger.info("Nachricht von %s: %s", msg.sender, msg.body[:100])
 
+        # --- Command-Router: direkte Commands vor LLM ---
+        if self._remote_commands:
+            command = self._remote_commands.parse_command(msg.body)
+            if command:
+                await self._handle_remote_command(msg, command)
+                return
+
+        # --- LLM-Fallback: bestehender Assistant-Flow ---
+        await self._handle_assistant_message(msg)
+
+    async def _handle_remote_command(
+        self, msg: IncomingMessage, command: str,
+    ) -> None:
+        """Führt einen direkten Remote-Command aus und sendet das Ergebnis."""
+        logger.info("Remote-Command erkannt: %s", command)
+
+        try:
+            loop = asyncio.get_running_loop()
+            result = await loop.run_in_executor(
+                None, self._remote_commands.execute, command, msg.body,
+            )
+
+            # Text-Antwort senden
+            if result.text:
+                await self._channel.send_text(msg.room_id, result.text)
+
+            # Bild senden (z.B. Screenshot)
+            if result.image_path and result.image_path.exists():
+                try:
+                    await self._channel.send_image(
+                        msg.room_id, result.image_path,
+                    )
+                except NotImplementedError:
+                    await self._channel.send_text(
+                        msg.room_id,
+                        "Screenshot aufgenommen, aber Bild-Upload nicht unterstützt.",
+                    )
+                finally:
+                    result.image_path.unlink(missing_ok=True)
+
+        except Exception as e:
+            logger.error("Remote-Command '%s' fehlgeschlagen: %s", command, e)
+            try:
+                await self._channel.send_text(
+                    msg.room_id,
+                    f"Command-Fehler: {type(e).__name__}",
+                )
+            except Exception:
+                logger.error("Konnte Fehlermeldung nicht senden")
+
+    async def _handle_assistant_message(self, msg: IncomingMessage) -> None:
+        """Delegiert an Assistant.process() (bestehender Flow)."""
         tmp_wav: Path | None = None
         tmp_ogg: Path | None = None
 
