@@ -483,3 +483,66 @@
 - Ollama-Timeout: 60s → 120s (konfigurierbar, für Laptop mit RAM-Auslagerung)
 - Tests: 518/518 grün
 - Nächster Schritt: ClaudeAgent (Stufe 2 – Anthropic API für komplexe Anfragen)
+
+## Abgeschlossen: Phase 7 – Schritt 3 – ClaudeAgent (Claude API für komplexe Anfragen)
+- Branch: feature/phase-7-claude-agent
+- Dateien: src/elder_berry/comms/claude_agent.py (ClaudeAgent + AgentResult DTO)
+  - Anthropic API Client (claude-sonnet-4-6, latest)
+  - Kontext: CLAUDE.md + journal.txt (letzte 80 Zeilen) automatisch geladen
+  - Structured JSON Output mit robustem Parsing (direkt, Codeblock, Brace-Extraktion)
+  - Whitelist-Validierung: 10 erlaubte Aktionen
+  - Pfad-Sicherheit: Path-Traversal-Schutz, write nur in docs/, append nur journal.txt
+  - Aktionen: read_file, write_file, append_file, list_directory, search_files,
+    system_status, screenshot, run_tests, git_status, answer_only
+  - Graceful Degradation: API-Fehler, ungültiges JSON → Fallback auf answer_only
+- Dateien: src/elder_berry/comms/bridge.py (erweitert: ClaudeAgent DI + Keyword-Routing)
+  - Neuer DI-Parameter: claude_agent (optional)
+  - Keyword-Routing: "claude" im Text + Auftrag in Anführungszeichen → ClaudeAgent
+  - extract_claude_message(): extrahiert Text aus "..." wenn "claude" vorkommt
+  - Ohne Keyword → lokales LLM (Saleria-Persönlichkeit + TTS)
+  - Command-Router-Kette: Command → RemoteCommandHandler → claude+"..." → ClaudeAgent → LLM
+  - _handle_claude_agent(): Screenshot-Bild senden, Details kürzen, Fehlerbehandlung
+- Dateien: scripts/demo_matrix_bot.py (erweitert: --agent Flag)
+  - create_claude_agent(): API-Key aus SecretStore, Projekt-Root auto-detect
+  - Kombinierbar: --llm --remote --agent (alle drei gleichzeitig)
+  - Anleitung im Log: 'claude "Dein Auftrag hier"'
+- Dateien: tests/test_claude_agent.py (62 Tests, NEU)
+  - AgentResult DTO (3), Init (3), Kontext-Laden (5), JSON-Parsing (5),
+    Aktions-Validierung (5), Pfad-Validierung (7), read_file (6), write_file (4),
+    append_file (3), list_directory (4), search_files (3), answer_only (1),
+    git_status (1), process E2E (11), Import-Fehler (1)
+- Dateien: tests/test_comms.py (erweitert: 9 extract_claude_message + 8 Bridge-Routing)
+- Dependencies: anthropic>=0.40 in [remote] optional group (pyproject.toml)
+- API-Key: SecretStore().set("anthropic_api_key", "sk-ant-...")
+- Tests: 510 passed, 8 vorbestehende Failures (pydub fehlt)
+- Konsistentes Pattern: DI + Graceful Degradation (wie alle Module)
+
+## Architektur-Entscheidung: Stationär + Drehbar statt Mobil (2026-03-15)
+- Mecanum-Antrieb gestrichen – Mehrwert zu gering für den Aufwand
+- Pepper's Ghost Blickwinkel funktioniert nur von vorne/oben → auf Boden unsichtbar
+- Neues Konzept: Drehteller (Servo + Kugellager) unter dem Baumstamm
+- Saleria dreht sich zum User → visueller Effekt ausreichend
+- Was wegfällt:
+  - 4× JGB37-520 Motoren (784g, ~30€)
+  - Mecanum-Chassis komplett
+  - Motor-Driver (L298N/BTS7960)
+  - Pico 2W als Motor-Controller (bleibt evtl. für Sensoren)
+  - PID-Regelung, Pfadplanung, Kollisionserkennung
+  - Absturzsicherung (Tischkante)
+  - Akku-Dimensionierung für Motoren → Akku wird deutlich kleiner/leichter
+  - Phase 4 Chassis-Design komplett
+- Was neu kommt:
+  - 1× Servo (SG90 oder MG996R, ~3-5€)
+  - Drehteller/Kugellager (Lazy Susan, ~5€)
+  - Einfache Servo-Steuerung über RPi5 GPIO
+- Gehäuse-Gewicht (1.138g) ist kein Problem mehr – Tisch trägt das Gewicht
+- Standort: noch unklar (Schreibtisch, Regal, Sideboard)
+- Stromversorgung: USB-C vom Netzteil statt Akku möglich → unbegrenzte Laufzeit
+
+## Hinweis: Robot-Code nach Mobilitäts-Streichung (2026-03-15)
+- RobotServer/Client (src/elder_berry/robot/) existiert noch
+- Motor-Endpoints (drive, stop) werden vorerst nicht gelöscht aber sind Dead-Code
+- Avatar-Display + Sensor-Endpoints bleiben relevant
+- Drehteller-Servo könnte als neuer Endpoint in RobotServer ergänzt werden
+  - z.B. POST /servo/rotate {angle: 90} oder POST /servo/face_user
+- Bestehende Tests (robot_protocol) bleiben grün, nichts brechen

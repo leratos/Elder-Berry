@@ -1,4 +1,4 @@
-"""Tests: MessageChannel ABC, IncomingMessage DTO, MatrixBridge, Command-Routing."""
+"""Tests: MessageChannel ABC, IncomingMessage DTO, MatrixBridge, Command-Routing, ClaudeAgent-Routing."""
 import asyncio
 import time
 from pathlib import Path
@@ -7,7 +7,8 @@ from unittest.mock import MagicMock
 import pytest
 
 from elder_berry.comms.message_channel import IncomingMessage, MessageChannel
-from elder_berry.comms.bridge import MatrixBridge
+from elder_berry.comms.bridge import MatrixBridge, extract_claude_message
+from elder_berry.comms.claude_agent import AgentResult
 from elder_berry.comms.remote_commands import CommandResult, RemoteCommandHandler
 from elder_berry.core.assistant import AssistantResult
 
@@ -586,5 +587,290 @@ class TestBridgeCommandRouting:
             assert any("nicht unterstützt" in t for t in texts)
 
             fake_path.unlink(missing_ok=True)
+
+        run_async(_test())
+
+
+# ---------------------------------------------------------------------------
+# extract_claude_message – Keyword-Routing (Phase 7 Schritt 3)
+# ---------------------------------------------------------------------------
+
+class TestExtractClaudeMessage:
+    def test_claude_with_quotes(self):
+        result = extract_claude_message('Sag Claude bitte "Dokumentiere X im Journal"')
+        assert result == "Dokumentiere X im Journal"
+
+    def test_claude_lowercase(self):
+        result = extract_claude_message('claude "Was war der letzte Schritt?"')
+        assert result == "Was war der letzte Schritt?"
+
+    def test_claude_uppercase(self):
+        result = extract_claude_message('CLAUDE "Zeig mir die Tests"')
+        assert result == "Zeig mir die Tests"
+
+    def test_no_claude_keyword(self):
+        result = extract_claude_message("Wie geht's dir?")
+        assert result is None
+
+    def test_claude_without_quotes(self):
+        result = extract_claude_message("Claude mach mal was")
+        assert result is None
+
+    def test_quotes_without_claude(self):
+        result = extract_claude_message('Sag Saleria "Hallo"')
+        assert result is None
+
+    def test_empty_string(self):
+        result = extract_claude_message("")
+        assert result is None
+
+    def test_empty_quotes(self):
+        result = extract_claude_message('Claude ""')
+        assert result is None
+
+    def test_first_quoted_text_extracted(self):
+        result = extract_claude_message('Claude "erster Auftrag" und "zweiter"')
+        assert result == "erster Auftrag"
+
+
+# ---------------------------------------------------------------------------
+# MatrixBridge – ClaudeAgent-Routing (Phase 7 Schritt 3)
+# ---------------------------------------------------------------------------
+
+class TestBridgeClaudeAgentRouting:
+    def _make_assistant_mock(self, response_text="LLM Antwort"):
+        assistant = MagicMock()
+        assistant.process.return_value = AssistantResult(
+            response=response_text,
+            action_executed=None,
+            action_success=False,
+        )
+        return assistant
+
+    def _make_claude_agent(self, summary="Agent-Antwort", details=None,
+                           action_taken="answer_only", success=True):
+        """Erstellt einen Mock-ClaudeAgent."""
+        agent = MagicMock()
+        agent.process.return_value = AgentResult(
+            success=success,
+            action_taken=action_taken,
+            summary=summary,
+            details=details,
+        )
+        return agent
+
+    def test_claude_keyword_routes_to_agent(self):
+        """'claude' + Anführungszeichen → ClaudeAgent."""
+        async def _test():
+            channel = MockChannel()
+            assistant = self._make_assistant_mock()
+            handler = MagicMock(spec=RemoteCommandHandler)
+            handler.parse_command.return_value = None
+            claude_agent = self._make_claude_agent(
+                summary="Journal aktualisiert.",
+            )
+            bridge = MatrixBridge(
+                channel=channel, assistant=assistant,
+                remote_commands=handler, claude_agent=claude_agent,
+            )
+            await channel.connect()
+
+            msg = IncomingMessage(
+                sender="@user:x", room_id="!r:x",
+                body='Claude "Dokumentiere X im Journal"', timestamp=1.0,
+            )
+            await bridge._handle_message(msg)
+
+            # ClaudeAgent mit extrahiertem Text aufgerufen
+            claude_agent.process.assert_called_once_with(
+                "Dokumentiere X im Journal",
+            )
+            assert ("!r:x", "Journal aktualisiert.") in channel._sent_texts
+            assistant.process.assert_not_called()
+
+        run_async(_test())
+
+    def test_no_claude_keyword_goes_to_llm(self):
+        """Ohne 'claude' Keyword → direkt an lokales LLM."""
+        async def _test():
+            channel = MockChannel()
+            assistant = self._make_assistant_mock("Saleria antwortet!")
+            handler = MagicMock(spec=RemoteCommandHandler)
+            handler.parse_command.return_value = None
+            claude_agent = self._make_claude_agent()
+            bridge = MatrixBridge(
+                channel=channel, assistant=assistant,
+                remote_commands=handler, claude_agent=claude_agent,
+            )
+            await channel.connect()
+
+            msg = IncomingMessage(
+                sender="@user:x", room_id="!r:x",
+                body="Wie geht's dir?", timestamp=1.0,
+            )
+            await bridge._handle_message(msg)
+
+            # Assistant aufgerufen, ClaudeAgent NICHT
+            assistant.process.assert_called_once_with("Wie geht's dir?")
+            claude_agent.process.assert_not_called()
+            assert ("!r:x", "Saleria antwortet!") in channel._sent_texts
+
+        run_async(_test())
+
+    def test_claude_without_quotes_goes_to_llm(self):
+        """'claude' ohne Anführungszeichen → lokales LLM."""
+        async def _test():
+            channel = MockChannel()
+            assistant = self._make_assistant_mock("LLM Antwort")
+            claude_agent = self._make_claude_agent()
+            bridge = MatrixBridge(
+                channel=channel, assistant=assistant,
+                claude_agent=claude_agent,
+            )
+            await channel.connect()
+
+            msg = IncomingMessage(
+                sender="@user:x", room_id="!r:x",
+                body="Claude mach mal was", timestamp=1.0,
+            )
+            await bridge._handle_message(msg)
+
+            assistant.process.assert_called_once()
+            claude_agent.process.assert_not_called()
+
+        run_async(_test())
+
+    def test_command_still_routed_to_handler_not_agent(self):
+        """Commands gehen weiter an RemoteCommandHandler, nicht an ClaudeAgent."""
+        async def _test():
+            channel = MockChannel()
+            assistant = self._make_assistant_mock()
+            handler = MagicMock(spec=RemoteCommandHandler)
+            handler.parse_command.return_value = "status"
+            handler.execute.return_value = CommandResult(
+                command="status", success=True, text="CPU: 10%",
+            )
+            claude_agent = self._make_claude_agent()
+            bridge = MatrixBridge(
+                channel=channel, assistant=assistant,
+                remote_commands=handler, claude_agent=claude_agent,
+            )
+            await channel.connect()
+
+            msg = IncomingMessage(
+                sender="@user:x", room_id="!r:x", body="status",
+                timestamp=1.0,
+            )
+            await bridge._handle_message(msg)
+
+            handler.execute.assert_called_once()
+            claude_agent.process.assert_not_called()
+            assistant.process.assert_not_called()
+
+        run_async(_test())
+
+    def test_no_claude_agent_falls_to_assistant(self):
+        """Ohne ClaudeAgent geht alles an Assistant (auch mit 'claude' keyword)."""
+        async def _test():
+            channel = MockChannel()
+            assistant = self._make_assistant_mock("Lokale Antwort")
+            handler = MagicMock(spec=RemoteCommandHandler)
+            handler.parse_command.return_value = None
+            bridge = MatrixBridge(
+                channel=channel, assistant=assistant,
+                remote_commands=handler,
+            )
+            await channel.connect()
+
+            msg = IncomingMessage(
+                sender="@user:x", room_id="!r:x",
+                body='Claude "test"', timestamp=1.0,
+            )
+            await bridge._handle_message(msg)
+
+            assistant.process.assert_called_once()
+
+        run_async(_test())
+
+    def test_claude_agent_with_details(self):
+        """ClaudeAgent-Antwort mit Details sendet zwei Nachrichten."""
+        async def _test():
+            channel = MockChannel()
+            assistant = self._make_assistant_mock()
+            claude_agent = self._make_claude_agent(
+                summary="Datei gelesen",
+                details="# Inhalt\nTest-Inhalt hier",
+                action_taken="read_file",
+            )
+            bridge = MatrixBridge(
+                channel=channel, assistant=assistant,
+                claude_agent=claude_agent,
+            )
+            await channel.connect()
+
+            msg = IncomingMessage(
+                sender="@user:x", room_id="!r:x",
+                body='Claude "Zeig CLAUDE.md"', timestamp=1.0,
+            )
+            await bridge._handle_message(msg)
+
+            assert len(channel._sent_texts) == 2
+            assert ("!r:x", "Datei gelesen") in channel._sent_texts
+            assert ("!r:x", "# Inhalt\nTest-Inhalt hier") in channel._sent_texts
+
+        run_async(_test())
+
+    def test_claude_agent_screenshot_sends_image(self, tmp_path):
+        """ClaudeAgent-Screenshot sendet Bild über send_image."""
+        async def _test():
+            channel = MockChannel()
+            assistant = self._make_assistant_mock()
+
+            img_path = tmp_path / "agent_screenshot.png"
+            img_path.write_bytes(b"\x89PNG" + b"\x00" * 50)
+
+            claude_agent = self._make_claude_agent(
+                summary="Screenshot aufgenommen.",
+                details=str(img_path),
+                action_taken="screenshot",
+            )
+            bridge = MatrixBridge(
+                channel=channel, assistant=assistant,
+                claude_agent=claude_agent,
+            )
+            await channel.connect()
+
+            msg = IncomingMessage(
+                sender="@user:x", room_id="!r:x",
+                body='Claude "Mach ein Screenshot"', timestamp=1.0,
+            )
+            await bridge._handle_message(msg)
+
+            assert ("!r:x", "Screenshot aufgenommen.") in channel._sent_texts
+            assert len(channel._sent_images) == 1
+
+        run_async(_test())
+
+    def test_claude_agent_error_sends_error_message(self):
+        """Fehler bei ClaudeAgent wird als Fehlermeldung gesendet."""
+        async def _test():
+            channel = MockChannel()
+            assistant = self._make_assistant_mock()
+            claude_agent = MagicMock()
+            claude_agent.process.side_effect = RuntimeError("API kaputt")
+            bridge = MatrixBridge(
+                channel=channel, assistant=assistant,
+                claude_agent=claude_agent,
+            )
+            await channel.connect()
+
+            msg = IncomingMessage(
+                sender="@user:x", room_id="!r:x",
+                body='Claude "Test"', timestamp=1.0,
+            )
+            await bridge._handle_message(msg)
+
+            assert len(channel._sent_texts) == 1
+            assert "Agent-Fehler" in channel._sent_texts[0][1]
 
         run_async(_test())
