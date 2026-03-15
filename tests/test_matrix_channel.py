@@ -4,7 +4,10 @@ from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from nio import (
+
+nio = pytest.importorskip("nio", reason="matrix-nio nicht installiert")
+
+from nio import (  # noqa: E402
     JoinError,
     JoinResponse,
     LoginError,
@@ -15,8 +18,8 @@ from nio import (
     UploadResponse,
 )
 
-from elder_berry.comms.matrix_channel import MatrixChannel, MatrixChannelError
-from elder_berry.comms.message_channel import IncomingMessage, MessageChannel
+from elder_berry.comms.matrix_channel import MatrixChannel, MatrixChannelError  # noqa: E402
+from elder_berry.comms.message_channel import IncomingMessage, MessageChannel  # noqa: E402
 
 
 # ---------------------------------------------------------------------------
