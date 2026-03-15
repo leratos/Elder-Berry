@@ -76,7 +76,7 @@ KEYWORD_MAP: dict[str, list[str]] = {
     "skip": ["nächster song", "nächstes lied", "überspringen", "nächster track"],
     "clipboard": ["zwischenablage", "clipboard lesen", "was ist im clipboard"],
     "wol": ["weck tower", "tower aufwecken", "wake on lan", "tower starten"],
-    "avatar": ["zeig dich", "wie siehst du aus", "bild von dir", "schick ein bild von dir"],
+    "avatar": ["zeig dich", "wie siehst du aus", "bild von dir", "schick ein bild von dir", "selfie"],
 }
 
 # Regex für Volume-Command: "volume 50", "vol 75", "lautstärke 30"
