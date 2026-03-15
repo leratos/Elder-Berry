@@ -28,13 +28,13 @@
 
 | Status | Artikel | Details | Quelle |
 |---|---|---|---|
-| ⚠️ | Mecanum Chassis | ALTES Chassis (TT-Motoren) nicht kompatibel mit JGB37 · Redesign nötig | – |
-| 🛒 | 4× JGB37-520 Encoder Motor | 12V · 100-150 RPM · Hall-Encoder · Ø37mm · 6mm D-Shaft | AliExpress/Amazon · ~25-40€ |
-| 🛒 | 4× Mecanum-Räder 60/80mm | 6mm D-Shaft Aufnahme · passend für JGB37 | AliExpress · ~15-25€ |
-| ✅ | 2× 18650 Akkus + 2S BMS | 7,4V · Schutzschaltung · Ladefunktion vorhanden | – |
-| 📋 | 3S Akku-Option | 11,1V für JGB37 volle Drehzahl · BMS/PCB-Kompatibilität prüfen | – |
-| ⚠️ | Adafruit DC Motor HAT | I²C · evtl. zu schwach für JGB37 (1.2A/Kanal, Stall 2.8A) → Alternative prüfen | adafruit.com |
-| 📋 | Motor-Driver Alternative | L298N / BTS7960 / Custom auf PCB · wird in Phase 4 definiert | – |
+| ~~GESTRICHEN~~ | ~~Mecanum Chassis~~ | Mobilität gestrichen → stationär + drehbar | – |
+| 🛒 | Servo SG90 oder MG996R | Drehteller-Antrieb · RPi5 GPIO | ~3-5€ |
+| 🛒 | Lazy Susan Kugellager | Drehteller · Ø100-150mm | ~5€ |
+| 📋 | Stromversorgung | USB-C Netzteil (Dauerbetrieb) oder Akku · wird entschieden wenn Standort klar | – |
+| ~~GESTRICHEN~~ | ~~3S Akku-Option~~ | Mobilität gestrichen, kein 3S nötig | – |
+| ~~GESTRICHEN~~ | ~~Adafruit DC Motor HAT~~ | Mobilität gestrichen | – |
+| ~~GESTRICHEN~~ | ~~Motor-Driver Alternative~~ | Mobilität gestrichen | – |
 
 ---
 
@@ -42,8 +42,8 @@
 
 | Status | Artikel | Details | Quelle |
 |---|---|---|---|
-| 🛒 | USB-C BMS Lademodul 2S · 18W · 3A | Buck-Boost · 4,5-15V Eingang · USB-C PD · 3-farbige LED | roboter-bausatz.de · 7,35€ · Art.-Nr. RBS18584 |
-| ✅ | D36V50F5 Spannungsregler | 5V · 5A · VOUT1 → Motor HAT · VOUT2 → RPi + Pico | – |
+| 📋 | USB-C BMS Lademodul 2S · 18W · 3A | Nur nötig falls Akku-Betrieb gewünscht | roboter-bausatz.de · 7,35€ |
+| 📋 | D36V50F5 Spannungsregler | Nur nötig falls Akku-Betrieb · sonst USB-C direkt | – |
 | ✅ | Widerstände R1/R2 · 100kΩ | Spannungsteiler Akku-Monitoring → Pico ADC | – |
 
 ---
@@ -85,8 +85,9 @@
 
 | Status | Artikel | Details |
 |---|---|---|
-| 📋 | Ladestation autonomes Laden | Qi-Coil · wird in Phase 4 definiert |
-| 📋 | IR/Kamera Docking | Für autonome Rückkehr zur Ladestation · Phase 4 |
+| ~~GESTRICHEN~~ | ~~Ladestation autonomes Laden~~ | Mobilität gestrichen |
+| ~~GESTRICHEN~~ | ~~IR/Kamera Docking~~ | Mobilität gestrichen |
+| 📋 | USB-C Netzteil 5V/3A | Dauerbetrieb RPi5 + Display · je nach Standort |
 
 ---
 
@@ -103,4 +104,4 @@
 
 ---
 
-*Zuletzt aktualisiert: 2026-03-15*
+*Zuletzt aktualisiert: 2026-03-15 (Mobilität gestrichen → stationär + drehbar)*
