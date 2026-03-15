@@ -588,3 +588,8 @@
 - Parametrisch: Anzahl, Länge, Dicke, Absenkung, Fillet, Seed (99 ≠ BarkPaths 42)
 - Stil konsistent mit BarkPaths.iLogicVb (gleiche API-Patterns)
 - Risiken: Taper-API und Fillet-Edge-Finding können je nach Inventor-Version/Geometrie fehlschlagen
+
+## Update: RootPaths.iLogicVb – Parameter-Fix nach erstem Test
+- Self-Intersection bei 3/6 Wurzeln → Welligkeit 0.3→0.12, Frequenz 1.5→1.0, Punkte 10→8
+- Wurzeln zu klein → Länge 4→6cm, Dicke 1.8→2.5cm, Absenkung 1.5→2.5cm, Anstieg 1.5→2.5cm
+- Fillet 0.5→0.8cm, Spitze 0.4→0.6cm

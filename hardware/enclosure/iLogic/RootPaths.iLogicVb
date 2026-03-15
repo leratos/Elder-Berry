@@ -1,0 +1,281 @@
+' ============================================================
+' iLogic: Wurzel-Pfade + Sweep für Baumstamm-Basis
+' Erzeugt 3D-Splines am Stammfuß (Z=0), radial nach außen/unten
+' + konisches Sweep-Profil (dick→dünn) + Fillet am Übergang
+' Datei: hardware/enclosure/iLogic/RootPaths.iLogicVb
+' ============================================================
+' ANLEITUNG:
+' 1. Öffne master.ipt in Inventor (Stamm-Zylinder muss existieren)
+' 2. iLogic → Regel hinzufügen → Code einfügen
+' 3. Parameter anpassen (siehe unten)
+' 4. Ausführen → erzeugt Wurzel-Bodies (Join)
+' 5. Falls Sweep/Fillet fehlschlägt: 3D-Splines bleiben erhalten
+'    für manuellen Sweep
+' ============================================================
+
+' === PARAMETER (hier anpassen) ===
+Dim stammRadius As Double = 10.2      ' cm (Ø204mm / 2) – konsistent mit BarkPaths!
+Dim anzahlWurzeln As Integer = 6      ' Hauptwurzeln rund um den Stamm
+Dim punkteProWurzel As Integer = 8    ' Spline-Kontrollpunkte (weniger = sanftere Kurve)
+Dim wurzelLaenge As Double = 6.0      ' cm radiale Ausdehnung ab Zylinderoberfläche
+Dim wurzelAbsenkung As Double = 2.5   ' cm Tiefe unter Z=0 an der Spitze
+Dim anstiegHoehe As Double = 2.5      ' cm Startpunkt über Z=0 am Stamm
+Dim wurzelDickeBasis As Double = 2.5  ' cm Durchmesser am Stamm (Profil-Start)
+Dim wurzelDickeSpitze As Double = 0.6 ' cm Durchmesser an der Spitze
+Dim filletRadius As Double = 0.8     ' cm Übergangsradius Wurzel→Stamm
+Dim welligkeit As Double = 0.12      ' cm laterale Variation (niedrig → verhindert Self-Intersection)
+Dim laengenVariation As Double = 0.3 ' 0-1: Längenunterschied zwischen Wurzeln
+Dim seed As Integer = 99             ' Bewusst ≠ BarkPaths (42)
+
+' === SETUP ===
+Dim oDoc As PartDocument = ThisApplication.ActiveDocument
+Dim oDef As PartComponentDefinition = oDoc.ComponentDefinition
+Dim oTG As TransientGeometry = ThisApplication.TransientGeometry
+Dim rng As New Random(seed)
+Dim PI As Double = Math.PI
+
+' === CLEANUP: Alte Root_-Elemente löschen (für Re-Run) ===
+' Reihenfolge: Features → Sketches → WorkPlanes (Abhängigkeiten!)
+Dim featsToDelete As New List(Of SweepFeature)
+For Each feat As SweepFeature In oDef.Features.SweepFeatures
+    If feat.Name.StartsWith("Root_") Then featsToDelete.Add(feat)
+Next
+For Each feat As SweepFeature In featsToDelete
+    Try : feat.Delete() : Catch : End Try
+Next
+
+Dim filletsToDelete As New List(Of FilletFeature)
+For Each feat As FilletFeature In oDef.Features.FilletFeatures
+    If feat.Name.StartsWith("Root_") Then filletsToDelete.Add(feat)
+Next
+For Each feat As FilletFeature In filletsToDelete
+    Try : feat.Delete() : Catch : End Try
+Next
+
+Dim sketches2DToDelete As New List(Of PlanarSketch)
+For Each sk As PlanarSketch In oDef.Sketches
+    If sk.Name.StartsWith("Root_") Then sketches2DToDelete.Add(sk)
+Next
+For Each sk As PlanarSketch In sketches2DToDelete
+    Try : sk.Delete() : Catch : End Try
+Next
+
+Dim sketches3DToDelete As New List(Of Sketch3D)
+For Each sk As Sketch3D In oDef.Sketches3D
+    If sk.Name.StartsWith("Root_") Then sketches3DToDelete.Add(sk)
+Next
+For Each sk As Sketch3D In sketches3DToDelete
+    Try : sk.Delete() : Catch : End Try
+Next
+
+Dim wpToDelete As New List(Of WorkPlane)
+For Each wp As WorkPlane In oDef.WorkPlanes
+    If wp.Name.StartsWith("Root_") Then wpToDelete.Add(wp)
+Next
+For Each wp As WorkPlane In wpToDelete
+    Try : wp.Delete() : Catch : End Try
+Next
+
+' === WURZELN ERZEUGEN ===
+Dim wurzelnErzeugt As Integer = 0
+Dim sweepsErzeugt As Integer = 0
+Dim filletsErzeugt As Integer = 0
+Dim sweepFehler As New List(Of String)
+
+For i As Integer = 0 To anzahlWurzeln - 1
+    ' Basis-Winkel gleichmäßig verteilt + Zufallsoffset
+    Dim basisWinkel As Double = (2 * PI * i / anzahlWurzeln)
+    Dim winkelOffset As Double = (rng.NextDouble() - 0.5) * (2 * PI / anzahlWurzeln) * 0.4
+    Dim theta As Double = basisWinkel + winkelOffset
+
+    ' Individuelle Wurzel-Parameter (Variation)
+    Dim indivLaenge As Double = wurzelLaenge * (1.0 - laengenVariation * 0.5 + rng.NextDouble() * laengenVariation)
+    Dim indivAbsenkung As Double = wurzelAbsenkung * (0.7 + rng.NextDouble() * 0.6)
+    Dim indivAnstieg As Double = anstiegHoehe * (0.8 + rng.NextDouble() * 0.4)
+    Dim indivDickeBasis As Double = wurzelDickeBasis * (0.8 + rng.NextDouble() * 0.4)
+    Dim indivDickeSpitze As Double = wurzelDickeSpitze * (0.7 + rng.NextDouble() * 0.6)
+
+    ' 3D-Skizze für Wurzel-Pfad
+    Dim oSketch3D As Sketch3D = oDef.Sketches3D.Add()
+    oSketch3D.Name = "Root_Path_" & Format(i, "00")
+    oSketch3D.Edit()
+
+    ' Punkte berechnen: radial nach außen + Z-Kurve (Anstieg→Boden→unter Boden)
+    Dim punkte As ObjectCollection = ThisApplication.TransientObjects.CreateObjectCollection()
+    Dim pfadLaenge As Double = 0.0
+    Dim prevX As Double = 0, prevY As Double = 0, prevZ As Double = 0
+
+    For j As Integer = 0 To punkteProWurzel - 1
+        Dim t As Double = j / CDbl(punkteProWurzel - 1) ' 0 bis 1
+
+        ' Radialer Abstand: auf Zylinder → nach außen (schnell ansteigend, dann flacher)
+        Dim r As Double = stammRadius + indivLaenge * Math.Pow(t, 0.7)
+
+        ' Z-Höhe: startet über Z=0 am Stamm, senkt sich unter Z=0
+        ' t=0: z = indivAnstieg (am Stamm, über Boden)
+        ' t≈0.4: z ≈ 0 (Bodenniveau)
+        ' t=1: z = -indivAbsenkung (unter Boden)
+        Dim z As Double = indivAnstieg * Math.Pow(1.0 - t, 0.7) - indivAbsenkung * Math.Pow(t, 2.0)
+
+        ' Laterale Welligkeit: sanfter Sinus + minimales Rauschen
+        ' Niedrige Frequenz (1.0 Basis) → langwellige Kurven → kein Self-Intersection
+        Dim welle As Double = Math.Sin(t * PI * (1.0 + rng.NextDouble() * 0.5)) * welligkeit
+        welle += (rng.NextDouble() - 0.5) * welligkeit * 0.2
+        Dim winkelAbweichung As Double = welle / r
+        Dim aktuellerWinkel As Double = theta + winkelAbweichung
+
+        ' Kartesische Koordinaten
+        Dim x As Double = r * Math.Cos(aktuellerWinkel)
+        Dim y As Double = r * Math.Sin(aktuellerWinkel)
+
+        ' Pfadlänge akkumulieren (für Taper-Winkel-Berechnung)
+        If j > 0 Then
+            pfadLaenge += Math.Sqrt((x - prevX) ^ 2 + (y - prevY) ^ 2 + (z - prevZ) ^ 2)
+        End If
+        prevX = x : prevY = y : prevZ = z
+
+        punkte.Add(oTG.CreatePoint(x, y, z))
+    Next j
+
+    ' Spline erzeugen
+    Dim oSpline As SketchSpline3D = Nothing
+    If punkte.Count >= 3 Then
+        Try
+            oSpline = oSketch3D.SketchSplines3D.Add(punkte)
+            wurzelnErzeugt += 1
+        Catch ex As Exception
+            oSketch3D.ExitEdit()
+            Continue For
+        End Try
+    End If
+    oSketch3D.ExitEdit()
+
+    If oSpline Is Nothing Then Continue For
+
+    ' === SWEEP: Profil + Pfad + konischer Sweep ===
+    Try
+        ' WorkPlane senkrecht zum Spline am Startpunkt
+        Dim oWP As WorkPlane = oDef.WorkPlanes.AddByNormalToCurve( _
+            oSpline, oSpline.StartSketchPoint)
+        oWP.Name = "Root_WP_" & Format(i, "00")
+        oWP.Visible = False
+
+        ' Profil-Skizze auf WorkPlane: Kreis am Startpunkt
+        Dim oSketch2D As PlanarSketch = oDef.Sketches.Add(oWP)
+        oSketch2D.Name = "Root_Profile_" & Format(i, "00")
+        oSketch2D.Edit()
+        ' Startpunkt in Skizze projizieren → Kreis-Mittelpunkt
+        Dim projPt As SketchPoint = oSketch2D.AddByProjectingEntity(oSpline.StartSketchPoint)
+        oSketch2D.SketchCircles.AddByCenterRadius(projPt, indivDickeBasis / 2.0)
+        oSketch2D.ExitEdit()
+
+        ' Profil und Pfad erstellen
+        Dim oProfile As Profile = oSketch2D.Profiles.AddForSolid()
+        Dim oPath As Path = oDef.Features.CreatePath(oSpline)
+
+        ' Taper-Winkel berechnen: Atan((R_basis - R_spitze) / Pfadlänge)
+        Dim radiusAenderung As Double = (indivDickeBasis - indivDickeSpitze) / 2.0
+        Dim taperWinkel As Double = 0.0
+        If pfadLaenge > 0.1 Then
+            taperWinkel = Math.Atan(radiusAenderung / pfadLaenge) ' Radians, positiv = verjüngend
+        End If
+
+        ' Sweep mit Taper versuchen
+        Dim sweepErfolg As Boolean = False
+        Try
+            Dim oSweepDef As SweepDefinition = oDef.Features.SweepFeatures.CreateSweepDefinition( _
+                SweepTypeEnum.kPathSweepType, _
+                oProfile, oPath, _
+                PartFeatureOperationEnum.kJoinOperation)
+            ' Taper: negativ = verjüngend in Inventor-Konvention
+            oSweepDef.TaperAngle = -taperWinkel
+            Dim oSweep As SweepFeature = oDef.Features.SweepFeatures.Add(oSweepDef)
+            oSweep.Name = "Root_Sweep_" & Format(i, "00")
+            sweepErfolg = True
+            sweepsErzeugt += 1
+        Catch
+            ' Taper-Sweep fehlgeschlagen → Fallback: einfacher Sweep (konstanter Durchmesser)
+            Try
+                Dim oSweep As SweepFeature = oDef.Features.SweepFeatures.AddSimple( _
+                    oProfile, oPath, PartFeatureOperationEnum.kJoinOperation)
+                oSweep.Name = "Root_Sweep_" & Format(i, "00")
+                sweepErfolg = True
+                sweepsErzeugt += 1
+                sweepFehler.Add("Root " & i & ": Taper fehlgeschlagen, konstanter Durchmesser verwendet")
+            Catch ex2 As Exception
+                sweepFehler.Add("Root " & i & ": Sweep komplett fehlgeschlagen – " & ex2.Message)
+            End Try
+        End Try
+
+        ' === FILLET am Wurzel-Fuß (Übergang Wurzel→Stamm) ===
+        If sweepErfolg And filletRadius > 0 Then
+            Try
+                ' Kante finden: am Startpunkt des Sweeps, wo Wurzel den Stamm trifft
+                ' Suche nach Kanten in der Nähe des Startpunkts
+                Dim startX As Double = stammRadius * Math.Cos(theta)
+                Dim startY As Double = stammRadius * Math.Sin(theta)
+                Dim startZ As Double = indivAnstieg
+                Dim bestEdge As Edge = Nothing
+                Dim bestDist As Double = Double.MaxValue
+
+                For Each face As Face In oDef.SurfaceBodies(1).Faces
+                    For Each edge As Edge In face.Edges
+                        Dim midPt As Point = edge.PointOnEdge
+                        Dim dist As Double = Math.Sqrt( _
+                            (midPt.X - startX) ^ 2 + _
+                            (midPt.Y - startY) ^ 2 + _
+                            (midPt.Z - startZ) ^ 2)
+                        If dist < bestDist And dist < indivDickeBasis Then
+                            bestDist = dist
+                            bestEdge = edge
+                        End If
+                    Next
+                Next
+
+                If bestEdge IsNot Nothing Then
+                    Dim edgeCollection As EdgeCollection = ThisApplication.TransientObjects.CreateEdgeCollection()
+                    edgeCollection.Add(bestEdge)
+                    Dim oFillet As FilletFeature = oDef.Features.FilletFeatures.AddSimple( _
+                        edgeCollection, filletRadius)
+                    oFillet.Name = "Root_Fillet_" & Format(i, "00")
+                    filletsErzeugt += 1
+                End If
+            Catch ex As Exception
+                ' Fillet fehlgeschlagen – kein Abbruch, Sweep bleibt bestehen
+                sweepFehler.Add("Root " & i & ": Fillet fehlgeschlagen – " & ex.Message)
+            End Try
+        End If
+
+    Catch ex As Exception
+        ' WorkPlane/Profil/Sweep-Block komplett fehlgeschlagen
+        ' 3D-Spline bleibt erhalten für manuellen Sweep
+        sweepFehler.Add("Root " & i & ": Profil/Sweep übersprungen – " & ex.Message)
+    End Try
+
+Next i
+
+' === ERGEBNIS ===
+oDoc.Update()
+
+Dim fehlerText As String = ""
+If sweepFehler.Count > 0 Then
+    fehlerText = vbCrLf & vbCrLf & "Warnungen:" & vbCrLf
+    For Each msg As String In sweepFehler
+        fehlerText &= "  • " & msg & vbCrLf
+    Next
+End If
+
+MessageBox.Show( _
+    "Wurzel-Generator abgeschlossen!" & vbCrLf & _
+    "Spline-Pfade: " & wurzelnErzeugt & " / " & anzahlWurzeln & vbCrLf & _
+    "Sweeps (Join): " & sweepsErzeugt & vbCrLf & _
+    "Fillets: " & filletsErzeugt & vbCrLf & _
+    "Radius: " & stammRadius & " cm (Ø" & (stammRadius * 2 * 10) & "mm)" & vbCrLf & _
+    "Wurzellänge: " & wurzelLaenge & " cm (radial)" & vbCrLf & _
+    "Profil: Ø" & wurzelDickeBasis & " → Ø" & wurzelDickeSpitze & " cm" & _
+    fehlerText & vbCrLf & vbCrLf & _
+    "Falls Sweep/Fillet fehlgeschlagen:" & vbCrLf & _
+    "→ 3D-Splines (Root_Path_XX) sind erhalten" & vbCrLf & _
+    "→ Manuell: Sweep → Pfad: Root_Path_XX → Profil: Kreis → Join" & vbCrLf & _
+    "→ Seed ändern (" & seed & ") für anderes Muster", _
+    "Elder-Berry Root Generator")
