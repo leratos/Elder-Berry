@@ -12,6 +12,9 @@ Architektur:
     │  on_message(cb)     │<────│  → result         │
     └─────────────────────┘     └──────────────────┘
 
+Audio-Pipeline (wenn AudioConverter vorhanden):
+    Assistant.process(audio_output=tmp.wav) → WAV → AudioConverter → OGG/Opus → Matrix
+
 Verwendung:
     bridge = MatrixBridge(channel=matrix_channel, assistant=assistant)
     bridge.start()   # Startet async Loop + Message-Handler
@@ -22,6 +25,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import tempfile
 import threading
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -29,6 +33,7 @@ from typing import TYPE_CHECKING
 from elder_berry.comms.message_channel import IncomingMessage, MessageChannel
 
 if TYPE_CHECKING:
+    from elder_berry.comms.audio_converter import AudioConverter
     from elder_berry.core.assistant import Assistant
 
 logger = logging.getLogger(__name__)
@@ -40,17 +45,18 @@ class MatrixBridge:
     - Startet den MessageChannel sync_loop in einem eigenen Thread mit eigenem Event-Loop.
     - Empfangene Nachrichten werden an Assistant.process() delegiert (in Thread-Pool).
     - Antworten (Text + optional Audio) werden über den Kanal zurückgesendet.
+    - Optional: AudioConverter für WAV→OGG/Opus Konvertierung (Sprachnachrichten).
     """
 
     def __init__(
         self,
         channel: MessageChannel,
         assistant: Assistant,
-        audio_dir: Path | None = None,
+        audio_converter: AudioConverter | None = None,
     ) -> None:
         self._channel = channel
         self._assistant = assistant
-        self._audio_dir = audio_dir or Path.home() / ".elder-berry" / "audio"
+        self._audio_converter = audio_converter
         self._loop: asyncio.AbstractEventLoop | None = None
         self._thread: threading.Thread | None = None
         self._running = False
@@ -130,50 +136,59 @@ class MatrixBridge:
 
         Delegiert Assistant.process() in den Thread-Pool (blockierend → async).
         Sendet Antwort (Text + Audio) über den Kanal zurück.
+
+        Audio-Pipeline (wenn AudioConverter vorhanden):
+        1. Assistant generiert WAV in Temp-Datei (audio_output Parameter)
+        2. AudioConverter konvertiert WAV → OGG/Opus
+        3. OGG wird als Sprachnachricht via Channel gesendet
         """
         logger.info("Nachricht von %s: %s", msg.sender, msg.body[:100])
 
+        tmp_wav: Path | None = None
+        tmp_ogg: Path | None = None
+
         try:
-            # Assistant.process() ist synchron → in Thread-Pool ausführen
             loop = asyncio.get_running_loop()
-            result = await loop.run_in_executor(
-                None, self._assistant.process, msg.body,
-            )
+
+            # Audio-Modus: TTS in Datei generieren statt abspielen
+            if self._audio_converter and self._audio_converter.ffmpeg_available:
+                tmp_wav = Path(tempfile.mktemp(suffix=".wav"))
+                result = await loop.run_in_executor(
+                    None, self._assistant.process, msg.body, tmp_wav,
+                )
+            else:
+                result = await loop.run_in_executor(
+                    None, self._assistant.process, msg.body,
+                )
 
             # Textantwort senden
             if result.response:
                 await self._channel.send_text(msg.room_id, result.response)
 
-            # Audio senden (wenn TTS eine Datei generiert hat)
-            audio_path = self._find_latest_audio()
-            if audio_path and audio_path.exists():
-                await self._channel.send_audio(msg.room_id, audio_path)
+            # Audio senden (WAV → OGG → Matrix)
+            if result.audio_path and result.audio_path.exists():
+                tmp_ogg = result.audio_path.with_suffix(".ogg")
+                ogg_path, _duration = self._audio_converter.to_ogg_opus(
+                    result.audio_path, output_path=tmp_ogg,
+                )
+                await self._channel.send_audio(msg.room_id, ogg_path)
+                logger.debug("Sprachnachricht gesendet: %s", ogg_path.name)
 
         except Exception as e:
             logger.error("Fehler bei Nachrichtenverarbeitung: %s", e)
             try:
                 await self._channel.send_text(
                     msg.room_id,
-                    f"⚠ Fehler bei der Verarbeitung: {type(e).__name__}",
+                    f"Fehler bei der Verarbeitung: {type(e).__name__}",
                 )
             except Exception:
                 logger.error("Konnte Fehlermeldung nicht senden")
-
-    def _find_latest_audio(self) -> Path | None:
-        """Sucht die neueste Audio-Datei im Audio-Verzeichnis.
-
-        Hinweis: In der finalen Integration wird der Audio-Pfad direkt
-        vom Assistant/TTS übergeben. Diese Methode ist ein Platzhalter.
-        """
-        if not self._audio_dir.exists():
-            return None
-
-        ogg_files = sorted(
-            self._audio_dir.glob("*.ogg"),
-            key=lambda p: p.stat().st_mtime,
-            reverse=True,
-        )
-        return ogg_files[0] if ogg_files else None
+        finally:
+            # Temp-Dateien aufräumen
+            if tmp_wav and tmp_wav.exists():
+                tmp_wav.unlink(missing_ok=True)
+            if tmp_ogg and tmp_ogg.exists():
+                tmp_ogg.unlink(missing_ok=True)
 
     async def _shutdown(self) -> None:
         """Async Shutdown: Disconnect und Loop stoppen."""

@@ -337,3 +337,73 @@
 - RPi5 Setup abgeschlossen: 192.168.50.220, Python 3.13.5, Bookworm Lite
 - Container-Pfad: /opt/matrix/ (docker-compose.yml + synapse-data/)
 - Nächster Schritt: Phase 6 TS3 (MatrixChannel implementieren) in Claude Code
+
+## Abgeschlossen: Phase 6 – TS2 MatrixChannel (matrix-nio Implementierung)
+- Branch: feature/phase-6-matrix-channel
+- Dateien: src/elder_berry/comms/matrix_channel.py (MatrixChannel – matrix-nio AsyncClient)
+  - Login: Passwort oder Access-Token
+  - Initialer Sync: markiert bestehende Nachrichten als gelesen
+  - send_text: m.room.message (m.text)
+  - send_audio: Upload + m.audio mit org.matrix.msc3245.voice Flag (Sprachnachricht)
+  - on_message: Callback für m.room.message (m.text), eigene Nachrichten ignoriert
+  - sync_loop: Polling mit Auto-Retry bei Netzwerkfehlern
+  - Room-Whitelist: optionale Filterung auf erlaubte Räume
+  - MatrixChannelError: eigene Exception-Klasse
+- Dateien: tests/test_matrix_channel.py (35 Tests, Mock-basiert)
+  - Init (5), Connect (4), Disconnect (2), Send Text (3), Send Audio (4)
+  - On Message (9: eigene ignoriert, Whitelist, Callback-Fehler, Timestamp)
+  - Sync-Loop (3: not connected, stop, retry)
+  - MIME-Type (5)
+- Dateien: scripts/demo_matrix_bot.py (Echo-Bot, nutzt SecretStore für Credentials)
+- Dependencies: aiofiles>=23.0 zu [matrix] hinzugefügt
+- Tests: 422/422 grün (35 neu + 387 bestehend)
+- Nächster Schritt: Live-Test mit echtem Server (demo_matrix_bot.py)
+
+## Abgeschlossen: Phase 6 – TS2 Live-Test + Auto-Join Fix
+- Echo-Bot live getestet: demo_matrix_bot.py → "echo hallo" kam korrekt zurück
+- Fix: _auto_join_invited_rooms() hinzugefügt – Bot tritt eingeladenen Räumen automatisch bei
+- JoinError-Import ergänzt
+
+## Abgeschlossen: Phase 6 – TS3 AudioConverter (WAV/MP3 → OGG/Opus)
+- Dateien: src/elder_berry/comms/audio_converter.py (AudioConverter – pydub + ffmpeg)
+  - ffmpeg-Verfügbarkeitsprüfung bei Init (shutil.which)
+  - to_ogg_opus(): Konvertierung mit konfigurierbarer Bitrate, Returns (Path, duration_ms)
+  - get_duration_ms(): Duration-Abfrage für Matrix-Event-Metadata
+  - Lazy Import: pydub erst bei Methodenaufruf importiert
+  - Graceful Degradation: klare Fehlermeldung wenn ffmpeg fehlt
+- Dateien: tests/test_audio_converter.py (15 Tests)
+  - Init/ffmpeg-Check (3), to_ogg_opus (7), ohne ffmpeg (2), get_duration (3)
+  - Echte WAV-Fixtures (1s + 500ms Stille), Tests skippen wenn ffmpeg fehlt
+- Dependencies: pydub>=0.25 bereits in [matrix] optional group
+- Tests: 432/432 grün (15 passed + 0 skipped, 422 bestehend) – ffmpeg installiert via winget
+- Nächster Schritt: TS4 – Assistant-Integration (MatrixBridge + LLM)
+
+## Abgeschlossen: Phase 6 – TS4 Assistant-Integration (MatrixBridge + Audio-Pipeline)
+- Datei: src/elder_berry/core/assistant.py (erweitert)
+  - AssistantResult: neues Feld audio_path: Path | None
+  - process(): neuer Parameter audio_output: Path | None (Datei statt Playback)
+  - _tts_to_file(): generiert Audio als Datei (generate_audio), graceful fallback
+- Datei: src/elder_berry/comms/bridge.py (erweitert)
+  - AudioConverter als DI-Parameter (optional)
+  - _handle_message(): WAV→OGG Pipeline (tempfile → convert → send_audio → cleanup)
+  - _find_latest_audio() Placeholder entfernt
+- Datei: tests/test_assistant_matrix.py (10 Tests, NEU)
+  - audio_output: mit/ohne, Fehler, NotImplemented, leerer Input, kein TTS
+  - AssistantResult.audio_path: default None, mit Pfad, rückwärtskompatibel
+- Datei: tests/test_comms.py (angepasst: 3 alte Tests entfernt, 2 neue für AudioConverter-Integration)
+- Datei: scripts/demo_matrix_bot.py (erweitert: --llm Flag für volle Pipeline)
+  - Echo-Modus (Standard): wie bisher
+  - LLM-Modus: Ollama + TTS + AudioConverter + MatrixBridge
+- Tests: 451/451 grün (19 neu/geändert + 432 bestehend)
+- Rückwärtskompatibel: ohne audio_output verhält sich process() wie bisher
+
+## Architektur-Notiz: Remote Tower via NordVPN Meshnet (2026-03-15)
+- Laptop unterwegs kann Tower als LLM-Backend nutzen über NordVPN Meshnet
+- Meshnet gibt feste Mesh-IPs (100.x.x.x), kein Port-Forwarding nötig
+- Voraussetzung Tower: OLLAMA_HOST=0.0.0.0 + Firewall nur Mesh-IP auf Port 11434
+- LLMRouter Config: ollama.host = Mesh-IP (unterwegs) oder localhost (zuhause)
+- Idee: Auto-Erkennung in LLMRouter (localhost erreichbar? → lokal, sonst → Mesh-IP)
+- Latenz unterwegs: 30-80ms (gutes Netz), 150-500ms (schlechtes Netz)
+- Streaming-Tokens über Mesh merkbar langsamer, aber funktional
+- Fallback: Laptop hat eigenes Ollama (phi4:14b mit RAM-Auslagerung)
+- Aktueller Entwicklungsbetrieb: alles auf Laptop, Tower wird später scharfgeschaltet

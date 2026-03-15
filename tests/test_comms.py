@@ -266,6 +266,68 @@ class TestMatrixBridge:
 
         run_async(_test())
 
+    def test_handle_message_with_audio_converter(self, tmp_path):
+        async def _test():
+            channel = MockChannel()
+            # Assistant gibt audio_path zurück
+            wav_file = tmp_path / "test.wav"
+            wav_file.write_bytes(b"RIFF" + b"\x00" * 100)
+            assistant = MagicMock()
+            assistant.process.return_value = AssistantResult(
+                response="Antwort mit Audio",
+                action_executed=None,
+                action_success=False,
+                emotion="neutral",
+                audio_path=wav_file,
+            )
+
+            # AudioConverter Mock
+            ogg_file = tmp_path / "test.ogg"
+            ogg_file.write_bytes(b"OggS" + b"\x00" * 50)
+            converter = MagicMock()
+            converter.ffmpeg_available = True
+            converter.to_ogg_opus.return_value = (ogg_file, 1000)
+
+            bridge = MatrixBridge(
+                channel=channel, assistant=assistant,
+                audio_converter=converter,
+            )
+            await channel.connect()
+
+            msg = IncomingMessage(
+                sender="@u:x", room_id="!r:x", body="Sag was",
+                timestamp=time.time(),
+            )
+            await bridge._handle_message(msg)
+
+            # Text gesendet
+            assert ("!r:x", "Antwort mit Audio") in channel._sent_texts
+            # Audio gesendet
+            assert len(channel._sent_audios) == 1
+            assert channel._sent_audios[0][0] == "!r:x"
+            # AudioConverter aufgerufen
+            converter.to_ogg_opus.assert_called_once()
+
+        run_async(_test())
+
+    def test_handle_message_no_audio_without_converter(self):
+        async def _test():
+            channel = MockChannel()
+            assistant = self._make_assistant_mock("Nur Text")
+            bridge = MatrixBridge(channel=channel, assistant=assistant)
+            await channel.connect()
+
+            msg = IncomingMessage(
+                sender="@u:x", room_id="!r:x", body="Hi", timestamp=1.0,
+            )
+            await bridge._handle_message(msg)
+
+            # Nur Text, kein Audio
+            assert ("!r:x", "Nur Text") in channel._sent_texts
+            assert len(channel._sent_audios) == 0
+
+        run_async(_test())
+
     def test_handle_message_empty_response(self):
         async def _test():
             channel = MockChannel()
@@ -300,41 +362,6 @@ class TestMatrixBridge:
             assert "RuntimeError" in channel._sent_texts[0][1]
 
         run_async(_test())
-
-    def test_find_latest_audio_no_dir(self, tmp_path):
-        channel = MockChannel()
-        assistant = self._make_assistant_mock()
-        bridge = MatrixBridge(
-            channel=channel, assistant=assistant,
-            audio_dir=tmp_path / "nonexistent",
-        )
-        assert bridge._find_latest_audio() is None
-
-    def test_find_latest_audio_empty_dir(self, tmp_path):
-        channel = MockChannel()
-        assistant = self._make_assistant_mock()
-        bridge = MatrixBridge(
-            channel=channel, assistant=assistant,
-            audio_dir=tmp_path,
-        )
-        assert bridge._find_latest_audio() is None
-
-    def test_find_latest_audio_picks_newest(self, tmp_path):
-        channel = MockChannel()
-        assistant = self._make_assistant_mock()
-        bridge = MatrixBridge(
-            channel=channel, assistant=assistant,
-            audio_dir=tmp_path,
-        )
-
-        old = tmp_path / "old.ogg"
-        old.write_bytes(b"old")
-        time.sleep(0.05)
-        new = tmp_path / "new.ogg"
-        new.write_bytes(b"new")
-
-        result = bridge._find_latest_audio()
-        assert result == new
 
     def test_async_main_connects_channel(self):
         async def _test():

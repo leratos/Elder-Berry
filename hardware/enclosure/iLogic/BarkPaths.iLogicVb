@@ -1,0 +1,152 @@
+' ============================================================
+' iLogic: Baumrinden-Pfade für Sweep-Cut
+' Erzeugt 3D-Splines auf Zylinderoberfläche (Ø204mm)
+' Datei: hardware/enclosure/iLogic/BarkPaths.iLogicVb
+' ============================================================
+' ANLEITUNG:
+' 1. Öffne master.ipt in Inventor
+' 2. iLogic → Regel hinzufügen → Code einfügen
+' 3. Parameter anpassen (siehe unten)
+' 4. Ausführen → erzeugt 3D-Skizzen mit Spline-Pfaden
+' 5. Profil-Skizze erstellen (V-Nut oder U-Nut)
+' 6. Sweep → Pfad = 3D-Spline, Profil = Nut → Cut
+' ============================================================
+
+' === PARAMETER (hier anpassen) ===
+Dim radius As Double = 10.2          ' cm (Ø204mm / 2) - Inventor arbeitet in cm!
+Dim stammHoehe As Double = 19.0      ' cm (190mm Gesamthöhe)
+Dim startHoehe As Double = 0.0       ' cm (ab wo Furchen beginnen)
+Dim endHoehe As Double = 18.0        ' cm (bis wo Furchen gehen)
+
+Dim anzahlFurchen As Integer = 24    ' Gesamtanzahl Rindenfurchen
+Dim punkteProFurche As Integer = 12  ' Spline-Kontrollpunkte pro Furche
+Dim welligkeit As Double = 0.3       ' cm seitliche Abweichung (max)
+Dim laengenVariation As Double = 0.3 ' 0-1: wie stark die Länge variiert
+Dim seed As Integer = 42             ' Zufalls-Seed (ändern für andere Muster)
+
+' === SETUP ===
+Dim oDoc As PartDocument = ThisApplication.ActiveDocument
+Dim oDef As PartComponentDefinition = oDoc.ComponentDefinition
+Dim oTG As TransientGeometry = ThisApplication.TransientGeometry
+Dim rng As New Random(seed)
+Dim PI As Double = Math.PI
+
+' Alte Bark-Skizzen löschen (falls vorhanden, für Re-Run)
+Dim sketchesToDelete As New List(Of Sketch3D)
+For Each sk As Sketch3D In oDef.Sketches3D
+    If sk.Name.StartsWith("Bark_") Then
+        sketchesToDelete.Add(sk)
+    End If
+Next
+For Each sk As Sketch3D In sketchesToDelete
+    sk.Delete()
+Next
+
+' === FURCHEN ERZEUGEN ===
+Dim furchenErzeugt As Integer = 0
+
+For i As Integer = 0 To anzahlFurchen - 1
+    ' Basis-Winkel gleichmäßig verteilt + Zufallsversatz
+    Dim basisWinkel As Double = (2 * PI * i / anzahlFurchen)
+    Dim winkelOffset As Double = (rng.NextDouble() - 0.5) * (2 * PI / anzahlFurchen) * 0.6
+    Dim theta As Double = basisWinkel + winkelOffset
+
+    ' Individuelle Furchen-Länge (Variation)
+    Dim furcheStart As Double = startHoehe + rng.NextDouble() * laengenVariation * (endHoehe - startHoehe) * 0.3
+    Dim furcheEnd As Double = endHoehe - rng.NextDouble() * laengenVariation * (endHoehe - startHoehe) * 0.3
+    Dim furcheHoehe As Double = furcheEnd - furcheStart
+    
+    If furcheHoehe < 2.0 Then Continue For ' zu kurze Furchen überspringen
+
+    ' 3D-Skizze erstellen
+    Dim oSketch As Sketch3D = oDef.Sketches3D.Add()
+    oSketch.Name = "Bark_" & Format(i, "00")
+    oSketch.Edit()
+
+    ' Punkte auf Zylinderoberfläche berechnen
+    Dim punkte As ObjectCollection = ThisApplication.TransientObjects.CreateObjectCollection()
+    
+    For j As Integer = 0 To punkteProFurche - 1
+        Dim t As Double = j / CDbl(punkteProFurche - 1) ' 0 bis 1
+        Dim z As Double = furcheStart + t * furcheHoehe
+        
+        ' Seitliche Welligkeit: Sinus + Rauschen
+        Dim welle As Double = Math.Sin(t * PI * (2 + rng.NextDouble() * 2)) * welligkeit
+        welle += (rng.NextDouble() - 0.5) * welligkeit * 0.4
+        
+        ' Winkel auf Zylinderoberfläche (Bogenmaß → Winkelversatz)
+        Dim winkelAbweichung As Double = welle / radius
+        Dim aktuellerWinkel As Double = theta + winkelAbweichung
+
+        ' Kartesische Koordinaten auf Zylindermantel
+        Dim x As Double = radius * Math.Cos(aktuellerWinkel)
+        Dim y As Double = radius * Math.Sin(aktuellerWinkel)
+        
+        ' Punkt erstellen und zur Collection hinzufügen
+        Dim pt As Point = oTG.CreatePoint(x, y, z)
+        punkte.Add(pt)
+    Next j
+
+    ' Spline durch Punkte erzeugen
+    If punkte.Count >= 3 Then
+        Try
+            Dim oSpline As SketchSpline3D = oSketch.SketchSplines3D.Add(punkte)
+            furchenErzeugt += 1
+        Catch ex As Exception
+            ' Spline fehlgeschlagen, Skizze trotzdem beenden
+        End Try
+    End If
+    
+    oSketch.ExitEdit()
+Next i
+
+' === QUERFURCHEN (optional, für realistischere Rinde) ===
+' Horizontale Ringe die die vertikalen Furchen verbinden
+Dim anzahlQuerFurchen As Integer = 4
+Dim querWelligkeit As Double = 0.15 ' cm
+
+For i As Integer = 0 To anzahlQuerFurchen - 1
+    Dim z As Double = startHoehe + (i + 1) * (endHoehe - startHoehe) / (anzahlQuerFurchen + 1)
+    z += (rng.NextDouble() - 0.5) * 2.0 ' Höhenvariation
+    
+    Dim oSketch As Sketch3D = oDef.Sketches3D.Add()
+    oSketch.Name = "Bark_Ring_" & Format(i, "00")
+    oSketch.Edit()
+    
+    Dim punkte As ObjectCollection = ThisApplication.TransientObjects.CreateObjectCollection()
+    Dim ringPunkte As Integer = 36 ' alle 10°
+    
+    For j As Integer = 0 To ringPunkte
+        Dim t As Double = j / CDbl(ringPunkte)
+        Dim winkel As Double = t * 2 * PI
+        Dim zVar As Double = z + Math.Sin(winkel * 6) * querWelligkeit
+        zVar += (rng.NextDouble() - 0.5) * querWelligkeit * 0.5
+        
+        Dim x As Double = radius * Math.Cos(winkel)
+        Dim y As Double = radius * Math.Sin(winkel)
+        punkte.Add(oTG.CreatePoint(x, y, zVar))
+    Next j
+
+    If punkte.Count >= 3 Then
+        Try
+            oSketch.SketchSplines3D.Add(punkte)
+            furchenErzeugt += 1
+        Catch ex As Exception
+        End Try
+    End If
+    
+    oSketch.ExitEdit()
+Next i
+
+' === ERGEBNIS ===
+oDoc.Update()
+MessageBox.Show( _
+    "Baumrinden-Pfade erzeugt!" & vbCrLf & _
+    "Furchen: " & furchenErzeugt & vbCrLf & _
+    "Radius: " & radius & " cm (Ø" & (radius * 2 * 10) & "mm)" & vbCrLf & _
+    "Höhe: " & startHoehe & " – " & endHoehe & " cm" & vbCrLf & vbCrLf & _
+    "Nächste Schritte:" & vbCrLf & _
+    "1. Profil-Skizze erstellen (V-Nut ~1-2mm)" & vbCrLf & _
+    "2. Sweep → Pfad: Bark_XX → Profil: Nut → Operation: Cut" & vbCrLf & _
+    "3. Seed ändern für andere Muster", _
+    "Elder-Berry Bark Generator")
