@@ -473,3 +473,13 @@
 - SystemMonitor: bestehende Klasse wiederverwendet (kein neues File)
 - Tests: 513/513 grün (54 neu + 459 bestehend)
 - Konsistentes Pattern: DI + Graceful Degradation (wie alle Module)
+
+## Abgeschlossen: Phase 7 – Nachbesserungen (gleicher Chat)
+- Keyword-basiertes Command-Parsing: natürliche Sprache erkannt ("schick mir ein screenshot")
+- demo_matrix_bot.py: --remote Flag (standalone oder mit --llm kombinierbar)
+- Saleria Persönlichkeit: von "magische Hexe" zu locker-frech (Option A)
+- Datum/Uhrzeit im System-Prompt (LLM kennt jetzt den Wochentag)
+- Aktions-Anweisung: "nur wenn explizit gefragt" (verhindert unnötige Fenster-Fokus-Aktionen)
+- Ollama-Timeout: 60s → 120s (konfigurierbar, für Laptop mit RAM-Auslagerung)
+- Tests: 518/518 grün
+- Nächster Schritt: ClaudeAgent (Stufe 2 – Anthropic API für komplexe Anfragen)
