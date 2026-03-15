@@ -1,5 +1,6 @@
 """TTS-Engine – Coqui XTTS v2 mit Voice Cloning und Emotions-Support."""
 import logging
+import re
 import tempfile
 import wave
 from pathlib import Path
@@ -24,6 +25,38 @@ from elder_berry.tts.base import TTSEngine, VoiceInfo
 logger = logging.getLogger(__name__)
 
 XTTS_MODEL = "tts_models/multilingual/multi-dataset/xtts_v2"
+
+# Regex: Emojis und andere Non-Text-Zeichen entfernen
+# Umfasst Emoji-Blöcke, Dingbats, Symbole, etc.
+_EMOJI_PATTERN = re.compile(
+    "["
+    "\U0001F600-\U0001F64F"  # Emoticons
+    "\U0001F300-\U0001F5FF"  # Symbole & Piktogramme
+    "\U0001F680-\U0001F6FF"  # Transport & Karten
+    "\U0001F1E0-\U0001F1FF"  # Flaggen
+    "\U0001FA00-\U0001FA6F"  # Erweiterte Symbole
+    "\U0001FA70-\U0001FAFF"  # Erweiterte Symbole
+    "\U00002702-\U000027B0"  # Dingbats
+    "\U0000FE00-\U0000FE0F"  # Variation Selectors
+    "\U0000200D"             # Zero Width Joiner
+    "\U000020E3"             # Combining Enclosing Keycap
+    "\U00002600-\U000026FF"  # Misc Symbols
+    "\U00002300-\U000023FF"  # Misc Technical
+    "]+",
+    flags=re.UNICODE,
+)
+
+
+def _clean_text_for_tts(text: str) -> str:
+    """Entfernt Emojis und bereinigt Text für TTS-Synthese.
+
+    XTTS v2 kann mit Emojis nicht umgehen – es versucht sie als Phoneme
+    zu interpretieren und driftet in andere Sprachen ab.
+    """
+    cleaned = _EMOJI_PATTERN.sub("", text)
+    # Mehrfache Leerzeichen und Whitespace bereinigen
+    cleaned = re.sub(r"\s+", " ", cleaned).strip()
+    return cleaned
 
 
 class CoquiTTSEngine(TTSEngine):
@@ -141,6 +174,13 @@ class CoquiTTSEngine(TTSEngine):
         if not self.is_loaded:
             self.load()
 
+        # Emojis entfernen – XTTS kann damit nicht umgehen und driftet
+        # in andere Sprachen ab (z.B. 🌙 → japanische Phoneme)
+        clean = _clean_text_for_tts(text)
+        if not clean:
+            logger.warning("Text nach Emoji-Bereinigung leer, überspringe TTS")
+            return output_path
+
         speaker_wav = self._resolve_speaker_wav(emotion)
         if speaker_wav is None:
             raise ValueError(
@@ -150,11 +190,11 @@ class CoquiTTSEngine(TTSEngine):
 
         logger.debug(
             "Generiere Audio: %d Zeichen, emotion=%s, speaker=%s",
-            len(text), emotion, speaker_wav.name,
+            len(clean), emotion, speaker_wav.name,
         )
 
         self._tts.tts_to_file(
-            text=text,
+            text=clean,
             speaker_wav=str(speaker_wav),
             language=self._language,
             file_path=str(output_path),

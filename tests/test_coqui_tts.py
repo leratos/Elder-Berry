@@ -6,6 +6,7 @@ from unittest.mock import MagicMock, patch, PropertyMock
 import pytest
 
 from elder_berry.tts.base import TTSEngine, VoiceInfo
+from elder_berry.tts.coqui_engine import _clean_text_for_tts
 
 
 # ---------------------------------------------------------------------------
@@ -246,3 +247,48 @@ class TestSpeak:
         ):
             engine.speak("Test")
         # Temp-Datei sollte gelöscht sein (kein Assert nötig, kein Crash = OK)
+
+
+# ---------------------------------------------------------------------------
+# Emoji-Bereinigung (_clean_text_for_tts)
+# ---------------------------------------------------------------------------
+
+class TestCleanTextForTts:
+    def test_plain_text_unchanged(self):
+        assert _clean_text_for_tts("Hallo Welt!") == "Hallo Welt!"
+
+    def test_emoji_removed(self):
+        assert _clean_text_for_tts("Gute Nacht! 🌙") == "Gute Nacht!"
+
+    def test_multiple_emojis_removed(self):
+        assert _clean_text_for_tts("Hey! 😊🎉🔥") == "Hey!"
+
+    def test_only_emoji_returns_empty(self):
+        assert _clean_text_for_tts("🌙") == ""
+
+    def test_emoji_between_text(self):
+        assert _clean_text_for_tts("Gute 🌙 Nacht!") == "Gute Nacht!"
+
+    def test_preserves_german_umlauts(self):
+        assert _clean_text_for_tts("Träum was Schönes!") == "Träum was Schönes!"
+
+    def test_whitespace_normalized(self):
+        assert _clean_text_for_tts("Hallo   Welt") == "Hallo Welt"
+
+    def test_empty_string(self):
+        assert _clean_text_for_tts("") == ""
+
+
+class TestGenerateAudioEmojiHandling:
+    def test_emoji_stripped_before_tts(self, engine, mock_tts_module, tmp_path):
+        """Emojis werden vor der TTS-Synthese entfernt."""
+        output = tmp_path / "output.wav"
+        engine.generate_audio("Gute Nacht! 🌙", output)
+        call_kwargs = mock_tts_module["tts_instance"].tts_to_file.call_args
+        assert call_kwargs.kwargs["text"] == "Gute Nacht!"
+
+    def test_pure_emoji_skips_tts(self, engine, mock_tts_module, tmp_path):
+        """Reiner Emoji-Text überspringt TTS komplett."""
+        output = tmp_path / "output.wav"
+        engine.generate_audio("🌙🎉", output)
+        mock_tts_module["tts_instance"].tts_to_file.assert_not_called()
