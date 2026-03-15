@@ -1,15 +1,23 @@
 """Tests: MessageChannel ABC, IncomingMessage DTO, MatrixBridge."""
 import asyncio
-import json
 import time
 from pathlib import Path
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import MagicMock
 
 import pytest
 
 from elder_berry.comms.message_channel import IncomingMessage, MessageChannel
 from elder_berry.comms.bridge import MatrixBridge
 from elder_berry.core.assistant import AssistantResult
+
+
+# ---------------------------------------------------------------------------
+# Helper: async in sync ausführen (kein pytest-asyncio nötig)
+# ---------------------------------------------------------------------------
+
+def run_async(coro):
+    """Führt eine Coroutine synchron aus (für Tests ohne pytest-asyncio)."""
+    return asyncio.run(coro)
 
 
 # ---------------------------------------------------------------------------
@@ -111,71 +119,78 @@ class TestMessageChannelABC:
         channel = MockChannel()
         assert isinstance(channel, MessageChannel)
 
-    @pytest.mark.asyncio
-    async def test_connect_disconnect(self):
-        channel = MockChannel()
-        assert not channel.is_connected
-        await channel.connect()
-        assert channel.is_connected
-        await channel.disconnect()
-        assert not channel.is_connected
+    def test_connect_disconnect(self):
+        async def _test():
+            channel = MockChannel()
+            assert not channel.is_connected
+            await channel.connect()
+            assert channel.is_connected
+            await channel.disconnect()
+            assert not channel.is_connected
 
-    @pytest.mark.asyncio
-    async def test_send_text(self):
-        channel = MockChannel()
-        await channel.connect()
-        await channel.send_text("!room:x", "Hallo!")
-        assert channel._sent_texts == [("!room:x", "Hallo!")]
+        run_async(_test())
 
-    @pytest.mark.asyncio
-    async def test_send_audio(self):
-        channel = MockChannel()
-        await channel.connect()
-        await channel.send_audio("!room:x", Path("/tmp/voice.ogg"))
-        assert channel._sent_audios == [("!room:x", Path("/tmp/voice.ogg"))]
+    def test_send_text(self):
+        async def _test():
+            channel = MockChannel()
+            await channel.connect()
+            await channel.send_text("!room:x", "Hallo!")
+            assert channel._sent_texts == [("!room:x", "Hallo!")]
 
-    @pytest.mark.asyncio
-    async def test_on_message_callback(self):
-        channel = MockChannel()
-        received = []
-        channel.on_message(lambda msg: received.append(msg))
+        run_async(_test())
 
-        msg = IncomingMessage(
-            sender="@u:x", room_id="!r:x", body="test", timestamp=1.0,
-        )
-        # Callback direkt ist hier eine sync Lambda → für den Test reicht das
-        # In der echten Bridge wird ein async Callback registriert
-        for cb in channel._callbacks:
-            result = cb(msg)
-            # Falls coroutine, awaiten
-            if asyncio.iscoroutine(result):
-                await result
+    def test_send_audio(self):
+        async def _test():
+            channel = MockChannel()
+            await channel.connect()
+            await channel.send_audio("!room:x", Path("/tmp/voice.ogg"))
+            assert channel._sent_audios == [("!room:x", Path("/tmp/voice.ogg"))]
 
-        assert len(received) == 1
-        assert received[0].body == "test"
+        run_async(_test())
 
-    @pytest.mark.asyncio
-    async def test_multiple_callbacks(self):
-        channel = MockChannel()
-        results_a = []
-        results_b = []
+    def test_on_message_callback(self):
+        async def _test():
+            channel = MockChannel()
+            received = []
+            channel.on_message(lambda msg: received.append(msg))
 
-        async def cb_a(msg):
-            results_a.append(msg)
+            msg = IncomingMessage(
+                sender="@u:x", room_id="!r:x", body="test", timestamp=1.0,
+            )
+            for cb in channel._callbacks:
+                result = cb(msg)
+                if asyncio.iscoroutine(result):
+                    await result
 
-        async def cb_b(msg):
-            results_b.append(msg)
+            assert len(received) == 1
+            assert received[0].body == "test"
 
-        channel.on_message(cb_a)
-        channel.on_message(cb_b)
+        run_async(_test())
 
-        msg = IncomingMessage(
-            sender="@u:x", room_id="!r:x", body="multi", timestamp=1.0,
-        )
-        await channel.simulate_message(msg)
+    def test_multiple_callbacks(self):
+        async def _test():
+            channel = MockChannel()
+            results_a = []
+            results_b = []
 
-        assert len(results_a) == 1
-        assert len(results_b) == 1
+            async def cb_a(msg):
+                results_a.append(msg)
+
+            async def cb_b(msg):
+                results_b.append(msg)
+
+            channel.on_message(cb_a)
+            channel.on_message(cb_b)
+
+            msg = IncomingMessage(
+                sender="@u:x", room_id="!r:x", body="multi", timestamp=1.0,
+            )
+            await channel.simulate_message(msg)
+
+            assert len(results_a) == 1
+            assert len(results_b) == 1
+
+        run_async(_test())
 
 
 # ---------------------------------------------------------------------------
@@ -207,11 +222,9 @@ class TestMatrixBridge:
         bridge.start()
         assert bridge.is_running
 
-        # Kurz warten damit der Thread den Loop starten kann
         time.sleep(0.2)
 
         bridge.stop()
-        # Etwas Geduld für sauberen Shutdown
         time.sleep(0.3)
         assert not bridge.is_running
 
@@ -233,57 +246,60 @@ class TestMatrixBridge:
         bridge = MatrixBridge(channel=channel, assistant=assistant)
         bridge.stop()  # Darf nicht crashen
 
-    @pytest.mark.asyncio
-    async def test_handle_message_calls_assistant(self):
-        channel = MockChannel()
-        assistant = self._make_assistant_mock("Hallo zurück!")
-        bridge = MatrixBridge(channel=channel, assistant=assistant)
+    def test_handle_message_calls_assistant(self):
+        async def _test():
+            channel = MockChannel()
+            assistant = self._make_assistant_mock("Hallo zurück!")
+            bridge = MatrixBridge(channel=channel, assistant=assistant)
 
-        # Callback direkt testen (ohne Thread-Bridge)
-        await channel.connect()
-        channel.on_message(bridge._handle_message)
+            await channel.connect()
+            channel.on_message(bridge._handle_message)
 
-        msg = IncomingMessage(
-            sender="@user:x", room_id="!room:x", body="Hi Saleria",
-            timestamp=time.time(),
-        )
-        await bridge._handle_message(msg)
+            msg = IncomingMessage(
+                sender="@user:x", room_id="!room:x", body="Hi Saleria",
+                timestamp=time.time(),
+            )
+            await bridge._handle_message(msg)
 
-        assistant.process.assert_called_once_with("Hi Saleria")
-        assert ("!room:x", "Hallo zurück!") in channel._sent_texts
+            assistant.process.assert_called_once_with("Hi Saleria")
+            assert ("!room:x", "Hallo zurück!") in channel._sent_texts
 
-    @pytest.mark.asyncio
-    async def test_handle_message_empty_response(self):
-        channel = MockChannel()
-        assistant = self._make_assistant_mock("")
-        bridge = MatrixBridge(channel=channel, assistant=assistant)
-        await channel.connect()
+        run_async(_test())
 
-        msg = IncomingMessage(
-            sender="@u:x", room_id="!r:x", body="test", timestamp=1.0,
-        )
-        await bridge._handle_message(msg)
+    def test_handle_message_empty_response(self):
+        async def _test():
+            channel = MockChannel()
+            assistant = self._make_assistant_mock("")
+            bridge = MatrixBridge(channel=channel, assistant=assistant)
+            await channel.connect()
 
-        # Leere Antwort → kein Text gesendet
-        assert len(channel._sent_texts) == 0
+            msg = IncomingMessage(
+                sender="@u:x", room_id="!r:x", body="test", timestamp=1.0,
+            )
+            await bridge._handle_message(msg)
 
-    @pytest.mark.asyncio
-    async def test_handle_message_assistant_error(self):
-        channel = MockChannel()
-        assistant = MagicMock()
-        assistant.process.side_effect = RuntimeError("LLM down")
-        bridge = MatrixBridge(channel=channel, assistant=assistant)
-        await channel.connect()
+            assert len(channel._sent_texts) == 0
 
-        msg = IncomingMessage(
-            sender="@u:x", room_id="!r:x", body="test", timestamp=1.0,
-        )
-        await bridge._handle_message(msg)
+        run_async(_test())
 
-        # Fehlermeldung an den Raum gesendet
-        assert len(channel._sent_texts) == 1
-        assert "Fehler" in channel._sent_texts[0][1]
-        assert "RuntimeError" in channel._sent_texts[0][1]
+    def test_handle_message_assistant_error(self):
+        async def _test():
+            channel = MockChannel()
+            assistant = MagicMock()
+            assistant.process.side_effect = RuntimeError("LLM down")
+            bridge = MatrixBridge(channel=channel, assistant=assistant)
+            await channel.connect()
+
+            msg = IncomingMessage(
+                sender="@u:x", room_id="!r:x", body="test", timestamp=1.0,
+            )
+            await bridge._handle_message(msg)
+
+            assert len(channel._sent_texts) == 1
+            assert "Fehler" in channel._sent_texts[0][1]
+            assert "RuntimeError" in channel._sent_texts[0][1]
+
+        run_async(_test())
 
     def test_find_latest_audio_no_dir(self, tmp_path):
         channel = MockChannel()
@@ -311,7 +327,6 @@ class TestMatrixBridge:
             audio_dir=tmp_path,
         )
 
-        # Zwei OGG-Dateien erstellen, zweite ist neuer
         old = tmp_path / "old.ogg"
         old.write_bytes(b"old")
         time.sleep(0.05)
@@ -321,15 +336,15 @@ class TestMatrixBridge:
         result = bridge._find_latest_audio()
         assert result == new
 
-    @pytest.mark.asyncio
-    async def test_async_main_connects_channel(self):
-        channel = MockChannel()
-        assistant = self._make_assistant_mock()
-        bridge = MatrixBridge(channel=channel, assistant=assistant)
+    def test_async_main_connects_channel(self):
+        async def _test():
+            channel = MockChannel()
+            assistant = self._make_assistant_mock()
+            bridge = MatrixBridge(channel=channel, assistant=assistant)
 
-        # sync_loop sofort beenden
-        channel._sync_event.set()
+            channel._sync_event.set()
 
-        await bridge._async_main()
-        # Channel wurde connected (und dann durch sync_loop beendet)
-        assert len(channel._callbacks) == 1
+            await bridge._async_main()
+            assert len(channel._callbacks) == 1
+
+        run_async(_test())
