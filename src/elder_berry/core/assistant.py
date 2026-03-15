@@ -3,7 +3,9 @@ from __future__ import annotations
 
 import json
 import logging
+import tempfile
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 from elder_berry.actions.base import ActionController
@@ -12,6 +14,7 @@ from elder_berry.llm.base import LLMClient
 from elder_berry.tts.base import TTSEngine
 
 if TYPE_CHECKING:
+    from elder_berry.agent.client import AgentClient
     from elder_berry.avatar.base import AvatarRenderer
     from elder_berry.character.base import CharacterEngine
     from elder_berry.robot.client import RobotClient
@@ -73,6 +76,7 @@ class Assistant:
         character: CharacterEngine | None = None,
         avatar: AvatarRenderer | None = None,
         robot: RobotClient | None = None,
+        agent: AgentClient | None = None,
     ) -> None:
         self._llm = llm
         self._actions_db = actions_db
@@ -81,6 +85,7 @@ class Assistant:
         self._character = character
         self._avatar = avatar
         self._robot = robot
+        self._agent = agent
 
     def process(self, user_input: str) -> AssistantResult:
         """
@@ -136,7 +141,9 @@ class Assistant:
                 self._avatar.show_speaking(True)
             self._robot_set_speaking(True)
             try:
-                if emotion_str:
+                if self._agent and self._is_agent_online():
+                    self._tts_via_agent(response_text, emotion_str)
+                elif emotion_str:
                     self._tts.speak(response_text, emotion=emotion_str)
                 else:
                     self._tts.speak(response_text)
@@ -208,7 +215,33 @@ class Assistant:
         return {"action": None, "params": {}, "response": raw}
 
     def _execute_action(self, action_type: str, params: dict) -> bool:
-        """Führt eine Aktion über den ActionController aus."""
+        """Führt eine Aktion aus. Agent-Route wenn verbunden, sonst lokal."""
+        # Robot-Aktionen immer direkt routen
+        if action_type in ("robot_drive", "robot_stop"):
+            return self._execute_robot_action(action_type, params)
+
+        # PC-Aktionen: wenn Agent verbunden → remote, sonst lokal
+        if self._agent and self._is_agent_online():
+            return self._execute_via_agent(action_type, params)
+
+        return self._execute_locally(action_type, params)
+
+    def _execute_via_agent(self, action_type: str, params: dict) -> bool:
+        """Führt eine PC-Aktion über den AgentClient (Laptop) aus."""
+        try:
+            result = self._agent.execute_action(action_type, params)
+            if not result.success:
+                logger.warning("Agent-Aktion '%s' fehlgeschlagen: %s",
+                               action_type, result.message)
+            return result.success
+        except Exception as e:
+            logger.error("Agent-Aktion '%s' fehlgeschlagen: %s", action_type, e)
+            # Fallback auf lokale Ausführung
+            logger.info("Fallback auf lokale Ausführung für '%s'", action_type)
+            return self._execute_locally(action_type, params)
+
+    def _execute_locally(self, action_type: str, params: dict) -> bool:
+        """Führt eine PC-Aktion über den lokalen ActionController aus."""
         try:
             match action_type:
                 case "press_key":
@@ -227,13 +260,6 @@ class Assistant:
                     return self._controller.minimize_window(params["title"])
                 case "maximize_window":
                     return self._controller.maximize_window(params["title"])
-                case "robot_drive":
-                    return self._robot_drive(
-                        params.get("direction", "forward"),
-                        params.get("speed", 0.5),
-                    )
-                case "robot_stop":
-                    return self._robot_stop(params.get("reason", "manual"))
                 case _:
                     logger.warning("Unbekannte Aktion: %s", action_type)
                     return False
@@ -245,6 +271,18 @@ class Assistant:
         except Exception as e:
             logger.error("Aktion '%s' fehlgeschlagen: %s", action_type, e)
             return False
+
+    def _execute_robot_action(self, action_type: str, params: dict) -> bool:
+        """Führt Robot-spezifische Aktionen aus."""
+        match action_type:
+            case "robot_drive":
+                return self._robot_drive(
+                    params.get("direction", "forward"),
+                    params.get("speed", 0.5),
+                )
+            case "robot_stop":
+                return self._robot_stop(params.get("reason", "manual"))
+        return False
 
     # --- Robot-Integration ---
 
@@ -310,3 +348,31 @@ class Assistant:
         except Exception as e:
             logger.debug("Robot-Status Abfrage fehlgeschlagen: %s", e)
             return "Roboter-Status: OFFLINE (Abfrage fehlgeschlagen)"
+
+    # --- Agent-Integration (Laptop) ---
+
+    def _is_agent_online(self) -> bool:
+        """Prüft ob der Laptop-Agent erreichbar ist (cached pro Request)."""
+        if not self._agent:
+            return False
+        try:
+            return self._agent.is_online()
+        except Exception:
+            return False
+
+    def _tts_via_agent(self, text: str, emotion: str | None) -> None:
+        """Generiert Audio auf dem Tower und sendet es an den Laptop-Agent."""
+        with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp:
+            tmp_path = Path(tmp.name)
+        try:
+            self._tts.generate_audio(text, tmp_path, emotion=emotion)
+            self._agent.play_audio_file(tmp_path, emotion=emotion or "neutral")
+        except NotImplementedError:
+            # TTS-Engine hat kein generate_audio → Fallback auf lokale Wiedergabe
+            logger.debug("TTS generate_audio nicht verfügbar, lokaler Fallback")
+            if emotion:
+                self._tts.speak(text, emotion=emotion)
+            else:
+                self._tts.speak(text)
+        finally:
+            tmp_path.unlink(missing_ok=True)

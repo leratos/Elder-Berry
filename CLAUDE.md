@@ -7,6 +7,7 @@ Logiklücken und Fehler hin.
 - Lies zu Beginn jedes Chats: C:\Dev\Elder-Berry\docs\journal.txt (letzte 80 Zeilen)
 - journal.txt ist die einzige Quelle für den aktuellen Stand
 - PROJECT_ROADMAP.md ist reine Planung – nur anfassen wenn Scope oder Phasen sich ändern
+- docs/concepts/ enthält Konzeptdokumente für geplante Phasen – lies das relevante Konzept bevor du eine Phase startest
 - Falls journal.txt fehlt oder leer: frag nach, mach keine Annahmen
 
 ## DOKUMENTATION

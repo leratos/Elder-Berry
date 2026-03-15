@@ -31,3 +31,11 @@
 - Sensor-Kontext in LLM-Prompts integrieren
 - OpenRouter Multimodal (Kamera → GPT-4o)
 - Feinschliff, Stabilität, Performance
+
+## Phase 6 – Matrix-Integration (Remote-Kommunikation)
+- Synapse Matrix-Server auf Plesk-Server (matrix.last-strawberry.com)
+- Element-Client auf Handy → Saleria erreichbar von unterwegs
+- MatrixChannel-Klasse (matrix-nio, async)
+- Text + Audio-Antworten (TTS → OGG/Opus → Sprachnachricht)
+- Assistant-Integration (MessageChannel als DI-Parameter)
+- Konzeptdokument: docs/concepts/phase-6-matrix-integration.md
