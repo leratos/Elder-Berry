@@ -272,3 +272,68 @@
 - Dependencies: matrix-nio, pydub (+ ffmpeg als System-Dependency)
 - Branch: feature/phase-6-matrix-integration
 - Nächster Schritt: Nutzer führt TS1 (Server-Setup) manuell aus, dann TS2 in Claude Code
+
+## Gehäuse-Redesign: Ionische Säule → Baumstamm (2026-03-15)
+- Alte Säule: 3kg bei 2mm Wand → zu schwer für TT-Motoren
+- Neues Konzept: Holunder-Baumstamm, segmentiert (Kern + Rindenstücke)
+- Spec: docs/concepts/gehaeuse-baumstamm-spec.md
+- Bauraum Drucker: 223×126×230mm → Halbschalen + Einzelsegmente
+- Zielgewicht Gehäuse: 500-600g (max. 750g)
+- Gesamtgewicht Ziel: ~1.3kg (max. 1.5kg)
+- Nächster Schritt: CAD in Inventor, Prototyp Kern-Halbschale drucken + wiegen
+
+## Abgeschlossen: RPi5 Setup – Headless (2026-03-15)
+- OS: Raspberry Pi OS Lite (64-bit, Bookworm)
+- Python: 3.13.5 (neuer als Tower/Laptop 3.12 – OK, rückwärtskompatibel)
+- Hostname: elderberry, IP: 192.168.50.220 (statisch)
+- I²C aktiviert, Firewall aktiv (SSH + Port 8000), ffmpeg installiert
+- venv: /home/pi/elder-berry/.venv
+- Anleitung: docs/rpi5_setup.md
+- CLAUDE.md aktualisiert (Python 3.13 statt 3.12)
+
+## Abgeschlossen: Phase 6 – TS2 Vorbereitung (SecretStore + MessageChannel ABC + MatrixBridge)
+- Branch: feature/phase-6-matrix-integration
+- Dateien: src/elder_berry/core/secret_store.py (SecretStore – Fernet AES-128-CBC + HMAC-SHA256)
+  - Key-Datei: ~/.elder-berry/secret.key (auto-generiert, chmod 600)
+  - Secrets-Datei: ~/.elder-berry/secrets.enc (verschlüsseltes JSON)
+  - API: get/set/delete/has/list_keys/get_or_none
+  - Custom Exceptions: SecretStoreError, SecretNotFoundError
+- Dateien: src/elder_berry/comms/__init__.py (Package-Init)
+- Dateien: src/elder_berry/comms/message_channel.py (MessageChannel ABC + IncomingMessage DTO)
+  - Interface: connect/disconnect/send_text/send_audio/on_message/sync_loop/is_connected
+  - IncomingMessage: frozen Dataclass (sender, room_id, body, timestamp, raw)
+  - MessageCallback Typ-Alias für async Callbacks
+- Dateien: src/elder_berry/comms/bridge.py (MatrixBridge – Async↔Sync Bridge)
+  - Thread + Event-Loop Pattern: async sync_loop in Hintergrund-Thread
+  - run_in_executor für blockierendes Assistant.process()
+  - Graceful Shutdown: disconnect + Task-Cancel
+  - Fehlerbehandlung: Fehlermeldung an Raum bei Exception
+- Dateien: tests/test_secret_store.py (28 Tests)
+- Dateien: tests/test_comms.py (23 Tests)
+- Dependencies: cryptography>=42.0 (core), matrix-nio>=0.24 + pydub>=0.25 (optional [matrix])
+- pyproject.toml: [matrix] optional dependency group hinzugefügt
+- Tests: 387/387 grün (51 neu + 336 bestehend)
+- Nächster Schritt: MatrixChannel implementieren (wenn Synapse-Server steht)
+
+## Abgeschlossen: Matrix-Server Setup (2026-03-15)
+- Synapse (Docker) + PostgreSQL 16 auf Plesk-Server
+- Domain: matrix.last-strawberry.com (SSL via Let's Encrypt)
+- Plesk Docker Proxy Rules: matrix.last-strawberry.com → synapse:8008 (WebSocket aktiv)
+- Accounts: @saleria:matrix.last-strawberry.com (Bot), @lera:matrix.last-strawberry.com (Admin)
+- Federation: AUS, E2EE: AUS, Registration: AUS
+- Health-Check: https://matrix.last-strawberry.com/_matrix/client/versions → OK
+- Container-Pfad: /opt/matrix/ (docker-compose.yml + synapse-data/)
+- Anleitung: docs/matrix_setup.md
+- Nächster Schritt: Element-Client einrichten, Raum erstellen, Bot einladen
+
+## Abgeschlossen: Matrix-Server Setup – TS1 komplett (2026-03-15)
+- Synapse (Docker) + PostgreSQL 16 auf Plesk-Server
+- Domain: matrix.last-strawberry.com (SSL via Let's Encrypt)
+- Plesk Docker Proxy Rules: matrix.last-strawberry.com → synapse:8008 (WebSocket aktiv)
+- Accounts: @saleria:matrix.last-strawberry.com (Bot), @lera:matrix.last-strawberry.com (Admin)
+- Federation: AUS, E2EE: AUS (encryption_enabled_by_default_for_room_type: "off"), Registration: AUS
+- Raum erstellt (ohne E2EE, via curl – Element X erzwingt E2EE bei privaten Räumen)
+- Saleria in Raum eingeladen
+- RPi5 Setup abgeschlossen: 192.168.50.220, Python 3.13.5, Bookworm Lite
+- Container-Pfad: /opt/matrix/ (docker-compose.yml + synapse-data/)
+- Nächster Schritt: Phase 6 TS3 (MatrixChannel implementieren) in Claude Code
