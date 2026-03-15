@@ -43,9 +43,20 @@ MEDIA_KEYS = {
 # Commands die erkannt werden (ohne Parameter)
 SIMPLE_COMMANDS = {"status", "systemstatus", "screenshot", "screen"} | set(MEDIA_KEYS)
 
+# Keyword-Erkennung: wenn eines dieser Wörter im Text vorkommt → Command
+# Wird nur geprüft wenn kein exakter Match vorliegt
+KEYWORD_MAP: dict[str, list[str]] = {
+    "screenshot": ["screenshot", "bildschirmfoto", "bildschirm zeig"],
+    "status": ["systemstatus", "systemzustand", "pc status", "pc-status"],
+    "pause": ["pausier", "stopp musik", "musik stopp", "musik aus"],
+    "play": ["musik an", "weiterspielen", "abspielen"],
+    "skip": ["nächster song", "nächstes lied", "überspringen", "nächster track"],
+}
+
 # Regex für Volume-Command: "volume 50", "vol 75", "lautstärke 30"
+# \b am Ende verhindert Match auf "volume 1000" → nur 1-3 Ziffern ohne Folgeziffer
 VOLUME_PATTERN = re.compile(
-    r"^(?:volume|vol|lautstärke|lautstarke)\s+(\d{1,3})$",
+    r"(?:volume|vol|lautstärke|lautstarke)\s+(\d{1,3})\b",
     re.IGNORECASE,
 )
 
@@ -85,6 +96,11 @@ class RemoteCommandHandler:
     def parse_command(self, text: str) -> str | None:
         """Prüft ob der Text ein direkter Command ist.
 
+        Erkennung in 3 Stufen:
+        1. Exakter Match (z.B. "status", "screenshot", "pause")
+        2. Volume-Pattern (z.B. "volume 50", "lautstärke 30")
+        3. Keyword-Suche in natürlicher Sprache (z.B. "schick mir ein screenshot")
+
         Args:
             text: Nachrichtentext vom Nutzer.
 
@@ -93,11 +109,19 @@ class RemoteCommandHandler:
         """
         normalized = text.strip().lower()
 
+        # Stufe 1: Exakter Match
         if normalized in SIMPLE_COMMANDS:
             return normalized
 
-        if VOLUME_PATTERN.match(normalized):
+        # Stufe 2: Volume-Pattern (auch in Sätzen: "setz lautstärke 50")
+        if VOLUME_PATTERN.search(normalized):
             return "volume"
+
+        # Stufe 3: Keyword-Suche in natürlicher Sprache
+        for command, keywords in KEYWORD_MAP.items():
+            for keyword in keywords:
+                if keyword in normalized:
+                    return command
 
         return None
 
@@ -277,7 +301,7 @@ class RemoteCommandHandler:
                 text="ActionController nicht verfügbar.",
             )
 
-        match = VOLUME_PATTERN.match(raw_text.strip().lower())
+        match = VOLUME_PATTERN.search(raw_text.strip().lower())
         if not match:
             return CommandResult(
                 command="volume",

@@ -123,7 +123,7 @@ class TestParseCommand:
     def test_not_a_command(self):
         handler = RemoteCommandHandler()
         assert handler.parse_command("was ist los?") is None
-        assert handler.parse_command("Saleria bitte screenshot machen") is None
+        assert handler.parse_command("erzähl mir einen witz") is None
         assert handler.parse_command("") is None
         assert handler.parse_command("   ") is None
 
@@ -131,7 +131,27 @@ class TestParseCommand:
         handler = RemoteCommandHandler()
         assert handler.parse_command("volume") is None
         assert handler.parse_command("volume abc") is None
-        assert handler.parse_command("volume 50 bitte") is None
+
+    def test_keyword_screenshot_in_sentence(self):
+        handler = RemoteCommandHandler()
+        assert handler.parse_command("schick mir ein screenshot") == "screenshot"
+        assert handler.parse_command("Schick mir bitte ein Screenshot vom pc") == "screenshot"
+        assert handler.parse_command("mach mal ein Bildschirmfoto") == "screenshot"
+
+    def test_keyword_status_in_sentence(self):
+        handler = RemoteCommandHandler()
+        assert handler.parse_command("wie ist der systemstatus?") == "status"
+        assert handler.parse_command("zeig mir den PC Status") == "status"
+
+    def test_keyword_media_in_sentence(self):
+        handler = RemoteCommandHandler()
+        assert handler.parse_command("musik aus bitte") == "pause"
+        assert handler.parse_command("nächster song") == "skip"
+
+    def test_volume_in_sentence(self):
+        handler = RemoteCommandHandler()
+        assert handler.parse_command("setz lautstärke 50") == "volume"
+        assert handler.parse_command("bitte volume 30 setzen") == "volume"
 
 
 # ---------------------------------------------------------------------------
@@ -366,6 +386,14 @@ class TestCmdVolume:
         assert result.success is False
         assert "Ungültiges Format" in result.text
 
+    def test_volume_in_sentence(self):
+        ctrl = _make_controller_mock()
+        handler = RemoteCommandHandler(controller=ctrl)
+        result = handler.execute("volume", "setz lautstärke 50")
+
+        assert result.success is True
+        ctrl.set_volume.assert_called_once_with(0.5)
+
 
 # ---------------------------------------------------------------------------
 # execute: unknown command
@@ -386,17 +414,17 @@ class TestUnknownCommand:
 
 class TestVolumePattern:
     def test_matches(self):
-        assert VOLUME_PATTERN.match("volume 50")
-        assert VOLUME_PATTERN.match("vol 75")
-        assert VOLUME_PATTERN.match("lautstärke 100")
-        assert VOLUME_PATTERN.match("lautstarke 30")
-        assert VOLUME_PATTERN.match("Volume 0")
+        assert VOLUME_PATTERN.search("volume 50")
+        assert VOLUME_PATTERN.search("vol 75")
+        assert VOLUME_PATTERN.search("lautstärke 100")
+        assert VOLUME_PATTERN.search("lautstarke 30")
+        assert VOLUME_PATTERN.search("Volume 0")
+        assert VOLUME_PATTERN.search("setz volume 50 bitte")
 
     def test_no_match(self):
-        assert not VOLUME_PATTERN.match("volume")
-        assert not VOLUME_PATTERN.match("volume abc")
-        assert not VOLUME_PATTERN.match("set volume 50")
-        assert not VOLUME_PATTERN.match("volume 1000")  # 4 digits
+        assert not VOLUME_PATTERN.search("volume")
+        assert not VOLUME_PATTERN.search("volume abc")
+        assert not VOLUME_PATTERN.search("volume 1000")  # 4 digits
 
 
 # ---------------------------------------------------------------------------
