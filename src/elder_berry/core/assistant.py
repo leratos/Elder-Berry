@@ -5,6 +5,7 @@ import json
 import logging
 import tempfile
 from dataclasses import dataclass, field
+from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -24,6 +25,8 @@ logger = logging.getLogger(__name__)
 
 SYSTEM_PROMPT_TEMPLATE = """\
 Du bist Elder-Berry, eine hilfreiche Assistentin.
+Aktuelles Datum und Uhrzeit: {current_datetime}
+
 Du kannst PC-Aktionen ausführen. Antworte IMMER im folgenden JSON-Format:
 
 {{"action": "<action_type oder null>", "params": {{}}, "response": "<deine Antwort an den Nutzer>"}}
@@ -46,7 +49,8 @@ Verfügbare Aktionen:
 
 {robot_status}
 
-Wenn keine Aktion nötig ist, setze "action" auf null.
+WICHTIG: Führe nur dann eine Aktion aus, wenn der Nutzer explizit danach fragt.
+Bei normalen Fragen oder Gesprächen setze "action" auf null und antworte direkt.
 Antworte immer auf Deutsch.
 """
 
@@ -264,11 +268,13 @@ class Assistant:
             action_list = "Keine zusätzlichen Aktionen in der Datenbank registriert."
 
         robot_status = self._build_robot_status()
+        current_dt = datetime.now().strftime("%A, %d.%m.%Y %H:%M Uhr")
 
         if self._character:
             prompt = self._character.build_system_prompt(
                 available_actions=action_list,
             )
+            prompt = f"Aktuelles Datum und Uhrzeit: {current_dt}\n\n{prompt}"
             if robot_status:
                 prompt += f"\n\n{robot_status}"
             return prompt
@@ -276,6 +282,7 @@ class Assistant:
         return SYSTEM_PROMPT_TEMPLATE.format(
             action_list=action_list,
             robot_status=robot_status,
+            current_datetime=current_dt,
         )
 
     def _parse_llm_response(self, raw: str) -> dict:

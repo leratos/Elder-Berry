@@ -5,13 +5,19 @@ from .base import LLMClient
 
 OLLAMA_BASE_URL = "http://localhost:11434"
 DEFAULT_MODEL = "phi4:14b"
-TIMEOUT = 60.0
+TIMEOUT = 120.0
 
 
 class OllamaClient(LLMClient):
-    def __init__(self, model: str = DEFAULT_MODEL, base_url: str = OLLAMA_BASE_URL):
+    def __init__(
+        self,
+        model: str = DEFAULT_MODEL,
+        base_url: str = OLLAMA_BASE_URL,
+        timeout: float = TIMEOUT,
+    ):
         self.model = model
         self.base_url = base_url.rstrip("/")
+        self.timeout = timeout
 
     def is_available(self) -> bool:
         try:
@@ -30,7 +36,7 @@ class OllamaClient(LLMClient):
             resp = httpx.post(
                 f"{self.base_url}/api/chat",
                 json={"model": self.model, "messages": messages, "stream": False},
-                timeout=TIMEOUT,
+                timeout=self.timeout,
             )
             resp.raise_for_status()
             return resp.json()["message"]["content"]

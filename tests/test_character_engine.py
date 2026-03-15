@@ -107,7 +107,7 @@ class TestSaleriaEngineInit:
 
     def test_personality_title(self):
         engine = SaleriaEngine()
-        assert engine.get_personality().title == "Digitale Hexe und Assistentin"
+        assert engine.get_personality().title == "Digitale Assistentin"
 
     def test_personality_has_boundaries(self):
         engine = SaleriaEngine()
