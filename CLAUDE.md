@@ -50,16 +50,22 @@ Logiklücken und Fehler hin.
   - Laptop (Client): PC-Steuerung + Audio-Empfänger, AgentServer (FastAPI)
   - RPi5 (Robot-Körper): Motoren, Sensoren, Avatar-Display, RobotServer (FastAPI)
 - Kernklassen:
-  - Assistant         → Orchestrator: LLM → Action → TTS → Avatar → Robot
+  - Assistant         → Orchestrator: LLM → Action → TTS → Avatar → Robot → Matrix
   - SaleriaEngine     → Charakter-Persönlichkeit, Emotion-Extraktion
   - CoquiTTSEngine    → XTTS v2 Voice Cloning (pro Emotion ein Speaker-WAV)
   - LayeredSpriteRenderer → Component-basiertes Avatar-Rendering (PyGame)
   - WindowsActionController → PC-Steuerung (Tastatur, Maus, Fenster, Lautstärke)
-  - RobotClient/Server → Tower ↔ RPi5 Kommunikation (REST)
+  - RobotClient/Server → Tower ↔ RPi5 Kommunikation (REST, Port 8000)
+  - AgentClient/Server → Tower ↔ Laptop Kommunikation (REST + Audio-Streaming)
   - LLMRouter         → entscheidet lokal (Ollama) oder remote (OpenRouter)
     - Unterwegs: Auto-Erkennung localhost → Mesh-IP → Fallback
     - Tower benötigt: OLLAMA_HOST=0.0.0.0 + Firewall nur Mesh-IP auf 11434
   - ActionsDB         → SQLite Aktions-Registry mit Self-Learning
+  - SecretStore       → Fernet-verschlüsselter Credential-Store (~/.elder-berry/)
+  - MessageChannel    → ABC für bidirektionale Nachrichtenkanäle
+  - MatrixChannel     → matrix-nio Implementierung (async, Auto-Join, Room-Whitelist)
+  - MatrixBridge      → Async↔Sync Bridge (MessageChannel ↔ Assistant, Thread+EventLoop)
+  - AudioConverter    → WAV/MP3 → OGG/Opus (pydub + ffmpeg)
 - Neue Komponenten immer als eigene Klasse, nie als Funktion in bestehende Datei kippen
 - Abhängigkeiten zwischen Klassen explizit über Konstruktor übergeben (Dependency Injection)
 
@@ -92,8 +98,8 @@ Logiklücken und Fehler hin.
 - Ollama lokal (phi4:14b)
 
 ### RPi 5 (I/O-Hub)
-- Sensor-Integration: Kamera, IR, Temperatur
-- Kommunikation Tower ↔ RPi 5: WLAN (noch zu definieren)
+- Sensor-Integration: Kamera, IR, Temperatur (noch offen)
+- Kommunikation Tower ↔ RPi 5: REST via FastAPI (Port 8000, WLAN)
 - Kommunikation RPi 5 ↔ Pico 2W: WLAN oder USB (noch zu definieren)
 - Kein LLM
 

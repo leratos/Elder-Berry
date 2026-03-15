@@ -315,17 +315,6 @@
 - Tests: 387/387 grün (51 neu + 336 bestehend)
 - Nächster Schritt: MatrixChannel implementieren (wenn Synapse-Server steht)
 
-## Abgeschlossen: Matrix-Server Setup (2026-03-15)
-- Synapse (Docker) + PostgreSQL 16 auf Plesk-Server
-- Domain: matrix.last-strawberry.com (SSL via Let's Encrypt)
-- Plesk Docker Proxy Rules: matrix.last-strawberry.com → synapse:8008 (WebSocket aktiv)
-- Accounts: @saleria:matrix.last-strawberry.com (Bot), @lera:matrix.last-strawberry.com (Admin)
-- Federation: AUS, E2EE: AUS, Registration: AUS
-- Health-Check: https://matrix.last-strawberry.com/_matrix/client/versions → OK
-- Container-Pfad: /opt/matrix/ (docker-compose.yml + synapse-data/)
-- Anleitung: docs/matrix_setup.md
-- Nächster Schritt: Element-Client einrichten, Raum erstellen, Bot einladen
-
 ## Abgeschlossen: Matrix-Server Setup – TS1 komplett (2026-03-15)
 - Synapse (Docker) + PostgreSQL 16 auf Plesk-Server
 - Domain: matrix.last-strawberry.com (SSL via Let's Encrypt)
@@ -334,9 +323,7 @@
 - Federation: AUS, E2EE: AUS (encryption_enabled_by_default_for_room_type: "off"), Registration: AUS
 - Raum erstellt (ohne E2EE, via curl – Element X erzwingt E2EE bei privaten Räumen)
 - Saleria in Raum eingeladen
-- RPi5 Setup abgeschlossen: 192.168.50.220, Python 3.13.5, Bookworm Lite
 - Container-Pfad: /opt/matrix/ (docker-compose.yml + synapse-data/)
-- Nächster Schritt: Phase 6 TS3 (MatrixChannel implementieren) in Claude Code
 
 ## Abgeschlossen: Phase 6 – TS2 MatrixChannel (matrix-nio Implementierung)
 - Branch: feature/phase-6-matrix-channel
@@ -407,3 +394,21 @@
 - Streaming-Tokens über Mesh merkbar langsamer, aber funktional
 - Fallback: Laptop hat eigenes Ollama (phi4:14b mit RAM-Auslagerung)
 - Aktueller Entwicklungsbetrieb: alles auf Laptop, Tower wird später scharfgeschaltet
+
+## Phase 6 – Matrix-Integration: ABGESCHLOSSEN
+- Alle 4 Teilschritte erledigt (Server-Setup, MatrixChannel, AudioConverter, Assistant-Integration)
+- Neue Klassen: SecretStore, MessageChannel (ABC), MatrixChannel, MatrixBridge, AudioConverter
+- Live-getestet: Text + Sprachnachricht via Element funktional
+- 451 Tests, alle grün
+- Konsistentes Pattern: ABC + DI (wie alle anderen Module)
+- Demo: scripts/demo_matrix_bot.py (Echo-Modus + --llm für volle Pipeline)
+
+## Stand nach Phase 6 – Projektübersicht (2026-03-15)
+- Phase 1 (Software Basic): ABGESCHLOSSEN
+- Phase 2 (RPi5 Anbindung): SOFTWARE ABGESCHLOSSEN, Hardware offen
+- Phase 3 (Charakter/V-Tuber): ABGESCHLOSSEN
+- Phase 4 (Körper): IN ARBEIT (CAD/Gehäuse), Software offen
+- Phase 5 (Software Advance): OFFEN
+- Phase 6 (Matrix-Integration): ABGESCHLOSSEN
+- Gesamtarchitektur: 15 Kernklassen, konsistentes ABC+DI Pattern
+- Tests: 451 grün
