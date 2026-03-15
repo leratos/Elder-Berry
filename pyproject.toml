@@ -43,6 +43,7 @@ agent = [
 ]
 matrix = [
     "matrix-nio>=0.24",
+    "aiofiles>=23.0",
     "pydub>=0.25",
 ]
 

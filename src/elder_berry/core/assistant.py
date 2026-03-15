@@ -56,6 +56,7 @@ class AssistantResult:
     action_executed: str | None
     action_success: bool
     emotion: str | None = None
+    audio_path: Path | None = None
 
 
 class Assistant:
@@ -87,12 +88,17 @@ class Assistant:
         self._robot = robot
         self._agent = agent
 
-    def process(self, user_input: str) -> AssistantResult:
+    def process(
+        self, user_input: str, audio_output: Path | None = None,
+    ) -> AssistantResult:
         """
         Verarbeitet User-Input: LLM befragen → Aktion ausführen → TTS → Avatar.
 
         Args:
             user_input: Text-Eingabe des Nutzers.
+            audio_output: Wenn gesetzt, wird TTS-Audio als Datei generiert
+                statt abgespielt. Der Pfad wird in AssistantResult.audio_path
+                zurückgegeben.
 
         Returns:
             AssistantResult mit Antwort, ausgeführter Aktion, Erfolg und Emotion.
@@ -135,31 +141,62 @@ class Assistant:
             if db_action:
                 self._actions_db.record_use(action_type)
 
-        # TTS aussprechen
+        # TTS: Audio generieren oder aussprechen
+        generated_audio: Path | None = None
         if self._tts and response_text:
-            if self._avatar:
-                self._avatar.show_speaking(True)
-            self._robot_set_speaking(True)
-            try:
-                if self._agent and self._is_agent_online():
-                    self._tts_via_agent(response_text, emotion_str)
-                elif emotion_str:
-                    self._tts.speak(response_text, emotion=emotion_str)
-                else:
-                    self._tts.speak(response_text)
-            except Exception as e:
-                logger.error("TTS fehlgeschlagen: %s", e)
-            finally:
+            if audio_output:
+                # Datei-Modus: Audio generieren, nicht abspielen
+                generated_audio = self._tts_to_file(
+                    response_text, audio_output, emotion_str,
+                )
+            else:
+                # Playback-Modus: Audio direkt abspielen
                 if self._avatar:
-                    self._avatar.show_speaking(False)
-                self._robot_set_speaking(False)
+                    self._avatar.show_speaking(True)
+                self._robot_set_speaking(True)
+                try:
+                    if self._agent and self._is_agent_online():
+                        self._tts_via_agent(response_text, emotion_str)
+                    elif emotion_str:
+                        self._tts.speak(response_text, emotion=emotion_str)
+                    else:
+                        self._tts.speak(response_text)
+                except Exception as e:
+                    logger.error("TTS fehlgeschlagen: %s", e)
+                finally:
+                    if self._avatar:
+                        self._avatar.show_speaking(False)
+                    self._robot_set_speaking(False)
 
         return AssistantResult(
             response=response_text,
             action_executed=action_type,
             action_success=action_success,
             emotion=emotion_str,
+            audio_path=generated_audio,
         )
+
+    def _tts_to_file(
+        self, text: str, output_path: Path, emotion: str | None,
+    ) -> Path | None:
+        """Generiert TTS-Audio als Datei (ohne Playback).
+
+        Returns:
+            Pfad zur generierten Datei oder None bei Fehler.
+        """
+        try:
+            self._tts.generate_audio(text, output_path, emotion=emotion)
+            if output_path.exists() and output_path.stat().st_size > 0:
+                logger.debug("TTS-Audio generiert: %s", output_path)
+                return output_path
+            logger.warning("TTS-Audio leer oder nicht erstellt: %s", output_path)
+            return None
+        except NotImplementedError:
+            logger.debug("TTS generate_audio nicht verfügbar")
+            return None
+        except Exception as e:
+            logger.error("TTS-Audio-Generierung fehlgeschlagen: %s", e)
+            return None
 
     def _build_system_prompt(self) -> str:
         """Generiert System-Prompt – aus CharacterEngine oder Fallback-Template."""

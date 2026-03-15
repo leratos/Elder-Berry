@@ -57,6 +57,8 @@ Logiklücken und Fehler hin.
   - WindowsActionController → PC-Steuerung (Tastatur, Maus, Fenster, Lautstärke)
   - RobotClient/Server → Tower ↔ RPi5 Kommunikation (REST)
   - LLMRouter         → entscheidet lokal (Ollama) oder remote (OpenRouter)
+    - Unterwegs: Auto-Erkennung localhost → Mesh-IP → Fallback
+    - Tower benötigt: OLLAMA_HOST=0.0.0.0 + Firewall nur Mesh-IP auf 11434
   - ActionsDB         → SQLite Aktions-Registry mit Self-Learning
 - Neue Komponenten immer als eigene Klasse, nie als Funktion in bestehende Datei kippen
 - Abhängigkeiten zwischen Klassen explizit über Konstruktor übergeben (Dependency Injection)
@@ -65,9 +67,12 @@ Logiklücken und Fehler hin.
 - Tower (Windows, 16GB VRAM): C:\Dev\Elder-Berry\.venv, Python 3.12
   - LLM: phi4:14b – läuft vollständig in VRAM
   - Rolle: Hirn (LLM + TTS-Generierung), immer an
+  - Aktuell: noch nicht scharfgeschaltet, Entwicklung läuft auf Laptop
 - Laptop (Windows, 8GB VRAM): C:\Dev\Elder-Berry\.venv, Python 3.12
   - LLM: phi4:14b – läuft mit leichter RAM-Auslagerung, akzeptable Geschwindigkeit
   - Rolle: Client (empfängt PC-Befehle + Audio vom Tower, wenn User auf Couch)
+  - Unterwegs: kann Tower als LLM-Backend über NordVPN Meshnet nutzen
+  - Fallback: eigenes Ollama lokal wenn Tower nicht erreichbar
 - RPi 5 (Linux): /home/pi/elder-berry/, Python 3.13 (System-Python Bookworm), absolute Linux-Pfade
 - Pico 2W: MicroPython, zuständig für Motorsteuerung und Akku-Monitoring
 - Gleiches Modell auf Tower und Laptop → identisches Verhalten beim Testen
