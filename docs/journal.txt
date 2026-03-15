@@ -616,3 +616,35 @@
   - _blit_to(): generische Blit-Methode auf beliebige Surface
 - Datei: src/elder_berry/comms/remote_commands.py (erweitert: avatar DI + Command)
 - Tests: 697/697 grün (11 neu + 686 bestehend)
+
+## Update: RootPaths.iLogicVb v3 – Komplett-Rewrite (L-Kurve + Ellipse)
+- L-förmige Z-Kurve (stückweise): Drop→Flat→Dive statt Polynom-Sichel
+  - Phase 1 (t<0.08-0.20): Schnell auf Bodenniveau
+  - Phase 2 (Hauptteil): Lang flach am Boden (Z≈0, leichte Wellung)
+  - Phase 3 (t>0.70-0.92): Sanft in den Boden
+  - Phasengrenzen pro Wurzel variabel → jede Kurve anders
+- Elliptisches Profil statt Kreis: Hauptwurzeln 3.2×1.3cm (Aspect 2.5:1)
+- Nebenwurzeln 1.2×0.6cm (Aspect 2:1)
+- Fillet komplett entfernt (manuell, ~40 Zeilen weniger)
+- Gleiche Struktur: 4 Haupt + 5 Neben, variable Exponenten
+- 299 Zeilen (vs 326 v2)
+
+## Abgeschlossen: Phase 7 – Hilfe-Command + Cleanup (2026-03-16)
+- Neuer Command: "hilfe" / "help" → zeigt alle verfügbaren Commands
+- Keywords: "was kannst du", "welche befehle", "was geht"
+- HELP_TEXT Konstante in remote_commands.py: einzige Stelle für Command-Dokumentation
+- CLAUDE.md: Regel ergänzt – neue Commands müssen in HELP_TEXT nachgetragen werden
+- "selfie" als Keyword ergänzt (Satz-Erkennung: "schick mir bitte ein selfie")
+- demo_matrix_bot.py: AvatarRenderer, SecretStore, project_root in RemoteCommandHandler verdrahtet
+- Alte Platzhalter-Sprites gelöscht (saleria-*.png, Dead-Code seit LayeredSpriteRenderer)
+- Tests: 701/701 grün
+
+## Phase 7 – Remote-Features: ABGESCHLOSSEN
+- Alle Schritte erledigt (Tier 1-3 + ClaudeAgent + Alerts + Avatar + Hilfe)
+- Neue Klassen: RemoteCommandHandler, ClaudeAgent, AlertMonitor, AlertConfig
+- Commands: 20+ (status, screenshot, media, volume, clipboard, send_file, start/kill,
+  wol, git, docker, download, avatar/selfie, hilfe, claude)
+- Sicherheit: Whitelists (Start/Kill/Git/Docker), Größenlimits, Pfad-Validierung
+- ABC-Erweiterungen: MessageChannel.send_file(), AvatarRenderer.render_to_file()
+- Konsistentes Pattern: DI + Graceful Degradation (wie alle Module)
+- 701 Tests, alle grün
