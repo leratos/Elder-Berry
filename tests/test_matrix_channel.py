@@ -550,6 +550,99 @@ class TestSyncLoop:
 # MIME-Type
 # ---------------------------------------------------------------------------
 
+# ---------------------------------------------------------------------------
+# Send Image
+# ---------------------------------------------------------------------------
+
+class TestSendImage:
+    def test_send_image_success(self, tmp_path):
+        async def _test():
+            channel = make_channel()
+            channel._connected = True
+
+            img_file = tmp_path / "screenshot.png"
+            img_file.write_bytes(b"\x89PNG" + b"\x00" * 100)
+
+            channel._client.upload = AsyncMock(
+                return_value=(make_upload_response(), None),
+            )
+            channel._client.room_send = AsyncMock(return_value=make_send_response())
+
+            await channel.send_image("!room:test.com", img_file)
+
+            # Upload wurde aufgerufen
+            channel._client.upload.assert_called_once()
+            upload_kwargs = channel._client.upload.call_args.kwargs
+            assert upload_kwargs["content_type"] == "image/png"
+            assert upload_kwargs["filename"] == "screenshot.png"
+
+            # room_send mit m.image
+            send_kwargs = channel._client.room_send.call_args.kwargs
+            content = send_kwargs["content"]
+            assert content["msgtype"] == "m.image"
+            assert content["url"] == "mxc://test.com/audio123"
+
+        run_async(_test())
+
+    def test_send_image_not_connected(self, tmp_path):
+        async def _test():
+            channel = make_channel()
+            img_file = tmp_path / "screen.png"
+            img_file.write_bytes(b"data")
+
+            with pytest.raises(MatrixChannelError, match="Nicht verbunden"):
+                await channel.send_image("!room:test.com", img_file)
+
+        run_async(_test())
+
+    def test_send_image_file_not_found(self):
+        async def _test():
+            channel = make_channel()
+            channel._connected = True
+
+            with pytest.raises(FileNotFoundError):
+                await channel.send_image("!room:test.com", Path("/nope.png"))
+
+        run_async(_test())
+
+    def test_send_image_upload_error(self, tmp_path):
+        async def _test():
+            channel = make_channel()
+            channel._connected = True
+
+            img_file = tmp_path / "screen.png"
+            img_file.write_bytes(b"data")
+
+            error = MagicMock(spec=UploadError)
+            error.message = "Too large"
+            channel._client.upload = AsyncMock(return_value=(error, None))
+
+            with pytest.raises(MatrixChannelError, match="Bild-Upload fehlgeschlagen"):
+                await channel.send_image("!room:test.com", img_file)
+
+        run_async(_test())
+
+    def test_send_image_jpeg(self, tmp_path):
+        async def _test():
+            channel = make_channel()
+            channel._connected = True
+
+            img_file = tmp_path / "photo.jpg"
+            img_file.write_bytes(b"\xff\xd8\xff" + b"\x00" * 50)
+
+            channel._client.upload = AsyncMock(
+                return_value=(make_upload_response(), None),
+            )
+            channel._client.room_send = AsyncMock(return_value=make_send_response())
+
+            await channel.send_image("!room:test.com", img_file)
+
+            upload_kwargs = channel._client.upload.call_args.kwargs
+            assert upload_kwargs["content_type"] == "image/jpeg"
+
+        run_async(_test())
+
+
 class TestMimeType:
     def test_ogg(self):
         assert MatrixChannel._guess_mime_type(Path("voice.ogg")) == "audio/ogg"
@@ -642,3 +735,27 @@ class TestAutoJoin:
             channel._client.join.assert_not_called()
 
         run_async(_test())
+
+
+# ---------------------------------------------------------------------------
+# Image MIME-Type
+# ---------------------------------------------------------------------------
+
+class TestImageMimeType:
+    def test_png(self):
+        assert MatrixChannel._guess_image_mime_type(Path("screen.png")) == "image/png"
+
+    def test_jpg(self):
+        assert MatrixChannel._guess_image_mime_type(Path("photo.jpg")) == "image/jpeg"
+
+    def test_jpeg(self):
+        assert MatrixChannel._guess_image_mime_type(Path("photo.jpeg")) == "image/jpeg"
+
+    def test_gif(self):
+        assert MatrixChannel._guess_image_mime_type(Path("anim.gif")) == "image/gif"
+
+    def test_webp(self):
+        assert MatrixChannel._guess_image_mime_type(Path("img.webp")) == "image/webp"
+
+    def test_unknown(self):
+        assert MatrixChannel._guess_image_mime_type(Path("file.xyz")) == "application/octet-stream"

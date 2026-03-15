@@ -1,4 +1,4 @@
-"""Tests: MessageChannel ABC, IncomingMessage DTO, MatrixBridge."""
+"""Tests: MessageChannel ABC, IncomingMessage DTO, MatrixBridge, Command-Routing."""
 import asyncio
 import time
 from pathlib import Path
@@ -8,6 +8,7 @@ import pytest
 
 from elder_berry.comms.message_channel import IncomingMessage, MessageChannel
 from elder_berry.comms.bridge import MatrixBridge
+from elder_berry.comms.remote_commands import CommandResult, RemoteCommandHandler
 from elder_berry.core.assistant import AssistantResult
 
 
@@ -32,6 +33,7 @@ class MockChannel(MessageChannel):
         self._callbacks = []
         self._sent_texts: list[tuple[str, str]] = []
         self._sent_audios: list[tuple[str, Path]] = []
+        self._sent_images: list[tuple[str, Path]] = []
         self._sync_event = asyncio.Event()
 
     async def connect(self) -> None:
@@ -46,6 +48,9 @@ class MockChannel(MessageChannel):
 
     async def send_audio(self, room_id: str, audio_path: Path) -> None:
         self._sent_audios.append((room_id, audio_path))
+
+    async def send_image(self, room_id: str, image_path: Path) -> None:
+        self._sent_images.append((room_id, image_path))
 
     def on_message(self, callback) -> None:
         self._callbacks.append(callback)
@@ -373,5 +378,213 @@ class TestMatrixBridge:
 
             await bridge._async_main()
             assert len(channel._callbacks) == 1
+
+        run_async(_test())
+
+
+# ---------------------------------------------------------------------------
+# MatrixBridge – Command-Routing (Phase 7)
+# ---------------------------------------------------------------------------
+
+class TestBridgeCommandRouting:
+    def _make_assistant_mock(self, response_text="LLM Antwort"):
+        assistant = MagicMock()
+        assistant.process.return_value = AssistantResult(
+            response=response_text,
+            action_executed=None,
+            action_success=False,
+        )
+        return assistant
+
+    def _make_remote_handler(self, command=None, result=None):
+        """Erstellt einen Mock-RemoteCommandHandler."""
+        handler = MagicMock(spec=RemoteCommandHandler)
+        handler.parse_command.return_value = command
+        handler.execute.return_value = result or CommandResult(
+            command=command or "status", success=True, text="OK",
+        )
+        return handler
+
+    def test_command_routed_to_handler(self):
+        """Direkter Command wird an RemoteCommandHandler delegiert, nicht an Assistant."""
+        async def _test():
+            channel = MockChannel()
+            assistant = self._make_assistant_mock()
+            handler = self._make_remote_handler(
+                command="status",
+                result=CommandResult(command="status", success=True, text="CPU: 25%"),
+            )
+            bridge = MatrixBridge(
+                channel=channel, assistant=assistant, remote_commands=handler,
+            )
+            await channel.connect()
+
+            msg = IncomingMessage(
+                sender="@user:x", room_id="!r:x", body="status", timestamp=1.0,
+            )
+            await bridge._handle_message(msg)
+
+            # Handler aufgerufen
+            handler.parse_command.assert_called_once_with("status")
+            handler.execute.assert_called_once_with("status", "status")
+            # Text gesendet
+            assert ("!r:x", "CPU: 25%") in channel._sent_texts
+            # Assistant NICHT aufgerufen
+            assistant.process.assert_not_called()
+
+        run_async(_test())
+
+    def test_non_command_falls_through_to_assistant(self):
+        """Normaler Text wird an Assistant delegiert (kein Command)."""
+        async def _test():
+            channel = MockChannel()
+            assistant = self._make_assistant_mock("Hallo!")
+            handler = self._make_remote_handler(command=None)  # Kein Command erkannt
+            bridge = MatrixBridge(
+                channel=channel, assistant=assistant, remote_commands=handler,
+            )
+            await channel.connect()
+
+            msg = IncomingMessage(
+                sender="@user:x", room_id="!r:x", body="Was ist los?",
+                timestamp=1.0,
+            )
+            await bridge._handle_message(msg)
+
+            # Handler parse_command aufgerufen, aber execute NICHT
+            handler.parse_command.assert_called_once_with("Was ist los?")
+            handler.execute.assert_not_called()
+            # Assistant aufgerufen
+            assistant.process.assert_called_once_with("Was ist los?")
+            assert ("!r:x", "Hallo!") in channel._sent_texts
+
+        run_async(_test())
+
+    def test_screenshot_sends_image(self, tmp_path):
+        """Screenshot-Command sendet Bild über send_image."""
+        async def _test():
+            channel = MockChannel()
+            assistant = self._make_assistant_mock()
+
+            img_path = tmp_path / "screenshot.png"
+            img_path.write_bytes(b"\x89PNG" + b"\x00" * 50)
+
+            handler = self._make_remote_handler(
+                command="screenshot",
+                result=CommandResult(
+                    command="screenshot", success=True,
+                    text="Screenshot aufgenommen.",
+                    image_path=img_path,
+                ),
+            )
+            bridge = MatrixBridge(
+                channel=channel, assistant=assistant, remote_commands=handler,
+            )
+            await channel.connect()
+
+            msg = IncomingMessage(
+                sender="@user:x", room_id="!r:x", body="screenshot",
+                timestamp=1.0,
+            )
+            await bridge._handle_message(msg)
+
+            # Text + Bild gesendet
+            assert ("!r:x", "Screenshot aufgenommen.") in channel._sent_texts
+            assert len(channel._sent_images) == 1
+            assert channel._sent_images[0][0] == "!r:x"
+
+        run_async(_test())
+
+    def test_no_handler_falls_through(self):
+        """Ohne RemoteCommandHandler wird alles an Assistant delegiert."""
+        async def _test():
+            channel = MockChannel()
+            assistant = self._make_assistant_mock("Antwort")
+            bridge = MatrixBridge(channel=channel, assistant=assistant)
+            await channel.connect()
+
+            msg = IncomingMessage(
+                sender="@user:x", room_id="!r:x", body="status",
+                timestamp=1.0,
+            )
+            await bridge._handle_message(msg)
+
+            # Kein Handler → Assistant aufgerufen
+            assistant.process.assert_called_once_with("status")
+
+        run_async(_test())
+
+    def test_command_error_sends_error_message(self):
+        """Fehler bei Command-Ausführung wird als Fehlermeldung gesendet."""
+        async def _test():
+            channel = MockChannel()
+            assistant = self._make_assistant_mock()
+            handler = MagicMock(spec=RemoteCommandHandler)
+            handler.parse_command.return_value = "status"
+            handler.execute.side_effect = RuntimeError("psutil kaputt")
+            bridge = MatrixBridge(
+                channel=channel, assistant=assistant, remote_commands=handler,
+            )
+            await channel.connect()
+
+            msg = IncomingMessage(
+                sender="@user:x", room_id="!r:x", body="status",
+                timestamp=1.0,
+            )
+            await bridge._handle_message(msg)
+
+            # Fehlermeldung gesendet
+            assert len(channel._sent_texts) == 1
+            assert "Command-Fehler" in channel._sent_texts[0][1]
+            assert "RuntimeError" in channel._sent_texts[0][1]
+
+        run_async(_test())
+
+    def test_send_image_not_implemented_fallback(self):
+        """Wenn send_image NotImplementedError wirft, kommt ein Fallback-Text."""
+        async def _test():
+            channel = MockChannel()
+            # send_image wirft NotImplementedError
+            async def raise_not_impl(room_id, path):
+                raise NotImplementedError("not supported")
+            channel.send_image = raise_not_impl
+
+            assistant = self._make_assistant_mock()
+            handler = self._make_remote_handler(
+                command="screenshot",
+                result=CommandResult(
+                    command="screenshot", success=True,
+                    text="Screenshot aufgenommen.",
+                    image_path=Path("/tmp/fake.png"),
+                ),
+            )
+            bridge = MatrixBridge(
+                channel=channel, assistant=assistant, remote_commands=handler,
+            )
+            await channel.connect()
+
+            # Fake-Bild erstellen damit exists() True ergibt
+            import tempfile
+            with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as f:
+                f.write(b"fake")
+                fake_path = Path(f.name)
+
+            handler.execute.return_value = CommandResult(
+                command="screenshot", success=True,
+                text="Screenshot aufgenommen.",
+                image_path=fake_path,
+            )
+
+            msg = IncomingMessage(
+                sender="@user:x", room_id="!r:x", body="screenshot",
+                timestamp=1.0,
+            )
+            await bridge._handle_message(msg)
+
+            # Text + Fallback-Hinweis gesendet
+            texts = [t[1] for t in channel._sent_texts]
+            assert any("nicht unterstützt" in t for t in texts)
+
+            fake_path.unlink(missing_ok=True)
 
         run_async(_test())

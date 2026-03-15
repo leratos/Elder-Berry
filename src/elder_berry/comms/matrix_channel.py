@@ -214,6 +214,61 @@ class MatrixChannel(MessageChannel):
             "Audio gesendet an %s: %s (%d bytes)", room_id, filename, file_size,
         )
 
+    async def send_image(self, room_id: str, image_path: Path) -> None:
+        """Sendet ein Bild (z.B. Screenshot) als m.image Nachricht.
+
+        Unterstützt PNG, JPEG und weitere gängige Bildformate.
+        """
+        if not self._connected:
+            raise MatrixChannelError("Nicht verbunden")
+
+        if not image_path.exists():
+            raise FileNotFoundError(f"Bilddatei nicht gefunden: {image_path}")
+
+        file_size = image_path.stat().st_size
+        mime_type = self._guess_image_mime_type(image_path)
+        filename = image_path.name
+
+        async with aiofiles.open(image_path, "rb") as f:
+            upload_response, _keys = await self._client.upload(
+                f,
+                content_type=mime_type,
+                filename=filename,
+                filesize=file_size,
+            )
+
+        if isinstance(upload_response, UploadError):
+            raise MatrixChannelError(
+                f"Bild-Upload fehlgeschlagen: {upload_response.message}"
+            )
+
+        content_uri = upload_response.content_uri
+
+        content: dict[str, Any] = {
+            "msgtype": "m.image",
+            "body": filename,
+            "url": content_uri,
+            "info": {
+                "mimetype": mime_type,
+                "size": file_size,
+            },
+        }
+
+        response = await self._client.room_send(
+            room_id=room_id,
+            message_type="m.room.message",
+            content=content,
+        )
+
+        if isinstance(response, RoomSendError):
+            raise MatrixChannelError(
+                f"Bild-Nachricht senden fehlgeschlagen: {response.message}"
+            )
+
+        logger.debug(
+            "Bild gesendet an %s: %s (%d bytes)", room_id, filename, file_size,
+        )
+
     def on_message(self, callback: MessageCallback) -> None:
         """Registriert einen Callback für eingehende Textnachrichten."""
         self._callbacks.append(callback)
@@ -311,7 +366,7 @@ class MatrixChannel(MessageChannel):
 
     @staticmethod
     def _guess_mime_type(path: Path) -> str:
-        """Ermittelt MIME-Type anhand der Dateiendung."""
+        """Ermittelt Audio-MIME-Type anhand der Dateiendung."""
         suffix = path.suffix.lower()
         mime_map = {
             ".ogg": "audio/ogg",
@@ -320,5 +375,19 @@ class MatrixChannel(MessageChannel):
             ".mp3": "audio/mpeg",
             ".m4a": "audio/mp4",
             ".flac": "audio/flac",
+        }
+        return mime_map.get(suffix, "application/octet-stream")
+
+    @staticmethod
+    def _guess_image_mime_type(path: Path) -> str:
+        """Ermittelt Bild-MIME-Type anhand der Dateiendung."""
+        suffix = path.suffix.lower()
+        mime_map = {
+            ".png": "image/png",
+            ".jpg": "image/jpeg",
+            ".jpeg": "image/jpeg",
+            ".gif": "image/gif",
+            ".webp": "image/webp",
+            ".bmp": "image/bmp",
         }
         return mime_map.get(suffix, "application/octet-stream")

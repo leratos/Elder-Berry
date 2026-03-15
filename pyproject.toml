@@ -46,6 +46,9 @@ matrix = [
     "aiofiles>=23.0",
     "pydub>=0.25",
 ]
+remote = [
+    "mss>=9.0",
+]
 
 [tool.setuptools.packages.find]
 where = ["src"]

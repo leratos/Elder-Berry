@@ -61,6 +61,14 @@ class MessageChannel(ABC):
         """Sendet eine Audiodatei (z.B. OGG/Opus Sprachnachricht) in den Raum."""
         ...
 
+    async def send_image(self, room_id: str, image_path: Path) -> None:
+        """Sendet ein Bild (z.B. Screenshot) in den Raum.
+
+        Standardimplementierung wirft NotImplementedError.
+        Unterklassen können dies überschreiben.
+        """
+        raise NotImplementedError("send_image nicht implementiert")
+
     @abstractmethod
     def on_message(self, callback: MessageCallback) -> None:
         """Registriert einen Callback für eingehende Nachrichten.

@@ -449,3 +449,27 @@
 - OFFEN: Akku 2S vs 3S → BMS und PCB prüfen
 - OFFEN: Motor-Driver Wahl → Phase 4 PCB-Redesign
 - OFFEN: Chassis-Design → nach Motor-Bestellung
+
+## Abgeschlossen: Phase 7 – Schritt 1+2 – RemoteCommandHandler + Command-Router
+- Branch: feature/phase-7-remote-features
+- Dateien: src/elder_berry/comms/remote_commands.py (RemoteCommandHandler + CommandResult DTO)
+  - Tier-1-Commands: status, systemstatus, screenshot, screen, pause, play, skip, next, prev, previous
+  - Volume-Command: volume/vol/lautstärke <0-100>
+  - DI: SystemMonitor (optional), ActionController (optional)
+  - Graceful Degradation: fehlende Dependencies → Fehlertext, kein Crash
+  - Screenshot: mss → PNG temp-Datei, cross-platform
+  - Media: press_key(playpause/nexttrack/prevtrack) via ActionController
+- Dateien: src/elder_berry/comms/message_channel.py (erweitert: send_image() mit Default-NotImplementedError)
+- Dateien: src/elder_berry/comms/matrix_channel.py (erweitert: send_image() für m.image Upload + _guess_image_mime_type)
+- Dateien: src/elder_berry/comms/bridge.py (erweitert: Command-Router)
+  - RemoteCommandHandler als optionaler DI-Parameter
+  - _handle_message() → parse_command() → Command erkannt? → execute → send result
+  - Kein Command → weiter an Assistant (bestehender Flow, refactored in _handle_assistant_message)
+  - Screenshot: send_image() mit NotImplementedError-Fallback
+- Dateien: tests/test_remote_commands.py (37 Tests, NEU)
+- Dateien: tests/test_matrix_channel.py (erweitert: 11 neue Tests – send_image + Image-MIME-Type)
+- Dateien: tests/test_comms.py (erweitert: 6 neue Tests – Bridge Command-Routing)
+- Dependencies: mss>=9.0 in [remote] optional group (pyproject.toml)
+- SystemMonitor: bestehende Klasse wiederverwendet (kein neues File)
+- Tests: 513/513 grün (54 neu + 459 bestehend)
+- Konsistentes Pattern: DI + Graceful Degradation (wie alle Module)
