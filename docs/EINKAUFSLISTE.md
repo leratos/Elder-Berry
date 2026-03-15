@@ -59,10 +59,11 @@
 |---|---|---|---|
 | ✅ | Acrylplatten · 1mm · 250×200mm | 30 Stück · Pepper's Ghost · 45° im Gehäuse | – |
 | ✅ | Alu Rohr · Ø165mm | Biegeform für Acryl · nicht Teil des Gehäuses | – |
-| 📋 | Resin-Druck · Säulen-Gehäuse | Ionisch · Ø185mm Schaft · Sockel nach Teilelieferung | – |
+| 📋 | Resin-Druck · Baumstamm-Gehäuse | Segmentiert · Kern+Rinde · Ø220mm · ~190mm hoch · Spec: docs/concepts/gehaeuse-baumstamm-spec.md | – |
 | 🛒 | Einschmelzgewinde M2 | Außen-Ø 3,5mm · Druckrahmen Display · mind. 6 Stück | – |
 | 🛒 | Mattlack schwarz | Gehäuse-Innenwand · Reflexionsreduktion Pepper's Ghost | – |
 | 🛒 | Epoxidharz 2K oder Loctite 480 | Einschmelzgewinde in Resin kleben | – |
+| 📋 | Neodym-Magnete Ø3×2mm | Optional: Rinden-Befestigung am Kern · nach Prototyp entscheiden | – |
 
 ---
 
@@ -98,4 +99,4 @@
 
 ---
 
-*Zuletzt aktualisiert: 2026-03-14*
+*Zuletzt aktualisiert: 2026-03-15*

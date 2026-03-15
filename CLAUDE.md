@@ -68,7 +68,7 @@ Logiklücken und Fehler hin.
 - Laptop (Windows, 8GB VRAM): C:\Dev\Elder-Berry\.venv, Python 3.12
   - LLM: phi4:14b – läuft mit leichter RAM-Auslagerung, akzeptable Geschwindigkeit
   - Rolle: Client (empfängt PC-Befehle + Audio vom Tower, wenn User auf Couch)
-- RPi 5 (Linux): /home/pi/elder-berry/, Python 3.12, absolute Linux-Pfade
+- RPi 5 (Linux): /home/pi/elder-berry/, Python 3.13 (System-Python Bookworm), absolute Linux-Pfade
 - Pico 2W: MicroPython, zuständig für Motorsteuerung und Akku-Monitoring
 - Gleiches Modell auf Tower und Laptop → identisches Verhalten beim Testen
 - Verwende pathlib statt hartcodierte Slashes wo plattformübergreifend
