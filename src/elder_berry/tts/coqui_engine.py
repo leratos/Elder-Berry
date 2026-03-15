@@ -14,7 +14,8 @@ except ImportError:
 try:
     import sounddevice as sd
     import numpy as np
-except ImportError:
+except (ImportError, OSError):
+    # OSError: PortAudio-Library nicht vorhanden (z.B. CI ohne Audio-Hardware)
     sd = None  # type: ignore[assignment]
     np = None  # type: ignore[assignment]
 
