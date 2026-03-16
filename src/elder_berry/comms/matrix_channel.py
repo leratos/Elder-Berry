@@ -25,9 +25,12 @@ from typing import Any
 import aiofiles
 from nio import (
     AsyncClient,
+    DownloadError,
+    DownloadResponse,
     JoinError,
     LoginError,
     LoginResponse,
+    RoomMessageAudio,
     RoomMessageText,
     RoomSendError,
     UploadError,
@@ -118,8 +121,9 @@ class MatrixChannel(MessageChannel):
         # Auto-Join: Einladungen in erlaubte Räume automatisch annehmen
         await self._auto_join_invited_rooms()
 
-        # Message-Callback registrieren
+        # Message-Callbacks registrieren
         self._client.add_event_callback(self._on_room_message, RoomMessageText)
+        self._client.add_event_callback(self._on_room_audio, RoomMessageAudio)
 
         self._connected = True
 
@@ -417,6 +421,74 @@ class MatrixChannel(MessageChannel):
             except Exception as e:
                 logger.error(
                     "Callback-Fehler für Nachricht von %s: %s", msg.sender, e,
+                )
+
+    async def _on_room_audio(self, room, event: RoomMessageAudio) -> None:
+        """nio-Callback: wird für jede m.room.message (m.audio) aufgerufen.
+
+        Lädt die Audio-Datei vom Matrix-Server herunter und leitet sie
+        als IncomingMessage mit audio_data an alle registrierten Callbacks weiter.
+        """
+        # Eigene Nachrichten ignorieren
+        if event.sender == self._user_id:
+            return
+
+        # Room-Whitelist prüfen
+        if self._allowed_rooms and room.room_id not in self._allowed_rooms:
+            logger.debug(
+                "Audio-Nachricht aus nicht erlaubtem Raum ignoriert: %s", room.room_id,
+            )
+            return
+
+        # MXC-URL parsen: mxc://server/mediaid
+        mxc_url: str = getattr(event, "url", "") or ""
+        if not mxc_url.startswith("mxc://"):
+            logger.warning("Audio-Nachricht ohne gültige MXC-URL ignoriert: %s", mxc_url)
+            return
+
+        mxc_path = mxc_url[len("mxc://"):]
+        if "/" not in mxc_path:
+            logger.warning("Ungültige MXC-URL (kein Slash): %s", mxc_url)
+            return
+
+        server_name, media_id = mxc_path.split("/", 1)
+
+        # Audio herunterladen
+        try:
+            download_resp = await self._client.download(server_name, media_id)
+        except Exception as e:
+            logger.error("Audio-Download Fehler: %s", e)
+            return
+
+        if isinstance(download_resp, DownloadError):
+            logger.error(
+                "Audio-Download fehlgeschlagen: %s", download_resp.message,
+            )
+            return
+
+        audio_bytes: bytes = download_resp.body
+        filename: str = event.body or "voice.ogg"
+
+        logger.debug(
+            "Audio empfangen von %s: %s (%d bytes)",
+            event.sender, filename, len(audio_bytes),
+        )
+
+        msg = IncomingMessage(
+            sender=event.sender,
+            room_id=room.room_id,
+            body=filename,
+            timestamp=event.server_timestamp / 1000.0,
+            raw=event,
+            audio_data=audio_bytes,
+        )
+
+        for callback in self._callbacks:
+            try:
+                await callback(msg)
+            except Exception as e:
+                logger.error(
+                    "Callback-Fehler für Audio-Nachricht von %s: %s", msg.sender, e,
                 )
 
     @staticmethod

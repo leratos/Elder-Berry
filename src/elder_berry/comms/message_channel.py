@@ -22,13 +22,16 @@ class IncomingMessage:
     """Raum/Kanal-ID in dem die Nachricht empfangen wurde."""
 
     body: str
-    """Nachrichtentext."""
+    """Nachrichtentext. Bei Audio-Nachrichten: Dateiname oder leer."""
 
     timestamp: float
     """Unix-Timestamp des Nachrichtenempfangs."""
 
     raw: Any = None
     """Optionale Rohdaten des Quellsystems (z.B. nio.RoomMessageText)."""
+
+    audio_data: bytes | None = None
+    """Rohe Audio-Bytes (heruntergeladen vom Matrix-Server) oder None bei Textnachrichten."""
 
 
 # Typ-Alias für den Callback: empfängt IncomingMessage, gibt None zurück (async).

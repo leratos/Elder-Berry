@@ -18,6 +18,7 @@ if TYPE_CHECKING:
     from elder_berry.agent.client import AgentClient
     from elder_berry.avatar.base import AvatarRenderer
     from elder_berry.character.base import CharacterEngine
+    from elder_berry.memory.base import MemoryStore
     from elder_berry.robot.client import RobotClient
     from elder_berry.system.info import SystemMonitor
 
@@ -52,6 +53,8 @@ Verfügbare Aktionen:
 WICHTIG: Führe nur dann eine Aktion aus, wenn der Nutzer explizit danach fragt.
 Bei normalen Fragen oder Gesprächen setze "action" auf null und antworte direkt.
 Antworte immer auf Deutsch.
+
+{memory_context}
 """
 
 
@@ -85,6 +88,7 @@ class Assistant:
         robot: RobotClient | None = None,
         agent: AgentClient | None = None,
         system_monitor: SystemMonitor | None = None,
+        memory: MemoryStore | None = None,
     ) -> None:
         self._llm = llm
         self._actions_db = actions_db
@@ -95,6 +99,8 @@ class Assistant:
         self._robot = robot
         self._agent = agent
         self._system_monitor = system_monitor
+        self._memory = memory
+        self._session_id: str = memory.new_session() if memory else ""
 
     def process(
         self, user_input: str, audio_output: Path | None = None,
@@ -116,7 +122,8 @@ class Assistant:
                 response="Leere Eingabe.", action_executed=None, action_success=False
             )
 
-        system_prompt = self._build_system_prompt()
+        memory_context = self._get_memory_context(user_input)
+        system_prompt = self._build_system_prompt(memory_context=memory_context)
         logger.debug("System-Prompt: %d Zeichen", len(system_prompt))
 
         raw_response = self._llm.generate(user_input, system=system_prompt)
@@ -184,6 +191,9 @@ class Assistant:
                     if self._avatar:
                         self._avatar.show_speaking(False)
                     self._robot_set_speaking(False)
+
+        # Memory: Konversation speichern
+        self._save_to_memory(user_input, response_text, emotion_str)
 
         return AssistantResult(
             response=response_text,
@@ -256,7 +266,7 @@ class Assistant:
             logger.error("TTS-Audio-Generierung fehlgeschlagen: %s", e)
             return None
 
-    def _build_system_prompt(self) -> str:
+    def _build_system_prompt(self, memory_context: str = "") -> str:
         """Generiert System-Prompt – aus CharacterEngine oder Fallback-Template."""
         db_actions = self._actions_db.list_all()
         if db_actions:
@@ -273,6 +283,7 @@ class Assistant:
         if self._character:
             prompt = self._character.build_system_prompt(
                 available_actions=action_list,
+                memory_context=memory_context,
             )
             prompt = f"Aktuelles Datum und Uhrzeit: {current_dt}\n\n{prompt}"
             if robot_status:
@@ -283,7 +294,53 @@ class Assistant:
             action_list=action_list,
             robot_status=robot_status,
             current_datetime=current_dt,
+            memory_context=memory_context,
         )
+
+    def _get_memory_context(self, user_input: str) -> str:
+        """Ruft relevante Erinnerungen aus dem Memory ab und formatiert sie."""
+        if not self._memory:
+            return ""
+        try:
+            ctx = self._memory.get_context(
+                query=user_input,
+                recent_n=6,
+                relevant_k=3,
+                current_session_id=self._session_id,
+            )
+            return ctx.to_prompt_text() if not ctx.is_empty() else ""
+        except Exception as e:
+            logger.warning("Memory-Abruf fehlgeschlagen: %s", e)
+            return ""
+
+    def _save_to_memory(
+        self, user_input: str, response: str, emotion: str | None
+    ) -> None:
+        """Speichert User-Input und Assistant-Antwort im Memory."""
+        if not self._memory:
+            return
+        try:
+            from elder_berry.memory.base import MemoryEntry
+            self._memory.add(MemoryEntry.create(
+                role="user",
+                content=user_input,
+                session_id=self._session_id,
+            ))
+            meta = {"emotion": emotion} if emotion else {}
+            self._memory.add(MemoryEntry.create(
+                role="assistant",
+                content=response,
+                session_id=self._session_id,
+                metadata=meta,
+            ))
+        except Exception as e:
+            logger.warning("Memory-Speicherung fehlgeschlagen: %s", e)
+
+    def new_session(self) -> None:
+        """Startet eine neue Konversations-Session (setzt Session-ID zurück)."""
+        if self._memory:
+            self._session_id = self._memory.new_session()
+        logger.info("Neue Session gestartet: %s", self._session_id)
 
     def _parse_llm_response(self, raw: str) -> dict:
         """

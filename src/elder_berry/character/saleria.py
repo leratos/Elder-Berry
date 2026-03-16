@@ -90,7 +90,9 @@ class SaleriaEngine(CharacterEngine):
     def set_mood(self, emotion: Emotion, intensity: float = 0.5) -> None:
         self._mood = MoodState(current_emotion=emotion, intensity=intensity)
 
-    def build_system_prompt(self, available_actions: str = "") -> str:
+    def build_system_prompt(
+        self, available_actions: str = "", memory_context: str = ""
+    ) -> str:
         emotions_list = ", ".join(f"[{e.value}]" for e in Emotion)
         return self._prompt_template.format(
             name=self._personality.name,
@@ -98,6 +100,7 @@ class SaleriaEngine(CharacterEngine):
             speaking_style=self._personality.speaking_style,
             emotions_list=emotions_list,
             action_list=available_actions,
+            memory_context=memory_context,
         )
 
     def extract_emotion(self, llm_response: str) -> Emotion:

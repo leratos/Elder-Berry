@@ -9,6 +9,8 @@ TIMEOUT = 120.0
 
 
 class OllamaClient(LLMClient):
+    name = "ollama"
+
     def __init__(
         self,
         model: str = DEFAULT_MODEL,

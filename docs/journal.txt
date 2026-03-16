@@ -661,3 +661,140 @@
 - HELP_TEXT aktualisiert
 - Tests: 720/720 grün (12 neu + 708 bestehend)
 - Alte Platzhalter-Sprites gelöscht (saleria-*.png)
+
+## In Arbeit: Phase 5 – TS0 LLMRouter (AnthropicClient) + TS1 RAG MemoryStore
+- Branch: feature/phase-5-memory
+- TS0: AnthropicClient (Sonnet 4.6 als primäres Backend), LLMRouter primary/fallback refactor
+- TS1: MemoryStore ABC + ChromaMemoryStore (ChromaDB + OllamaEmbeddingClient)
+- Nächste Dateien: llm/anthropic_client.py, llm/router.py, memory/base.py, memory/chroma_memory.py
+
+## Zwischenstand: Phase 5 – TS0 abgeschlossen (2026-03-16)
+- AnthropicClient: Sonnet 4.6, lazy-Import, skipif-Tests für Devcontainer
+- LLMRouter: primary/fallback Pattern, create_default() → Anthropic → Ollama
+- OllamaClient + OpenRouterClient: name-Attribut ergänzt
+- pyproject.toml: anthropic in core deps, [memory] group (chromadb) vorbereitet
+- .env.example: neu strukturiert (Anthropic primär, Ollama Fallback, Memory)
+- Tests: 654 passed, 13 skipped (4 neue skips: anthropic-Paket fehlt im Devcontainer)
+- Nächster Schritt: TS1 – MemoryStore ABC + ChromaMemoryStore
+
+## Abgeschlossen: Phase 5 – TS0 + TS1 – LLMRouter + RAG MemoryStore (2026-03-16)
+- Branch: feature/phase-5-memory
+
+### TS0 – LLMRouter: Anthropic (Sonnet 4.6) als primäres Backend
+- Neue Datei: src/elder_berry/llm/anthropic_client.py (AnthropicClient)
+  - Sonnet 4.6 Default, Lazy-Import, name="anthropic"
+  - is_available(): ANTHROPIC_API_KEY gesetzt?
+  - generate(): system-Parameter als Anthropic-System-Feld
+  - Robuste Fehlerbehandlung: APIStatusError, APIConnectionError, RateLimitError
+- Geändert: src/elder_berry/llm/router.py (primary/fallback statt ollama/openrouter)
+  - create_default(): AnthropicClient → OllamaClient
+  - active_backend: nutzt client.name Attribut
+- Geändert: src/elder_berry/llm/ollama_client.py + openrouter_client.py (name-Attribut)
+- Geändert: pyproject.toml (anthropic in core deps, [memory] group: chromadb)
+- Geändert: .env.example (neu strukturiert, ANTHROPIC_API_KEY primär)
+- Geändert: tests/test_llm_router.py (30 Tests, 4 skips: anthropic-Paket fehlt)
+
+### TS1 – RAG MemoryStore: ChromaDB + Ollama-Embeddings
+- Neue Datei: src/elder_berry/memory/base.py (MemoryStore ABC + MemoryEntry + MemoryContext)
+  - MemoryEntry: frozen Dataclass, create() Factory mit UUID + UTC-Timestamp
+  - MemoryContext: recent + relevant, to_prompt_text(), is_empty()
+  - MemoryStore: add(), get_recent(), search(), get_context(), new_session(), clear()
+- Neue Datei: src/elder_berry/memory/embedding.py (EmbeddingClient ABC + OllamaEmbeddingClient)
+  - nomic-embed-text Default, 768-dim Vektoren, Text-Kürzung bei >8000 Zeichen
+- Neue Datei: src/elder_berry/memory/chroma_memory.py (ChromaMemoryStore)
+  - Persistent ChromaDB, Lazy-Init, pluggable EmbeddingFunction
+  - _OllamaEmbeddingFunction: Wrapper für ChromaDB-Interface
+  - get_recent(): Sortierung nach Timestamp in Python (Chromadb kennt kein ORDER BY)
+  - search(): exclude_session-Filter für Cross-Session-Suche
+- Geändert: src/elder_berry/core/assistant.py
+  - memory: MemoryStore als optionaler DI-Parameter
+  - session_id: auto-generiert bei Init
+  - _get_memory_context(): ruft get_context() ab, graceful fallback
+  - _save_to_memory(): speichert user + assistant Message nach process()
+  - _build_system_prompt(): memory_context Parameter
+  - new_session(): Session-Reset
+- Geändert: src/elder_berry/character/base.py + saleria.py (memory_context Parameter)
+- Geändert: src/elder_berry/character/saleria.yaml ({memory_context} Platzhalter)
+- Neue Datei: tests/test_memory_store.py (35 Tests, 23 passed + 12 skipped chromadb)
+
+### Gesamtergebnis
+- Tests: 677 passed, 25 skipped (all green)
+- 23 neue skips: 4 anthropic + 12 chromadb (Pakete fehlen im Devcontainer)
+- Tower-Setup: pip install chromadb + ollama pull nomic-embed-text + ANTHROPIC_API_KEY
+
+## In Arbeit: Phase 5 – TS2 Startup-Script + TS3 STT (Whisper)
+- Branch: feature/phase-5-memory (weitergeführt)
+- TS2: scripts/start_saleria.py – vollständiger Stack-Start (Terminal/Matrix/Voice-Modus)
+- TS3: STTEngine ABC + FasterWhisperEngine (faster-whisper, GPU-beschleunigt)
+- Nächste Dateien: scripts/start_saleria.py, stt/base.py, stt/faster_whisper_engine.py
+
+## Abgeschlossen: Phase 5 – TS2 Startup-Script + TS3 STT (2026-03-16)
+- Branch: feature/phase-5-memory
+
+### TS2 – Startup-Script: scripts/start_saleria.py
+- Drei Modi: terminal, matrix (Standard), voice
+- Flags: --no-memory, --no-tts, --no-avatar, --whisper-model, --debug
+- Initialisiert: LLMRouter, ActionsDB, ActionController (Windows/Dummy), TTSEngine,
+  SaleriaEngine, MemoryStore, SystemMonitor, Avatar, STTEngine (nur voice-Modus)
+- Matrix-Modus: MatrixBridge + RemoteCommandHandler + ClaudeAgent + AlertMonitor
+- Graceful Degradation: fehlende Pakete/Windows-APIs → Fallback ohne Crash
+- Platform-Erkennung: Windows → WindowsActionController, sonst → Dummy
+
+### TS3 – STT: FasterWhisperEngine
+- Neue Dateien: src/elder_berry/stt/base.py (STTEngine ABC + DTOs)
+  - TranscriptionSegment: frozen Dataclass (start, end, text)
+  - TranscriptionResult: text, language, confidence, segments
+  - STTEngine: transcribe(Path), transcribe_bytes(bytes), load/unload, is_available
+- Neue Datei: src/elder_berry/stt/faster_whisper_engine.py (FasterWhisperEngine)
+  - Auto-Device: CUDA wenn verfügbar, sonst CPU
+  - Auto-ComputeType: float16 (CUDA) / int8 (CPU)
+  - VAD-Filter: reduziert Halluzinationen bei Stille
+  - Lazy-Load + explizites unload() für VRAM-Management
+  - transcribe_bytes(): PCM-Bytes → temp WAV → transcribe()
+  - Konfidenz: avg_logprob → exp() → 0.0–1.0
+- Tower-Empfehlung: large-v3 (beste Qualität, ~3GB VRAM)
+- pyproject.toml: [stt] optional group (faster-whisper, sounddevice, numpy)
+- Tests: 683 passed, 44 skipped (19 neue skips: faster-whisper fehlt im Devcontainer)
+
+### Tower Setup (vollständig):
+  pip install -e ".[windows,tts-neural,avatar,matrix,remote,memory,stt]"
+  pip install chromadb faster-whisper
+  ollama pull nomic-embed-text
+  ANTHROPIC_API_KEY in .env
+  python scripts/start_saleria.py --mode terminal   # Test
+  python scripts/start_saleria.py                   # Matrix-Betrieb
+
+## Abgeschlossen: Phase 5 – TS4 Matrix-STT (Sprachnachrichten → Text → Saleria) (2026-03-16)
+- Branch: feature/phase-5-memory
+- Geändert: src/elder_berry/comms/message_channel.py
+  - IncomingMessage: neues Feld audio_data: bytes | None = None
+- Geändert: src/elder_berry/comms/matrix_channel.py
+  - Import: RoomMessageAudio, DownloadError, DownloadResponse
+  - connect(): _on_room_audio als Callback für RoomMessageAudio registriert
+  - _on_room_audio(): MXC-URL parsen → download() → IncomingMessage mit audio_data → Callbacks
+  - Fehlerbehandlung: DownloadError, ungültige URL, Exception → kein Crash
+- Geändert: src/elder_berry/comms/bridge.py
+  - stt: STTEngine | None = None (neuer DI-Parameter)
+  - _handle_message(): Audio-Routing VOR Command-Router (msg.audio_data is not None)
+  - _handle_audio_message(): audio_data → temp .ogg → STT.transcribe() → text_msg → _handle_assistant_message()
+    - Ohne STT: Hinweismeldung senden
+    - STT leer: "nicht verstanden" Meldung senden
+    - STT OK: Transkript als Text-Nachricht weiterverarbeiten (inkl. TTS-Antwort)
+    - Exception: Fehlermeldung senden + error_log
+- Geändert: scripts/start_saleria.py
+  - init_stt(): jetzt auch für matrix-Modus (optional, kein sys.exit bei ImportError)
+  - run_matrix(): stt-Parameter + MatrixBridge(stt=stt)
+  - Bug Fix: remote_handler=remote → remote_commands=remote
+- Tests:
+  - tests/test_comms.py: 9 neue Tests (TestIncomingMessageAudio: 3, TestBridgeAudioRouting: 6)
+  - tests/test_matrix_channel.py: 8 neue Tests (TestOnRoomAudio: 8, DownloadError/DownloadResponse Import)
+- Tests: 700 passed, 44 skipped (alle grün)
+
+### Flow (live):
+  Element: 🎤 Sprachnachricht
+      ↓
+  MatrixChannel._on_room_audio(): MXC → download() → IncomingMessage(audio_data=bytes)
+      ↓
+  MatrixBridge._handle_audio_message(): temp .ogg → FasterWhisperEngine.transcribe()
+      ↓
+  text_msg → _handle_assistant_message() → Saleria.process() → TTS → OGG → Matrix
