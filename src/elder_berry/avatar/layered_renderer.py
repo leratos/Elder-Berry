@@ -316,7 +316,7 @@ class LayeredSpriteRenderer(AvatarRenderer):
         self._scale_components()
         logger.info("%d Komponenten geladen (headless)", total)
 
-    def _blit_to(self, target: pygame.Surface, component_key: str) -> None:
+    def _blit_to(self, target: "pygame.Surface", component_key: str) -> None:
         """Zeichnet eine Komponente zentriert auf eine beliebige Surface."""
         surface = self._components.get(component_key)
         if surface is None:
