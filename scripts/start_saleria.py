@@ -372,7 +372,11 @@ def run_matrix(assistant, stt=None, avatar=None, audio_converter=None):
         )
         sys.exit(1)
 
-    channel = MatrixChannel(homeserver=homeserver, user_id=user_id, access_token=token)
+    allowed_rooms = [room_id] if room_id else None
+    channel = MatrixChannel(
+        homeserver=homeserver, user_id=user_id, access_token=token,
+        allowed_rooms=allowed_rooms,
+    )
 
     # Google Calendar (optional)
     calendar = None
