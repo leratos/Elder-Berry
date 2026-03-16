@@ -62,7 +62,7 @@ MEDIA_KEYS = {
 # Commands die erkannt werden (ohne Parameter)
 SIMPLE_COMMANDS = (
     {"status", "systemstatus", "screenshot", "screen", "clipboard", "wol",
-     "avatar", "selfie", "hilfe", "help"}
+     "avatar", "selfie", "hilfe", "help", "restart", "neustart"}
     | set(MEDIA_KEYS)
 )
 
@@ -99,6 +99,7 @@ Prozesse:
 
 System:
   wol – Wake-on-LAN (Tower aufwecken)
+  restart / neustart – Bot neu starten (z.B. nach git pull)
   git status / git pull / git log / git diff
   docker ps / docker restart <name> / docker logs <name>
 
@@ -117,6 +118,7 @@ KEYWORD_MAP: dict[str, list[str]] = {
     "wol": ["weck tower", "tower aufwecken", "wake on lan", "tower starten"],
     "avatar": ["zeig dich", "wie siehst du aus", "bild von dir", "schick ein bild von dir", "selfie"],
     "hilfe": ["was kannst du", "was geht", "welche befehle", "welche commands"],
+    "restart": ["starte neu", "neustart", "restart dich", "bitte neustarten"],
 }
 
 # Regex für Volume-Command: "volume 50", "vol 75", "lautstärke 30"
@@ -233,6 +235,9 @@ class CommandResult:
 
     file_path: Path | None = None
     """Pfad zur Datei die gesendet werden soll (z.B. PDF)."""
+
+    restart: bool = False
+    """True wenn der Bot nach diesem Command neu starten soll."""
 
 
 class RemoteCommandHandler:
@@ -380,6 +385,9 @@ class RemoteCommandHandler:
 
         if command in ("avatar", "selfie"):
             return self._cmd_avatar(raw_text)
+
+        if command in ("restart", "neustart"):
+            return self._cmd_restart()
 
         return CommandResult(
             command=command,
@@ -947,6 +955,16 @@ class RemoteCommandHandler:
                 success=False,
                 text=f"Avatar-Rendering fehlgeschlagen: {e}",
             )
+
+    @staticmethod
+    def _cmd_restart() -> CommandResult:
+        """Signalisiert der Bridge einen Neustart."""
+        return CommandResult(
+            command="restart",
+            success=True,
+            text="Starte neu... Bis gleich! 🔄",
+            restart=True,
+        )
 
     # ------------------------------------------------------------------
     # Tier 3: Git, Docker, Download

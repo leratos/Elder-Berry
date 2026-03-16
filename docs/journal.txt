@@ -648,3 +648,16 @@
 - ABC-Erweiterungen: MessageChannel.send_file(), AvatarRenderer.render_to_file()
 - Konsistentes Pattern: DI + Graceful Degradation (wie alle Module)
 - 701 Tests, alle grün
+
+## Abgeschlossen: Phase 7 – Restart-Command (2026-03-16)
+- Branch: feature/phase-7-tier2-tier3-alerts
+- Neuer Command: "restart" / "neustart" → Bot startet sich selbst neu
+- Keywords: "starte neu", "bitte neustarten"
+- Flow: Nachricht senden → Restart-Flag schreiben (room_id) → os.execv() (Prozess ersetzt sich)
+- Startup: Flag-Datei prüfen → "Bin wieder da!" an Matrix senden → Flag löschen
+- Use-Case: git pull → restart → neuer Code aktiv, ohne manuellen Eingriff
+- Datei: src/elder_berry/comms/remote_commands.py (erweitert: restart Command + CommandResult.restart Flag)
+- Datei: src/elder_berry/comms/bridge.py (erweitert: _perform_restart + send_restart_notification)
+- HELP_TEXT aktualisiert
+- Tests: 720/720 grün (12 neu + 708 bestehend)
+- Alte Platzhalter-Sprites gelöscht (saleria-*.png)

@@ -1205,3 +1205,100 @@ class TestBridgeAlertMonitor:
         bridge.stop()
 
         alert_monitor.stop.assert_called_once()
+
+
+# ---------------------------------------------------------------------------
+# Restart-Flag + Notification
+# ---------------------------------------------------------------------------
+
+class TestRestartNotification:
+    """Tests für Restart-Flag und Startup-Benachrichtigung."""
+
+    def test_restart_flag_file_written_on_restart(self):
+        """_perform_restart schreibt Flag-Datei mit room_id."""
+        from elder_berry.comms.bridge import RESTART_FLAG_FILE
+
+        channel = MockChannel()
+        assistant = MagicMock()
+        bridge = MatrixBridge(channel=channel, assistant=assistant)
+
+        # Flag aufräumen falls von vorherigem Test
+        RESTART_FLAG_FILE.unlink(missing_ok=True)
+
+        # _perform_restart aufrufen (os.execv wird gemockt)
+        from unittest.mock import patch as _patch
+        with _patch("elder_berry.comms.bridge.os.execv"):
+            run_async(bridge._perform_restart("!test:room"))
+
+        assert RESTART_FLAG_FILE.exists()
+        assert RESTART_FLAG_FILE.read_text(encoding="utf-8") == "!test:room"
+
+        # Cleanup
+        RESTART_FLAG_FILE.unlink(missing_ok=True)
+
+    def test_send_restart_notification_sends_message(self):
+        """send_restart_notification sendet Nachricht wenn Flag existiert."""
+        from elder_berry.comms.bridge import RESTART_FLAG_FILE
+
+        channel = MockChannel()
+        channel._connected = True
+
+        # Flag simulieren
+        RESTART_FLAG_FILE.write_text("!notify:room", encoding="utf-8")
+
+        run_async(MatrixBridge.send_restart_notification(channel))
+
+        assert len(channel._sent_texts) == 1
+        room_id, text = channel._sent_texts[0]
+        assert room_id == "!notify:room"
+        assert "wieder da" in text
+
+        # Flag sollte gelöscht sein
+        assert not RESTART_FLAG_FILE.exists()
+
+    def test_send_restart_notification_noop_without_flag(self):
+        """Ohne Flag-Datei passiert nichts."""
+        from elder_berry.comms.bridge import RESTART_FLAG_FILE
+
+        RESTART_FLAG_FILE.unlink(missing_ok=True)
+
+        channel = MockChannel()
+        run_async(MatrixBridge.send_restart_notification(channel))
+
+        assert len(channel._sent_texts) == 0
+
+    def test_restart_command_triggers_bridge_restart(self):
+        """Command mit restart=True löst _perform_restart aus."""
+        channel = MockChannel()
+        channel._connected = True
+        assistant = MagicMock()
+
+        mock_handler = MagicMock()
+        mock_handler.parse_command.return_value = "restart"
+        mock_handler.execute.return_value = CommandResult(
+            command="restart", success=True,
+            text="Starte neu...", restart=True,
+        )
+
+        bridge = MatrixBridge(
+            channel=channel,
+            assistant=assistant,
+            remote_commands=mock_handler,
+        )
+        bridge._running = True
+
+        msg = IncomingMessage(
+            sender="@user:test", room_id="!room:test",
+            body="restart", timestamp=0.0,
+        )
+
+        from unittest.mock import patch as _patch, AsyncMock
+        with _patch.object(bridge, "_perform_restart", new_callable=AsyncMock) as mock_restart:
+            run_async(bridge._handle_message(msg))
+
+        # Text wurde gesendet
+        assert len(channel._sent_texts) == 1
+        assert "Starte neu" in channel._sent_texts[0][1]
+
+        # _perform_restart wurde aufgerufen
+        mock_restart.assert_called_once_with("!room:test")

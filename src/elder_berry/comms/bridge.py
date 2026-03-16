@@ -30,7 +30,9 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
 import re
+import sys
 import tempfile
 import threading
 import traceback
@@ -48,6 +50,9 @@ if TYPE_CHECKING:
     from elder_berry.core.assistant import Assistant
 
 logger = logging.getLogger(__name__)
+
+# Restart-Flag: wird vor os.execv geschrieben, beim Start geprüft
+RESTART_FLAG_FILE = Path(tempfile.gettempdir()) / "elder_berry_restart.flag"
 
 # Regex: Text in Anführungszeichen extrahieren (erste Fundstelle)
 _QUOTED_TEXT_PATTERN = re.compile(r'"([^"]+)"')
@@ -174,6 +179,10 @@ class MatrixBridge:
     async def _async_main(self) -> None:
         """Async Hauptroutine: Connect, Callback registrieren, Sync-Loop starten."""
         await self._channel.connect()
+
+        # Restart-Benachrichtigung senden (wenn Flag existiert)
+        await self.send_restart_notification(self._channel)
+
         self._channel.on_message(self._handle_message)
         logger.info("Bridge verbunden, warte auf Nachrichten...")
 
@@ -269,6 +278,10 @@ class MatrixBridge:
                         msg.room_id,
                         "Datei-Upload nicht unterstützt.",
                     )
+
+            # Restart: Flag schreiben + Prozess ersetzen
+            if result.restart:
+                await self._perform_restart(msg.room_id)
 
         except Exception as e:
             logger.error("Remote-Command '%s' fehlgeschlagen: %s", command, e)
@@ -442,6 +455,58 @@ class MatrixBridge:
 
         self._alert_monitor._send_alert = send_alert
         self._alert_monitor.start()
+
+    async def _perform_restart(self, room_id: str) -> None:
+        """Schreibt Restart-Flag und startet den Prozess neu.
+
+        Args:
+            room_id: Room-ID für die Rückmeldung nach dem Restart.
+        """
+        logger.info("Restart angefordert, starte Prozess neu...")
+
+        # Flag-Datei schreiben (room_id für Startup-Nachricht)
+        try:
+            RESTART_FLAG_FILE.write_text(room_id, encoding="utf-8")
+        except Exception as e:
+            logger.error("Restart-Flag schreiben fehlgeschlagen: %s", e)
+
+        # Bridge sauber stoppen
+        self.stop()
+
+        # Prozess ersetzen: gleiche Python-Exe + gleiche Argumente
+        python = sys.executable
+        args = sys.argv[:]
+
+        logger.info("os.execv(%s, %s)", python, [python, *args])
+        try:
+            os.execv(python, [python, *args])
+        except Exception as e:
+            logger.error("os.execv fehlgeschlagen: %s", e)
+            # Fallback: Flag aufräumen
+            RESTART_FLAG_FILE.unlink(missing_ok=True)
+
+    @staticmethod
+    async def send_restart_notification(channel: MessageChannel) -> None:
+        """Prüft ob ein Restart-Flag existiert und sendet Begrüßung.
+
+        Wird beim Start aufgerufen (vor sync_loop). Löscht das Flag nach dem Senden.
+        """
+        if not RESTART_FLAG_FILE.exists():
+            return
+
+        try:
+            room_id = RESTART_FLAG_FILE.read_text(encoding="utf-8").strip()
+            RESTART_FLAG_FILE.unlink(missing_ok=True)
+
+            if room_id:
+                await channel.send_text(
+                    room_id,
+                    "Bin wieder da! Neustart erfolgreich. ✅",
+                )
+                logger.info("Restart-Benachrichtigung gesendet an %s", room_id)
+        except Exception as e:
+            logger.error("Restart-Benachrichtigung fehlgeschlagen: %s", e)
+            RESTART_FLAG_FILE.unlink(missing_ok=True)
 
     async def _shutdown(self) -> None:
         """Async Shutdown: Disconnect und Loop stoppen."""

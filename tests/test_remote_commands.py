@@ -1270,3 +1270,53 @@ class TestCmdAvatar:
         result = handler.execute("selfie", "selfie")
 
         assert result.success is True
+
+
+# ---------------------------------------------------------------------------
+# Restart-Command
+# ---------------------------------------------------------------------------
+
+class TestRestartCommand:
+    """Tests für den restart/neustart Command."""
+
+    def test_parse_restart(self):
+        handler = RemoteCommandHandler()
+        assert handler.parse_command("restart") == "restart"
+
+    def test_parse_neustart(self):
+        handler = RemoteCommandHandler()
+        assert handler.parse_command("neustart") == "neustart"
+
+    def test_execute_neustart_via_simple(self):
+        """'neustart' als SIMPLE_COMMAND wird korrekt ausgeführt."""
+        handler = RemoteCommandHandler()
+        result = handler.execute("neustart", "neustart")
+        assert result.success is True
+        assert result.restart is True
+
+    def test_parse_keyword_bitte_neustarten(self):
+        handler = RemoteCommandHandler()
+        assert handler.parse_command("bitte neustarten") == "restart"
+
+    def test_parse_keyword_starte_bitte_neu(self):
+        handler = RemoteCommandHandler()
+        assert handler.parse_command("kannst du dich bitte neustarten") == "restart"
+
+    def test_execute_restart_success(self):
+        handler = RemoteCommandHandler()
+        result = handler.execute("restart", "restart")
+
+        assert result.success is True
+        assert result.restart is True
+        assert "Starte neu" in result.text
+
+    def test_restart_flag_default_false(self):
+        """CommandResult hat restart=False als Default."""
+        result = CommandResult(command="test", success=True)
+        assert result.restart is False
+
+    def test_other_commands_no_restart(self):
+        """Andere Commands setzen restart nicht."""
+        handler = RemoteCommandHandler()
+        result = handler.execute("hilfe", "hilfe")
+        assert result.restart is False
