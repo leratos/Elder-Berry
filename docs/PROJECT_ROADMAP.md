@@ -167,16 +167,16 @@ Saleria als echte Alltagsassistentin – Kalender, Erinnerungen, Wetter, Smart H
 - **Lokale KI-Pipeline** – Daten bleiben auf eigenem Server/Tower; kein Cloud-Zwang
 - **Hobby-Projekt mit echtem Nutzen** – kein kommerzielles Produkt
 
-### Harte technische Grenzen
-| Bereich | Grenze | Begründung |
+### Technische Eigenschaften (keine Einschränkungen für den Use-Case)
+| Bereich | Eigenschaft | Kontext |
 |---|---|---|
-| Latenz | 3–8s pro Turn | Whisper + LLM + TTS sind sequenziell, nicht streambar mit aktueller Architektur |
-| LLM-Qualität | Abhängig von Anthropic/Ollama | Kein eigenes Fine-Tuning, kein Modell-Training |
-| Offline-Qualität | Deutlich schlechter | phi4:14b ist guter Fallback, aber kein Sonnet 4.6 |
-| Gleichzeitige User | 1 | Bridge verarbeitet Nachrichten sequenziell, kein Concurrency-Handling |
-| Sprachqualität | XTTS v2 Niveau | Kein Commercial-Grade TTS (ElevenLabs-Niveau bräuchte API + Kosten) |
-| Avatar-Display | Pepper's Ghost (5") | Klein, nur von vorne/oben sichtbar, kein echter Hologramm |
-| Kamera-Reasoning | OpenRouter-Abhängig | Vision erfordert Cloud-LLM, kein lokales Vision-Modell sinnvoll |
+| Antwortzeit | 3–8s pro Turn | Für einen Assistenten völlig akzeptabel – kein Gesprächsersatz, sondern Hilfe |
+| LLM-Qualität | Abhängig von Anthropic/Ollama | Kein eigenes Fine-Tuning nötig – Sonnet 4.6 ist state-of-the-art |
+| Offline-Fallback | phi4:14b lokal | Schlechter als Sonnet, aber funktional für einfache Anfragen |
+| Gleichzeitige User | 1 (sequenziell) | Single-User by Design – kein Problem |
+| Sprachqualität | XTTS v2 | Gut genug für Alltagsnutzung; ElevenLabs wäre besser, kostet aber |
+| Avatar-Display | Pepper's Ghost (5") | Klein, aber charmant – passt zum Holunder-Konzept |
+| Kamera-Reasoning | Cloud-LLM nötig | Vision-Modelle lokal noch nicht ausgereift; OpenRouter ist sinnvoll |
 
 ### Was absichtlich nicht implementiert wird
 - **Sicherheits-Infrastruktur für mehrere User** – nicht der Use-Case
