@@ -958,6 +958,205 @@ class TestBridgeClaudeAgentRouting:
 # MatrixBridge – AlertMonitor Integration
 # ---------------------------------------------------------------------------
 
+class TestBridgeErrorLog:
+    def _make_assistant_mock(self):
+        assistant = MagicMock()
+        assistant.process.return_value = AssistantResult(
+            response="ok",
+            action_executed=None,
+            action_success=False,
+        )
+        return assistant
+
+    def test_error_log_written_on_exception(self, tmp_path):
+        """Exception bei Command schreibt Error-Log-Eintrag."""
+        async def _test():
+            channel = MockChannel()
+            assistant = self._make_assistant_mock()
+            handler = MagicMock(spec=RemoteCommandHandler)
+            handler.parse_command.return_value = "status"
+            handler.execute.side_effect = RuntimeError("psutil kaputt")
+            bridge = MatrixBridge(
+                channel=channel, assistant=assistant,
+                remote_commands=handler, error_log_dir=tmp_path,
+            )
+            await channel.connect()
+
+            msg = IncomingMessage(
+                sender="@user:x", room_id="!r:x", body="status",
+                timestamp=1.0,
+            )
+            await bridge._handle_message(msg)
+
+            log_file = tmp_path / "error_log.txt"
+            assert log_file.exists()
+            content = log_file.read_text(encoding="utf-8")
+            assert "handler=command" in content
+            assert "@user:x" in content
+            assert "status" in content
+            assert "psutil kaputt" in content
+            assert "RuntimeError" in content
+
+        run_async(_test())
+
+    def test_error_log_on_failed_command(self, tmp_path):
+        """success=False bei Command schreibt Error-Log-Eintrag."""
+        async def _test():
+            channel = MockChannel()
+            assistant = self._make_assistant_mock()
+            handler = MagicMock(spec=RemoteCommandHandler)
+            handler.parse_command.return_value = "status"
+            handler.execute.return_value = CommandResult(
+                command="status", success=False,
+                text="SystemMonitor nicht verfügbar.",
+            )
+            bridge = MatrixBridge(
+                channel=channel, assistant=assistant,
+                remote_commands=handler, error_log_dir=tmp_path,
+            )
+            await channel.connect()
+
+            msg = IncomingMessage(
+                sender="@user:x", room_id="!r:x", body="status",
+                timestamp=1.0,
+            )
+            await bridge._handle_message(msg)
+
+            log_file = tmp_path / "error_log.txt"
+            assert log_file.exists()
+            content = log_file.read_text(encoding="utf-8")
+            assert "command:status" in content
+            assert "nicht verfügbar" in content
+
+        run_async(_test())
+
+    def test_no_error_log_without_dir(self):
+        """Ohne error_log_dir wird nichts geschrieben (kein Crash)."""
+        async def _test():
+            channel = MockChannel()
+            assistant = MagicMock()
+            assistant.process.side_effect = RuntimeError("crash")
+            bridge = MatrixBridge(
+                channel=channel, assistant=assistant,
+            )
+            await channel.connect()
+
+            msg = IncomingMessage(
+                sender="@u:x", room_id="!r:x", body="test",
+                timestamp=1.0,
+            )
+            await bridge._handle_message(msg)
+            # Kein Crash, kein Log
+
+        run_async(_test())
+
+    def test_no_error_log_on_success(self, tmp_path):
+        """Erfolgreicher Command schreibt kein Error-Log."""
+        async def _test():
+            channel = MockChannel()
+            assistant = self._make_assistant_mock()
+            handler = MagicMock(spec=RemoteCommandHandler)
+            handler.parse_command.return_value = "status"
+            handler.execute.return_value = CommandResult(
+                command="status", success=True, text="CPU: 25%",
+            )
+            bridge = MatrixBridge(
+                channel=channel, assistant=assistant,
+                remote_commands=handler, error_log_dir=tmp_path,
+            )
+            await channel.connect()
+
+            msg = IncomingMessage(
+                sender="@user:x", room_id="!r:x", body="status",
+                timestamp=1.0,
+            )
+            await bridge._handle_message(msg)
+
+            log_file = tmp_path / "error_log.txt"
+            assert not log_file.exists()
+
+        run_async(_test())
+
+    def test_error_log_on_llm_error(self, tmp_path):
+        """LLM-Fehler schreibt Error-Log."""
+        async def _test():
+            channel = MockChannel()
+            assistant = MagicMock()
+            assistant.process.side_effect = RuntimeError("Ollama down")
+            bridge = MatrixBridge(
+                channel=channel, assistant=assistant,
+                error_log_dir=tmp_path,
+            )
+            await channel.connect()
+
+            msg = IncomingMessage(
+                sender="@user:x", room_id="!r:x", body="Hallo Saleria",
+                timestamp=1.0,
+            )
+            await bridge._handle_message(msg)
+
+            log_file = tmp_path / "error_log.txt"
+            assert log_file.exists()
+            content = log_file.read_text(encoding="utf-8")
+            assert "handler=llm" in content
+            assert "Ollama down" in content
+            assert "Hallo Saleria" in content
+
+        run_async(_test())
+
+    def test_error_log_on_agent_error(self, tmp_path):
+        """Agent-Fehler schreibt Error-Log."""
+        async def _test():
+            channel = MockChannel()
+            assistant = self._make_assistant_mock()
+            claude_agent = MagicMock()
+            claude_agent.process.side_effect = RuntimeError("API quota")
+            bridge = MatrixBridge(
+                channel=channel, assistant=assistant,
+                claude_agent=claude_agent, error_log_dir=tmp_path,
+            )
+            await channel.connect()
+
+            msg = IncomingMessage(
+                sender="@user:x", room_id="!r:x",
+                body='Claude "test"', timestamp=1.0,
+            )
+            await bridge._handle_message(msg)
+
+            log_file = tmp_path / "error_log.txt"
+            assert log_file.exists()
+            content = log_file.read_text(encoding="utf-8")
+            assert "handler=agent" in content
+            assert "API quota" in content
+
+        run_async(_test())
+
+    def test_multiple_errors_appended(self, tmp_path):
+        """Mehrere Fehler werden angehängt, nicht überschrieben."""
+        async def _test():
+            channel = MockChannel()
+            assistant = MagicMock()
+            assistant.process.side_effect = RuntimeError("error")
+            bridge = MatrixBridge(
+                channel=channel, assistant=assistant,
+                error_log_dir=tmp_path,
+            )
+            await channel.connect()
+
+            for i in range(3):
+                msg = IncomingMessage(
+                    sender="@u:x", room_id="!r:x",
+                    body=f"msg {i}", timestamp=float(i),
+                )
+                await bridge._handle_message(msg)
+
+            log_file = tmp_path / "error_log.txt"
+            content = log_file.read_text(encoding="utf-8")
+            assert content.count("handler=llm") == 3
+
+        run_async(_test())
+
+
 class TestBridgeAlertMonitor:
     def _make_assistant_mock(self):
         assistant = MagicMock()

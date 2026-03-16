@@ -33,6 +33,8 @@ import logging
 import re
 import tempfile
 import threading
+import traceback
+from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -94,6 +96,7 @@ class MatrixBridge:
         claude_agent: ClaudeAgent | None = None,
         alert_monitor: AlertMonitor | None = None,
         alert_room_id: str | None = None,
+        error_log_dir: Path | None = None,
     ) -> None:
         self._channel = channel
         self._assistant = assistant
@@ -102,6 +105,7 @@ class MatrixBridge:
         self._claude_agent = claude_agent
         self._alert_monitor = alert_monitor
         self._alert_room_id = alert_room_id
+        self._error_log_dir = error_log_dir
         self._loop: asyncio.AbstractEventLoop | None = None
         self._thread: threading.Thread | None = None
         self._running = False
@@ -232,6 +236,14 @@ class MatrixBridge:
             if result.text:
                 await self._channel.send_text(msg.room_id, result.text)
 
+            # Fehlgeschlagene Commands loggen (kein Crash, aber success=False)
+            if not result.success:
+                self._log_error(
+                    msg.sender, msg.body,
+                    RuntimeError(result.text or "Command fehlgeschlagen"),
+                    handler=f"command:{command}",
+                )
+
             # Bild senden (z.B. Screenshot)
             if result.image_path and result.image_path.exists():
                 try:
@@ -260,6 +272,7 @@ class MatrixBridge:
 
         except Exception as e:
             logger.error("Remote-Command '%s' fehlgeschlagen: %s", command, e)
+            self._log_error(msg.sender, msg.body, e, handler="command")
             try:
                 await self._channel.send_text(
                     msg.room_id,
@@ -316,6 +329,7 @@ class MatrixBridge:
 
         except Exception as e:
             logger.error("ClaudeAgent Fehler: %s", e)
+            self._log_error(msg.sender, msg.body, e, handler="agent")
             try:
                 await self._channel.send_text(
                     msg.room_id,
@@ -358,6 +372,7 @@ class MatrixBridge:
 
         except Exception as e:
             logger.error("Fehler bei Nachrichtenverarbeitung: %s", e)
+            self._log_error(msg.sender, msg.body, e, handler="llm")
             try:
                 await self._channel.send_text(
                     msg.room_id,
@@ -371,6 +386,45 @@ class MatrixBridge:
                 tmp_wav.unlink(missing_ok=True)
             if tmp_ogg and tmp_ogg.exists():
                 tmp_ogg.unlink(missing_ok=True)
+
+    def _log_error(
+        self, sender: str, message: str, error: Exception,
+        handler: str = "unknown",
+    ) -> None:
+        """Schreibt einen Fehler in logs/error_log.txt.
+
+        Args:
+            sender: Absender der Nachricht (z.B. @user:matrix.example.com).
+            message: Originale Nachricht die den Fehler ausgelöst hat.
+            error: Die aufgetretene Exception.
+            handler: Welcher Handler den Fehler hatte (command/agent/llm).
+        """
+        if not self._error_log_dir:
+            return
+
+        try:
+            self._error_log_dir.mkdir(parents=True, exist_ok=True)
+            log_file = self._error_log_dir / "error_log.txt"
+
+            timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            tb = traceback.format_exception(type(error), error, error.__traceback__)
+            tb_str = "".join(tb).strip()
+
+            entry = (
+                f"[{timestamp}] handler={handler}\n"
+                f"  sender: {sender}\n"
+                f"  message: {message}\n"
+                f"  error: {type(error).__name__}: {error}\n"
+                f"  traceback:\n"
+                + "\n".join(f"    {line}" for line in tb_str.splitlines())
+                + "\n\n"
+            )
+
+            with open(log_file, "a", encoding="utf-8") as f:
+                f.write(entry)
+
+        except Exception as log_err:
+            logger.debug("Error-Log schreiben fehlgeschlagen: %s", log_err)
 
     def _start_alert_monitor(self) -> None:
         """Konfiguriert und startet den AlertMonitor mit thread-safe Callback."""

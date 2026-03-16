@@ -294,12 +294,15 @@ async def run_llm_mode(
 
     from elder_berry.comms.bridge import MatrixBridge
 
+    log_dir = Path(__file__).resolve().parent.parent / "logs"
+
     bridge = MatrixBridge(
         channel=channel,
         assistant=assistant,
         audio_converter=converter,
         remote_commands=remote_handler,
         claude_agent=claude_agent,
+        error_log_dir=log_dir,
     )
 
     bridge.start()
