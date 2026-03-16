@@ -284,7 +284,7 @@ class ClaudeAgent:
         clean = relative_path.lstrip("/").lstrip("\\")
         resolved = (self._project_root / clean).resolve()
 
-        if not str(resolved).startswith(str(self._project_root)):
+        if not resolved.is_relative_to(self._project_root):
             raise ValueError(
                 f"Pfad '{relative_path}' liegt außerhalb des Projekts"
             )

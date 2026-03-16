@@ -678,16 +678,17 @@ class TestCmdSendFile:
         test_file = tmp_path / "test.pdf"
         test_file.write_bytes(b"PDF content " * 100)
 
-        handler = RemoteCommandHandler()
+        handler = RemoteCommandHandler(send_file_allowed_roots=(tmp_path,))
         result = handler.execute("send_file", f"schick mir {test_file}")
 
         assert result.success is True
         assert result.file_path == test_file
         assert "test.pdf" in result.text
 
-    def test_send_file_not_found(self):
-        handler = RemoteCommandHandler()
-        result = handler.execute("send_file", "schick mir C:\\nonexistent\\file.pdf")
+    def test_send_file_not_found(self, tmp_path):
+        missing = tmp_path / "nonexistent" / "file.pdf"
+        handler = RemoteCommandHandler(send_file_allowed_roots=(tmp_path,))
+        result = handler.execute("send_file", f"schick mir {missing}")
 
         assert result.success is False
         assert "nicht gefunden" in result.text
@@ -697,14 +698,14 @@ class TestCmdSendFile:
         # Erstelle eine Datei knapp über dem Limit
         test_file.write_bytes(b"\x00" * (MAX_FILE_SIZE_BYTES + 1))
 
-        handler = RemoteCommandHandler()
+        handler = RemoteCommandHandler(send_file_allowed_roots=(tmp_path,))
         result = handler.execute("send_file", f"schick mir {test_file}")
 
         assert result.success is False
         assert "zu groß" in result.text
 
     def test_send_file_directory(self, tmp_path):
-        handler = RemoteCommandHandler()
+        handler = RemoteCommandHandler(send_file_allowed_roots=(tmp_path.parent,))
         result = handler.execute("send_file", f"schick mir {tmp_path}")
 
         assert result.success is False
@@ -716,6 +717,19 @@ class TestCmdSendFile:
 
         assert result.success is False
         assert "nicht erkannt" in result.text
+
+    def test_send_file_outside_allowed_roots(self, tmp_path):
+        """Dateien außerhalb der erlaubten Wurzeln werden abgewiesen."""
+        test_file = tmp_path / "secret.key"
+        test_file.write_bytes(b"key material")
+
+        other_dir = tmp_path / "other"
+        other_dir.mkdir()
+        handler = RemoteCommandHandler(send_file_allowed_roots=(other_dir,))
+        result = handler.execute("send_file", f"schick mir {test_file}")
+
+        assert result.success is False
+        assert "Zugriff verweigert" in result.text
 
 
 # ---------------------------------------------------------------------------
