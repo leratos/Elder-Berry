@@ -909,6 +909,31 @@
 - Regex: MAIL_SEARCH_PATTERN + TERMIN_SEARCH_PATTERN (zwei alternative Gruppen)
 - Tests: 907/907 grün
 
+## Abgeschlossen: Phase 8 – LLM-Fallback + Kontext-Memory (2026-03-16)
+- LLM als Fallback-Router: Saleria kennt ihre Remote-Tools im System-Prompt
+  - Wenn Pattern nicht matcht → LLM erkennt remote_command → Bridge führt Command aus
+  - Doppelte Absicherung: Pattern spart API-Kosten, LLM fängt Rest auf
+  - remote_command Aktion in saleria.yaml + SYSTEM_PROMPT_TEMPLATE
+  - AssistantResult: neues Feld action_params (dict)
+  - Bridge: _handle_llm_remote_command() extrahiert Command aus LLM-Params
+- Kontext-Speicher (Quick-Fix): Bridge merkt sich letztes Command-Ergebnis pro User
+  - "suche mail von X" → Ergebnis → "fasse die mail zusammen" → LLM bekommt Kontext
+  - _last_command_result: dict[sender, str]
+  - Kontext wird an user_input angehängt bei LLM-Aufrufen
+- Termin-Keywords erweitert: "nächste woche", "diese woche", "habe ich morgen"
+  - termine_woche / termine_morgen als separate Keyword-Varianten
+  - TERMINE_PATTERN: nächste woche / diese woche ergänzt
+- allowed_rooms in start_saleria.py gesetzt (keine Phantom-Join-Versuche mehr)
+- Mail-Pattern erweitert: "Suche das Angebot in meinen Mails von X" matcht jetzt
+
+### OFFEN: Echtes Konversations-Gedächtnis (Multi-Turn)
+- Aktuell: nur letztes Command-Ergebnis als Kontext, kein Chat-Verlauf
+- Richtige Lösung: letzte N Nachrichten pro User in der Bridge als Kontext-Fenster
+  - Sliding Window (z.B. letzte 5 Messages) → an LLM als Chat-History übergeben
+  - Getrennt von RAG-Memory (ChromaDB = Langzeit, Chat-History = Kurzzeit)
+  - Ermöglicht: Rückfragen, "mach das nochmal", "und was ist mit..."
+  - Aufwand: ~50-80 Zeilen in Bridge + Assistant
+
 ## Abgeschlossen: Gehäuse – RootPaths.iLogicVb v3 (L-Kurve + Ellipse)
 - 9/9 Splines, Sweeps: noch zu bestätigen (v3 Fix für AddSimple angewendet)
 - L-förmige Z-Kurve funktioniert: Drop→Flat→Dive, keine Sichelform mehr

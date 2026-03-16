@@ -140,12 +140,13 @@ class IMAPEmailClient:
     def search(
         self, query: str, max_results: int = 10, days: int = 90,
     ) -> list[EmailMessage]:
-        """Sucht E-Mails nach Betreff oder Absender.
+        """Sucht E-Mails nach Betreff, Absender oder Body-Inhalt.
 
-        Nutzt IMAP serverseitige Suche (SUBJECT + FROM als OR).
+        Nutzt IMAP serverseitige Suche (SUBJECT + FROM + BODY als OR).
+        BODY durchsucht den gesamten Mail-Text inkl. Signatur.
 
         Args:
-            query: Suchbegriff (wird in SUBJECT und FROM gesucht).
+            query: Suchbegriff (wird in SUBJECT, FROM und BODY gesucht).
             max_results: Maximale Anzahl Ergebnisse.
             days: Zeitraum in Tagen (default 90).
 
@@ -153,8 +154,11 @@ class IMAPEmailClient:
             Liste von EmailMessage, neueste zuerst.
         """
         since = (datetime.now() - timedelta(days=days)).strftime("%d-%b-%Y")
-        # IMAP OR-Suche: Betreff ODER Absender enthält query
-        criteria = f'(OR SUBJECT "{query}" FROM "{query}") SINCE {since}'
+        # IMAP OR-Suche: Betreff ODER Absender ODER Body enthält query
+        criteria = (
+            f'(OR OR SUBJECT "{query}" FROM "{query}" BODY "{query}") '
+            f'SINCE {since}'
+        )
         return self._fetch_mails(criteria, max_results=max_results, is_unread=False)
 
     def get_unread_count(self) -> int:

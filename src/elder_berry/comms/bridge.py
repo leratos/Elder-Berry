@@ -119,6 +119,8 @@ class MatrixBridge:
         self._loop: asyncio.AbstractEventLoop | None = None
         self._thread: threading.Thread | None = None
         self._running = False
+        # Letztes Command-Ergebnis pro User (für Kontext-Fragen wie "fasse zusammen")
+        self._last_command_result: dict[str, str] = {}
 
     @property
     def is_running(self) -> bool:
@@ -259,6 +261,12 @@ class MatrixBridge:
             # Text-Antwort senden
             if result.text:
                 await self._channel.send_text(msg.room_id, result.text)
+
+            # Letztes Ergebnis pro User speichern (für Kontext-Fragen)
+            if result.success and result.text:
+                self._last_command_result[msg.sender] = (
+                    f"Letzter Befehl: {msg.body}\nErgebnis:\n{result.text}"
+                )
 
             # Fehlgeschlagene Commands loggen (kein Crash, aber success=False)
             if not result.success:
@@ -466,15 +474,24 @@ class MatrixBridge:
         try:
             loop = asyncio.get_running_loop()
 
+            # Kontext vom letzten Command anhängen (wenn vorhanden)
+            user_input = msg.body
+            last_ctx = self._last_command_result.get(msg.sender)
+            if last_ctx:
+                user_input = (
+                    f"{msg.body}\n\n"
+                    f"[Kontext vom vorherigen Befehl:\n{last_ctx}]"
+                )
+
             # Audio-Modus: TTS in Datei generieren statt abspielen
             if self._audio_converter and self._audio_converter.ffmpeg_available:
                 tmp_wav = Path(tempfile.mktemp(suffix=".wav"))
                 result = await loop.run_in_executor(
-                    None, self._assistant.process, msg.body, tmp_wav,
+                    None, self._assistant.process, user_input, tmp_wav,
                 )
             else:
                 result = await loop.run_in_executor(
-                    None, self._assistant.process, msg.body,
+                    None, self._assistant.process, user_input,
                 )
 
             # LLM hat remote_command als Aktion gewählt → an CommandHandler weiterleiten
