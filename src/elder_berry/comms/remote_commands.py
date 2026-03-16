@@ -457,8 +457,23 @@ class RemoteCommandHandler:
                 text=f"Fehler bei Status-Abfrage: {e}",
             )
 
+    @staticmethod
+    def _wake_monitor() -> None:
+        """Weckt den Monitor auf (Windows: SC_MONITORPOWER)."""
+        import sys
+        if sys.platform != "win32":
+            return
+        try:
+            import ctypes
+            # WM_SYSCOMMAND + SC_MONITORPOWER + -1 (ON)
+            ctypes.windll.user32.SendMessageW(0xFFFF, 0x0112, 0xF170, -1)
+            import time
+            time.sleep(1)  # Monitor braucht ~1s zum Aufwachen
+        except Exception as e:
+            logger.debug("Monitor-Aufwecken fehlgeschlagen (ignoriert): %s", e)
+
     def _cmd_screenshot(self) -> CommandResult:
-        """Screenshot aufnehmen und als PNG speichern."""
+        """Screenshot aufnehmen und als PNG speichern. Weckt Monitor bei Bedarf."""
         try:
             import mss
         except ImportError:
@@ -467,6 +482,9 @@ class RemoteCommandHandler:
                 success=False,
                 text="mss nicht installiert (pip install mss).",
             )
+
+        # Monitor aufwecken falls er schläft
+        self._wake_monitor()
 
         try:
             with mss.mss() as sct:
