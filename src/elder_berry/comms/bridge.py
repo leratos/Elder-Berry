@@ -459,6 +459,9 @@ class MatrixBridge:
     async def _perform_restart(self, room_id: str) -> None:
         """Schreibt Restart-Flag und startet den Prozess neu.
 
+        Wird innerhalb des Bridge-Threads aufgerufen, daher kein self.stop()
+        (Thread kann sich nicht selbst joinen). Stattdessen: disconnect → Flag → execv.
+
         Args:
             room_id: Room-ID für die Rückmeldung nach dem Restart.
         """
@@ -470,8 +473,17 @@ class MatrixBridge:
         except Exception as e:
             logger.error("Restart-Flag schreiben fehlgeschlagen: %s", e)
 
-        # Bridge sauber stoppen
-        self.stop()
+        # AlertMonitor stoppen (wenn vorhanden)
+        if self._alert_monitor and self._alert_monitor.is_running:
+            self._alert_monitor.stop()
+
+        # Matrix-Verbindung trennen (wir sind im async Loop)
+        try:
+            await self._channel.disconnect()
+        except Exception as e:
+            logger.debug("Disconnect bei Restart (ignoriert): %s", e)
+
+        self._running = False
 
         # Prozess ersetzen: gleiche Python-Exe + gleiche Argumente
         python = sys.executable
