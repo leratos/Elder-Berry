@@ -721,3 +721,45 @@
 - Tests: 677 passed, 25 skipped (all green)
 - 23 neue skips: 4 anthropic + 12 chromadb (Pakete fehlen im Devcontainer)
 - Tower-Setup: pip install chromadb + ollama pull nomic-embed-text + ANTHROPIC_API_KEY
+
+## In Arbeit: Phase 5 – TS2 Startup-Script + TS3 STT (Whisper)
+- Branch: feature/phase-5-memory (weitergeführt)
+- TS2: scripts/start_saleria.py – vollständiger Stack-Start (Terminal/Matrix/Voice-Modus)
+- TS3: STTEngine ABC + FasterWhisperEngine (faster-whisper, GPU-beschleunigt)
+- Nächste Dateien: scripts/start_saleria.py, stt/base.py, stt/faster_whisper_engine.py
+
+## Abgeschlossen: Phase 5 – TS2 Startup-Script + TS3 STT (2026-03-16)
+- Branch: feature/phase-5-memory
+
+### TS2 – Startup-Script: scripts/start_saleria.py
+- Drei Modi: terminal, matrix (Standard), voice
+- Flags: --no-memory, --no-tts, --no-avatar, --whisper-model, --debug
+- Initialisiert: LLMRouter, ActionsDB, ActionController (Windows/Dummy), TTSEngine,
+  SaleriaEngine, MemoryStore, SystemMonitor, Avatar, STTEngine (nur voice-Modus)
+- Matrix-Modus: MatrixBridge + RemoteCommandHandler + ClaudeAgent + AlertMonitor
+- Graceful Degradation: fehlende Pakete/Windows-APIs → Fallback ohne Crash
+- Platform-Erkennung: Windows → WindowsActionController, sonst → Dummy
+
+### TS3 – STT: FasterWhisperEngine
+- Neue Dateien: src/elder_berry/stt/base.py (STTEngine ABC + DTOs)
+  - TranscriptionSegment: frozen Dataclass (start, end, text)
+  - TranscriptionResult: text, language, confidence, segments
+  - STTEngine: transcribe(Path), transcribe_bytes(bytes), load/unload, is_available
+- Neue Datei: src/elder_berry/stt/faster_whisper_engine.py (FasterWhisperEngine)
+  - Auto-Device: CUDA wenn verfügbar, sonst CPU
+  - Auto-ComputeType: float16 (CUDA) / int8 (CPU)
+  - VAD-Filter: reduziert Halluzinationen bei Stille
+  - Lazy-Load + explizites unload() für VRAM-Management
+  - transcribe_bytes(): PCM-Bytes → temp WAV → transcribe()
+  - Konfidenz: avg_logprob → exp() → 0.0–1.0
+- Tower-Empfehlung: large-v3 (beste Qualität, ~3GB VRAM)
+- pyproject.toml: [stt] optional group (faster-whisper, sounddevice, numpy)
+- Tests: 683 passed, 44 skipped (19 neue skips: faster-whisper fehlt im Devcontainer)
+
+### Tower Setup (vollständig):
+  pip install -e ".[windows,tts-neural,avatar,matrix,remote,memory,stt]"
+  pip install chromadb faster-whisper
+  ollama pull nomic-embed-text
+  ANTHROPIC_API_KEY in .env
+  python scripts/start_saleria.py --mode terminal   # Test
+  python scripts/start_saleria.py                   # Matrix-Betrieb

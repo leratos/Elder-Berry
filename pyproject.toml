@@ -54,6 +54,11 @@ remote = [
 memory = [
     "chromadb>=0.5",
 ]
+stt = [
+    "faster-whisper>=1.0",
+    "sounddevice>=0.4",
+    "numpy>=1.26",
+]
 
 [tool.setuptools.packages.find]
 where = ["src"]
