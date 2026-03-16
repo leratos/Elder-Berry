@@ -104,7 +104,10 @@ System:
   docker ps / docker restart <name> / docker logs <name>
 
 Claude-Agent:
-  claude "<Auftrag>" – Komplexe Anfrage an Claude API"""
+  claude "<Auftrag>" – Komplexe Anfrage an Claude API
+
+Sprachnachrichten:
+  🎤 OGG/Opus Sprachnachricht → Whisper STT → Saleria antwortet (Text + Sprache)"""
 
 # Keyword-Erkennung: wenn eines dieser Wörter im Text vorkommt → Command
 # Wird nur geprüft wenn kein exakter Match vorliegt
