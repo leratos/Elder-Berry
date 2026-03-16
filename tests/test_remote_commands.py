@@ -1334,3 +1334,240 @@ class TestRestartCommand:
         handler = RemoteCommandHandler()
         result = handler.execute("hilfe", "hilfe")
         assert result.restart is False
+
+
+# ---------------------------------------------------------------------------
+# Calendar-Commands
+# ---------------------------------------------------------------------------
+
+class TestCalendarCommands:
+    def test_parse_termine(self):
+        handler = RemoteCommandHandler()
+        assert handler.parse_command("termine") == "termine"
+
+    def test_parse_termine_morgen(self):
+        handler = RemoteCommandHandler()
+        assert handler.parse_command("termine morgen") == "termine"
+
+    def test_parse_termine_woche(self):
+        handler = RemoteCommandHandler()
+        assert handler.parse_command("termine woche") == "termine"
+
+    def test_parse_termine_keyword_kalender(self):
+        handler = RemoteCommandHandler()
+        assert handler.parse_command("was steht heute im kalender") == "termine"
+
+    def test_parse_termin_create(self):
+        handler = RemoteCommandHandler()
+        assert handler.parse_command("termin: Zahnarzt 2026-03-20 14:00") == "termin_create"
+
+    def test_execute_termine_no_calendar(self):
+        handler = RemoteCommandHandler()
+        result = handler.execute("termine", "termine")
+        assert result.success is False
+        assert "nicht konfiguriert" in result.text
+
+    def test_execute_termine_today(self):
+        mock_cal = MagicMock()
+        mock_cal.get_today.return_value = []
+        mock_cal.format_events.return_value = "Keine Termine."
+
+        handler = RemoteCommandHandler(calendar=mock_cal)
+        result = handler.execute("termine", "termine")
+
+        assert result.success is True
+        assert "heute" in result.text.lower()
+        mock_cal.get_today.assert_called_once()
+
+    def test_execute_termine_morgen(self):
+        mock_cal = MagicMock()
+        mock_cal.get_tomorrow.return_value = []
+        mock_cal.format_events.return_value = "Keine Termine."
+
+        handler = RemoteCommandHandler(calendar=mock_cal)
+        result = handler.execute("termine", "termine morgen")
+
+        assert result.success is True
+        assert "morgen" in result.text.lower()
+
+    def test_execute_termine_woche(self):
+        mock_cal = MagicMock()
+        mock_cal.get_events.return_value = []
+        mock_cal.format_events.return_value = "Keine Termine."
+
+        handler = RemoteCommandHandler(calendar=mock_cal)
+        result = handler.execute("termine", "termine woche")
+
+        assert result.success is True
+        mock_cal.get_events.assert_called_once_with(days=7)
+
+    def test_execute_termin_create_no_calendar(self):
+        handler = RemoteCommandHandler()
+        result = handler.execute("termin_create", "termin: Test 2026-03-20 14:00")
+        assert result.success is False
+
+    def test_execute_termin_create_success(self):
+        from elder_berry.tools.google_calendar import CalendarEvent
+        from datetime import datetime
+
+        mock_cal = MagicMock()
+        mock_cal.create_event.return_value = CalendarEvent(
+            summary="Zahnarzt",
+            start=datetime(2026, 3, 20, 14, 0),
+            end=datetime(2026, 3, 20, 15, 0),
+        )
+
+        handler = RemoteCommandHandler(calendar=mock_cal)
+        result = handler.execute("termin_create", "termin: Zahnarzt 2026-03-20 14:00")
+
+        assert result.success is True
+        assert "Zahnarzt" in result.text
+
+    def test_execute_termin_create_invalid_date(self):
+        mock_cal = MagicMock()
+        handler = RemoteCommandHandler(calendar=mock_cal)
+        result = handler.execute("termin_create", "termin: Test 2026-13-40 25:00")
+        assert result.success is False
+        assert "Ungültig" in result.text
+
+    def test_parse_termin_suche(self):
+        handler = RemoteCommandHandler()
+        assert handler.parse_command("termin suche Zahnarzt") == "termin_search"
+
+    def test_execute_termin_search_success(self):
+        from elder_berry.tools.google_calendar import CalendarEvent
+        from datetime import datetime
+
+        mock_cal = MagicMock()
+        mock_cal.search_events.return_value = [
+            CalendarEvent(
+                summary="Zahnarzt Dr. Müller",
+                start=datetime(2026, 4, 10, 14, 0),
+                end=datetime(2026, 4, 10, 15, 0),
+            ),
+        ]
+        mock_cal.format_events.return_value = "14:00-15:00 Zahnarzt Dr. Müller"
+
+        handler = RemoteCommandHandler(calendar=mock_cal)
+        result = handler.execute("termin_search", "termin suche Zahnarzt")
+
+        assert result.success is True
+        assert "Zahnarzt" in result.text
+        mock_cal.search_events.assert_called_once_with("Zahnarzt", days=90)
+
+    def test_execute_termin_search_no_results(self):
+        mock_cal = MagicMock()
+        mock_cal.search_events.return_value = []
+
+        handler = RemoteCommandHandler(calendar=mock_cal)
+        result = handler.execute("termin_search", "termin suche Nonsense")
+
+        assert result.success is True
+        assert "Keine Termine" in result.text
+
+
+# ---------------------------------------------------------------------------
+# Email-Commands
+# ---------------------------------------------------------------------------
+
+class TestEmailCommands:
+    def test_parse_mails(self):
+        handler = RemoteCommandHandler()
+        assert handler.parse_command("mails") == "mails"
+
+    def test_parse_mails_days(self):
+        handler = RemoteCommandHandler()
+        assert handler.parse_command("mails 5") == "mails"
+
+    def test_parse_keyword_neue_mails(self):
+        handler = RemoteCommandHandler()
+        assert handler.parse_command("habe ich neue mails") == "mails"
+
+    def test_parse_keyword_zusammenfassung(self):
+        handler = RemoteCommandHandler()
+        assert handler.parse_command("mail zusammenfassung") == "mail_summary"
+
+    def test_execute_mails_no_client(self):
+        handler = RemoteCommandHandler()
+        result = handler.execute("mails", "mails")
+        assert result.success is False
+        assert "nicht konfiguriert" in result.text
+
+    def test_execute_mails_unread(self):
+        mock_email = MagicMock()
+        mock_email.get_unread.return_value = []
+        mock_email.format_mails.return_value = "Keine E-Mails."
+
+        handler = RemoteCommandHandler(email_client=mock_email)
+        result = handler.execute("mails", "mails")
+
+        assert result.success is True
+        mock_email.get_unread.assert_called_once()
+
+    def test_execute_mails_days(self):
+        mock_email = MagicMock()
+        mock_email.get_recent.return_value = []
+        mock_email.format_mails.return_value = "Keine E-Mails."
+
+        handler = RemoteCommandHandler(email_client=mock_email)
+        result = handler.execute("mails", "mails 5")
+
+        assert result.success is True
+        mock_email.get_recent.assert_called_once_with(days=5)
+
+    def test_parse_mail_suche(self):
+        handler = RemoteCommandHandler()
+        assert handler.parse_command("mail suche Rechnung") == "mail_search"
+
+    def test_execute_mail_search_success(self):
+        from elder_berry.tools.email_client import EmailMessage
+        from datetime import datetime
+
+        mock_email = MagicMock()
+        mock_email.search.return_value = [
+            EmailMessage(
+                subject="Rechnung März",
+                sender="billing@strato.de",
+                date=datetime(2026, 3, 10),
+                body_preview="Ihre Rechnung...",
+            ),
+        ]
+        mock_email.format_mails.return_value = "● 10.03 | billing@strato.de | Rechnung März"
+
+        handler = RemoteCommandHandler(email_client=mock_email)
+        result = handler.execute("mail_search", "mail suche Rechnung")
+
+        assert result.success is True
+        assert "Rechnung" in result.text
+        mock_email.search.assert_called_once_with("Rechnung", max_results=10)
+
+    def test_execute_mail_search_no_results(self):
+        mock_email = MagicMock()
+        mock_email.search.return_value = []
+
+        handler = RemoteCommandHandler(email_client=mock_email)
+        result = handler.execute("mail_search", "mail suche Gibtsnet")
+
+        assert result.success is True
+        assert "Keine Mails" in result.text
+
+    def test_execute_mail_summary(self):
+        from elder_berry.tools.email_client import EmailMessage
+        from datetime import datetime
+
+        mock_email = MagicMock()
+        mock_email.get_unread.return_value = [
+            EmailMessage(
+                subject="Test",
+                sender="a@b.com",
+                date=datetime(2026, 3, 16),
+                body_preview="Inhalt...",
+            ),
+        ]
+        mock_email.format_mails_detailed.return_value = "--- Mail 1 ---\nTest"
+
+        handler = RemoteCommandHandler(email_client=mock_email)
+        result = handler.execute("mails", "mail zusammenfassung")
+
+        assert result.success is True
+        assert "Mail 1" in result.text

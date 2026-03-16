@@ -844,3 +844,92 @@
 - TTS mit Voice-Map (10 Emotionen) funktional
 - Sprachnachrichten: Element → Whisper STT → Command/LLM → TTS → OGG → Matrix
 - Tests: 815/815 grün
+
+## Abgeschlossen: Phase 8 – TS1 Google Calendar + TS2 Email (IMAP) (2026-03-16)
+- Branch: feature/phase-8-calendar-email
+
+### TS1 – Google Calendar
+- Neue Datei: src/elder_berry/tools/google_calendar.py (GoogleCalendarClient + CalendarEvent DTO)
+  - OAuth2-Tokens aus SecretStore (Refresh-Token, auto-refresh)
+  - get_today(), get_tomorrow(), get_events(days=N), create_event()
+  - format_events(): Formatierung mit Datum-Gruppierung
+  - CalendarEvent: summary, start, end, location, all_day, format_short()
+  - Lazy-Init: Google API Service erst bei erstem Zugriff
+- Neue Datei: scripts/setup_google_oauth.py (Einmaliges OAuth2-Setup)
+  - Browser-Flow → Refresh-Token → SecretStore (verschlüsselt)
+  - Scopes: calendar (lesen + schreiben)
+- Commands: termine, termine morgen, termine woche, termin: Titel Datum Zeit
+- Keywords: "was steht an", "welche termine", "kalender", "nächster termin"
+
+### TS2 – Email (IMAP)
+- Neue Datei: src/elder_berry/tools/email_client.py (IMAPEmailClient + EmailMessage DTO)
+  - IMAP-Verbindung pro Aufruf (kein Langzeit-Socket)
+  - get_unread(), get_recent(days=N), get_unread_count()
+  - format_mails(): Kurzliste, format_mails_detailed(): für LLM-Zusammenfassung
+  - _decode_header(): MIME-encoded Header (UTF-8, ISO-8859-1)
+  - _extract_body(): text/plain bevorzugt, Fallback HTML (Tags entfernt)
+  - from_secret_store(): email_imap_host, email_user, email_password
+  - Keine extra Dependencies (Python-Standardbibliothek: imaplib, email)
+  - Provider-unabhängig: Strato, GMX, Gmail, Outlook, etc.
+- Commands: mails, mails N (letzte N Tage), mail zusammenfassung
+- Keywords: "neue mails", "ungelesene mails", "posteingang"
+
+### Integration
+- RemoteCommandHandler: calendar + email_client als neue DI-Parameter
+- HELP_TEXT: Kalender + E-Mail Sections ergänzt
+- KEYWORD_MAP: termine, mails, mail_summary Keywords
+- Regex: TERMINE_PATTERN, TERMIN_CREATE_PATTERN, MAILS_DAYS_PATTERN
+- pyproject.toml: [tools] optional group (google-api-python-client, google-auth-oauthlib)
+- Neue Tests: tests/test_google_calendar.py (15), tests/test_email_client.py (20),
+  tests/test_remote_commands.py (20 neue: Calendar + Email Commands)
+- Tests: 870/870 grün (55 neu + 815 bestehend)
+
+### Setup für Live-Betrieb
+- Calendar: python scripts/setup_google_oauth.py (einmalig)
+- Email: SecretStore().set("email_imap_host", "imap.strato.de") etc.
+- start_saleria.py: calendar + email_client + gym_client in RemoteCommandHandler verdrahtet
+
+## Abgeschlossen: Phase 8 – TS3 Berry-Gym Integration (2026-03-16)
+- Branch: feature/phase-8-calendar-email
+- Neue Datei: src/elder_berry/tools/gym_data.py (GymDataClient)
+  - Berry-Gym REST-API Client (Token-Auth, httpx, lazy-init)
+  - get_summary(), get_last_training(), get_week(), get_prs()
+  - format_summary/last_training/week/prs() – lesbare Text-Ausgabe
+  - Base-URL konfigurierbar, Timeout 10s, Graceful Degradation
+- Commands: training, training details, training woche, prs
+- Keywords: "letztes training", "wie war mein training", "gym", "personal records"
+- start_saleria.py: GymDataClient initialisiert wenn berry_gym_api_token im SecretStore
+- Neue Tests: tests/test_gym_data.py (28 Tests)
+- Setup: SecretStore().set("berry_gym_api_token", "<token>")
+
+## Abgeschlossen: Phase 8 – Mail-Suche + Termin-Suche (2026-03-16)
+- IMAPEmailClient.search(): IMAP OR-Suche (SUBJECT + FROM), serverseitig
+- GoogleCalendarClient.search_events(): Google Calendar q-Parameter (Volltextsuche)
+- Natürliche Sprache: "suche mir bitte die mail mit der Rechnung von Alux" funktioniert
+- Regex: MAIL_SEARCH_PATTERN + TERMIN_SEARCH_PATTERN (zwei alternative Gruppen)
+- Tests: 907/907 grün
+
+## Abgeschlossen: Gehäuse – RootPaths.iLogicVb v3 (L-Kurve + Ellipse)
+- 9/9 Splines, Sweeps: noch zu bestätigen (v3 Fix für AddSimple angewendet)
+- L-förmige Z-Kurve funktioniert: Drop→Flat→Dive, keine Sichelform mehr
+- Elliptische Profile: breite, flache Rippen statt runde Finger
+- Visuelles Ergebnis: erkennbar Baumstumpf-Wurzeln (Referenzbild-nah)
+- Fillets entfernt (manuell setzen)
+- Nächster Schritt: Feintuning der Wurzeln + manuelles Finishing in Inventor
+- Hardware-Entscheidung: Drehteller = 28BYJ-48 Schrittmotor + Hall-Sensor (Ø4×2mm Neodym) für Homing
+
+## In Arbeit: Gehäuse – RootFingers.iLogicVb (Finger-Wurzeln als separate Bodies)
+- Datei: hardware/enclosure/iLogic/RootFingers.iLogicVb (NEU)
+- Kleine krallenartige Wurzeln auf/neben den flachen Hauptwurzeln
+- Kreisprofil, kNewBodyOperation → eigene Körper für Boolean-Verbindung
+
+## Abgeschlossen: Gehäuse – RootFingers.iLogicVb (Finger-Wurzeln)
+- Datei: hardware/enclosure/iLogic/RootFingers.iLogicVb (257 Zeilen, NEU)
+- Zwei Gruppen: 6 am Stammfuß (Ø0.7cm, 3.5cm lang) + 8 auf Hauptwurzeln (Ø0.5cm, 2.5cm)
+- Kreisprofil (nicht Ellipse) – krallenartig gewollt
+- kNewBodyOperation → alle Finger als separate Bodies (für Boolean Combine)
+- Sichelform-Kurve (gewollt bei kleinen Fingern, anders als Hauptwurzeln)
+- Variable Exponenten (radialExp, absenkExp) pro Finger
+- Taper-Sweep mit Fallback auf konstant
+- Cleanup über Prefix RootFinger_S_ / RootFinger_W_
+- Seed 77 (≠ BarkPaths 42, ≠ RootPaths 99)

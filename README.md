@@ -240,8 +240,9 @@ hardware/
 └── bom/              # Bill of materials
 
 scripts/
-├── start_saleria.py  # Main entry point (Terminal/Matrix/Voice mode)
-└── demo_matrix_bot.py # Legacy demo bot (Echo/Remote/LLM modes)
+├── start_saleria.py     # Main entry point (Terminal/Matrix/Voice mode)
+├── demo_tts_live.py     # Interactive TTS testing (emotion + text)
+└── demo_integration.py  # Robot simulator integration test
 
 tests/                # 815+ unit + integration tests
 ```

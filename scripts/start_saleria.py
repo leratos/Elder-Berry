@@ -374,6 +374,41 @@ def run_matrix(assistant, stt=None, avatar=None, audio_converter=None):
 
     channel = MatrixChannel(homeserver=homeserver, user_id=user_id, access_token=token)
 
+    # Google Calendar (optional)
+    calendar = None
+    try:
+        from elder_berry.tools.google_calendar import GoogleCalendarClient
+        cal = GoogleCalendarClient(secret_store=secrets)
+        if cal.is_available():
+            calendar = cal
+            logger.info("Google Calendar: aktiv")
+        else:
+            logger.debug("Google Calendar: keine Tokens konfiguriert")
+    except ImportError:
+        logger.debug("Google Calendar: google-api-python-client nicht installiert")
+    except Exception as e:
+        logger.warning("Google Calendar nicht verfügbar: %s", e)
+
+    # Email / IMAP (optional)
+    email_client = None
+    if secrets.get_or_none("email_imap_host"):
+        try:
+            from elder_berry.tools.email_client import IMAPEmailClient
+            email_client = IMAPEmailClient.from_secret_store(secrets)
+            logger.info("Email: IMAP %s", secrets.get("email_imap_host"))
+        except Exception as e:
+            logger.warning("Email nicht verfügbar: %s", e)
+
+    # Berry-Gym (optional)
+    gym_client = None
+    if secrets.get_or_none("berry_gym_api_token"):
+        try:
+            from elder_berry.tools.gym_data import GymDataClient
+            gym_client = GymDataClient(secret_store=secrets)
+            logger.info("Berry-Gym: aktiv (%s)", gym_client._base_url)
+        except Exception as e:
+            logger.warning("Berry-Gym nicht verfügbar: %s", e)
+
     # RemoteCommandHandler – alle Dependencies übergeben
     remote = RemoteCommandHandler(
         system_monitor=SystemMonitor(),
@@ -381,6 +416,9 @@ def run_matrix(assistant, stt=None, avatar=None, audio_converter=None):
         secret_store=secrets,
         project_root=_PROJECT_ROOT,
         avatar_renderer=avatar,
+        calendar=calendar,
+        email_client=email_client,
+        gym_client=gym_client,
     )
 
     # ClaudeAgent (optional)

@@ -46,6 +46,9 @@ if TYPE_CHECKING:
     from elder_berry.avatar.base import AvatarRenderer
     from elder_berry.core.secret_store import SecretStore
     from elder_berry.system.info import SystemMonitor
+    from elder_berry.tools.email_client import IMAPEmailClient
+    from elder_berry.tools.google_calendar import GoogleCalendarClient
+    from elder_berry.tools.gym_data import GymDataClient
 
 logger = logging.getLogger(__name__)
 
@@ -62,7 +65,8 @@ MEDIA_KEYS = {
 # Commands die erkannt werden (ohne Parameter)
 SIMPLE_COMMANDS = (
     {"status", "systemstatus", "screenshot", "screen", "clipboard", "wol",
-     "avatar", "selfie", "hilfe", "help", "restart", "neustart"}
+     "avatar", "selfie", "hilfe", "help", "restart", "neustart",
+     "termine", "mails", "training", "prs"}
     | set(MEDIA_KEYS)
 )
 
@@ -103,6 +107,25 @@ System:
   git status / git pull / git log / git diff
   docker ps / docker restart <name> / docker logs <name>
 
+Kalender:
+  termine – Termine heute
+  termine morgen – Termine morgen
+  termine woche – Termine nächste 7 Tage
+  termin suche <Begriff> – Termin suchen (nächste 90 Tage)
+  termin: Zahnarzt 2026-03-20 14:00 – Termin erstellen
+
+E-Mail:
+  mails – Ungelesene E-Mails
+  mails 5 – Letzte 5 Tage
+  mail suche <Begriff> – Mails nach Betreff/Absender durchsuchen
+  mail zusammenfassung – LLM-Zusammenfassung ungelesener Mails
+
+Fitness (Berry-Gym):
+  training – Zusammenfassung (letztes Training, Woche, Gewicht)
+  training details – Letztes Training mit allen Sätzen
+  training woche – Trainings der letzten 7 Tage
+  prs – Personal Records (letzte 30 Tage)
+
 Claude-Agent:
   claude "<Auftrag>" – Komplexe Anfrage an Claude API
 
@@ -122,6 +145,12 @@ KEYWORD_MAP: dict[str, list[str]] = {
     "avatar": ["zeig dich", "wie siehst du aus", "bild von dir", "schick ein bild von dir", "selfie"],
     "hilfe": ["was kannst du", "was geht", "welche befehle", "welche commands"],
     "restart": ["starte neu", "neustart", "restart dich", "bitte neustarten"],
+    "termine": ["was steht an", "welche termine", "kalender", "nächster termin", "termine heute"],
+    "mails": ["neue mails", "ungelesene mails", "emails", "e-mails", "posteingang"],
+    "mail_summary": ["mail zusammenfassung", "mails zusammenfassung", "fasse mails zusammen"],
+    "training": ["letztes training", "wie war mein training", "trainings woche",
+                  "was habe ich trainiert", "gym", "berry-gym", "fitness"],
+    "prs": ["personal record", "personal records", "bestleistung", "bestleistungen", "rekorde"],
 }
 
 # Regex für Volume-Command: "volume 50", "vol 75", "lautstärke 30"
@@ -177,6 +206,45 @@ DOWNLOAD_PATTERN = re.compile(
 # Regex für Avatar mit Emotion: "selfie angry", "avatar cheerful"
 AVATAR_EMOTION_PATTERN = re.compile(
     r"^(?:avatar|selfie)\s+(\w+)$",
+    re.IGNORECASE,
+)
+
+# Regex für Termine: "termine morgen", "termine woche", "termine 3" (Tage)
+TERMINE_PATTERN = re.compile(
+    r"^termine?\s+(morgen|woche|(\d{1,2}))$",
+    re.IGNORECASE,
+)
+
+# Regex für Termin-Erstellung: "termin: Zahnarzt 2026-03-20 14:00"
+TERMIN_CREATE_PATTERN = re.compile(
+    r"^termin[:\s]\s*(.+?)\s+(\d{4}-\d{2}-\d{2})\s+(\d{1,2}:\d{2})$",
+    re.IGNORECASE,
+)
+
+# Regex für Mails mit Tage-Angabe: "mails 5" (letzte 5 Tage)
+MAILS_DAYS_PATTERN = re.compile(
+    r"^mails?\s+(\d{1,2})$",
+    re.IGNORECASE,
+)
+
+# Regex für Mail-Suche: "mail suche Rechnung", "suche die mail mit Rechnung von Alux"
+MAIL_SEARCH_PATTERN = re.compile(
+    r"(?:mails?\s+(?:suche?|finde?|such)\s+(.+)"
+    r"|(?:suche?|finde?)\s+(?:mir\s+)?(?:bitte\s+)?(?:die\s+)?(?:mail|email|e-mail)\s+"
+    r"(?:mit\s+(?:der\s+)?)?(?:von\s+)?(.+))",
+    re.IGNORECASE,
+)
+
+# Regex für Termin-Suche: "termin suche Zahnarzt", "suche den termin Zahnarzt"
+TERMIN_SEARCH_PATTERN = re.compile(
+    r"(?:termine?\s+(?:suche?|finde?|such)\s+(.+)"
+    r"|(?:suche?|finde?)\s+(?:mir\s+)?(?:bitte\s+)?(?:den\s+)?termin\s+(.+))",
+    re.IGNORECASE,
+)
+
+# Regex für Training-Subcommands: "training details", "training woche"
+TRAINING_PATTERN = re.compile(
+    r"^training\s+(details|woche|week|letzte[sr]?)$",
     re.IGNORECASE,
 )
 
@@ -267,6 +335,9 @@ class RemoteCommandHandler:
         download_dir: Path | None = None,
         avatar_renderer: AvatarRenderer | None = None,
         send_file_allowed_roots: tuple[Path, ...] | None = None,
+        calendar: GoogleCalendarClient | None = None,
+        email_client: IMAPEmailClient | None = None,
+        gym_client: GymDataClient | None = None,
     ) -> None:
         self._monitor = system_monitor
         self._controller = controller
@@ -274,6 +345,9 @@ class RemoteCommandHandler:
         self._project_root = project_root
         self._download_dir = download_dir or Path.home() / "Downloads"
         self._avatar_renderer = avatar_renderer
+        self._calendar = calendar
+        self._email_client = email_client
+        self._gym_client = gym_client
         self._send_file_allowed_roots: tuple[Path, ...] = tuple(
             r.resolve()
             for r in (
@@ -343,6 +417,30 @@ class RemoteCommandHandler:
         if AVATAR_EMOTION_PATTERN.match(normalized):
             return "avatar"
 
+        # Stufe 8c: Termin-Suche ("termin suche Zahnarzt")
+        if TERMIN_SEARCH_PATTERN.search(normalized):
+            return "termin_search"
+
+        # Stufe 8c2: Termine mit Parameter ("termine morgen", "termine woche")
+        if TERMINE_PATTERN.match(normalized):
+            return "termine"
+
+        # Stufe 8d: Termin erstellen ("termin: Zahnarzt 2026-03-20 14:00")
+        if TERMIN_CREATE_PATTERN.match(normalized):
+            return "termin_create"
+
+        # Stufe 8e: Mail-Suche ("mail suche Rechnung")
+        if MAIL_SEARCH_PATTERN.search(normalized):
+            return "mail_search"
+
+        # Stufe 8e2: Mails mit Tage-Angabe ("mails 5")
+        if MAILS_DAYS_PATTERN.match(normalized):
+            return "mails"
+
+        # Stufe 8f: Training mit Subcommand ("training details", "training woche")
+        if TRAINING_PATTERN.match(normalized):
+            return "training"
+
         # Stufe 9: Keyword-Suche in natürlicher Sprache
         for command, keywords in KEYWORD_MAP.items():
             for keyword in keywords:
@@ -408,6 +506,30 @@ class RemoteCommandHandler:
 
         if command in ("restart", "neustart"):
             return self._cmd_restart()
+
+        if command == "termine":
+            return self._cmd_termine(raw_text)
+
+        if command == "termin_create":
+            return self._cmd_termin_create(raw_text)
+
+        if command == "mails":
+            return self._cmd_mails(raw_text)
+
+        if command == "mail_summary":
+            return self._cmd_mails(raw_text)
+
+        if command == "mail_search":
+            return self._cmd_mail_search(raw_text)
+
+        if command == "termin_search":
+            return self._cmd_termin_search(raw_text)
+
+        if command == "training":
+            return self._cmd_training(raw_text)
+
+        if command == "prs":
+            return self._cmd_prs()
 
         return CommandResult(
             command=command,
@@ -1002,6 +1124,283 @@ class RemoteCommandHandler:
             text="Starte neu... Bis gleich! 🔄",
             restart=True,
         )
+
+    # ------------------------------------------------------------------
+    # Phase 8: Calendar, Email
+    # ------------------------------------------------------------------
+
+    def _cmd_termine(self, raw_text: str) -> CommandResult:
+        """Termine abfragen (heute, morgen, woche, N Tage)."""
+        if not self._calendar:
+            return CommandResult(
+                command="termine",
+                success=False,
+                text="Google Calendar nicht konfiguriert.\n"
+                     "Setup: python scripts/setup_google_oauth.py",
+            )
+
+        normalized = raw_text.strip().lower()
+        match = TERMINE_PATTERN.match(normalized)
+
+        try:
+            if match:
+                param = match.group(1)
+                if param == "morgen":
+                    events = self._calendar.get_tomorrow()
+                    label = "Termine morgen"
+                elif param == "woche":
+                    events = self._calendar.get_events(days=7)
+                    label = "Termine (nächste 7 Tage)"
+                else:
+                    days = int(match.group(2))
+                    events = self._calendar.get_events(days=days)
+                    label = f"Termine (nächste {days} Tage)"
+            else:
+                events = self._calendar.get_today()
+                label = "Termine heute"
+
+            text = f"{label}:\n{self._calendar.format_events(events)}"
+            return CommandResult(command="termine", success=True, text=text)
+
+        except Exception as e:
+            logger.error("Kalender-Abfrage fehlgeschlagen: %s", e)
+            return CommandResult(
+                command="termine",
+                success=False,
+                text=f"Kalender-Fehler: {e}",
+            )
+
+    def _cmd_termin_create(self, raw_text: str) -> CommandResult:
+        """Neuen Termin erstellen."""
+        if not self._calendar:
+            return CommandResult(
+                command="termin_create",
+                success=False,
+                text="Google Calendar nicht konfiguriert.",
+            )
+
+        match = TERMIN_CREATE_PATTERN.match(raw_text.strip())
+        if not match:
+            return CommandResult(
+                command="termin_create",
+                success=False,
+                text="Format: termin: Titel 2026-03-20 14:00",
+            )
+
+        title = match.group(1).strip()
+        date_str = match.group(2)
+        time_str = match.group(3)
+
+        try:
+            from datetime import datetime
+            start = datetime.strptime(f"{date_str} {time_str}", "%Y-%m-%d %H:%M")
+        except ValueError:
+            return CommandResult(
+                command="termin_create",
+                success=False,
+                text="Ungültiges Datum/Zeit. Format: 2026-03-20 14:00",
+            )
+
+        try:
+            event = self._calendar.create_event(summary=title, start=start)
+            return CommandResult(
+                command="termin_create",
+                success=True,
+                text=f"Termin erstellt: {event.format_short()}",
+            )
+        except Exception as e:
+            logger.error("Termin erstellen fehlgeschlagen: %s", e)
+            return CommandResult(
+                command="termin_create",
+                success=False,
+                text=f"Termin erstellen fehlgeschlagen: {e}",
+            )
+
+    def _cmd_mails(self, raw_text: str) -> CommandResult:
+        """E-Mails abfragen (ungelesen oder letzte N Tage)."""
+        if not self._email_client:
+            return CommandResult(
+                command="mails",
+                success=False,
+                text="E-Mail nicht konfiguriert.\n"
+                     "Setup: SecretStore().set('email_imap_host', 'imap.strato.de') etc.",
+            )
+
+        normalized = raw_text.strip().lower()
+        match = MAILS_DAYS_PATTERN.match(normalized)
+
+        try:
+            if "zusammenfassung" in normalized:
+                mails = self._email_client.get_unread(max_results=10)
+                if not mails:
+                    return CommandResult(
+                        command="mails", success=True,
+                        text="Keine ungelesenen E-Mails.",
+                    )
+                text = self._email_client.format_mails_detailed(mails)
+                return CommandResult(command="mails", success=True, text=text)
+
+            if match:
+                days = int(match.group(1))
+                mails = self._email_client.get_recent(days=days)
+                label = f"E-Mails der letzten {days} Tage"
+            else:
+                mails = self._email_client.get_unread(max_results=15)
+                label = "Ungelesene E-Mails"
+
+            count = len(mails)
+            text = f"{label} ({count}):\n{self._email_client.format_mails(mails)}"
+            return CommandResult(command="mails", success=True, text=text)
+
+        except Exception as e:
+            logger.error("E-Mail-Abfrage fehlgeschlagen: %s", e)
+            return CommandResult(
+                command="mails",
+                success=False,
+                text=f"E-Mail-Fehler: {e}",
+            )
+
+    def _cmd_mail_search(self, raw_text: str) -> CommandResult:
+        """E-Mails nach Betreff/Absender durchsuchen."""
+        if not self._email_client:
+            return CommandResult(
+                command="mail_search", success=False,
+                text="E-Mail nicht konfiguriert.",
+            )
+
+        match = MAIL_SEARCH_PATTERN.search(raw_text.strip())
+        if not match:
+            return CommandResult(
+                command="mail_search", success=False,
+                text="Format: mail suche <Begriff>",
+            )
+
+        # Zwei alternative Gruppen im Pattern
+        query = (match.group(1) or match.group(2) or "").strip()
+        try:
+            mails = self._email_client.search(query, max_results=10)
+            if not mails:
+                return CommandResult(
+                    command="mail_search", success=True,
+                    text=f"Keine Mails gefunden für '{query}'.",
+                )
+
+            text = f"Suche '{query}' ({len(mails)} Treffer):\n"
+            text += self._email_client.format_mails(mails)
+            return CommandResult(command="mail_search", success=True, text=text)
+
+        except Exception as e:
+            logger.error("Mail-Suche fehlgeschlagen: %s", e)
+            return CommandResult(
+                command="mail_search", success=False,
+                text=f"Mail-Suche fehlgeschlagen: {e}",
+            )
+
+    def _cmd_termin_search(self, raw_text: str) -> CommandResult:
+        """Termine per Volltextsuche finden."""
+        if not self._calendar:
+            return CommandResult(
+                command="termin_search", success=False,
+                text="Google Calendar nicht konfiguriert.",
+            )
+
+        match = TERMIN_SEARCH_PATTERN.search(raw_text.strip())
+        if not match:
+            return CommandResult(
+                command="termin_search", success=False,
+                text="Format: termin suche <Begriff>",
+            )
+
+        # Zwei alternative Gruppen im Pattern
+        query = (match.group(1) or match.group(2) or "").strip()
+        try:
+            events = self._calendar.search_events(query, days=90)
+            if not events:
+                return CommandResult(
+                    command="termin_search", success=True,
+                    text=f"Keine Termine gefunden für '{query}'.",
+                )
+
+            text = f"Suche '{query}' ({len(events)} Treffer):\n"
+            text += self._calendar.format_events(events)
+            return CommandResult(command="termin_search", success=True, text=text)
+
+        except Exception as e:
+            logger.error("Termin-Suche fehlgeschlagen: %s", e)
+            return CommandResult(
+                command="termin_search", success=False,
+                text=f"Termin-Suche fehlgeschlagen: {e}",
+            )
+
+    # ------------------------------------------------------------------
+    # Phase 8: Fitness (Berry-Gym)
+    # ------------------------------------------------------------------
+
+    def _cmd_training(self, raw_text: str) -> CommandResult:
+        """Trainingsdaten von Berry-Gym abrufen."""
+        if not self._gym_client:
+            return CommandResult(
+                command="training", success=False,
+                text="Berry-Gym nicht konfiguriert.\n"
+                     "Setup: SecretStore().set('berry_gym_api_token', '<token>')",
+            )
+
+        normalized = raw_text.strip().lower()
+        match = TRAINING_PATTERN.match(normalized)
+
+        try:
+            if match:
+                sub = match.group(1).lower()
+                if sub in ("details", "letztes", "letzter"):
+                    training = self._gym_client.get_last_training()
+                    if not training:
+                        return CommandResult(
+                            command="training", success=True,
+                            text="Kein Training gefunden.",
+                        )
+                    text = self._gym_client.format_last_training(training)
+                    return CommandResult(command="training", success=True, text=text)
+
+                if sub in ("woche", "week"):
+                    trainings = self._gym_client.get_week()
+                    text = self._gym_client.format_week(trainings)
+                    return CommandResult(command="training", success=True, text=text)
+
+            # Default: Summary
+            summary = self._gym_client.get_summary()
+            if not summary:
+                return CommandResult(
+                    command="training", success=False,
+                    text="Berry-Gym API nicht erreichbar.",
+                )
+            text = self._gym_client.format_summary(summary)
+            return CommandResult(command="training", success=True, text=text)
+
+        except Exception as e:
+            logger.error("Berry-Gym Abfrage fehlgeschlagen: %s", e)
+            return CommandResult(
+                command="training", success=False,
+                text=f"Berry-Gym Fehler: {e}",
+            )
+
+    def _cmd_prs(self) -> CommandResult:
+        """Personal Records von Berry-Gym."""
+        if not self._gym_client:
+            return CommandResult(
+                command="prs", success=False,
+                text="Berry-Gym nicht konfiguriert.",
+            )
+
+        try:
+            prs = self._gym_client.get_prs()
+            text = self._gym_client.format_prs(prs)
+            return CommandResult(command="prs", success=True, text=text)
+        except Exception as e:
+            logger.error("Berry-Gym PRs fehlgeschlagen: %s", e)
+            return CommandResult(
+                command="prs", success=False,
+                text=f"Berry-Gym Fehler: {e}",
+            )
 
     # ------------------------------------------------------------------
     # Tier 3: Git, Docker, Download
