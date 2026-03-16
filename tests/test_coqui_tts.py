@@ -292,3 +292,31 @@ class TestGenerateAudioEmojiHandling:
         output = tmp_path / "output.wav"
         engine.generate_audio("🌙🎉", output)
         mock_tts_module["tts_instance"].tts_to_file.assert_not_called()
+
+
+class TestSplitSentences:
+    """XTTS v2 splittet intern an Kommas/Punkten. Kurze Fragmente (<100 Zeichen)
+    verlieren die Sprachzuordnung und driften z.B. ins Japanische."""
+
+    def test_short_text_no_split(self, engine, mock_tts_module, tmp_path):
+        """Kurzer Text → split_sentences=False (verhindert Sprach-Drift)."""
+        output = tmp_path / "output.wav"
+        engine.generate_audio("Guten Morgen, wie kann ich dir helfen?", output)
+        call_kwargs = mock_tts_module["tts_instance"].tts_to_file.call_args
+        assert call_kwargs.kwargs["split_sentences"] is False
+
+    def test_long_text_split_enabled(self, engine, mock_tts_module, tmp_path):
+        """Langer Text (>=100 Zeichen) → split_sentences=True (bessere Qualität)."""
+        output = tmp_path / "output.wav"
+        long_text = "Dies ist ein sehr langer Text, " * 5 + "der über hundert Zeichen hat."
+        engine.generate_audio(long_text, output)
+        call_kwargs = mock_tts_module["tts_instance"].tts_to_file.call_args
+        assert call_kwargs.kwargs["split_sentences"] is True
+
+    def test_exactly_100_chars_split_enabled(self, engine, mock_tts_module, tmp_path):
+        """Genau 100 Zeichen → split_sentences=True (Grenzfall)."""
+        output = tmp_path / "output.wav"
+        text = "A" * 100
+        engine.generate_audio(text, output)
+        call_kwargs = mock_tts_module["tts_instance"].tts_to_file.call_args
+        assert call_kwargs.kwargs["split_sentences"] is True

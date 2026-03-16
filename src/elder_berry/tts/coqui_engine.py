@@ -193,11 +193,17 @@ class CoquiTTSEngine(TTSEngine):
             len(clean), emotion, speaker_wav.name,
         )
 
+        # Kurze Texte (<100 Zeichen) NICHT intern splitten lassen.
+        # XTTS v2 teilt an Kommas/Punkten → Fragmente wie "Guten Morgen"
+        # sind zu kurz für stabile Sprachzuordnung und driften ins Japanische.
+        split = len(clean) >= 100
+
         self._tts.tts_to_file(
             text=clean,
             speaker_wav=str(speaker_wav),
             language=self._language,
             file_path=str(output_path),
+            split_sentences=split,
         )
 
         logger.debug("Audio generiert: %s", output_path)

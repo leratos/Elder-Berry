@@ -798,3 +798,11 @@
   MatrixBridge._handle_audio_message(): temp .ogg → FasterWhisperEngine.transcribe()
       ↓
   text_msg → _handle_assistant_message() → Saleria.process() → TTS → OGG → Matrix
+
+## Abgeschlossen: TTS-Fix – XTTS Sprach-Drift bei kurzen Texten (2026-03-16)
+- Problem: "Guten Morgen, wie kann ich dir helfen" → XTTS splittet intern am Komma
+- "Guten Morgen" (12 Zeichen) zu kurz → Modell driftet ins Japanische
+- Fix: split_sentences=False für kurze Texte (<100 Zeichen) in CoquiTTSEngine
+- Datei: src/elder_berry/tts/coqui_engine.py (generate_audio: split-Logik)
+- Tests: 3 neue Tests (TestSplitSentences), 44/44 grün
+- Zum Testen: "Guten Morgen, wie kann ich dir helfen?" sollte jetzt komplett deutsch bleiben
