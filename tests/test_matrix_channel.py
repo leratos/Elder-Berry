@@ -8,6 +8,8 @@ import pytest
 nio = pytest.importorskip("nio", reason="matrix-nio nicht installiert")
 
 from nio import (  # noqa: E402
+    DownloadError,
+    DownloadResponse,
     JoinError,
     JoinResponse,
     LoginError,
@@ -759,3 +761,200 @@ class TestImageMimeType:
 
     def test_unknown(self):
         assert MatrixChannel._guess_image_mime_type(Path("file.xyz")) == "application/octet-stream"
+
+
+# ---------------------------------------------------------------------------
+# _on_room_audio – Eingehende Sprachnachrichten
+# ---------------------------------------------------------------------------
+
+def make_audio_event(
+    sender: str = "@user:test.com",
+    body: str = "voice-message.ogg",
+    url: str = "mxc://matrix.test.com/audioabc123",
+    timestamp_ms: int = 1710000000000,
+) -> MagicMock:
+    """Erstellt ein Mock-RoomMessageAudio-Event."""
+    event = MagicMock()
+    event.sender = sender
+    event.body = body
+    event.url = url
+    event.server_timestamp = timestamp_ms
+    return event
+
+
+class TestOnRoomAudio:
+    def test_audio_own_message_ignored(self):
+        """Eigene Audio-Nachrichten werden ignoriert."""
+        async def _test():
+            channel = make_channel(user_id="@bot:test.com")
+            received = []
+            channel.on_message(lambda msg: received.append(msg))
+
+            room = MagicMock()
+            room.room_id = "!room:test.com"
+            event = make_audio_event(sender="@bot:test.com")
+
+            await channel._on_room_audio(room, event)
+            assert len(received) == 0
+
+        run_async(_test())
+
+    def test_audio_room_whitelist_blocked(self):
+        """Nachrichten aus nicht erlaubten Räumen werden ignoriert."""
+        async def _test():
+            channel = make_channel(allowed_rooms=["!allowed:test.com"])
+            received = []
+            channel.on_message(lambda msg: received.append(msg))
+
+            room = MagicMock()
+            room.room_id = "!other:test.com"
+            event = make_audio_event()
+
+            await channel._on_room_audio(room, event)
+            assert len(received) == 0
+
+        run_async(_test())
+
+    def test_audio_invalid_mxc_url_ignored(self):
+        """Event ohne gültige mxc://-URL wird ignoriert."""
+        async def _test():
+            channel = make_channel()
+            received = []
+            channel.on_message(lambda msg: received.append(msg))
+
+            room = MagicMock()
+            room.room_id = "!room:test.com"
+            event = make_audio_event(url="https://example.com/file.ogg")
+
+            await channel._on_room_audio(room, event)
+            assert len(received) == 0
+
+        run_async(_test())
+
+    def test_audio_download_error_no_callback(self):
+        """Download-Fehler verhindert Callback (kein Crash)."""
+        async def _test():
+            channel = make_channel()
+            received = []
+            channel.on_message(lambda msg: received.append(msg))
+
+            room = MagicMock()
+            room.room_id = "!room:test.com"
+            event = make_audio_event()
+
+            error = MagicMock(spec=DownloadError)
+            error.message = "Not found"
+            channel._client.download = AsyncMock(return_value=error)
+
+            await channel._on_room_audio(room, event)
+            assert len(received) == 0
+
+        run_async(_test())
+
+    def test_audio_download_success_fires_callback(self):
+        """Erfolgreicher Download: Callback mit audio_data wird aufgerufen."""
+        async def _test():
+            channel = make_channel()
+            received = []
+
+            async def cb(msg):
+                received.append(msg)
+
+            channel.on_message(cb)
+
+            room = MagicMock()
+            room.room_id = "!room:test.com"
+            event = make_audio_event(
+                sender="@user:test.com",
+                body="voice.ogg",
+                url="mxc://matrix.test.com/abc123",
+            )
+
+            audio_bytes = b"\x00\x01\x02\x03" * 100
+            download_resp = MagicMock(spec=DownloadResponse)
+            download_resp.body = audio_bytes
+            channel._client.download = AsyncMock(return_value=download_resp)
+
+            await channel._on_room_audio(room, event)
+
+            assert len(received) == 1
+            msg = received[0]
+            assert isinstance(msg, IncomingMessage)
+            assert msg.sender == "@user:test.com"
+            assert msg.room_id == "!room:test.com"
+            assert msg.body == "voice.ogg"
+            assert msg.audio_data == audio_bytes
+            assert msg.timestamp == 1710000000.0
+
+        run_async(_test())
+
+    def test_audio_download_calls_correct_server_and_media_id(self):
+        """Download-Aufruf nutzt Server-Name und Media-ID aus MXC-URL."""
+        async def _test():
+            channel = make_channel()
+
+            room = MagicMock()
+            room.room_id = "!room:test.com"
+            event = make_audio_event(url="mxc://matrix.example.org/XYZ987")
+
+            download_resp = MagicMock(spec=DownloadResponse)
+            download_resp.body = b"audio"
+            channel._client.download = AsyncMock(return_value=download_resp)
+
+            channel.on_message(AsyncMock())
+            await channel._on_room_audio(room, event)
+
+            channel._client.download.assert_called_once_with(
+                "matrix.example.org", "XYZ987",
+            )
+
+        run_async(_test())
+
+    def test_audio_callback_error_no_crash(self):
+        """Fehlerhafter Callback darf nicht crashen."""
+        async def _test():
+            channel = make_channel()
+
+            async def bad_cb(msg):
+                raise RuntimeError("Callback-Fehler")
+
+            channel.on_message(bad_cb)
+
+            room = MagicMock()
+            room.room_id = "!room:test.com"
+            event = make_audio_event()
+
+            download_resp = MagicMock(spec=DownloadResponse)
+            download_resp.body = b"audio"
+            channel._client.download = AsyncMock(return_value=download_resp)
+
+            # Darf nicht crashen
+            await channel._on_room_audio(room, event)
+
+        run_async(_test())
+
+    def test_audio_registered_in_connect(self):
+        """_on_room_audio wird in connect() als Callback registriert."""
+        async def _test():
+            from nio import RoomMessageAudio
+
+            channel = make_channel()
+            login_resp = make_login_response()
+
+            channel._client.login = AsyncMock(return_value=login_resp)
+            channel._client.sync = AsyncMock(return_value=MagicMock())
+            channel._client.invited_rooms = {}
+
+            registered_callbacks = {}
+
+            def fake_add_callback(cb, event_type):
+                registered_callbacks[event_type] = cb
+
+            channel._client.add_event_callback = fake_add_callback
+
+            await channel.connect()
+
+            assert RoomMessageAudio in registered_callbacks
+            assert registered_callbacks[RoomMessageAudio] == channel._on_room_audio
+
+        run_async(_test())

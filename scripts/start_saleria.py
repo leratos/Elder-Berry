@@ -191,7 +191,8 @@ def init_system_monitor():
 
 
 def init_stt(mode: str, whisper_model: str):
-    if mode != "voice":
+    """STT-Engine: Pflicht für voice-Modus, optional für matrix-Modus."""
+    if mode not in ("voice", "matrix"):
         return None
     try:
         from elder_berry.stt.faster_whisper_engine import FasterWhisperEngine
@@ -199,8 +200,14 @@ def init_stt(mode: str, whisper_model: str):
         logger.info("STT: FasterWhisperEngine (Modell: %s)", whisper_model)
         return stt
     except ImportError:
-        logger.error("STT: faster-whisper nicht installiert (pip install faster-whisper)")
-        sys.exit(1)
+        if mode == "voice":
+            logger.error("STT: faster-whisper nicht installiert (pip install faster-whisper)")
+            sys.exit(1)
+        else:
+            logger.warning(
+                "STT: faster-whisper nicht installiert – Sprachnachrichten via Matrix nicht verfügbar"
+            )
+            return None
 
 
 # ---------------------------------------------------------------------------
@@ -279,7 +286,7 @@ def run_voice(assistant, stt):
         print("\nAuf Wiedersehen!")
 
 
-def run_matrix(assistant):
+def run_matrix(assistant, stt=None):
     """Matrix-Modus: MatrixBridge startet bidirektionalen Chat über Matrix."""
     from elder_berry.core.secret_store import SecretStore
     from elder_berry.comms.matrix_channel import MatrixChannel
@@ -332,12 +339,16 @@ def run_matrix(assistant):
     alert_config = AlertConfig(disk_threshold_percent=90.0)
     alert_monitor = AlertMonitor(config=alert_config)
 
+    if stt:
+        logger.info("Matrix-STT: Sprachnachrichten werden transkribiert")
+
     bridge = MatrixBridge(
         channel=channel,
         assistant=assistant,
-        remote_handler=remote,
+        remote_commands=remote,
         claude_agent=claude_agent,
         alert_monitor=alert_monitor,
+        stt=stt,
     )
 
     logger.info("Matrix-Bridge startet – Saleria ist online")
@@ -400,7 +411,7 @@ def main():
     elif args.mode == "voice":
         run_voice(assistant, stt)
     else:
-        run_matrix(assistant)
+        run_matrix(assistant, stt=stt)
 
 
 if __name__ == "__main__":

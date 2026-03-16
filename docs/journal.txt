@@ -763,3 +763,38 @@
   ANTHROPIC_API_KEY in .env
   python scripts/start_saleria.py --mode terminal   # Test
   python scripts/start_saleria.py                   # Matrix-Betrieb
+
+## Abgeschlossen: Phase 5 – TS4 Matrix-STT (Sprachnachrichten → Text → Saleria) (2026-03-16)
+- Branch: feature/phase-5-memory
+- Geändert: src/elder_berry/comms/message_channel.py
+  - IncomingMessage: neues Feld audio_data: bytes | None = None
+- Geändert: src/elder_berry/comms/matrix_channel.py
+  - Import: RoomMessageAudio, DownloadError, DownloadResponse
+  - connect(): _on_room_audio als Callback für RoomMessageAudio registriert
+  - _on_room_audio(): MXC-URL parsen → download() → IncomingMessage mit audio_data → Callbacks
+  - Fehlerbehandlung: DownloadError, ungültige URL, Exception → kein Crash
+- Geändert: src/elder_berry/comms/bridge.py
+  - stt: STTEngine | None = None (neuer DI-Parameter)
+  - _handle_message(): Audio-Routing VOR Command-Router (msg.audio_data is not None)
+  - _handle_audio_message(): audio_data → temp .ogg → STT.transcribe() → text_msg → _handle_assistant_message()
+    - Ohne STT: Hinweismeldung senden
+    - STT leer: "nicht verstanden" Meldung senden
+    - STT OK: Transkript als Text-Nachricht weiterverarbeiten (inkl. TTS-Antwort)
+    - Exception: Fehlermeldung senden + error_log
+- Geändert: scripts/start_saleria.py
+  - init_stt(): jetzt auch für matrix-Modus (optional, kein sys.exit bei ImportError)
+  - run_matrix(): stt-Parameter + MatrixBridge(stt=stt)
+  - Bug Fix: remote_handler=remote → remote_commands=remote
+- Tests:
+  - tests/test_comms.py: 9 neue Tests (TestIncomingMessageAudio: 3, TestBridgeAudioRouting: 6)
+  - tests/test_matrix_channel.py: 8 neue Tests (TestOnRoomAudio: 8, DownloadError/DownloadResponse Import)
+- Tests: 700 passed, 44 skipped (alle grün)
+
+### Flow (live):
+  Element: 🎤 Sprachnachricht
+      ↓
+  MatrixChannel._on_room_audio(): MXC → download() → IncomingMessage(audio_data=bytes)
+      ↓
+  MatrixBridge._handle_audio_message(): temp .ogg → FasterWhisperEngine.transcribe()
+      ↓
+  text_msg → _handle_assistant_message() → Saleria.process() → TTS → OGG → Matrix

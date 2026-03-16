@@ -1302,3 +1302,242 @@ class TestRestartNotification:
 
         # _perform_restart wurde aufgerufen
         mock_restart.assert_called_once_with("!room:test")
+
+
+# ---------------------------------------------------------------------------
+# IncomingMessage – audio_data Feld
+# ---------------------------------------------------------------------------
+
+class TestIncomingMessageAudio:
+    def test_audio_data_default_none(self):
+        msg = IncomingMessage(
+            sender="@u:x", room_id="!r:x", body="voice.ogg", timestamp=0.0,
+        )
+        assert msg.audio_data is None
+
+    def test_audio_data_set(self):
+        data = b"\x00\x01\x02\x03"
+        msg = IncomingMessage(
+            sender="@u:x", room_id="!r:x", body="voice.ogg",
+            timestamp=0.0, audio_data=data,
+        )
+        assert msg.audio_data == data
+
+    def test_audio_data_immutable(self):
+        msg = IncomingMessage(
+            sender="@u:x", room_id="!r:x", body="hi",
+            timestamp=0.0, audio_data=b"test",
+        )
+        with pytest.raises(AttributeError):
+            msg.audio_data = b"other"
+
+
+# ---------------------------------------------------------------------------
+# MatrixBridge – Audio-Routing (STT)
+# ---------------------------------------------------------------------------
+
+def _make_audio_msg(body: str = "voice.ogg", data: bytes = b"\x00" * 16) -> IncomingMessage:
+    return IncomingMessage(
+        sender="@user:test", room_id="!room:test",
+        body=body, timestamp=0.0, audio_data=data,
+    )
+
+
+class TestBridgeAudioRouting:
+    """Tests für _handle_audio_message und STT-Integration in _handle_message."""
+
+    def test_audio_message_no_stt_sends_error(self):
+        """Ohne STT-Engine: Fehlermeldung an Raum senden."""
+        channel = MockChannel()
+        channel._connected = True
+        assistant = MagicMock()
+
+        bridge = MatrixBridge(channel=channel, assistant=assistant, stt=None)
+        bridge._running = True
+
+        run_async(bridge._handle_message(_make_audio_msg()))
+
+        assert len(channel._sent_texts) == 1
+        assert "nicht unterstützt" in channel._sent_texts[0][1].lower() or \
+               "stt" in channel._sent_texts[0][1].lower() or \
+               "sprachnachrichten" in channel._sent_texts[0][1].lower()
+
+    def test_audio_message_routed_before_commands(self):
+        """Audio-Nachrichten werden NICHT an RemoteCommandHandler weitergeleitet."""
+        channel = MockChannel()
+        channel._connected = True
+        assistant = MagicMock()
+
+        mock_handler = MagicMock()
+        mock_handler.parse_command.return_value = "status"
+
+        bridge = MatrixBridge(
+            channel=channel,
+            assistant=assistant,
+            remote_commands=mock_handler,
+            stt=None,
+        )
+        bridge._running = True
+
+        run_async(bridge._handle_message(_make_audio_msg()))
+
+        # Command-Handler darf NICHT aufgerufen werden
+        mock_handler.parse_command.assert_not_called()
+
+    def test_audio_message_stt_empty_sends_not_understood(self):
+        """STT liefert leeren Text → 'nicht verstanden'-Meldung senden."""
+        from unittest.mock import MagicMock, patch as _patch
+        from elder_berry.stt.base import TranscriptionResult
+
+        channel = MockChannel()
+        channel._connected = True
+        assistant = MagicMock()
+
+        mock_stt = MagicMock()
+        mock_stt.transcribe.return_value = TranscriptionResult(text="")
+
+        bridge = MatrixBridge(channel=channel, assistant=assistant, stt=mock_stt)
+        bridge._running = True
+
+        with _patch("tempfile.NamedTemporaryFile"):
+            import tempfile
+            import os
+
+            # Wirklichen Temp-File erstellen damit unlink nicht crasht
+            with tempfile.NamedTemporaryFile(suffix=".ogg", delete=False) as f:
+                tmp_name = f.name
+
+            with _patch.object(mock_stt, "transcribe", return_value=TranscriptionResult(text="")):
+                # Direkt _handle_audio_message aufrufen mit echtem tmp-file-Flow
+                msg = _make_audio_msg()
+
+                # Patch NamedTemporaryFile um unsere Datei zu nutzen
+                import builtins
+                orig_open = builtins.open
+
+                with _patch("elder_berry.comms.bridge.tempfile.NamedTemporaryFile") as mock_tmp:
+                    mock_file = MagicMock()
+                    mock_file.name = tmp_name
+                    mock_file.__enter__ = lambda s: s
+                    mock_file.__exit__ = MagicMock(return_value=False)
+                    mock_tmp.return_value = mock_file
+
+                    run_async(bridge._handle_audio_message(msg))
+
+            try:
+                os.unlink(tmp_name)
+            except FileNotFoundError:
+                pass
+
+        assert len(channel._sent_texts) == 1
+        reply = channel._sent_texts[0][1].lower()
+        assert "nicht" in reply and ("verstehen" in reply or "verstanden" in reply)
+
+    def test_audio_message_stt_success_calls_assistant(self):
+        """STT liefert Text → Assistant.process() wird aufgerufen."""
+        from unittest.mock import MagicMock, patch as _patch
+        from elder_berry.stt.base import TranscriptionResult
+        from elder_berry.core.assistant import AssistantResult
+        import tempfile, os
+
+        channel = MockChannel()
+        channel._connected = True
+
+        mock_assistant = MagicMock()
+        mock_assistant.process.return_value = AssistantResult(
+            response="Hallo!", action_executed=None, action_success=False,
+        )
+
+        mock_stt = MagicMock()
+        mock_stt.transcribe.return_value = TranscriptionResult(
+            text="Wie geht es dir?", language="de", confidence=0.95,
+        )
+
+        bridge = MatrixBridge(channel=channel, assistant=mock_assistant, stt=mock_stt)
+        bridge._running = True
+
+        with tempfile.NamedTemporaryFile(suffix=".ogg", delete=False) as f:
+            tmp_name = f.name
+
+        with _patch("elder_berry.comms.bridge.tempfile.NamedTemporaryFile") as mock_tmp:
+            mock_file = MagicMock()
+            mock_file.name = tmp_name
+            mock_file.__enter__ = lambda s: s
+            mock_file.__exit__ = MagicMock(return_value=False)
+            mock_tmp.return_value = mock_file
+
+            run_async(bridge._handle_audio_message(_make_audio_msg()))
+
+        try:
+            os.unlink(tmp_name)
+        except FileNotFoundError:
+            pass
+
+        # Assistant muss aufgerufen worden sein
+        mock_assistant.process.assert_called_once()
+        call_arg = mock_assistant.process.call_args[0][0]
+        assert call_arg == "Wie geht es dir?"
+
+        # Antwort muss gesendet worden sein
+        assert len(channel._sent_texts) == 1
+        assert "Hallo!" in channel._sent_texts[0][1]
+
+    def test_audio_message_stt_exception_sends_error(self):
+        """STT wirft Exception → Fehlermeldung senden."""
+        from unittest.mock import MagicMock, patch as _patch
+        import tempfile, os
+
+        channel = MockChannel()
+        channel._connected = True
+        assistant = MagicMock()
+
+        mock_stt = MagicMock()
+        mock_stt.transcribe.side_effect = RuntimeError("CUDA out of memory")
+
+        bridge = MatrixBridge(channel=channel, assistant=assistant, stt=mock_stt)
+        bridge._running = True
+
+        with tempfile.NamedTemporaryFile(suffix=".ogg", delete=False) as f:
+            tmp_name = f.name
+
+        with _patch("elder_berry.comms.bridge.tempfile.NamedTemporaryFile") as mock_tmp:
+            mock_file = MagicMock()
+            mock_file.name = tmp_name
+            mock_file.__enter__ = lambda s: s
+            mock_file.__exit__ = MagicMock(return_value=False)
+            mock_tmp.return_value = mock_file
+
+            run_async(bridge._handle_audio_message(_make_audio_msg()))
+
+        try:
+            os.unlink(tmp_name)
+        except FileNotFoundError:
+            pass
+
+        assert len(channel._sent_texts) == 1
+        assert "fehler" in channel._sent_texts[0][1].lower() or \
+               "error" in channel._sent_texts[0][1].lower()
+
+    def test_audio_message_allowed_sender(self):
+        """Audio-Nachrichten werden durch Sender-Whitelist gefiltert."""
+        channel = MockChannel()
+        channel._connected = True
+        assistant = MagicMock()
+
+        bridge = MatrixBridge(
+            channel=channel,
+            assistant=assistant,
+            allowed_senders=frozenset(["@allowed:test"]),
+            stt=None,
+        )
+        bridge._running = True
+
+        # Nicht erlaubter Sender
+        msg = IncomingMessage(
+            sender="@unknown:test", room_id="!room:test",
+            body="voice.ogg", timestamp=0.0, audio_data=b"\x00",
+        )
+        run_async(bridge._handle_message(msg))
+
+        # Keine Antwort für nicht erlaubten Sender
+        assert len(channel._sent_texts) == 0

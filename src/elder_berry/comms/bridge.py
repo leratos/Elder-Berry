@@ -48,6 +48,7 @@ if TYPE_CHECKING:
     from elder_berry.comms.claude_agent import ClaudeAgent
     from elder_berry.comms.remote_commands import RemoteCommandHandler
     from elder_berry.core.assistant import Assistant
+    from elder_berry.stt.base import STTEngine
 
 logger = logging.getLogger(__name__)
 
@@ -103,6 +104,7 @@ class MatrixBridge:
         alert_room_id: str | None = None,
         error_log_dir: Path | None = None,
         allowed_senders: frozenset[str] | None = None,
+        stt: STTEngine | None = None,
     ) -> None:
         self._channel = channel
         self._assistant = assistant
@@ -113,6 +115,7 @@ class MatrixBridge:
         self._alert_room_id = alert_room_id
         self._error_log_dir = error_log_dir
         self._allowed_senders = allowed_senders
+        self._stt = stt
         self._loop: asyncio.AbstractEventLoop | None = None
         self._thread: threading.Thread | None = None
         self._running = False
@@ -217,6 +220,11 @@ class MatrixBridge:
         # --- Sender-Whitelist: Nachrichten von unbekannten Absendern ignorieren ---
         if self._allowed_senders and msg.sender not in self._allowed_senders:
             logger.warning("Nachricht von unbekanntem Sender ignoriert: %s", msg.sender)
+            return
+
+        # --- Audio-Nachricht: STT → Text → Assistant ---
+        if msg.audio_data is not None:
+            await self._handle_audio_message(msg)
             return
 
         # --- Command-Router: direkte Commands vor LLM ---
@@ -357,6 +365,97 @@ class MatrixBridge:
                 )
             except Exception:
                 logger.error("Konnte Fehlermeldung nicht senden")
+
+    async def _handle_audio_message(self, msg: IncomingMessage) -> None:
+        """Transkribiert eine Audio-Nachricht via STT und delegiert an den Assistant.
+
+        Flow:
+            1. audio_data in temp-Datei schreiben
+            2. STTEngine.transcribe() → TranscriptionResult
+            3. Erkannter Text → _handle_assistant_message()
+            4. Kein Text erkannt → Fehlermeldung an Raum senden
+
+        Ohne STT-Engine: Fehlermeldung mit Hinweis senden.
+        """
+        if self._stt is None:
+            logger.warning(
+                "Audio-Nachricht empfangen, aber kein STT konfiguriert (msg von %s)",
+                msg.sender,
+            )
+            try:
+                await self._channel.send_text(
+                    msg.room_id,
+                    "Sprachnachrichten werden gerade nicht unterstützt "
+                    "(STT nicht konfiguriert).",
+                )
+            except Exception:
+                pass
+            return
+
+        tmp_path: Path | None = None
+        try:
+            loop = asyncio.get_running_loop()
+
+            # Audio-Bytes in temp-Datei schreiben (.ogg – Endung für ffmpeg/whisper)
+            suffix = ".ogg"
+            if isinstance(msg.body, str) and "." in msg.body:
+                suffix = Path(msg.body).suffix or suffix
+
+            import tempfile
+            with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as tmp:
+                tmp.write(msg.audio_data)
+                tmp_path = Path(tmp.name)
+
+            logger.debug(
+                "Audio-Nachricht transkribieren: %s (%d bytes)",
+                tmp_path.name, len(msg.audio_data),
+            )
+
+            result = await loop.run_in_executor(
+                None, self._stt.transcribe, tmp_path,
+            )
+
+            if result.is_empty():
+                logger.info(
+                    "STT: kein Text erkannt (Sender: %s)", msg.sender,
+                )
+                await self._channel.send_text(
+                    msg.room_id,
+                    "Ich konnte die Sprachnachricht leider nicht verstehen. "
+                    "Bitte deutlich sprechen oder als Text senden.",
+                )
+                return
+
+            logger.info(
+                "STT erkannt [%s, %.0f%%]: %s",
+                result.language or "?",
+                (result.confidence or 0.0) * 100,
+                result.text[:80],
+            )
+
+            # Transkription als Text-Nachricht weiterverarbeiten
+            text_msg = IncomingMessage(
+                sender=msg.sender,
+                room_id=msg.room_id,
+                body=result.text,
+                timestamp=msg.timestamp,
+                raw=msg.raw,
+            )
+            await self._handle_assistant_message(text_msg)
+
+        except Exception as e:
+            logger.error("Fehler bei Audio-Transkription: %s", e)
+            self._log_error(msg.sender, msg.body, e, handler="stt")
+            try:
+                await self._channel.send_text(
+                    msg.room_id,
+                    f"Fehler bei der Sprachverarbeitung: {type(e).__name__}",
+                )
+            except Exception:
+                logger.error("Konnte STT-Fehlermeldung nicht senden")
+        finally:
+            if tmp_path and tmp_path.exists():
+                tmp_path.unlink(missing_ok=True)
 
     async def _handle_assistant_message(self, msg: IncomingMessage) -> None:
         """Delegiert an Assistant.process() (bestehender Flow)."""
