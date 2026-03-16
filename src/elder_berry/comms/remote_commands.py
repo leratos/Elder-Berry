@@ -145,7 +145,10 @@ KEYWORD_MAP: dict[str, list[str]] = {
     "avatar": ["zeig dich", "wie siehst du aus", "bild von dir", "schick ein bild von dir", "selfie"],
     "hilfe": ["was kannst du", "was geht", "welche befehle", "welche commands"],
     "restart": ["starte neu", "neustart", "restart dich", "bitte neustarten"],
-    "termine": ["was steht an", "welche termine", "kalender", "nächster termin", "termine heute"],
+    "termine_woche": ["nächste woche", "diese woche", "woche termine"],
+    "termine_morgen": ["morgen termine", "habe ich morgen"],
+    "termine": ["was steht an", "welche termine", "kalender", "nächster termin",
+                 "termine heute", "habe ich termine"],
     "mails": ["neue mails", "ungelesene mails", "emails", "e-mails", "posteingang"],
     "mail_summary": ["mail zusammenfassung", "mails zusammenfassung", "fasse mails zusammen"],
     "training": ["letztes training", "wie war mein training", "trainings woche",
@@ -211,7 +214,7 @@ AVATAR_EMOTION_PATTERN = re.compile(
 
 # Regex für Termine: "termine morgen", "termine woche", "termine 3" (Tage)
 TERMINE_PATTERN = re.compile(
-    r"^termine?\s+(morgen|woche|(\d{1,2}))$",
+    r"^termine?\s+(morgen|woche|nächste\s+woche|diese\s+woche|(\d{1,2}))$",
     re.IGNORECASE,
 )
 
@@ -231,7 +234,9 @@ MAILS_DAYS_PATTERN = re.compile(
 MAIL_SEARCH_PATTERN = re.compile(
     r"(?:mails?\s+(?:suche?|finde?|such)\s+(.+)"
     r"|(?:suche?|finde?)\s+(?:mir\s+)?(?:bitte\s+)?(?:die\s+)?(?:mail|email|e-mail)\s+"
-    r"(?:mit\s+(?:der\s+)?)?(?:von\s+)?(.+))",
+    r"(?:mit\s+(?:der\s+)?)?(?:von\s+)?(.+)"
+    r"|(?:suche?|finde?)\s+(?:.+?\s+)?(?:in\s+)?(?:meinen?\s+)?(?:mails?|emails?)\s+"
+    r"(?:nach\s+|von\s+)?(.+))",
     re.IGNORECASE,
 )
 
@@ -507,8 +512,8 @@ class RemoteCommandHandler:
         if command in ("restart", "neustart"):
             return self._cmd_restart()
 
-        if command == "termine":
-            return self._cmd_termine(raw_text)
+        if command in ("termine", "termine_woche", "termine_morgen"):
+            return self._cmd_termine(raw_text, variant=command)
 
         if command == "termin_create":
             return self._cmd_termin_create(raw_text)
@@ -1129,7 +1134,7 @@ class RemoteCommandHandler:
     # Phase 8: Calendar, Email
     # ------------------------------------------------------------------
 
-    def _cmd_termine(self, raw_text: str) -> CommandResult:
+    def _cmd_termine(self, raw_text: str, variant: str = "termine") -> CommandResult:
         """Termine abfragen (heute, morgen, woche, N Tage)."""
         if not self._calendar:
             return CommandResult(
@@ -1143,18 +1148,28 @@ class RemoteCommandHandler:
         match = TERMINE_PATTERN.match(normalized)
 
         try:
-            if match:
-                param = match.group(1)
+            # Keyword-Variante hat Vorrang (z.B. "nächste woche" → termine_woche)
+            if variant == "termine_woche":
+                events = self._calendar.get_events(days=7)
+                label = "Termine (nächste 7 Tage)"
+            elif variant == "termine_morgen":
+                events = self._calendar.get_tomorrow()
+                label = "Termine morgen"
+            elif match:
+                param = match.group(1).lower()
                 if param == "morgen":
                     events = self._calendar.get_tomorrow()
                     label = "Termine morgen"
-                elif param == "woche":
+                elif param in ("woche", "nächste woche", "diese woche"):
                     events = self._calendar.get_events(days=7)
                     label = "Termine (nächste 7 Tage)"
-                else:
+                elif match.group(2):
                     days = int(match.group(2))
                     events = self._calendar.get_events(days=days)
                     label = f"Termine (nächste {days} Tage)"
+                else:
+                    events = self._calendar.get_today()
+                    label = "Termine heute"
             else:
                 events = self._calendar.get_today()
                 label = "Termine heute"
@@ -1275,8 +1290,8 @@ class RemoteCommandHandler:
                 text="Format: mail suche <Begriff>",
             )
 
-        # Zwei alternative Gruppen im Pattern
-        query = (match.group(1) or match.group(2) or "").strip()
+        # Drei alternative Gruppen im Pattern
+        query = (match.group(1) or match.group(2) or match.group(3) or "").strip()
         try:
             mails = self._email_client.search(query, max_results=10)
             if not mails:

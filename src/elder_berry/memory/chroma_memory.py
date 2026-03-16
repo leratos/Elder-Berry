@@ -26,10 +26,12 @@ DEFAULT_DB_PATH = Path.home() / ".elder-berry" / "memory"
 class _OllamaEmbeddingFunction:
     """Wrapper: OllamaEmbeddingClient → ChromaDB EmbeddingFunction-Interface."""
 
-    name: str = "ollama_embedding"
-
     def __init__(self, client: EmbeddingClient) -> None:
         self._client = client
+
+    def name(self) -> str:
+        """ChromaDB ruft name() als Methode auf."""
+        return "ollama_embedding"
 
     def __call__(self, input: list[str]) -> list[list[float]]:
         return [self._client.embed(text) for text in input]

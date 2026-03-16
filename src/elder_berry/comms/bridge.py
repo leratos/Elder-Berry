@@ -477,6 +477,15 @@ class MatrixBridge:
                     None, self._assistant.process, msg.body,
                 )
 
+            # LLM hat remote_command als Aktion gewählt → an CommandHandler weiterleiten
+            if (
+                result.action_executed == "remote_command"
+                and result.action_success
+                and self._remote_commands
+            ):
+                await self._handle_llm_remote_command(msg, result)
+                return
+
             # Textantwort senden
             if result.response:
                 await self._channel.send_text(msg.room_id, result.response)
@@ -506,6 +515,64 @@ class MatrixBridge:
                 tmp_wav.unlink(missing_ok=True)
             if tmp_ogg and tmp_ogg.exists():
                 tmp_ogg.unlink(missing_ok=True)
+
+    async def _handle_llm_remote_command(
+        self, msg: IncomingMessage, llm_result,
+    ) -> None:
+        """LLM hat remote_command Aktion gewählt → Command ausführen.
+
+        Sendet die LLM-Antwort (z.B. "Ich suche nach der Rechnung...") als Text,
+        dann führt den eigentlichen Command aus und sendet dessen Ergebnis.
+        """
+        # LLM-Antwort senden (z.B. "Ich suche mal...")
+        if llm_result.response:
+            await self._channel.send_text(msg.room_id, llm_result.response)
+
+        # Audio der LLM-Antwort senden (wenn vorhanden)
+        if (
+            llm_result.audio_path
+            and llm_result.audio_path.exists()
+            and self._audio_converter
+        ):
+            try:
+                tmp_ogg = llm_result.audio_path.with_suffix(".ogg")
+                ogg_path, _ = self._audio_converter.to_ogg_opus(
+                    llm_result.audio_path, output_path=tmp_ogg,
+                )
+                await self._channel.send_audio(msg.room_id, ogg_path)
+            except Exception:
+                pass
+            finally:
+                llm_result.audio_path.unlink(missing_ok=True)
+                tmp_ogg.unlink(missing_ok=True)
+
+        # Command aus LLM-Params extrahieren: {"command": "mail suche RK Bedachung"}
+        command_text = None
+        if llm_result.action_params and isinstance(llm_result.action_params, dict):
+            command_text = llm_result.action_params.get("command", "")
+
+        if not command_text:
+            logger.debug("LLM remote_command ohne command-Parameter")
+            return
+
+        logger.info("LLM → remote_command: %s", command_text)
+
+        # Command durch den Handler parsen und ausführen
+        cmd = self._remote_commands.parse_command(command_text)
+        if cmd:
+            # Fake-Message mit dem Command-Text (statt Original)
+            cmd_msg = IncomingMessage(
+                sender=msg.sender,
+                room_id=msg.room_id,
+                body=command_text,
+                timestamp=msg.timestamp,
+            )
+            await self._handle_remote_command(cmd_msg, cmd)
+        else:
+            logger.warning(
+                "LLM schlug remote_command vor, aber parse_command matcht nicht: %s",
+                command_text,
+            )
 
     def _log_error(
         self, sender: str, message: str, error: Exception,

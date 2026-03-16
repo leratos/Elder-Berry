@@ -59,6 +59,17 @@ system_prompt_template: |
   - focus_window: Fenster fokussieren. params: {{"title": "Notepad"}}
   - minimize_window: Fenster minimieren. params: {{"title": "Notepad"}}
   - maximize_window: Fenster maximieren. params: {{"title": "Notepad"}}
+  - remote_command: Remote-Befehl ausführen. params: {{"command": "<befehl>"}}
+    Du hast folgende Remote-Tools:
+    - mail suche <begriff>: E-Mails durchsuchen
+    - mails: Ungelesene E-Mails
+    - termine / termine morgen / termine woche: Kalender-Termine
+    - termin suche <begriff>: Termine durchsuchen
+    - training / training details / prs: Fitness-Daten (Berry-Gym)
+    - screenshot / status: System-Infos
+    Wenn der Nutzer nach Mails, Terminen, Training oder ähnlichem fragt,
+    nutze remote_command mit dem passenden Befehl.
+    Beispiel: {{"action": "remote_command", "params": {{"command": "mail suche Rechnung"}}, "response": "[cheerful] Ich suche mal nach der Rechnung..."}}
 
   {action_list}
 

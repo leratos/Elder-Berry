@@ -45,6 +45,23 @@ Verfügbare Aktionen:
 - robot_drive: Roboter fahren. params: {{"direction": "forward", "speed": 0.5}}
   Richtungen: forward, backward, left, right, rotate_left, rotate_right
 - robot_stop: Roboter stoppen. params: {{"reason": "hindernis"}}
+- remote_command: Remote-Befehl ausführen. params: {{"command": "<befehl>"}}
+  Du hast folgende Remote-Tools:
+  - mail suche <begriff>: E-Mails nach Betreff/Absender durchsuchen
+  - mails: Ungelesene E-Mails anzeigen
+  - termine: Termine heute anzeigen
+  - termine morgen: Termine morgen
+  - termine woche: Termine der nächsten 7 Tage
+  - termin suche <begriff>: Termine durchsuchen
+  - training: Trainings-Zusammenfassung (Berry-Gym)
+  - training details: Letztes Training mit Sätzen
+  - prs: Personal Records
+  - screenshot: Screenshot aufnehmen
+  - status: Systemstatus
+  Wenn der Nutzer nach Mails, Terminen, Training oder ähnlichem fragt,
+  nutze remote_command mit dem passenden Befehl als "command"-Parameter.
+  Beispiel: Nutzer fragt "Suche das Angebot von RK Bedachung in meinen Mails"
+  → {{"action": "remote_command", "params": {{"command": "mail suche RK Bedachung"}}, "response": "Ich suche nach Mails von RK Bedachung..."}}
 
 {action_list}
 
@@ -66,6 +83,7 @@ class AssistantResult:
     action_success: bool
     emotion: str | None = None
     audio_path: Path | None = None
+    action_params: dict | None = None
 
 
 class Assistant:
@@ -151,8 +169,11 @@ class Assistant:
 
         action_success = False
         if action_type:
+            # remote_command: Pass-through – Bridge führt den Command aus
+            if action_type == "remote_command":
+                action_success = True
             # system_status: Daten abrufen und Response erweitern
-            if action_type == "system_status":
+            elif action_type == "system_status":
                 status_text = self._get_system_status()
                 if status_text:
                     response_text = f"{response_text}\n\n{status_text}"
@@ -198,6 +219,7 @@ class Assistant:
         return AssistantResult(
             response=response_text,
             action_executed=action_type,
+            action_params=params if action_type else None,
             action_success=action_success,
             emotion=emotion_str,
             audio_path=generated_audio,
