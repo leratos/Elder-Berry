@@ -59,6 +59,30 @@ def _clean_text_for_tts(text: str) -> str:
     return cleaned
 
 
+def _split_sentences(text: str) -> list[str]:
+    """Splittet Text an Satzgrenzen (. ! ? …) für satzweise TTS-Generierung.
+
+    Kurze Fragmente (<15 Zeichen) werden an den vorherigen Satz angehängt,
+    um XTTS-Drift bei zu kurzen Segmenten zu vermeiden.
+    """
+    # Split an Satzzeichen, behalte das Satzzeichen am Ende
+    raw = re.split(r"(?<=[.!?…])\s+", text.strip())
+    raw = [s.strip() for s in raw if s.strip()]
+
+    if not raw:
+        return [text]
+
+    # Kurze Fragmente an vorherigen Satz anhängen
+    merged: list[str] = []
+    for part in raw:
+        if merged and len(part) < 15:
+            merged[-1] = merged[-1] + " " + part
+        else:
+            merged.append(part)
+
+    return merged or [text]
+
+
 class CoquiTTSEngine(TTSEngine):
     """
     Text-to-Speech via Coqui XTTS v2 mit Voice Cloning.
@@ -193,21 +217,67 @@ class CoquiTTSEngine(TTSEngine):
             len(clean), emotion, speaker_wav.name,
         )
 
-        # Kurze Texte (<100 Zeichen) NICHT intern splitten lassen.
-        # XTTS v2 teilt an Kommas/Punkten → Fragmente wie "Guten Morgen"
-        # sind zu kurz für stabile Sprachzuordnung und driften ins Japanische.
-        split = len(clean) >= 100
+        # Eigenes Satz-Splitting + WAV-Concatenation.
+        # XTTS v2 driftet bei kurzem internem Splitting in andere Sprachen.
+        # Wir splitten selbst an Satzzeichen, generieren pro Satz einzeln
+        # (jedes Mal mit vollem Speaker-Referenz-Kontext) und fügen zusammen.
+        sentences = _split_sentences(clean)
 
-        self._tts.tts_to_file(
-            text=clean,
-            speaker_wav=str(speaker_wav),
-            language=self._language,
-            file_path=str(output_path),
-            split_sentences=split,
-        )
+        if len(sentences) <= 1:
+            # Einzelner Satz: direkt generieren
+            self._tts.tts_to_file(
+                text=clean,
+                speaker_wav=str(speaker_wav),
+                language=self._language,
+                file_path=str(output_path),
+                split_sentences=False,
+            )
+        else:
+            # Mehrere Sätze: einzeln generieren + zusammenfügen
+            self._generate_and_concat(sentences, speaker_wav, output_path)
 
         logger.debug("Audio generiert: %s", output_path)
         return output_path
+
+    def _generate_and_concat(
+        self, sentences: list[str], speaker_wav: Path, output_path: Path,
+    ) -> None:
+        """Generiert pro Satz ein WAV und fügt sie zusammen."""
+        import wave
+        import struct
+
+        parts: list[Path] = []
+        try:
+            for i, sentence in enumerate(sentences):
+                part_path = output_path.with_suffix(f".part{i}.wav")
+                self._tts.tts_to_file(
+                    text=sentence,
+                    speaker_wav=str(speaker_wav),
+                    language=self._language,
+                    file_path=str(part_path),
+                    split_sentences=False,
+                )
+                parts.append(part_path)
+
+            # WAVs zusammenfügen (alle haben gleiches Format von XTTS)
+            if not parts:
+                return
+
+            with wave.open(str(parts[0]), "rb") as first:
+                params = first.getparams()
+                all_frames = first.readframes(first.getnframes())
+
+            for part in parts[1:]:
+                with wave.open(str(part), "rb") as wf:
+                    all_frames += wf.readframes(wf.getnframes())
+
+            with wave.open(str(output_path), "wb") as out:
+                out.setparams(params)
+                out.writeframes(all_frames)
+
+        finally:
+            for part in parts:
+                part.unlink(missing_ok=True)
 
     def _resolve_speaker_wav(self, emotion: str | None) -> Path | None:
         """Bestimmt das Speaker-WAV: emotion-spezifisch oder default."""

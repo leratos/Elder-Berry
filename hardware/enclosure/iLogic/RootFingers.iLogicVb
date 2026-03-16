@@ -1,0 +1,257 @@
+' ============================================================
+' iLogic: Finger-Wurzeln (kleine Ausläufer auf Hauptwurzeln)
+' Erzeugt kleine, krallenartige Wurzeln als SEPARATE BODIES
+' → später per Boolean (Combine) mit Stamm verbinden
+' Datei: hardware/enclosure/iLogic/RootFingers.iLogicVb
+' ============================================================
+' ANLEITUNG:
+' 1. Öffne master.ipt in Inventor (Stamm + Hauptwurzeln müssen existieren)
+' 2. iLogic → Regel hinzufügen → Code einfügen
+' 3. Ausführen → erzeugt separate Wurzel-Bodies
+' 4. In Inventor: Kombinieren → Vereinigung → Bodies auswählen
+' ============================================================
+
+' === PARAMETER (hier anpassen) ===
+Dim stammRadius As Double = 10.2      ' cm (Ø204mm / 2) – konsistent!
+Dim seed As Integer = 77              ' Eigener Seed (≠ BarkPaths 42, ≠ RootPaths 99)
+
+' Finger-Wurzeln: zwei Gruppen
+' Gruppe A: starten am Stammfuß (Z=0..2cm), gehen nach außen/unten
+Dim anzahlAmStamm As Integer = 6      ' Finger direkt am Zylinder
+Dim stammFingerLaenge As Double = 3.5  ' cm radial
+Dim stammFingerDicke As Double = 0.7   ' cm Durchmesser Basis
+Dim stammFingerSpitze As Double = 0.15 ' cm Durchmesser Spitze
+Dim stammFingerAnstieg As Double = 0.8 ' cm über Z=0 am Start
+Dim stammFingerAbsenk As Double = 1.2  ' cm unter Z=0 an der Spitze
+
+' Gruppe B: starten weiter draußen (auf den flachen Hauptwurzeln)
+Dim anzahlAufWurzel As Integer = 8     ' Finger auf den Hauptwurzeln
+Dim wurzelFingerLaenge As Double = 2.5 ' cm radial (kürzer)
+Dim wurzelFingerDicke As Double = 0.5  ' cm Durchmesser Basis
+Dim wurzelFingerSpitze As Double = 0.12 ' cm Durchmesser Spitze
+Dim wurzelFingerStartR As Double = 13.0 ' cm Abstand vom Zentrum (auf Hauptwurzel)
+Dim wurzelFingerAbsenk As Double = 1.0 ' cm unter Z=0
+
+' Gemeinsam
+Dim punkteProFinger As Integer = 8     ' Spline-Kontrollpunkte
+Dim welligkeit As Double = 0.15        ' cm laterale Variation (etwas mehr als Hauptwurzeln)
+Dim laengenVariation As Double = 0.4   ' Starke Variation für organisches Aussehen
+
+' === SETUP ===
+Dim oDoc As PartDocument = ThisApplication.ActiveDocument
+Dim oDef As PartComponentDefinition = oDoc.ComponentDefinition
+Dim oTG As TransientGeometry = ThisApplication.TransientGeometry
+Dim rng As New Random(seed)
+Dim PI As Double = Math.PI
+Dim anzahlGesamt As Integer = anzahlAmStamm + anzahlAufWurzel
+
+' === CLEANUP: Alte RootFinger_-Elemente löschen ===
+Dim featsToDelete As New List(Of SweepFeature)
+For Each feat As SweepFeature In oDef.Features.SweepFeatures
+    If feat.Name.StartsWith("RootFinger_") Then featsToDelete.Add(feat)
+Next
+For Each feat As SweepFeature In featsToDelete
+    Try : feat.Delete() : Catch : End Try
+Next
+
+Dim sketches2DToDelete As New List(Of PlanarSketch)
+For Each sk As PlanarSketch In oDef.Sketches
+    If sk.Name.StartsWith("RootFinger_") Then sketches2DToDelete.Add(sk)
+Next
+For Each sk As PlanarSketch In sketches2DToDelete
+    Try : sk.Delete() : Catch : End Try
+Next
+
+Dim sketches3DToDelete As New List(Of Sketch3D)
+For Each sk As Sketch3D In oDef.Sketches3D
+    If sk.Name.StartsWith("RootFinger_") Then sketches3DToDelete.Add(sk)
+Next
+For Each sk As Sketch3D In sketches3DToDelete
+    Try : sk.Delete() : Catch : End Try
+Next
+
+Dim wpToDelete As New List(Of WorkPlane)
+For Each wp As WorkPlane In oDef.WorkPlanes
+    If wp.Name.StartsWith("RootFinger_") Then wpToDelete.Add(wp)
+Next
+For Each wp As WorkPlane In wpToDelete
+    Try : wp.Delete() : Catch : End Try
+Next
+
+' === FINGER-WURZELN ERZEUGEN ===
+Dim fingerErzeugt As Integer = 0
+Dim sweepsErzeugt As Integer = 0
+Dim sweepFehler As New List(Of String)
+
+For i As Integer = 0 To anzahlGesamt - 1
+    ' Bestimmen: Stamm-Finger oder Wurzel-Finger?
+    Dim istAmStamm As Boolean = (i < anzahlAmStamm)
+    Dim prefix As String = If(istAmStamm, "RootFinger_S_", "RootFinger_W_")
+
+    ' Winkel: gleichmäßig verteilt + starke Zufallsvariation
+    Dim basisWinkel As Double
+    If istAmStamm Then
+        basisWinkel = (2 * PI * i / anzahlAmStamm) + (rng.NextDouble() - 0.5) * (PI / anzahlAmStamm)
+    Else
+        Dim j As Integer = i - anzahlAmStamm
+        basisWinkel = (2 * PI * j / anzahlAufWurzel) + (rng.NextDouble() - 0.5) * (PI / anzahlAufWurzel)
+    End If
+
+    ' Individuelle Parameter mit Variation
+    Dim indivLaenge As Double
+    Dim indivDicke As Double
+    Dim indivSpitze As Double
+    Dim indivAbsenk As Double
+    Dim startR As Double
+    Dim startZ As Double
+
+    If istAmStamm Then
+        ' Gruppe A: am Zylinder, gehen nach außen/unten
+        indivLaenge = stammFingerLaenge * (1.0 - laengenVariation * 0.5 + rng.NextDouble() * laengenVariation)
+        indivDicke = stammFingerDicke * (0.8 + rng.NextDouble() * 0.4)
+        indivSpitze = stammFingerSpitze * (0.7 + rng.NextDouble() * 0.6)
+        indivAbsenk = stammFingerAbsenk * (0.6 + rng.NextDouble() * 0.8)
+        startR = stammRadius
+        startZ = stammFingerAnstieg * (0.6 + rng.NextDouble() * 0.8)
+    Else
+        ' Gruppe B: weiter draußen auf Hauptwurzeln, kürzer
+        indivLaenge = wurzelFingerLaenge * (1.0 - laengenVariation * 0.5 + rng.NextDouble() * laengenVariation)
+        indivDicke = wurzelFingerDicke * (0.8 + rng.NextDouble() * 0.4)
+        indivSpitze = wurzelFingerSpitze * (0.7 + rng.NextDouble() * 0.6)
+        indivAbsenk = wurzelFingerAbsenk * (0.6 + rng.NextDouble() * 0.8)
+        startR = wurzelFingerStartR * (0.85 + rng.NextDouble() * 0.3)
+        startZ = 0.1 + rng.NextDouble() * 0.3 ' knapp über Boden (liegt auf Hauptwurzel)
+    End If
+
+    ' Variabler Krümmungsexponent → jeder Finger biegt anders
+    Dim radialExp As Double = 0.6 + rng.NextDouble() * 0.5
+    Dim absenkExp As Double = 1.5 + rng.NextDouble() * 1.5
+
+    ' 3D-Skizze
+    Dim oSketch3D As Sketch3D = oDef.Sketches3D.Add()
+    oSketch3D.Name = prefix & "Path_" & Format(i, "00")
+    oSketch3D.Edit()
+
+    Dim punkte As ObjectCollection = ThisApplication.TransientObjects.CreateObjectCollection()
+    Dim pfadLaenge As Double = 0.0
+    Dim prevX As Double = 0, prevY As Double = 0, prevZ As Double = 0
+
+    For j As Integer = 0 To punkteProFinger - 1
+        Dim t As Double = j / CDbl(punkteProFinger - 1)
+
+        ' Radial: vom Startpunkt nach außen
+        Dim r As Double = startR + indivLaenge * Math.Pow(t, radialExp)
+
+        ' Z-Kurve: Sichelform ist hier gewollt (kleine Krallen)
+        ' Start bei startZ, Bogen nach unten
+        Dim z As Double = startZ * Math.Pow(1.0 - t, 0.8) - indivAbsenk * Math.Pow(t, absenkExp)
+
+        ' Laterale Welligkeit
+        Dim welle As Double = Math.Sin(t * PI * (1.0 + rng.NextDouble() * 0.8)) * welligkeit
+        welle += (rng.NextDouble() - 0.5) * welligkeit * 0.2
+        Dim winkelAbw As Double = welle / r
+        Dim aktWinkel As Double = basisWinkel + winkelAbw
+
+        Dim x As Double = r * Math.Cos(aktWinkel)
+        Dim y As Double = r * Math.Sin(aktWinkel)
+
+        If j > 0 Then
+            pfadLaenge += Math.Sqrt((x - prevX) ^ 2 + (y - prevY) ^ 2 + (z - prevZ) ^ 2)
+        End If
+        prevX = x : prevY = y : prevZ = z
+        punkte.Add(oTG.CreatePoint(x, y, z))
+    Next j
+
+    ' Spline erzeugen
+    Dim oSpline As SketchSpline3D = Nothing
+    If punkte.Count >= 3 Then
+        Try
+            oSpline = oSketch3D.SketchSplines3D.Add(punkte)
+            fingerErzeugt += 1
+        Catch ex As Exception
+            oSketch3D.ExitEdit()
+            Continue For
+        End Try
+    End If
+    oSketch3D.ExitEdit()
+    If oSpline Is Nothing Then Continue For
+
+    ' === SWEEP: Kreisprofil + NewBody ===
+    Try
+        Dim oWP As WorkPlane = oDef.WorkPlanes.AddByNormalToCurve( _
+            oSpline, oSpline.StartSketchPoint)
+        oWP.Name = prefix & "WP_" & Format(i, "00")
+        oWP.Visible = False
+
+        Dim oSketch2D As PlanarSketch = oDef.Sketches.Add(oWP)
+        oSketch2D.Name = prefix & "Profile_" & Format(i, "00")
+        oSketch2D.Edit()
+        Dim projPt As SketchPoint = oSketch2D.AddByProjectingEntity(oSpline.StartSketchPoint)
+        Dim centerPt As Point2d = oTG.CreatePoint2d(projPt.Geometry.X, projPt.Geometry.Y)
+        oSketch2D.SketchCircles.AddByCenterRadius(centerPt, indivDicke / 2.0)
+        oSketch2D.ExitEdit()
+
+        Dim oProfile As Profile = oSketch2D.Profiles.AddForSolid()
+        Dim oPath As Path = oDef.Features.CreatePath(oSpline)
+
+        ' Taper für konischen Verlauf
+        Dim radiusAenderung As Double = (indivDicke - indivSpitze) / 2.0
+        Dim taperWinkel As Double = 0.0
+        If pfadLaenge > 0.1 Then
+            taperWinkel = Math.Atan(radiusAenderung / pfadLaenge)
+        End If
+
+        ' Sweep als NEUER BODY (nicht Join!)
+        Try
+            Dim oSweepDef As SweepDefinition = oDef.Features.SweepFeatures.CreateSweepDefinition( _
+                SweepTypeEnum.kPathSweepType, _
+                oProfile, oPath, _
+                PartFeatureOperationEnum.kNewBodyOperation)
+            oSweepDef.TaperAngle = -taperWinkel
+            Dim oSweep As SweepFeature = oDef.Features.SweepFeatures.Add(oSweepDef)
+            oSweep.Name = prefix & "Sweep_" & Format(i, "00")
+            sweepsErzeugt += 1
+        Catch
+            ' Fallback: ohne Taper
+            Try
+                Dim oSweepDef2 As SweepDefinition = oDef.Features.SweepFeatures.CreateSweepDefinition( _
+                    SweepTypeEnum.kPathSweepType, _
+                    oProfile, oPath, _
+                    PartFeatureOperationEnum.kNewBodyOperation)
+                Dim oSweep2 As SweepFeature = oDef.Features.SweepFeatures.Add(oSweepDef2)
+                oSweep2.Name = prefix & "Sweep_" & Format(i, "00")
+                sweepsErzeugt += 1
+                sweepFehler.Add(prefix & i & ": Taper fehlgeschlagen, konstant")
+            Catch ex2 As Exception
+                sweepFehler.Add(prefix & i & ": Sweep fehlgeschlagen – " & ex2.Message)
+            End Try
+        End Try
+
+    Catch ex As Exception
+        sweepFehler.Add(prefix & i & ": Profil/Sweep übersprungen – " & ex.Message)
+    End Try
+
+Next i
+
+' === ERGEBNIS ===
+oDoc.Update()
+
+Dim fehlerText As String = ""
+If sweepFehler.Count > 0 Then
+    fehlerText = vbCrLf & vbCrLf & "Warnungen:" & vbCrLf
+    For Each msg As String In sweepFehler
+        fehlerText &= "  • " & msg & vbCrLf
+    Next
+End If
+
+MessageBox.Show( _
+    "Finger-Wurzeln erzeugt!" & vbCrLf & _
+    "Am Stamm: " & anzahlAmStamm & " + Auf Wurzeln: " & anzahlAufWurzel & " = " & anzahlGesamt & vbCrLf & _
+    "Spline-Pfade: " & fingerErzeugt & vbCrLf & _
+    "Sweeps (NewBody): " & sweepsErzeugt & vbCrLf & _
+    "Profil: Kreis (Stamm Ø" & stammFingerDicke & "cm / Wurzel Ø" & wurzelFingerDicke & "cm)" & vbCrLf & _
+    "Alle Bodies sind SEPARATE Körper!" & vbCrLf & _
+    "→ Kombinieren → Vereinigung → Bodies auswählen" & _
+    fehlerText & vbCrLf & vbCrLf & _
+    "Seed: " & seed & " (ändern für anderes Muster)", _
+    "Elder-Berry Root Finger Generator")

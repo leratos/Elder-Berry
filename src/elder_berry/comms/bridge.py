@@ -434,6 +434,7 @@ class MatrixBridge:
             )
 
             # Transkription als Text-Nachricht weiterverarbeiten
+            # Geht durch den vollen Router (Commands, Claude, LLM)
             text_msg = IncomingMessage(
                 sender=msg.sender,
                 room_id=msg.room_id,
@@ -441,7 +442,7 @@ class MatrixBridge:
                 timestamp=msg.timestamp,
                 raw=msg.raw,
             )
-            await self._handle_assistant_message(text_msg)
+            await self._handle_message(text_msg)
 
         except Exception as e:
             logger.error("Fehler bei Audio-Transkription: %s", e)

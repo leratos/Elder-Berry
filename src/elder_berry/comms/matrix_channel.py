@@ -453,20 +453,10 @@ class MatrixChannel(MessageChannel):
 
         server_name, media_id = mxc_path.split("/", 1)
 
-        # Audio herunterladen
-        try:
-            download_resp = await self._client.download(server_name, media_id)
-        except Exception as e:
-            logger.error("Audio-Download Fehler: %s", e)
+        # Audio herunterladen (authentifiziert – Synapse 1.94+ erfordert das)
+        audio_bytes = await self._authenticated_download(server_name, media_id)
+        if audio_bytes is None:
             return
-
-        if isinstance(download_resp, DownloadError):
-            logger.error(
-                "Audio-Download fehlgeschlagen: %s", download_resp.message,
-            )
-            return
-
-        audio_bytes: bytes = download_resp.body
         filename: str = event.body or "voice.ogg"
 
         logger.debug(
@@ -490,6 +480,56 @@ class MatrixChannel(MessageChannel):
                 logger.error(
                     "Callback-Fehler für Audio-Nachricht von %s: %s", msg.sender, e,
                 )
+
+    async def _authenticated_download(
+        self, server_name: str, media_id: str,
+    ) -> bytes | None:
+        """Lädt eine Datei vom Matrix-Server (authentifiziert).
+
+        Synapse 1.94+ erfordert authentifizierte Media-Downloads über
+        /_matrix/client/v1/media/download statt der alten
+        /_matrix/media/v3/download Route.
+
+        Fallback: Wenn die neue API fehlschlägt, wird die alte nio-API probiert.
+
+        Returns:
+            Audio-Bytes oder None bei Fehler.
+        """
+        import aiohttp
+
+        # Neue authentifizierte API (Synapse 1.94+)
+        url = (
+            f"{self._homeserver}/_matrix/client/v1/media/download"
+            f"/{server_name}/{media_id}"
+        )
+        headers = {"Authorization": f"Bearer {self._client.access_token}"}
+
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.get(url, headers=headers) as resp:
+                    if resp.status == 200:
+                        return await resp.read()
+                    logger.debug(
+                        "Authentifizierter Download HTTP %d, Fallback auf nio",
+                        resp.status,
+                    )
+        except Exception as e:
+            logger.debug("Authentifizierter Download fehlgeschlagen: %s", e)
+
+        # Fallback: alte nio-API (unauthentifiziert, für ältere Server)
+        try:
+            download_resp = await self._client.download(server_name, media_id)
+        except Exception as e:
+            logger.error("Audio-Download Fehler: %s", e)
+            return None
+
+        if isinstance(download_resp, DownloadError):
+            logger.error(
+                "Audio-Download fehlgeschlagen: %s", download_resp.message,
+            )
+            return None
+
+        return download_resp.body
 
     @staticmethod
     def _guess_mime_type(path: Path) -> str:
