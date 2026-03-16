@@ -90,7 +90,7 @@ Clipboard:
   clip: <text> – Text in Zwischenablage schreiben
 
 Dateien:
-  schick mir <pfad> – Datei senden (max 50 MB)
+  schick mir <pfad> – Datei senden (max 50 MB, nur erlaubte Verzeichnisse)
   download <url> – Datei herunterladen
 
 Prozesse:
@@ -203,8 +203,6 @@ START_WHITELIST = {
     "notepad++": "notepad++",
     "explorer": "explorer",
     "calc": "calc",
-    "cmd": "cmd",
-    "terminal": "wt",
     "vlc": "vlc",
     "spotify": "spotify",
     "discord": "discord",
@@ -215,6 +213,16 @@ START_WHITELIST = {
 # Maximale Dateigröße für send_file (50 MB)
 MAX_FILE_SIZE_MB = 50
 MAX_FILE_SIZE_BYTES = MAX_FILE_SIZE_MB * 1024 * 1024
+
+# Standard-Erlaubte Wurzelverzeichnisse für send_file.
+# None oder leeres Tuple = keine Einschränkung (nicht empfohlen).
+# Konfigurierbar über RemoteCommandHandler.__init__.
+_DEFAULT_SEND_FILE_ROOTS: tuple[Path, ...] = (
+    Path.home() / "Documents",
+    Path.home() / "Downloads",
+    Path.home() / "Desktop",
+    Path.home() / "Pictures",
+)
 
 
 @dataclass
@@ -255,6 +263,7 @@ class RemoteCommandHandler:
         project_root: Path | None = None,
         download_dir: Path | None = None,
         avatar_renderer: AvatarRenderer | None = None,
+        send_file_allowed_roots: tuple[Path, ...] | None = None,
     ) -> None:
         self._monitor = system_monitor
         self._controller = controller
@@ -262,6 +271,14 @@ class RemoteCommandHandler:
         self._project_root = project_root
         self._download_dir = download_dir or Path.home() / "Downloads"
         self._avatar_renderer = avatar_renderer
+        self._send_file_allowed_roots: tuple[Path, ...] = tuple(
+            r.resolve()
+            for r in (
+                send_file_allowed_roots
+                if send_file_allowed_roots is not None
+                else _DEFAULT_SEND_FILE_ROOTS
+            )
+        )
 
     def parse_command(self, text: str) -> str | None:
         """Prüft ob der Text ein direkter Command ist.
@@ -703,6 +720,23 @@ class RemoteCommandHandler:
                 success=False,
                 text=f"Ungültiger Pfad: {e}",
             )
+
+        # Pfad gegen erlaubte Wurzelverzeichnisse prüfen (Roots bereits beim Init aufgelöst)
+        if self._send_file_allowed_roots:
+            allowed = any(
+                file_path.is_relative_to(root)
+                for root in self._send_file_allowed_roots
+            )
+            if not allowed:
+                allowed_str = ", ".join(str(r) for r in self._send_file_allowed_roots)
+                return CommandResult(
+                    command="send_file",
+                    success=False,
+                    text=(
+                        f"Zugriff verweigert: '{file_path}' liegt nicht in einem "
+                        f"erlaubten Verzeichnis.\nErlaubt: {allowed_str}"
+                    ),
+                )
 
         if not file_path.exists():
             return CommandResult(

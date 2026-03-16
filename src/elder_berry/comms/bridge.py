@@ -102,6 +102,7 @@ class MatrixBridge:
         alert_monitor: AlertMonitor | None = None,
         alert_room_id: str | None = None,
         error_log_dir: Path | None = None,
+        allowed_senders: frozenset[str] | None = None,
     ) -> None:
         self._channel = channel
         self._assistant = assistant
@@ -111,6 +112,7 @@ class MatrixBridge:
         self._alert_monitor = alert_monitor
         self._alert_room_id = alert_room_id
         self._error_log_dir = error_log_dir
+        self._allowed_senders = allowed_senders
         self._loop: asyncio.AbstractEventLoop | None = None
         self._thread: threading.Thread | None = None
         self._running = False
@@ -211,6 +213,11 @@ class MatrixBridge:
         3. OGG wird als Sprachnachricht via Channel gesendet
         """
         logger.info("Nachricht von %s: %s", msg.sender, msg.body[:100])
+
+        # --- Sender-Whitelist: Nachrichten von unbekannten Absendern ignorieren ---
+        if self._allowed_senders and msg.sender not in self._allowed_senders:
+            logger.warning("Nachricht von unbekanntem Sender ignoriert: %s", msg.sender)
+            return
 
         # --- Command-Router: direkte Commands vor LLM ---
         if self._remote_commands:
