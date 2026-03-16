@@ -14,6 +14,8 @@ TIMEOUT = 60.0
 
 
 class OpenRouterClient(LLMClient):
+    name = "openrouter"
+
     def __init__(self, model: str = DEFAULT_MODEL):
         self.model = model
         self._api_key: str | None = os.environ.get("OPENROUTER_API_KEY")

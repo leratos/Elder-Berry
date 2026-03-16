@@ -12,6 +12,7 @@ dependencies = [
     "python-dotenv>=1.0",
     "PyYAML>=6.0",
     "cryptography>=42.0",
+    "anthropic>=0.40",
 ]
 
 [project.optional-dependencies]
@@ -47,9 +48,11 @@ matrix = [
     "pydub>=0.25",
 ]
 remote = [
-    "anthropic>=0.40",
     "mss>=9.0",
     "pyperclip>=1.9",
+]
+memory = [
+    "chromadb>=0.5",
 ]
 
 [tool.setuptools.packages.find]
