@@ -806,3 +806,41 @@
 - Datei: src/elder_berry/tts/coqui_engine.py (generate_audio: split-Logik)
 - Tests: 3 neue Tests (TestSplitSentences), 44/44 grün
 - Zum Testen: "Guten Morgen, wie kann ich dir helfen?" sollte jetzt komplett deutsch bleiben
+
+## Abgeschlossen: Live-Test-Fixes + TTS Concat (2026-03-16)
+- Branch: feature/phase-7-tier2-tier3-alerts
+- Erster vollständiger Live-Test aller Komponenten über Matrix
+
+### start_saleria.py – 6 Fixes
+- load_secrets_to_env(): SecretStore-Keys → os.environ (LLMRouter findet Anthropic)
+- init_tts(character=character): Character VOR TTS erstellt, Voice-Map übergeben
+- RemoteCommandHandler: alle DI-Params (secret_store, project_root, avatar_renderer)
+- init_audio_converter(): WAV→OGG für Matrix-Sprachantworten
+- error_log_dir + alert_room_id an MatrixBridge übergeben
+- Parameterfehler: action_controller → controller
+
+### Matrix-Audio-Download
+- Synapse 1.149.1 blockiert unauthentifizierte Media-Downloads
+- Fix: _authenticated_download() in MatrixChannel (Bearer-Token + Fallback auf nio)
+- Endpoint: /_matrix/client/v1/media/download (statt /_matrix/media/v3/download)
+
+### ChromaDB-Kompatibilität
+- get_or_create_collection(): get_or_create=True Keyword entfernt (redundant)
+- _OllamaEmbeddingFunction: name-Attribut ergänzt (neuere ChromaDB erfordert es)
+
+### TTS Sprach-Drift Fix v2 (WAV-Concatenation)
+- Problem: auch bei 120+ Zeichen driftet XTTS bei Coqui-internem Splitting
+- Lösung: IMMER split_sentences=False, eigenes Satz-Splitting + WAV-Concat
+- _split_sentences(): Split an .!?…, kurze Fragmente (<15 Zeichen) → an vorherigen Satz
+- _generate_and_concat(): pro Satz einzeln generieren (voller Speaker-Kontext) → wave concat
+- Einzelne Sätze: direkt generieren, kein Overhead
+
+### STT → Command-Router
+- Fix: STT-Transkription geht jetzt durch _handle_message() statt _handle_assistant_message()
+- Effekt: Sprachnachricht "Screenshot" wird korrekt als Command erkannt
+
+### Ergebnis
+- Anthropic als primäres LLM-Backend (Sonnet 4.6)
+- TTS mit Voice-Map (10 Emotionen) funktional
+- Sprachnachrichten: Element → Whisper STT → Command/LLM → TTS → OGG → Matrix
+- Tests: 815/815 grün

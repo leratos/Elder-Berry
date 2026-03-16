@@ -11,7 +11,7 @@ Verwendung:
 
 Voraussetzungen Tower (Windows):
     pip install -e ".[windows,tts-neural,avatar,matrix,remote,memory,stt]"
-    ANTHROPIC_API_KEY in .env
+    ANTHROPIC_API_KEY in .env oder SecretStore
     Ollama läuft: ollama serve
     Embedding-Modell: ollama pull nomic-embed-text
 """
@@ -62,6 +62,30 @@ def parse_args() -> argparse.Namespace:
 
 
 # ---------------------------------------------------------------------------
+# Secrets → Env-Variablen (damit LLMRouter + andere Komponenten sie finden)
+# ---------------------------------------------------------------------------
+
+def load_secrets_to_env():
+    """Lädt API-Keys aus SecretStore in os.environ (wenn nicht bereits gesetzt)."""
+    try:
+        from elder_berry.core.secret_store import SecretStore
+        store = SecretStore()
+
+        key_map = {
+            "anthropic_api_key": "ANTHROPIC_API_KEY",
+            "openrouter_api_key": "OPENROUTER_API_KEY",
+        }
+        for secret_name, env_name in key_map.items():
+            if env_name not in os.environ:
+                val = store.get_or_none(secret_name)
+                if val:
+                    os.environ[env_name] = val
+                    logger.debug("Secret '%s' → $%s geladen", secret_name, env_name)
+    except Exception as e:
+        logger.debug("SecretStore nicht verfügbar: %s", e)
+
+
+# ---------------------------------------------------------------------------
 # Komponenten-Initialisierung
 # ---------------------------------------------------------------------------
 
@@ -76,7 +100,7 @@ def init_llm():
     return router
 
 
-def init_actions_db() -> tuple:
+def init_actions_db():
     from elder_berry.actions.db import ActionsDB
     db_path = Path(os.environ.get("DATA_PATH", Path.home() / ".elder-berry" / "actions.db"))
     db_path.parent.mkdir(parents=True, exist_ok=True)
@@ -110,14 +134,40 @@ def _make_dummy_controller():
     return dummy
 
 
-def init_tts(no_tts: bool):
-    """TTS-Engine – bevorzugt CoquiTTS, Fallback pyttsx3, oder None."""
+def init_character():
+    from elder_berry.character.saleria import SaleriaEngine
+    engine = SaleriaEngine()
+    logger.info("Charakter: %s", engine._personality.name)
+    return engine
+
+
+def init_tts(no_tts: bool, character=None):
+    """TTS-Engine – bevorzugt CoquiTTS mit Voice-Map, Fallback pyttsx3."""
     if no_tts:
         logger.info("TTS: deaktiviert")
         return None
+
     try:
         from elder_berry.tts.coqui_engine import CoquiTTSEngine
-        tts = CoquiTTSEngine()
+        from elder_berry.character.base import Emotion
+
+        # Voice-Map aus Character aufbauen
+        voice_map = {}
+        default_wav = None
+        if character:
+            for emotion in Emotion:
+                sample = character.get_voice_sample(emotion)
+                if sample:
+                    voice_map[emotion.value] = sample
+            default_wav = voice_map.get("neutral")
+            logger.info("Voice-Map: %d Emotionen geladen", len(voice_map))
+
+        tts = CoquiTTSEngine(
+            voice_map=voice_map,
+            default_speaker_wav=default_wav,
+            language="de",
+        )
+        tts.load()
         logger.info("TTS: CoquiTTSEngine (XTTS v2)")
         return tts
     except (ImportError, Exception) as e:
@@ -134,13 +184,6 @@ def init_tts(no_tts: bool):
 
     logger.warning("TTS: kein Engine verfügbar")
     return None
-
-
-def init_character():
-    from elder_berry.character.saleria import SaleriaEngine
-    engine = SaleriaEngine()
-    logger.info("Charakter: %s", engine._personality.name)
-    return engine
 
 
 def init_memory(no_memory: bool):
@@ -188,6 +231,21 @@ def init_avatar(no_avatar: bool):
 def init_system_monitor():
     from elder_berry.system.info import SystemMonitor
     return SystemMonitor()
+
+
+def init_audio_converter():
+    """AudioConverter für WAV→OGG/Opus (Matrix-Sprachnachrichten)."""
+    try:
+        from elder_berry.comms.audio_converter import AudioConverter
+        converter = AudioConverter()
+        if converter.ffmpeg_available:
+            logger.info("AudioConverter: ffmpeg verfügbar")
+            return converter
+        logger.warning("AudioConverter: ffmpeg nicht gefunden – keine Sprachantworten")
+        return None
+    except ImportError:
+        logger.debug("AudioConverter: pydub nicht installiert")
+        return None
 
 
 def init_stt(mode: str, whisper_model: str):
@@ -247,7 +305,7 @@ def run_voice(assistant, stt):
         sys.exit(1)
 
     SAMPLE_RATE = 16000
-    RECORD_SECONDS = 5  # Aufnahmedauer in Sekunden (später durch VAD ersetzen)
+    RECORD_SECONDS = 5
 
     print("\n─── Saleria Voice-Modus ───")
     print(f"Aufnahme: {RECORD_SECONDS}s nach Enter | 'exit' zum Beenden\n")
@@ -286,7 +344,7 @@ def run_voice(assistant, stt):
         print("\nAuf Wiedersehen!")
 
 
-def run_matrix(assistant, stt=None):
+def run_matrix(assistant, stt=None, avatar=None, audio_converter=None):
     """Matrix-Modus: MatrixBridge startet bidirektionalen Chat über Matrix."""
     from elder_berry.core.secret_store import SecretStore
     from elder_berry.comms.matrix_channel import MatrixChannel
@@ -301,6 +359,7 @@ def run_matrix(assistant, stt=None):
     )
     user_id = secrets.get_or_none("matrix_user_id") or os.environ.get("MATRIX_USER_ID")
     token = secrets.get_or_none("matrix_access_token") or os.environ.get("MATRIX_ACCESS_TOKEN")
+    room_id = secrets.get_or_none("matrix_room_id") or os.environ.get("MATRIX_ROOM_ID")
 
     if not user_id or not token:
         logger.error(
@@ -315,10 +374,13 @@ def run_matrix(assistant, stt=None):
 
     channel = MatrixChannel(homeserver=homeserver, user_id=user_id, access_token=token)
 
-    # RemoteCommandHandler
+    # RemoteCommandHandler – alle Dependencies übergeben
     remote = RemoteCommandHandler(
         system_monitor=SystemMonitor(),
-        action_controller=assistant._controller,
+        controller=assistant._controller,
+        secret_store=secrets,
+        project_root=_PROJECT_ROOT,
+        avatar_renderer=avatar,
     )
 
     # ClaudeAgent (optional)
@@ -337,17 +399,22 @@ def run_matrix(assistant, stt=None):
 
     # AlertMonitor
     alert_config = AlertConfig(disk_threshold_percent=90.0)
-    alert_monitor = AlertMonitor(config=alert_config)
+    alert_monitor = AlertMonitor(send_alert=lambda text: None, config=alert_config)
 
     if stt:
         logger.info("Matrix-STT: Sprachnachrichten werden transkribiert")
 
+    log_dir = _PROJECT_ROOT / "logs"
+
     bridge = MatrixBridge(
         channel=channel,
         assistant=assistant,
+        audio_converter=audio_converter,
         remote_commands=remote,
         claude_agent=claude_agent,
         alert_monitor=alert_monitor,
+        alert_room_id=room_id,
+        error_log_dir=log_dir,
         stt=stt,
     )
 
@@ -383,14 +450,18 @@ def main():
     print(f"  Modus: {args.mode.upper()}")
     print("═" * 50)
 
+    # Secrets aus SecretStore in Env laden (für LLMRouter etc.)
+    load_secrets_to_env()
+
     llm = init_llm()
     db = init_actions_db()
     controller = init_controller()
-    tts = init_tts(args.no_tts)
     character = init_character()
+    tts = init_tts(args.no_tts, character=character)
     memory = init_memory(args.no_memory)
     avatar = init_avatar(args.no_avatar)
     monitor = init_system_monitor()
+    audio_converter = init_audio_converter()
     stt = init_stt(args.mode, args.whisper_model)
 
     from elder_berry.core.assistant import Assistant
@@ -411,7 +482,7 @@ def main():
     elif args.mode == "voice":
         run_voice(assistant, stt)
     else:
-        run_matrix(assistant, stt=stt)
+        run_matrix(assistant, stt=stt, avatar=avatar, audio_converter=audio_converter)
 
 
 if __name__ == "__main__":

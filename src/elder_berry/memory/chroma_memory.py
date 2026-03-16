@@ -26,6 +26,8 @@ DEFAULT_DB_PATH = Path.home() / ".elder-berry" / "memory"
 class _OllamaEmbeddingFunction:
     """Wrapper: OllamaEmbeddingClient → ChromaDB EmbeddingFunction-Interface."""
 
+    name: str = "ollama_embedding"
+
     def __init__(self, client: EmbeddingClient) -> None:
         self._client = client
 
@@ -76,7 +78,7 @@ class ChromaMemoryStore(MemoryStore):
             self._db_path.mkdir(parents=True, exist_ok=True)
             self._client = chromadb.PersistentClient(path=str(self._db_path))
 
-            kwargs: dict = {"name": self._collection_name, "get_or_create": True}
+            kwargs: dict = {"name": self._collection_name}
             if self._embedding_client is not None:
                 kwargs["embedding_function"] = _OllamaEmbeddingFunction(
                     self._embedding_client

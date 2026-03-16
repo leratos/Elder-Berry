@@ -295,28 +295,43 @@ class TestGenerateAudioEmojiHandling:
 
 
 class TestSplitSentences:
-    """XTTS v2 splittet intern an Kommas/Punkten. Kurze Fragmente (<100 Zeichen)
-    verlieren die Sprachzuordnung und driften z.B. ins Japanische."""
+    """XTTS v2 splittet intern an Kommas/Punkten. Fragmente verlieren die
+    Sprachzuordnung und driften z.B. ins Japanische. Deshalb: eigenes
+    Satz-Splitting + WAV-Concatenation statt Coqui-internes Splitting."""
 
     def test_short_text_no_split(self, engine, mock_tts_module, tmp_path):
-        """Kurzer Text → split_sentences=False (verhindert Sprach-Drift)."""
+        """Kurzer Text → split_sentences=False."""
         output = tmp_path / "output.wav"
         engine.generate_audio("Guten Morgen, wie kann ich dir helfen?", output)
         call_kwargs = mock_tts_module["tts_instance"].tts_to_file.call_args
         assert call_kwargs.kwargs["split_sentences"] is False
 
-    def test_long_text_split_enabled(self, engine, mock_tts_module, tmp_path):
-        """Langer Text (>=100 Zeichen) → split_sentences=True (bessere Qualität)."""
-        output = tmp_path / "output.wav"
-        long_text = "Dies ist ein sehr langer Text, " * 5 + "der über hundert Zeichen hat."
-        engine.generate_audio(long_text, output)
-        call_kwargs = mock_tts_module["tts_instance"].tts_to_file.call_args
-        assert call_kwargs.kwargs["split_sentences"] is True
+    def test_long_text_also_no_split(self, engine, mock_tts_module, tmp_path):
+        """Langer Text → split_sentences=False (eigenes Splitting)."""
+        import wave, struct
 
-    def test_exactly_100_chars_split_enabled(self, engine, mock_tts_module, tmp_path):
-        """Genau 100 Zeichen → split_sentences=True (Grenzfall)."""
         output = tmp_path / "output.wav"
-        text = "A" * 100
-        engine.generate_audio(text, output)
-        call_kwargs = mock_tts_module["tts_instance"].tts_to_file.call_args
-        assert call_kwargs.kwargs["split_sentences"] is True
+        long_text = "Dies ist ein sehr langer Text. " * 5
+
+        # Mock: tts_to_file muss echte WAV-Dateien erzeugen (für wave.open)
+        def _fake_tts_to_file(**kwargs):
+            p = Path(kwargs["file_path"])
+            with wave.open(str(p), "wb") as wf:
+                wf.setnchannels(1)
+                wf.setsampwidth(2)
+                wf.setframerate(22050)
+                wf.writeframes(struct.pack("<h", 0) * 100)
+
+        mock_tts_module["tts_instance"].tts_to_file.side_effect = _fake_tts_to_file
+
+        engine.generate_audio(long_text, output)
+        # Alle tts_to_file Aufrufe prüfen
+        for call in mock_tts_module["tts_instance"].tts_to_file.call_args_list:
+            assert call.kwargs["split_sentences"] is False
+
+    def test_single_sentence_no_concat(self, engine, mock_tts_module, tmp_path):
+        """Einzelner Satz → direkte Generierung, kein Concatenation."""
+        output = tmp_path / "output.wav"
+        engine.generate_audio("Hallo Welt!", output)
+        # Nur ein Aufruf
+        assert mock_tts_module["tts_instance"].tts_to_file.call_count == 1
