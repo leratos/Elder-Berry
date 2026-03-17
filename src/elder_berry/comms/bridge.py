@@ -47,6 +47,8 @@ if TYPE_CHECKING:
     from elder_berry.comms.alert_monitor import AlertMonitor
     from elder_berry.comms.audio_converter import AudioConverter
     from elder_berry.comms.claude_agent import ClaudeAgent
+    from elder_berry.comms.briefing_scheduler import BriefingScheduler
+    from elder_berry.comms.reminder_scheduler import ReminderScheduler
     from elder_berry.comms.remote_commands import RemoteCommandHandler
     from elder_berry.core.assistant import Assistant
     from elder_berry.stt.base import STTEngine
@@ -106,6 +108,8 @@ class MatrixBridge:
         error_log_dir: Path | None = None,
         allowed_senders: frozenset[str] | None = None,
         stt: STTEngine | None = None,
+        reminder_scheduler: ReminderScheduler | None = None,
+        briefing_scheduler: BriefingScheduler | None = None,
     ) -> None:
         self._channel = channel
         self._assistant = assistant
@@ -117,6 +121,8 @@ class MatrixBridge:
         self._error_log_dir = error_log_dir
         self._allowed_senders = allowed_senders
         self._stt = stt
+        self._reminder_scheduler = reminder_scheduler
+        self._briefing_scheduler = briefing_scheduler
         self._loop: asyncio.AbstractEventLoop | None = None
         self._thread: threading.Thread | None = None
         self._running = False
@@ -154,6 +160,14 @@ class MatrixBridge:
         # AlertMonitor stoppen
         if self._alert_monitor and self._alert_monitor.is_running:
             self._alert_monitor.stop()
+
+        # ReminderScheduler stoppen
+        if self._reminder_scheduler and self._reminder_scheduler.is_running:
+            self._reminder_scheduler.stop()
+
+        # BriefingScheduler stoppen
+        if self._briefing_scheduler and self._briefing_scheduler.is_running:
+            self._briefing_scheduler.stop()
 
         self._running = False
 
@@ -197,6 +211,14 @@ class MatrixBridge:
         # AlertMonitor starten (wenn vorhanden)
         if self._alert_monitor and self._alert_room_id:
             self._start_alert_monitor()
+
+        # ReminderScheduler starten (wenn vorhanden)
+        if self._reminder_scheduler:
+            self._start_reminder_scheduler()
+
+        # BriefingScheduler starten (wenn vorhanden)
+        if self._briefing_scheduler:
+            self._start_briefing_scheduler()
 
         try:
             await self._channel.sync_loop()
@@ -667,6 +689,40 @@ class MatrixBridge:
         self._alert_monitor._send_alert = send_alert
         self._alert_monitor.start()
 
+    def _start_reminder_scheduler(self) -> None:
+        """Konfiguriert und startet den ReminderScheduler mit thread-safe Callback."""
+        loop = self._loop
+        room_id = self._alert_room_id  # Erinnerungen gehen an denselben Raum
+        channel = self._channel
+
+        def send_reminder(user_id: str, text: str) -> None:
+            """Thread-safe Reminder-Sender: dispatcht in den async Event-Loop."""
+            if loop and loop.is_running():
+                asyncio.run_coroutine_threadsafe(
+                    channel.send_text(room_id, text),
+                    loop,
+                )
+
+        self._reminder_scheduler._send_reminder = send_reminder
+        self._reminder_scheduler.start()
+
+    def _start_briefing_scheduler(self) -> None:
+        """Konfiguriert und startet den BriefingScheduler mit thread-safe Callback."""
+        loop = self._loop
+        room_id = self._alert_room_id
+        channel = self._channel
+
+        def send_briefing(text: str) -> None:
+            """Thread-safe Briefing-Sender: dispatcht in den async Event-Loop."""
+            if loop and loop.is_running():
+                asyncio.run_coroutine_threadsafe(
+                    channel.send_text(room_id, text),
+                    loop,
+                )
+
+        self._briefing_scheduler._send_briefing = send_briefing
+        self._briefing_scheduler.start()
+
     async def _perform_restart(self, room_id: str) -> None:
         """Schreibt Restart-Flag und startet den Prozess neu.
 
@@ -687,6 +743,14 @@ class MatrixBridge:
         # AlertMonitor stoppen (wenn vorhanden)
         if self._alert_monitor and self._alert_monitor.is_running:
             self._alert_monitor.stop()
+
+        # ReminderScheduler stoppen (wenn vorhanden)
+        if self._reminder_scheduler and self._reminder_scheduler.is_running:
+            self._reminder_scheduler.stop()
+
+        # BriefingScheduler stoppen (wenn vorhanden)
+        if self._briefing_scheduler and self._briefing_scheduler.is_running:
+            self._briefing_scheduler.stop()
 
         # Matrix-Verbindung trennen (wir sind im async Loop)
         try:

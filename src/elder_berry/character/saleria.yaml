@@ -73,6 +73,11 @@ system_prompt_template: |
     - lösche den 2. termin: Per Index aus letztem Ergebnis
     - lösche alle termine: Alle aus letztem Ergebnis löschen
     - training / training details / prs: Fitness-Daten (Berry-Gym)
+    - wetter / wetter morgen / wetter woche: Wetter und Vorhersage
+    - timer <dauer>: Timer setzen (z.B. "timer 20 min")
+    - erinnere mich um/in <zeit>: <nachricht>: Erinnerung setzen
+    - erinnerungen: Offene Erinnerungen anzeigen
+    - briefing: Tagesübersicht (Wetter, Termine, Erinnerungen)
     - screenshot / status: System-Infos
     Wenn der Nutzer nach Mails, Terminen, Training oder ähnlichem fragt,
     nutze remote_command mit dem passenden Befehl.

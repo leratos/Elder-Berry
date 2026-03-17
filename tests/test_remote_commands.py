@@ -1886,3 +1886,274 @@ class TestMailAttachmentCommand:
 
         assert result.success is False
         assert "fehlgeschlagen" in result.text
+
+
+# ---------------------------------------------------------------------------
+# Wetter-Commands
+# ---------------------------------------------------------------------------
+
+class TestWeatherParse:
+    """Parse-Tests für Wetter-Commands."""
+
+    def test_parse_wetter(self):
+        handler = RemoteCommandHandler()
+        assert handler.parse_command("wetter") == "wetter"
+
+    def test_parse_wetter_morgen(self):
+        handler = RemoteCommandHandler()
+        assert handler.parse_command("wetter morgen") == "wetter"
+
+    def test_parse_wetter_woche(self):
+        handler = RemoteCommandHandler()
+        assert handler.parse_command("wetter woche") == "wetter"
+
+    def test_parse_wetter_3(self):
+        handler = RemoteCommandHandler()
+        assert handler.parse_command("wetter 3") == "wetter"
+
+    def test_parse_wetter_heute(self):
+        handler = RemoteCommandHandler()
+        assert handler.parse_command("wetter heute") == "wetter"
+
+    def test_keyword_regnet_es(self):
+        handler = RemoteCommandHandler()
+        assert handler.parse_command("regnet es draußen?") == "wetter"
+
+    def test_keyword_brauche_schirm(self):
+        handler = RemoteCommandHandler()
+        assert handler.parse_command("brauche ich einen schirm?") == "wetter"
+
+    def test_keyword_wie_warm(self):
+        handler = RemoteCommandHandler()
+        assert handler.parse_command("wie warm ist es?") == "wetter"
+
+
+class TestWeatherExecute:
+    """Execute-Tests für Wetter-Commands."""
+
+    def test_execute_no_client(self):
+        handler = RemoteCommandHandler()
+        result = handler.execute("wetter", "wetter")
+        assert result.success is False
+        assert "nicht verfügbar" in result.text
+
+    def test_execute_current(self):
+        from elder_berry.tools.weather_client import WeatherData, WeatherForecast
+        from datetime import date
+
+        mock_weather = MagicMock()
+        mock_weather.get_current.return_value = WeatherData(
+            temperature=14.2, apparent_temperature=12.5,
+            humidity=65, wind_speed=12.3,
+            weather_code=2, description="Teilweise bewölkt", city="Berlin",
+        )
+        mock_weather.get_today.return_value = WeatherForecast(
+            date=date.today(), temp_min=8.2, temp_max=16.5,
+            precipitation_mm=0.0, precipitation_probability=10,
+            weather_code=2, description="Teilweise bewölkt", city="Berlin",
+        )
+        mock_weather.format_current.return_value = "⛅ Wetter in Berlin: 14.2°C"
+        mock_weather.format_forecast.return_value = "📅 Vorhersage: 8–17°C"
+
+        handler = RemoteCommandHandler(weather=mock_weather)
+        result = handler.execute("wetter", "wetter")
+
+        assert result.success is True
+        assert "Berlin" in result.text
+        mock_weather.get_current.assert_called_once()
+        mock_weather.get_today.assert_called_once()
+
+    def test_execute_morgen(self):
+        from elder_berry.tools.weather_client import WeatherForecast
+        from datetime import date, timedelta
+
+        mock_weather = MagicMock()
+        mock_weather.get_days.return_value = [
+            WeatherForecast(
+                date=date.today(), temp_min=8.0, temp_max=16.0,
+                precipitation_mm=0.0, precipitation_probability=5,
+                weather_code=0, description="Klar", city="Berlin",
+            ),
+            WeatherForecast(
+                date=date.today() + timedelta(days=1), temp_min=10.0, temp_max=18.0,
+                precipitation_mm=1.5, precipitation_probability=30,
+                weather_code=61, description="Leichter Regen", city="Berlin",
+            ),
+        ]
+        mock_weather.format_forecast.return_value = "📅 Morgen: 10–18°C"
+
+        handler = RemoteCommandHandler(weather=mock_weather)
+        result = handler.execute("wetter", "wetter morgen")
+
+        assert result.success is True
+        mock_weather.get_days.assert_called_once_with(2)
+        # format_forecast mit nur dem zweiten Tag aufgerufen
+        args = mock_weather.format_forecast.call_args[0][0]
+        assert len(args) == 1
+
+    def test_execute_woche(self):
+        mock_weather = MagicMock()
+        mock_weather.get_days.return_value = [MagicMock()] * 7
+        mock_weather.format_forecast.return_value = "7-Tage-Prognose"
+
+        handler = RemoteCommandHandler(weather=mock_weather)
+        result = handler.execute("wetter", "wetter woche")
+
+        assert result.success is True
+        mock_weather.get_days.assert_called_once_with(7)
+
+
+# ---------------------------------------------------------------------------
+# Timer & Erinnerungen
+# ---------------------------------------------------------------------------
+
+class TestTimerParse:
+    """Parse-Tests für Timer/Erinnerung-Commands."""
+
+    def test_parse_timer_20_min(self):
+        handler = RemoteCommandHandler()
+        assert handler.parse_command("timer 20 min") == "timer"
+
+    def test_parse_timer_1_stunde(self):
+        handler = RemoteCommandHandler()
+        assert handler.parse_command("timer 1 stunde") == "timer"
+
+    def test_parse_timer_90_sek(self):
+        handler = RemoteCommandHandler()
+        assert handler.parse_command("timer 90 sek") == "timer"
+
+    def test_parse_erinnere_mich_um(self):
+        handler = RemoteCommandHandler()
+        assert handler.parse_command("erinnere mich um 18:00: Wäsche") == "reminder"
+
+    def test_parse_erinnere_mich_in(self):
+        handler = RemoteCommandHandler()
+        assert handler.parse_command("erinnere mich in 2 stunden: Kuchen") == "reminder"
+
+    def test_parse_erinnerungen(self):
+        handler = RemoteCommandHandler()
+        assert handler.parse_command("erinnerungen") == "erinnerungen"
+
+    def test_parse_loesche_erinnerung(self):
+        handler = RemoteCommandHandler()
+        assert handler.parse_command("lösche erinnerung 3") == "reminder_delete"
+
+    def test_parse_loesche_alle_erinnerungen(self):
+        handler = RemoteCommandHandler()
+        assert handler.parse_command("lösche alle erinnerungen") == "reminder_delete"
+
+    def test_keyword_offene_timer(self):
+        handler = RemoteCommandHandler()
+        assert handler.parse_command("zeig mir offene timer") == "erinnerungen"
+
+
+class TestTimerExecute:
+    """Execute-Tests für Timer/Erinnerung-Commands."""
+
+    def test_timer_no_store(self):
+        handler = RemoteCommandHandler()
+        result = handler.execute("timer", "timer 20 min")
+        assert result.success is False
+        assert "nicht verfügbar" in result.text
+
+    def test_timer_success(self, tmp_path):
+        from elder_berry.tools.reminder_store import ReminderStore
+        store = ReminderStore(db_path=tmp_path / "test.db")
+
+        handler = RemoteCommandHandler(reminder_store=store)
+        result = handler.execute("timer", "timer 20 min")
+
+        assert result.success is True
+        assert "Timer gesetzt" in result.text
+        assert "20" in result.text
+
+        # Erinnerung in DB angelegt
+        pending = store.get_pending()
+        assert len(pending) == 1
+        store.close()
+
+    def test_erinnerungen_empty(self, tmp_path):
+        from elder_berry.tools.reminder_store import ReminderStore
+        store = ReminderStore(db_path=tmp_path / "test.db")
+
+        handler = RemoteCommandHandler(reminder_store=store)
+        result = handler.execute("erinnerungen", "erinnerungen")
+
+        assert result.success is True
+        assert "Keine offenen" in result.text
+        store.close()
+
+    def test_erinnerungen_with_entries(self, tmp_path):
+        from elder_berry.tools.reminder_store import ReminderStore
+        from datetime import datetime, timezone, timedelta
+        store = ReminderStore(db_path=tmp_path / "test.db")
+        store.add("_timer_user", "Wäsche", datetime.now(timezone.utc) + timedelta(hours=1))
+
+        handler = RemoteCommandHandler(reminder_store=store)
+        result = handler.execute("erinnerungen", "erinnerungen")
+
+        assert result.success is True
+        assert "Wäsche" in result.text
+        store.close()
+
+    def test_reminder_delete_all(self, tmp_path):
+        from elder_berry.tools.reminder_store import ReminderStore
+        from datetime import datetime, timezone, timedelta
+        store = ReminderStore(db_path=tmp_path / "test.db")
+        store.add("_timer_user", "Eins", datetime.now(timezone.utc) + timedelta(hours=1))
+        store.add("_timer_user", "Zwei", datetime.now(timezone.utc) + timedelta(hours=2))
+
+        handler = RemoteCommandHandler(reminder_store=store)
+        result = handler.execute("reminder_delete", "lösche alle erinnerungen")
+
+        assert result.success is True
+        assert "2" in result.text
+        assert store.get_pending() == []
+        store.close()
+
+
+# ---------------------------------------------------------------------------
+# Briefing-Commands
+# ---------------------------------------------------------------------------
+
+class TestBriefingParse:
+    def test_parse_briefing(self):
+        handler = RemoteCommandHandler()
+        assert handler.parse_command("briefing") == "briefing"
+
+    def test_keyword_guten_morgen(self):
+        handler = RemoteCommandHandler()
+        assert handler.parse_command("guten morgen!") == "briefing"
+
+    def test_keyword_was_steht_heute_an(self):
+        handler = RemoteCommandHandler()
+        assert handler.parse_command("was steht heute an?") == "briefing"
+
+
+class TestBriefingExecute:
+    def test_no_scheduler(self):
+        handler = RemoteCommandHandler()
+        result = handler.execute("briefing", "briefing")
+        assert result.success is False
+        assert "nicht verfügbar" in result.text
+
+    def test_with_scheduler(self):
+        mock_scheduler = MagicMock()
+        mock_scheduler.build_briefing.return_value = "☀️ Guten Morgen! Dein Briefing..."
+
+        handler = RemoteCommandHandler(briefing_scheduler=mock_scheduler)
+        result = handler.execute("briefing", "briefing")
+
+        assert result.success is True
+        assert "Guten Morgen" in result.text
+        mock_scheduler.build_briefing.assert_called_once()
+
+    def test_empty_briefing(self):
+        mock_scheduler = MagicMock()
+        mock_scheduler.build_briefing.return_value = ""
+
+        handler = RemoteCommandHandler(briefing_scheduler=mock_scheduler)
+        result = handler.execute("briefing", "briefing")
+
+        assert result.success is True
+        assert "keine Daten" in result.text.lower() or "Kein Briefing" in result.text

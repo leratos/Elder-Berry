@@ -38,7 +38,7 @@ import socket
 import subprocess
 import tempfile
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -50,6 +50,9 @@ if TYPE_CHECKING:
     from elder_berry.tools.email_client import IMAPEmailClient
     from elder_berry.tools.google_calendar import GoogleCalendarClient
     from elder_berry.tools.gym_data import GymDataClient
+    from elder_berry.comms.briefing_scheduler import BriefingScheduler
+    from elder_berry.tools.reminder_store import ReminderStore
+    from elder_berry.tools.weather_client import WeatherClient
 
 logger = logging.getLogger(__name__)
 
@@ -67,7 +70,7 @@ MEDIA_KEYS = {
 SIMPLE_COMMANDS = (
     {"status", "systemstatus", "screenshot", "screen", "clipboard", "wol",
      "avatar", "selfie", "hilfe", "help", "restart", "neustart",
-     "termine", "mails", "training", "prs"}
+     "termine", "mails", "training", "prs", "wetter", "erinnerungen", "briefing"}
     | set(MEDIA_KEYS)
 )
 
@@ -132,6 +135,24 @@ Fitness (Berry-Gym):
   training woche – Trainings der letzten 7 Tage
   prs – Personal Records (letzte 30 Tage)
 
+Wetter:
+  wetter – Aktuelles Wetter
+  wetter morgen – Wetterprognose morgen
+  wetter woche – 7-Tage-Prognose
+  wetter 3 – Prognose für 3 Tage
+
+Timer & Erinnerungen:
+  timer 20 min – Timer auf 20 Minuten
+  timer 1 stunde – Timer auf 1 Stunde
+  erinnere mich um 18:00: Wäsche – Erinnerung zu bestimmter Uhrzeit
+  erinnere mich in 2 stunden: Kuchen – Erinnerung nach Zeitspanne
+  erinnerungen – Offene Erinnerungen anzeigen
+  lösche erinnerung 3 – Erinnerung #3 löschen
+  lösche alle erinnerungen – Alle löschen
+
+Briefing:
+  briefing – Tagesübersicht (Wetter + Termine + Erinnerungen)
+
 Claude-Agent:
   claude "<Auftrag>" – Komplexe Anfrage an Claude API
 
@@ -160,6 +181,13 @@ KEYWORD_MAP: dict[str, list[str]] = {
     "training": ["letztes training", "wie war mein training", "trainings woche",
                   "was habe ich trainiert", "gym", "berry-gym", "fitness"],
     "prs": ["personal record", "personal records", "bestleistung", "bestleistungen", "rekorde"],
+    "wetter": ["wie ist das wetter", "wetter draußen", "regnet es", "temperatur",
+                "brauche ich einen schirm", "brauche ich eine jacke", "wie warm",
+                "wie kalt", "wettervorhersage", "prognose"],
+    "erinnerungen": ["meine erinnerungen", "offene timer", "was steht an timer",
+                      "welche erinnerungen", "ausstehende erinnerungen"],
+    "briefing": ["guten morgen", "was steht heute an", "tagesübersicht",
+                  "daily briefing", "morgen briefing", "was gibt's neues"],
 }
 
 # Regex für Volume-Command: "volume 50", "vol 75", "lautstärke 30"
@@ -287,6 +315,25 @@ def _parse_natural_date(date_str: str) -> datetime | None:
 
     return None
 
+
+def _parse_duration(amount: int, unit: str) -> timedelta:
+    """Parst Zeiteinheiten in timedelta.
+
+    Unterstützt: min/minuten/m, stunde/stunden/h, sek/sekunden/s.
+    """
+    from datetime import timedelta
+
+    u = unit.lower().rstrip(".")
+    if u in ("min", "minuten", "minute", "m"):
+        return timedelta(minutes=amount)
+    if u in ("h", "hours", "hour", "stunde", "stunden"):
+        return timedelta(hours=amount)
+    if u in ("sek", "sekunden", "sekunde", "s"):
+        return timedelta(seconds=amount)
+
+    raise ValueError(f"Unbekannte Zeiteinheit: {unit}")
+
+
 # Regex für Termin löschen:
 # "termin löschen abc123", "lösche termin abc123", "lösche den termin abc123"
 # "termin löschen alle", "lösche alle termine"
@@ -332,6 +379,34 @@ TERMIN_SEARCH_PATTERN = re.compile(
 # Regex für Training-Subcommands: "training details", "training woche"
 TRAINING_PATTERN = re.compile(
     r"^training\s+(details|woche|week|letzte[sr]?)$",
+    re.IGNORECASE,
+)
+
+# Regex: "wetter morgen", "wetter woche", "wetter 3" (Tage)
+WEATHER_PATTERN = re.compile(
+    r"^wetter\s+(morgen|heute|woche|(\d{1,2}))$",
+    re.IGNORECASE,
+)
+
+# Regex: "timer 20 min", "timer 5 min", "timer 1 stunde", "timer 90 sekunden"
+TIMER_PATTERN = re.compile(
+    r"^timer\s+(\d+)\s*(min(?:uten?)?|h(?:ours?)?|stunden?|sek(?:unden?)?|s|m)$",
+    re.IGNORECASE,
+)
+
+# Regex: "erinnere mich um 18:00: Wäsche", "erinnere mich in 2 stunden: Kuchen"
+REMINDER_PATTERN = re.compile(
+    r"^(?:erinner[e]?\s+mich|erinnerung)\s+"
+    r"(?:um\s+(\d{1,2}:\d{2})|in\s+(\d+)\s*(min(?:uten?)?|stunden?|h))"
+    r"(?:\s*[:\s]\s*(.+))?$",
+    re.IGNORECASE,
+)
+
+# Regex: "lösche erinnerung 3", "lösche alle erinnerungen"
+REMINDER_DELETE_PATTERN = re.compile(
+    r"(?:lösche?|entferne?|cancel)\s+(?:erinnerung(?:en)?|timer|reminder)\s*(\d+)?|"
+    r"(?:erinnerung(?:en)?|timer)\s+(?:löschen|lösche|entferne)(?:\s+(\d+))?|"
+    r"(?:lösche?|entferne?)\s+alle\s+(?:erinnerung(?:en)?|timer)",
     re.IGNORECASE,
 )
 
@@ -432,6 +507,9 @@ class RemoteCommandHandler:
         calendar: GoogleCalendarClient | None = None,
         email_client: IMAPEmailClient | None = None,
         gym_client: GymDataClient | None = None,
+        weather: WeatherClient | None = None,
+        reminder_store: ReminderStore | None = None,
+        briefing_scheduler: BriefingScheduler | None = None,
     ) -> None:
         self._monitor = system_monitor
         self._controller = controller
@@ -442,6 +520,9 @@ class RemoteCommandHandler:
         self._calendar = calendar
         self._email_client = email_client
         self._gym_client = gym_client
+        self._weather = weather
+        self._reminder_store = reminder_store
+        self._briefing_scheduler = briefing_scheduler
         # Letztes Termin-Ergebnis (für "lösche alle/den 2.")
         self._last_events: list = []
         self._send_file_allowed_roots: tuple[Path, ...] = tuple(
@@ -517,6 +598,10 @@ class RemoteCommandHandler:
         if TERMIN_CREATE_PATTERN.match(normalized):
             return "termin_create"
 
+        # Stufe 8c1.5: Erinnerung löschen (VOR Termin löschen, da "lösche" beide matcht)
+        if REMINDER_DELETE_PATTERN.match(normalized):
+            return "reminder_delete"
+
         # Stufe 8c2: Termin löschen ("lösche termin abc123", "termin löschen alle")
         if TERMIN_DELETE_PATTERN.match(normalized):
             return "termin_delete"
@@ -544,6 +629,18 @@ class RemoteCommandHandler:
         # Stufe 8f: Training mit Subcommand ("training details", "training woche")
         if TRAINING_PATTERN.match(normalized):
             return "training"
+
+        # Stufe 8g: Wetter mit Parameter ("wetter morgen", "wetter woche")
+        if WEATHER_PATTERN.match(normalized):
+            return "wetter"
+
+        # Stufe 8h: Timer ("timer 20 min")
+        if TIMER_PATTERN.match(normalized):
+            return "timer"
+
+        # Stufe 8i: Erinnerung ("erinnere mich um 18:00: Wäsche")
+        if REMINDER_PATTERN.match(normalized):
+            return "reminder"
 
         # Stufe 9: Keyword-Suche in natürlicher Sprache
         for command, keywords in KEYWORD_MAP.items():
@@ -640,6 +737,24 @@ class RemoteCommandHandler:
 
         if command == "prs":
             return self._cmd_prs()
+
+        if command == "wetter":
+            return self._cmd_weather(raw_text)
+
+        if command == "timer":
+            return self._cmd_timer(raw_text)
+
+        if command == "reminder":
+            return self._cmd_reminder(raw_text)
+
+        if command == "erinnerungen":
+            return self._cmd_erinnerungen(raw_text)
+
+        if command == "reminder_delete":
+            return self._cmd_reminder_delete(raw_text)
+
+        if command == "briefing":
+            return self._cmd_briefing()
 
         return CommandResult(
             command=command,
@@ -2053,4 +2168,242 @@ class RemoteCommandHandler:
                 command="download",
                 success=False,
                 text=f"Download fehlgeschlagen: {e}",
+            )
+
+    # ------------------------------------------------------------------
+    # Wetter (Open-Meteo)
+    # ------------------------------------------------------------------
+
+    def _cmd_weather(self, raw_text: str) -> CommandResult:
+        """Wetter abfragen: aktuell, morgen, woche oder N Tage."""
+        if not self._weather:
+            return CommandResult(
+                command="wetter",
+                success=False,
+                text="Wetter nicht verfügbar (Standort nicht konfiguriert).",
+            )
+
+        try:
+            normalized = raw_text.strip().lower()
+            match = WEATHER_PATTERN.match(normalized)
+
+            if match:
+                param = match.group(1)
+                if param == "morgen":
+                    forecasts = self._weather.get_days(2)
+                    if len(forecasts) >= 2:
+                        text = self._weather.format_forecast([forecasts[1]])
+                    else:
+                        text = self._weather.format_forecast(forecasts[-1:])
+                    return CommandResult(command="wetter", success=True, text=text)
+
+                if param == "woche":
+                    forecasts = self._weather.get_days(7)
+                    text = self._weather.format_forecast(forecasts)
+                    return CommandResult(command="wetter", success=True, text=text)
+
+                if param == "heute":
+                    # Aktuell + Tagesprognose
+                    current = self._weather.get_current()
+                    today = self._weather.get_today()
+                    text = self._weather.format_current(current)
+                    text += "\n\n" + self._weather.format_forecast([today])
+                    return CommandResult(command="wetter", success=True, text=text)
+
+                # Zahl: N Tage
+                if match.group(2):
+                    days = int(match.group(2))
+                    forecasts = self._weather.get_days(days)
+                    text = self._weather.format_forecast(forecasts)
+                    return CommandResult(command="wetter", success=True, text=text)
+
+            # Default: aktuelles Wetter + Tagesprognose
+            current = self._weather.get_current()
+            today = self._weather.get_today()
+            text = self._weather.format_current(current)
+            text += "\n\n" + self._weather.format_forecast([today])
+            return CommandResult(command="wetter", success=True, text=text)
+
+        except Exception as e:
+            logger.error("Wetter-Abfrage fehlgeschlagen: %s", e)
+            return CommandResult(
+                command="wetter",
+                success=False,
+                text=f"Wetter-Abfrage fehlgeschlagen: {e}",
+            )
+
+    # ------------------------------------------------------------------
+    # Timer & Erinnerungen
+    # ------------------------------------------------------------------
+
+    def _cmd_timer(self, raw_text: str) -> CommandResult:
+        """Timer setzen: 'timer 20 min' → Erinnerung in 20 Minuten."""
+        if not self._reminder_store:
+            return CommandResult(
+                command="timer", success=False,
+                text="Erinnerungen nicht verfügbar.",
+            )
+
+        try:
+            from datetime import timedelta, timezone
+            match = TIMER_PATTERN.match(raw_text.strip().lower())
+            if not match:
+                return CommandResult(
+                    command="timer", success=False,
+                    text="Format: timer <Zahl> <min/stunde/sek>",
+                )
+
+            amount = int(match.group(1))
+            unit = match.group(2)
+            delta = _parse_duration(amount, unit)
+
+            due = datetime.now(timezone.utc) + delta
+            # User-ID ist hier nicht bekannt → default User
+            reminder = self._reminder_store.add("_timer_user", f"Timer ({amount} {unit})", due)
+
+            local_time = due.astimezone()
+            return CommandResult(
+                command="timer", success=True,
+                text=f"⏰ Timer gesetzt: {amount} {unit} (fällig um {local_time.strftime('%H:%M')})",
+            )
+
+        except Exception as e:
+            return CommandResult(
+                command="timer", success=False,
+                text=f"Timer fehlgeschlagen: {e}",
+            )
+
+    def _cmd_reminder(self, raw_text: str) -> CommandResult:
+        """Erinnerung setzen: Uhrzeit oder Dauer + optionale Nachricht."""
+        if not self._reminder_store:
+            return CommandResult(
+                command="reminder", success=False,
+                text="Erinnerungen nicht verfügbar.",
+            )
+
+        try:
+            from datetime import timedelta, timezone, date as date_cls
+            match = REMINDER_PATTERN.match(raw_text.strip().lower())
+            if not match:
+                return CommandResult(
+                    command="reminder", success=False,
+                    text="Format: erinnere mich um HH:MM: Nachricht / erinnere mich in N min: Nachricht",
+                )
+
+            time_str = match.group(1)    # "18:00" oder None
+            amount_str = match.group(2)  # "2" oder None
+            unit = match.group(3)        # "stunden" oder None
+            message = match.group(4) or "Erinnerung"
+
+            if time_str:
+                # Absolute Uhrzeit
+                hour, minute = map(int, time_str.split(":"))
+                today = date_cls.today()
+                from zoneinfo import ZoneInfo
+                local_tz = ZoneInfo("Europe/Berlin")
+                due = datetime(today.year, today.month, today.day, hour, minute,
+                               tzinfo=local_tz)
+                # Wenn Uhrzeit schon vorbei: morgen
+                if due < datetime.now(local_tz):
+                    due += timedelta(days=1)
+            else:
+                # Relative Dauer
+                amount = int(amount_str)
+                delta = _parse_duration(amount, unit)
+                due = datetime.now(timezone.utc) + delta
+
+            reminder = self._reminder_store.add("_timer_user", message.strip(), due)
+            local_time = due.astimezone()
+
+            return CommandResult(
+                command="reminder", success=True,
+                text=f"⏰ Erinnerung gesetzt: {message.strip()} (fällig: {local_time.strftime('%d.%m. %H:%M')})",
+            )
+
+        except Exception as e:
+            return CommandResult(
+                command="reminder", success=False,
+                text=f"Erinnerung fehlgeschlagen: {e}",
+            )
+
+    def _cmd_erinnerungen(self, raw_text: str) -> CommandResult:
+        """Offene Erinnerungen anzeigen."""
+        if not self._reminder_store:
+            return CommandResult(
+                command="erinnerungen", success=False,
+                text="Erinnerungen nicht verfügbar.",
+            )
+
+        pending = self._reminder_store.get_pending()
+        text = self._reminder_store.format_pending(pending)
+        return CommandResult(command="erinnerungen", success=True, text=text)
+
+    def _cmd_reminder_delete(self, raw_text: str) -> CommandResult:
+        """Erinnerung löschen: einzeln per ID oder alle."""
+        if not self._reminder_store:
+            return CommandResult(
+                command="reminder_delete", success=False,
+                text="Erinnerungen nicht verfügbar.",
+            )
+
+        try:
+            normalized = raw_text.strip().lower()
+
+            # "lösche alle erinnerungen"
+            if "alle" in normalized:
+                count = self._reminder_store.cancel_all("_timer_user")
+                return CommandResult(
+                    command="reminder_delete", success=True,
+                    text=f"✅ {count} Erinnerung(en) gelöscht.",
+                )
+
+            # ID extrahieren
+            match = REMINDER_DELETE_PATTERN.match(normalized)
+            if match:
+                id_str = match.group(1) or match.group(2)
+                if id_str:
+                    rid = int(id_str)
+                    self._reminder_store.cancel(rid)
+                    return CommandResult(
+                        command="reminder_delete", success=True,
+                        text=f"✅ Erinnerung #{rid} gelöscht.",
+                    )
+
+            return CommandResult(
+                command="reminder_delete", success=False,
+                text="Welche Erinnerung? Nutze: lösche erinnerung <ID> oder lösche alle erinnerungen",
+            )
+
+        except Exception as e:
+            return CommandResult(
+                command="reminder_delete", success=False,
+                text=f"Löschen fehlgeschlagen: {e}",
+            )
+
+    # ------------------------------------------------------------------
+    # Briefing
+    # ------------------------------------------------------------------
+
+    def _cmd_briefing(self) -> CommandResult:
+        """Tagesübersicht: Wetter + Termine + Erinnerungen."""
+        if not self._briefing_scheduler:
+            return CommandResult(
+                command="briefing", success=False,
+                text="Briefing nicht verfügbar.",
+            )
+
+        try:
+            text = self._briefing_scheduler.build_briefing()
+            if not text:
+                return CommandResult(
+                    command="briefing", success=True,
+                    text="Kein Briefing verfügbar (keine Daten konfiguriert).",
+                )
+            return CommandResult(command="briefing", success=True, text=text)
+
+        except Exception as e:
+            logger.error("Briefing fehlgeschlagen: %s", e)
+            return CommandResult(
+                command="briefing", success=False,
+                text=f"Briefing fehlgeschlagen: {e}",
             )
