@@ -1,0 +1,232 @@
+"""Tests für RPi5AvatarDisplay – PyGame gemockt."""
+from __future__ import annotations
+
+import threading
+import time
+from pathlib import Path
+from unittest.mock import MagicMock, patch
+
+import pytest
+
+
+# ---------------------------------------------------------------------------
+# Fixtures
+# ---------------------------------------------------------------------------
+
+@pytest.fixture
+def mock_pygame():
+    """Mockt pygame im layered_renderer Modul."""
+    with patch("elder_berry.avatar.layered_renderer.pygame") as mock_pg:
+        mock_pg.QUIT = 256
+        mock_pg.FULLSCREEN = 0x80000000
+        mock_pg.NOFRAME = 0x00000020
+        mock_screen = MagicMock()
+        mock_pg.display.set_mode.return_value = mock_screen
+        mock_clock = MagicMock()
+        mock_pg.time.Clock.return_value = mock_clock
+        mock_pg.get_init.return_value = True
+
+        mock_surface = MagicMock()
+        mock_surface.get_size.return_value = (512, 1024)
+        mock_surface.convert_alpha.return_value = mock_surface
+        mock_pg.image.load.return_value = mock_surface
+        mock_pg.transform.smoothscale.return_value = mock_surface
+        mock_pg.Surface.return_value = mock_surface
+        mock_pg.event.get.return_value = []
+
+        yield {
+            "pygame": mock_pg,
+            "screen": mock_screen,
+            "clock": mock_clock,
+            "surface": mock_surface,
+        }
+
+
+@pytest.fixture
+def layered_assets(tmp_path):
+    """Erstellt temporäre Layered-Assets (body, eye, mouth Ordner)."""
+    for subdir in ("body", "eye", "mouth"):
+        d = tmp_path / subdir
+        d.mkdir()
+    # Mindest-Assets für NEUTRAL
+    for name in [
+        "body/idle.png", "body/angry.png", "body/thinking.png",
+        "eye/eye_left_open.png", "eye/eye_right_open.png",
+        "eye/eye_left_close.png", "eye/eye_right_close.png",
+        "eye/eye_left_angry_open.png", "eye/eye_right_angry_open.png",
+        "eye/eye_left_side_open.png", "eye/eye_right_side_open.png",
+        "eye/eye_left_sad_open.png", "eye/eye_right_sad_open.png",
+        "eye/eye_left_surprise_open.png", "eye/eye_right_surprise_open.png",
+        "mouth/mouth_neutral_close.png", "mouth/mouth_halfopen.png",
+        "mouth/mouth_open.png", "mouth/mouth_idle_close.png",
+        "mouth/mouth_angry_open.png", "mouth/mouth_think_close.png",
+    ]:
+        (tmp_path / name).write_bytes(b"\x89PNG" + b"\x00" * 40)
+    return tmp_path
+
+
+@pytest.fixture
+def avatar_display(mock_pygame, layered_assets):
+    """Erstellt ein RPi5AvatarDisplay (nicht gestartet)."""
+    from elder_berry.robot.rpi5_avatar import RPi5AvatarDisplay
+    return RPi5AvatarDisplay(
+        width=720,
+        height=1280,
+        fullscreen=False,
+        assets_dir=layered_assets,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Init + State
+# ---------------------------------------------------------------------------
+
+class TestRPi5AvatarInit:
+    def test_initial_emotion_is_neutral(self, avatar_display):
+        state = avatar_display.get_state()
+        assert state["emotion"] == "neutral"
+
+    def test_initial_speaking_is_false(self, avatar_display):
+        state = avatar_display.get_state()
+        assert state["speaking"] is False
+
+    def test_initial_not_running(self, avatar_display):
+        state = avatar_display.get_state()
+        assert state["running"] is False
+
+    def test_is_avatar_display(self, avatar_display):
+        from elder_berry.robot.server import AvatarDisplay
+        assert isinstance(avatar_display, AvatarDisplay)
+
+
+# ---------------------------------------------------------------------------
+# set_emotion / set_speaking (thread-safe)
+# ---------------------------------------------------------------------------
+
+class TestStateChanges:
+    def test_set_emotion(self, avatar_display):
+        avatar_display.set_emotion("cheerful")
+        assert avatar_display.get_state()["emotion"] == "cheerful"
+
+    def test_set_speaking_true(self, avatar_display):
+        avatar_display.set_speaking(True)
+        assert avatar_display.get_state()["speaking"] is True
+
+    def test_set_speaking_false(self, avatar_display):
+        avatar_display.set_speaking(True)
+        avatar_display.set_speaking(False)
+        assert avatar_display.get_state()["speaking"] is False
+
+    def test_set_emotion_multiple(self, avatar_display):
+        for e in ["angry", "sad", "neutral", "cheerful"]:
+            avatar_display.set_emotion(e)
+            assert avatar_display.get_state()["emotion"] == e
+
+    def test_concurrent_set_emotion(self, avatar_display):
+        """Viele Threads setzen gleichzeitig Emotionen → kein Crash."""
+        errors = []
+
+        def set_emotions(name: str):
+            try:
+                for _ in range(100):
+                    avatar_display.set_emotion(name)
+                    avatar_display.get_state()
+            except Exception as e:
+                errors.append(e)
+
+        threads = [
+            threading.Thread(target=set_emotions, args=(e,))
+            for e in ["angry", "cheerful", "neutral", "sad"]
+        ]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join(timeout=5.0)
+
+        assert errors == []
+
+
+# ---------------------------------------------------------------------------
+# Render-Loop (Start / Stop)
+# ---------------------------------------------------------------------------
+
+class TestRenderLoop:
+    def test_start_creates_thread(self, avatar_display, mock_pygame):
+        # Renderer soll nach 1 Frame stoppen
+        mock_pygame["pygame"].event.get.return_value = [
+            MagicMock(type=256),  # QUIT
+        ]
+        avatar_display.start()
+        time.sleep(0.3)
+        avatar_display.stop()
+
+    def test_stop_without_start(self, avatar_display):
+        """Stop ohne Start → kein Crash."""
+        avatar_display.stop()
+
+    def test_double_start_warns(self, avatar_display, mock_pygame):
+        """Doppelter Start → Warning statt zweiter Thread."""
+        mock_pygame["pygame"].event.get.return_value = []
+        avatar_display.start()
+        time.sleep(0.1)
+        avatar_display.start()  # Sollte warnen, nicht crashen
+        avatar_display._stop_event.set()
+        time.sleep(0.3)
+        avatar_display.stop()
+
+    def test_state_reflects_emotion_during_loop(self, avatar_display, mock_pygame):
+        """Emotion-Änderungen sind sofort im State sichtbar."""
+        avatar_display.set_emotion("angry")
+        assert avatar_display.get_state()["emotion"] == "angry"
+        avatar_display.set_emotion("cheerful")
+        assert avatar_display.get_state()["emotion"] == "cheerful"
+
+
+# ---------------------------------------------------------------------------
+# Fullscreen
+# ---------------------------------------------------------------------------
+
+class TestFullscreen:
+    def test_fullscreen_default_true(self, mock_pygame, layered_assets):
+        from elder_berry.robot.rpi5_avatar import RPi5AvatarDisplay
+        avatar = RPi5AvatarDisplay(assets_dir=layered_assets)
+        assert avatar._fullscreen is True
+
+    def test_windowed_mode(self, mock_pygame, layered_assets):
+        from elder_berry.robot.rpi5_avatar import RPi5AvatarDisplay
+        avatar = RPi5AvatarDisplay(fullscreen=False, assets_dir=layered_assets)
+        assert avatar._fullscreen is False
+
+
+# ---------------------------------------------------------------------------
+# LayeredSpriteRenderer Fullscreen-Flag
+# ---------------------------------------------------------------------------
+
+class TestLayeredRendererFullscreen:
+    def test_fullscreen_flag_sets_mode(self, mock_pygame, layered_assets):
+        from elder_berry.avatar.layered_renderer import LayeredSpriteRenderer
+        r = LayeredSpriteRenderer(assets_dir=layered_assets)
+        r.initialize(720, 1280, fullscreen=True)
+
+        flags = mock_pygame["pygame"].FULLSCREEN | mock_pygame["pygame"].NOFRAME
+        mock_pygame["pygame"].display.set_mode.assert_called_once_with(
+            (720, 1280), flags,
+        )
+        mock_pygame["pygame"].mouse.set_visible.assert_called_once_with(False)
+
+    def test_windowed_no_flags(self, mock_pygame, layered_assets):
+        from elder_berry.avatar.layered_renderer import LayeredSpriteRenderer
+        r = LayeredSpriteRenderer(assets_dir=layered_assets)
+        r.initialize(720, 1280, fullscreen=False)
+
+        mock_pygame["pygame"].display.set_mode.assert_called_once_with(
+            (720, 1280),
+        )
+        mock_pygame["pygame"].mouse.set_visible.assert_not_called()
+
+    def test_resolution_720x1280(self, mock_pygame, layered_assets):
+        from elder_berry.avatar.layered_renderer import LayeredSpriteRenderer
+        r = LayeredSpriteRenderer(assets_dir=layered_assets)
+        r.initialize(720, 1280)
+        assert r._width == 720
+        assert r._height == 1280

@@ -1147,3 +1147,37 @@
 - Parse-Reihenfolge: MAIL_ID_PATTERN VOR MAIL_ATTACHMENT_PATTERN und MAIL_SEARCH_PATTERN
 - HELP_TEXT aktualisiert
 - Tests: +12 neue Tests (3 get_by_uid + 6 parse + 3 execute)
+
+## In Arbeit: Phase 10 – RPi5 Avatar-Display (Saleria zieht ein)
+- Branch: feature/phase-10-rpi5-avatar-display
+- Hardware: Raspberry Pi Touch Display 2 (5", 720×1280, DSI, Portrait, kapazitiv)
+- Nächster Schritt: Deployment auf RPi5 + Live-Test
+
+### RPi5AvatarDisplay
+- Neue Datei: src/elder_berry/robot/rpi5_avatar.py
+  - Klasse RPi5AvatarDisplay(AvatarDisplay) – echte Implementierung der ABC
+  - Wraps LayeredSpriteRenderer, Render-Loop in Background-Thread (30 FPS)
+  - Thread-safe: Emotion + Speaking über Lock gesetzt
+  - start() / stop() für Lifecycle-Management
+  - Default: 720×1280 Fullscreen (DSI-Display)
+
+### LayeredSpriteRenderer – Fullscreen-Support
+- Geändert: src/elder_berry/avatar/layered_renderer.py
+  - initialize(): neuer Parameter fullscreen: bool = False
+  - Fullscreen: pygame.FULLSCREEN | pygame.NOFRAME, Maus versteckt
+  - Sprites werden automatisch auf 720×1280 skaliert (smoothscale)
+- Geändert: src/elder_berry/avatar/base.py (ABC-Signatur: fullscreen Parameter)
+- Geändert: src/elder_berry/avatar/sprite_renderer.py (Signatur-Kompatibilität)
+
+### RPi5 Startup-Script
+- Neue Datei: scripts/start_rpi5.py
+  - RPi5AvatarDisplay + RobotServer (FastAPI, Port 8000)
+  - --windowed / --width / --height / --port CLI-Argumente
+  - Graceful Shutdown (SIGINT, SIGTERM)
+  - Motoren + Sensoren: erstmal Simulator (echte Hardware eigene Phase)
+
+### Tests
+- Neue Datei: tests/test_rpi5_avatar.py (18 Tests)
+  - Init + State (4), set_emotion/speaking (5 inkl. Concurrent),
+    Render-Loop (4), Fullscreen (2), LayeredRenderer Fullscreen (3)
+- Bestehende Tests: 23/23 avatar_renderer.py weiterhin grün

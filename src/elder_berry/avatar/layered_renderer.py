@@ -157,12 +157,24 @@ class LayeredSpriteRenderer(AvatarRenderer):
                     surface, (new_w, new_h)
                 )
 
-    def initialize(self, width: int = 512, height: int = 1024) -> None:
+    def initialize(
+        self,
+        width: int = 512,
+        height: int = 1024,
+        fullscreen: bool = False,
+    ) -> None:
         self._width = width
         self._height = height
 
         pygame.init()
-        self._screen = pygame.display.set_mode((width, height))
+
+        if fullscreen:
+            flags = pygame.FULLSCREEN | pygame.NOFRAME
+            self._screen = pygame.display.set_mode((width, height), flags)
+            pygame.mouse.set_visible(False)
+        else:
+            self._screen = pygame.display.set_mode((width, height))
+
         pygame.display.set_caption(WINDOW_TITLE)
         self._clock = pygame.time.Clock()
         self._running = True
@@ -172,8 +184,10 @@ class LayeredSpriteRenderer(AvatarRenderer):
         self._schedule_next_blink()
 
         logger.info(
-            "LayeredSpriteRenderer initialisiert: %dx%d, %d Komponenten",
-            width, height, len(self._components),
+            "LayeredSpriteRenderer initialisiert: %dx%d%s, %d Komponenten",
+            width, height,
+            " (fullscreen)" if fullscreen else "",
+            len(self._components),
         )
 
     def show_emotion(self, emotion: Emotion) -> None:
