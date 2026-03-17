@@ -958,3 +958,53 @@
 - Taper-Sweep mit Fallback auf konstant
 - Cleanup über Prefix RootFinger_S_ / RootFinger_W_
 - Seed 77 (≠ BarkPaths 42, ≠ RootPaths 99)
+
+## Abgeschlossen: Multi-Turn Chat-History + Mail-Erweiterungen (2026-03-17)
+- Branch: feature/phase-9-chat-history-mail
+
+### Multi-Turn Chat-History (Sliding Window)
+- Neue Datei: src/elder_berry/comms/chat_history.py (ChatHistory + ChatMessage)
+  - Sliding Window pro User (default 10 Nachrichten, FIFO)
+  - format_for_prompt(): formatierter Text für LLM-Kontext
+  - Getrennt von RAG-Memory (ChromaDB = Langzeit, ChatHistory = Kurzzeit)
+- Geändert: src/elder_berry/comms/bridge.py
+  - _last_command_result (Quick-Fix) → _chat_history: ChatHistory ersetzt
+  - User-Nachrichten, Command-Ergebnisse und LLM-Antworten in History
+  - Chat-History als Kontext an assistant.process() übergeben
+  - file_paths-Support für mehrere Dateien (z.B. Mail-Anhänge)
+- Geändert: src/elder_berry/core/assistant.py
+  - process(): neuer Parameter chat_history: str = ""
+  - _build_system_prompt(): chat_history ans Ende angehängt
+  - Funktioniert mit CharacterEngine (saleria.yaml) und Fallback-Template
+- Ermöglicht: "fasse die mail zusammen", "schick mir den anhang", Rückfragen
+
+### Mail-Anhänge senden
+- Geändert: src/elder_berry/tools/email_client.py
+  - EmailMessage: neues Feld msg_id: str = "" (IMAP UID)
+  - _fetch_mails(): IMAP UIDs statt Sequenznummern (stabiler)
+  - format_short(): zeigt [#msg_id] im Output
+  - format_mails_detailed(): zeigt (ID: msg_id) im Header
+  - Neue Methode: get_attachments(msg_id) → list[(filename, bytes)]
+    - IMAP UID-basierter Fetch, MIME-Walk, Attachment-Extraktion
+- Geändert: src/elder_berry/comms/remote_commands.py
+  - Neuer Command: mail anhang <ID> → Anhänge als Dateien senden
+  - MAIL_ATTACHMENT_PATTERN: "mail anhang 42", "anhang von mail 42", "mail 42 anhang"
+  - CommandResult: neues Feld file_paths: list[Path] (mehrere Dateien)
+  - HELP_TEXT aktualisiert
+- Geändert: src/elder_berry/character/saleria.yaml + assistant.py (System-Prompt)
+  - "mail anhang <id>" in Remote-Tool-Liste ergänzt
+
+### Tests
+- Neue Datei: tests/test_chat_history.py (19 Tests)
+  - ChatMessage DTO, add/get, sliding window, multi-user, clear, format
+- Erweitert: tests/test_email_client.py (+11 Tests)
+  - msg_id DTO, parse_email mit msg_id, get_attachments (4 Szenarien), format_detailed
+- Erweitert: tests/test_remote_commands.py (+8 Tests)
+  - mail_attachment: parse (4 Varianten), execute (no client, no attachments, with, error)
+- Erweitert: tests/test_comms.py (+5 Tests)
+  - Bridge Chat-History: passed to assistant, command result stored, response stored,
+    multi-turn grows, file_paths sent
+- Erweitert: tests/test_assistant.py (+2 Tests)
+  - chat_history in system prompt, empty chat_history no extra text
+- Tests: 815 passed, 36 skipped (alle grün, +45 neue Tests)
+- Vorbestehende Skips: cryptography, pydub, chromadb, anthropic, faster-whisper fehlen

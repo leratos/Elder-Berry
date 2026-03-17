@@ -53,6 +53,9 @@ class EmailMessage:
     is_unread: bool = True
     """True wenn ungelesen."""
 
+    msg_id: str = ""
+    """IMAP UID für späteren Zugriff (Anhänge, Details)."""
+
     def format_short(self) -> str:
         """Einzeilige Darstellung."""
         date_str = self.date.strftime("%d.%m. %H:%M") if self.date else "?"
@@ -60,7 +63,8 @@ class EmailMessage:
         if len(sender_short) > 25:
             sender_short = sender_short[:22] + "..."
         unread = "●" if self.is_unread else "○"
-        return f"{unread} {date_str} | {sender_short} | {self.subject}"
+        id_suffix = f" [#{self.msg_id}]" if self.msg_id else ""
+        return f"{unread} {date_str} | {sender_short} | {self.subject}{id_suffix}"
 
 
 class IMAPEmailClient:
@@ -207,8 +211,9 @@ class IMAPEmailClient:
         parts = []
         for i, m in enumerate(mails, 1):
             date_str = m.date.strftime("%d.%m.%Y %H:%M") if m.date else "?"
+            id_info = f" (ID: {m.msg_id})" if m.msg_id else ""
             part = (
-                f"--- Mail {i} ---\n"
+                f"--- Mail {i}{id_info} ---\n"
                 f"Von: {m.sender}\n"
                 f"Datum: {date_str}\n"
                 f"Betreff: {m.subject}\n"
@@ -216,6 +221,60 @@ class IMAPEmailClient:
             )
             parts.append(part)
         return "\n".join(parts)
+
+    def get_attachments(
+        self, msg_id: str,
+    ) -> list[tuple[str, bytes]]:
+        """Holt Anhänge einer E-Mail per IMAP UID.
+
+        Args:
+            msg_id: IMAP UID der Mail.
+
+        Returns:
+            Liste von (filename, bytes)-Tupeln. Leer wenn keine Anhänge.
+
+        Raises:
+            RuntimeError: Wenn Mail nicht gefunden oder Verbindung fehlschlägt.
+        """
+        try:
+            conn = self._connect()
+            conn.select(self._mailbox, readonly=True)
+
+            uid_bytes = msg_id.encode() if isinstance(msg_id, str) else msg_id
+            _, msg_data = conn.uid("fetch", uid_bytes, "(RFC822)")
+
+            if not msg_data or not msg_data[0]:
+                conn.logout()
+                raise RuntimeError(f"Mail mit UID {msg_id} nicht gefunden")
+
+            raw = msg_data[0][1]
+            msg = email.message_from_bytes(raw)
+            conn.logout()
+
+            attachments: list[tuple[str, bytes]] = []
+            for part in msg.walk():
+                disposition = part.get("Content-Disposition", "")
+                if "attachment" not in disposition:
+                    continue
+
+                filename = part.get_filename()
+                if filename:
+                    # MIME-encodierte Dateinamen dekodieren
+                    filename = self._decode_header(filename)
+                else:
+                    filename = f"attachment_{len(attachments) + 1}"
+
+                payload = part.get_payload(decode=True)
+                if payload:
+                    attachments.append((filename, payload))
+
+            return attachments
+
+        except RuntimeError:
+            raise
+        except Exception as e:
+            logger.error("Anhänge abrufen fehlgeschlagen (UID %s): %s", msg_id, e)
+            raise RuntimeError(f"Anhänge abrufen fehlgeschlagen: {e}") from e
 
     # ------------------------------------------------------------------
     # Interne Methoden
@@ -250,25 +309,29 @@ class IMAPEmailClient:
             conn = self._connect()
             conn.select(self._mailbox, readonly=True)
 
-            _, data = conn.search(None, search_criteria)
-            msg_ids = data[0].split() if data[0] else []
+            # UID-basierte Suche (stabiler als Sequenznummern)
+            _, data = conn.uid("search", None, search_criteria)
+            uids = data[0].split() if data[0] else []
 
             # Neueste zuerst, limitieren
-            msg_ids = msg_ids[-max_results:]
-            msg_ids.reverse()
+            uids = uids[-max_results:]
+            uids.reverse()
 
             mails = []
-            for msg_id in msg_ids:
+            for uid in uids:
                 try:
-                    _, msg_data = conn.fetch(msg_id, "(RFC822)")
+                    _, msg_data = conn.uid("fetch", uid, "(RFC822)")
                     if not msg_data or not msg_data[0]:
                         continue
                     raw = msg_data[0][1]
-                    parsed = self._parse_email(raw, is_unread=is_unread)
+                    uid_str = uid.decode() if isinstance(uid, bytes) else str(uid)
+                    parsed = self._parse_email(
+                        raw, is_unread=is_unread, msg_id=uid_str,
+                    )
                     if parsed:
                         mails.append(parsed)
                 except Exception as e:
-                    logger.debug("Mail %s parsen fehlgeschlagen: %s", msg_id, e)
+                    logger.debug("Mail UID %s parsen fehlgeschlagen: %s", uid, e)
 
             conn.logout()
             return mails
@@ -278,7 +341,9 @@ class IMAPEmailClient:
             return []
 
     @staticmethod
-    def _parse_email(raw: bytes, is_unread: bool = True) -> EmailMessage | None:
+    def _parse_email(
+        raw: bytes, is_unread: bool = True, msg_id: str = "",
+    ) -> EmailMessage | None:
         """Parst eine rohe E-Mail in ein EmailMessage-Objekt."""
         msg = email.message_from_bytes(raw)
 
@@ -305,6 +370,7 @@ class IMAPEmailClient:
             date=date,
             body_preview=body[:MAX_BODY_CHARS] if body else "",
             is_unread=is_unread,
+            msg_id=msg_id,
         )
 
     @staticmethod

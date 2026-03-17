@@ -195,6 +195,141 @@ class TestParseEmail:
 # Format
 # ---------------------------------------------------------------------------
 
+class TestMsgId:
+    def test_msg_id_default_empty(self):
+        msg = EmailMessage(
+            subject="X", sender="Y", date=None, body_preview="",
+        )
+        assert msg.msg_id == ""
+
+    def test_msg_id_set(self):
+        msg = EmailMessage(
+            subject="X", sender="Y", date=None, body_preview="",
+            msg_id="12345",
+        )
+        assert msg.msg_id == "12345"
+
+    def test_format_short_with_msg_id(self):
+        msg = EmailMessage(
+            subject="Rechnung",
+            sender="billing@strato.de",
+            date=datetime(2026, 3, 16, 10, 30),
+            body_preview="",
+            msg_id="42",
+        )
+        result = msg.format_short()
+        assert "[#42]" in result
+
+    def test_format_short_without_msg_id(self):
+        msg = EmailMessage(
+            subject="Test",
+            sender="a@b.com",
+            date=datetime(2026, 3, 16, 10, 0),
+            body_preview="",
+            msg_id="",
+        )
+        result = msg.format_short()
+        assert "[#" not in result
+
+    def test_parse_email_with_msg_id(self):
+        msg = email_mod.message.EmailMessage()
+        msg["Subject"] = "Test"
+        msg["From"] = "test@example.com"
+        msg["Date"] = "Mon, 16 Mar 2026 10:30:00 +0100"
+        msg.set_content("Body")
+        raw = msg.as_bytes()
+
+        result = IMAPEmailClient._parse_email(raw, msg_id="99")
+        assert result.msg_id == "99"
+
+    def test_parse_email_default_no_msg_id(self):
+        msg = email_mod.message.EmailMessage()
+        msg["Subject"] = "Test"
+        msg["From"] = "test@example.com"
+        msg.set_content("Body")
+        raw = msg.as_bytes()
+
+        result = IMAPEmailClient._parse_email(raw)
+        assert result.msg_id == ""
+
+
+class TestGetAttachments:
+    def test_get_attachments_no_attachments(self):
+        """Mail ohne Anhänge gibt leere Liste zurück."""
+        client = IMAPEmailClient("host", "user", "pass")
+
+        # Mail ohne Attachment bauen
+        msg = email_mod.message.EmailMessage()
+        msg["Subject"] = "Kein Anhang"
+        msg["From"] = "test@example.com"
+        msg.set_content("Nur Text")
+        raw = msg.as_bytes()
+
+        mock_conn = MagicMock()
+        mock_conn.uid.return_value = ("OK", [(b"1 (RFC822 {100}", raw)])
+
+        with patch.object(client, "_connect", return_value=mock_conn):
+            result = client.get_attachments("12345")
+
+        assert result == []
+        mock_conn.logout.assert_called_once()
+
+    def test_get_attachments_with_attachment(self):
+        """Mail mit Anhang gibt (filename, bytes) Tupel zurück."""
+        client = IMAPEmailClient("host", "user", "pass")
+
+        # Multipart-Mail mit Attachment bauen
+        from email.mime.multipart import MIMEMultipart
+        from email.mime.text import MIMEText
+        from email.mime.base import MIMEBase
+        from email import encoders
+
+        msg = MIMEMultipart()
+        msg["Subject"] = "Mit Anhang"
+        msg["From"] = "test@example.com"
+        msg.attach(MIMEText("Body text"))
+
+        attachment = MIMEBase("application", "pdf")
+        attachment.set_payload(b"%PDF-1.4 test content")
+        encoders.encode_base64(attachment)
+        attachment.add_header(
+            "Content-Disposition", "attachment", filename="rechnung.pdf",
+        )
+        msg.attach(attachment)
+
+        raw = msg.as_bytes()
+        mock_conn = MagicMock()
+        mock_conn.uid.return_value = ("OK", [(b"1 (RFC822 {100}", raw)])
+
+        with patch.object(client, "_connect", return_value=mock_conn):
+            result = client.get_attachments("12345")
+
+        assert len(result) == 1
+        assert result[0][0] == "rechnung.pdf"
+        assert len(result[0][1]) > 0
+
+    def test_get_attachments_mail_not_found(self):
+        """Nicht existierende UID wirft RuntimeError."""
+        client = IMAPEmailClient("host", "user", "pass")
+
+        mock_conn = MagicMock()
+        mock_conn.uid.return_value = ("OK", [None])
+
+        with patch.object(client, "_connect", return_value=mock_conn):
+            with pytest.raises(RuntimeError, match="nicht gefunden"):
+                client.get_attachments("99999")
+
+    def test_get_attachments_connection_error(self):
+        """Verbindungsfehler wirft RuntimeError."""
+        client = IMAPEmailClient("host", "user", "pass")
+
+        with patch.object(
+            client, "_connect", side_effect=ConnectionError("timeout"),
+        ):
+            with pytest.raises(RuntimeError, match="fehlgeschlagen"):
+                client.get_attachments("12345")
+
+
 class TestSearch:
     def test_search_builds_correct_criteria(self):
         """search() baut korrekte IMAP OR-Suche."""
@@ -253,3 +388,17 @@ class TestFormat:
         assert "Chef" in result
         assert "Bitte bis morgen" in result
         assert "--- Mail 1 ---" in result
+
+    def test_format_detailed_with_msg_id(self):
+        client = IMAPEmailClient("host", "user", "pass")
+        mails = [
+            EmailMessage(
+                subject="Rechnung",
+                sender="billing@strato.de",
+                date=datetime(2026, 3, 16, 10, 0),
+                body_preview="Ihre Rechnung",
+                msg_id="42",
+            ),
+        ]
+        result = client.format_mails_detailed(mails)
+        assert "(ID: 42)" in result

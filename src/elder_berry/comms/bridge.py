@@ -40,6 +40,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from elder_berry.comms.chat_history import ChatHistory
 from elder_berry.comms.message_channel import IncomingMessage, MessageChannel
 
 if TYPE_CHECKING:
@@ -119,8 +120,8 @@ class MatrixBridge:
         self._loop: asyncio.AbstractEventLoop | None = None
         self._thread: threading.Thread | None = None
         self._running = False
-        # Letztes Command-Ergebnis pro User (für Kontext-Fragen wie "fasse zusammen")
-        self._last_command_result: dict[str, str] = {}
+        # Multi-Turn Chat-History pro User (Sliding Window)
+        self._chat_history = ChatHistory(max_messages=10)
 
     @property
     def is_running(self) -> bool:
@@ -262,11 +263,12 @@ class MatrixBridge:
             if result.text:
                 await self._channel.send_text(msg.room_id, result.text)
 
-            # Letztes Ergebnis pro User speichern (für Kontext-Fragen)
+            # Command-Ergebnis in Chat-History speichern
+            # history_text bevorzugen (z.B. Mail-Body für LLM-Kontext)
             if result.success and result.text:
-                self._last_command_result[msg.sender] = (
-                    f"Letzter Befehl: {msg.body}\nErgebnis:\n{result.text}"
-                )
+                history_content = result.history_text or result.text
+                self._chat_history.add(msg.sender, "user", msg.body)
+                self._chat_history.add(msg.sender, "assistant", history_content)
 
             # Fehlgeschlagene Commands loggen (kein Crash, aber success=False)
             if not result.success:
@@ -301,6 +303,19 @@ class MatrixBridge:
                         msg.room_id,
                         "Datei-Upload nicht unterstützt.",
                     )
+
+            # Mehrere Dateien senden (z.B. Mail-Anhänge)
+            for fpath in (result.file_paths or []):
+                if fpath.exists():
+                    try:
+                        await self._channel.send_file(msg.room_id, fpath)
+                    except NotImplementedError:
+                        await self._channel.send_text(
+                            msg.room_id,
+                            "Datei-Upload nicht unterstützt.",
+                        )
+                    finally:
+                        fpath.unlink(missing_ok=True)
 
             # Restart: Flag schreiben + Prozess ersetzen
             if result.restart:
@@ -474,24 +489,24 @@ class MatrixBridge:
         try:
             loop = asyncio.get_running_loop()
 
-            # Kontext vom letzten Command anhängen (wenn vorhanden)
+            # User-Nachricht in Chat-History speichern
+            self._chat_history.add(msg.sender, "user", msg.body)
+
+            # Chat-History als Kontext für das LLM
             user_input = msg.body
-            last_ctx = self._last_command_result.get(msg.sender)
-            if last_ctx:
-                user_input = (
-                    f"{msg.body}\n\n"
-                    f"[Kontext vom vorherigen Befehl:\n{last_ctx}]"
-                )
+            chat_context = self._chat_history.format_for_prompt(msg.sender)
 
             # Audio-Modus: TTS in Datei generieren statt abspielen
             if self._audio_converter and self._audio_converter.ffmpeg_available:
                 tmp_wav = Path(tempfile.mktemp(suffix=".wav"))
                 result = await loop.run_in_executor(
-                    None, self._assistant.process, user_input, tmp_wav,
+                    None, self._assistant.process, user_input,
+                    tmp_wav, chat_context,
                 )
             else:
                 result = await loop.run_in_executor(
                     None, self._assistant.process, user_input,
+                    None, chat_context,
                 )
 
             # LLM hat remote_command als Aktion gewählt → an CommandHandler weiterleiten
@@ -502,6 +517,10 @@ class MatrixBridge:
             ):
                 await self._handle_llm_remote_command(msg, result)
                 return
+
+            # Antwort in Chat-History speichern
+            if result.response:
+                self._chat_history.add(msg.sender, "assistant", result.response)
 
             # Textantwort senden
             if result.response:
@@ -541,8 +560,9 @@ class MatrixBridge:
         Sendet die LLM-Antwort (z.B. "Ich suche nach der Rechnung...") als Text,
         dann führt den eigentlichen Command aus und sendet dessen Ergebnis.
         """
-        # LLM-Antwort senden (z.B. "Ich suche mal...")
+        # LLM-Antwort senden und in History speichern
         if llm_result.response:
+            self._chat_history.add(msg.sender, "assistant", llm_result.response)
             await self._channel.send_text(msg.room_id, llm_result.response)
 
         # Audio der LLM-Antwort senden (wenn vorhanden)
