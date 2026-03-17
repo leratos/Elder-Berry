@@ -1181,3 +1181,78 @@
   - Init + State (4), set_emotion/speaking (5 inkl. Concurrent),
     Render-Loop (4), Fullscreen (2), LayeredRenderer Fullscreen (3)
 - Bestehende Tests: 23/23 avatar_renderer.py weiterhin grün
+
+### Bugfix: Lip-Sync Reset (2026-03-17)
+- Bug: RPi5AvatarDisplay rief jeden Frame show_speaking(True) → lip_sync_index wurde 30x/s auf 0 zurückgesetzt → Mund blieb offen
+- Fix: show_speaking() ignoriert Aufrufe ohne Zustandswechsel (True→True = noop)
+- Tests: +2 neue Tests (TestLipSyncFix)
+
+### Feature: Idle-Animationen (2026-03-17)
+- Saleria macht im Idle zufällige Bewegungen (alle 5-15 Sekunden, 2s Dauer):
+  - glance_left/right: schaut zur Seite
+  - smile: kurzes Lächeln
+  - soft_close: Augen kurz schließen (nachdenklich)
+  - surprise: überrascht schauen
+- Deaktiviert während Sprechen (Lip-Sync hat Priorität)
+- Prioritäts-Kette: Blink > Idle > Emotion-Default
+- Tests: +4 neue Tests (TestIdleAnimations)
+
+### Tower ↔ RPi5 Verdrahtung (2026-03-17)
+- start_saleria.py: RobotClient wird initialisiert wenn "robot_host" im SecretStore
+- SecretStore Key: robot_host = "http://192.168.50.220:8000"
+- Flow: Matrix-Nachricht → LLM → Emotion → RobotClient → RPi5 → Avatar wechselt
+- RPi5 Setup-Anleitung in README.md ergänzt (systemd-Autostart)
+
+## Hardware-Meilenstein: RPi5 Display + Avatar live (2026-03-17)
+
+### Display am RPi5 in Betrieb
+- RPi Touch Display 2 (5", 720×1280, Portrait) angeschlossen und funktional
+- Problem: pygame (SDL 2.28.4) auf Bookworm Lite hatte keinen Display-Driver
+  - Alle Driver fehlten: kmsdrm, fbcon, directfb, egl, wayland, x11 (nur dummy)
+  - System-SDL2 war ohne Display-Backends kompiliert (normal für Lite)
+- Lösung: `pip install pygame-ce` (Community Edition, bringt eigene SDL2 mit kmsdrm)
+  - Drop-in Replacement, gleiche API, kein Code-Änderung
+  - Start: `SDL_VIDEODRIVER=kmsdrm python scripts/start_rpi5.py`
+- Saleria rendert auf physischem Display: 720×1280 fullscreen, 21 Komponenten, 30 FPS
+- Steuerung über REST API funktioniert: POST /avatar {"emotion": "cheerful"} etc.
+
+### Gehäuse-Design (Inventor CAD)
+- Innenraum-Anordnung definiert: RPi5 zentral unten, Display horizontal darüber
+- Pepper's Ghost: Display leuchtet nach oben → 45° Acrylscheibe → Betrachtungsfenster seitlich
+- Display-Halterung: Nut zum Einlegen + 6 Niederhalter (3 pro Seite), schraubenfrei
+- ULN2003 Treiberboard neben RPi5 platziert (kurze Kabelwege zum Stepper)
+- Belüftung: Luftspalte unten (zwischen Wurzeln) → Kamineffekt → Abluft durch Ast rechts
+  - RPi5 hat ~5cm Freiraum ringsum, passive Konvektion reicht für ~10W
+- Innenraum wird matt-schwarz lackiert (Hologramm-Effekt)
+
+### Drehteller-Konzept finalisiert
+- Motor: 28BYJ-48 Stepper (5V, ULN2003 Treiber, 4096 Steps/Umdrehung)
+  - Kein Servo: volle 360° möglich, leise, langsam, präzise
+- Drehwinkel: ±180° (begrenzt durch Stromkabel)
+- USB-C Verlängerung (150cm F→M) nach unten durch Drehachse verlegt
+  - Einziges Kabel das die Grenze feststehend↔drehend überquert
+  - DSI/CSI/Sensoren sitzen alle auf dem Drehteller, drehen sich mit
+- Endanschlag: beidseitige Magnete als harter mechanischer Stopp
+  - Hall-Sensor (A3144) erkennt gleichzeitig Home-Position
+- ULN2003 VCC: extern 5V (nicht RPi5 GPIO, wegen 240mA Strombedarf)
+
+### Bestellungen
+- Bestellt (BerryBase): Raspberry Pi Camera Module 3 (75°), GY-BME280, APDS-9960
+- Angekommen: 28BYJ-48 Stepper + ULN2003, A3144 Hall-Sensoren (20 Stück)
+- Vorhanden: Dupont-Kabel-Set (F-F/M-M/F-M 10cm)
+
+### Entscheidungen
+- Keine PCB: Verdrahtung mit Dupont-Steckern + gedruckte Kabelführung reicht
+- Kein interner Akku: USB-C Netzteil für Dauerbetrieb, Anker Powerbank für unterwegs
+- Kamera normal (75°) statt Wide (120°): Schreibtisch-Abstand ~60-80cm, 75° erfasst genug
+- BerryBase statt Amazon: kleineren Laden unterstützen, Kamera dort auch günstiger
+
+### Roadmap-Änderung
+- Phase "Intent-Classifier (Self-Learning Command-Routing)" aus PROJECT_ROADMAP.md entfernt
+  - Problem existiert bei aktuellem Scope nicht, Regex+Keywords+LLM-Fallback reicht
+  - Phasen umbenannt: Phase 10→9, Phase 11→10
+- Konzept-Dokument erstellt: docs/concepts/phase-8-1-8-3-weather-timer-briefing.md
+  - Phase 8.1 Wetter (Open-Meteo), 8.2 Timer & Erinnerungen, 8.3 Daily Briefing
+
+### Nächster Schritt
+- Komponentenpositionierung im Gehäuse finalisieren (Kamera, Sensoren, Hall-Sensor)

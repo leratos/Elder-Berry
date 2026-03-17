@@ -130,6 +130,15 @@ class LayeredSpriteRenderer(AvatarRenderer):
         self._lip_sync_index = 0
         self._last_lip_switch = 0.0
 
+        # Idle-Animation-State
+        self._idle_active = False
+        self._idle_action: str | None = None
+        self._idle_eye_left: str | None = None
+        self._idle_eye_right: str | None = None
+        self._idle_mouth: str | None = None
+        self._next_idle_time = 0.0
+        self._idle_end_time = 0.0
+
     def _load_components(self) -> None:
         """Lädt alle Komponenten-PNGs aus den Unterordnern."""
         subdirs = {"body": "body", "eye": "eye", "mouth": "mouth"}
@@ -187,6 +196,7 @@ class LayeredSpriteRenderer(AvatarRenderer):
         self._load_components()
         self._scale_components()
         self._schedule_next_blink()
+        self._schedule_next_idle()
 
         logger.info(
             "LayeredSpriteRenderer initialisiert: %dx%d%s, %d Komponenten",
@@ -225,14 +235,23 @@ class LayeredSpriteRenderer(AvatarRenderer):
         if layers is None:
             layers = EMOTION_MAP[Emotion.NEUTRAL]
 
+        # Idle-Animation updaten (nur wenn nicht sprechend)
+        if not self._is_speaking:
+            self._update_idle(now)
+
         self._screen.fill(BG_COLOR)
 
         # Layer 1: Body
         self._blit_centered(layers.body)
 
-        # Layer 2: Augen (mit Blink-Logic)
+        # Layer 2: Augen (mit Blink → Idle → Emotion Priorität)
         eye_left = layers.eye_left
         eye_right = layers.eye_right
+
+        # Idle-Override (wenn aktiv und nicht blinkend)
+        if self._idle_active and self._idle_eye_left:
+            eye_left = self._idle_eye_left
+            eye_right = self._idle_eye_right
 
         if layers.can_blink:
             self._update_blink(now)
@@ -243,9 +262,11 @@ class LayeredSpriteRenderer(AvatarRenderer):
         self._blit_centered(eye_left)
         self._blit_centered(eye_right)
 
-        # Layer 3: Mund (mit Lip-Sync)
+        # Layer 3: Mund (Lip-Sync → Idle → Emotion Priorität)
         if self._is_speaking:
             mouth_key = self._get_lip_sync_mouth(now)
+        elif self._idle_active and self._idle_mouth:
+            mouth_key = self._idle_mouth
         else:
             mouth_key = layers.mouth
 
@@ -286,6 +307,58 @@ class LayeredSpriteRenderer(AvatarRenderer):
             self._lip_sync_index = (self._lip_sync_index + 1) % len(LIP_SYNC_MOUTHS)
             self._last_lip_switch = now
         return LIP_SYNC_MOUTHS[self._lip_sync_index]
+
+    # -- Idle-Animationen ------------------------------------------------------
+
+    # Verfügbare Idle-Aktionen: (eye_left, eye_right, mouth)
+    # None = behalte Emotion-Default
+    _IDLE_ACTIONS = [
+        # Zur Seite schauen
+        ("glance_left", "eye_left_side_open", "eye_right_side_open", None),
+        ("glance_right", "eye_left_side_open", "eye_right_side_open", None),
+        # Kurz lächeln
+        ("smile", None, None, "mouth_halfopen"),
+        # Kurz Augen schließen (nachdenklich)
+        ("soft_close", "eye_left_close", "eye_right_close", None),
+        # Kurz überrascht schauen
+        ("surprise", "eye_left_surprise_open", "eye_right_surprise_open", "mouth_open"),
+    ]
+
+    def _schedule_next_idle(self) -> None:
+        """Plant die nächste Idle-Aktion."""
+        delay = random.uniform(IDLE_MIN_INTERVAL, IDLE_MAX_INTERVAL)
+        self._next_idle_time = time.monotonic() + delay
+
+    def _update_idle(self, now: float) -> None:
+        """Aktualisiert den Idle-Animations-Zustand."""
+        if self._idle_active:
+            if now >= self._idle_end_time:
+                self._idle_active = False
+                self._idle_eye_left = None
+                self._idle_eye_right = None
+                self._idle_mouth = None
+                self._schedule_next_idle()
+        elif now >= self._next_idle_time:
+            self._start_idle_action()
+
+    def _start_idle_action(self) -> None:
+        """Startet eine zufällige Idle-Aktion."""
+        action_name, eye_l, eye_r, mouth = random.choice(self._IDLE_ACTIONS)
+
+        # Prüfe ob die benötigten Komponenten existieren
+        if eye_l and eye_l not in self._components:
+            self._schedule_next_idle()
+            return
+        if mouth and mouth not in self._components:
+            self._schedule_next_idle()
+            return
+
+        self._idle_active = True
+        self._idle_action = action_name
+        self._idle_eye_left = eye_l
+        self._idle_eye_right = eye_r
+        self._idle_mouth = mouth
+        self._idle_end_time = time.monotonic() + IDLE_ACTION_DURATION
 
     def render_to_file(
         self, output_path: Path, emotion: Emotion = Emotion.NEUTRAL,

@@ -230,3 +230,83 @@ class TestLayeredRendererFullscreen:
         r.initialize(720, 1280)
         assert r._width == 720
         assert r._height == 1280
+
+
+# ---------------------------------------------------------------------------
+# Lip-Sync Fix
+# ---------------------------------------------------------------------------
+
+class TestLipSyncFix:
+    def test_show_speaking_no_reset_when_already_speaking(self, mock_pygame, layered_assets):
+        """show_speaking(True) darf lip_sync_index nicht resetten wenn schon True."""
+        from elder_berry.avatar.layered_renderer import LayeredSpriteRenderer
+        r = LayeredSpriteRenderer(assets_dir=layered_assets)
+        r.initialize(720, 1280)
+
+        r.show_speaking(True)
+        r._lip_sync_index = 2  # Simuliere Fortschritt
+        r.show_speaking(True)  # Erneuter Aufruf mit True
+        assert r._lip_sync_index == 2  # Darf nicht zurückgesetzt werden
+
+    def test_show_speaking_resets_on_transition(self, mock_pygame, layered_assets):
+        """show_speaking(True) resettet beim Übergang von False → True."""
+        from elder_berry.avatar.layered_renderer import LayeredSpriteRenderer
+        r = LayeredSpriteRenderer(assets_dir=layered_assets)
+        r.initialize(720, 1280)
+
+        r.show_speaking(True)
+        r._lip_sync_index = 2
+        r.show_speaking(False)
+        r.show_speaking(True)  # Übergang False → True
+        assert r._lip_sync_index == 0  # Reset erwartet
+
+
+# ---------------------------------------------------------------------------
+# Idle-Animationen
+# ---------------------------------------------------------------------------
+
+class TestIdleAnimations:
+    def test_idle_state_initial(self, mock_pygame, layered_assets):
+        from elder_berry.avatar.layered_renderer import LayeredSpriteRenderer
+        r = LayeredSpriteRenderer(assets_dir=layered_assets)
+        r.initialize(720, 1280)
+        assert r._idle_active is False
+        assert r._idle_eye_left is None
+
+    def test_idle_triggers_after_interval(self, mock_pygame, layered_assets):
+        from elder_berry.avatar.layered_renderer import LayeredSpriteRenderer
+        import time as _time
+        r = LayeredSpriteRenderer(assets_dir=layered_assets)
+        r.initialize(720, 1280)
+
+        # Forciere nächste Idle sofort
+        r._next_idle_time = _time.monotonic() - 1.0
+        r._update_idle(_time.monotonic())
+        assert r._idle_active is True
+
+    def test_idle_ends_after_duration(self, mock_pygame, layered_assets):
+        from elder_berry.avatar.layered_renderer import LayeredSpriteRenderer
+        import time as _time
+        r = LayeredSpriteRenderer(assets_dir=layered_assets)
+        r.initialize(720, 1280)
+
+        # Starte und beende Idle
+        r._next_idle_time = _time.monotonic() - 1.0
+        r._update_idle(_time.monotonic())
+        assert r._idle_active is True
+
+        r._idle_end_time = _time.monotonic() - 1.0  # Force Ende
+        r._update_idle(_time.monotonic())
+        assert r._idle_active is False
+
+    def test_idle_disabled_while_speaking(self, mock_pygame, layered_assets):
+        from elder_berry.avatar.layered_renderer import LayeredSpriteRenderer
+        import time as _time
+        r = LayeredSpriteRenderer(assets_dir=layered_assets)
+        r.initialize(720, 1280)
+
+        r.show_speaking(True)
+        r._next_idle_time = _time.monotonic() - 1.0
+        # update() prüft is_speaking → kein idle_update
+        r.update()
+        assert r._idle_active is False
