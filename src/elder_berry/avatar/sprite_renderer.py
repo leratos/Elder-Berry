@@ -68,7 +68,7 @@ class SpriteRenderer(AvatarRenderer):
 
         logger.info("%d/%d Sprites geladen", len(self._sprites), len(Emotion))
 
-    def initialize(self, width: int = 512, height: int = 512) -> None:
+    def initialize(self, width: int = 512, height: int = 512, fullscreen: bool = False) -> None:
         self._width = width
         self._height = height
 

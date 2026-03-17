@@ -14,13 +14,19 @@ class AvatarRenderer(ABC):
     """
 
     @abstractmethod
-    def initialize(self, width: int = 512, height: int = 512) -> None:
+    def initialize(
+        self,
+        width: int = 512,
+        height: int = 512,
+        fullscreen: bool = False,
+    ) -> None:
         """
         Initialisiert das Render-Fenster / die Ausgabe.
 
         Args:
             width: Fensterbreite in Pixeln.
             height: Fensterhöhe in Pixeln.
+            fullscreen: Vollbildmodus (ohne Rahmen, Maus versteckt).
         """
         ...
 
