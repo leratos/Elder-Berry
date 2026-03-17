@@ -1034,3 +1034,12 @@
   - HELP_TEXT aktualisiert
   - Tests: +19 neue Tests (CalendarEvent event_id, parse, delete by index/title/alle/error)
 - Tests gesamt: 844 passed, 36 skipped
+
+## Roadmap-Änderung: Intent-Classifier gestrichen (2026-03-17)
+- Phase "Intent-Classifier (Self-Learning Command-Routing)" aus PROJECT_ROADMAP.md entfernt
+- Begründung: Problem existiert bei aktuellem Scope nicht – Regex+Keywords+LLM-Fallback reicht
+  - Embedding-Similarity unterscheidet nicht zwischen Konversation und Command (semantisch zu ähnlich)
+  - Parameter-Extraktion (Datum, Index, Suchbegriff) bleibt ohnehin bei Regex
+  - Self-Learning ohne Feedback-Loop birgt Drift-Risiko
+  - Kann später reaktiviert werden wenn Command-Anzahl oder Fehlerkennungen das rechtfertigen
+- Phasen umbenannt: Phase 10 → 9 (Multimodal+Autonomie), Phase 11 → 10 (Hardware-Abschluss)
