@@ -552,6 +552,23 @@ def main():
     audio_converter = init_audio_converter()
     stt = init_stt(args.mode, args.whisper_model)
 
+    # RobotClient (optional – verbindet Tower mit RPi5-Display)
+    robot = None
+    try:
+        from elder_berry.core.secret_store import SecretStore
+        from elder_berry.robot.client import RobotClient
+        _secrets = SecretStore()
+        robot_host = _secrets.get_or_none("robot_host")
+        if robot_host:
+            robot = RobotClient(base_url=robot_host)
+            if robot.is_online():
+                logger.info("RobotClient: verbunden mit %s", robot_host)
+            else:
+                logger.warning("RobotClient: %s nicht erreichbar", robot_host)
+                robot = None
+    except Exception as e:
+        logger.debug("RobotClient nicht verfügbar: %s", e)
+
     from elder_berry.core.assistant import Assistant
     assistant = Assistant(
         llm=llm,
@@ -562,6 +579,7 @@ def main():
         avatar=avatar,
         system_monitor=monitor,
         memory=memory,
+        robot=robot,
     )
 
     print()
