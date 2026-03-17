@@ -154,11 +154,26 @@ class IMAPEmailClient:
             Liste von EmailMessage, neueste zuerst.
         """
         since = (datetime.now() - timedelta(days=days)).strftime("%d-%b-%Y")
-        # IMAP OR-Suche: Betreff ODER Absender ODER Body enthält query
-        criteria = (
-            f'(OR OR SUBJECT "{query}" FROM "{query}" BODY "{query}") '
-            f'SINCE {since}'
-        )
+
+        # Einzelne Wörter extrahieren für breitere Suche
+        words = query.split()
+
+        if len(words) == 1:
+            # Ein Wort: einfache OR-Suche über alle Felder
+            criteria = (
+                f'(OR OR SUBJECT "{query}" FROM "{query}" BODY "{query}") '
+                f'SINCE {since}'
+            )
+        else:
+            # Mehrere Wörter: jedes Wort muss irgendwo vorkommen (OR über Felder)
+            # "RK Bedachung" → Mails die "RK" UND "Bedachung" irgendwo enthalten
+            word_criteria = []
+            for w in words:
+                word_criteria.append(
+                    f'(OR OR SUBJECT "{w}" FROM "{w}" BODY "{w}")'
+                )
+            criteria = " ".join(word_criteria) + f" SINCE {since}"
+
         return self._fetch_mails(criteria, max_results=max_results, is_unread=False)
 
     def get_unread_count(self) -> int:
