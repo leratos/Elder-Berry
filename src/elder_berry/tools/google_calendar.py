@@ -45,8 +45,11 @@ class CalendarEvent:
     all_day: bool = False
     """True wenn Ganztags-Event."""
 
+    event_id: str = ""
+    """Google Calendar Event-ID (für Löschen/Ändern)."""
+
     def format_short(self) -> str:
-        """Einzeilige Darstellung: '14:00-15:00 Zahnarzt (Praxis Dr. Müller)'."""
+        """Einzeilige Darstellung: '14:00-15:00 Zahnarzt (Praxis Dr. Müller) [#abc]'."""
         if self.all_day:
             time_str = "ganztags"
         else:
@@ -55,6 +58,8 @@ class CalendarEvent:
         text = f"{time_str} {self.summary}"
         if self.location:
             text += f" ({self.location})"
+        if self.event_id:
+            text += f" [#{self.event_id}]"
         return text
 
 
@@ -251,6 +256,29 @@ class GoogleCalendarClient:
         logger.info("Termin erstellt: %s (%s)", summary, created.get("id"))
         return self._parse_event(created)
 
+    def delete_event(self, event_id: str) -> bool:
+        """Löscht einen Termin per Event-ID.
+
+        Args:
+            event_id: Google Calendar Event-ID.
+
+        Returns:
+            True wenn erfolgreich gelöscht.
+
+        Raises:
+            RuntimeError: Wenn der Termin nicht gefunden wurde oder API-Fehler.
+        """
+        service = self._get_service()
+        try:
+            service.events().delete(
+                calendarId=self.CALENDAR_ID, eventId=event_id,
+            ).execute()
+            logger.info("Termin gelöscht: %s", event_id)
+            return True
+        except Exception as e:
+            logger.error("Termin löschen fehlgeschlagen (%s): %s", event_id, e)
+            raise RuntimeError(f"Termin löschen fehlgeschlagen: {e}") from e
+
     def format_events(self, events: list[CalendarEvent]) -> str:
         """Formatiert eine Liste von Terminen als Text."""
         if not events:
@@ -290,6 +318,7 @@ class GoogleCalendarClient:
             location=item.get("location"),
             description=item.get("description"),
             all_day=all_day,
+            event_id=item.get("id", ""),
         )
 
     @staticmethod

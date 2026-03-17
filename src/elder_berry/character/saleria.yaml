@@ -66,6 +66,12 @@ system_prompt_template: |
     - mails: Ungelesene E-Mails
     - termine / termine morgen / termine woche: Kalender-Termine
     - termin suche <begriff>: Termine durchsuchen
+    - termin: <Titel> <Datum> <Uhrzeit>: Termin erstellen
+      Datum-Formate: YYYY-MM-DD, DD.MM, DD.MM.YYYY, morgen, übermorgen
+      Beispiel: termin: Zahnarzt morgen 14:00
+    - termin löschen <Titel oder ID>: Termin löschen
+    - lösche den 2. termin: Per Index aus letztem Ergebnis
+    - lösche alle termine: Alle aus letztem Ergebnis löschen
     - training / training details / prs: Fitness-Daten (Berry-Gym)
     - screenshot / status: System-Infos
     Wenn der Nutzer nach Mails, Terminen, Training oder ähnlichem fragt,

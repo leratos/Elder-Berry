@@ -1361,6 +1361,38 @@ class TestCalendarCommands:
         handler = RemoteCommandHandler()
         assert handler.parse_command("termin: Zahnarzt 2026-03-20 14:00") == "termin_create"
 
+    def test_parse_termin_create_morgen(self):
+        handler = RemoteCommandHandler()
+        assert handler.parse_command("termin: Zahnarzt morgen 14:00") == "termin_create"
+
+    def test_parse_termin_create_uebermorgen(self):
+        handler = RemoteCommandHandler()
+        assert handler.parse_command("termin: Meeting übermorgen 10:00") == "termin_create"
+
+    def test_parse_termin_create_dd_mm(self):
+        handler = RemoteCommandHandler()
+        assert handler.parse_command("termin: Zahnarzt 30.03 14:00") == "termin_create"
+
+    def test_parse_termin_create_dd_mm_yyyy(self):
+        handler = RemoteCommandHandler()
+        assert handler.parse_command("termin: Zahnarzt 30.03.2026 14:00") == "termin_create"
+
+    def test_parse_termin_create_mit_um(self):
+        handler = RemoteCommandHandler()
+        assert handler.parse_command("termin: Zahnarzt morgen um 14:00") == "termin_create"
+
+    def test_parse_termin_create_mit_uhr(self):
+        handler = RemoteCommandHandler()
+        assert handler.parse_command("termin: Zahnarzt morgen 14:00 Uhr") == "termin_create"
+
+    def test_parse_erstelle_termin(self):
+        handler = RemoteCommandHandler()
+        assert handler.parse_command("erstelle termin Zahnarzt morgen 14:00") == "termin_create"
+
+    def test_parse_erstelle_einen_termin(self):
+        handler = RemoteCommandHandler()
+        assert handler.parse_command("erstelle einen termin Meeting 30.03 10:00") == "termin_create"
+
     def test_execute_termine_no_calendar(self):
         handler = RemoteCommandHandler()
         result = handler.execute("termine", "termine")
@@ -1423,6 +1455,49 @@ class TestCalendarCommands:
         assert result.success is True
         assert "Zahnarzt" in result.text
 
+    def test_execute_termin_create_morgen(self):
+        from elder_berry.tools.google_calendar import CalendarEvent
+        from datetime import datetime, date, timedelta
+
+        tomorrow = date.today() + timedelta(days=1)
+        expected_start = datetime(tomorrow.year, tomorrow.month, tomorrow.day, 16, 0)
+
+        mock_cal = MagicMock()
+        mock_cal.create_event.return_value = CalendarEvent(
+            summary="Arzt",
+            start=expected_start,
+            end=expected_start.replace(hour=17),
+        )
+
+        handler = RemoteCommandHandler(calendar=mock_cal)
+        result = handler.execute("termin_create", "termin: Arzt morgen 16:00")
+
+        assert result.success is True
+        assert "Arzt" in result.text
+        call_kwargs = mock_cal.create_event.call_args.kwargs
+        assert call_kwargs["start"].hour == 16
+        assert call_kwargs["start"].day == tomorrow.day
+
+    def test_execute_termin_create_dd_mm(self):
+        from elder_berry.tools.google_calendar import CalendarEvent
+        from datetime import datetime, date
+
+        mock_cal = MagicMock()
+        mock_cal.create_event.return_value = CalendarEvent(
+            summary="Test",
+            start=datetime(2026, 3, 30, 12, 0),
+            end=datetime(2026, 3, 30, 13, 0),
+        )
+
+        handler = RemoteCommandHandler(calendar=mock_cal)
+        result = handler.execute("termin_create", "termin: Test 30.03 12:00")
+
+        assert result.success is True
+        call_kwargs = mock_cal.create_event.call_args.kwargs
+        assert call_kwargs["start"].month == 3
+        assert call_kwargs["start"].day == 30
+        assert call_kwargs["start"].year == date.today().year
+
     def test_execute_termin_create_invalid_date(self):
         mock_cal = MagicMock()
         handler = RemoteCommandHandler(calendar=mock_cal)
@@ -1464,6 +1539,139 @@ class TestCalendarCommands:
 
         assert result.success is True
         assert "Keine Termine" in result.text
+
+
+class TestTerminDeleteCommand:
+    def _make_events(self, n=3):
+        from elder_berry.tools.google_calendar import CalendarEvent
+        from datetime import datetime
+        return [
+            CalendarEvent(
+                summary=f"Termin {i}",
+                start=datetime(2026, 3, 20, 10 + i, 0),
+                end=datetime(2026, 3, 20, 11 + i, 0),
+                event_id=f"evt_{i}",
+            )
+            for i in range(1, n + 1)
+        ]
+
+    def test_parse_termin_loeschen(self):
+        handler = RemoteCommandHandler()
+        assert handler.parse_command("termin löschen abc123") == "termin_delete"
+
+    def test_parse_loesche_termin(self):
+        handler = RemoteCommandHandler()
+        assert handler.parse_command("lösche termin Meeting") == "termin_delete"
+
+    def test_parse_loesche_den_termin(self):
+        handler = RemoteCommandHandler()
+        assert handler.parse_command("lösche den termin Zahnarzt") == "termin_delete"
+
+    def test_parse_loesche_alle_termine(self):
+        handler = RemoteCommandHandler()
+        assert handler.parse_command("lösche alle termine") == "termin_delete"
+
+    def test_parse_loesch_den_2_termin(self):
+        handler = RemoteCommandHandler()
+        assert handler.parse_command("lösch den 2. termin") == "termin_delete"
+
+    def test_parse_entferne_termin(self):
+        handler = RemoteCommandHandler()
+        assert handler.parse_command("entferne termin Meeting") == "termin_delete"
+
+    def test_execute_no_calendar(self):
+        handler = RemoteCommandHandler()
+        result = handler.execute("termin_delete", "lösche termin X")
+        assert result.success is False
+        assert "nicht konfiguriert" in result.text
+
+    def test_execute_delete_by_index(self):
+        mock_cal = MagicMock()
+        handler = RemoteCommandHandler(calendar=mock_cal)
+        handler._last_events = self._make_events(3)
+
+        result = handler.execute("termin_delete", "lösche den 2. termin")
+
+        assert result.success is True
+        assert "Termin 2" in result.text
+        mock_cal.delete_event.assert_called_once_with("evt_2")
+
+    def test_execute_delete_by_title(self):
+        mock_cal = MagicMock()
+        handler = RemoteCommandHandler(calendar=mock_cal)
+        handler._last_events = self._make_events(3)
+
+        result = handler.execute("termin_delete", "lösche termin Termin 1")
+
+        assert result.success is True
+        mock_cal.delete_event.assert_called_once_with("evt_1")
+
+    def test_execute_delete_alle(self):
+        mock_cal = MagicMock()
+        handler = RemoteCommandHandler(calendar=mock_cal)
+        handler._last_events = self._make_events(3)
+
+        result = handler.execute("termin_delete", "lösche alle termine")
+
+        assert result.success is True
+        assert "3 Termine" in result.text
+        assert mock_cal.delete_event.call_count == 3
+
+    def test_execute_delete_no_events(self):
+        mock_cal = MagicMock()
+        handler = RemoteCommandHandler(calendar=mock_cal)
+        handler._last_events = []
+
+        result = handler.execute("termin_delete", "lösche den 1. termin")
+
+        assert result.success is False
+        assert "Keine Termine" in result.text
+
+    def test_execute_delete_invalid_index(self):
+        mock_cal = MagicMock()
+        handler = RemoteCommandHandler(calendar=mock_cal)
+        handler._last_events = self._make_events(2)
+
+        result = handler.execute("termin_delete", "lösche den 5. termin")
+
+        assert result.success is False
+        assert "ungültig" in result.text.lower()
+
+    def test_execute_delete_title_not_found(self):
+        mock_cal = MagicMock()
+        handler = RemoteCommandHandler(calendar=mock_cal)
+        handler._last_events = self._make_events(2)
+
+        result = handler.execute("termin_delete", "lösche termin Gibtsnet")
+
+        assert result.success is False
+        assert "nicht" in result.text.lower() or "Kein" in result.text
+
+    def test_execute_delete_api_error(self):
+        mock_cal = MagicMock()
+        mock_cal.delete_event.side_effect = RuntimeError("API Error")
+        handler = RemoteCommandHandler(calendar=mock_cal)
+        handler._last_events = self._make_events(1)
+
+        result = handler.execute("termin_delete", "lösche den 1. termin")
+
+        assert result.success is False
+        assert "fehlgeschlagen" in result.text.lower()
+
+    def test_termine_stores_last_events(self):
+        """termine-Command speichert Events für späteres Löschen."""
+        from elder_berry.tools.google_calendar import CalendarEvent
+        from datetime import datetime
+
+        mock_cal = MagicMock()
+        events = self._make_events(2)
+        mock_cal.get_today.return_value = events
+        mock_cal.format_events.return_value = "2 Termine"
+
+        handler = RemoteCommandHandler(calendar=mock_cal)
+        handler.execute("termine", "termine")
+
+        assert len(handler._last_events) == 2
 
 
 # ---------------------------------------------------------------------------

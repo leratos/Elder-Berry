@@ -54,6 +54,9 @@ Verfügbare Aktionen:
   - termine morgen: Termine morgen
   - termine woche: Termine der nächsten 7 Tage
   - termin suche <begriff>: Termine durchsuchen
+  - termin: <Titel> <Datum> <Uhrzeit>: Termin erstellen (morgen, übermorgen, DD.MM, YYYY-MM-DD)
+  - termin löschen <Titel/ID>: Termin löschen
+  - lösche den 2. termin / lösche alle termine: aus letztem Ergebnis
   - training: Trainings-Zusammenfassung (Berry-Gym)
   - training details: Letztes Training mit Sätzen
   - prs: Personal Records

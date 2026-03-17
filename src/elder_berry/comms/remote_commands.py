@@ -38,6 +38,7 @@ import socket
 import subprocess
 import tempfile
 from dataclasses import dataclass, field
+from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -112,7 +113,11 @@ Kalender:
   termine morgen – Termine morgen
   termine woche – Termine nächste 7 Tage
   termin suche <Begriff> – Termin suchen (nächste 90 Tage)
-  termin: Zahnarzt 2026-03-20 14:00 – Termin erstellen
+  termin: Titel morgen 14:00 – Termin erstellen (morgen/übermorgen/DD.MM/YYYY-MM-DD)
+  erstelle termin Titel 30.03 10:00 – Termin erstellen (natürliche Sprache)
+  lösche termin <Titel/ID> – Termin löschen
+  lösche den 2. termin – Per Index aus letztem Ergebnis
+  lösche alle termine – Alle aus letztem Ergebnis löschen
 
 E-Mail:
   mails – Ungelesene E-Mails
@@ -219,9 +224,77 @@ TERMINE_PATTERN = re.compile(
     re.IGNORECASE,
 )
 
-# Regex für Termin-Erstellung: "termin: Zahnarzt 2026-03-20 14:00"
+# Regex für Termin-Erstellung (flexibel):
+# "termin: Zahnarzt 2026-03-20 14:00"
+# "termin: Zahnarzt morgen 14:00"
+# "termin: Zahnarzt 30.03 14:00"
+# "termin: Zahnarzt 30.03.2026 14:00"
+# Auch ohne Doppelpunkt: "termin Zahnarzt morgen 14:00"
+# Auch mit "erstelle": "erstelle termin Zahnarzt morgen 14:00"
 TERMIN_CREATE_PATTERN = re.compile(
-    r"^termin[:\s]\s*(.+?)\s+(\d{4}-\d{2}-\d{2})\s+(\d{1,2}:\d{2})$",
+    r"^(?:erstelle?\s+(?:(?:einen?\s+)?termin\s*[:\s]?\s*)"  # "erstelle termin ..."
+    r"|termin[:\s]\s*)"                                        # oder "termin: ..."
+    r"(.+?)\s+"                                                # Titel (non-greedy)
+    r"(morgen|übermorgen|uebermorgen"                           # Wort-Datum
+    r"|\d{1,2}\.\d{1,2}(?:\.\d{2,4})?"                        # DD.MM oder DD.MM.YY(YY)
+    r"|\d{4}-\d{2}-\d{2})"                                    # YYYY-MM-DD
+    r"\s+(?:um\s+)?(\d{1,2}:\d{2})(?:\s*uhr)?$",              # Uhrzeit (optional "um"/"Uhr")
+    re.IGNORECASE,
+)
+
+
+def _parse_natural_date(date_str: str) -> datetime | None:
+    """Parst natürliche Datumsangaben in ein datetime.date.
+
+    Unterstützt: morgen, übermorgen, DD.MM, DD.MM.YYYY, DD.MM.YY, YYYY-MM-DD.
+    """
+    from datetime import date, timedelta
+
+    lower = date_str.lower().strip()
+
+    if lower == "morgen":
+        d = date.today() + timedelta(days=1)
+        return datetime(d.year, d.month, d.day)
+    if lower in ("übermorgen", "uebermorgen"):
+        d = date.today() + timedelta(days=2)
+        return datetime(d.year, d.month, d.day)
+
+    # YYYY-MM-DD
+    try:
+        return datetime.strptime(lower, "%Y-%m-%d")
+    except ValueError:
+        pass
+
+    # DD.MM.YYYY
+    try:
+        return datetime.strptime(lower, "%d.%m.%Y")
+    except ValueError:
+        pass
+
+    # DD.MM.YY
+    try:
+        return datetime.strptime(lower, "%d.%m.%y")
+    except ValueError:
+        pass
+
+    # DD.MM (aktuelles Jahr anfügen, da strptime ohne Jahr deprecated ab 3.15)
+    if re.match(r"^\d{1,2}\.\d{1,2}$", lower):
+        try:
+            year = date.today().year
+            return datetime.strptime(f"{lower}.{year}", "%d.%m.%Y")
+        except ValueError:
+            pass
+
+    return None
+
+# Regex für Termin löschen:
+# "termin löschen abc123", "lösche termin abc123", "lösche den termin abc123"
+# "termin löschen alle", "lösche alle termine"
+# "lösch den 2. termin", "entferne termin 1"
+TERMIN_DELETE_PATTERN = re.compile(
+    r"(?:termin[e]?\s+(?:löschen|lösche|entferne[n]?|lösch|storniere[n]?)\s+(.+)"
+    r"|(?:lösche?|entferne?|storniere?)\s+(?:den\s+|die\s+|alle\s+)?(?:termin[e]?\s+)?(.+?)(?:\s+termin[e]?)?$"
+    r")",
     re.IGNORECASE,
 )
 
@@ -369,6 +442,8 @@ class RemoteCommandHandler:
         self._calendar = calendar
         self._email_client = email_client
         self._gym_client = gym_client
+        # Letztes Termin-Ergebnis (für "lösche alle/den 2.")
+        self._last_events: list = []
         self._send_file_allowed_roots: tuple[Path, ...] = tuple(
             r.resolve()
             for r in (
@@ -438,17 +513,21 @@ class RemoteCommandHandler:
         if AVATAR_EMOTION_PATTERN.match(normalized):
             return "avatar"
 
-        # Stufe 8c: Termin-Suche ("termin suche Zahnarzt")
+        # Stufe 8c: Termin erstellen (VOR Suche/Termine, da "termin X morgen" sonst matcht)
+        if TERMIN_CREATE_PATTERN.match(normalized):
+            return "termin_create"
+
+        # Stufe 8c2: Termin löschen ("lösche termin abc123", "termin löschen alle")
+        if TERMIN_DELETE_PATTERN.match(normalized):
+            return "termin_delete"
+
+        # Stufe 8c3: Termin-Suche ("termin suche Zahnarzt")
         if TERMIN_SEARCH_PATTERN.search(normalized):
             return "termin_search"
 
-        # Stufe 8c2: Termine mit Parameter ("termine morgen", "termine woche")
+        # Stufe 8c3: Termine mit Parameter ("termine morgen", "termine woche")
         if TERMINE_PATTERN.match(normalized):
             return "termine"
-
-        # Stufe 8d: Termin erstellen ("termin: Zahnarzt 2026-03-20 14:00")
-        if TERMIN_CREATE_PATTERN.match(normalized):
-            return "termin_create"
 
         # Stufe 8e: Mail-Anhang ("mail anhang 12345")
         if MAIL_ATTACHMENT_PATTERN.search(normalized):
@@ -537,6 +616,9 @@ class RemoteCommandHandler:
 
         if command == "termin_create":
             return self._cmd_termin_create(raw_text)
+
+        if command == "termin_delete":
+            return self._cmd_termin_delete(raw_text)
 
         if command == "mails":
             return self._cmd_mails(raw_text)
@@ -1197,6 +1279,9 @@ class RemoteCommandHandler:
                 events = self._calendar.get_today()
                 label = "Termine heute"
 
+            # Letzte Events speichern (für "lösche alle/den 2.")
+            self._last_events = events
+
             text = f"{label}:\n{self._calendar.format_events(events)}"
             return CommandResult(command="termine", success=True, text=text)
 
@@ -1222,21 +1307,32 @@ class RemoteCommandHandler:
             return CommandResult(
                 command="termin_create",
                 success=False,
-                text="Format: termin: Titel 2026-03-20 14:00",
+                text="Format: termin: Titel morgen 14:00\n"
+                     "Datum-Formate: morgen, übermorgen, 30.03, 30.03.2026, 2026-03-30",
             )
 
         title = match.group(1).strip()
         date_str = match.group(2)
         time_str = match.group(3)
 
-        try:
-            from datetime import datetime
-            start = datetime.strptime(f"{date_str} {time_str}", "%Y-%m-%d %H:%M")
-        except ValueError:
+        # Natürliche Datumsangaben parsen (morgen, DD.MM, etc.)
+        date_parsed = _parse_natural_date(date_str)
+        if not date_parsed:
             return CommandResult(
                 command="termin_create",
                 success=False,
-                text="Ungültiges Datum/Zeit. Format: 2026-03-20 14:00",
+                text=f"Ungültiges Datum: '{date_str}'.\n"
+                     "Erlaubt: morgen, übermorgen, 30.03, 30.03.2026, 2026-03-30",
+            )
+
+        try:
+            hour, minute = time_str.split(":")
+            start = date_parsed.replace(hour=int(hour), minute=int(minute))
+        except (ValueError, IndexError):
+            return CommandResult(
+                command="termin_create",
+                success=False,
+                text=f"Ungültige Uhrzeit: '{time_str}'. Format: HH:MM",
             )
 
         try:
@@ -1430,6 +1526,8 @@ class RemoteCommandHandler:
                     text=f"Keine Termine gefunden für '{query}'.",
                 )
 
+            self._last_events = events
+
             text = f"Suche '{query}' ({len(events)} Treffer):\n"
             text += self._calendar.format_events(events)
             return CommandResult(command="termin_search", success=True, text=text)
@@ -1440,6 +1538,195 @@ class RemoteCommandHandler:
                 command="termin_search", success=False,
                 text=f"Termin-Suche fehlgeschlagen: {e}",
             )
+
+    def _cmd_termin_delete(self, raw_text: str) -> CommandResult:
+        """Termin(e) löschen per Event-ID, Index oder 'alle'."""
+        if not self._calendar:
+            return CommandResult(
+                command="termin_delete", success=False,
+                text="Google Calendar nicht konfiguriert.",
+            )
+
+        normalized = raw_text.strip().lower()
+
+        # "alle" erkennen bevor Regex parst (Regex konsumiert "alle" als Optionalgruppe)
+        if re.search(r"alle\s+termin", normalized) or normalized.endswith("alle"):
+            return self._delete_all_events()
+
+        match = TERMIN_DELETE_PATTERN.match(raw_text.strip())
+        if not match:
+            return CommandResult(
+                command="termin_delete", success=False,
+                text="Format: termin löschen <ID> oder lösche den 2. termin",
+            )
+
+        target = (match.group(1) or match.group(2) or "").strip().rstrip(".")
+
+        # Index-basiert: "1", "2.", "den 1.", "den ersten"
+        index = self._parse_index(target)
+        if index is not None:
+            return self._delete_event_by_index(index)
+
+        # Titel-Suche in letzten Events (bevorzugt, wenn Events vorhanden)
+        if self._last_events:
+            return self._delete_event_by_title(target)
+
+        # Fallback: Direkte Event-ID (z.B. "abc123def")
+        if len(target) > 3:
+            return self._delete_event_by_id(target)
+
+        return CommandResult(
+            command="termin_delete", success=False,
+            text="Keine Termine zum Löschen. Frag erst nach Terminen.",
+        )
+
+    def _delete_all_events(self) -> CommandResult:
+        """Löscht alle Events aus dem letzten Ergebnis."""
+        if not self._last_events:
+            return CommandResult(
+                command="termin_delete", success=False,
+                text="Keine Termine zum Löschen. Frag erst nach Terminen.",
+            )
+
+        deleted = 0
+        errors = []
+        for event in self._last_events:
+            if not event.event_id:
+                continue
+            try:
+                self._calendar.delete_event(event.event_id)
+                deleted += 1
+            except Exception as e:
+                errors.append(f"{event.summary}: {e}")
+
+        self._last_events = []
+
+        if errors:
+            return CommandResult(
+                command="termin_delete", success=False,
+                text=f"{deleted} gelöscht, {len(errors)} Fehler:\n"
+                     + "\n".join(errors),
+            )
+
+        return CommandResult(
+            command="termin_delete", success=True,
+            text=f"{deleted} Termin{'e' if deleted != 1 else ''} gelöscht.",
+        )
+
+    def _delete_event_by_index(self, index: int) -> CommandResult:
+        """Löscht einen Termin per Index (1-basiert) aus dem letzten Ergebnis."""
+        if not self._last_events:
+            return CommandResult(
+                command="termin_delete", success=False,
+                text="Keine Termine zum Löschen. Frag erst nach Terminen.",
+            )
+
+        if index < 1 or index > len(self._last_events):
+            return CommandResult(
+                command="termin_delete", success=False,
+                text=f"Index {index} ungültig. Es gibt {len(self._last_events)} Termine.",
+            )
+
+        event = self._last_events[index - 1]
+        if not event.event_id:
+            return CommandResult(
+                command="termin_delete", success=False,
+                text=f"Termin '{event.summary}' hat keine ID.",
+            )
+
+        try:
+            self._calendar.delete_event(event.event_id)
+            self._last_events.pop(index - 1)
+            return CommandResult(
+                command="termin_delete", success=True,
+                text=f"Termin gelöscht: {event.summary}",
+            )
+        except Exception as e:
+            return CommandResult(
+                command="termin_delete", success=False,
+                text=f"Löschen fehlgeschlagen: {e}",
+            )
+
+    def _delete_event_by_id(self, event_id: str) -> CommandResult:
+        """Löscht einen Termin direkt per Google Event-ID."""
+        try:
+            self._calendar.delete_event(event_id)
+            # Aus Cache entfernen
+            self._last_events = [
+                e for e in self._last_events if e.event_id != event_id
+            ]
+            return CommandResult(
+                command="termin_delete", success=True,
+                text=f"Termin gelöscht (ID: {event_id}).",
+            )
+        except Exception as e:
+            return CommandResult(
+                command="termin_delete", success=False,
+                text=f"Löschen fehlgeschlagen: {e}",
+            )
+
+    def _delete_event_by_title(self, title: str) -> CommandResult:
+        """Löscht einen Termin per Titel-Suche in den letzten Ergebnissen."""
+        if not self._last_events:
+            return CommandResult(
+                command="termin_delete", success=False,
+                text="Keine Termine zum Löschen. Frag erst nach Terminen.",
+            )
+
+        lower = title.lower()
+        matches = [
+            e for e in self._last_events
+            if lower in e.summary.lower() and e.event_id
+        ]
+
+        if not matches:
+            return CommandResult(
+                command="termin_delete", success=False,
+                text=f"Kein Termin mit '{title}' in den letzten Ergebnissen gefunden.",
+            )
+
+        if len(matches) > 1:
+            names = "\n".join(f"  - {e.summary}" for e in matches)
+            return CommandResult(
+                command="termin_delete", success=False,
+                text=f"Mehrere Treffer für '{title}':\n{names}\n"
+                     "Bitte genauer angeben oder Index nutzen (z.B. lösche den 1. termin).",
+            )
+
+        event = matches[0]
+        try:
+            self._calendar.delete_event(event.event_id)
+            self._last_events = [
+                e for e in self._last_events if e.event_id != event.event_id
+            ]
+            return CommandResult(
+                command="termin_delete", success=True,
+                text=f"Termin gelöscht: {event.summary}",
+            )
+        except Exception as e:
+            return CommandResult(
+                command="termin_delete", success=False,
+                text=f"Löschen fehlgeschlagen: {e}",
+            )
+
+    @staticmethod
+    def _parse_index(text: str) -> int | None:
+        """Parst einen Index aus Text ('1', '2.', 'den 1.', 'ersten', 'zweiten')."""
+        clean = re.sub(r"^(?:den|die|das)\s+", "", text.lower()).strip().rstrip(".")
+
+        # Zahl direkt
+        if clean.isdigit():
+            return int(clean)
+
+        # Ordinalzahlen
+        ordinals = {
+            "ersten": 1, "erste": 1, "1": 1,
+            "zweiten": 2, "zweite": 2, "2": 2,
+            "dritten": 3, "dritte": 3, "3": 3,
+            "vierten": 4, "vierte": 4,
+            "fünften": 5, "fünfte": 5,
+        }
+        return ordinals.get(clean)
 
     # ------------------------------------------------------------------
     # Phase 8: Fitness (Berry-Gym)

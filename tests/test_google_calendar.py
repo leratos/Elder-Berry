@@ -45,6 +45,42 @@ class TestCalendarEvent:
         assert "Meeting" in result
         assert "(" not in result  # Kein Klammer-Ort
 
+    def test_event_id_default_empty(self):
+        event = CalendarEvent(
+            summary="Test",
+            start=datetime(2026, 1, 1),
+            end=datetime(2026, 1, 1),
+        )
+        assert event.event_id == ""
+
+    def test_event_id_set(self):
+        event = CalendarEvent(
+            summary="Test",
+            start=datetime(2026, 1, 1),
+            end=datetime(2026, 1, 1),
+            event_id="abc123",
+        )
+        assert event.event_id == "abc123"
+
+    def test_format_short_with_event_id(self):
+        event = CalendarEvent(
+            summary="Meeting",
+            start=datetime(2026, 3, 20, 10, 0),
+            end=datetime(2026, 3, 20, 11, 0),
+            event_id="xyz789",
+        )
+        result = event.format_short()
+        assert "[#xyz789]" in result
+
+    def test_format_short_without_event_id(self):
+        event = CalendarEvent(
+            summary="Meeting",
+            start=datetime(2026, 3, 20, 10, 0),
+            end=datetime(2026, 3, 20, 11, 0),
+        )
+        result = event.format_short()
+        assert "[#" not in result
+
     def test_frozen(self):
         event = CalendarEvent(
             summary="Test",

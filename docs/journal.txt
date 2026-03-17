@@ -1006,5 +1006,31 @@
     multi-turn grows, file_paths sent
 - Erweitert: tests/test_assistant.py (+2 Tests)
   - chat_history in system prompt, empty chat_history no extra text
-- Tests: 815 passed, 36 skipped (alle grün, +45 neue Tests)
+- Tests: 825 passed, 36 skipped (alle grün, +55 neue Tests)
 - Vorbestehende Skips: cryptography, pydub, chromadb, anthropic, faster-whisper fehlen
+
+### Nachbesserungen (gleicher Chat)
+- Mail-Suche: Kurzliste für User, Detail-Body für Chat-History (history_text Feld)
+  - CommandResult: neues Feld history_text (alternativer Text für Chat-History)
+  - Bridge: history_text bevorzugen wenn gesetzt
+  - Effekt: "fasse die mail zusammen" funktioniert, weil LLM den Body im Kontext hat
+- Termin-Erstellung: natürliche Datumsformate
+  - TERMIN_CREATE_PATTERN erweitert: morgen, übermorgen, DD.MM, DD.MM.YYYY, "um HH:MM Uhr"
+  - "erstelle termin ...", "erstelle einen termin ..." wird erkannt
+  - _parse_natural_date(): Helfer-Funktion für Datums-Parsing
+  - System-Prompt (saleria.yaml + assistant.py): "termin erstellen" in Tool-Liste
+  - Tests: +10 neue Tests (parse + execute mit morgen/DD.MM/erstelle)
+- Termin löschen: natürliche Sprache
+  - CalendarEvent: neues Feld event_id: str = "" (Google Calendar Event-ID)
+  - GoogleCalendarClient: delete_event(event_id) Methode
+  - format_short(): zeigt [#event_id] im Output
+  - _last_events: Handler merkt sich letzte Termin-Ergebnisse
+  - Neue Commands: "lösche termin X", "lösche den 2. termin", "lösche alle termine"
+  - TERMIN_DELETE_PATTERN: "termin löschen", "lösche termin", "entferne termin"
+  - Index-Parsing: "1.", "den ersten", "den 2.", Ordinalzahlen 1-5
+  - Titel-Suche: "lösche termin Zahnarzt" (in _last_events)
+  - Fallback: direkte Event-ID, Fehler bei Mehrdeutigkeit
+  - System-Prompt (saleria.yaml + assistant.py): "termin löschen" in Tool-Liste
+  - HELP_TEXT aktualisiert
+  - Tests: +19 neue Tests (CalendarEvent event_id, parse, delete by index/title/alle/error)
+- Tests gesamt: 844 passed, 36 skipped
