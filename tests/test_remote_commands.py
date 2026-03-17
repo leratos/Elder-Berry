@@ -2157,3 +2157,75 @@ class TestBriefingExecute:
 
         assert result.success is True
         assert "keine Daten" in result.text.lower() or "Kein Briefing" in result.text
+
+
+# ---------------------------------------------------------------------------
+# Mail per ID
+# ---------------------------------------------------------------------------
+
+class TestMailByIdParse:
+    def test_parse_mail_99(self):
+        handler = RemoteCommandHandler()
+        assert handler.parse_command("mail 99") == "mail_by_id"
+
+    def test_parse_mail_hash_99(self):
+        handler = RemoteCommandHandler()
+        assert handler.parse_command("mail #99") == "mail_by_id"
+
+    def test_parse_fasse_mail_zusammen(self):
+        handler = RemoteCommandHandler()
+        assert handler.parse_command("fasse mail #99 zusammen") == "mail_by_id"
+
+    def test_parse_zeig_mail(self):
+        handler = RemoteCommandHandler()
+        assert handler.parse_command("zeig mail 42") == "mail_by_id"
+
+    def test_parse_lies_mail(self):
+        handler = RemoteCommandHandler()
+        assert handler.parse_command("lies mail #5") == "mail_by_id"
+
+    def test_not_mail_suche(self):
+        """'mail suche X' darf NICHT als mail_by_id erkannt werden."""
+        handler = RemoteCommandHandler()
+        assert handler.parse_command("mail suche Rechnung") != "mail_by_id"
+
+
+class TestMailByIdExecute:
+    def test_no_client(self):
+        handler = RemoteCommandHandler()
+        result = handler.execute("mail_by_id", "mail 99")
+        assert result.success is False
+        assert "nicht konfiguriert" in result.text
+
+    def test_mail_found(self):
+        from elder_berry.tools.email_client import EmailMessage
+        from datetime import datetime
+
+        mock_email = MagicMock()
+        mock_email.get_by_uid.return_value = EmailMessage(
+            subject="Starlink Lieferung",
+            sender="starlink@spacex.com",
+            date=datetime(2026, 3, 17, 3, 26),
+            body_preview="Ihre Starlink Bestellung ist auf dem Weg...",
+            is_unread=True,
+            msg_id="99",
+        )
+
+        handler = RemoteCommandHandler(email_client=mock_email)
+        result = handler.execute("mail_by_id", "mail #99")
+
+        assert result.success is True
+        assert "Starlink" in result.text
+        assert result.history_text is not None
+        assert "auf dem Weg" in result.history_text
+        mock_email.get_by_uid.assert_called_once_with("99")
+
+    def test_mail_not_found(self):
+        mock_email = MagicMock()
+        mock_email.get_by_uid.return_value = None
+
+        handler = RemoteCommandHandler(email_client=mock_email)
+        result = handler.execute("mail_by_id", "mail #999")
+
+        assert result.success is False
+        assert "nicht gefunden" in result.text

@@ -276,6 +276,35 @@ class IMAPEmailClient:
             logger.error("Anhänge abrufen fehlgeschlagen (UID %s): %s", msg_id, e)
             raise RuntimeError(f"Anhänge abrufen fehlgeschlagen: {e}") from e
 
+    def get_by_uid(self, msg_id: str) -> EmailMessage | None:
+        """Holt eine einzelne Mail per IMAP UID (vollständiger Body).
+
+        Args:
+            msg_id: IMAP UID der Mail.
+
+        Returns:
+            EmailMessage mit vollem Body oder None wenn nicht gefunden.
+        """
+        try:
+            conn = self._connect()
+            conn.select(self._mailbox, readonly=True)
+
+            uid_bytes = msg_id.encode() if isinstance(msg_id, str) else msg_id
+            _, msg_data = conn.uid("fetch", uid_bytes, "(RFC822)")
+
+            if not msg_data or not msg_data[0]:
+                conn.logout()
+                return None
+
+            raw = msg_data[0][1]
+            conn.logout()
+
+            return self._parse_email(raw, is_unread=False, msg_id=msg_id)
+
+        except Exception as e:
+            logger.error("Mail UID %s abrufen fehlgeschlagen: %s", msg_id, e)
+            return None
+
     # ------------------------------------------------------------------
     # Interne Methoden
     # ------------------------------------------------------------------

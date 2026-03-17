@@ -1138,3 +1138,12 @@
 - Wetter: SecretStore().set("weather_latitude", "52.52") etc.
 - Timer/Erinnerungen: funktioniert sofort (SQLite, kein Setup)
 - Briefing: automatisch wenn Wetter/Kalender/Erinnerungen konfiguriert
+
+## Abgeschlossen: Bugfix – Mail per ID abrufen ("fasse mail #99 zusammen") (2026-03-17)
+- Bug: "fasse mail #99 zusammen" wurde als MAIL_SEARCH_PATTERN gefangen → suchte "#99" statt Mail 99 zu holen
+- Neue Methode: IMAPEmailClient.get_by_uid(msg_id) → EmailMessage | None
+- Neues Pattern: MAIL_ID_PATTERN ("mail 99", "mail #99", "fasse mail #99 zusammen", "zeig mail 42")
+- Neuer Handler: _cmd_mail_by_id() → text (Kurzinfo) + history_text (Body für LLM-Kontext)
+- Parse-Reihenfolge: MAIL_ID_PATTERN VOR MAIL_ATTACHMENT_PATTERN und MAIL_SEARCH_PATTERN
+- HELP_TEXT aktualisiert
+- Tests: +12 neue Tests (3 get_by_uid + 6 parse + 3 execute)

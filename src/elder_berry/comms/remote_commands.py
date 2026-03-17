@@ -126,6 +126,7 @@ E-Mail:
   mails – Ungelesene E-Mails
   mails 5 – Letzte 5 Tage
   mail suche <Begriff> – Mails nach Betreff/Absender durchsuchen
+  mail <ID> / mail #<ID> – Mail anzeigen (z.B. mail 99, fasse mail #99 zusammen)
   mail anhang <ID> – Anhänge einer Mail senden (ID aus Suchergebnis)
   mail zusammenfassung – LLM-Zusammenfassung ungelesener Mails
 
@@ -366,6 +367,12 @@ MAIL_ATTACHMENT_PATTERN = re.compile(
     r"(?:mails?\s+anh(?:ang|änge?)\s+(\d+)"
     r"|anh(?:ang|änge?)\s+(?:von\s+)?(?:mail|email)\s+(\d+)"
     r"|mail\s+(\d+)\s+anh(?:ang|änge?))",
+    re.IGNORECASE,
+)
+
+# Regex für Mail per ID: "mail 99", "mail #99", "fasse mail #99 zusammen", "zeig mail 99"
+MAIL_ID_PATTERN = re.compile(
+    r"(?:(?:fasse?|zeig|lies|hole?|öffne)\s+)?mail\s*#?(\d+)(?:\s+(?:zusammen|zusammenfassung|details|anzeigen))?$",
     re.IGNORECASE,
 )
 
@@ -614,6 +621,10 @@ class RemoteCommandHandler:
         if TERMINE_PATTERN.match(normalized):
             return "termine"
 
+        # Stufe 8d5: Mail per ID ("mail 99", "fasse mail #99 zusammen")
+        if MAIL_ID_PATTERN.match(normalized):
+            return "mail_by_id"
+
         # Stufe 8e: Mail-Anhang ("mail anhang 12345")
         if MAIL_ATTACHMENT_PATTERN.search(normalized):
             return "mail_attachment"
@@ -722,6 +733,9 @@ class RemoteCommandHandler:
 
         if command == "mail_summary":
             return self._cmd_mails(raw_text)
+
+        if command == "mail_by_id":
+            return self._cmd_mail_by_id(raw_text)
 
         if command == "mail_search":
             return self._cmd_mail_search(raw_text)
@@ -1614,6 +1628,63 @@ class RemoteCommandHandler:
             return CommandResult(
                 command="mail_attachment", success=False,
                 text=f"Anhang abrufen fehlgeschlagen: {e}",
+            )
+
+    def _cmd_mail_by_id(self, raw_text: str) -> CommandResult:
+        """Einzelne Mail per UID abrufen (Body als history_text für LLM-Kontext)."""
+        if not self._email_client:
+            return CommandResult(
+                command="mail_by_id", success=False,
+                text="E-Mail nicht konfiguriert.",
+            )
+
+        match = MAIL_ID_PATTERN.match(raw_text.strip().lower())
+        if not match:
+            return CommandResult(
+                command="mail_by_id", success=False,
+                text="Format: mail <ID> (z.B. mail 99 oder mail #99)",
+            )
+
+        msg_id = match.group(1)
+
+        try:
+            mail = self._email_client.get_by_uid(msg_id)
+
+            if not mail:
+                return CommandResult(
+                    command="mail_by_id", success=False,
+                    text=f"Mail #{msg_id} nicht gefunden.",
+                )
+
+            date_str = mail.date.strftime("%d.%m.%Y %H:%M") if mail.date else "?"
+            short_text = (
+                f"📧 Mail #{msg_id}:\n"
+                f"  Von: {mail.sender}\n"
+                f"  Datum: {date_str}\n"
+                f"  Betreff: {mail.subject}"
+            )
+
+            # Vollständiger Body für LLM-Kontext (Chat-History)
+            detail_text = (
+                f"--- Mail #{msg_id} ---\n"
+                f"Von: {mail.sender}\n"
+                f"Datum: {date_str}\n"
+                f"Betreff: {mail.subject}\n"
+                f"Inhalt:\n{mail.body_preview}\n"
+            )
+
+            return CommandResult(
+                command="mail_by_id",
+                success=True,
+                text=short_text,
+                history_text=detail_text,
+            )
+
+        except Exception as e:
+            logger.error("Mail UID %s abrufen fehlgeschlagen: %s", msg_id, e)
+            return CommandResult(
+                command="mail_by_id", success=False,
+                text=f"Mail abrufen fehlgeschlagen: {e}",
             )
 
     def _cmd_termin_search(self, raw_text: str) -> CommandResult:
