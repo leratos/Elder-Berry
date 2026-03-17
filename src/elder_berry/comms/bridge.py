@@ -264,9 +264,11 @@ class MatrixBridge:
                 await self._channel.send_text(msg.room_id, result.text)
 
             # Command-Ergebnis in Chat-History speichern
+            # history_text bevorzugen (z.B. Mail-Body für LLM-Kontext)
             if result.success and result.text:
+                history_content = result.history_text or result.text
                 self._chat_history.add(msg.sender, "user", msg.body)
-                self._chat_history.add(msg.sender, "assistant", result.text)
+                self._chat_history.add(msg.sender, "assistant", history_content)
 
             # Fehlgeschlagene Commands loggen (kein Crash, aber success=False)
             if not result.success:

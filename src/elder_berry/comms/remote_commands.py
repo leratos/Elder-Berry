@@ -323,6 +323,10 @@ class CommandResult:
     text: str | None = None
     """Text-Antwort für den Nutzer (z.B. Systemstatus)."""
 
+    history_text: str | None = None
+    """Alternativer Text für die Chat-History (z.B. Mail-Body für LLM-Kontext).
+    Wenn gesetzt, wird dieser statt `text` in der History gespeichert."""
+
     image_path: Path | None = None
     """Pfad zum generierten Bild (z.B. Screenshot-PNG)."""
 
@@ -1319,9 +1323,16 @@ class RemoteCommandHandler:
                     text=f"Keine Mails gefunden für '{query}'.",
                 )
 
+            # Kurzliste für den User
             text = f"Suche '{query}' ({len(mails)} Treffer):\n"
             text += self._email_client.format_mails(mails)
-            return CommandResult(command="mail_search", success=True, text=text)
+            # Detailliert für die Chat-History (LLM kann Body zusammenfassen)
+            history = f"Suche '{query}' ({len(mails)} Treffer):\n"
+            history += self._email_client.format_mails_detailed(mails)
+            return CommandResult(
+                command="mail_search", success=True,
+                text=text, history_text=history,
+            )
 
         except Exception as e:
             logger.error("Mail-Suche fehlgeschlagen: %s", e)

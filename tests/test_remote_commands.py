@@ -1532,14 +1532,24 @@ class TestEmailCommands:
                 body_preview="Ihre Rechnung...",
             ),
         ]
-        mock_email.format_mails.return_value = "● 10.03 | billing@strato.de | Rechnung März"
+        mock_email.format_mails.return_value = (
+            "● 10.03 | billing@strato.de | Rechnung März [#42]"
+        )
+        mock_email.format_mails_detailed.return_value = (
+            "--- Mail 1 (ID: 42) ---\nVon: billing@strato.de\n"
+            "Betreff: Rechnung März\nInhalt: Ihre Rechnung..."
+        )
 
         handler = RemoteCommandHandler(email_client=mock_email)
         result = handler.execute("mail_search", "mail suche Rechnung")
 
         assert result.success is True
         assert "Rechnung" in result.text
-        mock_email.search.assert_called_once_with("Rechnung", max_results=10)
+        # Kurzliste für User, Detail für History
+        mock_email.format_mails.assert_called_once()
+        mock_email.format_mails_detailed.assert_called_once()
+        assert result.history_text is not None
+        assert "Inhalt:" in result.history_text
 
     def test_execute_mail_search_no_results(self):
         mock_email = MagicMock()
