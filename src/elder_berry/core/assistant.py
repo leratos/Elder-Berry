@@ -48,6 +48,7 @@ Verfügbare Aktionen:
 - remote_command: Remote-Befehl ausführen. params: {{"command": "<befehl>"}}
   Du hast folgende Remote-Tools:
   - mail suche <begriff>: E-Mails nach Betreff/Absender durchsuchen
+  - mail anhang <id>: Anhänge einer Mail senden (ID aus Suchergebnis)
   - mails: Ungelesene E-Mails anzeigen
   - termine: Termine heute anzeigen
   - termine morgen: Termine morgen
@@ -122,6 +123,7 @@ class Assistant:
 
     def process(
         self, user_input: str, audio_output: Path | None = None,
+        chat_history: str = "",
     ) -> AssistantResult:
         """
         Verarbeitet User-Input: LLM befragen → Aktion ausführen → TTS → Avatar.
@@ -131,6 +133,8 @@ class Assistant:
             audio_output: Wenn gesetzt, wird TTS-Audio als Datei generiert
                 statt abgespielt. Der Pfad wird in AssistantResult.audio_path
                 zurückgegeben.
+            chat_history: Formatierter Chat-Verlauf als Kontext für das LLM
+                (Kurzzeit-Gedächtnis, getrennt von RAG-Memory).
 
         Returns:
             AssistantResult mit Antwort, ausgeführter Aktion, Erfolg und Emotion.
@@ -141,7 +145,10 @@ class Assistant:
             )
 
         memory_context = self._get_memory_context(user_input)
-        system_prompt = self._build_system_prompt(memory_context=memory_context)
+        system_prompt = self._build_system_prompt(
+            memory_context=memory_context,
+            chat_history=chat_history,
+        )
         logger.debug("System-Prompt: %d Zeichen", len(system_prompt))
 
         raw_response = self._llm.generate(user_input, system=system_prompt)
@@ -288,7 +295,9 @@ class Assistant:
             logger.error("TTS-Audio-Generierung fehlgeschlagen: %s", e)
             return None
 
-    def _build_system_prompt(self, memory_context: str = "") -> str:
+    def _build_system_prompt(
+        self, memory_context: str = "", chat_history: str = "",
+    ) -> str:
         """Generiert System-Prompt – aus CharacterEngine oder Fallback-Template."""
         db_actions = self._actions_db.list_all()
         if db_actions:
@@ -310,14 +319,19 @@ class Assistant:
             prompt = f"Aktuelles Datum und Uhrzeit: {current_dt}\n\n{prompt}"
             if robot_status:
                 prompt += f"\n\n{robot_status}"
+            if chat_history:
+                prompt += f"\n\n{chat_history}"
             return prompt
 
-        return SYSTEM_PROMPT_TEMPLATE.format(
+        full_prompt = SYSTEM_PROMPT_TEMPLATE.format(
             action_list=action_list,
             robot_status=robot_status,
             current_datetime=current_dt,
             memory_context=memory_context,
         )
+        if chat_history:
+            full_prompt += f"\n\n{chat_history}"
+        return full_prompt
 
     def _get_memory_context(self, user_input: str) -> str:
         """Ruft relevante Erinnerungen aus dem Memory ab und formatiert sie."""

@@ -271,7 +271,8 @@ class TestMatrixBridge:
             )
             await bridge._handle_message(msg)
 
-            assistant.process.assert_called_once_with("Hi Saleria")
+            assistant.process.assert_called_once()
+            assert assistant.process.call_args[0][0] == "Hi Saleria"
             assert ("!room:x", "Hallo zurück!") in channel._sent_texts
 
         run_async(_test())
@@ -460,7 +461,8 @@ class TestBridgeCommandRouting:
             handler.parse_command.assert_called_once_with("Was ist los?")
             handler.execute.assert_not_called()
             # Assistant aufgerufen
-            assistant.process.assert_called_once_with("Was ist los?")
+            assistant.process.assert_called_once()
+            assert assistant.process.call_args[0][0] == "Was ist los?"
             assert ("!r:x", "Hallo!") in channel._sent_texts
 
         run_async(_test())
@@ -515,7 +517,8 @@ class TestBridgeCommandRouting:
             await bridge._handle_message(msg)
 
             # Kein Handler → Assistant aufgerufen
-            assistant.process.assert_called_once_with("status")
+            assistant.process.assert_called_once()
+            assert assistant.process.call_args[0][0] == "status"
 
         run_async(_test())
 
@@ -789,7 +792,8 @@ class TestBridgeClaudeAgentRouting:
             await bridge._handle_message(msg)
 
             # Assistant aufgerufen, ClaudeAgent NICHT
-            assistant.process.assert_called_once_with("Wie geht's dir?")
+            assistant.process.assert_called_once()
+            assert assistant.process.call_args[0][0] == "Wie geht's dir?"
             claude_agent.process.assert_not_called()
             assert ("!r:x", "Saleria antwortet!") in channel._sent_texts
 
@@ -1541,3 +1545,152 @@ class TestBridgeAudioRouting:
 
         # Keine Antwort für nicht erlaubten Sender
         assert len(channel._sent_texts) == 0
+
+
+class TestBridgeChatHistory:
+    """Tests für Multi-Turn Chat-History in der Bridge."""
+
+    def _make_assistant_mock(self, response_text="Antwort"):
+        assistant = MagicMock()
+        assistant.process.return_value = AssistantResult(
+            response=response_text,
+            action_executed=None,
+            action_success=False,
+        )
+        return assistant
+
+    def test_chat_history_passed_to_assistant(self):
+        """Chat-History wird als dritter Parameter an assistant.process übergeben."""
+        async def _test():
+            channel = MockChannel()
+            assistant = self._make_assistant_mock("Antwort 1")
+            bridge = MatrixBridge(channel=channel, assistant=assistant)
+            await channel.connect()
+
+            msg = IncomingMessage(
+                sender="@user:x", room_id="!r:x", body="Hallo",
+                timestamp=1.0,
+            )
+            await bridge._handle_message(msg)
+
+            # process wurde mit 3 Argumenten aufgerufen
+            assistant.process.assert_called_once()
+            args = assistant.process.call_args[0]
+            assert args[0] == "Hallo"  # user_input
+            assert args[1] is None     # audio_output
+            assert "Hallo" in args[2]  # chat_history enthält die Nachricht
+
+        run_async(_test())
+
+    def test_command_result_stored_in_history(self):
+        """Command-Ergebnisse werden in der Chat-History gespeichert."""
+        async def _test():
+            channel = MockChannel()
+            assistant = self._make_assistant_mock()
+            handler = MagicMock(spec=RemoteCommandHandler)
+            handler.parse_command.return_value = "mails"
+            handler.execute.return_value = CommandResult(
+                command="mails", success=True,
+                text="3 ungelesene Mails",
+            )
+            bridge = MatrixBridge(
+                channel=channel, assistant=assistant, remote_commands=handler,
+            )
+            await channel.connect()
+
+            # Command ausführen
+            msg1 = IncomingMessage(
+                sender="@user:x", room_id="!r:x", body="mails",
+                timestamp=1.0,
+            )
+            await bridge._handle_message(msg1)
+
+            # Chat-History sollte Command + Ergebnis enthalten
+            history = bridge._chat_history.get("@user:x")
+            assert len(history) == 2
+            assert history[0].role == "user"
+            assert history[0].text == "mails"
+            assert history[1].role == "assistant"
+            assert "3 ungelesene" in history[1].text
+
+        run_async(_test())
+
+    def test_assistant_response_stored_in_history(self):
+        """LLM-Antworten werden in der Chat-History gespeichert."""
+        async def _test():
+            channel = MockChannel()
+            assistant = self._make_assistant_mock("Ich bin Saleria!")
+            bridge = MatrixBridge(channel=channel, assistant=assistant)
+            await channel.connect()
+
+            msg = IncomingMessage(
+                sender="@user:x", room_id="!r:x", body="Wer bist du?",
+                timestamp=1.0,
+            )
+            await bridge._handle_message(msg)
+
+            history = bridge._chat_history.get("@user:x")
+            assert len(history) == 2
+            assert history[0].text == "Wer bist du?"
+            assert history[1].text == "Ich bin Saleria!"
+
+        run_async(_test())
+
+    def test_multi_turn_context_grows(self):
+        """Mehrere Nachrichten bauen Kontext auf."""
+        async def _test():
+            channel = MockChannel()
+            assistant = self._make_assistant_mock("OK")
+            bridge = MatrixBridge(channel=channel, assistant=assistant)
+            await channel.connect()
+
+            for i in range(3):
+                msg = IncomingMessage(
+                    sender="@user:x", room_id="!r:x",
+                    body=f"Nachricht {i}",
+                    timestamp=float(i),
+                )
+                await bridge._handle_message(msg)
+
+            history = bridge._chat_history.get("@user:x")
+            # 3 user + 3 assistant = 6
+            assert len(history) == 6
+
+        run_async(_test())
+
+    def test_file_paths_sent(self):
+        """file_paths (z.B. Mail-Anhänge) werden via send_file gesendet."""
+        async def _test():
+            import tempfile
+            channel = MockChannel()
+            assistant = self._make_assistant_mock()
+            handler = MagicMock(spec=RemoteCommandHandler)
+            handler.parse_command.return_value = "mail_attachment"
+
+            # Temp-Datei erstellen
+            tmp = tempfile.NamedTemporaryFile(
+                suffix=".pdf", delete=False,
+            )
+            tmp.write(b"PDF content")
+            tmp.close()
+            tmp_path = Path(tmp.name)
+
+            handler.execute.return_value = CommandResult(
+                command="mail_attachment", success=True,
+                text="1 Anhang", file_paths=[tmp_path],
+            )
+            bridge = MatrixBridge(
+                channel=channel, assistant=assistant, remote_commands=handler,
+            )
+            await channel.connect()
+
+            msg = IncomingMessage(
+                sender="@user:x", room_id="!r:x",
+                body="mail anhang 42", timestamp=1.0,
+            )
+            await bridge._handle_message(msg)
+
+            # send_file wurde aufgerufen
+            assert len(channel._sent_files) == 1
+
+        run_async(_test())

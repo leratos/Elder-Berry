@@ -1571,3 +1571,66 @@ class TestEmailCommands:
 
         assert result.success is True
         assert "Mail 1" in result.text
+
+
+class TestMailAttachmentCommand:
+    def test_parse_mail_anhang(self):
+        handler = RemoteCommandHandler()
+        assert handler.parse_command("mail anhang 12345") == "mail_attachment"
+
+    def test_parse_mail_anhaenge(self):
+        handler = RemoteCommandHandler()
+        assert handler.parse_command("mail anhänge 42") == "mail_attachment"
+
+    def test_parse_anhang_von_mail(self):
+        handler = RemoteCommandHandler()
+        assert handler.parse_command("anhang von mail 99") == "mail_attachment"
+
+    def test_parse_mail_id_anhang(self):
+        handler = RemoteCommandHandler()
+        assert handler.parse_command("mail 55 anhang") == "mail_attachment"
+
+    def test_execute_no_client(self):
+        handler = RemoteCommandHandler()
+        result = handler.execute("mail_attachment", "mail anhang 1")
+        assert result.success is False
+        assert "nicht konfiguriert" in result.text
+
+    def test_execute_no_attachments(self):
+        mock_email = MagicMock()
+        mock_email.get_attachments.return_value = []
+
+        handler = RemoteCommandHandler(email_client=mock_email)
+        result = handler.execute("mail_attachment", "mail anhang 42")
+
+        assert result.success is True
+        assert "Keine Anhänge" in result.text
+
+    def test_execute_with_attachments(self):
+        mock_email = MagicMock()
+        mock_email.get_attachments.return_value = [
+            ("rechnung.pdf", b"%PDF content"),
+            ("bild.png", b"\x89PNG data"),
+        ]
+
+        handler = RemoteCommandHandler(email_client=mock_email)
+        result = handler.execute("mail_attachment", "mail anhang 42")
+
+        assert result.success is True
+        assert "2 Anhang" in result.text
+        assert "rechnung.pdf" in result.text
+        assert "bild.png" in result.text
+        assert len(result.file_paths) == 2
+        # Temp-Dateien aufräumen
+        for p in result.file_paths:
+            p.unlink(missing_ok=True)
+
+    def test_execute_error(self):
+        mock_email = MagicMock()
+        mock_email.get_attachments.side_effect = RuntimeError("IMAP Fehler")
+
+        handler = RemoteCommandHandler(email_client=mock_email)
+        result = handler.execute("mail_attachment", "mail anhang 42")
+
+        assert result.success is False
+        assert "fehlgeschlagen" in result.text

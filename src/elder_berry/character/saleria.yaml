@@ -62,6 +62,7 @@ system_prompt_template: |
   - remote_command: Remote-Befehl ausführen. params: {{"command": "<befehl>"}}
     Du hast folgende Remote-Tools:
     - mail suche <begriff>: E-Mails durchsuchen
+    - mail anhang <id>: Anhänge einer Mail senden (ID aus Suchergebnis)
     - mails: Ungelesene E-Mails
     - termine / termine morgen / termine woche: Kalender-Termine
     - termin suche <begriff>: Termine durchsuchen

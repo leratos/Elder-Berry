@@ -118,6 +118,7 @@ E-Mail:
   mails – Ungelesene E-Mails
   mails 5 – Letzte 5 Tage
   mail suche <Begriff> – Mails nach Betreff/Absender durchsuchen
+  mail anhang <ID> – Anhänge einer Mail senden (ID aus Suchergebnis)
   mail zusammenfassung – LLM-Zusammenfassung ungelesener Mails
 
 Fitness (Berry-Gym):
@@ -240,6 +241,14 @@ MAIL_SEARCH_PATTERN = re.compile(
     re.IGNORECASE,
 )
 
+# Regex für Mail-Anhang: "mail anhang 12345", "anhang von mail 12345"
+MAIL_ATTACHMENT_PATTERN = re.compile(
+    r"(?:mails?\s+anh(?:ang|änge?)\s+(\d+)"
+    r"|anh(?:ang|änge?)\s+(?:von\s+)?(?:mail|email)\s+(\d+)"
+    r"|mail\s+(\d+)\s+anh(?:ang|änge?))",
+    re.IGNORECASE,
+)
+
 # Regex für Termin-Suche: "termin suche Zahnarzt", "suche den termin Zahnarzt"
 TERMIN_SEARCH_PATTERN = re.compile(
     r"(?:termine?\s+(?:suche?|finde?|such)\s+(.+)"
@@ -319,6 +328,9 @@ class CommandResult:
 
     file_path: Path | None = None
     """Pfad zur Datei die gesendet werden soll (z.B. PDF)."""
+
+    file_paths: list[Path] = field(default_factory=list)
+    """Mehrere Dateien zum Senden (z.B. Mail-Anhänge)."""
 
     restart: bool = False
     """True wenn der Bot nach diesem Command neu starten soll."""
@@ -434,7 +446,11 @@ class RemoteCommandHandler:
         if TERMIN_CREATE_PATTERN.match(normalized):
             return "termin_create"
 
-        # Stufe 8e: Mail-Suche ("mail suche Rechnung")
+        # Stufe 8e: Mail-Anhang ("mail anhang 12345")
+        if MAIL_ATTACHMENT_PATTERN.search(normalized):
+            return "mail_attachment"
+
+        # Stufe 8e2: Mail-Suche ("mail suche Rechnung")
         if MAIL_SEARCH_PATTERN.search(normalized):
             return "mail_search"
 
@@ -526,6 +542,9 @@ class RemoteCommandHandler:
 
         if command == "mail_search":
             return self._cmd_mail_search(raw_text)
+
+        if command == "mail_attachment":
+            return self._cmd_mail_attachment(raw_text)
 
         if command == "termin_search":
             return self._cmd_termin_search(raw_text)
@@ -1309,6 +1328,70 @@ class RemoteCommandHandler:
             return CommandResult(
                 command="mail_search", success=False,
                 text=f"Mail-Suche fehlgeschlagen: {e}",
+            )
+
+    def _cmd_mail_attachment(self, raw_text: str) -> CommandResult:
+        """Anhänge einer E-Mail per UID abrufen und als temp-Dateien bereitstellen."""
+        if not self._email_client:
+            return CommandResult(
+                command="mail_attachment", success=False,
+                text="E-Mail nicht konfiguriert.",
+            )
+
+        match = MAIL_ATTACHMENT_PATTERN.search(raw_text.strip())
+        if not match:
+            return CommandResult(
+                command="mail_attachment", success=False,
+                text="Format: mail anhang <Mail-ID>",
+            )
+
+        # Drei alternative Gruppen im Pattern
+        msg_id = (match.group(1) or match.group(2) or match.group(3) or "").strip()
+        if not msg_id:
+            return CommandResult(
+                command="mail_attachment", success=False,
+                text="Keine Mail-ID angegeben.",
+            )
+
+        try:
+            attachments = self._email_client.get_attachments(msg_id)
+
+            if not attachments:
+                return CommandResult(
+                    command="mail_attachment", success=True,
+                    text=f"Keine Anhänge in Mail #{msg_id}.",
+                )
+
+            # Anhänge als temp-Dateien speichern
+            temp_paths: list[Path] = []
+            names: list[str] = []
+            for filename, data in attachments:
+                suffix = Path(filename).suffix or ".bin"
+                tmp = tempfile.NamedTemporaryFile(
+                    suffix=suffix, prefix=f"mail_{msg_id}_",
+                    delete=False,
+                )
+                tmp.write(data)
+                tmp.close()
+                temp_paths.append(Path(tmp.name))
+                names.append(filename)
+
+            text = (
+                f"{len(attachments)} Anhang/Anhänge aus Mail #{msg_id}:\n"
+                + "\n".join(f"  📎 {n}" for n in names)
+            )
+            return CommandResult(
+                command="mail_attachment",
+                success=True,
+                text=text,
+                file_paths=temp_paths,
+            )
+
+        except Exception as e:
+            logger.error("Mail-Anhang fehlgeschlagen (UID %s): %s", msg_id, e)
+            return CommandResult(
+                command="mail_attachment", success=False,
+                text=f"Anhang abrufen fehlgeschlagen: {e}",
             )
 
     def _cmd_termin_search(self, raw_text: str) -> CommandResult:

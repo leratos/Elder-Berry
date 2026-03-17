@@ -88,6 +88,36 @@ class TestNoAction:
         assert result.action_executed is None
         assert result.action_success is False
 
+    def test_chat_history_in_system_prompt(self, assistant, mock_llm):
+        """chat_history wird an den System-Prompt angehängt."""
+        mock_llm.generate.return_value = json.dumps({
+            "action": None,
+            "params": {},
+            "response": "Ja, die Rechnung von RK Bedachung.",
+        })
+        history = "Bisheriger Gesprächsverlauf:\nUser: mail suche RK\nSaleria: 2 Mails gefunden"
+        result = assistant.process(
+            "fasse die erste zusammen", chat_history=history,
+        )
+
+        # System-Prompt muss den Gesprächsverlauf enthalten
+        system_arg = mock_llm.generate.call_args[1].get("system", "")
+        if not system_arg:
+            # Kann auch als Keyword-Arg übergeben worden sein
+            system_arg = mock_llm.generate.call_args.kwargs.get("system", "")
+        assert "Gesprächsverlauf" in system_arg
+        assert "RK" in system_arg
+
+    def test_chat_history_empty_no_extra_text(self, assistant, mock_llm):
+        """Leere chat_history fügt keinen Extra-Text zum Prompt hinzu."""
+        mock_llm.generate.return_value = json.dumps({
+            "action": None, "params": {}, "response": "OK",
+        })
+        assistant.process("Hallo", chat_history="")
+
+        system_arg = mock_llm.generate.call_args.kwargs.get("system", "")
+        assert "Gesprächsverlauf" not in system_arg
+
 
 # ---------------------------------------------------------------------------
 # LLM-Antwort mit Aktion
