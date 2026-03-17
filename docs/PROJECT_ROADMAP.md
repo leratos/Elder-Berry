@@ -74,32 +74,45 @@
 
 ---
 
-## Phase 8 – Personal Assistant Tools 🗓️ GEPLANT
+## Phase 8 – Personal Assistant Tools 🗓️ TEILWEISE ABGESCHLOSSEN
 
-Saleria als echte Alltagsassistentin – Kalender, Erinnerungen, Wetter, Smart Home.
+Saleria als echte Alltagsassistentin – Kalender, E-Mail, Fitness, Wetter, Smart Home.
 
-### TS1 – Wetter (Open-Meteo)
+### ✅ Google Calendar (abgeschlossen)
+- GoogleCalendarClient: Termine lesen, erstellen, löschen, suchen
+- OAuth2-Setup via Setup-Script
+- Natürliche Sprache: "termine morgen", "erstelle termin Zahnarzt morgen 14:00",
+  "lösche den 2. termin", "lösche alle termine"
+- Event-IDs für kontextbasiertes Löschen nach Abfrage
+
+### ✅ E-Mail / IMAP (abgeschlossen)
+- IMAPEmailClient: Ungelesen, Suche, Anhänge senden
+- IMAP UIDs, Body-Preview in Chat-History (LLM kann zusammenfassen)
+- "mail suche Rechnung" → "fasse die mail zusammen" → "schick mir den anhang"
+
+### ✅ Berry-Gym Fitness (abgeschlossen)
+- GymDataClient: Training, Details, Woche, PRs
+
+### ✅ Multi-Turn Chat-History (abgeschlossen)
+- ChatHistory: Sliding Window pro User (10 Nachrichten)
+- Ersetzt Quick-Fix (_last_command_result)
+- Ermöglicht Rückfragen, Kontext-Bezug, "mach das nochmal"
+
+### OFFEN: Wetter (Open-Meteo)
 - WeatherClient (Open-Meteo API, kostenlos, kein API-Key)
 - Standort einmalig in SecretStore: Koordinaten + Stadtname
 - Commands: "wetter", "wetter morgen", "wetter diese woche"
 - Integration: Wetter optional im System-Prompt (Saleria weiß wie das Wetter ist)
 - Neue Klasse: `tools/weather_client.py`
 
-### TS2 – Timer & Erinnerungen
+### OFFEN: Timer & Erinnerungen
 - ReminderStore: SQLite-basiert, neustart-sicher
 - Asyncio-Scheduler im AlertMonitor-Stil
 - Commands: "timer 20 minuten", "erinnere mich um 18 uhr: Wäsche"
 - Matrix-Alert wenn Timer abläuft
 - Neue Klasse: `tools/reminder_store.py`
 
-### TS3 – Google Calendar
-- OAuth2-Setup einmalig via Setup-Script (Browser-Flow, Refresh-Token in SecretStore)
-- GoogleCalendarClient: Termine lesen + erstellen
-- Commands: "termine heute", "was steht morgen an", "termin hinzufügen: [Titel] [Datum/Zeit]"
-- Neue Klasse: `tools/calendar_client.py` (ABC) + `tools/google_calendar.py`
-- Abhängigkeit: `google-api-python-client`, `google-auth-oauthlib`
-
-### TS4 – Home Assistant Client
+### OFFEN: Home Assistant Client
 - HomeAssistantClient: REST API, Long-lived Token in SecretStore
 - Harmony Hub über HA (kein direkter API-Zugriff nötig)
 - Commands: "licht wohnzimmer an/aus", "heizung 21 grad", "szene film", "harmony tv an"
@@ -107,7 +120,7 @@ Saleria als echte Alltagsassistentin – Kalender, Erinnerungen, Wetter, Smart H
 - Neue Klasse: `tools/home_assistant_client.py`
 - Abhängigkeit: nur `httpx` (bereits vorhanden)
 
-### TS5 – Daily Briefing
+### OFFEN: Daily Briefing
 - CronJob (täglich 7:30 Uhr) → Matrix-Nachricht
 - Inhalt: Wetter des Tages + heutige Termine + offene Erinnerungen
 - Optional: kurze Saleria-Persönlichkeits-Note ("Heute wird ein langer Tag...")
@@ -115,7 +128,60 @@ Saleria als echte Alltagsassistentin – Kalender, Erinnerungen, Wetter, Smart H
 
 ---
 
-## Phase 9 – Multimodal + Autonomie 🔭 VISION
+## Phase 9 – Intent-Classifier (Self-Learning Command-Routing) 🧠 GEPLANT
+
+Saleria lernt im laufenden Betrieb, wie der Nutzer Befehle formuliert –
+statt hardcodierter Regex-Patterns und aufgeblähter System-Prompts.
+
+### Konzept
+- **Problem:** Jeder neue Command braucht Regex + Keywords + System-Prompt-Eintrag.
+  System-Prompt wächst, Regex ist fragil, jede Formulierung muss vorhergesehen werden.
+- **Lösung:** Embedding-basiertes Intent-Matching mit Self-Learning.
+  Nutzt bestehende Infrastruktur (Ollama nomic-embed-text + ChromaDB).
+
+### Architektur: IntentClassifier
+- Neue ChromaDB-Collection `command_intents`
+- Pro Command: 5-10 Seed-Beispiele (initiale Trainingsphrasen)
+- Neue Klasse: `comms/intent_classifier.py`
+
+### Flow
+1. User schreibt was → Embedding berechnen (nomic-embed-text, ~20ms, CPU)
+2. Similarity-Search in `command_intents` (top-3 Treffer)
+3. Confidence > Threshold (z.B. 0.85) → Command direkt ausführen (kein API-Call)
+4. Confidence mittel (0.5–0.85) → LLM entscheiden lassen
+5. Confidence niedrig → normales Gespräch (kein Command)
+
+### Self-Learning Loop
+1. LLM routet erfolgreich einen `remote_command` → Phrase wird als neues Beispiel gespeichert
+2. Nächstes Mal erkennt Embedding-Search den Satz direkt → kein LLM-Call nötig
+3. Über Zeit: Regex werden überflüssig, System passt sich an Nutzer-Formulierungen an
+
+### Offene Design-Fragen (vor Implementierung klären)
+- **Parameter-Extraktion:** Intent erkennen reicht nicht – "lösche den 2. termin" braucht
+  auch den Index "2". Lösungen: Regex nur für Parameter, LLM für Parameter, Template-Slots
+- **Threshold-Kalibrierung:** Zu niedrig → False Positives (Gespräch wird als Command erkannt),
+  zu hoch → alles geht ans LLM (kein Vorteil). Braucht Live-Tuning
+- **Konflikte:** "Termin beim Zahnarzt" (Konversation) vs "termin Zahnarzt morgen 14:00" (Command).
+  Kontext-Fenster (Chat-History) könnte helfen
+- **Migration:** Wie bestehende Regex-Commands überführen? Sofort oder graduell?
+- **Feedback-Loop:** User korrigiert falsche Zuordnung → negative Beispiele speichern?
+- **Seed-Daten-Qualität:** Wer schreibt die initialen 5-10 Beispiele pro Command? Automatisch
+  aus bestehender KEYWORD_MAP + HELP_TEXT generieren?
+
+### Was es bringt
+- System-Prompt wird kürzer (LLM braucht nicht mehr die ganze Command-Liste)
+- Keine Regex-Wartung für neue Formulierungen
+- Kein GPU nötig (nomic-embed-text läuft auf CPU)
+- API-Kosten sinken (häufige Commands ohne Anthropic-Call)
+- Personalisiert – lernt die Sprache des Nutzers
+
+### Voraussetzungen
+- Bestehend: Ollama + nomic-embed-text, ChromaDB, Chat-History
+- Neu: IntentClassifier Klasse, Seed-Daten, Threshold-Tuning
+
+---
+
+## Phase 10 – Multimodal + Autonomie 🔭 VISION
 
 ### Kamera-Integration (Multimodal)
 - Webcam oder RTSP-Feed → Bild → OpenRouter Vision (GPT-4o / Claude Vision)
@@ -149,7 +215,7 @@ Saleria als echte Alltagsassistentin – Kalender, Erinnerungen, Wetter, Smart H
 
 ---
 
-## Phase 10 – Hardware-Abschluss 🤖 WARTEND AUF LIEFERUNG
+## Phase 11 – Hardware-Abschluss 🤖 WARTEND AUF LIEFERUNG
 
 - Pepper's Ghost Display am RPi5 in Betrieb nehmen (LayeredSpriteRenderer live)
 - Drehteller-Servo: Servo-Controller via RPi5 GPIO, Befehle über RobotServer

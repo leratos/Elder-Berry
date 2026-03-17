@@ -1673,6 +1673,40 @@ class TestTerminDeleteCommand:
 
         assert len(handler._last_events) == 2
 
+    def test_execute_delete_with_filler_single_event(self):
+        """'lösch den termin bitte' löscht den einzigen Termin."""
+        mock_cal = MagicMock()
+        handler = RemoteCommandHandler(calendar=mock_cal)
+        handler._last_events = self._make_events(1)
+
+        result = handler.execute("termin_delete", "lösch den termin bitte")
+
+        assert result.success is True
+        assert "Termin 1" in result.text
+        mock_cal.delete_event.assert_called_once()
+
+    def test_execute_delete_with_filler_multiple_events_asks(self):
+        """'lösch den termin bitte' bei mehreren Events fragt nach."""
+        mock_cal = MagicMock()
+        handler = RemoteCommandHandler(calendar=mock_cal)
+        handler._last_events = self._make_events(3)
+
+        result = handler.execute("termin_delete", "lösch den termin bitte")
+
+        assert result.success is False
+        assert "Welchen?" in result.text
+
+    def test_execute_delete_morgen_filler(self):
+        """'lösche den termin morgen' bei 1 Event → löscht ihn."""
+        mock_cal = MagicMock()
+        handler = RemoteCommandHandler(calendar=mock_cal)
+        handler._last_events = self._make_events(1)
+
+        result = handler.execute("termin_delete", "lösche den termin morgen")
+
+        assert result.success is True
+        mock_cal.delete_event.assert_called_once()
+
 
 # ---------------------------------------------------------------------------
 # Email-Commands

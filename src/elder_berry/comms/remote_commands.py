@@ -1562,6 +1562,23 @@ class RemoteCommandHandler:
 
         target = (match.group(1) or match.group(2) or "").strip().rstrip(".")
 
+        # Füllwörter entfernen (bitte, mal, doch, morgen ohne Datum-Kontext)
+        filler = {"bitte", "mal", "doch", "jetzt", "sofort", "gleich",
+                  "morgen", "heute", "den", "die", "das", "termin", "termine"}
+        clean_words = [w for w in target.lower().split() if w not in filler]
+        clean_target = " ".join(clean_words).strip()
+
+        # Wenn nach Füllwort-Bereinigung nichts übrig: "lösch den termin (bitte)"
+        # → bei genau 1 Event: diesen löschen
+        if not clean_target and self._last_events:
+            if len(self._last_events) == 1:
+                return self._delete_event_by_index(1)
+            return CommandResult(
+                command="termin_delete", success=False,
+                text=f"Welchen? Es gibt {len(self._last_events)} Termine.\n"
+                     "Sag z.B. 'lösche den 1. termin' oder 'lösche alle termine'.",
+            )
+
         # Index-basiert: "1", "2.", "den 1.", "den ersten"
         index = self._parse_index(target)
         if index is not None:
