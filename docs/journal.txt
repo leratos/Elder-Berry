@@ -1043,3 +1043,107 @@
   - Self-Learning ohne Feedback-Loop birgt Drift-Risiko
   - Kann später reaktiviert werden wenn Command-Anzahl oder Fehlerkennungen das rechtfertigen
 - Phasen umbenannt: Phase 10 → 9 (Multimodal+Autonomie), Phase 11 → 10 (Hardware-Abschluss)
+
+## In Arbeit: Phase 8.1–8.3 – Wetter, Timer & Erinnerungen, Daily Briefing
+- Branch: feature/phase-8-1-weather-timer-briefing
+- Konzept: docs/concepts/phase-8-1-8-3-weather-timer-briefing.md
+- Nächster Schritt: 8.1 – WeatherClient (Open-Meteo API, kein Key nötig)
+
+## Zwischenstand: Phase 8.1 – WeatherClient abgeschlossen (2026-03-17)
+- Neue Datei: src/elder_berry/tools/weather_client.py (WeatherClient + DTOs + WMO-Mapping)
+  - Open-Meteo API (kostenlos, kein Key), Standort aus SecretStore
+  - get_current(), get_today(), get_days(N), format_current(), format_forecast()
+  - WeatherData + WeatherForecast DTOs (frozen), WMO_DESCRIPTIONS + WMO_EMOJIS
+- Neue Datei: tests/test_weather_client.py (22 Tests)
+- Geändert: remote_commands.py (WEATHER_PATTERN, KEYWORD_MAP, HELP_TEXT, _cmd_weather)
+- Geändert: saleria.yaml + assistant.py (Remote-Tool-Liste: wetter)
+- Geändert: start_saleria.py (WeatherClient init + DI)
+- Tests: 220/220 grün (test_weather_client + test_remote_commands)
+- Nächster Schritt: 8.2 – Timer & Erinnerungen
+
+## Zwischenstand: Phase 8.2 – Timer & Erinnerungen abgeschlossen (2026-03-17)
+- Neue Datei: src/elder_berry/tools/reminder_store.py (ReminderStore + Reminder DTO + SQLite)
+  - Pfad: ~/.elder-berry/reminders.db, Thread-safe, WAL-Modus
+  - add(), get_pending(), get_due(), mark_fired(), cancel(), cancel_all(), format_pending()
+  - Alle Zeiten intern UTC, Anzeige in Lokalzeit
+- Neue Datei: src/elder_berry/comms/reminder_scheduler.py (ReminderScheduler)
+  - Daemon-Thread, 15s Poll-Intervall, Callback für Matrix
+  - Retry bei Callback-Fehler (Erinnerung bleibt unfired)
+- Neue Tests: test_reminder_store.py (17), test_reminder_scheduler.py (6)
+- Geändert: remote_commands.py (TIMER/REMINDER/REMINDER_DELETE_PATTERN, KEYWORD_MAP, HELP_TEXT)
+  - _cmd_timer(), _cmd_reminder(), _cmd_erinnerungen(), _cmd_reminder_delete()
+  - _parse_duration(): min/stunde/sek → timedelta
+  - REMINDER_DELETE vor TERMIN_DELETE (Parse-Reihenfolge Fix)
+- Geändert: bridge.py (ReminderScheduler DI + start/stop, AlertMonitor-Pattern)
+- Geändert: saleria.yaml + assistant.py (Timer/Erinnerungen in Tool-Liste)
+- Geändert: start_saleria.py (ReminderStore + ReminderScheduler init)
+- Tests: 44/44 grün (Weather + Timer + TerminDelete)
+- Nächster Schritt: 8.3 – Daily Briefing
+
+## Abgeschlossen: Phase 8.1–8.3 – Wetter, Timer & Erinnerungen, Daily Briefing (2026-03-17)
+- Branch: feature/phase-8-1-weather-timer-briefing
+
+### 8.1 – WeatherClient (Open-Meteo)
+- Neue Datei: src/elder_berry/tools/weather_client.py (WeatherClient + DTOs + WMO-Mapping)
+  - Open-Meteo API (kostenlos, kein Key), Standort aus SecretStore
+  - get_current(), get_today(), get_days(N), format_current(), format_forecast()
+  - WeatherData + WeatherForecast DTOs (frozen), WMO_DESCRIPTIONS + WMO_EMOJIS
+  - Lazy-Init httpx.Client, Emoji-Mapping, Tagesnamen (Heute/Morgen/Di 17.03.)
+- Commands: wetter, wetter morgen, wetter woche, wetter N
+- Keywords: "regnet es", "brauche ich einen schirm", "wie warm", "wettervorhersage"
+
+### 8.2 – Timer & Erinnerungen
+- Neue Datei: src/elder_berry/tools/reminder_store.py (ReminderStore + Reminder DTO + SQLite)
+  - Pfad: ~/.elder-berry/reminders.db, Thread-safe, WAL-Modus
+  - add(), get_pending(), get_due(), mark_fired(), cancel(), cancel_all(), format_pending()
+  - Alle Zeiten intern UTC, Anzeige in Lokalzeit, Naive-Check (ValueError)
+- Neue Datei: src/elder_berry/comms/reminder_scheduler.py (ReminderScheduler)
+  - Daemon-Thread, 15s Poll, Retry bei Callback-Fehler (Erinnerung bleibt unfired)
+- Commands: timer N min/stunde/sek, erinnere mich um/in, erinnerungen, lösche erinnerung
+- _parse_duration(): min/stunde/sek → timedelta
+- Fix: REMINDER_DELETE vor TERMIN_DELETE in Parse-Reihenfolge
+
+### 8.3 – Daily Briefing
+- Neue Datei: src/elder_berry/comms/briefing_scheduler.py (BriefingScheduler)
+  - Daemon-Thread, 30s Poll, einmal täglich zur konfigurierten Uhrzeit (Default 07:30)
+  - build_briefing(): Wetter + Kalender + Erinnerungen kombiniert
+  - Graceful Degradation: fehlende Services → Abschnitt weggelassen
+  - Kein Briefing wenn keine Daten (leerer String)
+- Command: briefing (manuell), Keywords: "guten morgen", "was steht heute an"
+
+### Integration
+- Geändert: src/elder_berry/comms/remote_commands.py
+  - +weather, +reminder_store, +briefing_scheduler DI-Parameter
+  - +WEATHER_PATTERN, +TIMER_PATTERN, +REMINDER_PATTERN, +REMINDER_DELETE_PATTERN
+  - +KEYWORD_MAP: wetter, erinnerungen, briefing
+  - +HELP_TEXT: Wetter, Timer & Erinnerungen, Briefing Sections
+  - +_cmd_weather(), +_cmd_timer(), +_cmd_reminder(), +_cmd_erinnerungen(), +_cmd_reminder_delete(), +_cmd_briefing()
+- Geändert: src/elder_berry/comms/bridge.py
+  - +reminder_scheduler, +briefing_scheduler DI-Parameter
+  - +_start_reminder_scheduler(), +_start_briefing_scheduler() (AlertMonitor-Pattern)
+  - Start/Stop in _async_main(), stop(), _perform_restart()
+- Geändert: src/elder_berry/character/saleria.yaml + core/assistant.py (Remote-Tool-Liste)
+- Geändert: scripts/start_saleria.py (WeatherClient, ReminderStore, ReminderScheduler, BriefingScheduler)
+
+### Tests
+- Neue Dateien:
+  - tests/test_weather_client.py (22 Tests)
+  - tests/test_reminder_store.py (17 Tests)
+  - tests/test_reminder_scheduler.py (6 Tests)
+  - tests/test_briefing_scheduler.py (10 Tests)
+- Erweitert: tests/test_remote_commands.py (+30 Tests: Weather, Timer, Briefing)
+- Tests: 934 passed, 36 skipped (alle grün, vorbestehende Skips: cryptography, pydub, chromadb, anthropic, faster-whisper)
+
+### Setup für Live-Betrieb
+- Wetter: SecretStore().set("weather_latitude", "52.52") etc.
+- Timer/Erinnerungen: funktioniert sofort (SQLite, kein Setup)
+- Briefing: automatisch wenn Wetter/Kalender/Erinnerungen konfiguriert
+
+## Abgeschlossen: Bugfix – Mail per ID abrufen ("fasse mail #99 zusammen") (2026-03-17)
+- Bug: "fasse mail #99 zusammen" wurde als MAIL_SEARCH_PATTERN gefangen → suchte "#99" statt Mail 99 zu holen
+- Neue Methode: IMAPEmailClient.get_by_uid(msg_id) → EmailMessage | None
+- Neues Pattern: MAIL_ID_PATTERN ("mail 99", "mail #99", "fasse mail #99 zusammen", "zeig mail 42")
+- Neuer Handler: _cmd_mail_by_id() → text (Kurzinfo) + history_text (Body für LLM-Kontext)
+- Parse-Reihenfolge: MAIL_ID_PATTERN VOR MAIL_ATTACHMENT_PATTERN und MAIL_SEARCH_PATTERN
+- HELP_TEXT aktualisiert
+- Tests: +12 neue Tests (3 get_by_uid + 6 parse + 3 execute)

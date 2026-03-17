@@ -402,3 +402,57 @@ class TestFormat:
         ]
         result = client.format_mails_detailed(mails)
         assert "(ID: 42)" in result
+
+
+# ---------------------------------------------------------------------------
+# get_by_uid()
+# ---------------------------------------------------------------------------
+
+class TestGetByUid:
+    def test_get_by_uid_success(self):
+        """Mail per UID abrufen → EmailMessage zurück."""
+        client = IMAPEmailClient("host", "user", "pass")
+
+        # Minimale RFC822 Mail
+        raw_mail = (
+            b"From: sender@test.de\r\n"
+            b"Subject: Testbetreff\r\n"
+            b"Date: Mon, 17 Mar 2026 10:00:00 +0100\r\n"
+            b"\r\n"
+            b"Dies ist der Body."
+        )
+
+        mock_conn = MagicMock()
+        mock_conn.uid.return_value = ("OK", [(b"1 (RFC822 ...)", raw_mail)])
+        mock_conn.select.return_value = ("OK", [b"1"])
+
+        with patch.object(client, "_connect", return_value=mock_conn):
+            result = client.get_by_uid("99")
+
+        assert result is not None
+        assert result.subject == "Testbetreff"
+        assert result.sender == "sender@test.de"
+        assert "Body" in result.body_preview
+        assert result.msg_id == "99"
+
+    def test_get_by_uid_not_found(self):
+        """Mail nicht gefunden → None."""
+        client = IMAPEmailClient("host", "user", "pass")
+
+        mock_conn = MagicMock()
+        mock_conn.uid.return_value = ("OK", [None])
+        mock_conn.select.return_value = ("OK", [b"1"])
+
+        with patch.object(client, "_connect", return_value=mock_conn):
+            result = client.get_by_uid("999")
+
+        assert result is None
+
+    def test_get_by_uid_connection_error(self):
+        """Verbindungsfehler → None (kein Crash)."""
+        client = IMAPEmailClient("host", "user", "pass")
+
+        with patch.object(client, "_connect", side_effect=Exception("Timeout")):
+            result = client.get_by_uid("99")
+
+        assert result is None

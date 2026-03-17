@@ -413,6 +413,47 @@ def run_matrix(assistant, stt=None, avatar=None, audio_converter=None):
         except Exception as e:
             logger.warning("Berry-Gym nicht verfügbar: %s", e)
 
+    # Weather (optional)
+    weather = None
+    try:
+        from elder_berry.tools.weather_client import WeatherClient
+        weather = WeatherClient(secret_store=secrets)
+        logger.info("Weather: aktiv")
+    except Exception as e:
+        logger.warning("Weather nicht verfügbar: %s", e)
+
+    # Reminders (optional)
+    reminder_store = None
+    reminder_scheduler = None
+    try:
+        from elder_berry.tools.reminder_store import ReminderStore
+        from elder_berry.comms.reminder_scheduler import ReminderScheduler
+        reminder_store = ReminderStore()
+        # Scheduler mit Platzhalter-Callback (Bridge setzt den echten)
+        reminder_scheduler = ReminderScheduler(
+            store=reminder_store,
+            send_reminder=lambda user_id, text: None,
+        )
+        logger.info("Reminders: aktiv (DB: %s)", reminder_store._db_path)
+    except Exception as e:
+        logger.warning("Reminders nicht verfügbar: %s", e)
+
+    # Daily Briefing (optional)
+    briefing_scheduler = None
+    try:
+        from elder_berry.comms.briefing_scheduler import BriefingScheduler
+        briefing_scheduler = BriefingScheduler(
+            send_briefing=lambda text: None,  # Bridge setzt den echten Callback
+            calendar=calendar,
+            weather=weather,
+            reminder_store=reminder_store,
+            briefing_hour=7,
+            briefing_minute=30,
+        )
+        logger.info("Daily Briefing: aktiv (07:30)")
+    except Exception as e:
+        logger.warning("Daily Briefing nicht verfügbar: %s", e)
+
     # RemoteCommandHandler – alle Dependencies übergeben
     remote = RemoteCommandHandler(
         system_monitor=SystemMonitor(),
@@ -423,6 +464,9 @@ def run_matrix(assistant, stt=None, avatar=None, audio_converter=None):
         calendar=calendar,
         email_client=email_client,
         gym_client=gym_client,
+        weather=weather,
+        reminder_store=reminder_store,
+        briefing_scheduler=briefing_scheduler,
     )
 
     # ClaudeAgent (optional)
@@ -458,6 +502,8 @@ def run_matrix(assistant, stt=None, avatar=None, audio_converter=None):
         alert_room_id=room_id,
         error_log_dir=log_dir,
         stt=stt,
+        reminder_scheduler=reminder_scheduler,
+        briefing_scheduler=briefing_scheduler,
     )
 
     logger.info("Matrix-Bridge startet – Saleria ist online")

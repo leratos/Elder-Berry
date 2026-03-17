@@ -60,9 +60,14 @@ Verfügbare Aktionen:
   - training: Trainings-Zusammenfassung (Berry-Gym)
   - training details: Letztes Training mit Sätzen
   - prs: Personal Records
+  - wetter / wetter morgen / wetter woche: Wetter und Vorhersage
+  - timer <dauer>: Timer setzen (z.B. "timer 20 min")
+  - erinnere mich um/in <zeit>: <nachricht>: Erinnerung setzen
+  - erinnerungen: Offene Erinnerungen anzeigen
+  - briefing: Tagesübersicht (Wetter, Termine, Erinnerungen)
   - screenshot: Screenshot aufnehmen
   - status: Systemstatus
-  Wenn der Nutzer nach Mails, Terminen, Training oder ähnlichem fragt,
+  Wenn der Nutzer nach Mails, Terminen, Training, Wetter oder ähnlichem fragt,
   nutze remote_command mit dem passenden Befehl als "command"-Parameter.
   Beispiel: Nutzer fragt "Suche das Angebot von RK Bedachung in meinen Mails"
   → {{"action": "remote_command", "params": {{"command": "mail suche RK Bedachung"}}, "response": "Ich suche nach Mails von RK Bedachung..."}}
