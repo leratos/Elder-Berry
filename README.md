@@ -278,6 +278,75 @@ tests/                # 815+ unit + integration tests
 | Fallback | Ollama phi4:14b | Offline mode, no internet required |
 | Agent | Anthropic Sonnet 4.6 | Project tasks via Matrix (journal, docs, tests) |
 
+## RPi5 Setup (Avatar Display)
+
+The RPi5 runs the avatar display (Pepper's Ghost hologram) and the Robot API.
+
+### Install
+
+```bash
+cd /home/pi/elder-berry
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -e ".[robot,avatar]"
+pip install pygame-ce
+```
+
+### Manual Start
+
+```bash
+SDL_VIDEODRIVER=kmsdrm python scripts/start_rpi5.py              # Fullscreen (DSI)
+SDL_VIDEODRIVER=kmsdrm python scripts/start_rpi5.py --windowed   # Debug
+```
+
+### Autostart (systemd)
+
+```bash
+sudo nano /etc/systemd/system/elder-berry.service
+```
+
+```ini
+[Unit]
+Description=Elder-Berry Avatar Display
+After=network.target
+
+[Service]
+Type=simple
+User=pi
+WorkingDirectory=/home/pi/elder-berry
+ExecStart=/home/pi/elder-berry/.venv/bin/python scripts/start_rpi5.py
+Restart=on-failure
+RestartSec=5
+Environment=SDL_VIDEODRIVER=kmsdrm
+Environment=DISPLAY=:0
+
+[Install]
+WantedBy=multi-user.target
+```
+
+```bash
+sudo systemctl daemon-reload
+sudo systemctl enable elder-berry    # Autostart on boot
+sudo systemctl start elder-berry     # Start now
+sudo systemctl status elder-berry    # Check status
+sudo journalctl -u elder-berry -f    # Live logs
+```
+
+### Tower Connection
+
+On the Tower, set the RPi5 IP in SecretStore:
+
+```python
+from elder_berry.core.secret_store import SecretStore
+SecretStore().set("robot_host", "http://192.168.50.220:8000")
+```
+
+The Tower then controls the avatar automatically via `RobotClient`:
+
+- LLM emotion → `POST /avatar/emotion` → display changes
+- TTS speaking → lip-sync on display
+- Health check → `GET /health`
+
 ## Project Family
 
 - [last-strawberry.com](https://last-strawberry.com)

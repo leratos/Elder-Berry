@@ -28,6 +28,11 @@ BLINK_DURATION = 0.15  # Sekunden
 # Lip-Sync-Timing
 LIP_SYNC_INTERVAL = 0.18  # Sekunden zwischen Mundwechsel
 
+# Idle-Animationen
+IDLE_MIN_INTERVAL = 5.0   # Sekunden zwischen Idle-Aktionen
+IDLE_MAX_INTERVAL = 15.0
+IDLE_ACTION_DURATION = 2.0  # Sekunden die eine Idle-Aktion dauert
+
 
 @dataclass(frozen=True)
 class EmotionLayers:
@@ -199,6 +204,8 @@ class LayeredSpriteRenderer(AvatarRenderer):
             self._current_emotion = emotion
 
     def show_speaking(self, is_speaking: bool) -> None:
+        if is_speaking == self._is_speaking:
+            return  # Kein Zustandswechsel → kein Reset
         self._is_speaking = is_speaking
         if is_speaking:
             self._lip_sync_index = 0
