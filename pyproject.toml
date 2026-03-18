@@ -67,6 +67,10 @@ tools = [
 documents = [
     "pymupdf>=1.23",
 ]
+computer-use = [
+    "Pillow>=10.0",
+    "mss>=9.0",
+]
 
 [tool.setuptools.packages.find]
 where = ["src"]

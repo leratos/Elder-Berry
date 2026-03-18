@@ -2448,3 +2448,145 @@ class TestAudioExecute:
         assert result.success is True
         # Modus bleibt matrix_only
         assert router.mode == AudioOutputMode.MATRIX_ONLY
+
+
+# ===========================================================================
+# Computer Use – Pattern, Parse, Execute
+# ===========================================================================
+
+class TestComputerUsePattern:
+    """Tests für COMPUTER_USE_PATTERN."""
+
+    def test_klick_auf(self):
+        from elder_berry.comms.remote_commands import COMPUTER_USE_PATTERN
+        assert COMPUTER_USE_PATTERN.match("klick auf den OK-Button")
+
+    def test_klicke_auf(self):
+        from elder_berry.comms.remote_commands import COMPUTER_USE_PATTERN
+        assert COMPUTER_USE_PATTERN.match("klicke auf das Suchfeld")
+
+    def test_tippe(self):
+        from elder_berry.comms.remote_commands import COMPUTER_USE_PATTERN
+        assert COMPUTER_USE_PATTERN.match("tippe Hello World")
+
+    def test_scroll_runter(self):
+        from elder_berry.comms.remote_commands import COMPUTER_USE_PATTERN
+        assert COMPUTER_USE_PATTERN.match("scroll runter")
+
+    def test_scroll_hoch(self):
+        from elder_berry.comms.remote_commands import COMPUTER_USE_PATTERN
+        assert COMPUTER_USE_PATTERN.match("scroll hoch")
+
+    def test_drueck(self):
+        from elder_berry.comms.remote_commands import COMPUTER_USE_PATTERN
+        assert COMPUTER_USE_PATTERN.match("drück Strg+S")
+
+    def test_druecke(self):
+        from elder_berry.comms.remote_commands import COMPUTER_USE_PATTERN
+        assert COMPUTER_USE_PATTERN.match("drücke Enter")
+
+    def test_klick_mal_auf(self):
+        from elder_berry.comms.remote_commands import COMPUTER_USE_PATTERN
+        assert COMPUTER_USE_PATTERN.match("klick mal auf das X oben rechts")
+
+    def test_auf_element_klicken(self):
+        from elder_berry.comms.remote_commands import COMPUTER_USE_PATTERN
+        assert COMPUTER_USE_PATTERN.match("auf accept klicken")
+
+    def test_no_match_random(self):
+        from elder_berry.comms.remote_commands import COMPUTER_USE_PATTERN
+        assert COMPUTER_USE_PATTERN.match("hallo wie geht es dir") is None
+
+
+class TestComputerUseParseCommand:
+    """Tests für parse_command mit Computer-Use-Anweisungen."""
+
+    def test_klick_auf(self):
+        handler = RemoteCommandHandler()
+        assert handler.parse_command("klick auf den OK-Button") == "computer_use"
+
+    def test_tippe(self):
+        handler = RemoteCommandHandler()
+        assert handler.parse_command("tippe Hello World") == "computer_use"
+
+    def test_scroll_runter(self):
+        handler = RemoteCommandHandler()
+        assert handler.parse_command("scroll runter") == "computer_use"
+
+    def test_drueck(self):
+        handler = RemoteCommandHandler()
+        assert handler.parse_command("drück Strg+S") == "computer_use"
+
+    def test_keyword_klick_auf_in_sentence(self):
+        handler = RemoteCommandHandler()
+        # "klick auf" als Keyword im Satz → "computer_use"
+        assert handler.parse_command("bitte klick auf den Discord Button") == "computer_use"
+
+    def test_klick_mal_auf(self):
+        handler = RemoteCommandHandler()
+        assert handler.parse_command("klick mal auf das X oben rechts") == "computer_use"
+
+    def test_kannst_du_auf_klicken(self):
+        handler = RemoteCommandHandler()
+        assert handler.parse_command("kannst du auf accept klicken") == "computer_use"
+
+    def test_auf_element_klicken(self):
+        handler = RemoteCommandHandler()
+        assert handler.parse_command("auf accept klicken") == "computer_use"
+
+
+class TestComputerUseExecute:
+    """Tests für execute('computer_use', ...)."""
+
+    def test_no_controller(self):
+        handler = RemoteCommandHandler()
+        result = handler.execute("computer_use", "klick auf OK")
+        assert result.success is False
+        assert "nicht verfügbar" in result.text
+
+    def test_successful_execution(self):
+        from unittest.mock import MagicMock
+        from elder_berry.llm.anthropic_client import ComputerUseAction
+        from elder_berry.actions.computer_use import ComputerUseResult
+
+        mock_cu = MagicMock()
+        mock_cu.execute_instruction.return_value = ComputerUseResult(
+            action=ComputerUseAction(action="left_click", coordinate=(500, 300)),
+            success=True,
+            message="Aktion ausgeführt: left_click bei (500, 300)",
+            verification_image_path=None,
+        )
+        handler = RemoteCommandHandler(computer_use=mock_cu)
+        result = handler.execute("computer_use", "klick auf den Button")
+        assert result.success is True
+        assert "Aktion ausgeführt" in result.text
+        mock_cu.execute_instruction.assert_called_once_with("klick auf den Button")
+
+    def test_execution_error(self):
+        from unittest.mock import MagicMock
+        mock_cu = MagicMock()
+        mock_cu.execute_instruction.side_effect = RuntimeError("Boom")
+        handler = RemoteCommandHandler(computer_use=mock_cu)
+        result = handler.execute("computer_use", "klick auf OK")
+        assert result.success is False
+        assert "fehlgeschlagen" in result.text
+
+    def test_with_verification_image(self, tmp_path):
+        from unittest.mock import MagicMock
+        from elder_berry.llm.anthropic_client import ComputerUseAction
+        from elder_berry.actions.computer_use import ComputerUseResult
+
+        img = tmp_path / "verify.png"
+        img.write_bytes(b"\x89PNG")
+
+        mock_cu = MagicMock()
+        mock_cu.execute_instruction.return_value = ComputerUseResult(
+            action=ComputerUseAction(action="left_click", coordinate=(100, 200)),
+            success=True,
+            message="OK",
+            verification_image_path=img,
+        )
+        handler = RemoteCommandHandler(computer_use=mock_cu)
+        result = handler.execute("computer_use", "klick auf X")
+        assert result.success is True
+        assert result.image_path == img

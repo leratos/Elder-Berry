@@ -488,6 +488,24 @@ def run_matrix(assistant, stt=None, avatar=None, audio_converter=None):
         "verfügbar" if local_audio_available else "nicht verfügbar",
     )
 
+    # ComputerUseController (Phase 13) – Vision-gesteuerte PC-Bedienung
+    computer_use = None
+    if assistant._controller:
+        try:
+            from elder_berry.actions.computer_use import ComputerUseController
+            from elder_berry.llm.anthropic_client import AnthropicClient
+            cu_client = AnthropicClient()
+            if cu_client.is_available():
+                computer_use = ComputerUseController(
+                    anthropic_client=cu_client,
+                    controller=assistant._controller,
+                )
+                logger.info("ComputerUseController: aktiv (Monitor %d)", computer_use.monitor_index)
+            else:
+                logger.info("ComputerUseController: inaktiv (ANTHROPIC_API_KEY fehlt)")
+        except Exception as e:
+            logger.warning("ComputerUseController nicht verfügbar: %s", e)
+
     # RemoteCommandHandler – alle Dependencies übergeben
     remote = RemoteCommandHandler(
         system_monitor=SystemMonitor(),
@@ -503,6 +521,7 @@ def run_matrix(assistant, stt=None, avatar=None, audio_converter=None):
         briefing_scheduler=briefing_scheduler,
         document_reader=document_reader,
         audio_router=audio_router,
+        computer_use=computer_use,
     )
 
     # ClaudeAgent (optional)
@@ -544,13 +563,17 @@ def run_matrix(assistant, stt=None, avatar=None, audio_converter=None):
         audio_router=audio_router,
     )
 
-    # AudioDashboard (Web-UI für Audio-Routing)
+    # Settings-Dashboard (Web-UI für Audio-Routing + Monitor-Auswahl)
     try:
         from elder_berry.web.audio_dashboard import AudioDashboard
-        dashboard = AudioDashboard(audio_router=audio_router, port=8090)
+        dashboard = AudioDashboard(
+            audio_router=audio_router,
+            computer_use=computer_use,
+            port=8090,
+        )
         dashboard.start()
     except Exception as e:
-        logger.warning("AudioDashboard nicht gestartet: %s", e)
+        logger.warning("Settings-Dashboard nicht gestartet: %s", e)
 
     logger.info("Matrix-Bridge startet – Saleria ist online")
     print(f"\n─── Saleria Matrix-Modus ───")

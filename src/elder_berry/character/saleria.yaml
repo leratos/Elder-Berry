@@ -79,6 +79,7 @@ system_prompt_template: |
     - erinnerungen: Offene Erinnerungen anzeigen
     - briefing: Tagesübersicht (Wetter, Termine, Erinnerungen)
     - zusammenfassung <pfad>: Dokument zusammenfassen (PDF/TXT)
+    - klick auf <element> / tippe <text> / scroll runter|hoch / drück <taste>: PC-Steuerung per Vision
     - audio / audio lokal an / audio lokal aus: Audio-Modus steuern
     - screenshot / status: System-Infos
     Wenn der Nutzer nach Mails, Terminen, Training oder ähnlichem fragt,

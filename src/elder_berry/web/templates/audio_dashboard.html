@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Elder-Berry Audio</title>
+    <title>Elder-Berry Settings</title>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body {
@@ -12,14 +12,20 @@
             color: #e0e0e0;
             display: flex;
             justify-content: center;
-            align-items: center;
+            align-items: flex-start;
+            padding: 2rem;
             min-height: 100vh;
+        }
+        .container {
+            display: flex;
+            flex-direction: column;
+            gap: 1.5rem;
+            width: 380px;
         }
         .card {
             background: #16213e;
             border-radius: 16px;
-            padding: 2.5rem;
-            width: 360px;
+            padding: 2rem;
             box-shadow: 0 8px 32px rgba(0,0,0,0.3);
             text-align: center;
         }
@@ -28,10 +34,15 @@
             margin-bottom: 0.3rem;
             color: #a8d5a2;
         }
+        h2 {
+            font-size: 1.1rem;
+            margin-bottom: 0.3rem;
+            color: #a8d5a2;
+        }
         .subtitle {
             font-size: 0.85rem;
             color: #888;
-            margin-bottom: 2rem;
+            margin-bottom: 1.5rem;
         }
         .status {
             font-size: 1.1rem;
@@ -63,73 +74,169 @@
             cursor: not-allowed;
         }
         .info {
-            margin-top: 1.2rem;
+            margin-top: 1rem;
             font-size: 0.8rem;
             color: #666;
+        }
+        select {
+            width: 100%;
+            padding: 0.8rem;
+            font-size: 1rem;
+            border: 1px solid #333;
+            border-radius: 10px;
+            background: #0f3460;
+            color: #e0e0e0;
+            cursor: pointer;
+            appearance: auto;
+        }
+        select:focus {
+            outline: 2px solid #533483;
+        }
+        .monitor-info {
+            font-size: 0.85rem;
+            color: #999;
+            margin-top: 0.5rem;
+        }
+        .unavailable {
+            color: #666;
+            font-style: italic;
         }
     </style>
 </head>
 <body>
-    <div class="card">
-        <h1>Elder-Berry Audio</h1>
-        <p class="subtitle">Audio-Routing Steuerung</p>
+    <div class="container">
+        <!-- Audio Card -->
+        <div class="card">
+            <h2>Audio-Routing</h2>
+            <p class="subtitle">Wiedergabe-Modus</p>
 
-        <div class="status" id="status">
-            <span class="mode-label" id="modeLabel">Lade...</span>
+            <div class="status" id="status">
+                <span class="mode-label" id="modeLabel">Lade...</span>
+            </div>
+
+            <button class="toggle-btn" id="toggleBtn" onclick="toggleAudio()" disabled>
+                Lade...
+            </button>
+
+            <p class="info" id="audioInfo"></p>
         </div>
 
-        <button class="toggle-btn" id="toggleBtn" onclick="toggle()" disabled>
-            Lade...
-        </button>
+        <!-- Monitor Card -->
+        <div class="card" id="monitorCard">
+            <h2>Computer Use Monitor</h2>
+            <p class="subtitle">Bildschirm für Vision-Steuerung</p>
 
-        <p class="info" id="info"></p>
+            <select id="monitorSelect" onchange="setMonitor(this.value)">
+                <option value="">Lade...</option>
+            </select>
+
+            <p class="monitor-info" id="monitorInfo"></p>
+        </div>
     </div>
 
     <script>
+        // --- Audio ---
         const statusEl = document.getElementById("status");
         const labelEl = document.getElementById("modeLabel");
         const btnEl = document.getElementById("toggleBtn");
-        const infoEl = document.getElementById("info");
+        const audioInfoEl = document.getElementById("audioInfo");
 
-        function updateUI(data) {
+        function updateAudioUI(data) {
             const isLocal = data.mode === "matrix_and_local";
-            labelEl.textContent = isLocal
-                ? "Matrix + Lokal"
-                : "Nur Matrix";
+            labelEl.textContent = isLocal ? "Matrix + Lokal" : "Nur Matrix";
             statusEl.className = "status" + (isLocal ? " local" : "");
             btnEl.disabled = !data.local_available;
 
             if (!data.local_available) {
                 btnEl.textContent = "Lokale Wiedergabe nicht verfügbar";
-                infoEl.textContent = "sounddevice/AgentClient nicht erkannt";
+                audioInfoEl.textContent = "sounddevice/AgentClient nicht erkannt";
             } else {
                 btnEl.textContent = isLocal
                     ? "Lokale Wiedergabe deaktivieren"
                     : "Lokale Wiedergabe aktivieren";
-                infoEl.textContent = "";
+                audioInfoEl.textContent = "";
             }
         }
 
-        async function fetchStatus() {
+        async function fetchAudioStatus() {
             try {
                 const r = await fetch("/api/audio");
-                updateUI(await r.json());
+                updateAudioUI(await r.json());
             } catch (e) {
                 labelEl.textContent = "Verbindungsfehler";
             }
         }
 
-        async function toggle() {
+        async function toggleAudio() {
             btnEl.disabled = true;
             try {
                 const r = await fetch("/api/audio", { method: "POST" });
-                updateUI(await r.json());
+                updateAudioUI(await r.json());
             } catch (e) {
                 labelEl.textContent = "Fehler";
             }
         }
 
-        fetchStatus();
+        // --- Monitor ---
+        const monitorSelect = document.getElementById("monitorSelect");
+        const monitorInfo = document.getElementById("monitorInfo");
+        const monitorCard = document.getElementById("monitorCard");
+
+        async function fetchMonitors() {
+            try {
+                const r = await fetch("/api/monitors");
+                const data = await r.json();
+
+                if (!data.available) {
+                    monitorSelect.innerHTML = '<option value="">Computer Use nicht aktiv</option>';
+                    monitorSelect.disabled = true;
+                    monitorInfo.textContent = "ComputerUseController nicht konfiguriert";
+                    return;
+                }
+
+                monitorSelect.innerHTML = "";
+                data.monitors.forEach(m => {
+                    const opt = document.createElement("option");
+                    opt.value = m.index;
+                    opt.textContent = `Monitor ${m.index}: ${m.width}x${m.height}`;
+                    if (m.index === data.selected) opt.selected = true;
+                    monitorSelect.appendChild(opt);
+                });
+
+                const sel = data.monitors.find(m => m.index === data.selected);
+                if (sel) {
+                    monitorInfo.textContent = `Aktiv: ${sel.width}x${sel.height} (Position: ${sel.left}, ${sel.top})`;
+                }
+            } catch (e) {
+                monitorInfo.textContent = "Verbindungsfehler";
+            }
+        }
+
+        async function setMonitor(index) {
+            if (!index) return;
+            try {
+                const r = await fetch("/api/monitor", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ index: parseInt(index) }),
+                });
+                const data = await r.json();
+                if (data.error) {
+                    monitorInfo.textContent = data.error;
+                } else {
+                    const sel = data.monitors.find(m => m.index === data.selected);
+                    if (sel) {
+                        monitorInfo.textContent = `Aktiv: ${sel.width}x${sel.height} (Position: ${sel.left}, ${sel.top})`;
+                    }
+                }
+            } catch (e) {
+                monitorInfo.textContent = "Fehler beim Setzen";
+            }
+        }
+
+        // Init
+        fetchAudioStatus();
+        fetchMonitors();
     </script>
 </body>
 </html>
