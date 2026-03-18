@@ -1294,9 +1294,23 @@
 - Neue Tests: 26 (DocumentReader) + 14 (Remote Commands) = 40
 
 ### Zwei Wege zur Zusammenfassung
-1. Remote Command: "zusammenfassung C:\...\datei.pdf" → DirectReader → Text an Matrix
+1. Remote Command: "zusammenfassung C:\...\datei.pdf" → DocumentReader → LLM-Zusammenfassung → Matrix
 2. Matrix File-Upload: PDF/TXT hochladen → Download → DocumentReader → LLM → Zusammenfassung
-   - LLM-Zusammenfassung nur bei File-Upload (Kontext-reich)
-   - Remote Command liefert den Rohtext (LLM entscheidet über Zusammenfassung via Fallback)
+- Beide Wege: Rohtext in Chat-History (Rückfragen möglich), LLM-Zusammenfassung an User
+
+### Nachbesserungen (gleicher Chat)
+- Fix: Remote Command schickt jetzt LLM-Zusammenfassung statt Rohtext an User
+  - text = Header (📄 datei.pdf), history_text = Rohtext für Rückfragen
+  - Bridge erkennt document_summary → schickt history_text ans LLM
+- Fix: DocumentReader + Bridge in start_saleria.py verdrahtet (fehlte → "nicht verfügbar")
+- Fix: Audio-Routing vereinheitlicht – Audio wird immer an Matrix gesendet, nie lokal abgespielt
+  - _audio_to_matrix Property + _send_audio_if_available() Helper in Bridge
+  - Alle assistant.process()-Aufrufe setzen audio_output wenn AudioConverter verfügbar
+  - Betrifft: _handle_assistant_message, _handle_document_summary, _handle_file_message
+
+### Roadmap-Änderung
+- Phase 11: ✅ ABGESCHLOSSEN (Dokument-Zusammenfassung)
+- Phase 12 NEU: Audio-Routing + Web-Interface (AudioOutputMode Flag, FastAPI Toggle)
+  - Später: APDS-9960 Näherungssensor als automatischer Trigger
 
 ### Nächster Schritt

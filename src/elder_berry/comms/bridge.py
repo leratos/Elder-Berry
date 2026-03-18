@@ -133,6 +133,14 @@ class MatrixBridge:
         self._chat_history = ChatHistory(max_messages=10)
 
     @property
+    def _audio_to_matrix(self) -> bool:
+        """True wenn TTS-Audio als Datei generiert werden soll (für Matrix)."""
+        return (
+            self._audio_converter is not None
+            and self._audio_converter.ffmpeg_available
+        )
+
+    @property
     def is_running(self) -> bool:
         """True wenn die Bridge aktiv ist."""
         return self._running
@@ -449,8 +457,11 @@ class MatrixBridge:
                 f"Fasse den Inhalt zusammen."
             )
             chat_context = self._chat_history.format_for_prompt(msg.sender)
+
+            # Audio-Datei generieren wenn AudioConverter verfügbar
+            tmp_wav = Path(tempfile.mktemp(suffix=".wav")) if self._audio_to_matrix else None
             llm_result = await loop.run_in_executor(
-                None, self._assistant.process, summary_prompt, None, chat_context,
+                None, self._assistant.process, summary_prompt, tmp_wav, chat_context,
             )
 
             # Header + LLM-Zusammenfassung senden
@@ -461,6 +472,9 @@ class MatrixBridge:
             else:
                 # Fallback: Header senden wenn LLM keine Antwort liefert
                 await self._channel.send_text(msg.room_id, result.text)
+
+            # Audio senden (WAV → OGG → Matrix)
+            await self._send_audio_if_available(msg.room_id, llm_result, tmp_wav)
 
         except Exception as e:
             logger.error("Dokument-Zusammenfassung LLM fehlgeschlagen: %s", e)
@@ -639,8 +653,11 @@ class MatrixBridge:
             )
 
             chat_context = self._chat_history.format_for_prompt(msg.sender)
+
+            # Audio-Datei generieren wenn AudioConverter verfügbar
+            tmp_wav = Path(tempfile.mktemp(suffix=".wav")) if self._audio_to_matrix else None
             llm_result = await loop.run_in_executor(
-                None, self._assistant.process, summary_prompt, None, chat_context,
+                None, self._assistant.process, summary_prompt, tmp_wav, chat_context,
             )
 
             # Antwort senden
@@ -651,6 +668,9 @@ class MatrixBridge:
                 response = f"{header}\n\n{llm_result.response}"
                 self._chat_history.add(msg.sender, "assistant", llm_result.response)
                 await self._channel.send_text(msg.room_id, response)
+
+            # Audio senden (WAV → OGG → Matrix)
+            await self._send_audio_if_available(msg.room_id, llm_result, tmp_wav)
 
         except Exception as e:
             logger.error("Datei-Verarbeitung fehlgeschlagen (%s): %s", file_name, e)
@@ -669,7 +689,6 @@ class MatrixBridge:
     async def _handle_assistant_message(self, msg: IncomingMessage) -> None:
         """Delegiert an Assistant.process() (bestehender Flow)."""
         tmp_wav: Path | None = None
-        tmp_ogg: Path | None = None
 
         try:
             loop = asyncio.get_running_loop()
@@ -681,18 +700,12 @@ class MatrixBridge:
             user_input = msg.body
             chat_context = self._chat_history.format_for_prompt(msg.sender)
 
-            # Audio-Modus: TTS in Datei generieren statt abspielen
-            if self._audio_converter and self._audio_converter.ffmpeg_available:
-                tmp_wav = Path(tempfile.mktemp(suffix=".wav"))
-                result = await loop.run_in_executor(
-                    None, self._assistant.process, user_input,
-                    tmp_wav, chat_context,
-                )
-            else:
-                result = await loop.run_in_executor(
-                    None, self._assistant.process, user_input,
-                    None, chat_context,
-                )
+            # Audio immer als Datei generieren (→ Matrix), nie lokal abspielen
+            tmp_wav = Path(tempfile.mktemp(suffix=".wav")) if self._audio_to_matrix else None
+            result = await loop.run_in_executor(
+                None, self._assistant.process, user_input,
+                tmp_wav, chat_context,
+            )
 
             # LLM hat remote_command als Aktion gewählt → an CommandHandler weiterleiten
             if (
@@ -712,13 +725,7 @@ class MatrixBridge:
                 await self._channel.send_text(msg.room_id, result.response)
 
             # Audio senden (WAV → OGG → Matrix)
-            if result.audio_path and result.audio_path.exists():
-                tmp_ogg = result.audio_path.with_suffix(".ogg")
-                ogg_path, _duration = self._audio_converter.to_ogg_opus(
-                    result.audio_path, output_path=tmp_ogg,
-                )
-                await self._channel.send_audio(msg.room_id, ogg_path)
-                logger.debug("Sprachnachricht gesendet: %s", ogg_path.name)
+            await self._send_audio_if_available(msg.room_id, result, tmp_wav)
 
         except Exception as e:
             logger.error("Fehler bei Nachrichtenverarbeitung: %s", e)
@@ -734,6 +741,29 @@ class MatrixBridge:
             # Temp-Dateien aufräumen
             if tmp_wav and tmp_wav.exists():
                 tmp_wav.unlink(missing_ok=True)
+
+    async def _send_audio_if_available(
+        self, room_id: str, result, tmp_wav: Path | None,
+    ) -> None:
+        """Konvertiert WAV→OGG und sendet Audio an Matrix (wenn vorhanden)."""
+        if not result.audio_path or not result.audio_path.exists():
+            return
+        if not self._audio_converter:
+            return
+
+        tmp_ogg: Path | None = None
+        try:
+            tmp_ogg = result.audio_path.with_suffix(".ogg")
+            ogg_path, _duration = self._audio_converter.to_ogg_opus(
+                result.audio_path, output_path=tmp_ogg,
+            )
+            await self._channel.send_audio(room_id, ogg_path)
+            logger.debug("Sprachnachricht gesendet: %s", ogg_path.name)
+        except Exception as e:
+            logger.error("Audio-Senden fehlgeschlagen: %s", e)
+        finally:
+            if result.audio_path.exists():
+                result.audio_path.unlink(missing_ok=True)
             if tmp_ogg and tmp_ogg.exists():
                 tmp_ogg.unlink(missing_ok=True)
 
@@ -751,22 +781,7 @@ class MatrixBridge:
             await self._channel.send_text(msg.room_id, llm_result.response)
 
         # Audio der LLM-Antwort senden (wenn vorhanden)
-        if (
-            llm_result.audio_path
-            and llm_result.audio_path.exists()
-            and self._audio_converter
-        ):
-            try:
-                tmp_ogg = llm_result.audio_path.with_suffix(".ogg")
-                ogg_path, _ = self._audio_converter.to_ogg_opus(
-                    llm_result.audio_path, output_path=tmp_ogg,
-                )
-                await self._channel.send_audio(msg.room_id, ogg_path)
-            except Exception:
-                pass
-            finally:
-                llm_result.audio_path.unlink(missing_ok=True)
-                tmp_ogg.unlink(missing_ok=True)
+        await self._send_audio_if_available(msg.room_id, llm_result, None)
 
         # Command aus LLM-Params extrahieren: {"command": "mail suche RK Bedachung"}
         command_text = None

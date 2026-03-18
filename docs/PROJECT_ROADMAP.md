@@ -169,19 +169,35 @@ Saleria als echte Alltagsassistentin – Kalender, E-Mail, Fitness, Wetter, Smar
 - **Offen:** Sensor-Integration (Kamera, BME280, APDS-9960)
 - **Offen:** Gehäuse-Finish (Resin-Druck, Rinde, Moos)
 
-## Phase 11 – Dokument-Zusammenfassung 📄 GEPLANT
+## Phase 11 – Dokument-Zusammenfassung 📄 ✅ ABGESCHLOSSEN
 
 Saleria kann PDF- und Textdateien zusammenfassen.
 
-- Dateien via Matrix senden → Saleria extrahiert Text → LLM-Zusammenfassung
-- Oder Command: `zusammenfassung C:\...\datei.pdf`
-- PDF-Parsing: pymupdf (robustes Parsing, Tabellen, Spalten, Formulare)
-- TXT: direkt lesen (kein Parser nötig)
-- LLM: Anthropic Sonnet (200k Token Kontext → ~300 Seiten PDF)
-- Neue Klasse: `tools/document_reader.py` (DocumentReader)
-- Integration: Bridge erkennt Dateianhang → DocumentReader → LLM → Antwort
-- Abhängigkeit: `pymupdf` (pip install pymupdf)
-- Kein OCR in v1 (gescannte PDFs nicht unterstützt, kann später mit tesseract ergänzt werden)
+- ✅ Dateien via Matrix senden → Saleria extrahiert Text → LLM-Zusammenfassung
+- ✅ Command: `zusammenfassung C:\...\datei.pdf` → LLM-Zusammenfassung
+- ✅ PDF-Parsing: pymupdf (robustes Parsing)
+- ✅ TXT: direkt lesen (UTF-8, Fallback Latin-1)
+- ✅ Rohtext in Chat-History (Rückfragen möglich: "was steht auf Seite 3?")
+- ✅ Audio immer an Matrix (nie lokal am Tower abspielen)
+- Kein OCR in v1 (gescannte PDFs → Hinweis, kann später mit tesseract ergänzt werden)
+
+## Phase 12 – Audio-Routing + Web-Interface 🔧 GEPLANT
+
+Einheitliches Audio-Routing: Audio wird immer an Matrix gesendet. Lokale PC-Ausgabe
+ist optional und per Flag steuerbar.
+
+- **Audio-Flag**: `AudioOutputMode` (matrix_only / matrix_and_local)
+  - Default: `matrix_only` (sicher für unterwegs)
+  - Alle Audio-Pfade (TTS, Timer, etc.) prüfen dieses Flag
+- **Web-Interface**: FastAPI Endpoint zum Togglen des Flags
+  - Minimales HTML-UI (kein Framework)
+  - Toggle: "Audio am PC abspielen" an/aus
+  - Status-Anzeige: aktuelle Einstellung
+- **Später (Phase 10 Hardware)**: APDS-9960 Näherungssensor als automatischer Trigger
+  - Nutzer am Schreibtisch → `matrix_and_local`
+  - Nutzer weg → `matrix_only`
+- Neue Klasse: `core/audio_router.py` (AudioRouter)
+- Integration: Bridge + Assistant lesen Flag statt hardcoded Logik
 
 ---
 
