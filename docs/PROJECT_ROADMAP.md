@@ -98,19 +98,20 @@ Saleria als echte Alltagsassistentin – Kalender, E-Mail, Fitness, Wetter, Smar
 - Ersetzt Quick-Fix (_last_command_result)
 - Ermöglicht Rückfragen, Kontext-Bezug, "mach das nochmal"
 
-### OFFEN: Wetter (Open-Meteo)
+### ✅ Wetter (abgeschlossen)
 - WeatherClient (Open-Meteo API, kostenlos, kein API-Key)
-- Standort einmalig in SecretStore: Koordinaten + Stadtname
-- Commands: "wetter", "wetter morgen", "wetter diese woche"
-- Integration: Wetter optional im System-Prompt (Saleria weiß wie das Wetter ist)
-- Neue Klasse: `tools/weather_client.py`
+- Commands: "wetter", "wetter morgen", "wetter woche"
+- Keywords: "regnet es", "brauche ich schirm", "wie warm"
 
-### OFFEN: Timer & Erinnerungen
-- ReminderStore: SQLite-basiert, neustart-sicher
-- Asyncio-Scheduler im AlertMonitor-Stil
-- Commands: "timer 20 minuten", "erinnere mich um 18 uhr: Wäsche"
-- Matrix-Alert wenn Timer abläuft
-- Neue Klasse: `tools/reminder_store.py`
+### ✅ Timer & Erinnerungen (abgeschlossen)
+- ReminderStore (SQLite, neustart-sicher, UTC)
+- ReminderScheduler (Daemon-Thread, 15s Poll)
+- Commands: "timer 20 min", "erinnere mich um 18 uhr: Wäsche", "erinnerungen"
+
+### ✅ Daily Briefing (abgeschlossen)
+- BriefingScheduler (Daemon-Thread, täglich 07:30)
+- Wetter + Termine + Erinnerungen kombiniert
+- Manuell: "briefing", Keywords: "guten morgen"
 
 ### OFFEN: Home Assistant Client
 - HomeAssistantClient: REST API, Long-lived Token in SecretStore
@@ -119,12 +120,6 @@ Saleria als echte Alltagsassistentin – Kalender, E-Mail, Fitness, Wetter, Smar
 - HA-Whitelist für erlaubte Entities/Services (Sicherheit)
 - Neue Klasse: `tools/home_assistant_client.py`
 - Abhängigkeit: nur `httpx` (bereits vorhanden)
-
-### OFFEN: Daily Briefing
-- CronJob (täglich 7:30 Uhr) → Matrix-Nachricht
-- Inhalt: Wetter des Tages + heutige Termine + offene Erinnerungen
-- Optional: kurze Saleria-Persönlichkeits-Note ("Heute wird ein langer Tag...")
-- Erweiterung von AlertMonitor oder eigenem BriefingScheduler
 
 ---
 
@@ -162,13 +157,31 @@ Saleria als echte Alltagsassistentin – Kalender, E-Mail, Fitness, Wetter, Smar
 
 ---
 
-## Phase 10 – Hardware-Abschluss 🤖 WARTEND AUF LIEFERUNG
+## Phase 10 – RPi5 Avatar-Display ✅ TEILWEISE ABGESCHLOSSEN
 
-- Pepper's Ghost Display am RPi5 in Betrieb nehmen (LayeredSpriteRenderer live)
-- Drehteller-Servo: Servo-Controller via RPi5 GPIO, Befehle über RobotServer
-- Pico 2W: Sensor-Anbindung (Näherungssensor, Temperatur)
-- Gehäuse-Finish: Resin-Druck, Rinde bemalen, Moos-Details
-- Gesamtintegration: Tower (Hirn) ↔ Laptop (PC) ↔ RPi5 (Display+Servo) ↔ Pico 2W (Sensoren)
+- ✅ Pepper's Ghost Display am RPi5 in Betrieb (720×1280, DSI, Fullscreen)
+- ✅ RPi5AvatarDisplay: echte AvatarDisplay-Implementierung, Render-Thread
+- ✅ Tower ↔ RPi5 verdrahtet (RobotClient, SecretStore: robot_host)
+- ✅ Idle-Animationen (Glance, Smile, Soft-Close, Surprise)
+- ✅ Lip-Sync Fix (show_speaking Reset-Bug)
+- ✅ systemd-Autostart dokumentiert
+- **Offen:** Drehteller (28BYJ-48 Stepper + Hall-Sensor Homing)
+- **Offen:** Sensor-Integration (Kamera, BME280, APDS-9960)
+- **Offen:** Gehäuse-Finish (Resin-Druck, Rinde, Moos)
+
+## Phase 11 – Dokument-Zusammenfassung 📄 GEPLANT
+
+Saleria kann PDF- und Textdateien zusammenfassen.
+
+- Dateien via Matrix senden → Saleria extrahiert Text → LLM-Zusammenfassung
+- Oder Command: `zusammenfassung C:\...\datei.pdf`
+- PDF-Parsing: pymupdf (robustes Parsing, Tabellen, Spalten, Formulare)
+- TXT: direkt lesen (kein Parser nötig)
+- LLM: Anthropic Sonnet (200k Token Kontext → ~300 Seiten PDF)
+- Neue Klasse: `tools/document_reader.py` (DocumentReader)
+- Integration: Bridge erkennt Dateianhang → DocumentReader → LLM → Antwort
+- Abhängigkeit: `pymupdf` (pip install pymupdf)
+- Kein OCR in v1 (gescannte PDFs nicht unterstützt, kann später mit tesseract ergänzt werden)
 
 ---
 

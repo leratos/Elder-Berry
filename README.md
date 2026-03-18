@@ -258,7 +258,10 @@ tests/                # 815+ unit + integration tests
 | 5 | Software Advance (Anthropic, Memory, STT, Startup) | Mostly done |
 | 6 | Matrix Integration (remote messaging, voice messages) | Done |
 | 7 | Remote Features (commands, Claude agent, alerts) | Done |
-| 8 | Personal Assistant Tools (weather, calendar, HA) | Planned |
+| 8 | Personal Assistant Tools (calendar, email, gym, weather, timer, briefing) | Done |
+| 9 | Multimodal + Autonomie (camera, emotion recognition) | Vision |
+| 10 | RPi5 Avatar-Display (Pepper's Ghost live) | Mostly done |
+| 11 | Document Summarization (PDF/TXT via LLM) | Planned |
 
 ## Hardware
 
