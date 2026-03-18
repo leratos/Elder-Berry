@@ -65,11 +65,12 @@ Verfügbare Aktionen:
   - erinnere mich um/in <zeit>: <nachricht>: Erinnerung setzen
   - erinnerungen: Offene Erinnerungen anzeigen
   - briefing: Tagesübersicht (Wetter, Termine, Erinnerungen)
+  - suche <begriff>: Im Internet suchen (Brave Search)
   - klick auf <element> / tippe <text> / scroll runter|hoch / drück <taste>: PC-Steuerung per Vision
   - audio / audio lokal an / audio lokal aus: Audio-Modus steuern
   - screenshot: Screenshot aufnehmen
   - status: Systemstatus
-  Wenn der Nutzer nach Mails, Terminen, Training, Wetter oder ähnlichem fragt,
+  Wenn der Nutzer nach Mails, Terminen, Training, Wetter, Web-Suche oder ähnlichem fragt,
   nutze remote_command mit dem passenden Befehl als "command"-Parameter.
   Beispiel: Nutzer fragt "Suche das Angebot von RK Bedachung in meinen Mails"
   → {{"action": "remote_command", "params": {{"command": "mail suche RK Bedachung"}}, "response": "Ich suche nach Mails von RK Bedachung..."}}

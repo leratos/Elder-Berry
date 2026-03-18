@@ -1475,3 +1475,52 @@
 - Monitor-Auswahl über Web-Dashboard (http://localhost:8090)
 - Kein Kosten-Hinweis (bewusste Entscheidung)
 - computer_20251124 Tool-Version für Sonnet 4.6 (neueste API)
+
+## Abgeschlossen: Phase 14 – Web-Suche (Brave Search + LLM-Aufbereitung) (2026-03-18)
+- Branch: feature/phase-14-web-search
+
+### Neue Dateien
+- src/elder_berry/tools/brave_search_client.py: BraveSearchClient + SearchResult DTO
+  - Brave Search API (Free Tier, 2000 Queries/Monat, kein Google-Account)
+  - search(query, count=5) → REST-Query mit httpx
+  - format_results(): lesbarer Text (Titel, URL, Beschreibung, HTML bereinigt)
+  - format_results_detailed(): Roh-Text für Chat-History (LLM-Kontext)
+  - API-Key aus SecretStore (brave_api_key), Lazy-Init httpx.Client
+  - Graceful Degradation: fehlender Key, API-Fehler, leere Ergebnisse
+- tests/test_brave_search.py: 29 Tests (DTO, Init, Search, Format, Helper)
+
+### Geänderte Dateien
+- src/elder_berry/comms/remote_commands.py:
+  - WEB_SEARCH_PATTERN Regex ("suche ...", "such mal ...", "google ...", "finde ...")
+  - KEYWORD_MAP: web_search Keywords ("such mir", "google mal", "recherchiere", etc.)
+  - search_client: BraveSearchClient als DI-Parameter
+  - _cmd_search() Handler → Suchbegriff extrahieren → API → formatierte Antwort
+  - history_text: Rohe Ergebnisse für Chat-History (Rückfragen möglich)
+  - HELP_TEXT: Web-Suche Sektion ergänzt
+  - Parse-Priorität: Mail-/Termin-Suche > Web-Suche (spezifischer gewinnt)
+- src/elder_berry/character/saleria.yaml: "suche <begriff>" in Remote-Tool-Liste
+- src/elder_berry/core/assistant.py: "suche <begriff>" in Fallback-Prompt Remote-Tool-Liste
+- scripts/start_saleria.py: BraveSearchClient init wenn brave_api_key im SecretStore
+- tests/test_remote_commands.py: +19 Tests (Pattern, ParseCommand, Execute)
+
+### Tests
+- Neue Tests: 29 (BraveSearchClient) + 19 (RemoteCommands) = 48
+
+### Flow (live)
+  Matrix: "suche Dachdecker Plattenburg"
+      ↓
+  RemoteCommandHandler.parse_command() → "web_search"
+      ↓
+  _cmd_search() → WEB_SEARCH_PATTERN extrahiert "Dachdecker Plattenburg"
+      ↓
+  BraveSearchClient.search("Dachdecker Plattenburg")
+      ↓
+  Brave Search API → JSON → SearchResult DTOs
+      ↓
+  format_results() → User (Matrix)
+  format_results_detailed() → Chat-History (LLM-Kontext für Rückfragen)
+
+### Setup für Live-Betrieb
+- SecretStore().set("brave_api_key", "<key>")
+- Kostenlos: https://brave.com/search/api/ (Free Tier, 2000/Monat)
+- Keine neue Dependency (httpx bereits vorhanden)

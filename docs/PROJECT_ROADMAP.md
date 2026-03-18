@@ -235,7 +235,7 @@ gesteuert über Anthropic Computer Use (Sonnet 4.6 Vision).
 - Loop-Modus: soll Sonnet eigenständig mehrere Schritte ausführen können?
 - Sicherheit: Whitelist für erlaubte Aktionen? (wie bei Prozess-Start/Kill)
 
-## Phase 14 – Web-Suche (Brave Search + LLM-Aufbereitung) 🔭 GEPLANT
+## Phase 14 – Web-Suche (Brave Search + LLM-Aufbereitung) ✅ ABGESCHLOSSEN
 
 Saleria kann auf Anfrage im Internet suchen und die Ergebnisse aufbereitet zurückgeben.
 

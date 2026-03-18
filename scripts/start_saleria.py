@@ -506,6 +506,18 @@ def run_matrix(assistant, stt=None, avatar=None, audio_converter=None):
         except Exception as e:
             logger.warning("ComputerUseController nicht verfügbar: %s", e)
 
+    # BraveSearchClient (Phase 14) – Web-Suche
+    search_client = None
+    if secrets.get_or_none("brave_api_key"):
+        try:
+            from elder_berry.tools.brave_search_client import BraveSearchClient
+            search_client = BraveSearchClient(secret_store=secrets)
+            logger.info("BraveSearchClient: aktiv")
+        except Exception as e:
+            logger.warning("BraveSearchClient nicht verfügbar: %s", e)
+    else:
+        logger.info("BraveSearchClient: inaktiv (brave_api_key fehlt)")
+
     # RemoteCommandHandler – alle Dependencies übergeben
     remote = RemoteCommandHandler(
         system_monitor=SystemMonitor(),
@@ -522,6 +534,7 @@ def run_matrix(assistant, stt=None, avatar=None, audio_converter=None):
         document_reader=document_reader,
         audio_router=audio_router,
         computer_use=computer_use,
+        search_client=search_client,
     )
 
     # ClaudeAgent (optional)
