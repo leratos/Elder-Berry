@@ -45,6 +45,7 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from elder_berry.actions.base import ActionController
     from elder_berry.avatar.base import AvatarRenderer
+    from elder_berry.core.audio_router import AudioRouter
     from elder_berry.core.secret_store import SecretStore
     from elder_berry.system.info import SystemMonitor
     from elder_berry.tools.document_reader import DocumentReader
@@ -71,7 +72,8 @@ MEDIA_KEYS = {
 SIMPLE_COMMANDS = (
     {"status", "systemstatus", "screenshot", "screen", "clipboard", "wol",
      "avatar", "selfie", "hilfe", "help", "restart", "neustart",
-     "termine", "mails", "training", "prs", "wetter", "erinnerungen", "briefing"}
+     "termine", "mails", "training", "prs", "wetter", "erinnerungen", "briefing",
+     "audio"}
     | set(MEDIA_KEYS)
 )
 
@@ -155,6 +157,11 @@ Timer & Erinnerungen:
 Briefing:
   briefing – Tagesübersicht (Wetter + Termine + Erinnerungen)
 
+Audio:
+  audio – Audio-Modus anzeigen (matrix_only / matrix_and_local)
+  audio lokal an – Lokale Wiedergabe aktivieren (Matrix + PC)
+  audio lokal aus – Nur Matrix (Standard)
+
 Dokumente:
   zusammenfassung <Pfad> – PDF/TXT zusammenfassen (z.B. zusammenfassung C:\\Docs\\report.pdf)
   fasse zusammen <Pfad> – Alias für zusammenfassung
@@ -196,7 +203,14 @@ KEYWORD_MAP: dict[str, list[str]] = {
                   "daily briefing", "morgen briefing", "was gibt's neues"],
     "document_summary": ["fasse die pdf zusammen", "pdf zusammenfassen",
                           "dokument zusammenfassen", "zusammenfassung der datei"],
+    "audio_toggle": ["audio lokal", "lokale wiedergabe", "ton am pc"],
 }
+
+# Regex für Audio-Modus: "audio lokal an", "audio lokal aus"
+AUDIO_LOCAL_PATTERN = re.compile(
+    r"^audio\s+lokal\s+(an|aus|ein|off|on)$",
+    re.IGNORECASE,
+)
 
 # Regex für Volume-Command: "volume 50", "vol 75", "lautstärke 30"
 # \b am Ende verhindert Match auf "volume 1000" → nur 1-3 Ziffern ohne Folgeziffer
@@ -534,6 +548,7 @@ class RemoteCommandHandler:
         reminder_store: ReminderStore | None = None,
         briefing_scheduler: BriefingScheduler | None = None,
         document_reader: DocumentReader | None = None,
+        audio_router: AudioRouter | None = None,
     ) -> None:
         self._monitor = system_monitor
         self._controller = controller
@@ -548,6 +563,7 @@ class RemoteCommandHandler:
         self._reminder_store = reminder_store
         self._briefing_scheduler = briefing_scheduler
         self._document_reader = document_reader
+        self._audio_router = audio_router
         # Letztes Termin-Ergebnis (für "lösche alle/den 2.")
         self._last_events: list = []
         self._send_file_allowed_roots: tuple[Path, ...] = tuple(
@@ -584,6 +600,10 @@ class RemoteCommandHandler:
         # Stufe 1: Exakter Match
         if normalized in SIMPLE_COMMANDS:
             return normalized
+
+        # Stufe 1b: Audio-Modus ("audio lokal an/aus")
+        if AUDIO_LOCAL_PATTERN.match(normalized):
+            return "audio_toggle"
 
         # Stufe 2: Volume-Pattern (auch in Sätzen: "setz lautstärke 50")
         if VOLUME_PATTERN.search(normalized):
@@ -794,6 +814,9 @@ class RemoteCommandHandler:
 
         if command == "document_summary":
             return self._cmd_document_summary(raw_text)
+
+        if command in ("audio", "audio_toggle"):
+            return self._cmd_audio(raw_text)
 
         return CommandResult(
             command=command,
@@ -2563,3 +2586,40 @@ class RemoteCommandHandler:
                 command="document_summary", success=False,
                 text=f"Fehler beim Lesen: {e}",
             )
+
+    def _cmd_audio(self, raw_text: str) -> CommandResult:
+        """Audio-Modus anzeigen oder umschalten."""
+        if not self._audio_router:
+            return CommandResult(
+                command="audio", success=False,
+                text="AudioRouter nicht verfügbar.",
+            )
+
+        from elder_berry.core.audio_router import AudioOutputMode
+
+        normalized = raw_text.strip().lower()
+        match = AUDIO_LOCAL_PATTERN.match(normalized)
+
+        if match:
+            flag = match.group(1)
+            if flag in ("an", "ein", "on"):
+                new_mode = self._audio_router.set_mode(AudioOutputMode.MATRIX_AND_LOCAL)
+            else:
+                new_mode = self._audio_router.set_mode(AudioOutputMode.MATRIX_ONLY)
+        else:
+            # Nur Status anzeigen (bei "audio" ohne Parameter)
+            mode = self._audio_router.mode
+            local = "verfügbar" if self._audio_router.local_available else "nicht verfügbar"
+            return CommandResult(
+                command="audio", success=True,
+                text=f"Audio-Modus: {mode.value}\nLokale Wiedergabe: {local}",
+            )
+
+        mode_text = {
+            AudioOutputMode.MATRIX_ONLY: "Nur Matrix",
+            AudioOutputMode.MATRIX_AND_LOCAL: "Matrix + Lokal",
+        }
+        return CommandResult(
+            command="audio", success=True,
+            text=f"Audio-Modus: {mode_text.get(new_mode, new_mode.value)}",
+        )

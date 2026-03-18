@@ -8,6 +8,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from elder_berry.comms.remote_commands import (
+    AUDIO_LOCAL_PATTERN,
     AVATAR_EMOTION_PATTERN,
     AVATAR_EMOTIONS,
     CLIP_WRITE_PATTERN,
@@ -2353,3 +2354,97 @@ class TestDocumentSummaryExecute:
         assert result.success is True
         assert "1 Seite" in result.text
         assert "Quartalsbericht" in result.history_text
+
+
+# ────────────────────────────────────────────────────────────────
+# Audio-Command (Phase 12)
+# ────────────────────────────────────────────────────────────────
+
+
+class TestAudioLocalPattern:
+    """AUDIO_LOCAL_PATTERN Regex."""
+
+    def test_audio_lokal_an(self):
+        assert AUDIO_LOCAL_PATTERN.match("audio lokal an")
+
+    def test_audio_lokal_aus(self):
+        assert AUDIO_LOCAL_PATTERN.match("audio lokal aus")
+
+    def test_audio_lokal_ein(self):
+        assert AUDIO_LOCAL_PATTERN.match("audio lokal ein")
+
+    def test_audio_lokal_on(self):
+        assert AUDIO_LOCAL_PATTERN.match("audio lokal on")
+
+    def test_audio_lokal_off(self):
+        assert AUDIO_LOCAL_PATTERN.match("audio lokal off")
+
+    def test_audio_alone_no_match(self):
+        assert AUDIO_LOCAL_PATTERN.match("audio") is None
+
+    def test_audio_irgendwas_no_match(self):
+        assert AUDIO_LOCAL_PATTERN.match("audio foobar") is None
+
+
+class TestAudioParseCommand:
+    """parse_command() erkennt Audio-Commands."""
+
+    def test_audio_simple(self):
+        handler = RemoteCommandHandler()
+        assert handler.parse_command("audio") == "audio"
+
+    def test_audio_lokal_an(self):
+        handler = RemoteCommandHandler()
+        assert handler.parse_command("audio lokal an") == "audio_toggle"
+
+    def test_audio_lokal_aus(self):
+        handler = RemoteCommandHandler()
+        assert handler.parse_command("audio lokal aus") == "audio_toggle"
+
+
+class TestAudioExecute:
+    """execute() für Audio-Command."""
+
+    def test_audio_status_no_router(self):
+        handler = RemoteCommandHandler()
+        result = handler.execute("audio", "audio")
+        assert result.success is False
+        assert "nicht verfügbar" in result.text
+
+    def test_audio_status_with_router(self):
+        from elder_berry.core.audio_router import AudioRouter
+        router = AudioRouter(local_available=True)
+        handler = RemoteCommandHandler(audio_router=router)
+        result = handler.execute("audio", "audio")
+        assert result.success is True
+        assert "matrix_only" in result.text
+
+    def test_audio_lokal_an(self):
+        from elder_berry.core.audio_router import AudioOutputMode, AudioRouter
+        router = AudioRouter(local_available=True)
+        handler = RemoteCommandHandler(audio_router=router)
+        result = handler.execute("audio_toggle", "audio lokal an")
+        assert result.success is True
+        assert "Lokal" in result.text
+        assert router.mode == AudioOutputMode.MATRIX_AND_LOCAL
+
+    def test_audio_lokal_aus(self):
+        from elder_berry.core.audio_router import AudioOutputMode, AudioRouter
+        router = AudioRouter(
+            default_mode=AudioOutputMode.MATRIX_AND_LOCAL,
+            local_available=True,
+        )
+        handler = RemoteCommandHandler(audio_router=router)
+        result = handler.execute("audio_toggle", "audio lokal aus")
+        assert result.success is True
+        assert "Matrix" in result.text
+        assert router.mode == AudioOutputMode.MATRIX_ONLY
+
+    def test_audio_lokal_an_no_capability(self):
+        from elder_berry.core.audio_router import AudioOutputMode, AudioRouter
+        router = AudioRouter(local_available=False)
+        handler = RemoteCommandHandler(audio_router=router)
+        result = handler.execute("audio_toggle", "audio lokal an")
+        assert result.success is True
+        # Modus bleibt matrix_only
+        assert router.mode == AudioOutputMode.MATRIX_ONLY

@@ -79,6 +79,7 @@ system_prompt_template: |
     - erinnerungen: Offene Erinnerungen anzeigen
     - briefing: Tagesübersicht (Wetter, Termine, Erinnerungen)
     - zusammenfassung <pfad>: Dokument zusammenfassen (PDF/TXT)
+    - audio / audio lokal an / audio lokal aus: Audio-Modus steuern
     - screenshot / status: System-Infos
     Wenn der Nutzer nach Mails, Terminen, Training oder ähnlichem fragt,
     nutze remote_command mit dem passenden Befehl.

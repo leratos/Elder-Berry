@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Elder-Berry Audio</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            background: #1a1a2e;
+            color: #e0e0e0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+        }
+        .card {
+            background: #16213e;
+            border-radius: 16px;
+            padding: 2.5rem;
+            width: 360px;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.3);
+            text-align: center;
+        }
+        h1 {
+            font-size: 1.3rem;
+            margin-bottom: 0.3rem;
+            color: #a8d5a2;
+        }
+        .subtitle {
+            font-size: 0.85rem;
+            color: #888;
+            margin-bottom: 2rem;
+        }
+        .status {
+            font-size: 1.1rem;
+            margin-bottom: 1.5rem;
+            padding: 0.8rem;
+            border-radius: 8px;
+            background: #0f3460;
+            transition: background 0.3s;
+        }
+        .status.local { background: #1b4332; }
+        .status .mode-label { font-weight: 600; }
+        .toggle-btn {
+            display: inline-block;
+            padding: 0.9rem 2rem;
+            font-size: 1rem;
+            border: none;
+            border-radius: 10px;
+            cursor: pointer;
+            background: #533483;
+            color: #fff;
+            transition: background 0.2s, transform 0.1s;
+            width: 100%;
+        }
+        .toggle-btn:hover { background: #6c4ab6; }
+        .toggle-btn:active { transform: scale(0.97); }
+        .toggle-btn:disabled {
+            background: #333;
+            color: #666;
+            cursor: not-allowed;
+        }
+        .info {
+            margin-top: 1.2rem;
+            font-size: 0.8rem;
+            color: #666;
+        }
+    </style>
+</head>
+<body>
+    <div class="card">
+        <h1>Elder-Berry Audio</h1>
+        <p class="subtitle">Audio-Routing Steuerung</p>
+
+        <div class="status" id="status">
+            <span class="mode-label" id="modeLabel">Lade...</span>
+        </div>
+
+        <button class="toggle-btn" id="toggleBtn" onclick="toggle()" disabled>
+            Lade...
+        </button>
+
+        <p class="info" id="info"></p>
+    </div>
+
+    <script>
+        const statusEl = document.getElementById("status");
+        const labelEl = document.getElementById("modeLabel");
+        const btnEl = document.getElementById("toggleBtn");
+        const infoEl = document.getElementById("info");
+
+        function updateUI(data) {
+            const isLocal = data.mode === "matrix_and_local";
+            labelEl.textContent = isLocal
+                ? "Matrix + Lokal"
+                : "Nur Matrix";
+            statusEl.className = "status" + (isLocal ? " local" : "");
+            btnEl.disabled = !data.local_available;
+
+            if (!data.local_available) {
+                btnEl.textContent = "Lokale Wiedergabe nicht verfügbar";
+                infoEl.textContent = "sounddevice/AgentClient nicht erkannt";
+            } else {
+                btnEl.textContent = isLocal
+                    ? "Lokale Wiedergabe deaktivieren"
+                    : "Lokale Wiedergabe aktivieren";
+                infoEl.textContent = "";
+            }
+        }
+
+        async function fetchStatus() {
+            try {
+                const r = await fetch("/api/audio");
+                updateUI(await r.json());
+            } catch (e) {
+                labelEl.textContent = "Verbindungsfehler";
+            }
+        }
+
+        async function toggle() {
+            btnEl.disabled = true;
+            try {
+                const r = await fetch("/api/audio", { method: "POST" });
+                updateUI(await r.json());
+            } catch (e) {
+                labelEl.textContent = "Fehler";
+            }
+        }
+
+        fetchStatus();
+    </script>
+</body>
+</html>

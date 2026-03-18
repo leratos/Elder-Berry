@@ -65,6 +65,7 @@ Verfügbare Aktionen:
   - erinnere mich um/in <zeit>: <nachricht>: Erinnerung setzen
   - erinnerungen: Offene Erinnerungen anzeigen
   - briefing: Tagesübersicht (Wetter, Termine, Erinnerungen)
+  - audio / audio lokal an / audio lokal aus: Audio-Modus steuern
   - screenshot: Screenshot aufnehmen
   - status: Systemstatus
   Wenn der Nutzer nach Mails, Terminen, Training, Wetter oder ähnlichem fragt,

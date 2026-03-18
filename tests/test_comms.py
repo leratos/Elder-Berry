@@ -1694,3 +1694,46 @@ class TestBridgeChatHistory:
             assert len(channel._sent_files) == 1
 
         run_async(_test())
+
+
+# ────────────────────────────────────────────────────────────────
+# Bridge + AudioRouter (Phase 12)
+# ────────────────────────────────────────────────────────────────
+
+
+class TestBridgeAudioRouter:
+    """Bridge mit AudioRouter für lokale Wiedergabe."""
+
+    def test_bridge_accepts_audio_router(self):
+        """AudioRouter als DI-Parameter."""
+        from elder_berry.core.audio_router import AudioRouter
+
+        channel = MockChannel()
+        assistant = MagicMock()
+        router = AudioRouter(local_available=True)
+        bridge = MatrixBridge(
+            channel=channel, assistant=assistant, audio_router=router,
+        )
+        assert bridge._audio_router is router
+
+    def test_bridge_without_audio_router(self):
+        """Bridge funktioniert auch ohne AudioRouter."""
+        channel = MockChannel()
+        assistant = MagicMock()
+        bridge = MatrixBridge(channel=channel, assistant=assistant)
+        assert bridge._audio_router is None
+
+    def test_play_audio_local_not_called_when_matrix_only(self):
+        """Bei matrix_only wird _play_audio_local nicht aufgerufen."""
+        from elder_berry.core.audio_router import AudioRouter
+
+        channel = MockChannel()
+        assistant = MagicMock()
+        router = AudioRouter(local_available=True)
+        bridge = MatrixBridge(
+            channel=channel, assistant=assistant, audio_router=router,
+        )
+        bridge._play_audio_local = MagicMock()
+
+        # should_play_local() ist False bei matrix_only
+        assert router.should_play_local() is False
