@@ -1314,3 +1314,73 @@
   - Später: APDS-9960 Näherungssensor als automatischer Trigger
 
 ### Nächster Schritt
+- Phase 12: Audio-Routing + Web-Interface
+
+## Abgeschlossen: Phase 12 – Audio-Routing + Web-Interface (2026-03-18)
+- Branch: feature/phase-12-audio-routing-web
+
+### Neue Dateien
+- src/elder_berry/core/audio_router.py: AudioRouter Klasse
+  - AudioOutputMode Enum: matrix_only (Default), matrix_and_local
+  - Thread-safe Flag (Lock), toggle(), set_mode(), should_play_local()
+  - local_available: Prüfung ob lokale Wiedergabe überhaupt möglich
+  - Wenn lokal nicht verfügbar → Modus kann nicht auf matrix_and_local gesetzt werden
+- src/elder_berry/web/__init__.py: Web-Paket
+- src/elder_berry/web/audio_dashboard.py: AudioDashboard Klasse
+  - FastAPI-App mit HTML-Dashboard (Port 8090)
+  - GET / → HTML-Seite mit Toggle-Button
+  - GET /api/audio → aktueller Modus (JSON)
+  - POST /api/audio → Modus setzen oder togglen (JSON)
+  - Daemon-Thread (uvicorn), stoppt mit Hauptprozess
+- src/elder_berry/web/templates/audio_dashboard.html: Minimales HTML-UI
+  - Dark Theme, Toggle-Button, Status-Anzeige
+  - Vanilla JS, kein Framework
+- tests/test_audio_router.py: 22 Tests (Enum, Defaults, SetMode, Toggle, ThreadSafety)
+- tests/test_audio_dashboard.py: 12 Tests (HTML, GET/POST, Toggle, Invalid Mode)
+
+### Geänderte Dateien
+- src/elder_berry/comms/bridge.py:
+  - AudioRouter als neuer DI-Parameter
+  - _send_audio_if_available(): lokale Wiedergabe nach Matrix-Send wenn should_play_local()
+  - _play_audio_local(): AgentClient (Laptop) → Fallback sounddevice (Tower)
+- src/elder_berry/comms/remote_commands.py:
+  - AudioRouter als DI-Parameter, AUDIO_LOCAL_PATTERN Regex
+  - Neuer Command: "audio" (Status), "audio lokal an/aus" (Toggle)
+  - SIMPLE_COMMANDS: "audio" ergänzt
+  - KEYWORD_MAP: "audio_toggle" Keywords
+  - HELP_TEXT: Audio-Sektion ergänzt
+  - _cmd_audio() Handler
+- src/elder_berry/character/saleria.yaml: "audio" in Remote-Tool-Liste
+- src/elder_berry/core/assistant.py: "audio" in Fallback-Prompt Remote-Tool-Liste
+- scripts/start_saleria.py:
+  - _check_local_audio(): Prüft sounddevice + AgentClient Verfügbarkeit
+  - AudioRouter init mit Ergebnis der Prüfung
+  - AudioRouter → RemoteCommandHandler + Bridge (DI)
+  - AudioDashboard Start (Port 8090, Daemon-Thread)
+
+### Tests
+- Neue Tests: 22 (AudioRouter) + 12 (Dashboard, skipped: fastapi) + 15 (RemoteCommands) + 3 (Bridge) = 40
+- Erweitert: tests/test_remote_commands.py (+15), tests/test_comms.py (+3)
+- Gesamtergebnis: 1054 passed, 62 skipped (alle grün, vorbestehende Skips)
+- Devcontainer-Skips: fastapi, cryptography, pydub, chromadb, anthropic, faster-whisper
+
+### Audio-Routing Flow (Matrix-Modus)
+  Matrix-Nachricht → LLM → TTS → WAV
+    ↓
+  AudioConverter → OGG → Matrix senden (immer)
+    ↓
+  AudioRouter.should_play_local()?
+    ├─ True → _play_audio_local()
+    │         ├─ AgentClient (Laptop) wenn online
+    │         └─ sounddevice (Tower) als Fallback
+    └─ False → nur Matrix
+
+### Steuerung
+- Via Matrix: "audio" (Status), "audio lokal an", "audio lokal aus"
+- Via Web: http://localhost:8090 (Toggle-Button)
+- Via LLM: Saleria kennt "audio" als Remote-Tool (Fallback)
+
+### Setup für Live-Betrieb
+- pip install fastapi uvicorn (falls nicht schon installiert)
+- Optional: pip install sounddevice numpy (für Tower-Wiedergabe)
+- Web-Dashboard: automatisch auf Port 8090 bei Matrix-Modus-Start

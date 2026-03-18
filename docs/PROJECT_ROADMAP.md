@@ -181,7 +181,7 @@ Saleria kann PDF- und Textdateien zusammenfassen.
 - ✅ Audio immer an Matrix (nie lokal am Tower abspielen)
 - Kein OCR in v1 (gescannte PDFs → Hinweis, kann später mit tesseract ergänzt werden)
 
-## Phase 12 – Audio-Routing + Web-Interface 🔧 GEPLANT
+## Phase 12 – Audio-Routing + Web-Interface ✅ ABGESCHLOSSEN
 
 Einheitliches Audio-Routing: Audio wird immer an Matrix gesendet. Lokale PC-Ausgabe
 ist optional und per Flag steuerbar.

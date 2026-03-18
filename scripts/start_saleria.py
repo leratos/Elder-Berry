@@ -233,6 +233,27 @@ def init_system_monitor():
     return SystemMonitor()
 
 
+def _check_local_audio(assistant) -> bool:
+    """Prüft ob lokale Audio-Wiedergabe möglich ist (sounddevice oder AgentClient)."""
+    # AgentClient am Assistant?
+    agent = getattr(assistant, "_agent", None)
+    if agent is not None:
+        try:
+            if agent.is_online():
+                return True
+        except Exception:
+            pass
+
+    # sounddevice verfügbar?
+    try:
+        import sounddevice  # noqa: F401
+        return True
+    except ImportError:
+        pass
+
+    return False
+
+
 def init_audio_converter():
     """AudioConverter für WAV→OGG/Opus (Matrix-Sprachnachrichten)."""
     try:
@@ -458,6 +479,15 @@ def run_matrix(assistant, stt=None, avatar=None, audio_converter=None):
     from elder_berry.tools.document_reader import DocumentReader
     document_reader = DocumentReader()
 
+    # AudioRouter (Phase 12) – prüfe ob lokale Wiedergabe möglich
+    from elder_berry.core.audio_router import AudioRouter
+    local_audio_available = _check_local_audio(assistant)
+    audio_router = AudioRouter(local_available=local_audio_available)
+    logger.info(
+        "AudioRouter: lokale Wiedergabe %s",
+        "verfügbar" if local_audio_available else "nicht verfügbar",
+    )
+
     # RemoteCommandHandler – alle Dependencies übergeben
     remote = RemoteCommandHandler(
         system_monitor=SystemMonitor(),
@@ -472,6 +502,7 @@ def run_matrix(assistant, stt=None, avatar=None, audio_converter=None):
         reminder_store=reminder_store,
         briefing_scheduler=briefing_scheduler,
         document_reader=document_reader,
+        audio_router=audio_router,
     )
 
     # ClaudeAgent (optional)
@@ -510,7 +541,16 @@ def run_matrix(assistant, stt=None, avatar=None, audio_converter=None):
         reminder_scheduler=reminder_scheduler,
         briefing_scheduler=briefing_scheduler,
         document_reader=document_reader,
+        audio_router=audio_router,
     )
+
+    # AudioDashboard (Web-UI für Audio-Routing)
+    try:
+        from elder_berry.web.audio_dashboard import AudioDashboard
+        dashboard = AudioDashboard(audio_router=audio_router, port=8090)
+        dashboard.start()
+    except Exception as e:
+        logger.warning("AudioDashboard nicht gestartet: %s", e)
 
     logger.info("Matrix-Bridge startet – Saleria ist online")
     print(f"\n─── Saleria Matrix-Modus ───")

@@ -51,6 +51,7 @@ if TYPE_CHECKING:
     from elder_berry.comms.reminder_scheduler import ReminderScheduler
     from elder_berry.comms.remote_commands import RemoteCommandHandler
     from elder_berry.core.assistant import Assistant
+    from elder_berry.core.audio_router import AudioRouter
     from elder_berry.stt.base import STTEngine
     from elder_berry.tools.document_reader import DocumentReader
 
@@ -112,6 +113,7 @@ class MatrixBridge:
         reminder_scheduler: ReminderScheduler | None = None,
         briefing_scheduler: BriefingScheduler | None = None,
         document_reader: DocumentReader | None = None,
+        audio_router: AudioRouter | None = None,
     ) -> None:
         self._channel = channel
         self._assistant = assistant
@@ -126,6 +128,7 @@ class MatrixBridge:
         self._reminder_scheduler = reminder_scheduler
         self._briefing_scheduler = briefing_scheduler
         self._document_reader = document_reader
+        self._audio_router = audio_router
         self._loop: asyncio.AbstractEventLoop | None = None
         self._thread: threading.Thread | None = None
         self._running = False
@@ -745,7 +748,11 @@ class MatrixBridge:
     async def _send_audio_if_available(
         self, room_id: str, result, tmp_wav: Path | None,
     ) -> None:
-        """Konvertiert WAV→OGG und sendet Audio an Matrix (wenn vorhanden)."""
+        """Konvertiert WAV→OGG und sendet Audio an Matrix (wenn vorhanden).
+
+        Wenn AudioRouter auf matrix_and_local steht, wird das WAV zusätzlich
+        lokal abgespielt (sounddevice oder AgentClient).
+        """
         if not result.audio_path or not result.audio_path.exists():
             return
         if not self._audio_converter:
@@ -761,11 +768,52 @@ class MatrixBridge:
             logger.debug("Sprachnachricht gesendet: %s", ogg_path.name)
         except Exception as e:
             logger.error("Audio-Senden fehlgeschlagen: %s", e)
-        finally:
+
+        # Lokale Wiedergabe (wenn AudioRouter das will und WAV noch existiert)
+        if (
+            self._audio_router
+            and self._audio_router.should_play_local()
+            and result.audio_path.exists()
+        ):
+            self._play_audio_local(result.audio_path)
+
+        # Cleanup
+        try:
             if result.audio_path.exists():
                 result.audio_path.unlink(missing_ok=True)
             if tmp_ogg and tmp_ogg.exists():
                 tmp_ogg.unlink(missing_ok=True)
+        except OSError as e:
+            logger.debug("Audio-Cleanup Fehler: %s", e)
+
+    def _play_audio_local(self, wav_path: Path) -> None:
+        """Spielt eine WAV-Datei lokal ab (sounddevice oder AgentClient)."""
+        # Versuch 1: AgentClient (Laptop-Wiedergabe)
+        agent = getattr(self._assistant, "_agent", None)
+        if agent is not None:
+            try:
+                agent.play_audio_file(wav_path)
+                logger.debug("Audio lokal via AgentClient abgespielt")
+                return
+            except Exception as e:
+                logger.debug("AgentClient-Wiedergabe fehlgeschlagen: %s", e)
+
+        # Versuch 2: sounddevice (Tower-Wiedergabe)
+        try:
+            import sounddevice as sd  # noqa: F811
+            import wave
+
+            with wave.open(str(wav_path), "rb") as wf:
+                frames = wf.readframes(wf.getnframes())
+                sd.play(
+                    __import__("numpy").frombuffer(frames, dtype="int16"),
+                    samplerate=wf.getframerate(),
+                    blocksize=4096,
+                )
+                sd.wait()
+            logger.debug("Audio lokal via sounddevice abgespielt")
+        except Exception as e:
+            logger.warning("Lokale Audio-Wiedergabe fehlgeschlagen: %s", e)
 
     async def _handle_llm_remote_command(
         self, msg: IncomingMessage, llm_result,
