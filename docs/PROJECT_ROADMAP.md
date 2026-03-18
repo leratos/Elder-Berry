@@ -199,6 +199,42 @@ ist optional und per Flag steuerbar.
 - Neue Klasse: `core/audio_router.py` (AudioRouter)
 - Integration: Bridge + Assistant lesen Flag statt hardcoded Logik
 
+## Phase 13 – Computer Use (Anthropic Vision + PC-Steuerung) 🔧 GEPLANT
+
+Saleria kann auf Anweisung des Nutzers auf Bildschirmelemente klicken –
+gesteuert über Anthropic Computer Use (Sonnet 4.6 Vision).
+
+### Flow
+1. Nutzer: "schick mir einen screenshot"
+2. Saleria: Screenshot via mss → Matrix
+3. Nutzer: "klick auf [Element]"
+4. Saleria: Screenshot → Anthropic Computer Use API (Bild + Tool-Def)
+5. Sonnet: strukturierte Antwort `{"action": "click", "coordinate": [x, y]}`
+6. Saleria: `WindowsActionController.click(x, y)`
+7. Saleria: 3s warten → neuer Screenshot → Matrix (Verification)
+
+### Technisch
+- **Anthropic Computer Use Tool**: `computer_20250124` Tool-Typ im API-Call
+  - Strukturierte Ausgabe (click, type, key, scroll) statt freies Koordinaten-Raten
+  - Kalibriert auf exakte Pixel-Koordinaten
+- **AnthropicClient erweitern**: Vision-Input (Base64-Bild) + Computer-Use-Tool-Definition
+- **Neuer Command**: `klick auf <Element>` → Screenshot → Vision → Klick → Verification
+- **Mapping**: Computer Use Actions → bestehende WindowsActionController-Methoden
+  - `click(x, y)` → `pyautogui.click(x, y)`
+  - `type(text)` → `pyautogui.typewrite(text)`
+  - `key(name)` → `pyautogui.press(name)`
+  - `scroll(direction, amount)` → `pyautogui.scroll(amount)`
+- **DPI-Kompensation**: Windows-Skalierung (125%/150%) muss berücksichtigt werden
+
+### Kosten
+- ~4-5 Cent pro Klick-Aktion (Screenshot-Bild ~6.000 Tokens + Koordinaten-Antwort)
+- Bei gelegentlicher Nutzung (5-10x/Tag) vernachlässigbar
+
+### Offene Fragen
+- Multi-Monitor: welcher Bildschirm wird erfasst?
+- Loop-Modus: soll Sonnet eigenständig mehrere Schritte ausführen können?
+- Sicherheit: Whitelist für erlaubte Aktionen? (wie bei Prozess-Start/Kill)
+
 ---
 
 ## Projektgrenzen (ehrliche Einschätzung)

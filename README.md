@@ -306,6 +306,7 @@ tests/                # 1100+ unit + integration tests
 | 10 | RPi5 Avatar-Display (Pepper's Ghost live) | Mostly done |
 | 11 | Document Summarization (PDF/TXT via LLM) | Done |
 | 12 | Audio Routing + Web Interface (local playback toggle, dashboard) | Done |
+| 13 | Computer Use (Anthropic Vision + PC control via screenshots) | Planned |
 
 ## Hardware
 

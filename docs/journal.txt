@@ -1384,3 +1384,13 @@
 - pip install fastapi uvicorn (falls nicht schon installiert)
 - Optional: pip install sounddevice numpy (für Tower-Wiedergabe)
 - Web-Dashboard: automatisch auf Port 8090 bei Matrix-Modus-Start
+
+## Geplant: Phase 13 – Computer Use (Anthropic Vision + PC-Steuerung) (2026-03-18)
+- Saleria kann per Anweisung auf Bildschirmelemente klicken
+- Flow: Screenshot → "klick auf X" → Sonnet Vision → Koordinaten → Klick → Verification-Screenshot
+- Anthropic Computer Use API (computer_20250124 Tool) statt freies Koordinaten-Raten
+- Alle Gegenstücke existieren bereits: mss (Screenshot), pyautogui (Klick), AnthropicClient (Sonnet 4.6)
+- Erweiterung am AnthropicClient: Vision-Input + Computer-Use-Tool-Definition
+- Geschätzte Kosten: ~4-5 Cent pro Klick-Aktion
+- Offene Fragen: Multi-Monitor, Loop-Modus, Sicherheits-Whitelist
+- Details: docs/PROJECT_ROADMAP.md (Phase 13)
