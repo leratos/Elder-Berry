@@ -2538,20 +2538,17 @@ class RemoteCommandHandler:
         try:
             result = self._document_reader.read_file(file_path)
 
-            # Zusammenfassung formatieren
-            header = (
-                f"📄 {result.source} ({result.pages} Seite(n))"
-            )
+            # Header für User-Antwort (Bridge schickt das ans LLM)
+            header = f"📄 {result.source} ({result.pages} Seite(n))"
             if result.truncated:
                 header += " [gekürzt]"
 
-            text = f"{header}\n\n{result.text}"
-
-            # history_text: voller Text für LLM-Kontext (Rückfragen möglich)
+            # text: kurzer Header (Bridge ersetzt das durch LLM-Zusammenfassung)
+            # history_text: Rohtext für LLM-Kontext (Rückfragen möglich)
             return CommandResult(
                 command="document_summary",
                 success=True,
-                text=text,
+                text=header,
                 history_text=f"Dokument '{result.source}' ({result.pages} Seiten):\n\n{result.text}",
             )
 

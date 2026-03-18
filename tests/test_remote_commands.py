@@ -2304,7 +2304,8 @@ class TestDocumentSummaryExecute:
         result = handler.execute("document_summary", f"zusammenfassung {f}")
 
         assert result.success is True
-        assert "Wichtiger Inhalt" in result.text
+        # text enthält nur den Header (Bridge schickt history_text ans LLM)
+        assert "notes.txt" in result.text
         assert result.history_text is not None
         assert "Wichtiger Inhalt" in result.history_text
 
@@ -2350,5 +2351,5 @@ class TestDocumentSummaryExecute:
         result = handler.execute("document_summary", f"zusammenfassung {pdf_path}")
 
         assert result.success is True
-        assert "Quartalsbericht" in result.text
         assert "1 Seite" in result.text
+        assert "Quartalsbericht" in result.history_text

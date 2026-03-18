@@ -289,6 +289,15 @@ class MatrixBridge:
                 None, self._remote_commands.execute, command, msg.body,
             )
 
+            # Dokument-Zusammenfassung: Rohtext ans LLM schicken
+            if (
+                result.command == "document_summary"
+                and result.success
+                and result.history_text
+            ):
+                await self._handle_document_summary(msg, result)
+                return
+
             # Text-Antwort senden
             if result.text:
                 await self._channel.send_text(msg.room_id, result.text)
@@ -415,6 +424,51 @@ class MatrixBridge:
                 await self._channel.send_text(
                     msg.room_id,
                     f"Agent-Fehler: {type(e).__name__}",
+                )
+            except Exception:
+                logger.error("Konnte Fehlermeldung nicht senden")
+
+    async def _handle_document_summary(self, msg: IncomingMessage, result) -> None:
+        """Schickt extrahierten Dokumenttext ans LLM für eine Zusammenfassung.
+
+        Der Remote Command liefert den Rohtext in result.history_text.
+        Hier wird der Text ans LLM geschickt, die Zusammenfassung an den User
+        gesendet und der Rohtext in die Chat-History geschrieben (für Rückfragen).
+        """
+        try:
+            loop = asyncio.get_running_loop()
+
+            # Rohtext in Chat-History für Rückfragen
+            self._chat_history.add(msg.sender, "user", msg.body)
+            self._chat_history.add(msg.sender, "assistant", result.history_text)
+
+            # LLM-Zusammenfassung
+            summary_prompt = (
+                f"Der Nutzer möchte folgendes Dokument zusammengefasst haben.\n\n"
+                f"{result.history_text}\n\n"
+                f"Fasse den Inhalt zusammen."
+            )
+            chat_context = self._chat_history.format_for_prompt(msg.sender)
+            llm_result = await loop.run_in_executor(
+                None, self._assistant.process, summary_prompt, None, chat_context,
+            )
+
+            # Header + LLM-Zusammenfassung senden
+            if llm_result.response:
+                response = f"{result.text}\n\n{llm_result.response}"
+                self._chat_history.add(msg.sender, "assistant", llm_result.response)
+                await self._channel.send_text(msg.room_id, response)
+            else:
+                # Fallback: Header senden wenn LLM keine Antwort liefert
+                await self._channel.send_text(msg.room_id, result.text)
+
+        except Exception as e:
+            logger.error("Dokument-Zusammenfassung LLM fehlgeschlagen: %s", e)
+            # Fallback: zumindest den Header senden
+            try:
+                await self._channel.send_text(
+                    msg.room_id,
+                    f"{result.text}\n\n(LLM-Zusammenfassung fehlgeschlagen: {type(e).__name__})",
                 )
             except Exception:
                 logger.error("Konnte Fehlermeldung nicht senden")
