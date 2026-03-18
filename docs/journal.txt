@@ -1394,3 +1394,12 @@
 - Geschätzte Kosten: ~4-5 Cent pro Klick-Aktion
 - Offene Fragen: Multi-Monitor, Loop-Modus, Sicherheits-Whitelist
 - Details: docs/PROJECT_ROADMAP.md (Phase 13)
+
+## Geplant: Phase 14 – Web-Suche (Brave Search + LLM-Aufbereitung) (2026-03-18)
+- Saleria kann auf Anfrage im Internet suchen und Ergebnisse aufbereiten
+- Flow: "Suche Dachdecker bei Plattenburg" → Claude extrahiert Suchbegriff → Brave Search API → Claude bereitet Ergebnisse auf → Matrix
+- Brave Search API: 2000 Queries/Monat kostenlos, REST, kein Google-Account nötig
+- Claude übernimmt: 1) Intent-Erkennung (was suchen?) 2) Aufbereitung (JSON → lesbarer Text)
+- Geschätzte Kosten: ~0.5 Cent pro Suche (Brave free + Claude Intent/Aufbereitung)
+- Neue Klasse: tools/brave_search_client.py (BraveSearchClient)
+- Details: docs/PROJECT_ROADMAP.md (Phase 14)

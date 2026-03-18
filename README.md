@@ -307,6 +307,7 @@ tests/                # 1100+ unit + integration tests
 | 11 | Document Summarization (PDF/TXT via LLM) | Done |
 | 12 | Audio Routing + Web Interface (local playback toggle, dashboard) | Done |
 | 13 | Computer Use (Anthropic Vision + PC control via screenshots) | Planned |
+| 14 | Web Search (Brave Search API + LLM result formatting) | Planned |
 
 ## Hardware
 

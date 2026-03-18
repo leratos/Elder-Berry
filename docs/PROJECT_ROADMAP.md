@@ -235,6 +235,36 @@ gesteuert über Anthropic Computer Use (Sonnet 4.6 Vision).
 - Loop-Modus: soll Sonnet eigenständig mehrere Schritte ausführen können?
 - Sicherheit: Whitelist für erlaubte Aktionen? (wie bei Prozess-Start/Kill)
 
+## Phase 14 – Web-Suche (Brave Search + LLM-Aufbereitung) 🔭 GEPLANT
+
+Saleria kann auf Anfrage im Internet suchen und die Ergebnisse aufbereitet zurückgeben.
+
+### Flow
+1. Nutzer: "Suche Dachdecker in der Nähe von Plattenburg"
+2. Saleria → Claude: extrahiert Suchbegriff + Ort ("Dachdecker Plattenburg Brandenburg")
+3. Saleria → Brave Search API: REST-Query
+4. API → Saleria: Rohe Suchergebnisse (JSON)
+5. Saleria → Claude: "Bereite diese Ergebnisse auf"
+6. Claude → Saleria: Formatierte Zusammenfassung (Name, Adresse, Bewertung, Link)
+7. Saleria → Matrix: Aufbereitete Antwort
+
+### Technisch
+- **Brave Search API**: 2000 Queries/Monat kostenlos, einfache REST-API, kein Google-Account
+- **Claude als Doppelrolle**: Intent-Erkennung ("was will der User suchen") + Aufbereitung ("mach JSON lesbar")
+- **Neue Klasse**: `tools/brave_search_client.py` (BraveSearchClient)
+- **SecretStore**: `brave_api_key` für API-Key
+- **Neuer Command**: `suche <query>` oder natürliche Sprache ("suche mir...", "finde...")
+- **Abhängigkeit**: nur `httpx` (bereits vorhanden)
+
+### Kosten
+- Brave API: kostenlos (Free Tier, 2000/Monat)
+- Claude Intent + Aufbereitung: ~500 Input + ~300 Output Tokens → ~0.5 Cent pro Suche
+
+### Offene Fragen
+- Soll Saleria automatisch erkennen wann eine Web-Suche nötig ist (ohne explizites "suche")?
+- Lokale Ergebnisse (Maps/Local Pack) vs. allgemeine Web-Suche?
+- Ergebnis-Caching (gleiche Suche innerhalb X Minuten)?
+
 ---
 
 ## Projektgrenzen (ehrliche Einschätzung)
