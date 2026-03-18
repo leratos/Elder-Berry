@@ -1476,6 +1476,50 @@
 - Kein Kosten-Hinweis (bewusste Entscheidung)
 - computer_20251124 Tool-Version für Sonnet 4.6 (neueste API)
 
+## Abgeschlossen: Refactoring – RemoteCommandHandler → Domain-Handler-Module (2026-03-18)
+- Branch: feature/refactor-remote-commands
+- Grund: remote_commands.py hatte 2.777 Zeilen, 30 _cmd_* Methoden → unübersichtlich
+
+### Neue Dateien (comms/commands/ Subpackage)
+- base.py: CommandHandler ABC + CommandResult DTO + PatternMatch DTO
+  - patterns Property: (pattern, command, use_original, use_search) Tuple
+  - use_search=True für .search() statt .match() (6 Patterns brauchen search)
+- system_commands.py: SystemCommandHandler (~380 Zeilen)
+  - Status, Screenshot, Media, Volume, Avatar, Restart
+- calendar_commands.py: CalendarCommandHandler (~450 Zeilen)
+  - Termine CRUD, Suche, Delete-Helper, _parse_natural_date
+- mail_commands.py: MailCommandHandler (~320 Zeilen)
+  - Mails, Suche, Anhänge, per ID
+- file_commands.py: FileCommandHandler (~370 Zeilen)
+  - Clipboard, Send-File, Download
+- process_commands.py: ProcessCommandHandler (~450 Zeilen)
+  - Start/Kill, Git, Docker, WoL
+- weather_commands.py: WeatherCommandHandler (~460 Zeilen)
+  - Wetter, Timer, Erinnerungen, Briefing, Training, PRs
+- advanced_commands.py: AdvancedCommandHandler (~310 Zeilen)
+  - ComputerUse, Web-Suche, Dokument-Zusammenfassung, Audio
+
+### Geänderte Dateien
+- remote_commands.py: 2.777 → ~310 Zeilen (Orchestrator)
+  - Delegiert parse_command + execute an Handler-Instanzen
+  - Handler-Reihenfolge bestimmt Pattern-Priorität
+  - WICHTIG: _weather VOR _calendar (REMINDER_DELETE vor TERMIN_DELETE)
+  - HELP_TEXT + KEYWORD_MAP bleiben hier (Re-Export für Bridge)
+  - CommandResult Re-Export für Rückwärtskompatibilität
+- tests/test_remote_commands.py: Imports auf neue Module umgestellt
+  - _cmd_*()-Direktaufrufe → handler.execute() (9 Stellen)
+  - handler._last_events → handler._calendar._last_events (11 Stellen)
+
+### Architektur
+- CommandHandler ABC definiert Interface: simple_commands, patterns, keywords, execute()
+- Jeder Handler verwaltet eigene Patterns/Keywords und führt eigene Commands aus
+- Orchestrator iteriert Handler in Prioritätsreihenfolge
+- Keine Verhaltensänderung: identische Test-Ergebnisse (1173 passed, 53 skipped)
+
+### Tests
+- 1173 passed, 53 skipped (identisch mit vor dem Refactoring)
+- 8 vorbestehende Failures (pydub, nicht durch Refactoring verursacht)
+
 ## Abgeschlossen: Phase 14 – Web-Suche (Brave Search + LLM-Aufbereitung) (2026-03-18)
 - Branch: feature/phase-14-web-search
 

@@ -7,26 +7,34 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from elder_berry.comms.remote_commands import (
+from elder_berry.comms.commands.advanced_commands import (
     AUDIO_LOCAL_PATTERN,
-    AVATAR_EMOTION_PATTERN,
-    AVATAR_EMOTIONS,
-    CLIP_WRITE_PATTERN,
-    DOCKER_PATTERN,
+    COMPUTER_USE_PATTERN,
     DOCUMENT_SUMMARY_PATTERN,
+    WEB_SEARCH_PATTERN,
+)
+from elder_berry.comms.commands.base import CommandResult
+from elder_berry.comms.commands.file_commands import (
+    CLIP_WRITE_PATTERN,
     DOWNLOAD_PATTERN,
+    MAX_FILE_SIZE_BYTES,
+    SEND_FILE_PATTERN,
+)
+from elder_berry.comms.commands.process_commands import (
+    DOCKER_PATTERN,
     GIT_PATTERN,
     KILL_PROCESS_PATTERN,
     KILL_WHITELIST,
-    MAX_FILE_SIZE_BYTES,
-    MEDIA_KEYS,
-    SEND_FILE_PATTERN,
     START_PROCESS_PATTERN,
     START_WHITELIST,
-    VOLUME_PATTERN,
-    CommandResult,
-    RemoteCommandHandler,
 )
+from elder_berry.comms.commands.system_commands import (
+    AVATAR_EMOTION_PATTERN,
+    AVATAR_EMOTIONS,
+    MEDIA_KEYS,
+    VOLUME_PATTERN,
+)
+from elder_berry.comms.remote_commands import RemoteCommandHandler
 
 
 # ---------------------------------------------------------------------------
@@ -349,7 +357,7 @@ class TestCmdScreenshot:
     def test_screenshot_result_shape(self):
         """Screenshot liefert immer ein gültiges CommandResult (Erfolg oder Fehler)."""
         handler = RemoteCommandHandler()
-        result = handler._cmd_screenshot()
+        result = handler.execute("screenshot", "screenshot")
 
         assert result.command == "screenshot"
         # Entweder Erfolg (mss installiert) oder graceful Fehler
@@ -385,7 +393,7 @@ class TestCmdScreenshot:
                 return original_import(name, *args, **kwargs)
 
             with patch("builtins.__import__", side_effect=mock_import):
-                result = handler._cmd_screenshot()
+                result = handler.execute("screenshot", "screenshot")
 
         assert result.success is False
         assert "mss" in result.text
@@ -559,7 +567,7 @@ class TestCmdClipboard:
             return original_import(name, *args, **kwargs)
 
         with patch("builtins.__import__", side_effect=mock_import):
-            result = handler._cmd_clipboard_read()
+            result = handler.execute("clipboard", "clipboard")
 
         assert result.success is True
         assert "Hello World" in result.text
@@ -578,7 +586,7 @@ class TestCmdClipboard:
             return original_import(name, *args, **kwargs)
 
         with patch("builtins.__import__", side_effect=mock_import):
-            result = handler._cmd_clipboard_read()
+            result = handler.execute("clipboard", "clipboard")
 
         assert result.success is True
         assert "leer" in result.text
@@ -594,7 +602,7 @@ class TestCmdClipboard:
             return original_import(name, *args, **kwargs)
 
         with patch("builtins.__import__", side_effect=mock_import):
-            result = handler._cmd_clipboard_read()
+            result = handler.execute("clipboard", "clipboard")
 
         assert result.success is False
         assert "pyperclip" in result.text
@@ -612,7 +620,7 @@ class TestCmdClipboard:
             return original_import(name, *args, **kwargs)
 
         with patch("builtins.__import__", side_effect=mock_import):
-            result = handler._cmd_clipboard_write("clip: Hallo Welt")
+            result = handler.execute("clip_write", "clip: Hallo Welt")
 
         assert result.success is True
         assert "kopiert" in result.text
@@ -631,7 +639,7 @@ class TestCmdClipboard:
             return original_import(name, *args, **kwargs)
 
         with patch("builtins.__import__", side_effect=mock_import):
-            result = handler._cmd_clipboard_write("clip: some text")
+            result = handler.execute("clip_write", "clip: some text")
 
         assert result.success is True
         mock_pyperclip.copy.assert_called_once_with("some text")
@@ -649,7 +657,7 @@ class TestCmdClipboard:
             return original_import(name, *args, **kwargs)
 
         with patch("builtins.__import__", side_effect=mock_import):
-            result = handler._cmd_clipboard_write("clip some text")
+            result = handler.execute("clip_write", "clip some text")
 
         assert result.success is True
         mock_pyperclip.copy.assert_called_once_with("some text")
@@ -665,7 +673,7 @@ class TestCmdClipboard:
             return original_import(name, *args, **kwargs)
 
         with patch("builtins.__import__", side_effect=mock_import):
-            result = handler._cmd_clipboard_write("clip: text")
+            result = handler.execute("clip_write", "clip: text")
 
         assert result.success is False
         assert "pyperclip" in result.text
@@ -1590,7 +1598,7 @@ class TestTerminDeleteCommand:
     def test_execute_delete_by_index(self):
         mock_cal = MagicMock()
         handler = RemoteCommandHandler(calendar=mock_cal)
-        handler._last_events = self._make_events(3)
+        handler._calendar._last_events = self._make_events(3)
 
         result = handler.execute("termin_delete", "lösche den 2. termin")
 
@@ -1601,7 +1609,7 @@ class TestTerminDeleteCommand:
     def test_execute_delete_by_title(self):
         mock_cal = MagicMock()
         handler = RemoteCommandHandler(calendar=mock_cal)
-        handler._last_events = self._make_events(3)
+        handler._calendar._last_events = self._make_events(3)
 
         result = handler.execute("termin_delete", "lösche termin Termin 1")
 
@@ -1611,7 +1619,7 @@ class TestTerminDeleteCommand:
     def test_execute_delete_alle(self):
         mock_cal = MagicMock()
         handler = RemoteCommandHandler(calendar=mock_cal)
-        handler._last_events = self._make_events(3)
+        handler._calendar._last_events = self._make_events(3)
 
         result = handler.execute("termin_delete", "lösche alle termine")
 
@@ -1622,7 +1630,7 @@ class TestTerminDeleteCommand:
     def test_execute_delete_no_events(self):
         mock_cal = MagicMock()
         handler = RemoteCommandHandler(calendar=mock_cal)
-        handler._last_events = []
+        handler._calendar._last_events = []
 
         result = handler.execute("termin_delete", "lösche den 1. termin")
 
@@ -1632,7 +1640,7 @@ class TestTerminDeleteCommand:
     def test_execute_delete_invalid_index(self):
         mock_cal = MagicMock()
         handler = RemoteCommandHandler(calendar=mock_cal)
-        handler._last_events = self._make_events(2)
+        handler._calendar._last_events = self._make_events(2)
 
         result = handler.execute("termin_delete", "lösche den 5. termin")
 
@@ -1642,7 +1650,7 @@ class TestTerminDeleteCommand:
     def test_execute_delete_title_not_found(self):
         mock_cal = MagicMock()
         handler = RemoteCommandHandler(calendar=mock_cal)
-        handler._last_events = self._make_events(2)
+        handler._calendar._last_events = self._make_events(2)
 
         result = handler.execute("termin_delete", "lösche termin Gibtsnet")
 
@@ -1653,7 +1661,7 @@ class TestTerminDeleteCommand:
         mock_cal = MagicMock()
         mock_cal.delete_event.side_effect = RuntimeError("API Error")
         handler = RemoteCommandHandler(calendar=mock_cal)
-        handler._last_events = self._make_events(1)
+        handler._calendar._last_events = self._make_events(1)
 
         result = handler.execute("termin_delete", "lösche den 1. termin")
 
@@ -1673,13 +1681,13 @@ class TestTerminDeleteCommand:
         handler = RemoteCommandHandler(calendar=mock_cal)
         handler.execute("termine", "termine")
 
-        assert len(handler._last_events) == 2
+        assert len(handler._calendar._last_events) == 2
 
     def test_execute_delete_with_filler_single_event(self):
         """'lösch den termin bitte' löscht den einzigen Termin."""
         mock_cal = MagicMock()
         handler = RemoteCommandHandler(calendar=mock_cal)
-        handler._last_events = self._make_events(1)
+        handler._calendar._last_events = self._make_events(1)
 
         result = handler.execute("termin_delete", "lösch den termin bitte")
 
@@ -1691,7 +1699,7 @@ class TestTerminDeleteCommand:
         """'lösch den termin bitte' bei mehreren Events fragt nach."""
         mock_cal = MagicMock()
         handler = RemoteCommandHandler(calendar=mock_cal)
-        handler._last_events = self._make_events(3)
+        handler._calendar._last_events = self._make_events(3)
 
         result = handler.execute("termin_delete", "lösch den termin bitte")
 
@@ -1702,7 +1710,7 @@ class TestTerminDeleteCommand:
         """'lösche den termin morgen' bei 1 Event → löscht ihn."""
         mock_cal = MagicMock()
         handler = RemoteCommandHandler(calendar=mock_cal)
-        handler._last_events = self._make_events(1)
+        handler._calendar._last_events = self._make_events(1)
 
         result = handler.execute("termin_delete", "lösche den termin morgen")
 
@@ -2458,43 +2466,43 @@ class TestComputerUsePattern:
     """Tests für COMPUTER_USE_PATTERN."""
 
     def test_klick_auf(self):
-        from elder_berry.comms.remote_commands import COMPUTER_USE_PATTERN
+        from elder_berry.comms.commands.advanced_commands import COMPUTER_USE_PATTERN
         assert COMPUTER_USE_PATTERN.match("klick auf den OK-Button")
 
     def test_klicke_auf(self):
-        from elder_berry.comms.remote_commands import COMPUTER_USE_PATTERN
+        from elder_berry.comms.commands.advanced_commands import COMPUTER_USE_PATTERN
         assert COMPUTER_USE_PATTERN.match("klicke auf das Suchfeld")
 
     def test_tippe(self):
-        from elder_berry.comms.remote_commands import COMPUTER_USE_PATTERN
+        from elder_berry.comms.commands.advanced_commands import COMPUTER_USE_PATTERN
         assert COMPUTER_USE_PATTERN.match("tippe Hello World")
 
     def test_scroll_runter(self):
-        from elder_berry.comms.remote_commands import COMPUTER_USE_PATTERN
+        from elder_berry.comms.commands.advanced_commands import COMPUTER_USE_PATTERN
         assert COMPUTER_USE_PATTERN.match("scroll runter")
 
     def test_scroll_hoch(self):
-        from elder_berry.comms.remote_commands import COMPUTER_USE_PATTERN
+        from elder_berry.comms.commands.advanced_commands import COMPUTER_USE_PATTERN
         assert COMPUTER_USE_PATTERN.match("scroll hoch")
 
     def test_drueck(self):
-        from elder_berry.comms.remote_commands import COMPUTER_USE_PATTERN
+        from elder_berry.comms.commands.advanced_commands import COMPUTER_USE_PATTERN
         assert COMPUTER_USE_PATTERN.match("drück Strg+S")
 
     def test_druecke(self):
-        from elder_berry.comms.remote_commands import COMPUTER_USE_PATTERN
+        from elder_berry.comms.commands.advanced_commands import COMPUTER_USE_PATTERN
         assert COMPUTER_USE_PATTERN.match("drücke Enter")
 
     def test_klick_mal_auf(self):
-        from elder_berry.comms.remote_commands import COMPUTER_USE_PATTERN
+        from elder_berry.comms.commands.advanced_commands import COMPUTER_USE_PATTERN
         assert COMPUTER_USE_PATTERN.match("klick mal auf das X oben rechts")
 
     def test_auf_element_klicken(self):
-        from elder_berry.comms.remote_commands import COMPUTER_USE_PATTERN
+        from elder_berry.comms.commands.advanced_commands import COMPUTER_USE_PATTERN
         assert COMPUTER_USE_PATTERN.match("auf accept klicken")
 
     def test_no_match_random(self):
-        from elder_berry.comms.remote_commands import COMPUTER_USE_PATTERN
+        from elder_berry.comms.commands.advanced_commands import COMPUTER_USE_PATTERN
         assert COMPUTER_USE_PATTERN.match("hallo wie geht es dir") is None
 
 
@@ -2600,35 +2608,35 @@ class TestWebSearchPattern:
     """WEB_SEARCH_PATTERN Regex Tests."""
 
     def test_suche_basic(self):
-        from elder_berry.comms.remote_commands import WEB_SEARCH_PATTERN
+        from elder_berry.comms.commands.advanced_commands import WEB_SEARCH_PATTERN
         m = WEB_SEARCH_PATTERN.match("suche Dachdecker Plattenburg")
         assert m
         assert m.group(1) == "Dachdecker Plattenburg"
 
     def test_such_mal(self):
-        from elder_berry.comms.remote_commands import WEB_SEARCH_PATTERN
+        from elder_berry.comms.commands.advanced_commands import WEB_SEARCH_PATTERN
         m = WEB_SEARCH_PATTERN.match("such mal Python Tutorial")
         assert m
         assert m.group(1) == "Python Tutorial"
 
     def test_google(self):
-        from elder_berry.comms.remote_commands import WEB_SEARCH_PATTERN
+        from elder_berry.comms.commands.advanced_commands import WEB_SEARCH_PATTERN
         m = WEB_SEARCH_PATTERN.match("google Rezept Lasagne")
         assert m
         assert m.group(1) == "Rezept Lasagne"
 
     def test_finde(self):
-        from elder_berry.comms.remote_commands import WEB_SEARCH_PATTERN
+        from elder_berry.comms.commands.advanced_commands import WEB_SEARCH_PATTERN
         m = WEB_SEARCH_PATTERN.match("finde Dachdecker in der Nähe")
         assert m
         assert m.group(1) == "Dachdecker in der Nähe"
 
     def test_no_match_empty(self):
-        from elder_berry.comms.remote_commands import WEB_SEARCH_PATTERN
+        from elder_berry.comms.commands.advanced_commands import WEB_SEARCH_PATTERN
         assert WEB_SEARCH_PATTERN.match("suche") is None
 
     def test_case_insensitive(self):
-        from elder_berry.comms.remote_commands import WEB_SEARCH_PATTERN
+        from elder_berry.comms.commands.advanced_commands import WEB_SEARCH_PATTERN
         m = WEB_SEARCH_PATTERN.match("SUCHE Test")
         assert m
         assert m.group(1) == "Test"
