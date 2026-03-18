@@ -59,11 +59,14 @@ def _clean_text_for_tts(text: str) -> str:
     return cleaned
 
 
-def _split_sentences(text: str) -> list[str]:
+def _split_sentences(text: str, max_chars: int = 250) -> list[str]:
     """Splittet Text an Satzgrenzen (. ! ? …) für satzweise TTS-Generierung.
 
     Kurze Fragmente (<15 Zeichen) werden an den vorherigen Satz angehängt,
     um XTTS-Drift bei zu kurzen Segmenten zu vermeiden.
+
+    Segmente über max_chars werden zusätzlich an Komma/Semikolon/Doppelpunkt
+    aufgespalten (XTTS-Limit: 253 Zeichen für Deutsch).
     """
     # Split an Satzzeichen, behalte das Satzzeichen am Ende
     raw = re.split(r"(?<=[.!?…])\s+", text.strip())
@@ -80,7 +83,28 @@ def _split_sentences(text: str) -> list[str]:
         else:
             merged.append(part)
 
-    return merged or [text]
+    if not merged:
+        return [text]
+
+    # Lange Segmente an Komma/Semikolon/Doppelpunkt/Gedankenstrich aufbrechen
+    final: list[str] = []
+    for segment in merged:
+        if len(segment) <= max_chars:
+            final.append(segment)
+            continue
+        # Subsplit an ,;:–-
+        parts = re.split(r"(?<=[,;:–\-])\s+", segment)
+        chunk = ""
+        for part in parts:
+            if chunk and len(chunk) + 1 + len(part) > max_chars:
+                final.append(chunk.strip())
+                chunk = part
+            else:
+                chunk = chunk + " " + part if chunk else part
+        if chunk.strip():
+            final.append(chunk.strip())
+
+    return final
 
 
 class CoquiTTSEngine(TTSEngine):
