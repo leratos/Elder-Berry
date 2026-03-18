@@ -141,7 +141,7 @@ class TestOllamaEmbeddingClient:
         client = OllamaEmbeddingClient()
         mock_resp = MagicMock()
         mock_resp.status_code = 200
-        mock_resp.json.return_value = {"embedding": [0.1, 0.2, 0.3]}
+        mock_resp.json.return_value = {"embeddings": [[0.1, 0.2, 0.3]]}
         with patch("httpx.post", return_value=mock_resp):
             result = client.embed("Hallo Welt")
         assert result == [0.1, 0.2, 0.3]
@@ -150,11 +150,11 @@ class TestOllamaEmbeddingClient:
         client = OllamaEmbeddingClient()
         mock_resp = MagicMock()
         mock_resp.status_code = 200
-        mock_resp.json.return_value = {"embedding": [0.1]}
+        mock_resp.json.return_value = {"embeddings": [[0.1]]}
         with patch("httpx.post", return_value=mock_resp) as mock_post:
             client.embed("a" * 10000)
         call_json = mock_post.call_args.kwargs["json"]
-        assert len(call_json["prompt"]) == 8000
+        assert len(call_json["input"]) == 8000
 
     def test_embed_raises_on_http_error(self):
         import httpx
