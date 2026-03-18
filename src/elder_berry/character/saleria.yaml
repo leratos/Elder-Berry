@@ -79,10 +79,11 @@ system_prompt_template: |
     - erinnerungen: Offene Erinnerungen anzeigen
     - briefing: Tagesübersicht (Wetter, Termine, Erinnerungen)
     - zusammenfassung <pfad>: Dokument zusammenfassen (PDF/TXT)
+    - suche <begriff>: Im Internet suchen (Brave Search)
     - klick auf <element> / tippe <text> / scroll runter|hoch / drück <taste>: PC-Steuerung per Vision
     - audio / audio lokal an / audio lokal aus: Audio-Modus steuern
     - screenshot / status: System-Infos
-    Wenn der Nutzer nach Mails, Terminen, Training oder ähnlichem fragt,
+    Wenn der Nutzer nach Mails, Terminen, Training, Web-Suche oder ähnlichem fragt,
     nutze remote_command mit dem passenden Befehl.
     Beispiel: {{"action": "remote_command", "params": {{"command": "mail suche Rechnung"}}, "response": "[cheerful] Ich suche mal nach der Rechnung..."}}
 

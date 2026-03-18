@@ -2590,3 +2590,159 @@ class TestComputerUseExecute:
         result = handler.execute("computer_use", "klick auf X")
         assert result.success is True
         assert result.image_path == img
+
+
+# ---------------------------------------------------------------------------
+# Web-Suche (Brave Search)
+# ---------------------------------------------------------------------------
+
+class TestWebSearchPattern:
+    """WEB_SEARCH_PATTERN Regex Tests."""
+
+    def test_suche_basic(self):
+        from elder_berry.comms.remote_commands import WEB_SEARCH_PATTERN
+        m = WEB_SEARCH_PATTERN.match("suche Dachdecker Plattenburg")
+        assert m
+        assert m.group(1) == "Dachdecker Plattenburg"
+
+    def test_such_mal(self):
+        from elder_berry.comms.remote_commands import WEB_SEARCH_PATTERN
+        m = WEB_SEARCH_PATTERN.match("such mal Python Tutorial")
+        assert m
+        assert m.group(1) == "Python Tutorial"
+
+    def test_google(self):
+        from elder_berry.comms.remote_commands import WEB_SEARCH_PATTERN
+        m = WEB_SEARCH_PATTERN.match("google Rezept Lasagne")
+        assert m
+        assert m.group(1) == "Rezept Lasagne"
+
+    def test_finde(self):
+        from elder_berry.comms.remote_commands import WEB_SEARCH_PATTERN
+        m = WEB_SEARCH_PATTERN.match("finde Dachdecker in der Nähe")
+        assert m
+        assert m.group(1) == "Dachdecker in der Nähe"
+
+    def test_no_match_empty(self):
+        from elder_berry.comms.remote_commands import WEB_SEARCH_PATTERN
+        assert WEB_SEARCH_PATTERN.match("suche") is None
+
+    def test_case_insensitive(self):
+        from elder_berry.comms.remote_commands import WEB_SEARCH_PATTERN
+        m = WEB_SEARCH_PATTERN.match("SUCHE Test")
+        assert m
+        assert m.group(1) == "Test"
+
+
+class TestWebSearchParseCommand:
+    """parse_command() erkennt Web-Suche."""
+
+    def test_suche_recognized(self):
+        handler = RemoteCommandHandler()
+        assert handler.parse_command("suche Dachdecker Plattenburg") == "web_search"
+
+    def test_google_recognized(self):
+        handler = RemoteCommandHandler()
+        assert handler.parse_command("google Python Tutorial") == "web_search"
+
+    def test_such_mal_recognized(self):
+        handler = RemoteCommandHandler()
+        assert handler.parse_command("such mal Rezept") == "web_search"
+
+    def test_keyword_such_mir(self):
+        handler = RemoteCommandHandler()
+        assert handler.parse_command("such mir bitte ein gutes Rezept") == "web_search"
+
+    def test_keyword_google_mal(self):
+        handler = RemoteCommandHandler()
+        assert handler.parse_command("google mal wie das Wetter in Berlin ist") == "web_search"
+
+    def test_mail_suche_has_priority(self):
+        """Mail-Suche hat Vorrang vor Web-Suche."""
+        handler = RemoteCommandHandler()
+        result = handler.parse_command("mail suche Rechnung")
+        assert result == "mail_search"
+
+    def test_termin_suche_has_priority(self):
+        """Termin-Suche hat Vorrang vor Web-Suche."""
+        handler = RemoteCommandHandler()
+        result = handler.parse_command("termin suche Zahnarzt")
+        assert result == "termin_search"
+
+
+class TestWebSearchExecute:
+    """Tests für execute('web_search', ...)."""
+
+    def test_no_client(self):
+        handler = RemoteCommandHandler()
+        result = handler.execute("web_search", "suche Test")
+        assert result.success is False
+        assert "nicht verfügbar" in result.text
+
+    def test_successful_search(self):
+        from unittest.mock import MagicMock
+        from elder_berry.tools.brave_search_client import SearchResult
+
+        mock_client = MagicMock()
+        mock_client.search.return_value = [
+            SearchResult("Ergebnis 1", "https://eins.de", "Beschreibung 1"),
+            SearchResult("Ergebnis 2", "https://zwei.de", "Beschreibung 2"),
+        ]
+        mock_client.format_results.return_value = "Formatierter Text"
+        mock_client.format_results_detailed.return_value = "Detaillierter Text"
+
+        handler = RemoteCommandHandler(search_client=mock_client)
+        result = handler.execute("web_search", "suche Dachdecker")
+
+        assert result.success is True
+        assert result.text == "Formatierter Text"
+        assert result.history_text == "Detaillierter Text"
+        mock_client.search.assert_called_once_with("Dachdecker")
+
+    def test_search_error(self):
+        from unittest.mock import MagicMock
+        mock_client = MagicMock()
+        mock_client.search.side_effect = RuntimeError("API Error")
+
+        handler = RemoteCommandHandler(search_client=mock_client)
+        result = handler.execute("web_search", "suche Test")
+
+        assert result.success is False
+        assert "fehlgeschlagen" in result.text
+
+    def test_empty_query_not_parsed(self):
+        """'suche ' (ohne Suchbegriff) wird nicht als Command erkannt."""
+        handler = RemoteCommandHandler()
+        assert handler.parse_command("suche ") is None
+
+    def test_empty_query_via_execute(self):
+        """Leerer Query bei execute → Fehler."""
+        from unittest.mock import MagicMock
+        mock_client = MagicMock()
+
+        handler = RemoteCommandHandler(search_client=mock_client)
+        # Direkt execute mit leerem Text (Fallback-Pfad)
+        result = handler.execute("web_search", "  ")
+
+        assert result.success is False
+        assert "Suchbegriff" in result.text
+
+    def test_keyword_match_extracts_query(self):
+        """Bei Keyword-Match wird der Suchbegriff über Prefix-Entfernung extrahiert."""
+        from unittest.mock import MagicMock
+        from elder_berry.tools.brave_search_client import SearchResult
+
+        mock_client = MagicMock()
+        mock_client.search.return_value = [
+            SearchResult("Test", "https://test.de", "Desc"),
+        ]
+        mock_client.format_results.return_value = "OK"
+        mock_client.format_results_detailed.return_value = "Detail"
+
+        handler = RemoteCommandHandler(search_client=mock_client)
+        # "recherchiere Dachdecker" wird per Keyword-Map erkannt,
+        # dann im Handler per Prefix "recherchiere" entfernt
+        result = handler.execute("web_search", "recherchiere Dachdecker in Berlin")
+
+        assert result.success is True
+        mock_client.search.assert_called_once_with("Dachdecker in Berlin")

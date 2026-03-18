@@ -55,6 +55,7 @@ if TYPE_CHECKING:
     from elder_berry.tools.gym_data import GymDataClient
     from elder_berry.comms.briefing_scheduler import BriefingScheduler
     from elder_berry.tools.reminder_store import ReminderStore
+    from elder_berry.tools.brave_search_client import BraveSearchClient
     from elder_berry.tools.weather_client import WeatherClient
 
 logger = logging.getLogger(__name__)
@@ -167,6 +168,11 @@ Dokumente:
   zusammenfassung <Pfad> – PDF/TXT zusammenfassen (z.B. zusammenfassung C:\\Docs\\report.pdf)
   fasse zusammen <Pfad> – Alias für zusammenfassung
 
+Web-Suche:
+  suche <Begriff> – Im Internet suchen (z.B. suche Dachdecker Plattenburg)
+  such mal <Begriff> – Alias für suche
+  google <Begriff> – Alias für suche
+
 Computer Use (Vision-gesteuert):
   klick auf <Element> – Klickt auf ein Bildschirmelement (z.B. klick auf den Discord-Button)
   tippe <Text> – Tippt Text an der aktuellen Position
@@ -214,6 +220,9 @@ KEYWORD_MAP: dict[str, list[str]] = {
     "computer_use": ["klick auf", "klicke auf", "klick mal auf", "drück auf",
                       "tippe in", "scroll runter", "scroll hoch", "scroll nach",
                       "auf accept klicken", "auf ok klicken", "auf den button klicken"],
+    "web_search": ["such mir", "suche mir", "suche mal", "such mal",
+                    "google mal", "google mir", "recherchiere",
+                    "finde heraus", "im internet suchen"],
 }
 
 # Regex für Audio-Modus: "audio lokal an", "audio lokal aus"
@@ -469,6 +478,13 @@ COMPUTER_USE_PATTERN = re.compile(
     re.IGNORECASE,
 )
 
+# Regex für Web-Suche: "suche Dachdecker", "such mal Python Tutorial",
+# "google Rezept Lasagne", "finde Dachdecker in der Nähe"
+WEB_SEARCH_PATTERN = re.compile(
+    r"^(?:such\s+mal|suche?|google|finde)\s+(.+)$",
+    re.IGNORECASE,
+)
+
 # Gültige Emotionen für Avatar-Rendering (lowercase → Emotion-Name)
 AVATAR_EMOTIONS = {
     "neutral", "cheerful", "angry", "sarcastic", "motivated",
@@ -572,6 +588,7 @@ class RemoteCommandHandler:
         document_reader: DocumentReader | None = None,
         audio_router: AudioRouter | None = None,
         computer_use: ComputerUseController | None = None,
+        search_client: BraveSearchClient | None = None,
     ) -> None:
         self._monitor = system_monitor
         self._controller = controller
@@ -588,6 +605,7 @@ class RemoteCommandHandler:
         self._document_reader = document_reader
         self._audio_router = audio_router
         self._computer_use = computer_use
+        self._search_client = search_client
         # Letztes Termin-Ergebnis (für "lösche alle/den 2.")
         self._last_events: list = []
         self._send_file_allowed_roots: tuple[Path, ...] = tuple(
@@ -723,6 +741,11 @@ class RemoteCommandHandler:
         if COMPUTER_USE_PATTERN.match(normalized):
             return "computer_use"
 
+        # Stufe 8l: Web-Suche ("suche Dachdecker", "google Rezept")
+        # NACH Mail-/Termin-Suche (die spezifischer sind)
+        if WEB_SEARCH_PATTERN.match(normalized):
+            return "web_search"
+
         # Stufe 9: Keyword-Suche in natürlicher Sprache
         for command, keywords in KEYWORD_MAP.items():
             for keyword in keywords:
@@ -848,6 +871,9 @@ class RemoteCommandHandler:
 
         if command == "computer_use":
             return self._cmd_computer_use(raw_text)
+
+        if command == "web_search":
+            return self._cmd_search(raw_text)
 
         return CommandResult(
             command=command,
@@ -2691,4 +2717,61 @@ class RemoteCommandHandler:
             success=result.success,
             text=result.message,
             image_path=result.verification_image_path,
+        )
+
+    # ------------------------------------------------------------------
+    # Web-Suche
+    # ------------------------------------------------------------------
+
+    def _cmd_search(self, raw_text: str) -> CommandResult:
+        """Web-Suche via Brave Search API.
+
+        Extrahiert den Suchbegriff aus dem Text und gibt formatierte
+        Ergebnisse zurück. Rohe Ergebnisse werden in history_text
+        gespeichert, damit das LLM bei Rückfragen darauf zugreifen kann.
+        """
+        if not self._search_client:
+            return CommandResult(
+                command="web_search", success=False,
+                text="Web-Suche nicht verfügbar (Brave API-Key fehlt).",
+            )
+
+        # Suchbegriff extrahieren
+        match = WEB_SEARCH_PATTERN.match(raw_text.strip())
+        if match:
+            query = match.group(1).strip()
+        else:
+            # Keyword-Match: versuche "suche" / "google" etc. zu entfernen
+            query = raw_text.strip()
+            for prefix in ("such mir", "suche mir", "suche mal", "such mal",
+                           "google mal", "google mir", "recherchiere",
+                           "finde heraus", "im internet suchen"):
+                lower = query.lower()
+                if lower.startswith(prefix):
+                    query = query[len(prefix):].strip()
+                    break
+
+        if not query:
+            return CommandResult(
+                command="web_search", success=False,
+                text="Bitte gib einen Suchbegriff an (z.B. 'suche Dachdecker Plattenburg').",
+            )
+
+        try:
+            results = self._search_client.search(query)
+        except Exception as e:
+            logger.error("Web-Suche fehlgeschlagen: %s", e)
+            return CommandResult(
+                command="web_search", success=False,
+                text=f"Web-Suche fehlgeschlagen: {e}",
+            )
+
+        text = self._search_client.format_results(results)
+        history = self._search_client.format_results_detailed(results)
+
+        return CommandResult(
+            command="web_search",
+            success=True,
+            text=text,
+            history_text=history,
         )
