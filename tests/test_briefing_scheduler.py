@@ -60,11 +60,16 @@ def _make_reminder_store_mock(reminders=None):
 
     mock = MagicMock()
     if reminders is None:
+        # due_at fest auf 12:00 UTC heute (immer innerhalb today_end 23:59 UTC)
+        now = datetime.now(timezone.utc)
+        noon_today = datetime(
+            now.year, now.month, now.day, 12, 0, 0, tzinfo=timezone.utc,
+        )
         reminders = [
             Reminder(
                 id=3, user_id="_timer_user", message="Paket abholen",
-                due_at=datetime.now(timezone.utc) + timedelta(hours=2),
-                created_at=datetime.now(timezone.utc),
+                due_at=noon_today,
+                created_at=now,
                 fired=False, cancelled=False,
             ),
         ]
