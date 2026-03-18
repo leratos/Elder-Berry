@@ -47,6 +47,7 @@ if TYPE_CHECKING:
     from elder_berry.avatar.base import AvatarRenderer
     from elder_berry.core.secret_store import SecretStore
     from elder_berry.system.info import SystemMonitor
+    from elder_berry.tools.document_reader import DocumentReader
     from elder_berry.tools.email_client import IMAPEmailClient
     from elder_berry.tools.google_calendar import GoogleCalendarClient
     from elder_berry.tools.gym_data import GymDataClient
@@ -154,6 +155,10 @@ Timer & Erinnerungen:
 Briefing:
   briefing – Tagesübersicht (Wetter + Termine + Erinnerungen)
 
+Dokumente:
+  zusammenfassung <Pfad> – PDF/TXT zusammenfassen (z.B. zusammenfassung C:\\Docs\\report.pdf)
+  fasse zusammen <Pfad> – Alias für zusammenfassung
+
 Claude-Agent:
   claude "<Auftrag>" – Komplexe Anfrage an Claude API
 
@@ -189,6 +194,8 @@ KEYWORD_MAP: dict[str, list[str]] = {
                       "welche erinnerungen", "ausstehende erinnerungen"],
     "briefing": ["guten morgen", "was steht heute an", "tagesübersicht",
                   "daily briefing", "morgen briefing", "was gibt's neues"],
+    "document_summary": ["fasse die pdf zusammen", "pdf zusammenfassen",
+                          "dokument zusammenfassen", "zusammenfassung der datei"],
 }
 
 # Regex für Volume-Command: "volume 50", "vol 75", "lautstärke 30"
@@ -417,6 +424,15 @@ REMINDER_DELETE_PATTERN = re.compile(
     re.IGNORECASE,
 )
 
+# Regex: "zusammenfassung C:\...\datei.pdf", "fasse zusammen /path/to/file.txt"
+# Auch: "fasse C:\...\datei.pdf zusammen"
+DOCUMENT_SUMMARY_PATTERN = re.compile(
+    r"(?:zusammenfassung|fasse\s+zusammen)\s+"
+    r"([a-zA-Z]:\\[^\s]+|/[^\s]+)"
+    r"|fasse\s+([a-zA-Z]:\\[^\s]+|/[^\s]+)\s+zusammen",
+    re.IGNORECASE,
+)
+
 # Gültige Emotionen für Avatar-Rendering (lowercase → Emotion-Name)
 AVATAR_EMOTIONS = {
     "neutral", "cheerful", "angry", "sarcastic", "motivated",
@@ -517,6 +533,7 @@ class RemoteCommandHandler:
         weather: WeatherClient | None = None,
         reminder_store: ReminderStore | None = None,
         briefing_scheduler: BriefingScheduler | None = None,
+        document_reader: DocumentReader | None = None,
     ) -> None:
         self._monitor = system_monitor
         self._controller = controller
@@ -530,6 +547,7 @@ class RemoteCommandHandler:
         self._weather = weather
         self._reminder_store = reminder_store
         self._briefing_scheduler = briefing_scheduler
+        self._document_reader = document_reader
         # Letztes Termin-Ergebnis (für "lösche alle/den 2.")
         self._last_events: list = []
         self._send_file_allowed_roots: tuple[Path, ...] = tuple(
@@ -653,6 +671,10 @@ class RemoteCommandHandler:
         if REMINDER_PATTERN.match(normalized):
             return "reminder"
 
+        # Stufe 8j: Dokument-Zusammenfassung – auf Originaltext (Pfad case-sensitiv)
+        if DOCUMENT_SUMMARY_PATTERN.search(text.strip()):
+            return "document_summary"
+
         # Stufe 9: Keyword-Suche in natürlicher Sprache
         for command, keywords in KEYWORD_MAP.items():
             for keyword in keywords:
@@ -769,6 +791,9 @@ class RemoteCommandHandler:
 
         if command == "briefing":
             return self._cmd_briefing()
+
+        if command == "document_summary":
+            return self._cmd_document_summary(raw_text)
 
         return CommandResult(
             command=command,
@@ -2477,4 +2502,64 @@ class RemoteCommandHandler:
             return CommandResult(
                 command="briefing", success=False,
                 text=f"Briefing fehlgeschlagen: {e}",
+            )
+
+    # ------------------------------------------------------------------
+    # Dokument-Zusammenfassung
+    # ------------------------------------------------------------------
+
+    def _cmd_document_summary(self, raw_text: str) -> CommandResult:
+        """Liest ein PDF/TXT-Dokument und liefert den extrahierten Text."""
+        if not self._document_reader:
+            return CommandResult(
+                command="document_summary", success=False,
+                text="DocumentReader nicht verfügbar.",
+            )
+
+        # Pfad aus dem Regex extrahieren
+        match = DOCUMENT_SUMMARY_PATTERN.search(raw_text.strip())
+        if not match:
+            return CommandResult(
+                command="document_summary", success=False,
+                text="Pfad nicht erkannt. Beispiel: zusammenfassung C:\\Docs\\report.pdf",
+            )
+
+        file_path_str = match.group(1) or match.group(2)
+        file_path = Path(file_path_str)
+
+        # Prüfe ob Datei unterstützt wird
+        if not self._document_reader.is_supported(file_path):
+            return CommandResult(
+                command="document_summary", success=False,
+                text=f"Dateiformat '{file_path.suffix}' nicht unterstützt. "
+                     f"Erlaubt: PDF, TXT.",
+            )
+
+        try:
+            result = self._document_reader.read_file(file_path)
+
+            # Header für User-Antwort (Bridge schickt das ans LLM)
+            header = f"📄 {result.source} ({result.pages} Seite(n))"
+            if result.truncated:
+                header += " [gekürzt]"
+
+            # text: kurzer Header (Bridge ersetzt das durch LLM-Zusammenfassung)
+            # history_text: Rohtext für LLM-Kontext (Rückfragen möglich)
+            return CommandResult(
+                command="document_summary",
+                success=True,
+                text=header,
+                history_text=f"Dokument '{result.source}' ({result.pages} Seiten):\n\n{result.text}",
+            )
+
+        except FileNotFoundError:
+            return CommandResult(
+                command="document_summary", success=False,
+                text=f"Datei nicht gefunden: {file_path}",
+            )
+        except Exception as e:
+            logger.error("Dokument-Zusammenfassung fehlgeschlagen: %s", e)
+            return CommandResult(
+                command="document_summary", success=False,
+                text=f"Fehler beim Lesen: {e}",
             )

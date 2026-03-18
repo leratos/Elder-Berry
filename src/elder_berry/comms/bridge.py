@@ -52,6 +52,7 @@ if TYPE_CHECKING:
     from elder_berry.comms.remote_commands import RemoteCommandHandler
     from elder_berry.core.assistant import Assistant
     from elder_berry.stt.base import STTEngine
+    from elder_berry.tools.document_reader import DocumentReader
 
 logger = logging.getLogger(__name__)
 
@@ -110,6 +111,7 @@ class MatrixBridge:
         stt: STTEngine | None = None,
         reminder_scheduler: ReminderScheduler | None = None,
         briefing_scheduler: BriefingScheduler | None = None,
+        document_reader: DocumentReader | None = None,
     ) -> None:
         self._channel = channel
         self._assistant = assistant
@@ -123,11 +125,20 @@ class MatrixBridge:
         self._stt = stt
         self._reminder_scheduler = reminder_scheduler
         self._briefing_scheduler = briefing_scheduler
+        self._document_reader = document_reader
         self._loop: asyncio.AbstractEventLoop | None = None
         self._thread: threading.Thread | None = None
         self._running = False
         # Multi-Turn Chat-History pro User (Sliding Window)
         self._chat_history = ChatHistory(max_messages=10)
+
+    @property
+    def _audio_to_matrix(self) -> bool:
+        """True wenn TTS-Audio als Datei generiert werden soll (für Matrix)."""
+        return (
+            self._audio_converter is not None
+            and self._audio_converter.ffmpeg_available
+        )
 
     @property
     def is_running(self) -> bool:
@@ -252,6 +263,11 @@ class MatrixBridge:
             await self._handle_audio_message(msg)
             return
 
+        # --- Datei-Nachricht: PDF/TXT → DocumentReader → LLM ---
+        if msg.file_data is not None:
+            await self._handle_file_message(msg)
+            return
+
         # --- Command-Router: direkte Commands vor LLM ---
         if self._remote_commands:
             command = self._remote_commands.parse_command(msg.body)
@@ -280,6 +296,15 @@ class MatrixBridge:
             result = await loop.run_in_executor(
                 None, self._remote_commands.execute, command, msg.body,
             )
+
+            # Dokument-Zusammenfassung: Rohtext ans LLM schicken
+            if (
+                result.command == "document_summary"
+                and result.success
+                and result.history_text
+            ):
+                await self._handle_document_summary(msg, result)
+                return
 
             # Text-Antwort senden
             if result.text:
@@ -411,6 +436,57 @@ class MatrixBridge:
             except Exception:
                 logger.error("Konnte Fehlermeldung nicht senden")
 
+    async def _handle_document_summary(self, msg: IncomingMessage, result) -> None:
+        """Schickt extrahierten Dokumenttext ans LLM für eine Zusammenfassung.
+
+        Der Remote Command liefert den Rohtext in result.history_text.
+        Hier wird der Text ans LLM geschickt, die Zusammenfassung an den User
+        gesendet und der Rohtext in die Chat-History geschrieben (für Rückfragen).
+        """
+        try:
+            loop = asyncio.get_running_loop()
+
+            # Rohtext in Chat-History für Rückfragen
+            self._chat_history.add(msg.sender, "user", msg.body)
+            self._chat_history.add(msg.sender, "assistant", result.history_text)
+
+            # LLM-Zusammenfassung
+            summary_prompt = (
+                f"Der Nutzer möchte folgendes Dokument zusammengefasst haben.\n\n"
+                f"{result.history_text}\n\n"
+                f"Fasse den Inhalt zusammen."
+            )
+            chat_context = self._chat_history.format_for_prompt(msg.sender)
+
+            # Audio-Datei generieren wenn AudioConverter verfügbar
+            tmp_wav = Path(tempfile.mktemp(suffix=".wav")) if self._audio_to_matrix else None
+            llm_result = await loop.run_in_executor(
+                None, self._assistant.process, summary_prompt, tmp_wav, chat_context,
+            )
+
+            # Header + LLM-Zusammenfassung senden
+            if llm_result.response:
+                response = f"{result.text}\n\n{llm_result.response}"
+                self._chat_history.add(msg.sender, "assistant", llm_result.response)
+                await self._channel.send_text(msg.room_id, response)
+            else:
+                # Fallback: Header senden wenn LLM keine Antwort liefert
+                await self._channel.send_text(msg.room_id, result.text)
+
+            # Audio senden (WAV → OGG → Matrix)
+            await self._send_audio_if_available(msg.room_id, llm_result, tmp_wav)
+
+        except Exception as e:
+            logger.error("Dokument-Zusammenfassung LLM fehlgeschlagen: %s", e)
+            # Fallback: zumindest den Header senden
+            try:
+                await self._channel.send_text(
+                    msg.room_id,
+                    f"{result.text}\n\n(LLM-Zusammenfassung fehlgeschlagen: {type(e).__name__})",
+                )
+            except Exception:
+                logger.error("Konnte Fehlermeldung nicht senden")
+
     async def _handle_audio_message(self, msg: IncomingMessage) -> None:
         """Transkribiert eine Audio-Nachricht via STT und delegiert an den Assistant.
 
@@ -503,10 +579,116 @@ class MatrixBridge:
             if tmp_path and tmp_path.exists():
                 tmp_path.unlink(missing_ok=True)
 
+    async def _handle_file_message(self, msg: IncomingMessage) -> None:
+        """Verarbeitet eine Datei-Nachricht (PDF/TXT via Matrix-Upload).
+
+        Flow:
+            1. Datei-Bytes in temp-Datei schreiben
+            2. DocumentReader.read_file() → Text extrahieren
+            3. Text in Chat-History speichern (für Rückfragen)
+            4. Text an LLM mit "Fasse zusammen"-Prompt senden
+        """
+        file_name = msg.file_name or msg.body or "unknown"
+        tmp_file: Path | None = None
+
+        # Prüfe ob DocumentReader verfügbar
+        if self._document_reader is None:
+            logger.warning(
+                "Datei empfangen (%s), aber kein DocumentReader konfiguriert",
+                file_name,
+            )
+            try:
+                await self._channel.send_text(
+                    msg.room_id,
+                    "Dokument-Verarbeitung nicht verfügbar.",
+                )
+            except Exception:
+                pass
+            return
+
+        # Prüfe ob Dateiformat unterstützt wird
+        from elder_berry.tools.document_reader import DocumentReader
+        if not DocumentReader.is_supported(Path(file_name)):
+            logger.info("Nicht unterstütztes Dateiformat: %s", file_name)
+            try:
+                await self._channel.send_text(
+                    msg.room_id,
+                    f"Dateiformat '{Path(file_name).suffix}' nicht unterstützt. "
+                    f"Ich kann PDF und TXT verarbeiten.",
+                )
+            except Exception:
+                pass
+            return
+
+        try:
+            # Datei in temp-Verzeichnis schreiben
+            suffix = Path(file_name).suffix or ".tmp"
+            tmp_file = Path(tempfile.mktemp(suffix=suffix))
+            tmp_file.write_bytes(msg.file_data)
+
+            logger.info(
+                "Datei verarbeiten: %s (%d bytes)",
+                file_name, len(msg.file_data),
+            )
+
+            # Text extrahieren
+            loop = asyncio.get_running_loop()
+            result = await loop.run_in_executor(
+                None, self._document_reader.read_file, tmp_file,
+            )
+
+            # Extrahierten Text in Chat-History speichern (für Rückfragen)
+            doc_context = (
+                f"Dokument '{result.source}' ({result.pages} Seiten):\n\n"
+                f"{result.text}"
+            )
+            self._chat_history.add(msg.sender, "user", f"[Datei: {file_name}]")
+            self._chat_history.add(msg.sender, "assistant", doc_context)
+
+            # Text an LLM senden mit Zusammenfassungs-Prompt
+            summary_prompt = (
+                f"Der Nutzer hat folgendes Dokument geschickt: {file_name}\n\n"
+                f"Inhalt:\n{result.text}\n\n"
+                f"Fasse den Inhalt zusammen."
+            )
+
+            chat_context = self._chat_history.format_for_prompt(msg.sender)
+
+            # Audio-Datei generieren wenn AudioConverter verfügbar
+            tmp_wav = Path(tempfile.mktemp(suffix=".wav")) if self._audio_to_matrix else None
+            llm_result = await loop.run_in_executor(
+                None, self._assistant.process, summary_prompt, tmp_wav, chat_context,
+            )
+
+            # Antwort senden
+            if llm_result.response:
+                header = f"📄 {result.source} ({result.pages} Seite(n))"
+                if result.truncated:
+                    header += " [gekürzt]"
+                response = f"{header}\n\n{llm_result.response}"
+                self._chat_history.add(msg.sender, "assistant", llm_result.response)
+                await self._channel.send_text(msg.room_id, response)
+
+            # Audio senden (WAV → OGG → Matrix)
+            await self._send_audio_if_available(msg.room_id, llm_result, tmp_wav)
+
+        except Exception as e:
+            logger.error("Datei-Verarbeitung fehlgeschlagen (%s): %s", file_name, e)
+            self._log_error(msg.sender, file_name, e, handler="document")
+            try:
+                await self._channel.send_text(
+                    msg.room_id,
+                    f"Fehler beim Verarbeiten von '{file_name}': {type(e).__name__}",
+                )
+            except Exception:
+                logger.error("Konnte Fehlermeldung nicht senden")
+        finally:
+            if tmp_file and tmp_file.exists():
+                tmp_file.unlink(missing_ok=True)
+
     async def _handle_assistant_message(self, msg: IncomingMessage) -> None:
         """Delegiert an Assistant.process() (bestehender Flow)."""
         tmp_wav: Path | None = None
-        tmp_ogg: Path | None = None
 
         try:
             loop = asyncio.get_running_loop()
@@ -518,18 +700,12 @@ class MatrixBridge:
             user_input = msg.body
             chat_context = self._chat_history.format_for_prompt(msg.sender)
 
-            # Audio-Modus: TTS in Datei generieren statt abspielen
-            if self._audio_converter and self._audio_converter.ffmpeg_available:
-                tmp_wav = Path(tempfile.mktemp(suffix=".wav"))
-                result = await loop.run_in_executor(
-                    None, self._assistant.process, user_input,
-                    tmp_wav, chat_context,
-                )
-            else:
-                result = await loop.run_in_executor(
-                    None, self._assistant.process, user_input,
-                    None, chat_context,
-                )
+            # Audio immer als Datei generieren (→ Matrix), nie lokal abspielen
+            tmp_wav = Path(tempfile.mktemp(suffix=".wav")) if self._audio_to_matrix else None
+            result = await loop.run_in_executor(
+                None, self._assistant.process, user_input,
+                tmp_wav, chat_context,
+            )
 
             # LLM hat remote_command als Aktion gewählt → an CommandHandler weiterleiten
             if (
@@ -549,13 +725,7 @@ class MatrixBridge:
                 await self._channel.send_text(msg.room_id, result.response)
 
             # Audio senden (WAV → OGG → Matrix)
-            if result.audio_path and result.audio_path.exists():
-                tmp_ogg = result.audio_path.with_suffix(".ogg")
-                ogg_path, _duration = self._audio_converter.to_ogg_opus(
-                    result.audio_path, output_path=tmp_ogg,
-                )
-                await self._channel.send_audio(msg.room_id, ogg_path)
-                logger.debug("Sprachnachricht gesendet: %s", ogg_path.name)
+            await self._send_audio_if_available(msg.room_id, result, tmp_wav)
 
         except Exception as e:
             logger.error("Fehler bei Nachrichtenverarbeitung: %s", e)
@@ -571,6 +741,29 @@ class MatrixBridge:
             # Temp-Dateien aufräumen
             if tmp_wav and tmp_wav.exists():
                 tmp_wav.unlink(missing_ok=True)
+
+    async def _send_audio_if_available(
+        self, room_id: str, result, tmp_wav: Path | None,
+    ) -> None:
+        """Konvertiert WAV→OGG und sendet Audio an Matrix (wenn vorhanden)."""
+        if not result.audio_path or not result.audio_path.exists():
+            return
+        if not self._audio_converter:
+            return
+
+        tmp_ogg: Path | None = None
+        try:
+            tmp_ogg = result.audio_path.with_suffix(".ogg")
+            ogg_path, _duration = self._audio_converter.to_ogg_opus(
+                result.audio_path, output_path=tmp_ogg,
+            )
+            await self._channel.send_audio(room_id, ogg_path)
+            logger.debug("Sprachnachricht gesendet: %s", ogg_path.name)
+        except Exception as e:
+            logger.error("Audio-Senden fehlgeschlagen: %s", e)
+        finally:
+            if result.audio_path.exists():
+                result.audio_path.unlink(missing_ok=True)
             if tmp_ogg and tmp_ogg.exists():
                 tmp_ogg.unlink(missing_ok=True)
 
@@ -588,22 +781,7 @@ class MatrixBridge:
             await self._channel.send_text(msg.room_id, llm_result.response)
 
         # Audio der LLM-Antwort senden (wenn vorhanden)
-        if (
-            llm_result.audio_path
-            and llm_result.audio_path.exists()
-            and self._audio_converter
-        ):
-            try:
-                tmp_ogg = llm_result.audio_path.with_suffix(".ogg")
-                ogg_path, _ = self._audio_converter.to_ogg_opus(
-                    llm_result.audio_path, output_path=tmp_ogg,
-                )
-                await self._channel.send_audio(msg.room_id, ogg_path)
-            except Exception:
-                pass
-            finally:
-                llm_result.audio_path.unlink(missing_ok=True)
-                tmp_ogg.unlink(missing_ok=True)
+        await self._send_audio_if_available(msg.room_id, llm_result, None)
 
         # Command aus LLM-Params extrahieren: {"command": "mail suche RK Bedachung"}
         command_text = None

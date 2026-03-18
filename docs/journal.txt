@@ -1256,3 +1256,61 @@
 
 ### Nächster Schritt
 - Komponentenpositionierung im Gehäuse finalisieren (Kamera, Sensoren, Hall-Sensor)
+
+---
+
+## Abgeschlossen: Phase 11 – Dokument-Zusammenfassung (PDF/TXT via LLM) (2026-03-18)
+
+### Neue Dateien
+- src/elder_berry/tools/document_reader.py: DocumentReader Klasse
+  - read_pdf() via pymupdf/fitz, read_txt() mit UTF-8/Latin-1 Fallback
+  - read_file() Dispatcher, is_supported() Format-Check
+  - DocumentResult DTO (frozen dataclass)
+  - Max-Zeichen-Limit konfigurierbar (Default 100k), Truncation mit Hinweis
+  - Graceful: lesbarer Fehler wenn pymupdf fehlt, Hinweis bei gescannten PDFs
+- tests/test_document_reader.py: 26 Tests (DTO, is_supported, read_txt, read_pdf, Dispatcher, Truncation)
+
+### Geänderte Dateien
+- pyproject.toml: [documents] Dependency-Gruppe mit pymupdf>=1.23
+- src/elder_berry/comms/remote_commands.py:
+  - DOCUMENT_SUMMARY_PATTERN Regex ("zusammenfassung <pfad>", "fasse zusammen <pfad>")
+  - _cmd_document_summary() Handler mit DocumentReader als DI-Dependency
+  - HELP_TEXT: Dokumente-Sektion ergänzt
+  - KEYWORD_MAP: "document_summary" Keywords
+- src/elder_berry/comms/bridge.py:
+  - DocumentReader als DI-Parameter
+  - _handle_file_message(): Matrix m.file → temp → DocumentReader → LLM-Zusammenfassung
+  - Extrahierter Text in Chat-History (Rückfragen möglich)
+- src/elder_berry/comms/matrix_channel.py:
+  - RoomMessageFile Import + _on_room_file() Callback
+  - Download via _authenticated_download() (gleich wie Audio)
+- src/elder_berry/comms/message_channel.py:
+  - IncomingMessage: file_data + file_name Felder
+- src/elder_berry/character/saleria.yaml: "zusammenfassung <pfad>" in Remote-Tool-Liste
+- tests/test_remote_commands.py: +14 Tests (Pattern, ParseCommand, Execute)
+
+### Tests
+- 1147 Tests gesamt, alle grün (vorher 1101)
+- Neue Tests: 26 (DocumentReader) + 14 (Remote Commands) = 40
+
+### Zwei Wege zur Zusammenfassung
+1. Remote Command: "zusammenfassung C:\...\datei.pdf" → DocumentReader → LLM-Zusammenfassung → Matrix
+2. Matrix File-Upload: PDF/TXT hochladen → Download → DocumentReader → LLM → Zusammenfassung
+- Beide Wege: Rohtext in Chat-History (Rückfragen möglich), LLM-Zusammenfassung an User
+
+### Nachbesserungen (gleicher Chat)
+- Fix: Remote Command schickt jetzt LLM-Zusammenfassung statt Rohtext an User
+  - text = Header (📄 datei.pdf), history_text = Rohtext für Rückfragen
+  - Bridge erkennt document_summary → schickt history_text ans LLM
+- Fix: DocumentReader + Bridge in start_saleria.py verdrahtet (fehlte → "nicht verfügbar")
+- Fix: Audio-Routing vereinheitlicht – Audio wird immer an Matrix gesendet, nie lokal abgespielt
+  - _audio_to_matrix Property + _send_audio_if_available() Helper in Bridge
+  - Alle assistant.process()-Aufrufe setzen audio_output wenn AudioConverter verfügbar
+  - Betrifft: _handle_assistant_message, _handle_document_summary, _handle_file_message
+
+### Roadmap-Änderung
+- Phase 11: ✅ ABGESCHLOSSEN (Dokument-Zusammenfassung)
+- Phase 12 NEU: Audio-Routing + Web-Interface (AudioOutputMode Flag, FastAPI Toggle)
+  - Später: APDS-9960 Näherungssensor als automatischer Trigger
+
+### Nächster Schritt
