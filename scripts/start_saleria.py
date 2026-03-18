@@ -454,6 +454,10 @@ def run_matrix(assistant, stt=None, avatar=None, audio_converter=None):
     except Exception as e:
         logger.warning("Daily Briefing nicht verfügbar: %s", e)
 
+    # DocumentReader (Phase 11)
+    from elder_berry.tools.document_reader import DocumentReader
+    document_reader = DocumentReader()
+
     # RemoteCommandHandler – alle Dependencies übergeben
     remote = RemoteCommandHandler(
         system_monitor=SystemMonitor(),
@@ -467,6 +471,7 @@ def run_matrix(assistant, stt=None, avatar=None, audio_converter=None):
         weather=weather,
         reminder_store=reminder_store,
         briefing_scheduler=briefing_scheduler,
+        document_reader=document_reader,
     )
 
     # ClaudeAgent (optional)
@@ -504,6 +509,7 @@ def run_matrix(assistant, stt=None, avatar=None, audio_converter=None):
         stt=stt,
         reminder_scheduler=reminder_scheduler,
         briefing_scheduler=briefing_scheduler,
+        document_reader=document_reader,
     )
 
     logger.info("Matrix-Bridge startet – Saleria ist online")
