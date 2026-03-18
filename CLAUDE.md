@@ -42,9 +42,25 @@ Logiklücken und Fehler hin.
 - Verwende immer absolute Pfade (C:\Dev\Elder-Berry\...)
 
 ## REMOTE-COMMANDS (Matrix)
-- Neue Commands immer auch in HELP_TEXT (remote_commands.py) nachtragen
-- HELP_TEXT ist die einzige Stelle die dem Nutzer alle Commands anzeigt
-- Vergiss das nicht – sonst weiß niemand dass das Feature existiert
+- Commands sind in domänenspezifische Handler aufgeteilt: src/elder_berry/comms/commands/
+  - base.py: CommandHandler ABC + CommandResult DTO
+  - system_commands.py: Status, Screenshot, Media, Volume, Avatar, Restart
+  - calendar_commands.py: Termine CRUD + Suche
+  - mail_commands.py: Mails, Suche, Anhänge
+  - file_commands.py: Clipboard, Send-File, Download
+  - process_commands.py: Start/Kill, Git, Docker, WoL
+  - weather_commands.py: Wetter, Timer, Erinnerungen, Briefing, Training
+  - advanced_commands.py: ComputerUse, Web-Suche, Dokumente, Audio
+- remote_commands.py ist NUR der Orchestrator (~310 Zeilen) – KEINE Command-Logik dort einfügen
+- Neue Commands: in den passenden Handler einfügen, oder neuen Handler erstellen
+- Neuer Handler: CommandHandler ABC erben, patterns/keywords/execute() definieren,
+  in RemoteCommandHandler._handlers Liste eintragen (Reihenfolge = Priorität!)
+- Pattern-Tuple: (compiled_pattern, command_name, use_original_text, use_search)
+  - use_original_text=True wenn Pfade erkannt werden (case-sensitiv)
+  - use_search=True für pattern.search() statt pattern.match()
+- HELP_TEXT in remote_commands.py nachtragen – einzige Stelle die dem Nutzer Commands anzeigt
+- KEYWORD_MAP wird automatisch aus allen Handler.keywords aggregiert
+- Vergiss HELP_TEXT nicht – sonst weiß niemand dass das Feature existiert
 
 ## ARCHITEKTUR
 - Verwende objektorientierte Programmierung (OOP) – jede Komponente als eigene Klasse
@@ -71,6 +87,8 @@ Logiklücken und Fehler hin.
   - MatrixChannel     → matrix-nio Implementierung (async, Auto-Join, Room-Whitelist)
   - MatrixBridge      → Async↔Sync Bridge (MessageChannel ↔ Assistant, Thread+EventLoop)
   - AudioConverter    → WAV/MP3 → OGG/Opus (pydub + ffmpeg)
+  - RemoteCommandHandler → Orchestrator, delegiert an CommandHandler-Subklassen
+  - CommandHandler (ABC) → Interface für domänenspezifische Command-Handler (comms/commands/)
 - Neue Komponenten immer als eigene Klasse, nie als Funktion in bestehende Datei kippen
 - Abhängigkeiten zwischen Klassen explizit über Konstruktor übergeben (Dependency Injection)
 
