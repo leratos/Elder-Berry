@@ -1,0 +1,379 @@
+"""SystemCommandHandler -- System, Media, Volume, Avatar, Screenshot, Restart.
+
+Extrahiert aus remote_commands.py (Refactoring).
+"""
+from __future__ import annotations
+
+import logging
+import re
+import tempfile
+from pathlib import Path
+from typing import TYPE_CHECKING
+
+from elder_berry.comms.commands.base import CommandHandler, CommandResult
+
+if TYPE_CHECKING:
+    from elder_berry.actions.base import ActionController
+    from elder_berry.avatar.base import AvatarRenderer
+    from elder_berry.system.info import SystemMonitor
+
+logger = logging.getLogger(__name__)
+
+# Media-Key-Mapping: Command -> pyautogui Key-Name
+MEDIA_KEYS = {
+    "pause": "playpause",
+    "play": "playpause",
+    "skip": "nexttrack",
+    "next": "nexttrack",
+    "prev": "prevtrack",
+    "previous": "prevtrack",
+}
+
+# Regex fuer Volume-Command: "volume 50", "vol 75", "lautstaerke 30"
+VOLUME_PATTERN = re.compile(
+    r"(?:volume|vol|lautst\u00e4rke|lautstarke)\s+(\d{1,3})\b",
+    re.IGNORECASE,
+)
+
+# Regex fuer Avatar mit Emotion: "selfie angry", "avatar cheerful"
+AVATAR_EMOTION_PATTERN = re.compile(
+    r"^(?:avatar|selfie)\s+(\w+)$",
+    re.IGNORECASE,
+)
+
+# Gueltige Emotionen fuer Avatar-Rendering (lowercase -> Emotion-Name)
+AVATAR_EMOTIONS = {
+    "neutral", "cheerful", "angry", "sarcastic", "motivated",
+    "thoughtful", "whisper", "shy", "depressed", "sad",
+}
+
+
+class SystemCommandHandler(CommandHandler):
+    """Handler fuer System-, Media-, Volume-, Avatar- und Screenshot-Commands."""
+
+    def __init__(
+        self,
+        system_monitor: SystemMonitor | None = None,
+        controller: ActionController | None = None,
+        avatar_renderer: AvatarRenderer | None = None,
+    ) -> None:
+        self._monitor = system_monitor
+        self._controller = controller
+        self._avatar_renderer = avatar_renderer
+
+    @property
+    def simple_commands(self) -> set[str]:
+        return (
+            {"status", "systemstatus", "screenshot", "screen",
+             "avatar", "selfie", "restart", "neustart"}
+            | set(MEDIA_KEYS)
+        )
+
+    @property
+    def patterns(self) -> list[tuple[re.Pattern, str, bool, bool]]:
+        return [
+            (VOLUME_PATTERN, "volume", False, True),
+            (AVATAR_EMOTION_PATTERN, "avatar", False, False),
+        ]
+
+    @property
+    def keywords(self) -> dict[str, list[str]]:
+        return {
+            "screenshot": ["screenshot", "bildschirmfoto", "bildschirm zeig"],
+            "status": ["systemstatus", "systemzustand", "pc status", "pc-status"],
+            "pause": ["pausier", "stopp musik", "musik stopp", "musik aus"],
+            "play": ["musik an", "weiterspielen", "abspielen"],
+            "skip": ["n\u00e4chster song", "n\u00e4chstes lied", "\u00fcberspringen", "n\u00e4chster track"],
+            "avatar": ["zeig dich", "wie siehst du aus", "bild von dir", "schick ein bild von dir", "selfie"],
+            "hilfe": ["was kannst du", "was geht", "welche befehle", "welche commands"],
+            "restart": ["starte neu", "neustart", "restart dich", "bitte neustarten"],
+        }
+
+    def execute(self, command: str, raw_text: str) -> CommandResult:
+        if command in ("status", "systemstatus"):
+            return self._cmd_status()
+
+        if command in ("screenshot", "screen"):
+            return self._cmd_screenshot()
+
+        if command in MEDIA_KEYS:
+            return self._cmd_media(command)
+
+        if command == "volume":
+            return self._cmd_volume(raw_text)
+
+        if command in ("avatar", "selfie"):
+            return self._cmd_avatar(raw_text)
+
+        if command in ("restart", "neustart"):
+            return self._cmd_restart()
+
+        return CommandResult(
+            command=command,
+            success=False,
+            text=f"Unbekannter Command: {command}",
+        )
+
+    # ------------------------------------------------------------------
+    # Tier 1: Status, Screenshot, Media, Volume (bestehend)
+    # ------------------------------------------------------------------
+
+    def _cmd_status(self) -> CommandResult:
+        """Systemstatus abfragen."""
+        if not self._monitor:
+            return CommandResult(
+                command="status",
+                success=False,
+                text="SystemMonitor nicht verf\u00fcgbar.",
+            )
+
+        try:
+            info = self._monitor.get_info(top_processes=5)
+            lines = [
+                f"CPU: {info.cpu.usage_percent}% "
+                f"({info.cpu.core_count} Kerne, {info.cpu.thread_count} Threads"
+                + (f", {info.cpu.freq_mhz:.0f} MHz" if info.cpu.freq_mhz else "")
+                + ")",
+                f"RAM: {info.ram.used_mb:.0f} / {info.ram.total_mb:.0f} MB "
+                f"({info.ram.usage_percent}% belegt)",
+            ]
+
+            for gpu in info.gpus:
+                lines.append(
+                    f"GPU: {gpu.name} \u2013 {gpu.gpu_util_percent}% Auslastung, "
+                    f"VRAM {gpu.vram_used_mb:.0f}/{gpu.vram_total_mb:.0f} MB, "
+                    f"{gpu.temperature_c}\u00b0C"
+                )
+
+            # Disk-Info (psutil)
+            try:
+                import psutil
+                for part in psutil.disk_partitions():
+                    try:
+                        usage = psutil.disk_usage(part.mountpoint)
+                        total_gb = usage.total / (1024 ** 3)
+                        used_gb = usage.used / (1024 ** 3)
+                        lines.append(
+                            f"Disk {part.mountpoint}: "
+                            f"{used_gb:.1f} / {total_gb:.1f} GB "
+                            f"({usage.percent}% belegt)"
+                        )
+                    except PermissionError:
+                        continue
+            except ImportError:
+                pass
+
+            if info.top_processes:
+                lines.append("Top-Prozesse (CPU):")
+                for p in info.top_processes:
+                    lines.append(
+                        f"  {p['name']}: CPU {p['cpu_percent']}%, "
+                        f"RAM {p['memory_percent']}%"
+                    )
+
+            return CommandResult(
+                command="status",
+                success=True,
+                text="\n".join(lines),
+            )
+        except Exception as e:
+            logger.error("Status-Abfrage fehlgeschlagen: %s", e)
+            return CommandResult(
+                command="status",
+                success=False,
+                text=f"Fehler bei Status-Abfrage: {e}",
+            )
+
+    @staticmethod
+    def _wake_monitor() -> None:
+        """Weckt den Monitor auf (Windows: SC_MONITORPOWER)."""
+        import sys
+        if sys.platform != "win32":
+            return
+        try:
+            import ctypes
+            # WM_SYSCOMMAND + SC_MONITORPOWER + -1 (ON)
+            ctypes.windll.user32.SendMessageW(0xFFFF, 0x0112, 0xF170, -1)
+            import time
+            time.sleep(1)  # Monitor braucht ~1s zum Aufwachen
+        except Exception as e:
+            logger.debug("Monitor-Aufwecken fehlgeschlagen (ignoriert): %s", e)
+
+    def _cmd_screenshot(self) -> CommandResult:
+        """Screenshot aufnehmen und als PNG speichern. Weckt Monitor bei Bedarf."""
+        try:
+            import mss
+        except ImportError:
+            return CommandResult(
+                command="screenshot",
+                success=False,
+                text="mss nicht installiert (pip install mss).",
+            )
+
+        # Monitor aufwecken falls er schlaeft
+        self._wake_monitor()
+
+        try:
+            with mss.mss() as sct:
+                # Gesamter Bildschirm (Monitor 0 = alle, Monitor 1 = primaer)
+                monitor = sct.monitors[1]
+                screenshot = sct.grab(monitor)
+
+                # In temp-Datei speichern (wird vom Aufrufer aufgeraeumt)
+                tmp = tempfile.NamedTemporaryFile(
+                    suffix=".png", prefix="screenshot_", delete=False,
+                )
+                tmp_path = Path(tmp.name)
+                tmp.close()
+
+                # mss speichert direkt als PNG
+                mss.tools.to_png(screenshot.rgb, screenshot.size, output=str(tmp_path))
+
+            return CommandResult(
+                command="screenshot",
+                success=True,
+                text="Screenshot aufgenommen.",
+                image_path=tmp_path,
+            )
+        except Exception as e:
+            logger.error("Screenshot fehlgeschlagen: %s", e)
+            return CommandResult(
+                command="screenshot",
+                success=False,
+                text=f"Screenshot fehlgeschlagen: {e}",
+            )
+
+    def _cmd_media(self, command: str) -> CommandResult:
+        """Media-Key senden (play/pause/skip/next/prev)."""
+        if not self._controller:
+            return CommandResult(
+                command=command,
+                success=False,
+                text="ActionController nicht verf\u00fcgbar.",
+            )
+
+        key = MEDIA_KEYS.get(command)
+        if not key:
+            return CommandResult(
+                command=command,
+                success=False,
+                text=f"Unbekannter Media-Command: {command}",
+            )
+
+        try:
+            self._controller.press_key(key)
+            return CommandResult(
+                command=command,
+                success=True,
+                text=f"Media: {command}",
+            )
+        except Exception as e:
+            logger.error("Media-Command '%s' fehlgeschlagen: %s", command, e)
+            return CommandResult(
+                command=command,
+                success=False,
+                text=f"Media-Command fehlgeschlagen: {e}",
+            )
+
+    def _cmd_volume(self, raw_text: str) -> CommandResult:
+        """Lautst\u00e4rke setzen (0-100)."""
+        if not self._controller:
+            return CommandResult(
+                command="volume",
+                success=False,
+                text="ActionController nicht verf\u00fcgbar.",
+            )
+
+        match = VOLUME_PATTERN.search(raw_text.strip().lower())
+        if not match:
+            return CommandResult(
+                command="volume",
+                success=False,
+                text="Ung\u00fcltiges Format. Beispiel: volume 50",
+            )
+
+        level_percent = int(match.group(1))
+        if level_percent > 100:
+            return CommandResult(
+                command="volume",
+                success=False,
+                text="Lautst\u00e4rke muss zwischen 0 und 100 liegen.",
+            )
+
+        level = level_percent / 100.0
+
+        try:
+            self._controller.set_volume(level)
+            return CommandResult(
+                command="volume",
+                success=True,
+                text=f"Lautst\u00e4rke: {level_percent}%",
+            )
+        except Exception as e:
+            logger.error("Volume-Command fehlgeschlagen: %s", e)
+            return CommandResult(
+                command="volume",
+                success=False,
+                text=f"Lautst\u00e4rke setzen fehlgeschlagen: {e}",
+            )
+
+    def _cmd_avatar(self, raw_text: str) -> CommandResult:
+        """Avatar-Bild rendern und als PNG zur\u00fcckgeben."""
+        if not self._avatar_renderer:
+            return CommandResult(
+                command="avatar",
+                success=False,
+                text="AvatarRenderer nicht verf\u00fcgbar.",
+            )
+
+        # Emotion aus Befehl extrahieren (optional)
+        from elder_berry.character.base import Emotion
+
+        emotion = Emotion.NEUTRAL
+        match = AVATAR_EMOTION_PATTERN.match(raw_text.strip())
+        if match:
+            emotion_str = match.group(1).lower()
+            if emotion_str in AVATAR_EMOTIONS:
+                try:
+                    emotion = Emotion(emotion_str)
+                except ValueError:
+                    pass
+
+        try:
+            tmp = tempfile.NamedTemporaryFile(
+                suffix=".png", prefix="avatar_", delete=False,
+            )
+            tmp_path = Path(tmp.name)
+            tmp.close()
+
+            self._avatar_renderer.render_to_file(tmp_path, emotion)
+
+            return CommandResult(
+                command="avatar",
+                success=True,
+                text=f"Saleria ({emotion.value})",
+                image_path=tmp_path,
+            )
+        except NotImplementedError:
+            return CommandResult(
+                command="avatar",
+                success=False,
+                text="Avatar-Renderer unterst\u00fctzt kein Datei-Rendering.",
+            )
+        except Exception as e:
+            logger.error("Avatar-Rendering fehlgeschlagen: %s", e)
+            return CommandResult(
+                command="avatar",
+                success=False,
+                text=f"Avatar-Rendering fehlgeschlagen: {e}",
+            )
+
+    @staticmethod
+    def _cmd_restart() -> CommandResult:
+        """Signalisiert der Bridge einen Neustart."""
+        return CommandResult(
+            command="restart",
+            success=True,
+            text="Starte neu... Bis gleich! \U0001f504",
+            restart=True,
+        )
