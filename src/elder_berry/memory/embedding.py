@@ -71,12 +71,12 @@ class OllamaEmbeddingClient(EmbeddingClient):
 
         try:
             resp = httpx.post(
-                f"{self.base_url}/api/embeddings",
-                json={"model": self.model, "prompt": text},
+                f"{self.base_url}/api/embed",
+                json={"model": self.model, "input": text},
                 timeout=self.timeout,
             )
             resp.raise_for_status()
-            return resp.json()["embedding"]
+            return resp.json()["embeddings"][0]
         except httpx.HTTPStatusError as e:
             raise RuntimeError(
                 f"Ollama Embedding HTTP-Fehler: {e.response.status_code}"
