@@ -1,5 +1,8 @@
 """Anthropic-Client – Claude Sonnet 4.6 als primäres LLM-Backend."""
+from __future__ import annotations
+
 import os
+from dataclasses import dataclass
 
 from dotenv import load_dotenv
 
@@ -8,6 +11,10 @@ from .base import LLMClient
 load_dotenv()
 
 DEFAULT_MODEL = "claude-sonnet-4-6"
+
+# Beta-Header und Tool-Version für Sonnet 4.6 / Opus 4.6 / Opus 4.5
+COMPUTER_USE_BETA = "computer-use-2025-11-24"
+COMPUTER_USE_TOOL_VERSION = "computer_20251124"
 
 # Lazy-Import: anthropic wird erst bei erster Nutzung benötigt
 try:
@@ -18,12 +25,26 @@ except ImportError:
     _ANTHROPIC_AVAILABLE = False
 
 
+@dataclass(frozen=True)
+class ComputerUseAction:
+    """Strukturierte Aktion aus der Computer-Use-API-Antwort."""
+
+    action: str
+    coordinate: tuple[int, int] | None = None
+    text: str | None = None
+    scroll_direction: str | None = None
+    scroll_amount: int | None = None
+    tool_use_id: str = ""
+
+
 class AnthropicClient(LLMClient):
     """
     LLM-Client für die Anthropic API (Claude Sonnet 4.6).
 
     Primäres Backend des LLMRouter – höchste Antwortqualität für
     Charakter-Konsistenz, JSON-Aktionsparsen und RAG-Kontext-Verarbeitung.
+
+    Unterstützt auch Computer Use (Vision + Tool) über die Beta-API.
 
     Benötigt: ANTHROPIC_API_KEY (Umgebungsvariable oder .env)
               anthropic-Paket: pip install anthropic (oder pip install -e .[remote])
@@ -47,6 +68,19 @@ class AnthropicClient(LLMClient):
             self._client = _anthropic.Anthropic(api_key=self._api_key)
         return self._client
 
+    def _check_available(self) -> None:
+        """Prüft ob API-Key und Paket verfügbar sind."""
+        if not self._api_key:
+            raise RuntimeError(
+                "ANTHROPIC_API_KEY nicht gesetzt. "
+                "Setze ihn in .env oder als Umgebungsvariable."
+            )
+        if not _ANTHROPIC_AVAILABLE:
+            raise RuntimeError(
+                "anthropic-Paket nicht installiert. "
+                "Installiere es mit: pip install anthropic"
+            )
+
     def is_available(self) -> bool:
         """Verfügbar wenn ANTHROPIC_API_KEY gesetzt ist."""
         return bool(self._api_key)
@@ -65,16 +99,7 @@ class AnthropicClient(LLMClient):
         Raises:
             RuntimeError: Wenn API-Key fehlt, Paket fehlt oder API-Fehler auftritt.
         """
-        if not self._api_key:
-            raise RuntimeError(
-                "ANTHROPIC_API_KEY nicht gesetzt. "
-                "Setze ihn in .env oder als Umgebungsvariable."
-            )
-        if not _ANTHROPIC_AVAILABLE:
-            raise RuntimeError(
-                "anthropic-Paket nicht installiert. "
-                "Installiere es mit: pip install anthropic"
-            )
+        self._check_available()
 
         kwargs: dict = {
             "model": self.model,
@@ -95,3 +120,110 @@ class AnthropicClient(LLMClient):
             raise RuntimeError(f"Anthropic nicht erreichbar: {e}") from e
         except _anthropic.RateLimitError as e:
             raise RuntimeError(f"Anthropic Rate-Limit erreicht: {e}") from e
+
+    def computer_use(
+        self,
+        screenshot_base64: str,
+        instruction: str,
+        display_width: int,
+        display_height: int,
+        system: str = "",
+    ) -> ComputerUseAction:
+        """
+        Sendet einen Screenshot + Anweisung an Claude und erhält eine
+        strukturierte Computer-Use-Aktion zurück.
+
+        Nutzt die Beta-API mit computer_20251124 Tool-Definition.
+
+        Args:
+            screenshot_base64: Base64-kodierter Screenshot (PNG).
+            instruction: Was der User auf dem Bildschirm tun möchte.
+            display_width: Breite des Screenshots in Pixeln.
+            display_height: Höhe des Screenshots in Pixeln.
+            system: Optionaler System-Prompt.
+
+        Returns:
+            ComputerUseAction mit action, coordinate, text etc.
+
+        Raises:
+            RuntimeError: Bei API-Fehlern oder unerwartetem Antwortformat.
+        """
+        self._check_available()
+
+        tools = [
+            {
+                "type": COMPUTER_USE_TOOL_VERSION,
+                "name": "computer",
+                "display_width_px": display_width,
+                "display_height_px": display_height,
+            }
+        ]
+
+        messages = [
+            {
+                "role": "user",
+                "content": [
+                    {
+                        "type": "image",
+                        "source": {
+                            "type": "base64",
+                            "media_type": "image/png",
+                            "data": screenshot_base64,
+                        },
+                    },
+                    {
+                        "type": "text",
+                        "text": instruction,
+                    },
+                ],
+            }
+        ]
+
+        kwargs: dict = {
+            "model": self.model,
+            "max_tokens": 1024,
+            "tools": tools,
+            "messages": messages,
+            "betas": [COMPUTER_USE_BETA],
+        }
+        if system:
+            kwargs["system"] = system
+
+        try:
+            response = self._get_client().beta.messages.create(**kwargs)
+        except _anthropic.APIStatusError as e:
+            raise RuntimeError(
+                f"Anthropic API-Fehler: {e.status_code} – {e.message}"
+            ) from e
+        except _anthropic.APIConnectionError as e:
+            raise RuntimeError(f"Anthropic nicht erreichbar: {e}") from e
+        except _anthropic.RateLimitError as e:
+            raise RuntimeError(f"Anthropic Rate-Limit erreicht: {e}") from e
+
+        return self._parse_computer_use_response(response)
+
+    @staticmethod
+    def _parse_computer_use_response(response) -> ComputerUseAction:
+        """Extrahiert die Computer-Use-Aktion aus der API-Antwort."""
+        for block in response.content:
+            if block.type == "tool_use" and block.name == "computer":
+                inp = block.input
+                coord = inp.get("coordinate")
+                return ComputerUseAction(
+                    action=inp["action"],
+                    coordinate=tuple(coord) if coord else None,
+                    text=inp.get("text"),
+                    scroll_direction=inp.get("scroll_direction"),
+                    scroll_amount=inp.get("scroll_amount"),
+                    tool_use_id=block.id,
+                )
+
+        # Kein Tool-Use-Block → Claude hat nur Text geantwortet
+        text_parts = []
+        for block in response.content:
+            if hasattr(block, "text"):
+                text_parts.append(block.text)
+        text_response = " ".join(text_parts) if text_parts else "Keine Aktion erkannt."
+        raise RuntimeError(
+            f"Computer Use: Keine Aktion in der Antwort. Claude sagt: {text_response}"
+        )

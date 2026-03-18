@@ -1403,3 +1403,75 @@
 - Geschätzte Kosten: ~0.5 Cent pro Suche (Brave free + Claude Intent/Aufbereitung)
 - Neue Klasse: tools/brave_search_client.py (BraveSearchClient)
 - Details: docs/PROJECT_ROADMAP.md (Phase 14)
+
+## Abgeschlossen: Phase 13 – Computer Use (Anthropic Vision + PC-Steuerung) (2026-03-18)
+- Branch: feature/phase-13-computer-use
+
+### Neue Dateien
+- src/elder_berry/actions/computer_use.py: ComputerUseController + ComputerUseResult DTO
+  - Flow: Screenshot (mss) → Base64 → Anthropic Computer Use API → Aktion → Verification
+  - DPI/Skalierungs-Kompensation: API-Koordinaten → physische Bildschirm-Koordinaten
+  - Screenshot-Resize auf max. 1280px Breite (Pillow, spart Tokens)
+  - Monitor-Index konfigurierbar (Setter, Web-UI)
+  - Aktionen: left_click, right_click, middle_click, double_click, type, key, scroll, mouse_move
+  - Verification-Screenshot nach 2s Wartezeit
+- tests/test_computer_use.py: 33 Tests (DTO, Init, Execute, Actions, Describe, Screenshot)
+
+### Geänderte Dateien
+- src/elder_berry/llm/anthropic_client.py:
+  - Neue Methode: computer_use() – Vision-Input (Base64 PNG) + Computer Use Tool
+  - computer_20251124 Tool-Version, computer-use-2025-11-24 Beta-Header
+  - ComputerUseAction DTO (frozen dataclass: action, coordinate, text, scroll)
+  - _parse_computer_use_response(): Extrahiert tool_use-Block aus API-Antwort
+  - _check_available() Refactoring (DRY für generate + computer_use)
+- src/elder_berry/comms/remote_commands.py:
+  - COMPUTER_USE_PATTERN Regex (klick auf, tippe, scroll, drück)
+  - KEYWORD_MAP: computer_use Keywords (klick auf, drück auf, tippe in, scroll)
+  - computer_use DI-Parameter im __init__
+  - _cmd_computer_use() Handler → ComputerUseController.execute_instruction()
+  - HELP_TEXT: Computer Use Sektion ergänzt
+- src/elder_berry/character/saleria.yaml: Computer-Use-Befehle in Remote-Tool-Liste
+- src/elder_berry/core/assistant.py: Computer-Use-Befehle in Fallback-Prompt Remote-Tool-Liste
+- src/elder_berry/web/audio_dashboard.py:
+  - Erweitert zu Settings-Dashboard (Audio + Monitor-Auswahl)
+  - GET /api/monitors → verfügbare Monitore (JSON)
+  - POST /api/monitor → Monitor für Computer Use setzen
+  - ComputerUseController als optionaler DI-Parameter
+- src/elder_berry/web/templates/audio_dashboard.html:
+  - Zwei Cards: Audio-Routing + Computer Use Monitor
+  - Monitor-Dropdown mit Live-Update
+- scripts/start_saleria.py:
+  - ComputerUseController init (wenn ActionController + ANTHROPIC_API_KEY vorhanden)
+  - RemoteCommandHandler: computer_use DI
+  - AudioDashboard: computer_use DI
+- pyproject.toml: [computer-use] optional group (Pillow>=10.0, mss>=9.0)
+- tests/test_llm_router.py: +12 Tests (ComputerUseAction DTO + computer_use() Methode)
+- tests/test_remote_commands.py: +17 Tests (Pattern, Parse, Execute)
+- tests/test_audio_dashboard.py: +7 Tests (Monitor API: GET/POST, Validierung, HTML)
+
+### Tests
+- 1120 passed, 53 skipped (alle grün, vorbestehende Skips + 8 pydub-Failures)
+- Neue Tests: 33 (computer_use) + 12 (anthropic) + 17 (remote) + 7 (dashboard) = 69
+
+### Flow (live)
+  Matrix: "klick auf den Discord-Button"
+      ↓
+  RemoteCommandHandler.parse_command() → "computer_use"
+      ↓
+  ComputerUseController.execute_instruction()
+      ├─ Screenshot via mss (Monitor konfigurierbar)
+      ├─ Resize auf ≤1280px (Pillow)
+      ├─ Base64-Encode
+      ├─ AnthropicClient.computer_use() → ComputerUseAction
+      ├─ Koordinaten-Mapping (API→physisch, Multi-Monitor-Offset)
+      └─ WindowsActionController.click(x, y)
+      ↓
+  2s Wartezeit → Verification-Screenshot
+      ↓
+  Verification-Bild an Matrix senden
+
+### Entscheidungen
+- Kein Loop-Modus: jeder Schritt einzeln per Befehl (User bestätigt)
+- Monitor-Auswahl über Web-Dashboard (http://localhost:8090)
+- Kein Kosten-Hinweis (bewusste Entscheidung)
+- computer_20251124 Tool-Version für Sonnet 4.6 (neueste API)

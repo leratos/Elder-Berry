@@ -44,6 +44,7 @@ from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from elder_berry.actions.base import ActionController
+    from elder_berry.actions.computer_use import ComputerUseController
     from elder_berry.avatar.base import AvatarRenderer
     from elder_berry.core.audio_router import AudioRouter
     from elder_berry.core.secret_store import SecretStore
@@ -166,6 +167,12 @@ Dokumente:
   zusammenfassung <Pfad> – PDF/TXT zusammenfassen (z.B. zusammenfassung C:\\Docs\\report.pdf)
   fasse zusammen <Pfad> – Alias für zusammenfassung
 
+Computer Use (Vision-gesteuert):
+  klick auf <Element> – Klickt auf ein Bildschirmelement (z.B. klick auf den Discord-Button)
+  tippe <Text> – Tippt Text an der aktuellen Position
+  scroll runter/hoch – Scrollt auf dem Bildschirm
+  drück <Taste> – Drückt eine Taste/Kombination (z.B. drück Strg+S)
+
 Claude-Agent:
   claude "<Auftrag>" – Komplexe Anfrage an Claude API
 
@@ -204,6 +211,9 @@ KEYWORD_MAP: dict[str, list[str]] = {
     "document_summary": ["fasse die pdf zusammen", "pdf zusammenfassen",
                           "dokument zusammenfassen", "zusammenfassung der datei"],
     "audio_toggle": ["audio lokal", "lokale wiedergabe", "ton am pc"],
+    "computer_use": ["klick auf", "klicke auf", "klick mal auf", "drück auf",
+                      "tippe in", "scroll runter", "scroll hoch", "scroll nach",
+                      "auf accept klicken", "auf ok klicken", "auf den button klicken"],
 }
 
 # Regex für Audio-Modus: "audio lokal an", "audio lokal aus"
@@ -447,6 +457,18 @@ DOCUMENT_SUMMARY_PATTERN = re.compile(
     re.IGNORECASE,
 )
 
+# Regex für Computer Use: "klick auf den OK-Button", "tippe Hello World",
+# "scroll runter", "drück Strg+S"
+# Toleriert natürliche Sprache: "klick mal auf", "bitte klick auf", "auf X klicken"
+COMPUTER_USE_PATTERN = re.compile(
+    r"^(?:klick(?:e)?\s+(?:mal\s+)?auf\s+(.+)"   # klick [mal] auf <Element>
+    r"|(?:auf\s+(.+?)\s+klicken)"                  # auf <Element> klicken
+    r"|tippe\s+(.+)"                                # tippe <Text>
+    r"|scroll(?:e?)\s+(runter|hoch|nach\s+\w+)"    # scroll runter/hoch/nach unten
+    r"|drück(?:e)?\s+(.+))$",                       # drück <Taste>
+    re.IGNORECASE,
+)
+
 # Gültige Emotionen für Avatar-Rendering (lowercase → Emotion-Name)
 AVATAR_EMOTIONS = {
     "neutral", "cheerful", "angry", "sarcastic", "motivated",
@@ -549,6 +571,7 @@ class RemoteCommandHandler:
         briefing_scheduler: BriefingScheduler | None = None,
         document_reader: DocumentReader | None = None,
         audio_router: AudioRouter | None = None,
+        computer_use: ComputerUseController | None = None,
     ) -> None:
         self._monitor = system_monitor
         self._controller = controller
@@ -564,6 +587,7 @@ class RemoteCommandHandler:
         self._briefing_scheduler = briefing_scheduler
         self._document_reader = document_reader
         self._audio_router = audio_router
+        self._computer_use = computer_use
         # Letztes Termin-Ergebnis (für "lösche alle/den 2.")
         self._last_events: list = []
         self._send_file_allowed_roots: tuple[Path, ...] = tuple(
@@ -695,6 +719,10 @@ class RemoteCommandHandler:
         if DOCUMENT_SUMMARY_PATTERN.search(text.strip()):
             return "document_summary"
 
+        # Stufe 8k: Computer Use ("klick auf ...", "tippe ...", "scroll ...", "drück ...")
+        if COMPUTER_USE_PATTERN.match(normalized):
+            return "computer_use"
+
         # Stufe 9: Keyword-Suche in natürlicher Sprache
         for command, keywords in KEYWORD_MAP.items():
             for keyword in keywords:
@@ -817,6 +845,9 @@ class RemoteCommandHandler:
 
         if command in ("audio", "audio_toggle"):
             return self._cmd_audio(raw_text)
+
+        if command == "computer_use":
+            return self._cmd_computer_use(raw_text)
 
         return CommandResult(
             command=command,
@@ -2622,4 +2653,42 @@ class RemoteCommandHandler:
         return CommandResult(
             command="audio", success=True,
             text=f"Audio-Modus: {mode_text.get(new_mode, new_mode.value)}",
+        )
+
+    # ------------------------------------------------------------------
+    # Computer Use (Vision-gesteuerte PC-Bedienung)
+    # ------------------------------------------------------------------
+
+    def _cmd_computer_use(self, raw_text: str) -> CommandResult:
+        """Führt eine Computer-Use-Aktion aus (Vision + PC-Steuerung).
+
+        Erkennt natürliche Anweisungen wie:
+        - "klick auf den OK-Button"
+        - "tippe Hello World"
+        - "scroll runter"
+        - "drück Strg+S"
+        """
+        if not self._computer_use:
+            return CommandResult(
+                command="computer_use", success=False,
+                text="Computer Use nicht verfügbar (AnthropicClient oder ActionController fehlt).",
+            )
+
+        # Originaltext als Anweisung an den Controller weiterleiten
+        instruction = raw_text.strip()
+
+        try:
+            result = self._computer_use.execute_instruction(instruction)
+        except Exception as e:
+            logger.error("Computer Use fehlgeschlagen: %s", e)
+            return CommandResult(
+                command="computer_use", success=False,
+                text=f"Computer Use fehlgeschlagen: {e}",
+            )
+
+        return CommandResult(
+            command="computer_use",
+            success=result.success,
+            text=result.message,
+            image_path=result.verification_image_path,
         )

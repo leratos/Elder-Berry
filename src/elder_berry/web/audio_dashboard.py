@@ -1,9 +1,12 @@
-"""AudioDashboard – Minimales Web-UI zum Steuern des Audio-Routing-Modus.
+"""AudioDashboard – Minimales Web-UI zum Steuern des Audio-Routing-Modus
+und der Monitor-Auswahl für Computer Use.
 
 Stellt eine FastAPI-App bereit mit:
-- GET /          → HTML-Seite mit Toggle
-- GET /api/audio → aktueller Modus (JSON)
-- POST /api/audio → Modus setzen oder togglen (JSON)
+- GET /             → HTML-Seite mit Audio-Toggle + Monitor-Dropdown
+- GET /api/audio    → aktueller Modus (JSON)
+- POST /api/audio   → Modus setzen oder togglen (JSON)
+- GET /api/monitors → verfügbare Monitore (JSON)
+- POST /api/monitor → Monitor für Computer Use setzen (JSON)
 """
 
 from __future__ import annotations
@@ -16,6 +19,7 @@ from fastapi import FastAPI
 from fastapi.responses import HTMLResponse, JSONResponse
 
 if TYPE_CHECKING:
+    from elder_berry.actions.computer_use import ComputerUseController
     from elder_berry.core.audio_router import AudioRouter
 
 logger = logging.getLogger(__name__)
@@ -24,12 +28,14 @@ _TEMPLATE_DIR = Path(__file__).parent / "templates"
 
 
 class AudioDashboard:
-    """Web-Dashboard für Audio-Routing-Steuerung.
+    """Web-Dashboard für Audio-Routing und Computer-Use-Monitor-Auswahl.
 
     Parameters
     ----------
     audio_router : AudioRouter
         Der gemeinsame AudioRouter (thread-safe).
+    computer_use : ComputerUseController | None
+        Optionaler ComputerUseController für Monitor-Auswahl.
     host : str
         Bind-Adresse (Default: 0.0.0.0).
     port : int
@@ -39,13 +45,15 @@ class AudioDashboard:
     def __init__(
         self,
         audio_router: AudioRouter,
+        computer_use: ComputerUseController | None = None,
         host: str = "0.0.0.0",
         port: int = 8090,
     ) -> None:
         self._router = audio_router
+        self._computer_use = computer_use
         self._host = host
         self._port = port
-        self._app = FastAPI(title="Elder-Berry Audio Dashboard")
+        self._app = FastAPI(title="Elder-Berry Settings Dashboard")
         self._thread = None
         self._register_routes()
 
@@ -94,6 +102,61 @@ class AudioDashboard:
                 "play_local": self._router.should_play_local(),
             })
 
+        # ----------------------------------------------------------
+        # Monitor-Auswahl (Computer Use)
+        # ----------------------------------------------------------
+
+        @self._app.get("/api/monitors")
+        async def get_monitors():
+            if not self._computer_use:
+                return JSONResponse({
+                    "available": False,
+                    "monitors": [],
+                    "selected": 1,
+                })
+            monitors = self._computer_use.get_available_monitors()
+            return JSONResponse({
+                "available": True,
+                "monitors": monitors,
+                "selected": self._computer_use.monitor_index,
+            })
+
+        @self._app.post("/api/monitor")
+        async def set_monitor(body: dict | None = None):
+            if not self._computer_use:
+                return JSONResponse(
+                    {"error": "Computer Use nicht verfügbar."},
+                    status_code=400,
+                )
+            if not body or "index" not in body:
+                return JSONResponse(
+                    {"error": "Parameter 'index' fehlt."},
+                    status_code=400,
+                )
+            try:
+                index = int(body["index"])
+            except (ValueError, TypeError):
+                return JSONResponse(
+                    {"error": "Ungültiger Monitor-Index."},
+                    status_code=400,
+                )
+
+            monitors = self._computer_use.get_available_monitors()
+            valid_indices = {m["index"] for m in monitors}
+            if index not in valid_indices:
+                return JSONResponse(
+                    {"error": f"Monitor {index} nicht verfügbar. "
+                              f"Gültig: {sorted(valid_indices)}"},
+                    status_code=400,
+                )
+
+            self._computer_use.monitor_index = index
+            logger.info("Computer Use Monitor geändert: %d", index)
+            return JSONResponse({
+                "selected": index,
+                "monitors": monitors,
+            })
+
     def start(self) -> None:
         """Startet den Dashboard-Server in einem Hintergrund-Thread."""
         import threading
@@ -109,12 +172,12 @@ class AudioDashboard:
 
         self._thread = threading.Thread(
             target=_run,
-            name="audio-dashboard",
+            name="settings-dashboard",
             daemon=True,
         )
         self._thread.start()
         logger.info(
-            "AudioDashboard gestartet: http://%s:%d", self._host, self._port,
+            "Settings-Dashboard gestartet: http://%s:%d", self._host, self._port,
         )
 
     def stop(self) -> None:
