@@ -25,6 +25,16 @@ inside a 3D-printed elderberry tree trunk enclosure.
 - **Avatar display**: layered sprite rendering with blink + lip-sync (Pepper's Ghost optimized)
 - **RAG memory**: ChromaDB + Ollama embeddings (remembers past conversations)
 
+### Personal Assistant
+
+- **Calendar**: `termine`, `termine morgen`, `termine woche`, `termin suche`, create/delete events (Google Calendar, OAuth2)
+- **Email**: `mails`, `mail suche <query>`, `mail #42`, `mail anhang <ID>` (IMAP, provider-agnostic)
+- **Weather**: `wetter`, `wetter morgen`, `wetter woche` (Open-Meteo, no API key)
+- **Timer & Reminders**: `timer 20 min`, `erinnere mich um 18:00: Wäsche`, `erinnerungen` (SQLite, restart-safe)
+- **Daily Briefing**: `briefing` or "guten morgen" → weather + calendar + reminders combined (auto 07:30)
+- **Fitness**: `training`, `training details`, `prs` (Berry-Gym REST API)
+- **Documents**: send PDF/TXT via Matrix or `zusammenfassung <path>` → LLM summary, follow-up questions possible
+
 ### Remote (via Matrix / Element)
 
 - **Direct commands**: `status`, `screenshot`, `pause`, `play`, `skip`, `volume 50`
@@ -34,12 +44,14 @@ inside a 3D-printed elderberry tree trunk enclosure.
 - **System**: `wol` (Wake-on-LAN), `restart` (bot self-restart after git pull)
 - **Dev tools**: `git status`, `git pull`, `docker ps`, `docker restart synapse`
 - **Avatar**: `selfie`, `selfie angry` (sends rendered avatar image)
+- **Audio routing**: `audio` (status), `audio lokal an/aus` (toggle local playback)
 - **Natural language**: "schick mir ein screenshot", "nächster song", "was kannst du"
 - **Claude Agent**: complex project tasks via Anthropic API (Sonnet 4.6)
   - Read/write files in `docs/`, append to journal, run tests, git status
   - Trigger: `claude "Dokumentiere X im Journal"`
 - **Voice messages**: send a voice note in Element, Whisper transcribes it, Saleria responds with text + voice
 - **Text responses**: Saleria personality via Anthropic Sonnet 4.6 (Ollama fallback)
+- **Web dashboard**: `http://localhost:8090` – audio routing toggle (FastAPI, no framework)
 
 ## Quick Start
 
@@ -112,6 +124,17 @@ python scripts/start_saleria.py --debug           # Debug logging
 | `clip: some text` | Write to clipboard |
 | `selfie` / `selfie angry` | Saleria sends avatar image |
 | `hilfe` | Show all available commands |
+| `termine` / `termine morgen` / `termine woche` | Calendar events (Google) |
+| `termin: Zahnarzt morgen 14:00` | Create calendar event |
+| `mails` / `mail suche Rechnung` | Unread emails / search (IMAP) |
+| `mail #42` / `mail anhang 42` | Show mail / send attachments |
+| `wetter` / `wetter morgen` | Weather forecast (Open-Meteo) |
+| `timer 20 min` | Set a timer |
+| `erinnere mich um 18:00: Wäsche` | Set a reminder |
+| `briefing` / "guten morgen" | Daily briefing (weather + calendar + reminders) |
+| `training` / `prs` | Fitness data (Berry-Gym) |
+| `zusammenfassung C:\...\report.pdf` | Summarize PDF/TXT via LLM |
+| `audio` / `audio lokal an` / `audio lokal aus` | Audio routing mode |
 | `schick mir C:\...\file.pdf` | Send file via Matrix |
 | `starte chrome` / `kill blender` | Process control (whitelisted) |
 | `git status` / `git pull` | Git commands (whitelisted) |
@@ -123,13 +146,17 @@ python scripts/start_saleria.py --debug           # Debug logging
 ## Architecture
 
 ```text
-[Element / Matrix]
-       |
-       v
-[MatrixBridge] ── Command-Router:
+[Element / Matrix]              [Web Dashboard :8090]
+       |                               |
+       v                               v
+[MatrixBridge] ── Command-Router:   [AudioRouter]
        |
        ├─ Audio message?   ──> STT (Faster Whisper) ──> re-route as text
-       ├─ Direct command?   ──> RemoteCommandHandler (status, screenshot, etc.)
+       ├─ Direct command?   ──> RemoteCommandHandler
+       │                         ├─ System: status, screenshot, volume, processes
+       │                         ├─ Tools: calendar, email, weather, timer, briefing
+       │                         ├─ Files: send, download, document summary
+       │                         └─ Audio: mode toggle (matrix_only / matrix_and_local)
        ├─ "claude" + "..."? ──> ClaudeAgent (Anthropic API, Sonnet 4.6)
        └─ Everything else   ──> Assistant (LLM + TTS + Avatar)
                                       |
@@ -167,9 +194,20 @@ python scripts/start_saleria.py --debug           # Debug logging
 | `ClaudeAgent` | `comms.claude_agent` | Anthropic API for complex tasks |
 | `AlertMonitor` | `comms.alert_monitor` | Proactive alerts (disk, process crash) |
 | `AudioConverter` | `comms.audio_converter` | WAV -> OGG/Opus for Matrix voice messages |
+| `ChatHistory` | `comms.chat_history` | Sliding window per user (multi-turn context) |
+| `ReminderScheduler` | `comms.reminder_scheduler` | Daemon thread, 15s poll, Matrix callback |
+| `BriefingScheduler` | `comms.briefing_scheduler` | Daily briefing (weather + calendar + reminders) |
 | `RobotClient/Server` | `robot.*` | Tower <-> RPi5 communication (FastAPI) |
 | `ActionsDB` | `actions.db` | SQLite action registry with self-learning |
 | `SystemMonitor` | `system.info` | CPU, RAM, GPU, disk, process monitoring |
+| `AudioRouter` | `core.audio_router` | Thread-safe audio output mode (matrix_only / matrix_and_local) |
+| `AudioDashboard` | `web.audio_dashboard` | FastAPI web UI for audio routing (port 8090) |
+| `GoogleCalendarClient` | `tools.google_calendar` | OAuth2, CRUD events, natural language dates |
+| `IMAPEmailClient` | `tools.email_client` | IMAP search, attachments, provider-agnostic |
+| `WeatherClient` | `tools.weather_client` | Open-Meteo API, forecast, WMO codes |
+| `ReminderStore` | `tools.reminder_store` | SQLite, UTC, restart-safe timers/reminders |
+| `GymDataClient` | `tools.gym_data` | Berry-Gym REST API client |
+| `DocumentReader` | `tools.document_reader` | PDF (pymupdf) + TXT parsing for LLM summary |
 
 ### Design Patterns
 
@@ -197,6 +235,8 @@ pip install -e ".[matrix]"       # Matrix integration (matrix-nio, pydub)
 pip install -e ".[remote]"       # Remote features (anthropic, mss, pyperclip)
 pip install -e ".[memory]"       # RAG memory (chromadb)
 pip install -e ".[stt]"          # Speech-to-text (faster-whisper)
+pip install -e ".[tools]"        # Personal assistant tools (google-api, oauthlib)
+pip install -e ".[documents]"   # Document summarization (pymupdf)
 pip install -e ".[robot]"        # RPi5 communication (fastapi, uvicorn)
 pip install -e ".[agent]"        # Laptop agent server (fastapi, audio)
 ```
@@ -207,7 +247,7 @@ pip install -e ".[agent]"        # Laptop agent server (fastapi, audio)
 pytest tests/ -q
 ```
 
-815+ tests, all passing.
+1100+ tests, all passing.
 
 ## Project Structure
 
@@ -219,14 +259,17 @@ src/elder_berry/
 │   └── assets/       # Sprite components (body/, eye/, mouth/)
 ├── character/        # Character engine + Saleria personality
 ├── comms/            # Matrix, remote commands, Claude agent, alerts
-├── core/             # Assistant orchestrator + secret store
+├── core/             # Assistant orchestrator, secret store, audio router
 ├── llm/              # LLM clients (Anthropic, Ollama, OpenRouter, Router)
 ├── memory/           # RAG memory (ChromaDB + embeddings)
 ├── robot/            # RPi5 communication (server, client, simulator)
 ├── stt/              # Speech-to-text (Faster Whisper)
 ├── system/           # System monitoring
-└── tts/              # TTS engines (Windows SAPI, Coqui XTTS)
-    └── voices/       # Voice samples per emotion
+├── tools/            # Personal assistant tools (calendar, email, weather, gym, reminders, documents)
+├── tts/              # TTS engines (Windows SAPI, Coqui XTTS)
+│   └── voices/       # Voice samples per emotion
+└── web/              # Web dashboard (audio routing)
+    └── templates/    # HTML templates
 
 docs/
 ├── concepts/         # Phase concept documents
@@ -244,7 +287,7 @@ scripts/
 ├── demo_tts_live.py     # Interactive TTS testing (emotion + text)
 └── demo_integration.py  # Robot simulator integration test
 
-tests/                # 815+ unit + integration tests
+tests/                # 1100+ unit + integration tests
 ```
 
 ## Roadmap
@@ -261,7 +304,8 @@ tests/                # 815+ unit + integration tests
 | 8 | Personal Assistant Tools (calendar, email, gym, weather, timer, briefing) | Done |
 | 9 | Multimodal + Autonomie (camera, emotion recognition) | Vision |
 | 10 | RPi5 Avatar-Display (Pepper's Ghost live) | Mostly done |
-| 11 | Document Summarization (PDF/TXT via LLM) | Planned |
+| 11 | Document Summarization (PDF/TXT via LLM) | Done |
+| 12 | Audio Routing + Web Interface (local playback toggle, dashboard) | Done |
 
 ## Hardware
 
