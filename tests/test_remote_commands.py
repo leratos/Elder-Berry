@@ -12,6 +12,7 @@ from elder_berry.comms.remote_commands import (
     AVATAR_EMOTIONS,
     CLIP_WRITE_PATTERN,
     DOCKER_PATTERN,
+    DOCUMENT_SUMMARY_PATTERN,
     DOWNLOAD_PATTERN,
     GIT_PATTERN,
     KILL_PROCESS_PATTERN,
@@ -2229,3 +2230,125 @@ class TestMailByIdExecute:
 
         assert result.success is False
         assert "nicht gefunden" in result.text
+
+
+# ---------------------------------------------------------------------------
+# Dokument-Zusammenfassung (Phase 11)
+# ---------------------------------------------------------------------------
+
+class TestDocumentSummaryPattern:
+    """Regex-Pattern für Dokument-Zusammenfassung."""
+
+    def test_zusammenfassung_windows_path(self):
+        m = DOCUMENT_SUMMARY_PATTERN.search(r"zusammenfassung C:\Docs\report.pdf")
+        assert m is not None
+        assert m.group(1) == r"C:\Docs\report.pdf"
+
+    def test_fasse_zusammen_windows_path(self):
+        m = DOCUMENT_SUMMARY_PATTERN.search(r"fasse zusammen C:\Users\test\file.txt")
+        assert m is not None
+        assert m.group(1) == r"C:\Users\test\file.txt"
+
+    def test_fasse_path_zusammen(self):
+        m = DOCUMENT_SUMMARY_PATTERN.search(r"fasse C:\Docs\report.pdf zusammen")
+        assert m is not None
+        assert m.group(2) == r"C:\Docs\report.pdf"
+
+    def test_linux_path(self):
+        m = DOCUMENT_SUMMARY_PATTERN.search("zusammenfassung /home/pi/doc.pdf")
+        assert m is not None
+        assert m.group(1) == "/home/pi/doc.pdf"
+
+    def test_no_match_without_path(self):
+        m = DOCUMENT_SUMMARY_PATTERN.search("zusammenfassung")
+        assert m is None
+
+
+class TestDocumentSummaryParseCommand:
+    """parse_command erkennt Dokument-Zusammenfassung."""
+
+    def test_zusammenfassung_recognized(self):
+        handler = RemoteCommandHandler()
+        assert handler.parse_command(r"zusammenfassung C:\test.pdf") == "document_summary"
+
+    def test_fasse_zusammen_recognized(self):
+        handler = RemoteCommandHandler()
+        assert handler.parse_command(r"fasse zusammen C:\test.txt") == "document_summary"
+
+    def test_fasse_path_zusammen_recognized(self):
+        handler = RemoteCommandHandler()
+        assert handler.parse_command(r"fasse C:\test.pdf zusammen") == "document_summary"
+
+    def test_keyword_map_match(self):
+        handler = RemoteCommandHandler()
+        assert handler.parse_command("fasse die pdf zusammen") == "document_summary"
+
+
+class TestDocumentSummaryExecute:
+    """execute() für Dokument-Zusammenfassung."""
+
+    def test_no_reader(self):
+        handler = RemoteCommandHandler()
+        result = handler.execute("document_summary", r"zusammenfassung C:\test.pdf")
+        assert result.success is False
+        assert "nicht verfügbar" in result.text
+
+    def test_success(self, tmp_path):
+        from elder_berry.tools.document_reader import DocumentReader
+
+        f = tmp_path / "notes.txt"
+        f.write_text("Wichtiger Inhalt hier.", encoding="utf-8")
+
+        reader = DocumentReader()
+        handler = RemoteCommandHandler(document_reader=reader)
+        result = handler.execute("document_summary", f"zusammenfassung {f}")
+
+        assert result.success is True
+        assert "Wichtiger Inhalt" in result.text
+        assert result.history_text is not None
+        assert "Wichtiger Inhalt" in result.history_text
+
+    def test_file_not_found(self):
+        from elder_berry.tools.document_reader import DocumentReader
+
+        reader = DocumentReader()
+        handler = RemoteCommandHandler(document_reader=reader)
+        result = handler.execute(
+            "document_summary", r"zusammenfassung C:\nope\missing.pdf",
+        )
+        assert result.success is False
+        assert "nicht gefunden" in result.text
+
+    def test_unsupported_format(self, tmp_path):
+        from elder_berry.tools.document_reader import DocumentReader
+
+        f = tmp_path / "data.xlsx"
+        f.write_bytes(b"fake")
+
+        reader = DocumentReader()
+        handler = RemoteCommandHandler(document_reader=reader)
+        result = handler.execute("document_summary", f"zusammenfassung {f}")
+
+        assert result.success is False
+        assert "nicht unterstützt" in result.text
+
+    def test_pdf_success(self, tmp_path):
+        pytest.importorskip("fitz")
+        import fitz
+
+        from elder_berry.tools.document_reader import DocumentReader
+
+        pdf_path = tmp_path / "report.pdf"
+        doc = fitz.open()
+        page = doc.new_page()
+        page.insert_text((72, 72), "Quartalsbericht Q1 2026")
+        doc.save(str(pdf_path))
+        doc.close()
+
+        reader = DocumentReader()
+        handler = RemoteCommandHandler(document_reader=reader)
+        result = handler.execute("document_summary", f"zusammenfassung {pdf_path}")
+
+        assert result.success is True
+        assert "Quartalsbericht" in result.text
+        assert "1 Seite" in result.text

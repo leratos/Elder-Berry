@@ -64,6 +64,9 @@ tools = [
     "google-auth-oauthlib>=1.0",
     "google-auth-httplib2>=0.2",
 ]
+documents = [
+    "pymupdf>=1.23",
+]
 
 [tool.setuptools.packages.find]
 where = ["src"]

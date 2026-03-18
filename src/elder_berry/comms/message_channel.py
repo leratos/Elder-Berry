@@ -33,6 +33,12 @@ class IncomingMessage:
     audio_data: bytes | None = None
     """Rohe Audio-Bytes (heruntergeladen vom Matrix-Server) oder None bei Textnachrichten."""
 
+    file_data: bytes | None = None
+    """Rohe Datei-Bytes (heruntergeladen vom Matrix-Server) oder None."""
+
+    file_name: str | None = None
+    """Original-Dateiname des Anhangs (z.B. 'report.pdf')."""
+
 
 # Typ-Alias für den Callback: empfängt IncomingMessage, gibt None zurück (async).
 MessageCallback = Callable[[IncomingMessage], Coroutine[Any, Any, None]]

@@ -52,6 +52,7 @@ if TYPE_CHECKING:
     from elder_berry.comms.remote_commands import RemoteCommandHandler
     from elder_berry.core.assistant import Assistant
     from elder_berry.stt.base import STTEngine
+    from elder_berry.tools.document_reader import DocumentReader
 
 logger = logging.getLogger(__name__)
 
@@ -110,6 +111,7 @@ class MatrixBridge:
         stt: STTEngine | None = None,
         reminder_scheduler: ReminderScheduler | None = None,
         briefing_scheduler: BriefingScheduler | None = None,
+        document_reader: DocumentReader | None = None,
     ) -> None:
         self._channel = channel
         self._assistant = assistant
@@ -123,6 +125,7 @@ class MatrixBridge:
         self._stt = stt
         self._reminder_scheduler = reminder_scheduler
         self._briefing_scheduler = briefing_scheduler
+        self._document_reader = document_reader
         self._loop: asyncio.AbstractEventLoop | None = None
         self._thread: threading.Thread | None = None
         self._running = False
@@ -250,6 +253,11 @@ class MatrixBridge:
         # --- Audio-Nachricht: STT → Text → Assistant ---
         if msg.audio_data is not None:
             await self._handle_audio_message(msg)
+            return
+
+        # --- Datei-Nachricht: PDF/TXT → DocumentReader → LLM ---
+        if msg.file_data is not None:
+            await self._handle_file_message(msg)
             return
 
         # --- Command-Router: direkte Commands vor LLM ---
@@ -502,6 +510,107 @@ class MatrixBridge:
         finally:
             if tmp_path and tmp_path.exists():
                 tmp_path.unlink(missing_ok=True)
+
+    async def _handle_file_message(self, msg: IncomingMessage) -> None:
+        """Verarbeitet eine Datei-Nachricht (PDF/TXT via Matrix-Upload).
+
+        Flow:
+            1. Datei-Bytes in temp-Datei schreiben
+            2. DocumentReader.read_file() → Text extrahieren
+            3. Text in Chat-History speichern (für Rückfragen)
+            4. Text an LLM mit "Fasse zusammen"-Prompt senden
+        """
+        file_name = msg.file_name or msg.body or "unknown"
+        tmp_file: Path | None = None
+
+        # Prüfe ob DocumentReader verfügbar
+        if self._document_reader is None:
+            logger.warning(
+                "Datei empfangen (%s), aber kein DocumentReader konfiguriert",
+                file_name,
+            )
+            try:
+                await self._channel.send_text(
+                    msg.room_id,
+                    "Dokument-Verarbeitung nicht verfügbar.",
+                )
+            except Exception:
+                pass
+            return
+
+        # Prüfe ob Dateiformat unterstützt wird
+        from elder_berry.tools.document_reader import DocumentReader
+        if not DocumentReader.is_supported(Path(file_name)):
+            logger.info("Nicht unterstütztes Dateiformat: %s", file_name)
+            try:
+                await self._channel.send_text(
+                    msg.room_id,
+                    f"Dateiformat '{Path(file_name).suffix}' nicht unterstützt. "
+                    f"Ich kann PDF und TXT verarbeiten.",
+                )
+            except Exception:
+                pass
+            return
+
+        try:
+            # Datei in temp-Verzeichnis schreiben
+            suffix = Path(file_name).suffix or ".tmp"
+            tmp_file = Path(tempfile.mktemp(suffix=suffix))
+            tmp_file.write_bytes(msg.file_data)
+
+            logger.info(
+                "Datei verarbeiten: %s (%d bytes)",
+                file_name, len(msg.file_data),
+            )
+
+            # Text extrahieren
+            loop = asyncio.get_running_loop()
+            result = await loop.run_in_executor(
+                None, self._document_reader.read_file, tmp_file,
+            )
+
+            # Extrahierten Text in Chat-History speichern (für Rückfragen)
+            doc_context = (
+                f"Dokument '{result.source}' ({result.pages} Seiten):\n\n"
+                f"{result.text}"
+            )
+            self._chat_history.add(msg.sender, "user", f"[Datei: {file_name}]")
+            self._chat_history.add(msg.sender, "assistant", doc_context)
+
+            # Text an LLM senden mit Zusammenfassungs-Prompt
+            summary_prompt = (
+                f"Der Nutzer hat folgendes Dokument geschickt: {file_name}\n\n"
+                f"Inhalt:\n{result.text}\n\n"
+                f"Fasse den Inhalt zusammen."
+            )
+
+            chat_context = self._chat_history.format_for_prompt(msg.sender)
+            llm_result = await loop.run_in_executor(
+                None, self._assistant.process, summary_prompt, None, chat_context,
+            )
+
+            # Antwort senden
+            if llm_result.response:
+                header = f"📄 {result.source} ({result.pages} Seite(n))"
+                if result.truncated:
+                    header += " [gekürzt]"
+                response = f"{header}\n\n{llm_result.response}"
+                self._chat_history.add(msg.sender, "assistant", llm_result.response)
+                await self._channel.send_text(msg.room_id, response)
+
+        except Exception as e:
+            logger.error("Datei-Verarbeitung fehlgeschlagen (%s): %s", file_name, e)
+            self._log_error(msg.sender, file_name, e, handler="document")
+            try:
+                await self._channel.send_text(
+                    msg.room_id,
+                    f"Fehler beim Verarbeiten von '{file_name}': {type(e).__name__}",
+                )
+            except Exception:
+                logger.error("Konnte Fehlermeldung nicht senden")
+        finally:
+            if tmp_file and tmp_file.exists():
+                tmp_file.unlink(missing_ok=True)
 
     async def _handle_assistant_message(self, msg: IncomingMessage) -> None:
         """Delegiert an Assistant.process() (bestehender Flow)."""
