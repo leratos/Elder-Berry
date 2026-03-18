@@ -157,10 +157,27 @@ class AudioDashboard:
                 "monitors": monitors,
             })
 
+    def _is_port_free(self) -> bool:
+        """Prüft ob der Port frei ist."""
+        import socket
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+            try:
+                s.bind((self._host, self._port))
+                return True
+            except OSError:
+                return False
+
     def start(self) -> None:
         """Startet den Dashboard-Server in einem Hintergrund-Thread."""
         import threading
         import uvicorn
+
+        if not self._is_port_free():
+            logger.warning(
+                "Settings-Dashboard: Port %d bereits belegt – übersprungen.",
+                self._port,
+            )
+            return
 
         def _run():
             uvicorn.run(
