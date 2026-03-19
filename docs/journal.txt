@@ -1816,3 +1816,67 @@
 
 ### Geänderte Dateien
 - docs/PROJECT_ROADMAP.md: Phasen 18–23 eingefügt, Projektgrenzen aktualisiert
+
+## Abgeschlossen: Phase 19 – Wiederkehrende Erinnerungen (2026-03-19)
+- Branch: feature/phase-19-wiederkehrende-erinnerungen
+
+### Neue Dateien
+- src/elder_berry/tools/recurrence.py:
+  - calculate_next_due(): Berechnet nächsten Fälligkeitstermin (daily, weekly:N, monthly:N, biweekly:N, weekdays)
+  - parse_recurrence(): Natürliche Sprache → Recurrence-String ("jeden montag" → "weekly:1")
+  - format_recurrence(): Recurrence-String → lesbarer Text ("weekly:1" → "jeden Montag")
+  - validate_recurrence(): Prüft Recurrence-String auf Gültigkeit
+- tests/test_recurrence.py: 37 Tests (Validate, Parse, Format, Calculate, Edge-Cases)
+- tests/test_weather_commands.py: 22 Tests (Patterns, Registration, Execution, Timezone)
+
+### Geänderte Dateien
+- src/elder_berry/tools/reminder_store.py:
+  - Reminder Dataclass: neues Feld recurrence (str | None)
+  - _migrate(): ALTER TABLE ADD COLUMN recurrence (idempotent)
+  - add(): optionaler recurrence-Parameter
+  - reschedule(id, new_due_at): Setzt due_at + fired=0 (für wiederkehrende Reminder)
+  - format_pending(): Zeigt 🔁 + Wiederholungsintervall
+  - Alle SELECT-Statements um recurrence-Spalte erweitert
+  - _row_to_reminder(): Liest 8. Spalte (mit len-Check für Kompatibilität)
+- src/elder_berry/comms/reminder_scheduler.py:
+  - Neuer Parameter get_timezone (Callable, Default Europe/Berlin)
+  - _check_due(): Recurring → reschedule statt mark_fired
+  - _reschedule(): calculate_next_due + store.reschedule (mit Fallback auf mark_fired)
+- src/elder_berry/comms/commands/weather_commands.py:
+  - 4 neue Patterns: RECURRING_WEEKLY/DAILY/WEEKDAY/MONTHLY_PATTERN
+  - Neuer Parameter get_timezone (Callable)
+  - _cmd_recurring_reminder(): Parst wiederkehrende Erinnerungen, erstellt mit recurrence
+  - _create_recurring(): Hilfsmethode für Store-Eintrag + Formatierung
+  - _next_weekday_at(), _today_or_tomorrow_at(), _next_weekday_at_time(), _next_monthly_at()
+  - _cmd_reminder(): Hardcoded Europe/Berlin → self._get_timezone()
+- src/elder_berry/comms/remote_commands.py:
+  - HELP_TEXT: Sektion "Wiederkehrende Erinnerungen" ergänzt
+- src/elder_berry/web/audio_dashboard.py:
+  - Neue Endpoints GET/POST /api/timezone
+  - get_timezone(): Methode für externe Nutzung (SecretStore-backed)
+  - TIMEZONE_KEY, DEFAULT_TIMEZONE, AVAILABLE_TIMEZONES Konstanten
+- src/elder_berry/web/templates/audio_dashboard.html:
+  - Neue "Zeitzone" Card mit Dropdown (17 gängige Zeitzonen)
+  - fetchTimezone(), setTimezone() JS-Funktionen
+- tests/test_reminder_store.py: 12 neue Tests (Recurrence, Reschedule, Migration, Format)
+- tests/test_reminder_scheduler.py: 5 neue Tests (OneShot, Reschedule, OncePerCycle, TZ, Cancel)
+
+### Tests
+- Neue Tests: 76 (37 + 22 + 12 + 5)
+- Gesamt: 1533 passed, keine Regression
+
+### Design-Entscheidungen
+- Recurrence-Format: Einfache Strings statt RFC 5545 RRULE (ausreichend für Use-Case)
+- Timezone: Konfigurierbar im Web-Dashboard (SecretStore), Default Europe/Berlin
+- get_timezone als Callable: Dynamisch abrufbar, kein Restart bei Änderung nötig
+- DB-Migration idempotent: PRAGMA table_info Check, ALTER TABLE nur wenn nötig
+- Monatlich: Clamp auf max. Monatstage (31. → 28. im Feb)
+- Scheduler Fallback: Wenn reschedule fehlschlägt → mark_fired (kein Endlos-Loop)
+
+### Commands
+- "erinnere mich jeden montag um 9:00: Wochenbericht" → weekly:1
+- "erinnere mich täglich um 8:00: Standup" → daily
+- "erinnere mich werktags um 7:30: Aufstehen" → weekdays
+- "erinnere mich jeden 1. um 10:00: Miete" → monthly:1
+- "erinnerungen" → zeigt jetzt 🔁 + Wiederholungsintervall
+- "lösche erinnerung <id>" → beendet auch wiederkehrende Serien

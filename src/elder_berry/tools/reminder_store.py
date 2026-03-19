@@ -34,6 +34,7 @@ class Reminder:
     created_at: datetime
     fired: bool
     cancelled: bool
+    recurrence: str | None = None
 
 
 class ReminderStore:
@@ -66,14 +67,35 @@ class ReminderStore:
             )
         """)
         self._conn.commit()
+        self._migrate()
 
-    def add(self, user_id: str, message: str, due_at: datetime) -> Reminder:
+    def _migrate(self) -> None:
+        """Fügt fehlende Spalten hinzu (idempotent)."""
+        columns = {
+            row[1]
+            for row in self._conn.execute("PRAGMA table_info(reminders)").fetchall()
+        }
+        if "recurrence" not in columns:
+            self._conn.execute(
+                "ALTER TABLE reminders ADD COLUMN recurrence TEXT DEFAULT NULL"
+            )
+            self._conn.commit()
+            logger.info("ReminderStore: Spalte 'recurrence' hinzugefügt")
+
+    def add(
+        self,
+        user_id: str,
+        message: str,
+        due_at: datetime,
+        recurrence: str | None = None,
+    ) -> Reminder:
         """Neue Erinnerung anlegen.
 
         Args:
             user_id: Matrix-User-ID.
             message: Erinnerungstext.
             due_at: Fälligkeitszeit (muss timezone-aware sein, wird als UTC gespeichert).
+            recurrence: Optionaler Wiederholungs-String (z.B. "daily", "weekly:1").
 
         Returns:
             Die erstellte Reminder-Instanz.
@@ -90,8 +112,9 @@ class ReminderStore:
         due_utc = due_at.astimezone(timezone.utc)
 
         cursor = self._conn.execute(
-            "INSERT INTO reminders (user_id, message, due_at, created_at) VALUES (?, ?, ?, ?)",
-            (user_id, message, due_utc.isoformat(), now.isoformat()),
+            "INSERT INTO reminders (user_id, message, due_at, created_at, recurrence) "
+            "VALUES (?, ?, ?, ?, ?)",
+            (user_id, message, due_utc.isoformat(), now.isoformat(), recurrence),
         )
         self._conn.commit()
 
@@ -103,6 +126,7 @@ class ReminderStore:
             created_at=now,
             fired=False,
             cancelled=False,
+            recurrence=recurrence,
         )
 
     def get_pending(self, user_id: str | None = None) -> list[Reminder]:
@@ -113,14 +137,14 @@ class ReminderStore:
         """
         if user_id:
             rows = self._conn.execute(
-                "SELECT id, user_id, message, due_at, created_at, fired, cancelled "
+                "SELECT id, user_id, message, due_at, created_at, fired, cancelled, recurrence "
                 "FROM reminders WHERE fired = 0 AND cancelled = 0 AND user_id = ? "
                 "ORDER BY due_at",
                 (user_id,),
             ).fetchall()
         else:
             rows = self._conn.execute(
-                "SELECT id, user_id, message, due_at, created_at, fired, cancelled "
+                "SELECT id, user_id, message, due_at, created_at, fired, cancelled, recurrence "
                 "FROM reminders WHERE fired = 0 AND cancelled = 0 "
                 "ORDER BY due_at",
             ).fetchall()
@@ -131,7 +155,7 @@ class ReminderStore:
         """Alle fälligen Erinnerungen (due_at <= jetzt UND nicht fired)."""
         now = datetime.now(timezone.utc).isoformat()
         rows = self._conn.execute(
-            "SELECT id, user_id, message, due_at, created_at, fired, cancelled "
+            "SELECT id, user_id, message, due_at, created_at, fired, cancelled, recurrence "
             "FROM reminders WHERE due_at <= ? AND fired = 0 AND cancelled = 0 "
             "ORDER BY due_at",
             (now,),
@@ -168,6 +192,29 @@ class ReminderStore:
         self._conn.commit()
         return cursor.rowcount
 
+    def reschedule(self, reminder_id: int, new_due_at: datetime) -> None:
+        """Setzt einen wiederkehrenden Reminder auf den nächsten Termin.
+
+        Setzt due_at auf den neuen Termin und fired zurück auf 0.
+
+        Args:
+            reminder_id: ID des Reminders.
+            new_due_at: Neuer Fälligkeitstermin (muss timezone-aware sein).
+
+        Raises:
+            ValueError: Wenn new_due_at nicht timezone-aware ist.
+        """
+        if new_due_at.tzinfo is None:
+            raise ValueError(
+                "new_due_at muss timezone-aware sein"
+            )
+        due_utc = new_due_at.astimezone(timezone.utc)
+        self._conn.execute(
+            "UPDATE reminders SET due_at = ?, fired = 0 WHERE id = ?",
+            (due_utc.isoformat(), reminder_id),
+        )
+        self._conn.commit()
+
     def cleanup_old(self) -> int:
         """Löscht physisch alte fired Reminders (> 30 Tage)."""
         cutoff = (datetime.now(timezone.utc) - timedelta(days=_CLEANUP_DAYS)).isoformat()
@@ -183,11 +230,16 @@ class ReminderStore:
         if not reminders:
             return "Keine offenen Erinnerungen."
 
+        from elder_berry.tools.recurrence import format_recurrence
+
         lines = ["⏰ Offene Erinnerungen:\n"]
         for r in reminders:
             local_time = r.due_at.astimezone()
             time_str = local_time.strftime("%d.%m. %H:%M")
-            lines.append(f"  #{r.id} – {r.message} (fällig: {time_str})")
+            suffix = ""
+            if r.recurrence:
+                suffix = f" 🔁 {format_recurrence(r.recurrence)}"
+            lines.append(f"  #{r.id} – {r.message} (fällig: {time_str}){suffix}")
 
         return "\n".join(lines)
 
@@ -206,4 +258,5 @@ class ReminderStore:
             created_at=datetime.fromisoformat(row[4]),
             fired=bool(row[5]),
             cancelled=bool(row[6]),
+            recurrence=row[7] if len(row) > 7 else None,
         )

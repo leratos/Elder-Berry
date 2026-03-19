@@ -3,6 +3,9 @@
 Daemon-Thread der alle 15 Sekunden ReminderStore.get_due() prüft
 und fällige Erinnerungen über einen Callback sendet.
 
+Unterstützt wiederkehrende Erinnerungen: nach dem Feuern wird der
+nächste Termin berechnet und der Reminder rescheduled.
+
 Verwendung:
     scheduler = ReminderScheduler(
         store=reminder_store,
@@ -29,7 +32,8 @@ class ReminderScheduler:
     """Periodischer Scheduler für fällige Erinnerungen.
 
     Pollt den ReminderStore und ruft send_reminder für jede fällige
-    Erinnerung auf. Markiert sie danach als fired.
+    Erinnerung auf.  One-Shot-Reminder werden als fired markiert,
+    wiederkehrende Reminder werden auf den nächsten Termin rescheduled.
     """
 
     def __init__(
@@ -37,6 +41,7 @@ class ReminderScheduler:
         store: ReminderStore,
         send_reminder: Callable[[str, str], None],
         poll_interval: int = 15,
+        get_timezone: Callable[[], str] | None = None,
     ) -> None:
         """
         Args:
@@ -44,10 +49,13 @@ class ReminderScheduler:
             send_reminder: Callable(user_id, text) → sendet an Matrix.
                            Muss thread-safe sein.
             poll_interval: Sekunden zwischen Checks.
+            get_timezone: Callable das die aktuelle Timezone liefert
+                          (z.B. aus Dashboard-Config). Default: Europe/Berlin.
         """
         self._store = store
         self._send_reminder = send_reminder
         self._poll_interval = poll_interval
+        self._get_timezone = get_timezone or (lambda: "Europe/Berlin")
         self._thread: threading.Thread | None = None
         self._running = False
 
@@ -103,7 +111,12 @@ class ReminderScheduler:
             text = f"⏰ Erinnerung: {reminder.message}"
             try:
                 self._send_reminder(reminder.user_id, text)
-                self._store.mark_fired(reminder.id)
+
+                if reminder.recurrence:
+                    self._reschedule(reminder)
+                else:
+                    self._store.mark_fired(reminder.id)
+
                 logger.info(
                     "Erinnerung #%d gesendet an %s: %s",
                     reminder.id, reminder.user_id, reminder.message,
@@ -113,3 +126,24 @@ class ReminderScheduler:
                     "Erinnerung #%d senden fehlgeschlagen: %s",
                     reminder.id, e,
                 )
+
+    def _reschedule(self, reminder) -> None:
+        """Berechnet den nächsten Termin und rescheduled den Reminder."""
+        from elder_berry.tools.recurrence import calculate_next_due
+
+        try:
+            tz_name = self._get_timezone()
+            next_due = calculate_next_due(
+                reminder.due_at, reminder.recurrence, tz_name,
+            )
+            self._store.reschedule(reminder.id, next_due)
+            logger.info(
+                "Erinnerung #%d rescheduled auf %s (recurrence: %s)",
+                reminder.id, next_due.isoformat(), reminder.recurrence,
+            )
+        except Exception as e:
+            logger.error(
+                "Erinnerung #%d reschedule fehlgeschlagen: %s – markiere als fired",
+                reminder.id, e,
+            )
+            self._store.mark_fired(reminder.id)
