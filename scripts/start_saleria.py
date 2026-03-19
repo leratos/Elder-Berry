@@ -753,24 +753,41 @@ def _acquire_instance_lock() -> None:
     Nutzt eine exklusive Dateisperre auf .saleria.lock.
     Unter Windows: msvcrt.locking (OS gibt Lock bei Crash automatisch frei).
     Unter Linux: fcntl.flock.
-    """
-    global _lock_fh
-    _lock_fh = open(_LOCK_FILE, "w")
 
-    try:
-        if platform.system() == "Windows":
-            import msvcrt
-            msvcrt.locking(_lock_fh.fileno(), msvcrt.LK_NBLCK, 1)
-        else:
-            import fcntl
-            fcntl.flock(_lock_fh, fcntl.LOCK_EX | fcntl.LOCK_NB)
-    except (OSError, IOError):
-        _lock_fh.close()
-        _lock_fh = None
-        print("FEHLER: Saleria läuft bereits! Nur eine Instanz erlaubt.")
-        print(f"  Lock-Datei: {_LOCK_FILE}")
-        print("  Falls kein Prozess läuft: Datei manuell löschen.")
-        sys.exit(1)
+    Bei einem Restart (alter Prozess beendet sich gerade) kann der Lock
+    kurz belegt sein. Daher bis zu 5 Versuche mit 1s Pause.
+    """
+    import time
+
+    global _lock_fh
+    max_attempts = 5
+
+    for attempt in range(max_attempts):
+        _lock_fh = open(_LOCK_FILE, "w")
+        try:
+            if platform.system() == "Windows":
+                import msvcrt
+                msvcrt.locking(_lock_fh.fileno(), msvcrt.LK_NBLCK, 1)
+            else:
+                import fcntl
+                fcntl.flock(_lock_fh, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            # Lock erfolgreich erworben
+            break
+        except (OSError, IOError):
+            _lock_fh.close()
+            _lock_fh = None
+            if attempt < max_attempts - 1:
+                logger.info(
+                    "Lock belegt, warte 1s (Versuch %d/%d)...",
+                    attempt + 1, max_attempts,
+                )
+                time.sleep(1)
+                continue
+            # Alle Versuche aufgebraucht
+            print("FEHLER: Saleria läuft bereits! Nur eine Instanz erlaubt.")
+            print(f"  Lock-Datei: {_LOCK_FILE}")
+            print("  Falls kein Prozess läuft: Datei manuell löschen.")
+            sys.exit(1)
 
     _lock_fh.write(str(os.getpid()))
     _lock_fh.flush()
