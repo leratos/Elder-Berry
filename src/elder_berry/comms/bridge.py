@@ -927,6 +927,7 @@ class MatrixBridge:
 
         Sendet die LLM-Antwort (z.B. "Ich suche nach der Rechnung...") als Text,
         dann führt den eigentlichen Command aus und sendet dessen Ergebnis.
+        Bei Parse-Fehler: 1 Retry mit Feedback an das LLM.
         """
         # LLM-Antwort senden und in History speichern
         if llm_result.response:
@@ -950,7 +951,6 @@ class MatrixBridge:
         # Command durch den Handler parsen und ausführen
         cmd = self._remote_commands.parse_command(command_text)
         if cmd:
-            # Fake-Message mit dem Command-Text (statt Original)
             cmd_msg = IncomingMessage(
                 sender=msg.sender,
                 room_id=msg.room_id,
@@ -958,11 +958,75 @@ class MatrixBridge:
                 timestamp=msg.timestamp,
             )
             await self._handle_remote_command(cmd_msg, cmd)
-        else:
-            logger.warning(
-                "LLM schlug remote_command vor, aber parse_command matcht nicht: %s",
-                command_text,
+            return
+
+        # Parse fehlgeschlagen → Retry mit Feedback an das LLM
+        logger.info(
+            "LLM remote_command nicht erkannt: '%s' – starte Retry", command_text,
+        )
+        retry_cmd = await self._retry_llm_remote_command(msg, command_text)
+        if retry_cmd:
+            cmd_msg = IncomingMessage(
+                sender=msg.sender,
+                room_id=msg.room_id,
+                body=retry_cmd,
+                timestamp=msg.timestamp,
             )
+            parsed = self._remote_commands.parse_command(retry_cmd)
+            if parsed:
+                await self._handle_remote_command(cmd_msg, parsed)
+                return
+
+        logger.warning(
+            "LLM remote_command nach Retry nicht erkannt: '%s'", command_text,
+        )
+
+    async def _retry_llm_remote_command(
+        self, msg: IncomingMessage, failed_command: str,
+    ) -> str | None:
+        """Gibt dem LLM Feedback über den fehlgeschlagenen Command und fordert Korrektur.
+
+        Returns:
+            Korrigierter Command-String oder None wenn Retry fehlschlägt.
+        """
+        summary = self._remote_commands.get_command_summary()
+        retry_prompt = (
+            f"Der Command '{failed_command}' wurde nicht erkannt. "
+            f"Verfügbare Remote-Commands:\n{summary}\n\n"
+            f"Antworte NUR mit dem korrekten Command-String, nichts anderes. "
+            f"Beispiel: mail suche Rechnung"
+        )
+
+        try:
+            loop = asyncio.get_running_loop()
+            chat_context = self._chat_history.format_for_prompt(msg.sender)
+            result = await loop.run_in_executor(
+                None, self._assistant.process, retry_prompt, None, chat_context,
+            )
+
+            # Korrigierten Command aus der LLM-Antwort extrahieren
+            if (
+                result.action_executed == "remote_command"
+                and result.action_params
+                and isinstance(result.action_params, dict)
+            ):
+                corrected = result.action_params.get("command", "")
+                if corrected:
+                    logger.info("LLM Retry → korrigierter Command: %s", corrected)
+                    return corrected
+
+            # Fallback: Vielleicht hat das LLM direkt den Command als Text geantwortet
+            if result.response:
+                raw = result.response.strip()
+                # Prüfe ob die rohe Antwort ein gültiger Command ist
+                if self._remote_commands.parse_command(raw):
+                    logger.info("LLM Retry → Command aus Response: %s", raw)
+                    return raw
+
+        except Exception as e:
+            logger.error("LLM Retry fehlgeschlagen: %s", e)
+
+        return None
 
     def _log_error(
         self, sender: str, message: str, error: Exception,

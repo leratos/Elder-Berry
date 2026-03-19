@@ -154,9 +154,26 @@ class ProcessCommandHandler(CommandHandler):
         ]
 
     @property
+    def command_descriptions(self) -> list[str]:
+        return [
+            "starte <programm>: Programm starten (Whitelist)",
+            "kill <prozess>: Prozess beenden (Whitelist)",
+            "wol: Wake-on-LAN (Tower aufwecken)",
+            "git status / git pull / git log / git diff: Git-Befehle",
+            "docker ps / docker restart / docker logs: Docker-Befehle",
+            "update: Git Pull + Dependencies + Neustart",
+            "rollback: Auf Stand vor letztem Update zurücksetzen",
+            "selfcheck: Gesundheitsprüfung aller Komponenten",
+        ]
+
+    @property
     def keywords(self) -> dict[str, list[str]]:
         return {
-            "wol": ["weck tower", "tower aufwecken", "wake on lan", "tower starten"],
+            "wol": [
+                "weck tower", "tower aufwecken", "wake on lan",
+                "tower starten", "pc aufwecken", "rechner wecken",
+                "tower wecken",
+            ],
             "update": [
                 "update dich", "aktualisiere dich", "neue funktionen",
                 "schau dir deine neuen funktionen an", "mach ein update",
@@ -169,6 +186,7 @@ class ProcessCommandHandler(CommandHandler):
             "selfcheck": [
                 "systemcheck", "prüf dich", "alles ok", "gesundheitscheck",
                 "funktionierst du", "bist du ok", "status check",
+                "läuft alles", "geht alles",
             ],
         }
 

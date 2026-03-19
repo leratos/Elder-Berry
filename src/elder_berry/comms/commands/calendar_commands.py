@@ -147,12 +147,34 @@ class CalendarCommandHandler(CommandHandler):
         ]
 
     @property
+    def command_descriptions(self) -> list[str]:
+        return [
+            "termine: Termine heute anzeigen",
+            "termine morgen: Termine morgen",
+            "termine woche: Termine der nächsten 7 Tage",
+            "termin suche <begriff>: Termine durchsuchen",
+            "termin: <Titel> <Datum> <Uhrzeit>: Termin erstellen (morgen, übermorgen, DD.MM, YYYY-MM-DD)",
+            "lösche termin <Titel/ID>: Termin löschen",
+            "lösche den 2. termin / lösche alle termine: Aus letztem Ergebnis",
+        ]
+
+    @property
     def keywords(self) -> dict[str, list[str]]:
         return {
-            "termine_woche": ["nächste woche", "diese woche", "woche termine"],
-            "termine_morgen": ["morgen termine", "habe ich morgen"],
-            "termine": ["was steht an", "welche termine", "kalender", "nächster termin",
-                        "termine heute", "habe ich termine"],
+            "termine_woche": [
+                "nächste woche", "diese woche", "woche termine",
+                "wochenplan", "wochenübersicht",
+            ],
+            "termine_morgen": [
+                "morgen termine", "habe ich morgen",
+                "bin ich morgen frei", "was hab ich morgen vor",
+            ],
+            "termine": [
+                "was steht an", "welche termine", "kalender",
+                "nächster termin", "termine heute", "habe ich termine",
+                "zeitplan", "terminplan", "agenda", "was hab ich vor",
+                "hab ich heute was", "bin ich heute frei",
+            ],
         }
 
     def execute(self, command: str, raw_text: str) -> CommandResult:

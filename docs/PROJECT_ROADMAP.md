@@ -19,8 +19,7 @@
 - AgentServer für Laptop-Steuerung (Tower → Laptop Remote-Aktionen + Audio-Streaming)
 - RPi5 Setup: Bookworm Lite, Python 3.13, IP 192.168.50.220
 - **Offen:** Echte RPi5-Klassen (MotorController, SensorManager) wenn Hardware bereit
-- **Offen:** Sensor-Integration (Kamera, IR, Temperatur)
-- **Offen:** Kommunikation RPi5 ↔ Pico 2W
+- **Offen:** Sensor-Integration (Kamera, BME280, APDS-9960)
 
 ## Phase 3 – Charakter / V-Tuber ✅ ABGESCHLOSSEN
 - Charakter: Saleria Berry – "Charmant und melodisch mit spielerischer Gefahr"
@@ -37,12 +36,12 @@
   - CAD: hardware/enclosure/ (Inventor)
   - Gewicht: 1.138g (stationär → kein Limit)
 - ~~Mecanum 4WD~~ GESTRICHEN – stationär + drehbar statt mobil
-- Drehteller: 1× Servo (SG90/MG996R) + Kugellager unter dem Stamm
+- Drehteller: 200mm Alu Lazy-Susan Lager + 28BYJ-48 Stepper (Reaktionsantrieb)
+- A3144 Hall-Sensoren für ±180° Begrenzung + Home-Position
 - Stromversorgung: USB-C Netzteil (Dauerbetrieb) oder Akku – je nach Standort
 - Pepper's Ghost Kammer fertigstellen + testen
 - Ästhetik + Finish (Rinde bemalen, Moos-Details)
 - **Offen:** Standort (Schreibtisch, Regal, Sideboard)
-- **Offen:** Pico 2W Rolle (Sensoren ja, Motoren nein)
 
 ## Phase 5 – Software Advance ✅ GRÖSSTENTEILS ABGESCHLOSSEN
 - AnthropicClient (Sonnet 4.6 primär, Ollama Offline-Fallback)
@@ -153,8 +152,8 @@ Saleria als echte Alltagsassistentin – Kalender, E-Mail, Fitness, Wetter, Smar
 - ✅ Idle-Animationen (Glance, Smile, Soft-Close, Surprise)
 - ✅ Lip-Sync Fix (show_speaking Reset-Bug)
 - ✅ systemd-Autostart dokumentiert
-- **Offen:** Drehteller (28BYJ-48 Stepper + Hall-Sensor Homing)
-- **Offen:** Sensor-Integration (Kamera, BME280, APDS-9960)
+- **Offen:** Drehteller (28BYJ-48 Stepper + 200mm Lazy-Susan + Hall-Sensor Homing)
+- **Offen:** Sensor-Integration (Kamera, BME280, APDS-9960) – alle direkt über RPi5 GPIO/I2C
 - **Offen:** Gehäuse-Finish (Resin-Druck, Rinde, Moos)
 
 ## Phase 11 – Dokument-Zusammenfassung 📄 ✅ ABGESCHLOSSEN

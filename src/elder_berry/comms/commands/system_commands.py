@@ -77,16 +77,61 @@ class SystemCommandHandler(CommandHandler):
         ]
 
     @property
+    def command_descriptions(self) -> list[str]:
+        return [
+            "status: Systemstatus (CPU, RAM, GPU, Disk, Top-Prozesse)",
+            "screenshot: Screenshot vom Bildschirm",
+            "pause / play: Musik pausieren / fortsetzen",
+            "skip / prev: Nächster / vorheriger Track",
+            "volume <0-100>: Lautstärke setzen",
+            "selfie [emotion]: Bild von Saleria senden",
+            "restart: Bot neu starten",
+        ]
+
+    @property
     def keywords(self) -> dict[str, list[str]]:
         return {
-            "screenshot": ["screenshot", "bildschirmfoto", "bildschirm zeig"],
-            "status": ["systemstatus", "systemzustand", "pc status", "pc-status"],
-            "pause": ["pausier", "stopp musik", "musik stopp", "musik aus"],
-            "play": ["musik an", "weiterspielen", "abspielen"],
-            "skip": ["n\u00e4chster song", "n\u00e4chstes lied", "\u00fcberspringen", "n\u00e4chster track"],
-            "avatar": ["zeig dich", "wie siehst du aus", "bild von dir", "schick ein bild von dir", "selfie"],
-            "hilfe": ["was kannst du", "was geht", "welche befehle", "welche commands"],
-            "restart": ["starte neu", "neustart", "restart dich", "bitte neustarten"],
+            "screenshot": [
+                "screenshot", "bildschirmfoto", "bildschirm zeig",
+                "mach ein foto vom bildschirm", "zeig mir den bildschirm",
+                "was ist auf dem bildschirm",
+            ],
+            "status": [
+                "systemstatus", "systemzustand", "pc status", "pc-status",
+                "wie geht es dem pc", "wie l\u00e4uft der pc", "cpu auslastung",
+                "ram auslastung", "speicherverbrauch",
+            ],
+            "pause": [
+                "pausier", "stopp musik", "musik stopp", "musik aus",
+                "musik pausieren", "halt die musik an",
+            ],
+            "play": [
+                "musik an", "weiterspielen", "abspielen",
+                "musik weiter", "spiel weiter",
+            ],
+            "skip": [
+                "n\u00e4chster song", "n\u00e4chstes lied", "\u00fcberspringen",
+                "n\u00e4chster track",
+            ],
+            "prev": [
+                "vorheriger song", "vorheriges lied", "lied zur\u00fcck",
+                "vorheriger track", "song zur\u00fcck",
+            ],
+            "volume": [
+                "lautst\u00e4rke", "leiser", "lauter", "ton leiser", "ton lauter",
+            ],
+            "avatar": [
+                "zeig dich", "wie siehst du aus", "bild von dir",
+                "schick ein bild von dir", "selfie",
+            ],
+            "hilfe": [
+                "was kannst du", "was geht", "welche befehle",
+                "welche commands", "zeig mir die befehle",
+            ],
+            "restart": [
+                "starte neu", "neustart", "restart dich",
+                "bitte neustarten", "starte dich neu",
+            ],
         }
 
     def execute(self, command: str, raw_text: str) -> CommandResult:

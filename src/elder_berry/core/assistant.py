@@ -18,6 +18,7 @@ if TYPE_CHECKING:
     from elder_berry.agent.client import AgentClient
     from elder_berry.avatar.base import AvatarRenderer
     from elder_berry.character.base import CharacterEngine
+    from elder_berry.comms.remote_commands import RemoteCommandHandler
     from elder_berry.memory.base import MemoryStore
     from elder_berry.robot.client import RobotClient
     from elder_berry.system.info import SystemMonitor
@@ -47,43 +48,16 @@ Verfügbare Aktionen:
 - robot_stop: Roboter stoppen. params: {{"reason": "hindernis"}}
 - remote_command: Remote-Befehl ausführen. params: {{"command": "<befehl>"}}
   Du hast folgende Remote-Tools:
-  - mail suche <begriff>: E-Mails nach Betreff/Absender durchsuchen
-  - mail anhang <id>: Anhänge einer Mail senden (ID aus Suchergebnis)
-  - mails: Ungelesene E-Mails anzeigen
-  - termine: Termine heute anzeigen
-  - termine morgen: Termine morgen
-  - termine woche: Termine der nächsten 7 Tage
-  - termin suche <begriff>: Termine durchsuchen
-  - termin: <Titel> <Datum> <Uhrzeit>: Termin erstellen (morgen, übermorgen, DD.MM, YYYY-MM-DD)
-  - termin löschen <Titel/ID>: Termin löschen
-  - lösche den 2. termin / lösche alle termine: aus letztem Ergebnis
-  - training: Trainings-Zusammenfassung (Berry-Gym)
-  - training details: Letztes Training mit Sätzen
-  - prs: Personal Records
-  - wetter / wetter morgen / wetter woche: Wetter und Vorhersage
-  - timer <dauer>: Timer setzen (z.B. "timer 20 min")
-  - erinnere mich um/in <zeit>: <nachricht>: Erinnerung setzen
-  - erinnerungen: Offene Erinnerungen anzeigen
-  - briefing: Tagesübersicht (Wetter, Termine, Erinnerungen)
-  - suche <begriff>: Im Internet suchen (Brave Search)
-  - klick auf <element> / tippe <text> / scroll runter|hoch / drück <taste>: PC-Steuerung per Vision
-  - audio / audio lokal an / audio lokal aus: Audio-Modus steuern
-  - screenshot: Screenshot aufnehmen
-  - status: Systemstatus
+{remote_commands}
+  Wenn der Nutzer nach Mails, Terminen, Training, Wetter, Web-Suche oder ähnlichem fragt,
+  nutze remote_command mit dem passenden Befehl als "command"-Parameter.
+  Beispiel: Nutzer fragt "Suche das Angebot von RK Bedachung in meinen Mails"
+  → {{"action": "remote_command", "params": {{"command": "mail suche RK Bedachung"}}, "response": "Ich suche nach Mails von RK Bedachung..."}}
 - multi_step: Mehrstufige Aufgabe ausführen (mehrere Commands verketten).
   params: {{"task": "<beschreibung der gesamten aufgabe>"}}
   Nutze dies wenn der Nutzer eine Aufgabe beschreibt die mehrere Schritte braucht.
   Beispiel: "Lies meine Mails und trag den Zahnarzttermin ein"
   → {{"action": "multi_step", "params": {{"task": "Mails lesen und Zahnarzttermin eintragen"}}, "response": "Ich kümmere mich darum..."}}
-  - update / update dich: Neue Funktionen laden (git pull + neustart)
-  - merk dir: <schlüssel> ist <wert>: Fakt speichern
-  - notiz: <text>: Freitext-Notiz speichern
-  - was ist <schlüssel>?: Fakt abrufen
-  - notizen / notizen suche <Begriff>: Notizen verwalten
-  Wenn der Nutzer nach Mails, Terminen, Training, Wetter, Web-Suche oder ähnlichem fragt,
-  nutze remote_command mit dem passenden Befehl als "command"-Parameter.
-  Beispiel: Nutzer fragt "Suche das Angebot von RK Bedachung in meinen Mails"
-  → {{"action": "remote_command", "params": {{"command": "mail suche RK Bedachung"}}, "response": "Ich suche nach Mails von RK Bedachung..."}}
 
 {action_list}
 
@@ -129,6 +103,7 @@ class Assistant:
         agent: AgentClient | None = None,
         system_monitor: SystemMonitor | None = None,
         memory: MemoryStore | None = None,
+        remote_commands: RemoteCommandHandler | None = None,
     ) -> None:
         self._llm = llm
         self._actions_db = actions_db
@@ -140,6 +115,7 @@ class Assistant:
         self._agent = agent
         self._system_monitor = system_monitor
         self._memory = memory
+        self._remote_commands = remote_commands
         self._session_id: str = memory.new_session() if memory else ""
 
     def process(
@@ -332,10 +308,16 @@ class Assistant:
         robot_status = self._build_robot_status()
         current_dt = datetime.now().strftime("%A, %d.%m.%Y %H:%M Uhr")
 
+        # Dynamischer Command-Block aus den Handler-Definitionen
+        remote_commands = ""
+        if self._remote_commands:
+            remote_commands = self._remote_commands.get_command_summary()
+
         if self._character:
             prompt = self._character.build_system_prompt(
                 available_actions=action_list,
                 memory_context=memory_context,
+                remote_commands=remote_commands,
             )
             prompt = f"Aktuelles Datum und Uhrzeit: {current_dt}\n\n{prompt}"
             mood_context = self._character.get_mood_context()
@@ -352,6 +334,7 @@ class Assistant:
             robot_status=robot_status,
             current_datetime=current_dt,
             memory_context=memory_context,
+            remote_commands=remote_commands,
         )
         if chat_history:
             full_prompt += f"\n\n{chat_history}"

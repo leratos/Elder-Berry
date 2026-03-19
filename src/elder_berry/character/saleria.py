@@ -93,7 +93,8 @@ class SaleriaEngine(CharacterEngine):
         self._mood = MoodState(current_emotion=emotion, intensity=intensity)
 
     def build_system_prompt(
-        self, available_actions: str = "", memory_context: str = ""
+        self, available_actions: str = "", memory_context: str = "",
+        remote_commands: str = "",
     ) -> str:
         emotions_list = ", ".join(f"[{e.value}]" for e in Emotion)
         return self._prompt_template.format(
@@ -103,6 +104,7 @@ class SaleriaEngine(CharacterEngine):
             emotions_list=emotions_list,
             action_list=available_actions,
             memory_context=memory_context,
+            remote_commands=remote_commands,
         )
 
     def extract_emotion(self, llm_response: str) -> Emotion:

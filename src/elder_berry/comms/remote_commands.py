@@ -303,6 +303,26 @@ class RemoteCommandHandler:
         KEYWORD_MAP.clear()
         KEYWORD_MAP.update(_build_keyword_map(self._handlers))
 
+    def get_command_summary(self) -> str:
+        """Generiert eine kompakte Übersicht aller verfügbaren Remote-Commands.
+
+        Wird für den dynamischen Command-Block im System-Prompt genutzt.
+        Single Source of Truth: Handler definieren ihre Commands,
+        der Prompt wird daraus generiert.
+
+        Returns:
+            Mehrzeiliger String mit allen Command-Beschreibungen.
+        """
+        lines: list[str] = []
+        for handler in self._handlers:
+            descriptions = handler.command_descriptions
+            if descriptions:
+                for desc in descriptions:
+                    lines.append(f"    - {desc}")
+        # Hilfe-Command (lebt im Orchestrator)
+        lines.append("    - hilfe: Alle verfügbaren Commands anzeigen")
+        return "\n".join(lines)
+
     def parse_command(self, text: str) -> str | None:
         """Prüft ob der Text ein direkter Command ist.
 

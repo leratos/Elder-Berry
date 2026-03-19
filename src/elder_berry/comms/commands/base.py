@@ -89,6 +89,20 @@ class CommandHandler(ABC):
         """
         return {}
 
+    @property
+    def command_descriptions(self) -> list[str]:
+        """Kompakte Beschreibungen aller Commands dieses Handlers.
+
+        Wird von RemoteCommandHandler.get_command_summary() genutzt um
+        den dynamischen Command-Block im System-Prompt zu generieren.
+
+        Returns:
+            Liste von Beschreibungs-Strings, z.B.
+            ["mails: Ungelesene E-Mails anzeigen",
+             "mail suche <begriff>: E-Mails durchsuchen"]
+        """
+        return []
+
     @abstractmethod
     def execute(self, command: str, raw_text: str) -> CommandResult:
         """Führt einen erkannten Command aus.
