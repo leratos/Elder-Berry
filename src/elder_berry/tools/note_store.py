@@ -267,7 +267,7 @@ class NoteStore:
         rows = self._conn.execute(
             "SELECT id, user_id, key, content, tags, created_at, updated_at "
             "FROM notes WHERE user_id = ? "
-            "ORDER BY updated_at DESC LIMIT ?",
+            "ORDER BY updated_at DESC, id DESC LIMIT ?",
             (user_id, limit),
         ).fetchall()
         return [self._row_to_note(r) for r in rows]
