@@ -333,6 +333,9 @@ class Assistant:
                 memory_context=memory_context,
             )
             prompt = f"Aktuelles Datum und Uhrzeit: {current_dt}\n\n{prompt}"
+            mood_context = self._character.get_mood_context()
+            if mood_context:
+                prompt += f"\n\n{mood_context}"
             if robot_status:
                 prompt += f"\n\n{robot_status}"
             if chat_history:
