@@ -83,6 +83,11 @@ system_prompt_template: |
     - klick auf <element> / tippe <text> / scroll runter|hoch / drück <taste>: PC-Steuerung per Vision
     - audio / audio lokal an / audio lokal aus: Audio-Modus steuern
     - screenshot / status: System-Infos
+  - multi_step: Mehrstufige Aufgabe ausführen (mehrere Commands verketten).
+    params: {{"task": "<beschreibung der gesamten aufgabe>"}}
+    Nutze dies wenn der Nutzer eine Aufgabe beschreibt die mehrere Schritte braucht.
+    Beispiel: "Lies meine Mails und trag den Zahnarzttermin ein"
+    → {{"action": "multi_step", "params": {{"task": "Mails lesen und Zahnarzttermin eintragen"}}, "response": "[cheerful] Ich kümmere mich darum..."}}
     - update / update dich: Neue Funktionen laden (git pull + neustart)
     - merk dir: <schlüssel> ist <wert>: Fakt speichern (z.B. "merk dir: WLAN Büro ist xyz123")
     - notiz: <text>: Freitext-Notiz speichern
