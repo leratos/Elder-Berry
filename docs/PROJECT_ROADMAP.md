@@ -113,7 +113,9 @@ Saleria als echte Alltagsassistentin – Kalender, E-Mail, Fitness, Wetter, Smar
 - Wetter + Termine + Erinnerungen kombiniert
 - Manuell: "briefing", Keywords: "guten morgen"
 
-### OFFEN: Home Assistant Client
+### ⏸️ ZURÜCKGESTELLT: Home Assistant Client
+> Zurückgestellt wegen Umzug – HA-Setup wird am neuen Standort komplett neu aufgebaut.
+> Nur Logitech Harmony Hub bleibt bestehen.
 - HomeAssistantClient: REST API, Long-lived Token in SecretStore
 - Harmony Hub über HA (kein direkter API-Zugriff nötig)
 - Commands: "licht wohnzimmer an/aus", "heizung 21 grad", "szene film", "harmony tv an"
@@ -129,31 +131,17 @@ Saleria als echte Alltagsassistentin – Kalender, E-Mail, Fitness, Wetter, Smar
 - Webcam oder RTSP-Feed → Bild → OpenRouter Vision (GPT-4o / Claude Vision)
 - Commands: "was siehst du", "screenshot vom eingang"
 - Anwendung: Paketlieferung erkennen, Haustier beobachten, Schreibtisch-Check
-- Voraussetzung: Kamera physisch installiert
+- Voraussetzung: Kamera physisch installiert (RPi Camera Module 3 bestellt, noch nicht verbaut)
 
 ### Emotion Recognition (Voice)
-- STT-Konfidenz + Sprechgeschwindigkeit + Tonhöhe → Stimmungsschätzung
-- Saleria passt Antwortton an erkannte Stimmung an
-- Keine externe API nötig (Whisper liefert bereits Konfidenz-Werte)
+- Audio-basierte Emotionserkennung → Saleria passt Antwortton an
+- Analyse-Dokument: `docs/concepts/emotion-recognition-voice.md`
+- Empfehlung: Hybrid-Ansatz (Audio-Features + LLM-Textanalyse, kein ML-Modell)
+- Niedrige Priorität – erst wenn Sprachnachrichten regelmäßig genutzt werden
 
-### Proaktive Autonomie
-- Saleria initiiert Aktionen ohne User-Trigger
-- Beispiele: "Dein Meeting beginnt in 10 Minuten" (Kalender-Watcher)
-- "GPU-Auslastung 95% seit 2h – alles ok?" (SystemMonitor-Erweiterung)
-- "Draußen regnet es, du hattest Fenster offen lassen" (HA + Wetter kombiniert)
-- Technisch: erweiterter AlertMonitor mit Plugin-System
-
-### Notizen & Wissensdatenbank
-- Explizit gespeicherte Fakten (getrennt von RAG-Memory)
-- "Merk dir: WLAN-Passwort Büro ist xyz"
-- "Was ist das WLAN-Passwort vom Büro?"
-- SQLite-basiert, Key-Value + Volltextsuche
-- Unterschied zu ChromaDB-Memory: direkt abrufbar, kein Embedding nötig
-
-### Multi-Channel
-- Discord als zweiter Kanal (DiscordChannel implementiert MessageChannel ABC)
-- Telegram (optionale Alternative zu Matrix)
-- Web-Interface (einfaches FastAPI + HTML, kein Framework)
+### ~~Multi-Channel~~ GESTRICHEN
+> Eigener Matrix-Server = volle Kontrolle über eigene Daten.
+> Discord/Telegram würde Daten an Dritte geben → widerspricht dem Projektprinzip.
 
 ---
 
@@ -265,6 +253,44 @@ Saleria kann auf Anfrage im Internet suchen und die Ergebnisse aufbereitet zurü
 - Lokale Ergebnisse: Nein – Standard-Web-Suche, Brave liefert beides implizit
 - Ergebnis-Caching: Nein – bei effektiv kostenlosem Free-Tier nicht nötig
 
+## Phase 15 – Self-Update 🔄 GEPLANT
+
+Saleria kann sich auf Befehl selbst aktualisieren (git pull + pip install + restart).
+Enabler für alle folgenden Phasen: Code auf Laptop entwickeln, pushen, per Matrix live schalten.
+
+- **Neuer Command**: `update` in ProcessCommandHandler (kein neuer Handler)
+  - git fetch → Änderungen prüfen → git pull --ff-only → pip install (wenn pyproject.toml geändert) → restart
+  - Kein Auto-Update – nur auf expliziten Befehl ("update dich", "neue Funktionen")
+  - Sicherheit: --ff-only (kein Merge), pip nur eigenes Projekt, kein Remote-URL-Wechsel
+  - Nutzt bestehenden Restart-Mechanismus (os.execv + Flag-Datei)
+- **Konzept**: `docs/concepts/phase-15-self-update.md`
+
+## Phase 16 – Notizen & Wissensdatenbank 📝 GEPLANT
+
+Expliziter Fakten- und Notizspeicher – getrennt von ChromaDB-RAG-Memory.
+
+- **NoteStore**: SQLite + FTS5 Volltextsuche (`tools/note_store.py`)
+  - Key-Value-Fakten: "merk dir: WLAN Büro ist xyz" → exakt abrufbar per "was ist WLAN Büro?"
+  - Freitext-Notizen: "notiz: Vermieter heißt Müller, Kaution 1200€" → per Volltextsuche
+  - Upsert bei existierenden Keys, FTS5-Trigger für automatische Index-Sync
+- **NoteCommandHandler**: Neuer CommandHandler (`comms/commands/note_commands.py`)
+  - Commands: merk dir, notiz, was ist, notizen suche, notizen, notiz löschen, vergiss
+  - "was ist"-Miss → success=False → LLM-Fallthrough (keine Kollision mit allgemeinen Fragen)
+- **Konzept**: `docs/concepts/phase-16-notizen-wissensdatenbank.md`
+
+## Phase 17 – Kalender-Watcher (Proaktive Meeting-Erinnerungen) 📅 GEPLANT
+
+Saleria erinnert proaktiv vor Terminen – ohne dass der Nutzer fragen muss.
+
+- **CalendarWatcher**: Daemon-Thread, pollt GoogleCalendarClient alle 5 Min (`comms/calendar_watcher.py`)
+  - Konfigurierbare Erinnerungszeiten: Default [15, 5] Minuten vor Termin
+  - Deduplizierung: gleicher Reminder feuert nicht doppelt
+  - Ganztags-Events werden übersprungen
+  - Vergangene Events automatisch aus State entfernt (kein Memory-Leak)
+- **Abgrenzung**: BriefingScheduler = täglich 07:30, ReminderScheduler = explizite Timer,
+  CalendarWatcher = automatisch vor jedem Termin
+- **Konzept**: `docs/concepts/phase-17-kalender-watcher.md`
+
 ---
 
 ## Projektgrenzen (ehrliche Einschätzung)
@@ -297,8 +323,11 @@ Saleria kann auf Anfrage im Internet suchen und die Ergebnisse aufbereitet zurü
 Ein physischer Assistent auf dem Schreibtisch (Holunder-Hologramm), erreichbar via Handy (Element) und Sprache, der:
 - Fragen beantwortet und Gespräche führt (Saleria-Persönlichkeit)
 - Kalender, Wetter, Erinnerungen managed
-- Den PC/Tower remote steuert (Screenshots, Medien, Prozesse)
-- Das Smart Home steuert (Lichter, Heizung via HA)
+- Proaktiv vor Terminen erinnert (Kalender-Watcher)
+- Fakten und Notizen speichert und abruft (Wissensdatenbank)
+- Im Internet sucht und Ergebnisse aufbereitet (Brave Search)
+- Den PC/Tower remote steuert (Screenshots, Medien, Prozesse, Computer Use)
+- Das Smart Home steuert (Lichter, Heizung via HA – nach Umzug)
 - Sich an Gespräche erinnert (RAG-Memory)
 - Proaktiv auf wichtige Events aufmerksam macht (Alerts)
 

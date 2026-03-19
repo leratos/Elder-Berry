@@ -1568,3 +1568,41 @@
 - SecretStore().set("brave_api_key", "<key>")
 - Kosten: $5/1000 Requests, aber $5 monatliches Guthaben → effektiv kostenlos unter 1000 Req/Monat
 - Keine neue Dependency (httpx bereits vorhanden)
+
+
+## In Arbeit: Konzeptphase – Phase 15 (Notizen/Wissensdatenbank), Phase 16 (Kalender-Watcher), Emotion Recognition Analyse (2026-03-19)
+
+### Ziel
+- Konzeptdokumente für Claude Code erstellen (docs/concepts/)
+- PROJECT_ROADMAP.md aktualisieren (Phase 8 HA zurückgestellt, Multi-Channel gestrichen, neue Phasen)
+- Drei Dokumente: phase-15-self-update.md, phase-16-notizen-wissensdatenbank.md, phase-17-kalender-watcher.md, emotion-recognition-voice.md
+
+
+## Abgeschlossen: Konzeptphase – Phase 15, 16, 17 + Emotion Recognition Analyse (2026-03-19)
+
+### Neue Konzeptdateien
+- docs/concepts/phase-15-self-update.md
+  - Self-Update Command in ProcessCommandHandler
+  - git fetch → pull --ff-only → pip install (wenn nötig) → restart
+  - Nutzt bestehenden Restart-Mechanismus, kein neuer Handler
+  - Enabler für Phase 16+17: Code auf Laptop entwickeln, per Matrix live schalten
+  - ~15 Tests geplant
+- docs/concepts/phase-16-notizen-wissensdatenbank.md
+  - NoteStore (SQLite + FTS5, KV-Fakten + Freitext)
+  - NoteCommandHandler (7 Commands: merk dir, notiz, was ist, suche, liste, löschen, vergiss)
+  - ~45 Tests geplant, Edge Cases dokumentiert (FTS5/Deutsch, "was ist"-Kollision)
+- docs/concepts/phase-17-kalender-watcher.md
+  - CalendarWatcher (Daemon-Thread, 5-Min-Poll, Erinnerungen [15, 5] Min vor Termin)
+  - Deduplizierung per event_id, Ganztags-Events übersprungen
+  - ~15 Tests geplant
+- docs/concepts/emotion-recognition-voice.md
+  - Analyse: Whisper-Konfidenz kein Emotions-Proxy
+  - 3 Optionen bewertet: Regelbasiert (verwerfen), ML-Modell (später), Hybrid (empfohlen)
+  - EmoDB-Link korrigiert (TU-Berlin tot → audeering GitHub)
+
+### Roadmap-Änderungen (PROJECT_ROADMAP.md)
+- Phase 8 HA → ⏸️ ZURÜCKGESTELLT (Umzug)
+- Phase 9 Multi-Channel → GESTRICHEN (eigener Matrix-Server = Datenkontrolle)
+- Phase 9 Emotion Recognition → aktualisiert (Analyse-Verweis statt veralteter Beschreibung)
+- Phase 15, 16, 17 eingefügt
+- Realistisches Endprodukt erweitert
