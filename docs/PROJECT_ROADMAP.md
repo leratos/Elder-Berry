@@ -296,13 +296,80 @@ Saleria erinnert proaktiv vor Terminen – ohne dass der Nutzer fragen muss.
 - ✅ **Tests**: `tests/test_calendar_watcher.py` (24 Tests)
 - **Konzept**: `docs/concepts/phase-17-kalender-watcher.md`
 
+## Phase 18 – Emotion-State-Machine 🧠 ✅ ABGESCHLOSSEN
+
+Saleria bekommt ein emotionales Kurzzeitgedächtnis – die letzten Emotionen
+fließen als Kontext in den System-Prompt, sodass das LLM die Stimmung natürlich
+weiterentwickeln kann statt pro Turn bei Null zu starten.
+
+- ✅ **EmotionTracker**: Ringbuffer (5 Einträge, deque), 30 Min Decay, Valenz-basierte Trend-Erkennung
+- ✅ **CharacterEngine ABC**: `get_mood_context()` (nicht-abstrakt, Default None)
+- ✅ **SaleriaEngine**: `extract_emotion()` füttert Tracker, `get_mood_context()` liefert Summary
+- ✅ **Assistant**: mood_context wird vor LLM-Call in System-Prompt injiziert
+- ✅ **Tests**: `tests/test_emotion_tracker.py` (32 Tests)
+- **Prompt-Format**: `Emotionaler Kontext: angry → neutral | Dominante Stimmung: angry | Tendenz: aufhellend`
+
+## Phase 19 – Wiederkehrende Erinnerungen 🔁 GEPLANT
+
+Timer und Erinnerungen werden um Wiederholungslogik erweitert: "Erinnere mich
+jeden Montag um 9 an den Wochenbericht."
+
+- ReminderStore: `recurrence`-Feld (daily, weekly:N, monthly:N, weekdays, biweekly:N)
+- ReminderScheduler: Reschedule-Logik nach dem Feuern (nächstes Datum berechnen)
+- WeatherCommandHandler: Neue Patterns für "jeden Montag", "täglich", "werktags"
+- Verwaltung: Anzeige + Löschen wiederkehrender Erinnerungen
+- **Konzept**: `docs/concepts/phase-19-wiederkehrende-erinnerungen.md`
+
+## Phase 20 – Multi-Step Task Chaining ⛓️ GEPLANT
+
+Saleria kann mehrstufige Aufgaben abarbeiten, bei denen das Ergebnis eines
+Schritts als Input für den nächsten dient (ReAct-Pattern).
+
+- TaskExecutor: LLM → Command → Ergebnis → LLM → ... → Antwort (max 5 Steps)
+- Integration in MatrixBridge statt einzelner LLM-Call
+- System-Prompt für Multi-Step-Reasoning
+- Sicherheit: MAX_STEPS Limit, Timeout, Bestätigung für destruktive Commands
+- **Konzept**: `docs/concepts/phase-20-multi-step-task-chaining.md`
+
+## Phase 21 – Proaktive Kontext-Verknüpfung 🔗 GEPLANT
+
+CalendarWatcher-Alerts werden kontextbewusst: relevante Notizen, Mails und
+Wetter werden automatisch zum Termin-Reminder hinzugefügt.
+
+- ContextEnricher: Sucht NoteStore, IMAP, Weather zu einem Termin-Titel
+- LLM formatiert gesammelten Kontext als natürliche Nachricht
+- Integration in CalendarWatcher (nur beim ersten Reminder, z.B. 15 Min)
+- Graceful Degradation: fehlende Quellen werden übersprungen
+- **Konzept**: `docs/concepts/phase-21-proaktive-kontext-verknuepfung.md`
+
+## Phase 22 – Intent-Routing Verbesserung 🎯 GEPLANT
+
+Die Erkennung, ob eine User-Nachricht ein direkter Command oder eine
+LLM-Konversation ist, wird verbessert.
+
+- Keyword-Audit: fehlende Synonyme/Umgangssprache ergänzen
+- Dynamischer Command-Prompt: `get_command_summary()` statt statischer Block
+- Retry bei Parse-Fehler: LLM bekommt Feedback wenn Command nicht erkannt
+- **Konzept**: `docs/concepts/phase-22-intent-routing.md`
+
+## Phase 23 – Konversations-Zusammenfassung 📝 GEPLANT
+
+ChatHistory vergisst den Gesprächsanfang nicht mehr – evicted Messages werden
+zu einer Rolling Summary komprimiert.
+
+- ChatHistory: Rolling Summary bei Eviction (LLM-basiert, max 3 Sätze)
+- Summarizer-Callback als DI-Parameter (kein direkter LLM-Import)
+- Summary wird im format_for_prompt() vor den letzten Nachrichten angezeigt
+- Async/Background: Summary blockiert nicht den Response
+- **Konzept**: `docs/concepts/phase-23-konversations-zusammenfassung.md`
+
 ---
 
 ## Projektgrenzen (ehrliche Einschätzung)
 
 ### Was dieses Projekt ist
 - **Persönlicher Single-User Assistent** – für eine Person, kein Multi-Tenant
-- **Reaktives System** – Saleria antwortet auf Eingaben; proaktive Autonomie ist Erweiterung, kein Kern
+- **Zunehmend proaktives System** – Saleria antwortet auf Eingaben und wird schrittweise proaktiver (Kalender-Watcher, Kontext-Verknüpfung)
 - **Lokale KI-Pipeline** – Daten bleiben auf eigenem Server/Tower; kein Cloud-Zwang
 - **Hobby-Projekt mit echtem Nutzen** – kein kommerzielles Produkt
 

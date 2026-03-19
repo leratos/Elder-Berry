@@ -1803,3 +1803,16 @@
 - get_mood_context() nicht-abstrakt im ABC: Default None → bestehende Subklassen brechen nicht
 - Prompt-Format strukturiert: "Emotionaler Kontext: X → Y | Dominante Stimmung: Z | Tendenz: T"
 - NEUTRAL wird bei fehlendem Tag NICHT getrackt (nur explizite Tags)
+
+## Abgeschlossen: Konzeptdokumente + Roadmap Phasen 19–23 (2026-03-19)
+- Branch: feature/phase-19-23-konzepte
+
+### Neue Dateien
+- docs/concepts/phase-19-wiederkehrende-erinnerungen.md
+- docs/concepts/phase-20-multi-step-task-chaining.md
+- docs/concepts/phase-21-proaktive-kontext-verknuepfung.md
+- docs/concepts/phase-22-intent-routing.md
+- docs/concepts/phase-23-konversations-zusammenfassung.md
+
+### Geänderte Dateien
+- docs/PROJECT_ROADMAP.md: Phasen 18–23 eingefügt, Projektgrenzen aktualisiert
