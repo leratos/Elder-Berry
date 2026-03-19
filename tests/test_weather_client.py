@@ -346,7 +346,8 @@ class TestFormatDayName:
         assert _format_day_name(date.today() + timedelta(days=1)) == "Morgen"
 
     def test_other_day(self):
-        # Ein festes Datum: 2026-03-20 ist ein Freitag
-        result = _format_day_name(date(2026, 3, 20))
-        assert "Fr" in result
-        assert "20.03." in result
+        # Ein festes Datum in der Vergangenheit: 2026-03-16 ist ein Montag.
+        # Vergangenes Datum verwenden, damit es nie "Heute" oder "Morgen" sein kann.
+        result = _format_day_name(date(2026, 3, 16))
+        assert "Mo" in result
+        assert "16.03." in result
