@@ -61,42 +61,15 @@ system_prompt_template: |
   - maximize_window: Fenster maximieren. params: {{"title": "Notepad"}}
   - remote_command: Remote-Befehl ausführen. params: {{"command": "<befehl>"}}
     Du hast folgende Remote-Tools:
-    - mail suche <begriff>: E-Mails durchsuchen
-    - mail anhang <id>: Anhänge einer Mail senden (ID aus Suchergebnis)
-    - mails: Ungelesene E-Mails
-    - termine / termine morgen / termine woche: Kalender-Termine
-    - termin suche <begriff>: Termine durchsuchen
-    - termin: <Titel> <Datum> <Uhrzeit>: Termin erstellen
-      Datum-Formate: YYYY-MM-DD, DD.MM, DD.MM.YYYY, morgen, übermorgen
-      Beispiel: termin: Zahnarzt morgen 14:00
-    - termin löschen <Titel oder ID>: Termin löschen
-    - lösche den 2. termin: Per Index aus letztem Ergebnis
-    - lösche alle termine: Alle aus letztem Ergebnis löschen
-    - training / training details / prs: Fitness-Daten (Berry-Gym)
-    - wetter / wetter morgen / wetter woche: Wetter und Vorhersage
-    - timer <dauer>: Timer setzen (z.B. "timer 20 min")
-    - erinnere mich um/in <zeit>: <nachricht>: Erinnerung setzen
-    - erinnerungen: Offene Erinnerungen anzeigen
-    - briefing: Tagesübersicht (Wetter, Termine, Erinnerungen)
-    - zusammenfassung <pfad>: Dokument zusammenfassen (PDF/TXT)
-    - suche <begriff>: Im Internet suchen (Brave Search)
-    - klick auf <element> / tippe <text> / scroll runter|hoch / drück <taste>: PC-Steuerung per Vision
-    - audio / audio lokal an / audio lokal aus: Audio-Modus steuern
-    - screenshot / status: System-Infos
+{remote_commands}
+    Wenn der Nutzer nach Mails, Terminen, Training, Wetter, Web-Suche oder ähnlichem fragt,
+    nutze remote_command mit dem passenden Befehl.
+    Beispiel: {{"action": "remote_command", "params": {{"command": "mail suche Rechnung"}}, "response": "[cheerful] Ich suche mal nach der Rechnung..."}}
   - multi_step: Mehrstufige Aufgabe ausführen (mehrere Commands verketten).
     params: {{"task": "<beschreibung der gesamten aufgabe>"}}
     Nutze dies wenn der Nutzer eine Aufgabe beschreibt die mehrere Schritte braucht.
     Beispiel: "Lies meine Mails und trag den Zahnarzttermin ein"
     → {{"action": "multi_step", "params": {{"task": "Mails lesen und Zahnarzttermin eintragen"}}, "response": "[cheerful] Ich kümmere mich darum..."}}
-    - update / update dich: Neue Funktionen laden (git pull + neustart)
-    - merk dir: <schlüssel> ist <wert>: Fakt speichern (z.B. "merk dir: WLAN Büro ist xyz123")
-    - notiz: <text>: Freitext-Notiz speichern
-    - was ist <schlüssel>?: Fakt abrufen
-    - notizen suche <Begriff>: Notizen durchsuchen
-    - notizen: Alle Notizen anzeigen
-    Wenn der Nutzer nach Mails, Terminen, Training, Web-Suche oder ähnlichem fragt,
-    nutze remote_command mit dem passenden Befehl.
-    Beispiel: {{"action": "remote_command", "params": {{"command": "mail suche Rechnung"}}, "response": "[cheerful] Ich suche mal nach der Rechnung..."}}
 
   {action_list}
 

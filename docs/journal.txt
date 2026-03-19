@@ -1949,3 +1949,59 @@ User: "Lies meine Mails und trag den Zahnarzttermin ein"
 ### Tests
 - 40/40 test_context_enricher.py ✓
 - 104/104 bestehende Tests (test_calendar_watcher.py + test_comms.py) ✓
+
+## Abgeschlossen: Phase 22 – Intent-Routing Verbesserung (2026-03-19)
+- Branch: feature/phase-22-intent-routing
+
+### Teil 1: Keyword-Audit
+- Alle 8 Handler durchgegangen, Keywords um Synonyme/Umgangssprache erweitert
+- SystemCommandHandler: +prev, +volume Keywords, Musik/Bildschirm/PC-Status-Synonyme
+- CalendarCommandHandler: +zeitplan, +agenda, +terminplan, +frei-Abfragen
+- MailCommandHandler: +post, +nachrichten, +eingang, +checken-Varianten
+- FileCommandHandler: +kopiert/zwischenablage-Synonyme
+- ProcessCommandHandler: +pc/rechner/tower wecken, +läuft/geht alles
+- WeatherCommandHandler: +regen, +sonnig, +gewitter, +schnee, +regenschirm, +friert, +jacke
+- AdvancedCommandHandler: +anklicken, +netz/internet-Synonyme
+- NoteCommandHandler: +denk dran, +weißt du noch, +wann/wer ist, +schreib auf
+
+### Teil 2: Dynamischer Command-Prompt
+- CommandHandler ABC: neue Property `command_descriptions` (nicht-abstrakt, Default [])
+- Alle 8 Handler: `command_descriptions` implementiert (kompakte Einzeiler pro Command)
+- RemoteCommandHandler: `get_command_summary()` → aggregiert alle Descriptions
+- assistant.py: SYSTEM_PROMPT_TEMPLATE nutzt `{remote_commands}` Platzhalter
+- saleria.yaml: System-Prompt nutzt `{remote_commands}` Platzhalter
+- CharacterEngine ABC + SaleriaEngine: `build_system_prompt()` nimmt `remote_commands` Parameter
+- Assistant: neue DI-Dependency `remote_commands: RemoteCommandHandler | None`
+- start_saleria.py: Verdrahtung `assistant._remote_commands = remote`
+- Single Source of Truth: Handler definieren ihre Commands → Prompt wird automatisch generiert
+
+### Teil 3: Retry bei Parse-Fehler
+- bridge.py: `_handle_llm_remote_command()` versucht bei Parse-Fehler 1 Retry
+- `_retry_llm_remote_command()`: Feedback an LLM mit verfügbaren Commands
+- LLM korrigiert den Command-String → zweiter Parse-Versuch
+- Fallback: Prüft ob die LLM-Response direkt ein gültiger Command ist
+- Max 1 Retry (2 Versuche insgesamt), danach Warning-Log
+
+### Geänderte Dateien
+- src/elder_berry/comms/commands/base.py: +command_descriptions Property
+- src/elder_berry/comms/commands/system_commands.py: Keywords + Descriptions
+- src/elder_berry/comms/commands/calendar_commands.py: Keywords + Descriptions
+- src/elder_berry/comms/commands/mail_commands.py: Keywords + Descriptions
+- src/elder_berry/comms/commands/file_commands.py: Keywords + Descriptions
+- src/elder_berry/comms/commands/process_commands.py: Keywords + Descriptions
+- src/elder_berry/comms/commands/weather_commands.py: Keywords + Descriptions
+- src/elder_berry/comms/commands/advanced_commands.py: Keywords + Descriptions
+- src/elder_berry/comms/commands/note_commands.py: Keywords + Descriptions
+- src/elder_berry/comms/remote_commands.py: +get_command_summary()
+- src/elder_berry/core/assistant.py: +remote_commands DI, dynamischer Prompt
+- src/elder_berry/character/base.py: +remote_commands Parameter
+- src/elder_berry/character/saleria.py: +remote_commands Parameter
+- src/elder_berry/character/saleria.yaml: {remote_commands} Platzhalter
+- src/elder_berry/comms/bridge.py: Retry-Logik
+- scripts/start_saleria.py: Verdrahtung
+- tests/test_intent_routing.py: **Neu** – 107 Tests
+
+### Tests
+- 107/107 test_intent_routing.py ✓
+- 25/25 test_assistant.py ✓
+- 255/256 bestehende Tests ✓ (1 vorbestehender Fehler in test_note_store.py: Timing)

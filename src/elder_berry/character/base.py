@@ -83,7 +83,8 @@ class CharacterEngine(ABC):
 
     @abstractmethod
     def build_system_prompt(
-        self, available_actions: str = "", memory_context: str = ""
+        self, available_actions: str = "", memory_context: str = "",
+        remote_commands: str = "",
     ) -> str:
         """
         Generiert den System-Prompt für das LLM basierend auf Persönlichkeit und Mood.
@@ -91,6 +92,7 @@ class CharacterEngine(ABC):
         Args:
             available_actions: Formatierte Liste verfügbarer Aktionen.
             memory_context:    Formatierter Memory-Kontext aus dem RAG-Gedächtnis.
+            remote_commands:   Dynamische Command-Beschreibungen für remote_command.
 
         Returns:
             Vollständiger System-Prompt als String.

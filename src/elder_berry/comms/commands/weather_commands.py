@@ -148,18 +148,50 @@ class WeatherCommandHandler(CommandHandler):
         ]
 
     @property
+    def command_descriptions(self) -> list[str]:
+        return [
+            "wetter [heute|morgen|woche|<N>]: Wetterabfrage und Vorhersage",
+            "timer <dauer>: Timer setzen (z.B. timer 20 min, timer 1 stunde)",
+            "erinnere mich um/in <zeit>: <nachricht>: Erinnerung setzen",
+            "erinnere mich jeden <tag> um <zeit>: <nachricht>: Wiederkehrende Erinnerung",
+            "erinnerungen: Offene Erinnerungen und Timer anzeigen",
+            "lösche erinnerung <ID> / lösche alle erinnerungen: Erinnerung löschen",
+            "briefing: Tagesübersicht (Wetter + Termine + Erinnerungen)",
+            "training [details|woche]: Fitness-Daten (Berry-Gym)",
+            "prs: Personal Records (letzte 30 Tage)",
+        ]
+
+    @property
     def keywords(self) -> dict[str, list[str]]:
         return {
-            "training": ["letztes training", "wie war mein training", "trainings woche",
-                          "was habe ich trainiert", "gym", "berry-gym", "fitness"],
-            "prs": ["personal record", "personal records", "bestleistung", "bestleistungen", "rekorde"],
-            "wetter": ["wie ist das wetter", "wetter draußen", "regnet es", "temperatur",
-                        "brauche ich einen schirm", "brauche ich eine jacke", "wie warm",
-                        "wie kalt", "wettervorhersage", "prognose"],
-            "erinnerungen": ["meine erinnerungen", "offene timer", "was steht an timer",
-                              "welche erinnerungen", "ausstehende erinnerungen"],
-            "briefing": ["guten morgen", "was steht heute an", "tagesübersicht",
-                          "daily briefing", "morgen briefing", "was gibt's neues"],
+            "training": [
+                "letztes training", "wie war mein training", "trainings woche",
+                "was habe ich trainiert", "gym", "berry-gym", "fitness",
+                "workout", "trainingsplan",
+            ],
+            "prs": [
+                "personal record", "personal records", "bestleistung",
+                "bestleistungen", "rekorde",
+            ],
+            "wetter": [
+                "wie ist das wetter", "wetter draußen", "regnet es",
+                "temperatur", "brauche ich einen schirm",
+                "brauche ich eine jacke", "wie warm", "wie kalt",
+                "wettervorhersage", "prognose", "regen", "sonnig",
+                "sonne", "gewitter", "schnee", "regenschirm",
+                "friert es", "wird es kalt", "wird es warm",
+                "soll ich eine jacke mitnehmen",
+            ],
+            "erinnerungen": [
+                "meine erinnerungen", "offene timer", "was steht an timer",
+                "welche erinnerungen", "ausstehende erinnerungen",
+                "laufende timer", "aktive erinnerungen",
+            ],
+            "briefing": [
+                "guten morgen", "was steht heute an", "tagesübersicht",
+                "daily briefing", "morgen briefing", "was gibt's neues",
+                "was gibt es neues", "tagesbriefing",
+            ],
         }
 
     def execute(self, command: str, raw_text: str) -> CommandResult:

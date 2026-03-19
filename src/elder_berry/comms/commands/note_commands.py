@@ -101,12 +101,33 @@ class NoteCommandHandler(CommandHandler):
         ]
 
     @property
+    def command_descriptions(self) -> list[str]:
+        return [
+            "merk dir: <schlüssel> ist <wert>: Fakt speichern",
+            "notiz: <text>: Freitext-Notiz speichern",
+            "was ist <schlüssel>?: Fakt abrufen",
+            "notizen suche <begriff>: Notizen durchsuchen",
+            "notizen: Alle Notizen anzeigen",
+            "notiz löschen #<id> / vergiss <schlüssel>: Notiz/Fakt löschen",
+        ]
+
+    @property
     def keywords(self) -> dict[str, list[str]]:
         return {
-            "note_set_fact": ["merk dir", "merke dir", "speicher dir"],
-            "note_add": ["notiz:", "notiere"],
-            "note_get_fact": ["was ist", "was war", "wie heißt", "wie lautet"],
-            "note_search": ["notizen suche", "notiz suche", "suche in notizen"],
+            "note_set_fact": [
+                "merk dir", "merke dir", "speicher dir",
+                "denk dran", "speichere",
+            ],
+            "note_add": ["notiz:", "notiere", "schreib auf"],
+            "note_get_fact": [
+                "was ist", "was war", "wie heißt", "wie lautet",
+                "weißt du noch", "wann ist", "wer ist",
+                "erinnerst du dich",
+            ],
+            "note_search": [
+                "notizen suche", "notiz suche", "suche in notizen",
+                "durchsuche notizen",
+            ],
             "notizen": ["notizen", "alle notizen", "meine notizen"],
             "note_delete": ["notiz löschen", "lösche notiz"],
             "note_delete_fact": ["vergiss"],

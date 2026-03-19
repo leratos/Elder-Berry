@@ -82,15 +82,28 @@ class MailCommandHandler(CommandHandler):
         ]
 
     @property
+    def command_descriptions(self) -> list[str]:
+        return [
+            "mails: Ungelesene E-Mails anzeigen",
+            "mails <N>: E-Mails der letzten N Tage",
+            "mail suche <begriff>: E-Mails nach Betreff/Absender durchsuchen",
+            "mail <ID>: Einzelne Mail anzeigen (z.B. mail 99)",
+            "mail anhang <ID>: Anhänge einer Mail senden",
+            "mail zusammenfassung: LLM-Zusammenfassung ungelesener Mails",
+        ]
+
+    @property
     def keywords(self) -> dict[str, list[str]]:
         return {
             "mails": [
                 "neue mails", "ungelesene mails", "emails",
-                "e-mails", "posteingang",
+                "e-mails", "posteingang", "post", "nachrichten",
+                "eingang", "hab ich mails", "gibt es neue mails",
+                "sind mails da", "mails checken", "mail check",
             ],
             "mail_summary": [
                 "mail zusammenfassung", "mails zusammenfassung",
-                "fasse mails zusammen",
+                "fasse mails zusammen", "mails zusammenfassen",
             ],
         }
 

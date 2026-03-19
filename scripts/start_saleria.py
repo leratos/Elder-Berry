@@ -585,6 +585,9 @@ def run_matrix(assistant, stt=None, avatar=None, audio_converter=None):
         note_store=note_store,
     )
 
+    # Assistant: dynamischer Command-Prompt aus Handler-Definitionen
+    assistant._remote_commands = remote
+
     # ClaudeAgent (optional)
     claude_agent = None
     anthropic_key = secrets.get_or_none("anthropic_api_key") or os.environ.get("ANTHROPIC_API_KEY")

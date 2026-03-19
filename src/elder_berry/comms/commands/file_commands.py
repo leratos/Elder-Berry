@@ -88,12 +88,21 @@ class FileCommandHandler(CommandHandler):
         ]
 
     @property
+    def command_descriptions(self) -> list[str]:
+        return [
+            "clipboard: Zwischenablage lesen",
+            "clip: <text>: Text in Zwischenablage schreiben",
+            "schick mir <pfad>: Datei senden (max 50 MB)",
+            "download <url>: Datei herunterladen",
+        ]
+
+    @property
     def keywords(self) -> dict[str, list[str]]:
         return {
             "clipboard": [
-                "zwischenablage",
-                "clipboard lesen",
-                "was ist im clipboard",
+                "zwischenablage", "clipboard lesen",
+                "was ist im clipboard", "was hab ich kopiert",
+                "zeig zwischenablage", "was ist kopiert",
             ],
         }
 

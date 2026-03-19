@@ -83,17 +83,39 @@ class AdvancedCommandHandler(CommandHandler):
         ]
 
     @property
+    def command_descriptions(self) -> list[str]:
+        return [
+            "zusammenfassung <pfad>: PDF/TXT zusammenfassen",
+            "suche <begriff>: Im Internet suchen (Brave Search)",
+            "klick auf <element> / tippe <text> / scroll runter|hoch / drück <taste>: PC-Steuerung per Vision",
+            "audio / audio lokal an / audio lokal aus: Audio-Modus steuern",
+        ]
+
+    @property
     def keywords(self) -> dict[str, list[str]]:
         return {
-            "document_summary": ["fasse die pdf zusammen", "pdf zusammenfassen",
-                                  "dokument zusammenfassen", "zusammenfassung der datei"],
-            "audio_toggle": ["audio lokal", "lokale wiedergabe", "ton am pc"],
-            "computer_use": ["klick auf", "klicke auf", "klick mal auf", "dr\u00fcck auf",
-                              "tippe in", "scroll runter", "scroll hoch", "scroll nach",
-                              "auf accept klicken", "auf ok klicken", "auf den button klicken"],
-            "web_search": ["such mir", "suche mir", "suche mal", "such mal",
-                            "google mal", "google mir", "recherchiere",
-                            "finde heraus", "im internet suchen"],
+            "document_summary": [
+                "fasse die pdf zusammen", "pdf zusammenfassen",
+                "dokument zusammenfassen", "zusammenfassung der datei",
+                "datei zusammenfassen", "fass das zusammen",
+            ],
+            "audio_toggle": [
+                "audio lokal", "lokale wiedergabe", "ton am pc",
+                "sound am pc", "lautsprecher am pc",
+            ],
+            "computer_use": [
+                "klick auf", "klicke auf", "klick mal auf", "dr\u00fcck auf",
+                "tippe in", "scroll runter", "scroll hoch", "scroll nach",
+                "auf accept klicken", "auf ok klicken",
+                "auf den button klicken", "kannst du das anklicken",
+            ],
+            "web_search": [
+                "such mir", "suche mir", "suche mal", "such mal",
+                "google mal", "google mir", "recherchiere",
+                "finde heraus", "im internet suchen",
+                "nachschauen im internet", "schau mal im netz",
+                "im netz suchen", "kannst du nachschauen",
+            ],
         }
 
     def execute(self, command: str, raw_text: str) -> CommandResult:
