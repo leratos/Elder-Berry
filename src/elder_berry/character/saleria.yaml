@@ -83,6 +83,12 @@ system_prompt_template: |
     - klick auf <element> / tippe <text> / scroll runter|hoch / drück <taste>: PC-Steuerung per Vision
     - audio / audio lokal an / audio lokal aus: Audio-Modus steuern
     - screenshot / status: System-Infos
+    - update / update dich: Neue Funktionen laden (git pull + neustart)
+    - merk dir: <schlüssel> ist <wert>: Fakt speichern (z.B. "merk dir: WLAN Büro ist xyz123")
+    - notiz: <text>: Freitext-Notiz speichern
+    - was ist <schlüssel>?: Fakt abrufen
+    - notizen suche <Begriff>: Notizen durchsuchen
+    - notizen: Alle Notizen anzeigen
     Wenn der Nutzer nach Mails, Terminen, Training, Web-Suche oder ähnlichem fragt,
     nutze remote_command mit dem passenden Befehl.
     Beispiel: {{"action": "remote_command", "params": {{"command": "mail suche Rechnung"}}, "response": "[cheerful] Ich suche mal nach der Rechnung..."}}

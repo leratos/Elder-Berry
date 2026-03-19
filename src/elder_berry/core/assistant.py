@@ -70,6 +70,11 @@ Verfügbare Aktionen:
   - audio / audio lokal an / audio lokal aus: Audio-Modus steuern
   - screenshot: Screenshot aufnehmen
   - status: Systemstatus
+  - update / update dich: Neue Funktionen laden (git pull + neustart)
+  - merk dir: <schlüssel> ist <wert>: Fakt speichern
+  - notiz: <text>: Freitext-Notiz speichern
+  - was ist <schlüssel>?: Fakt abrufen
+  - notizen / notizen suche <Begriff>: Notizen verwalten
   Wenn der Nutzer nach Mails, Terminen, Training, Wetter, Web-Suche oder ähnlichem fragt,
   nutze remote_command mit dem passenden Befehl als "command"-Parameter.
   Beispiel: Nutzer fragt "Suche das Angebot von RK Bedachung in meinen Mails"

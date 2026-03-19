@@ -1606,3 +1606,81 @@
 - Phase 9 Emotion Recognition → aktualisiert (Analyse-Verweis statt veralteter Beschreibung)
 - Phase 15, 16, 17 eingefügt
 - Realistisches Endprodukt erweitert
+
+
+## In Arbeit: Projektanalyse + Phase 15/16/17 Implementierung (2026-03-19)
+
+### Ziel
+- Projektanalyse des neuen Stands (Phasen 1-14 abgeschlossen, 15-17 geplant)
+- Umsetzung der drei geplanten Phasen basierend auf den Konzeptdokumenten
+
+### Scope (docs/analyse.md aktualisiert)
+- Analyse: Nutzen, Stand, Sicherheit, Funktionsumfang, Erweiterungsvorschläge
+- Matrix-Kontext: privater Server, nur Saleria + User, keine Registrierung
+
+## Abgeschlossen: Phase 15 – Self-Update (2026-03-19)
+- Branch: copilot/analyse-projekt-status
+
+### Neue/geänderte Dateien
+- src/elder_berry/comms/commands/process_commands.py:
+  - UPDATE_PATTERN Regex ("update", "update dich", "aktualisiere dich", ...)
+  - _CmdResult Dataclass + _run_cmd() Helper
+  - "update" in simple_commands + Keywords
+  - _cmd_update() mit vollständiger 6-Schritt-Sequenz:
+    fetch → rev-list check → status check → pull --ff-only → dep-check → restart
+  - sys Import ergänzt
+- src/elder_berry/comms/remote_commands.py: HELP_TEXT "🔄 Self-Update" ergänzt
+- src/elder_berry/character/saleria.yaml: "update" in Remote-Tool-Liste
+- src/elder_berry/core/assistant.py: "update" in Fallback-Prompt
+- tests/test_self_update.py: 23 Tests (Pattern, Registration, Execute, _run_cmd)
+
+## Abgeschlossen: Phase 16 – Notizen & Wissensdatenbank (2026-03-19)
+
+### Neue/geänderte Dateien
+- src/elder_berry/tools/note_store.py: NoteStore (SQLite+FTS5) + Note DTO
+  - set_fact() Upsert, add_note(), get_fact(), search(), list_all(), delete(), delete_fact()
+  - FTS5 Triggers (INSERT/UPDATE/DELETE), Key-Normalisierung
+- src/elder_berry/comms/commands/note_commands.py: NoteCommandHandler
+  - 7 Commands: note_set_fact, note_add, note_get_fact, note_search, notizen, note_delete, note_delete_fact
+  - note_get_fact Miss → success=False → LLM-Fallthrough
+- src/elder_berry/comms/remote_commands.py:
+  - NoteCommandHandler importiert + registriert (vor AdvancedCommandHandler)
+  - NoteStore TYPE_CHECKING Import
+  - HELP_TEXT "📝 Notizen & Wissen" ergänzt
+  - __init__: note_store + default_user_id Parameter
+- scripts/start_saleria.py: NoteStore Init (nach BriefingScheduler)
+  - note_store an RemoteCommandHandler übergeben
+- src/elder_berry/character/saleria.yaml: Notiz-Commands in Remote-Tool-Liste
+- src/elder_berry/core/assistant.py: Notiz-Commands in Fallback-Prompt
+- tests/test_note_store.py: 27 Tests (DTO, CRUD, Search, Delete, Normalize)
+- tests/test_note_commands.py: 27 Tests (Pattern, Registration, Execute)
+
+## Abgeschlossen: Phase 17 – Kalender-Watcher (2026-03-19)
+
+### Neue/geänderte Dateien
+- src/elder_berry/comms/calendar_watcher.py: CalendarWatcher Daemon-Thread
+  - start/stop/is_running, _check_upcoming(), _send_reminder(), _cleanup_past_events()
+  - Deduplizierung per event_id+reminder_minutes Set
+  - Ganztags-Events übersprungen
+- src/elder_berry/tools/google_calendar.py: get_events_range(start, end) hinzugefügt
+- src/elder_berry/comms/bridge.py:
+  - CalendarWatcher TYPE_CHECKING Import
+  - calendar_watcher Parameter in __init__
+  - start()/stop() in _async_main() und stop() + _perform_restart()
+  - _start_calendar_watcher() Methode (thread-safe Callback)
+- scripts/start_saleria.py: CalendarWatcher Init (wenn calendar vorhanden)
+  - calendar_watcher an MatrixBridge übergeben
+- tests/test_calendar_watcher.py: 24 Tests (Init, Check, Dedup, Format, Start/Stop, Error)
+
+### Tests (gesamt)
+- Neue Tests: 23 + 27 + 27 + 24 = 101 neue Tests
+- Gesamt: 120 passed (alle neuen Tests)
+- Bestehende Tests: 411 passed, 1 skipped (keine Regression)
+
+### docs/analyse.md: Vollständig aktualisiert
+- Neuer Abschnitt: Matrix-Kontext (privater Server)
+- Stand: 14 von 17 Phasen abgeschlossen (vorher 6 von 7)
+- Sicherheit: Bewertung 6.5/10 (vorher 5.5/10 nach Fixes)
+- Neuer Abschnitt 4: Funktionsumfang mit vollständiger Command-Tabelle
+- Neuer Abschnitt 6: Erweiterungsvorschläge (10 Punkte mit Priorität)
+- Gesamtbewertung: 7.75/10 (vorher 7.1/10)

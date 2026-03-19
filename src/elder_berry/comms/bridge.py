@@ -46,6 +46,7 @@ from elder_berry.comms.message_channel import IncomingMessage, MessageChannel
 if TYPE_CHECKING:
     from elder_berry.comms.alert_monitor import AlertMonitor
     from elder_berry.comms.audio_converter import AudioConverter
+    from elder_berry.comms.calendar_watcher import CalendarWatcher
     from elder_berry.comms.claude_agent import ClaudeAgent
     from elder_berry.comms.briefing_scheduler import BriefingScheduler
     from elder_berry.comms.reminder_scheduler import ReminderScheduler
@@ -112,6 +113,7 @@ class MatrixBridge:
         stt: STTEngine | None = None,
         reminder_scheduler: ReminderScheduler | None = None,
         briefing_scheduler: BriefingScheduler | None = None,
+        calendar_watcher: CalendarWatcher | None = None,
         document_reader: DocumentReader | None = None,
         audio_router: AudioRouter | None = None,
     ) -> None:
@@ -127,6 +129,7 @@ class MatrixBridge:
         self._stt = stt
         self._reminder_scheduler = reminder_scheduler
         self._briefing_scheduler = briefing_scheduler
+        self._calendar_watcher = calendar_watcher
         self._document_reader = document_reader
         self._audio_router = audio_router
         self._loop: asyncio.AbstractEventLoop | None = None
@@ -183,6 +186,10 @@ class MatrixBridge:
         if self._briefing_scheduler and self._briefing_scheduler.is_running:
             self._briefing_scheduler.stop()
 
+        # CalendarWatcher stoppen
+        if self._calendar_watcher and self._calendar_watcher.is_running:
+            self._calendar_watcher.stop()
+
         self._running = False
 
         if self._loop and self._loop.is_running():
@@ -233,6 +240,10 @@ class MatrixBridge:
         # BriefingScheduler starten (wenn vorhanden)
         if self._briefing_scheduler:
             self._start_briefing_scheduler()
+
+        # CalendarWatcher starten (wenn vorhanden)
+        if self._calendar_watcher:
+            self._start_calendar_watcher()
 
         try:
             await self._channel.sync_loop()
@@ -949,6 +960,23 @@ class MatrixBridge:
         self._briefing_scheduler._send_briefing = send_briefing
         self._briefing_scheduler.start()
 
+    def _start_calendar_watcher(self) -> None:
+        """Konfiguriert und startet den CalendarWatcher mit thread-safe Callback."""
+        loop = self._loop
+        room_id = self._alert_room_id
+        channel = self._channel
+
+        def send_alert(text: str) -> None:
+            """Thread-safe Alert-Sender: dispatcht in den async Event-Loop."""
+            if loop and loop.is_running():
+                asyncio.run_coroutine_threadsafe(
+                    channel.send_text(room_id, text),
+                    loop,
+                )
+
+        self._calendar_watcher._send_alert = send_alert
+        self._calendar_watcher.start()
+
     async def _perform_restart(self, room_id: str) -> None:
         """Schreibt Restart-Flag und startet den Prozess neu.
 
@@ -978,7 +1006,9 @@ class MatrixBridge:
         if self._briefing_scheduler and self._briefing_scheduler.is_running:
             self._briefing_scheduler.stop()
 
-        # Matrix-Verbindung trennen (wir sind im async Loop)
+        # CalendarWatcher stoppen (wenn vorhanden)
+        if self._calendar_watcher and self._calendar_watcher.is_running:
+            self._calendar_watcher.stop()
         try:
             await self._channel.disconnect()
         except Exception as e:

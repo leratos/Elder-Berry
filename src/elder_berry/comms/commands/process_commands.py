@@ -6,6 +6,7 @@ Verwaltet:
 - wol → Wake-on-LAN Magic Packet
 - git status/pull/log/diff → Git-Befehle (Whitelist)
 - docker ps/restart/logs → Docker-Befehle (Whitelist)
+- update → Self-Update: git pull + pip install + restart
 """
 from __future__ import annotations
 
@@ -13,6 +14,8 @@ import logging
 import re
 import socket
 import subprocess
+import sys
+from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -51,14 +54,18 @@ DOCKER_PATTERN = re.compile(
     re.IGNORECASE,
 )
 
+# Regex für Self-Update: "update", "update dich", "aktualisiere dich"
+UPDATE_PATTERN = re.compile(
+    r"^(?:update|aktualisier(?:e|en)?|updat(?:e|en)?)\s*(?:dich|saleria|mich)?$",
+    re.IGNORECASE,
+)
+
 # ---------------------------------------------------------------------------
 # Whitelists
 # ---------------------------------------------------------------------------
 
 GIT_WHITELIST = {"status", "pull", "log", "diff"}
 DOCKER_WHITELIST = {"ps", "restart", "logs"}
-
-# Prozesse die gekillt werden dürfen (lowercase)
 KILL_WHITELIST = {
     "blender", "chrome", "firefox", "edge", "notepad", "notepad++",
     "vlc", "spotify", "discord", "steam", "obs", "obs64",
@@ -81,9 +88,24 @@ START_WHITELIST = {
     "obs": "obs64",
 }
 
+_GIT_HASH_PATTERN = re.compile(r"^[0-9a-f]{4,40}$", re.IGNORECASE)
+
+
+def _is_valid_git_hash(value: str) -> bool:
+    """Prüft ob ein String ein valider git-Hash (short oder full) ist."""
+    return bool(_GIT_HASH_PATTERN.match(value))
+
+
+@dataclass
+class _CmdResult:
+    """Internes Ergebnis-DTO für Shell-Befehle."""
+
+    success: bool
+    output: str
+
 
 class ProcessCommandHandler(CommandHandler):
-    """Handler für Prozess-, Git-, Docker- und WOL-Commands."""
+    """Handler für Prozess-, Git-, Docker-, WOL- und Self-Update-Commands."""
 
     def __init__(
         self,
@@ -99,7 +121,7 @@ class ProcessCommandHandler(CommandHandler):
 
     @property
     def simple_commands(self) -> set[str]:
-        return {"wol"}
+        return {"wol", "update"}
 
     @property
     def patterns(self) -> list[tuple[re.Pattern, str, bool, bool]]:
@@ -108,12 +130,18 @@ class ProcessCommandHandler(CommandHandler):
             (KILL_PROCESS_PATTERN, "kill_process", False, False),
             (GIT_PATTERN, "git", False, False),
             (DOCKER_PATTERN, "docker", False, False),
+            (UPDATE_PATTERN, "update", False, False),
         ]
 
     @property
     def keywords(self) -> dict[str, list[str]]:
         return {
             "wol": ["weck tower", "tower aufwecken", "wake on lan", "tower starten"],
+            "update": [
+                "update dich", "aktualisiere dich", "neue funktionen",
+                "schau dir deine neuen funktionen an", "mach ein update",
+                "git pull und neustart", "update saleria",
+            ],
         }
 
     def execute(self, command: str, raw_text: str) -> CommandResult:
@@ -128,6 +156,8 @@ class ProcessCommandHandler(CommandHandler):
             return self._cmd_git(raw_text)
         if command == "docker":
             return self._cmd_docker(raw_text)
+        if command == "update":
+            return self._cmd_update()
 
         return CommandResult(
             command=command,
@@ -449,3 +479,188 @@ class ProcessCommandHandler(CommandHandler):
                 success=False,
                 text=f"Docker-Befehl fehlgeschlagen: {e}",
             )
+
+    def _cmd_update(self) -> CommandResult:
+        """Self-Update: git pull + pip install (wenn nötig) + restart.
+
+        Sequenz:
+        1. git fetch origin
+        2. Prüfe ob lokaler Branch hinter Remote ist
+        3. Prüfe auf lokale Änderungen (uncommitted)
+        4. git pull --ff-only
+        5. Prüfe ob pyproject.toml geändert wurde
+        6. pip install -e ".[extras]" wenn nötig
+        7. Return restart=True
+
+        Returns:
+            CommandResult mit restart=True bei Erfolg.
+        """
+        if not self._project_root:
+            return CommandResult(
+                command="update",
+                success=False,
+                text="Projekt-Root nicht konfiguriert.",
+            )
+
+        cwd = str(self._project_root)
+        steps: list[str] = []
+
+        # --- Schritt 1: git fetch ---
+        fetch = self._run_cmd(["git", "fetch", "origin"], cwd=cwd, timeout=30)
+        if not fetch.success:
+            return CommandResult(
+                command="update",
+                success=False,
+                text=f"❌ Git Fetch fehlgeschlagen:\n{fetch.output}",
+            )
+
+        # --- Schritt 2: Prüfe ob Änderungen vorliegen ---
+        behind = self._run_cmd(
+            ["git", "rev-list", "--count", "HEAD..@{u}"],
+            cwd=cwd,
+            timeout=10,
+        )
+        commits_behind = 0
+        if behind.success and behind.output.strip().isdigit():
+            commits_behind = int(behind.output.strip())
+
+        if commits_behind == 0:
+            return CommandResult(
+                command="update",
+                success=True,
+                text="✅ Alles aktuell – kein Update nötig.",
+            )
+
+        steps.append(f"📥 {commits_behind} neue(r) Commit(s) verfügbar")
+
+        # --- Schritt 3: Prüfe auf lokale Änderungen (uncommitted) ---
+        status = self._run_cmd(
+            ["git", "status", "-uno", "--porcelain"],
+            cwd=cwd,
+            timeout=10,
+        )
+        if status.success and status.output.strip():
+            return CommandResult(
+                command="update",
+                success=False,
+                text=(
+                    "⚠️ Lokale Änderungen vorhanden – Update abgebrochen.\n"
+                    "Bitte erst committen oder stashen:\n"
+                    f"```\n{status.output.strip()}\n```"
+                ),
+            )
+
+        # --- Schritt 4: git pull ---
+        old_hash = self._run_cmd(
+            ["git", "rev-parse", "--short", "HEAD"],
+            cwd=cwd,
+            timeout=5,
+        )
+
+        pull = self._run_cmd(["git", "pull", "--ff-only"], cwd=cwd, timeout=60)
+        if not pull.success:
+            return CommandResult(
+                command="update",
+                success=False,
+                text=f"❌ Git Pull fehlgeschlagen:\n{pull.output}",
+            )
+        steps.append("✅ Code aktualisiert")
+
+        new_hash = self._run_cmd(
+            ["git", "rev-parse", "--short", "HEAD"],
+            cwd=cwd,
+            timeout=5,
+        )
+        if old_hash.success and new_hash.success:
+            old_h = old_hash.output.strip()
+            new_h = new_hash.output.strip()
+            # Validate: git short-hash should only contain hex chars
+            if _is_valid_git_hash(old_h) and _is_valid_git_hash(new_h):
+                log = self._run_cmd(
+                    ["git", "log", "--oneline", f"{old_h}..{new_h}"],
+                    cwd=cwd,
+                    timeout=10,
+                )
+                if log.success and log.output.strip():
+                    steps.append(f"📋 Änderungen:\n{log.output.strip()}")
+
+        # --- Schritt 5: Dependency-Check ---
+        diff_files = _CmdResult(success=False, output="")
+        if old_hash.success and new_hash.success:
+            old_h = old_hash.output.strip()
+            new_h = new_hash.output.strip()
+            if _is_valid_git_hash(old_h) and _is_valid_git_hash(new_h):
+                diff_files = self._run_cmd(
+                    ["git", "diff", "--name-only", f"{old_h}..{new_h}"],
+                    cwd=cwd,
+                    timeout=10,
+                )
+        dep_files_changed = False
+        if diff_files.success:
+            changed = diff_files.output.strip().lower()
+            dep_files_changed = (
+                "pyproject.toml" in changed
+                or "requirements" in changed
+                or "setup.cfg" in changed
+            )
+
+        if dep_files_changed:
+            steps.append("📦 Dependencies geändert – installiere...")
+            pip = self._run_cmd(
+                [sys.executable, "-m", "pip", "install", "-e",
+                 ".[windows,tts-neural,avatar,matrix,remote,memory,stt]",
+                 "--quiet"],
+                cwd=cwd,
+                timeout=300,
+            )
+            if pip.success:
+                steps.append("✅ Dependencies installiert")
+            else:
+                steps.append(f"⚠️ pip install Warnung:\n{pip.output[:500]}")
+        else:
+            steps.append("📦 Keine neuen Dependencies")
+
+        steps.append("🔄 Starte neu...")
+
+        return CommandResult(
+            command="update",
+            success=True,
+            text="\n".join(steps),
+            restart=True,
+        )
+
+    def _run_cmd(
+        self,
+        cmd: list[str],
+        cwd: str,
+        timeout: int = 30,
+    ) -> _CmdResult:
+        """Führt einen Shell-Befehl aus und gibt Ergebnis zurück.
+
+        Args:
+            cmd: Befehl als Liste (kein Shell-Interpolation).
+            cwd: Arbeitsverzeichnis.
+            timeout: Timeout in Sekunden.
+
+        Returns:
+            _CmdResult mit success und output.
+        """
+        try:
+            result = subprocess.run(
+                cmd,
+                capture_output=True,
+                text=True,
+                timeout=timeout,
+                cwd=cwd,
+            )
+            output = result.stdout or result.stderr or ""
+            return _CmdResult(success=result.returncode == 0, output=output)
+        except subprocess.TimeoutExpired:
+            return _CmdResult(success=False, output=f"Timeout ({timeout}s)")
+        except FileNotFoundError:
+            return _CmdResult(
+                success=False,
+                output=f"Befehl nicht gefunden: {cmd[0]}",
+            )
+        except Exception as e:
+            return _CmdResult(success=False, output=str(e))

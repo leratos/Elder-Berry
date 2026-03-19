@@ -253,42 +253,47 @@ Saleria kann auf Anfrage im Internet suchen und die Ergebnisse aufbereitet zurü
 - Lokale Ergebnisse: Nein – Standard-Web-Suche, Brave liefert beides implizit
 - Ergebnis-Caching: Nein – bei effektiv kostenlosem Free-Tier nicht nötig
 
-## Phase 15 – Self-Update 🔄 GEPLANT
+## Phase 15 – Self-Update 🔄 ✅ ABGESCHLOSSEN
 
 Saleria kann sich auf Befehl selbst aktualisieren (git pull + pip install + restart).
 Enabler für alle folgenden Phasen: Code auf Laptop entwickeln, pushen, per Matrix live schalten.
 
-- **Neuer Command**: `update` in ProcessCommandHandler (kein neuer Handler)
+- ✅ **Neuer Command**: `update` in ProcessCommandHandler
   - git fetch → Änderungen prüfen → git pull --ff-only → pip install (wenn pyproject.toml geändert) → restart
   - Kein Auto-Update – nur auf expliziten Befehl ("update dich", "neue Funktionen")
-  - Sicherheit: --ff-only (kein Merge), pip nur eigenes Projekt, kein Remote-URL-Wechsel
+  - Sicherheit: --ff-only (kein Merge), Hash-Validierung, pip nur eigenes Projekt
   - Nutzt bestehenden Restart-Mechanismus (os.execv + Flag-Datei)
+- ✅ **Tests**: `tests/test_self_update.py` (23 Tests)
 - **Konzept**: `docs/concepts/phase-15-self-update.md`
 
-## Phase 16 – Notizen & Wissensdatenbank 📝 GEPLANT
+## Phase 16 – Notizen & Wissensdatenbank 📝 ✅ ABGESCHLOSSEN
 
 Expliziter Fakten- und Notizspeicher – getrennt von ChromaDB-RAG-Memory.
 
-- **NoteStore**: SQLite + FTS5 Volltextsuche (`tools/note_store.py`)
+- ✅ **NoteStore**: SQLite + FTS5 Volltextsuche (`tools/note_store.py`)
   - Key-Value-Fakten: "merk dir: WLAN Büro ist xyz" → exakt abrufbar per "was ist WLAN Büro?"
   - Freitext-Notizen: "notiz: Vermieter heißt Müller, Kaution 1200€" → per Volltextsuche
   - Upsert bei existierenden Keys, FTS5-Trigger für automatische Index-Sync
-- **NoteCommandHandler**: Neuer CommandHandler (`comms/commands/note_commands.py`)
+- ✅ **NoteCommandHandler**: Neuer CommandHandler (`comms/commands/note_commands.py`)
   - Commands: merk dir, notiz, was ist, notizen suche, notizen, notiz löschen, vergiss
   - "was ist"-Miss → success=False → LLM-Fallthrough (keine Kollision mit allgemeinen Fragen)
+- ✅ **Tests**: `tests/test_note_store.py` (27 Tests) + `tests/test_note_commands.py` (27 Tests)
 - **Konzept**: `docs/concepts/phase-16-notizen-wissensdatenbank.md`
 
-## Phase 17 – Kalender-Watcher (Proaktive Meeting-Erinnerungen) 📅 GEPLANT
+## Phase 17 – Kalender-Watcher (Proaktive Meeting-Erinnerungen) 📅 ✅ ABGESCHLOSSEN
 
 Saleria erinnert proaktiv vor Terminen – ohne dass der Nutzer fragen muss.
 
-- **CalendarWatcher**: Daemon-Thread, pollt GoogleCalendarClient alle 5 Min (`comms/calendar_watcher.py`)
+- ✅ **CalendarWatcher**: Daemon-Thread, pollt GoogleCalendarClient alle 5 Min (`comms/calendar_watcher.py`)
   - Konfigurierbare Erinnerungszeiten: Default [15, 5] Minuten vor Termin
   - Deduplizierung: gleicher Reminder feuert nicht doppelt
   - Ganztags-Events werden übersprungen
   - Vergangene Events automatisch aus State entfernt (kein Memory-Leak)
-- **Abgrenzung**: BriefingScheduler = täglich 07:30, ReminderScheduler = explizite Timer,
+- ✅ **GoogleCalendarClient**: `get_events_range(start, end)` hinzugefügt
+- ✅ **MatrixBridge**: CalendarWatcher integriert (start/stop symmetrisch)
+- ✅ **Abgrenzung**: BriefingScheduler = täglich 07:30, ReminderScheduler = explizite Timer,
   CalendarWatcher = automatisch vor jedem Termin
+- ✅ **Tests**: `tests/test_calendar_watcher.py` (24 Tests)
 - **Konzept**: `docs/concepts/phase-17-kalender-watcher.md`
 
 ---
