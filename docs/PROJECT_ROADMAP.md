@@ -199,7 +199,7 @@ ist optional und per Flag steuerbar.
 - Neue Klasse: `core/audio_router.py` (AudioRouter)
 - Integration: Bridge + Assistant lesen Flag statt hardcoded Logik
 
-## Phase 13 – Computer Use (Anthropic Vision + PC-Steuerung) 🔧 GEPLANT
+## Phase 13 – Computer Use (Anthropic Vision + PC-Steuerung) ✅ ABGESCHLOSSEN
 
 Saleria kann auf Anweisung des Nutzers auf Bildschirmelemente klicken –
 gesteuert über Anthropic Computer Use (Sonnet 4.6 Vision).
@@ -230,10 +230,10 @@ gesteuert über Anthropic Computer Use (Sonnet 4.6 Vision).
 - ~4-5 Cent pro Klick-Aktion (Screenshot-Bild ~6.000 Tokens + Koordinaten-Antwort)
 - Bei gelegentlicher Nutzung (5-10x/Tag) vernachlässigbar
 
-### Offene Fragen
-- Multi-Monitor: welcher Bildschirm wird erfasst?
-- Loop-Modus: soll Sonnet eigenständig mehrere Schritte ausführen können?
-- Sicherheit: Whitelist für erlaubte Aktionen? (wie bei Prozess-Start/Kill)
+### Entscheidungen (gelöst)
+- Multi-Monitor: Monitor-Index konfigurierbar (Setter + Web-Dashboard http://localhost:8090)
+- Loop-Modus: Nein – jeder Schritt einzeln per Befehl (User bestätigt)
+- Sicherheit: Keine Whitelist nötig – User muss jeden Klick explizit anweisen
 
 ## Phase 14 – Web-Suche (Brave Search + LLM-Aufbereitung) ✅ ABGESCHLOSSEN
 
@@ -257,7 +257,7 @@ Saleria kann auf Anfrage im Internet suchen und die Ergebnisse aufbereitet zurü
 - **Abhängigkeit**: nur `httpx` (bereits vorhanden)
 
 ### Kosten
-- Brave API: kostenlos (Free Tier, 2000/Monat)
+- Brave API: $5/1000 Req, aber $5 monatliches Guthaben → effektiv kostenlos unter 1000 Req/Monat
 - Claude Intent + Aufbereitung: ~500 Input + ~300 Output Tokens → ~0.5 Cent pro Suche
 
 ### Offene Fragen
