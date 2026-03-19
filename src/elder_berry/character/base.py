@@ -125,6 +125,18 @@ class CharacterEngine(ABC):
         """
         ...
 
+    def get_mood_context(self) -> str | None:
+        """
+        Gibt den emotionalen Kontext für den System-Prompt zurück.
+
+        Basiert auf den letzten Emotionen (Kurzzeitgedächtnis).
+        Default-Implementierung gibt None zurück (kein Tracking).
+
+        Returns:
+            Formatierter Kontext-String oder None.
+        """
+        return None
+
     @abstractmethod
     def get_voice_sample(self, emotion: Emotion) -> Path | None:
         """

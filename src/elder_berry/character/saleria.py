@@ -11,6 +11,7 @@ from elder_berry.character.base import (
     MoodState,
     Personality,
 )
+from elder_berry.character.emotion_tracker import EmotionTracker
 
 logger = logging.getLogger(__name__)
 
@@ -42,6 +43,7 @@ class SaleriaEngine(CharacterEngine):
         self._voices_dir = voices_dir or self.DEFAULT_VOICES_DIR
         self._sprites_dir = sprites_dir
         self._mood = MoodState()
+        self._emotion_tracker = EmotionTracker()
 
         config = self._load_config()
         self._personality = self._parse_personality(config)
@@ -110,6 +112,7 @@ class SaleriaEngine(CharacterEngine):
             try:
                 emotion = Emotion(tag_value)
                 self.set_mood(emotion)
+                self._emotion_tracker.record(emotion)
                 return emotion
             except ValueError:
                 logger.warning("Unbekannter Emotions-Tag: %s", tag_value)
@@ -117,6 +120,9 @@ class SaleriaEngine(CharacterEngine):
 
     def clean_response(self, llm_response: str) -> str:
         return _EMOTION_TAG_RE.sub("", llm_response).strip()
+
+    def get_mood_context(self) -> str | None:
+        return self._emotion_tracker.get_mood_summary()
 
     def get_voice_sample(self, emotion: Emotion) -> Path | None:
         return self._voice_map.get(emotion)

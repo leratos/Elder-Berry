@@ -1767,3 +1767,39 @@
 ### Commands
 - "rollback" / "update zurücksetzen" → git reset --hard auf Backup-Hash + restart
 - "selfcheck" / "systemcheck" / "prüf dich" / "alles ok?" → Gesundheitsprüfung
+
+## Abgeschlossen: Phase 18 – Emotion-State-Machine (2026-03-19)
+- Branch: feature/phase-18-emotion-state-machine
+
+### Neue/geänderte Dateien
+- src/elder_berry/character/emotion_tracker.py:
+  - EmotionTracker: Ringbuffer (deque, max 5 Einträge) mit 30 Min Decay
+  - EmotionEntry: Dataclass (emotion, timestamp)
+  - record(): Neue Emotion aufzeichnen
+  - dominant_emotion(): Häufigste aktive Emotion (NEUTRAL Fallback)
+  - get_trend(): Valenz-basierte Tendenz (aufhellend/abkühlend/stabil/wechselhaft)
+  - get_mood_summary(): Strukturierter String für System-Prompt
+  - _EMOTION_VALENCE: Valenz-Mapping pro Emotion (-1.0 bis +1.0)
+- src/elder_berry/character/base.py:
+  - CharacterEngine: get_mood_context() mit Default-Implementierung (None)
+- src/elder_berry/character/saleria.py:
+  - EmotionTracker als Member (_emotion_tracker)
+  - extract_emotion(): Ruft tracker.record() auf
+  - get_mood_context(): Delegiert an tracker.get_mood_summary()
+- src/elder_berry/core/assistant.py:
+  - _build_system_prompt(): mood_context aus character.get_mood_context() in Prompt
+- tests/test_emotion_tracker.py:
+  - 32 Tests (EmotionEntry, Record, Decay, DominantEmotion, Trend, Summary,
+    SaleriaIntegration, AssistantIntegration)
+
+### Tests
+- Neue Tests: 32 (alle grün)
+- Gesamt: 1458 passed, keine Regression
+
+### Design-Entscheidungen
+- Ringbuffer 5 Einträge: genug für Trend, kompakt im Prompt
+- 30 Min Decay: Stimmung verfällt nach Inaktivität → Neustart bei Null
+- Kein Persistence über Neustart (In-Memory only, erweiterbar auf SQLite/JSON)
+- get_mood_context() nicht-abstrakt im ABC: Default None → bestehende Subklassen brechen nicht
+- Prompt-Format strukturiert: "Emotionaler Kontext: X → Y | Dominante Stimmung: Z | Tendenz: T"
+- NEUTRAL wird bei fehlendem Tag NICHT getrackt (nur explizite Tags)
