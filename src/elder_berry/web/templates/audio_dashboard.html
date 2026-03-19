@@ -209,6 +209,18 @@
 
             <p class="sender-info" id="senderMsg"></p>
         </div>
+
+        <!-- Timezone Card -->
+        <div class="card" id="timezoneCard">
+            <h2>Zeitzone</h2>
+            <p class="subtitle">Für Erinnerungen & Kalender</p>
+
+            <select id="timezoneSelect" onchange="setTimezone(this.value)">
+                <option value="">Lade...</option>
+            </select>
+
+            <p class="monitor-info" id="timezoneInfo"></p>
+        </div>
     </div>
 
     <script>
@@ -395,10 +407,54 @@
             }
         }
 
+        // --- Timezone ---
+        const timezoneSelect = document.getElementById("timezoneSelect");
+        const timezoneInfo = document.getElementById("timezoneInfo");
+
+        async function fetchTimezone() {
+            try {
+                const r = await fetch("/api/timezone");
+                const data = await r.json();
+
+                timezoneSelect.innerHTML = "";
+                data.available.forEach(tz => {
+                    const opt = document.createElement("option");
+                    opt.value = tz;
+                    opt.textContent = tz;
+                    if (tz === data.timezone) opt.selected = true;
+                    timezoneSelect.appendChild(opt);
+                });
+
+                timezoneInfo.textContent = "Aktiv: " + data.timezone;
+            } catch (e) {
+                timezoneInfo.textContent = "Verbindungsfehler";
+            }
+        }
+
+        async function setTimezone(tz) {
+            if (!tz) return;
+            try {
+                const r = await fetch("/api/timezone", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ timezone: tz }),
+                });
+                const data = await r.json();
+                if (data.error) {
+                    timezoneInfo.textContent = data.error;
+                } else {
+                    timezoneInfo.textContent = "Aktiv: " + data.timezone;
+                }
+            } catch (e) {
+                timezoneInfo.textContent = "Fehler beim Setzen";
+            }
+        }
+
         // Init
         fetchAudioStatus();
         fetchMonitors();
         fetchSenders();
+        fetchTimezone();
     </script>
 </body>
 </html>

@@ -7,7 +7,7 @@ from __future__ import annotations
 import logging
 import re
 from datetime import datetime, timedelta
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Callable
 
 from elder_berry.comms.commands.base import CommandHandler, CommandResult
 
@@ -53,6 +53,46 @@ REMINDER_DELETE_PATTERN = re.compile(
     re.IGNORECASE,
 )
 
+# --- Wiederkehrende Erinnerungen ---
+
+_WEEKDAY_NAMES = r"montag|dienstag|mittwoch|donnerstag|freitag|samstag|sonntag"
+
+# "erinnere mich jeden montag um 9:00: Wochenbericht"
+RECURRING_WEEKLY_PATTERN = re.compile(
+    r"^(?:erinner[e]?\s+mich|erinnerung)\s+"
+    r"jede[nrm]?\s+(" + _WEEKDAY_NAMES + r")\s+"
+    r"um\s+(\d{1,2}:\d{2})"
+    r"(?:\s*[:\s]\s*(.+))?$",
+    re.IGNORECASE,
+)
+
+# "erinnere mich täglich um 8:00: Standup"
+RECURRING_DAILY_PATTERN = re.compile(
+    r"^(?:erinner[e]?\s+mich|erinnerung)\s+"
+    r"t[äa]glich\s+"
+    r"um\s+(\d{1,2}:\d{2})"
+    r"(?:\s*[:\s]\s*(.+))?$",
+    re.IGNORECASE,
+)
+
+# "erinnere mich werktags um 7:30: Aufstehen"
+RECURRING_WEEKDAY_PATTERN = re.compile(
+    r"^(?:erinner[e]?\s+mich|erinnerung)\s+"
+    r"werktags\s+"
+    r"um\s+(\d{1,2}:\d{2})"
+    r"(?:\s*[:\s]\s*(.+))?$",
+    re.IGNORECASE,
+)
+
+# "erinnere mich jeden 1. um 10:00: Miete"
+RECURRING_MONTHLY_PATTERN = re.compile(
+    r"^(?:erinner[e]?\s+mich|erinnerung)\s+"
+    r"jede[nrm]?\s+(\d{1,2})\.\s+"
+    r"um\s+(\d{1,2}:\d{2})"
+    r"(?:\s*[:\s]\s*(.+))?$",
+    re.IGNORECASE,
+)
+
 
 def _parse_duration(amount: int, unit: str) -> timedelta:
     """Parst Zeiteinheiten in timedelta.
@@ -81,11 +121,13 @@ class WeatherCommandHandler(CommandHandler):
         reminder_store: ReminderStore | None = None,
         briefing_scheduler: BriefingScheduler | None = None,
         gym_client: GymDataClient | None = None,
+        get_timezone: Callable[[], str] | None = None,
     ) -> None:
         self._weather = weather
         self._reminder_store = reminder_store
         self._briefing_scheduler = briefing_scheduler
         self._gym_client = gym_client
+        self._get_timezone = get_timezone or (lambda: "Europe/Berlin")
 
     @property
     def simple_commands(self) -> set[str]:
@@ -95,6 +137,10 @@ class WeatherCommandHandler(CommandHandler):
     def patterns(self) -> list[tuple[re.Pattern, str, bool, bool]]:
         return [
             (REMINDER_DELETE_PATTERN, "reminder_delete", False, False),
+            (RECURRING_WEEKLY_PATTERN, "recurring_reminder", False, False),
+            (RECURRING_DAILY_PATTERN, "recurring_reminder", False, False),
+            (RECURRING_WEEKDAY_PATTERN, "recurring_reminder", False, False),
+            (RECURRING_MONTHLY_PATTERN, "recurring_reminder", False, False),
             (WEATHER_PATTERN, "wetter", False, False),
             (TIMER_PATTERN, "timer", False, False),
             (REMINDER_PATTERN, "reminder", False, False),
@@ -125,6 +171,9 @@ class WeatherCommandHandler(CommandHandler):
 
         if command == "reminder":
             return self._cmd_reminder(raw_text)
+
+        if command == "recurring_reminder":
+            return self._cmd_recurring_reminder(raw_text)
 
         if command == "erinnerungen":
             return self._cmd_erinnerungen(raw_text)
@@ -277,7 +326,7 @@ class WeatherCommandHandler(CommandHandler):
                 hour, minute = map(int, time_str.split(":"))
                 today = date_cls.today()
                 from zoneinfo import ZoneInfo
-                local_tz = ZoneInfo("Europe/Berlin")
+                local_tz = ZoneInfo(self._get_timezone())
                 due = datetime(today.year, today.month, today.day, hour, minute,
                                tzinfo=local_tz)
                 # Wenn Uhrzeit schon vorbei: morgen
@@ -356,6 +405,175 @@ class WeatherCommandHandler(CommandHandler):
                 command="reminder_delete", success=False,
                 text=f"Löschen fehlgeschlagen: {e}",
             )
+
+    # ------------------------------------------------------------------
+    # Wiederkehrende Erinnerungen
+    # ------------------------------------------------------------------
+
+    def _cmd_recurring_reminder(self, raw_text: str) -> CommandResult:
+        """Wiederkehrende Erinnerung setzen."""
+        if not self._reminder_store:
+            return CommandResult(
+                command="recurring_reminder", success=False,
+                text="Erinnerungen nicht verfügbar.",
+            )
+
+        try:
+            from datetime import date as date_cls, timezone
+            from zoneinfo import ZoneInfo
+            from elder_berry.tools.recurrence import (
+                format_recurrence,
+                parse_recurrence,
+            )
+
+            normalized = raw_text.strip().lower()
+            local_tz = ZoneInfo(self._get_timezone())
+
+            # Weekly: "erinnere mich jeden montag um 9:00: Wochenbericht"
+            m = RECURRING_WEEKLY_PATTERN.match(normalized)
+            if m:
+                day_name = m.group(1)
+                time_str = m.group(2)
+                message = (m.group(3) or "Erinnerung").strip()
+                recurrence = parse_recurrence(f"jeden {day_name}")
+                due = self._next_weekday_at(day_name, time_str, local_tz)
+                return self._create_recurring(message, due, recurrence)
+
+            # Daily: "erinnere mich täglich um 8:00: Standup"
+            m = RECURRING_DAILY_PATTERN.match(normalized)
+            if m:
+                time_str = m.group(1)
+                message = (m.group(2) or "Erinnerung").strip()
+                due = self._today_or_tomorrow_at(time_str, local_tz)
+                return self._create_recurring(message, due, "daily")
+
+            # Weekdays: "erinnere mich werktags um 7:30: Aufstehen"
+            m = RECURRING_WEEKDAY_PATTERN.match(normalized)
+            if m:
+                time_str = m.group(1)
+                message = (m.group(2) or "Erinnerung").strip()
+                due = self._next_weekday_at_time(time_str, local_tz)
+                return self._create_recurring(message, due, "weekdays")
+
+            # Monthly: "erinnere mich jeden 1. um 10:00: Miete"
+            m = RECURRING_MONTHLY_PATTERN.match(normalized)
+            if m:
+                day = int(m.group(1))
+                time_str = m.group(2)
+                message = (m.group(3) or "Erinnerung").strip()
+                due = self._next_monthly_at(day, time_str, local_tz)
+                return self._create_recurring(message, due, f"monthly:{day}")
+
+            return CommandResult(
+                command="recurring_reminder", success=False,
+                text="Format nicht erkannt. Beispiel: erinnere mich jeden montag um 9:00: Wochenbericht",
+            )
+
+        except Exception as e:
+            return CommandResult(
+                command="recurring_reminder", success=False,
+                text=f"Wiederkehrende Erinnerung fehlgeschlagen: {e}",
+            )
+
+    def _create_recurring(
+        self, message: str, due: datetime, recurrence: str,
+    ) -> CommandResult:
+        """Erstellt eine wiederkehrende Erinnerung im Store."""
+        from elder_berry.tools.recurrence import format_recurrence
+
+        reminder = self._reminder_store.add(
+            "_timer_user", message, due, recurrence=recurrence,
+        )
+        local_time = due.astimezone()
+        rec_text = format_recurrence(recurrence)
+        return CommandResult(
+            command="recurring_reminder", success=True,
+            text=(
+                f"🔁 Wiederkehrende Erinnerung gesetzt: {message}\n"
+                f"  Nächster Termin: {local_time.strftime('%d.%m. %H:%M')}\n"
+                f"  Wiederholung: {rec_text}"
+            ),
+        )
+
+    @staticmethod
+    def _next_weekday_at(
+        day_name: str, time_str: str, tz,
+    ) -> datetime:
+        """Berechnet den nächsten Wochentag mit Uhrzeit."""
+        from elder_berry.tools.recurrence import _WEEKDAY_MAP
+
+        target_iso = _WEEKDAY_MAP.get(day_name.lower())
+        if not target_iso:
+            raise ValueError(f"Unbekannter Wochentag: {day_name}")
+
+        hour, minute = map(int, time_str.split(":"))
+        now = datetime.now(tz)
+        today_iso = now.isoweekday()  # Mo=1 .. So=7
+
+        days_ahead = target_iso - today_iso
+        if days_ahead < 0:
+            days_ahead += 7
+        elif days_ahead == 0:
+            # Heute, aber Uhrzeit schon vorbei → nächste Woche
+            candidate = now.replace(hour=hour, minute=minute, second=0, microsecond=0)
+            if candidate <= now:
+                days_ahead = 7
+
+        target_date = (now + timedelta(days=days_ahead)).date()
+        return datetime(
+            target_date.year, target_date.month, target_date.day,
+            hour, minute, tzinfo=tz,
+        )
+
+    @staticmethod
+    def _today_or_tomorrow_at(time_str: str, tz) -> datetime:
+        """Heute zur Uhrzeit, oder morgen wenn schon vorbei."""
+        hour, minute = map(int, time_str.split(":"))
+        now = datetime.now(tz)
+        candidate = now.replace(hour=hour, minute=minute, second=0, microsecond=0)
+        if candidate <= now:
+            candidate += timedelta(days=1)
+        return candidate
+
+    @staticmethod
+    def _next_weekday_at_time(time_str: str, tz) -> datetime:
+        """Nächster Werktag (Mo-Fr) zur angegebenen Uhrzeit."""
+        hour, minute = map(int, time_str.split(":"))
+        now = datetime.now(tz)
+        candidate = now.replace(hour=hour, minute=minute, second=0, microsecond=0)
+        if candidate <= now:
+            candidate += timedelta(days=1)
+        # Vorspulen bis Werktag
+        while candidate.weekday() >= 5:  # 5=Sa, 6=So
+            candidate += timedelta(days=1)
+        return candidate
+
+    @staticmethod
+    def _next_monthly_at(day: int, time_str: str, tz) -> datetime:
+        """Nächster Monatstag zur angegebenen Uhrzeit."""
+        import calendar
+
+        hour, minute = map(int, time_str.split(":"))
+        now = datetime.now(tz)
+
+        # Diesen Monat versuchen
+        max_day = calendar.monthrange(now.year, now.month)[1]
+        target_day = min(day, max_day)
+        candidate = datetime(
+            now.year, now.month, target_day, hour, minute, tzinfo=tz,
+        )
+        if candidate > now:
+            return candidate
+
+        # Nächster Monat
+        year = now.year
+        month = now.month + 1
+        if month > 12:
+            month = 1
+            year += 1
+        max_day = calendar.monthrange(year, month)[1]
+        target_day = min(day, max_day)
+        return datetime(year, month, target_day, hour, minute, tzinfo=tz)
 
     # ------------------------------------------------------------------
     # Briefing

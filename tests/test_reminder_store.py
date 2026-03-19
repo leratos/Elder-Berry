@@ -202,3 +202,122 @@ class TestPersistence:
         assert len(pending) == 1
         assert pending[0].message == "Persist-Test"
         s2.close()
+
+
+# ---------------------------------------------------------------------------
+# Recurrence (Phase 19)
+# ---------------------------------------------------------------------------
+
+class TestRecurrenceField:
+    def test_add_with_recurrence(self, store):
+        r = store.add(USER_A, "Standup", _now_plus(30), recurrence="daily")
+        assert r.recurrence == "daily"
+
+    def test_add_without_recurrence(self, store):
+        r = store.add(USER_A, "Einmalig", _now_plus(30))
+        assert r.recurrence is None
+
+    def test_recurrence_persisted(self, store):
+        store.add(USER_A, "Woche", _now_plus(30), recurrence="weekly:1")
+        pending = store.get_pending()
+        assert len(pending) == 1
+        assert pending[0].recurrence == "weekly:1"
+
+    def test_recurrence_none_persisted(self, store):
+        store.add(USER_A, "Einmalig", _now_plus(30))
+        pending = store.get_pending()
+        assert pending[0].recurrence is None
+
+    def test_get_due_includes_recurrence(self, store):
+        store.add(USER_A, "Fällig", _now_plus(-5), recurrence="daily")
+        due = store.get_due()
+        assert len(due) == 1
+        assert due[0].recurrence == "daily"
+
+
+class TestReschedule:
+    def test_reschedule_updates_due_at(self, store):
+        r = store.add(USER_A, "Repeat", _now_plus(-5), recurrence="daily")
+        store.mark_fired(r.id)
+
+        new_due = _now_plus(60)
+        store.reschedule(r.id, new_due)
+
+        pending = store.get_pending()
+        assert len(pending) == 1
+        assert pending[0].id == r.id
+        assert pending[0].message == "Repeat"
+
+    def test_reschedule_resets_fired(self, store):
+        r = store.add(USER_A, "Repeat", _now_plus(-5), recurrence="daily")
+        store.mark_fired(r.id)
+
+        # Nach mark_fired nicht mehr in get_due
+        assert store.get_due() == []
+
+        store.reschedule(r.id, _now_plus(-1))
+        # Jetzt wieder fällig
+        due = store.get_due()
+        assert len(due) == 1
+        assert due[0].id == r.id
+
+    def test_reschedule_naive_raises(self, store):
+        r = store.add(USER_A, "Test", _now_plus(30), recurrence="daily")
+        naive = datetime(2026, 4, 1, 9, 0, 0)
+        with pytest.raises(ValueError, match="timezone-aware"):
+            store.reschedule(r.id, naive)
+
+    def test_cancel_stops_recurring(self, store):
+        """Cancel beendet auch wiederkehrende Erinnerungen."""
+        r = store.add(USER_A, "Serie", _now_plus(30), recurrence="weekly:1")
+        store.cancel(r.id)
+        assert store.get_pending() == []
+
+
+class TestMigration:
+    def test_migration_adds_recurrence_column(self, tmp_path):
+        """Bestehende DB ohne recurrence-Spalte wird korrekt migriert."""
+        db = tmp_path / "migrate_test.db"
+        import sqlite3
+        conn = sqlite3.connect(str(db))
+        conn.execute("""
+            CREATE TABLE reminders (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id TEXT NOT NULL,
+                message TEXT NOT NULL,
+                due_at TEXT NOT NULL,
+                created_at TEXT NOT NULL,
+                fired INTEGER NOT NULL DEFAULT 0,
+                cancelled INTEGER NOT NULL DEFAULT 0
+            )
+        """)
+        # Alten Reminder einfügen (ohne recurrence-Spalte)
+        now = datetime.now(timezone.utc).isoformat()
+        due = _now_plus(30).isoformat()
+        conn.execute(
+            "INSERT INTO reminders (user_id, message, due_at, created_at) VALUES (?, ?, ?, ?)",
+            (USER_A, "Alt", due, now),
+        )
+        conn.commit()
+        conn.close()
+
+        # ReminderStore öffnen → Migration läuft
+        s = ReminderStore(db_path=db)
+        pending = s.get_pending()
+        assert len(pending) == 1
+        assert pending[0].message == "Alt"
+        assert pending[0].recurrence is None
+        s.close()
+
+
+class TestFormatPendingRecurrence:
+    def test_format_with_recurrence(self, store):
+        r = store.add(USER_A, "Standup", _now_plus(60), recurrence="daily")
+        text = store.format_pending([r])
+        assert "🔁" in text
+        assert "täglich" in text
+
+    def test_format_without_recurrence(self, store):
+        r = store.add(USER_A, "Einmalig", _now_plus(60))
+        text = store.format_pending([r])
+        assert "🔁" not in text

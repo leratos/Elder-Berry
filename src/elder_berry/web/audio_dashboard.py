@@ -46,6 +46,29 @@ class AudioDashboard:
     """
 
     ALLOWED_SENDERS_KEY = "matrix_allowed_senders"
+    TIMEZONE_KEY = "user_timezone"
+    DEFAULT_TIMEZONE = "Europe/Berlin"
+
+    # Gängige Zeitzonen für das Dashboard-Dropdown
+    AVAILABLE_TIMEZONES = [
+        "Europe/Berlin",
+        "Europe/Vienna",
+        "Europe/Zurich",
+        "Europe/London",
+        "Europe/Paris",
+        "Europe/Amsterdam",
+        "Europe/Rome",
+        "Europe/Madrid",
+        "Europe/Warsaw",
+        "Europe/Prague",
+        "Europe/Istanbul",
+        "Europe/Moscow",
+        "US/Eastern",
+        "US/Central",
+        "US/Pacific",
+        "Asia/Tokyo",
+        "UTC",
+    ]
 
     def __init__(
         self,
@@ -242,6 +265,57 @@ class AudioDashboard:
                 "configured": True,
                 "count": len(senders),
             })
+
+        # ----------------------------------------------------------
+        # Timezone
+        # ----------------------------------------------------------
+
+        @self._app.get("/api/timezone")
+        async def get_timezone():
+            tz = self.get_timezone()
+            return JSONResponse({
+                "timezone": tz,
+                "available": sorted(self.AVAILABLE_TIMEZONES),
+            })
+
+        @self._app.post("/api/timezone")
+        async def set_timezone(body: dict | None = None):
+            if not self._secret_store:
+                return JSONResponse(
+                    {"error": "SecretStore nicht verfügbar."},
+                    status_code=400,
+                )
+            if not body or "timezone" not in body:
+                return JSONResponse(
+                    {"error": "Parameter 'timezone' fehlt."},
+                    status_code=400,
+                )
+            tz_name = body["timezone"]
+
+            # Validierung: muss eine gültige IANA-Timezone sein
+            try:
+                from zoneinfo import ZoneInfo
+                ZoneInfo(tz_name)
+            except (KeyError, Exception):
+                return JSONResponse(
+                    {"error": f"Ungültige Zeitzone: {tz_name}"},
+                    status_code=400,
+                )
+
+            self._secret_store.set(self.TIMEZONE_KEY, tz_name)
+            logger.info("Zeitzone geändert: %s", tz_name)
+            return JSONResponse({
+                "timezone": tz_name,
+                "available": sorted(self.AVAILABLE_TIMEZONES),
+            })
+
+    def get_timezone(self) -> str:
+        """Gibt die konfigurierte Zeitzone zurück (für externe Nutzung)."""
+        if self._secret_store:
+            tz = self._secret_store.get_or_none(self.TIMEZONE_KEY)
+            if tz:
+                return tz
+        return self.DEFAULT_TIMEZONE
 
     def _is_port_free(self) -> bool:
         """Prüft ob der Port frei ist."""

@@ -136,6 +136,12 @@ Timer & Erinnerungen:
   lösche erinnerung 3 – Erinnerung #3 löschen
   lösche alle erinnerungen – Alle löschen
 
+🔁 Wiederkehrende Erinnerungen:
+  erinnere mich jeden montag um 9:00: Wochenbericht – Wöchentlich
+  erinnere mich täglich um 8:00: Standup – Täglich
+  erinnere mich werktags um 7:30: Aufstehen – Mo–Fr
+  erinnere mich jeden 1. um 10:00: Miete – Monatlich
+
 Briefing:
   briefing – Tagesübersicht (Wetter + Termine + Erinnerungen)
 

@@ -124,3 +124,93 @@ class TestDueChecks:
         # Callback wurde mindestens einmal aufgerufen (Retry bei jedem Zyklus)
         assert callback.call_count >= 1
         scheduler.stop()
+
+
+# ---------------------------------------------------------------------------
+# Wiederkehrende Erinnerungen (Phase 19)
+# ---------------------------------------------------------------------------
+
+class TestRecurrence:
+    def test_oneshot_still_marks_fired(self, store):
+        """One-Shot-Reminder wird wie bisher als fired markiert."""
+        store.add(USER_A, "Einmalig", _now_plus(-1))
+        callback = MagicMock()
+
+        scheduler = ReminderScheduler(
+            store=store, send_reminder=callback, poll_interval=1,
+        )
+        scheduler.start()
+        time.sleep(2.5)
+        scheduler.stop()
+
+        callback.assert_called_once()
+        # Reminder ist jetzt fired → nicht mehr pending
+        assert store.get_pending() == []
+
+    def test_recurring_reschedules_after_fire(self, store):
+        """Wiederkehrender Reminder wird rescheduled statt fired."""
+        store.add(USER_A, "Standup", _now_plus(-1), recurrence="daily")
+        callback = MagicMock()
+
+        scheduler = ReminderScheduler(
+            store=store, send_reminder=callback, poll_interval=1,
+        )
+        scheduler.start()
+        time.sleep(2.5)
+        scheduler.stop()
+
+        callback.assert_called_once()
+        # Reminder ist immer noch pending (rescheduled, nicht fired)
+        pending = store.get_pending()
+        assert len(pending) == 1
+        assert pending[0].message == "Standup"
+        assert pending[0].recurrence == "daily"
+        # Neues due_at muss in der Zukunft liegen
+        from datetime import timezone as tz
+        assert pending[0].due_at > datetime.now(tz.utc)
+
+    def test_recurring_fires_only_once_per_cycle(self, store):
+        """Rescheduled Reminder feuert nicht sofort nochmal."""
+        store.add(USER_A, "Repeat", _now_plus(-1), recurrence="daily")
+        callback = MagicMock()
+
+        scheduler = ReminderScheduler(
+            store=store, send_reminder=callback, poll_interval=1,
+        )
+        scheduler.start()
+        time.sleep(3.5)  # 2+ Zyklen
+        scheduler.stop()
+
+        # Nur einmal gefeuert (rescheduled due liegt in der Zukunft)
+        assert callback.call_count == 1
+
+    def test_timezone_callback_used(self, store):
+        """get_timezone wird für Reschedule-Berechnung genutzt."""
+        store.add(USER_A, "TZ-Test", _now_plus(-1), recurrence="daily")
+        callback = MagicMock()
+        tz_callback = MagicMock(return_value="Europe/Berlin")
+
+        scheduler = ReminderScheduler(
+            store=store, send_reminder=callback, poll_interval=1,
+            get_timezone=tz_callback,
+        )
+        scheduler.start()
+        time.sleep(2.5)
+        scheduler.stop()
+
+        tz_callback.assert_called()
+
+    def test_cancelled_recurring_not_fired(self, store):
+        """Gecancelter wiederkehrender Reminder wird nicht gefeuert."""
+        r = store.add(USER_A, "Cancelled", _now_plus(-1), recurrence="daily")
+        store.cancel(r.id)
+        callback = MagicMock()
+
+        scheduler = ReminderScheduler(
+            store=store, send_reminder=callback, poll_interval=1,
+        )
+        scheduler.start()
+        time.sleep(2.5)
+        scheduler.stop()
+
+        callback.assert_not_called()
