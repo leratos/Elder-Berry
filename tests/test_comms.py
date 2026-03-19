@@ -1306,8 +1306,10 @@ class TestRestartNotification:
         assert len(channel._sent_texts) == 1
         assert "Starte neu" in channel._sent_texts[0][1]
 
-        # _perform_restart wurde aufgerufen
-        mock_restart.assert_called_once_with("!room:test")
+        # _perform_restart wurde aufgerufen (mit room_id + Server-Timestamp)
+        mock_restart.assert_called_once_with(
+            "!room:test", msg_server_ts=0.0,
+        )
 
 
 # ---------------------------------------------------------------------------

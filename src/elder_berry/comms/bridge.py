@@ -35,6 +35,7 @@ import re
 import subprocess
 import sys
 import tempfile
+import time
 import threading
 import traceback
 from datetime import datetime
@@ -139,8 +140,10 @@ class MatrixBridge:
         self._loop: asyncio.AbstractEventLoop | None = None
         self._thread: threading.Thread | None = None
         self._running = False
-        # Startzeitpunkt: wird in _async_main gesetzt, Nachrichten davor ignoriert
+        # Startzeitpunkt (Server-Zeit): Nachrichten davor ignoriert
         self._start_time: float = 0.0
+        # Restart-Cooldown: Zeitpunkt bis zu dem restart-Befehle ignoriert werden
+        self._restart_cooldown_until: float = 0.0
         # Multi-Turn Chat-History pro User (Sliding Window)
         self._chat_history = ChatHistory(max_messages=10)
 
@@ -229,9 +232,21 @@ class MatrixBridge:
         """Async Hauptroutine: Connect, Callback registrieren, Sync-Loop starten."""
         await self._channel.connect()
 
-        # Startzeitpunkt setzen: Nachrichten vor diesem Zeitpunkt ignorieren
-        # (verhindert Restart-Schleifen durch erneutes Verarbeiten alter Commands)
-        self._start_time = datetime.now().timestamp()
+        # Startzeitpunkt setzen: Nachrichten vor diesem Zeitpunkt ignorieren.
+        # Bei Restart: Server-Timestamp aus Flag-File (gleiche Clock-Domain wie
+        # msg.timestamp → kein Clock-Drift). Sonst: lokale Zeit als Fallback.
+        restart_server_ts = self._read_restart_timestamp()
+        if restart_server_ts > 0:
+            self._start_time = restart_server_ts
+            # Restart-Cooldown: 60s lang keine weiteren restart-Befehle
+            self._restart_cooldown_until = time.monotonic() + 60
+            logger.info(
+                "Restart erkannt: _start_time=%.3f (Server-TS), "
+                "Cooldown 60s aktiv",
+                self._start_time,
+            )
+        else:
+            self._start_time = datetime.now().timestamp()
 
         # Restart-Benachrichtigung senden (wenn Flag existiert)
         await self.send_restart_notification(self._channel)
@@ -278,10 +293,12 @@ class MatrixBridge:
         logger.info("Nachricht von %s: %s", msg.sender, msg.body[:100])
 
         # --- Alte Nachrichten ignorieren (vor Bridge-Start, z.B. nach Restart) ---
-        # Schwelle: 30s vor Start erlauben (Clock-Drift zwischen Server und Client)
-        if msg.timestamp > 0 and msg.timestamp < (self._start_time - 30):
+        # _start_time ist Server-Timestamp (bei Restart) oder lokale Zeit (Normal).
+        # Kein Grace-Period: alles VOR dem Startzeitpunkt wird verworfen.
+        if msg.timestamp > 0 and msg.timestamp <= self._start_time:
             logger.debug(
-                "Alte Nachricht ignoriert (vor Bridge-Start): %s", msg.body[:50],
+                "Alte Nachricht ignoriert (ts=%.3f <= start=%.3f): %s",
+                msg.timestamp, self._start_time, msg.body[:50],
             )
             return
 
@@ -398,7 +415,21 @@ class MatrixBridge:
 
             # Restart: Flag schreiben + Prozess ersetzen
             if result.restart:
-                await self._perform_restart(msg.room_id)
+                if time.monotonic() < self._restart_cooldown_until:
+                    logger.warning(
+                        "Restart-Cooldown aktiv, ignoriere restart-Befehl "
+                        "(noch %.0fs)",
+                        self._restart_cooldown_until - time.monotonic(),
+                    )
+                    await self._channel.send_text(
+                        msg.room_id,
+                        "Restart-Cooldown aktiv – ich wurde gerade erst "
+                        "neu gestartet. Bitte warte noch etwas.",
+                    )
+                    return
+                await self._perform_restart(
+                    msg.room_id, msg_server_ts=msg.timestamp,
+                )
 
         except Exception as e:
             logger.error("Remote-Command '%s' fehlgeschlagen: %s", command, e)
@@ -1178,7 +1209,9 @@ class MatrixBridge:
         except Exception as e:
             logger.debug("Lock-Datei löschen fehlgeschlagen: %s", e)
 
-    async def _perform_restart(self, room_id: str) -> None:
+    async def _perform_restart(
+        self, room_id: str, *, msg_server_ts: float = 0.0,
+    ) -> None:
         """Schreibt Restart-Flag und startet den Prozess neu.
 
         Wird innerhalb des Bridge-Threads aufgerufen, daher kein self.stop()
@@ -1186,12 +1219,18 @@ class MatrixBridge:
 
         Args:
             room_id: Room-ID für die Rückmeldung nach dem Restart.
+            msg_server_ts: Server-Timestamp der auslösenden Nachricht.
+                Wird ins Flag-File geschrieben damit der neue Prozess
+                Nachrichten vor diesem Zeitpunkt ignorieren kann.
         """
         logger.info("Restart angefordert, starte Prozess neu...")
 
-        # Flag-Datei schreiben (room_id für Startup-Nachricht)
+        # Flag-Datei schreiben: room_id + Server-Timestamp (Zeile 1 + 2)
+        flag_content = room_id
+        if msg_server_ts > 0:
+            flag_content += f"\n{msg_server_ts:.3f}"
         try:
-            RESTART_FLAG_FILE.write_text(room_id, encoding="utf-8")
+            RESTART_FLAG_FILE.write_text(flag_content, encoding="utf-8")
         except Exception as e:
             logger.error("Restart-Flag schreiben fehlgeschlagen: %s", e)
 
@@ -1242,18 +1281,37 @@ class MatrixBridge:
             RESTART_FLAG_FILE.unlink(missing_ok=True)
 
     @staticmethod
+    def _read_restart_timestamp() -> float:
+        """Liest den Server-Timestamp aus dem Restart-Flag (Zeile 2).
+
+        Returns:
+            Server-Timestamp (float) oder 0.0 wenn kein Flag/kein Timestamp.
+        """
+        if not RESTART_FLAG_FILE.exists():
+            return 0.0
+        try:
+            lines = RESTART_FLAG_FILE.read_text(encoding="utf-8").strip().splitlines()
+            if len(lines) >= 2:
+                return float(lines[1])
+        except (ValueError, OSError) as e:
+            logger.debug("Restart-Timestamp lesen fehlgeschlagen: %s", e)
+        return 0.0
+
+    @staticmethod
     async def send_restart_notification(channel: MessageChannel) -> None:
         """Prüft ob ein Restart-Flag existiert und sendet Begrüßung.
 
         Wird beim Start aufgerufen (vor sync_loop). Löscht das Flag nach dem Senden.
+        Flag-Format: Zeile 1 = room_id, Zeile 2 = server_timestamp (optional).
         """
         if not RESTART_FLAG_FILE.exists():
             return
 
         try:
-            room_id = RESTART_FLAG_FILE.read_text(encoding="utf-8").strip()
+            lines = RESTART_FLAG_FILE.read_text(encoding="utf-8").strip().splitlines()
             RESTART_FLAG_FILE.unlink(missing_ok=True)
 
+            room_id = lines[0].strip() if lines else ""
             if room_id:
                 await channel.send_text(
                     room_id,
