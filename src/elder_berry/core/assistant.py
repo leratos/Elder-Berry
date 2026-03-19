@@ -70,6 +70,11 @@ Verfügbare Aktionen:
   - audio / audio lokal an / audio lokal aus: Audio-Modus steuern
   - screenshot: Screenshot aufnehmen
   - status: Systemstatus
+- multi_step: Mehrstufige Aufgabe ausführen (mehrere Commands verketten).
+  params: {{"task": "<beschreibung der gesamten aufgabe>"}}
+  Nutze dies wenn der Nutzer eine Aufgabe beschreibt die mehrere Schritte braucht.
+  Beispiel: "Lies meine Mails und trag den Zahnarzttermin ein"
+  → {{"action": "multi_step", "params": {{"task": "Mails lesen und Zahnarzttermin eintragen"}}, "response": "Ich kümmere mich darum..."}}
   - update / update dich: Neue Funktionen laden (git pull + neustart)
   - merk dir: <schlüssel> ist <wert>: Fakt speichern
   - notiz: <text>: Freitext-Notiz speichern
@@ -192,8 +197,8 @@ class Assistant:
 
         action_success = False
         if action_type:
-            # remote_command: Pass-through – Bridge führt den Command aus
-            if action_type == "remote_command":
+            # remote_command / multi_step: Pass-through – Bridge führt aus
+            if action_type in ("remote_command", "multi_step"):
                 action_success = True
             # system_status: Daten abrufen und Response erweitern
             elif action_type == "system_status":

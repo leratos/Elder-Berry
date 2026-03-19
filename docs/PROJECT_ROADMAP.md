@@ -309,26 +309,30 @@ weiterentwickeln kann statt pro Turn bei Null zu starten.
 - ✅ **Tests**: `tests/test_emotion_tracker.py` (32 Tests)
 - **Prompt-Format**: `Emotionaler Kontext: angry → neutral | Dominante Stimmung: angry | Tendenz: aufhellend`
 
-## Phase 19 – Wiederkehrende Erinnerungen 🔁 GEPLANT
+## Phase 19 – Wiederkehrende Erinnerungen 🔁 ✅ ABGESCHLOSSEN
 
-Timer und Erinnerungen werden um Wiederholungslogik erweitert: "Erinnere mich
+Timer und Erinnerungen mit Wiederholungslogik: "Erinnere mich
 jeden Montag um 9 an den Wochenbericht."
 
-- ReminderStore: `recurrence`-Feld (daily, weekly:N, monthly:N, weekdays, biweekly:N)
-- ReminderScheduler: Reschedule-Logik nach dem Feuern (nächstes Datum berechnen)
-- WeatherCommandHandler: Neue Patterns für "jeden Montag", "täglich", "werktags"
-- Verwaltung: Anzeige + Löschen wiederkehrender Erinnerungen
+- ✅ ReminderStore: `recurrence`-Feld (daily, weekly:N, monthly:N, weekdays, biweekly:N)
+- ✅ ReminderScheduler: Reschedule-Logik nach dem Feuern (nächstes Datum berechnen)
+- ✅ WeatherCommandHandler: Neue Patterns für "jeden Montag", "täglich", "werktags"
+- ✅ Verwaltung: Anzeige + Löschen wiederkehrender Erinnerungen
 - **Konzept**: `docs/concepts/phase-19-wiederkehrende-erinnerungen.md`
 
-## Phase 20 – Multi-Step Task Chaining ⛓️ GEPLANT
+## Phase 20 – Multi-Step Task Chaining ⛓️ ✅ ABGESCHLOSSEN
 
 Saleria kann mehrstufige Aufgaben abarbeiten, bei denen das Ergebnis eines
 Schritts als Input für den nächsten dient (ReAct-Pattern).
 
-- TaskExecutor: LLM → Command → Ergebnis → LLM → ... → Antwort (max 5 Steps)
-- Integration in MatrixBridge statt einzelner LLM-Call
-- System-Prompt für Multi-Step-Reasoning
-- Sicherheit: MAX_STEPS Limit, Timeout, Bestätigung für destruktive Commands
+- ✅ **TaskChainRunner**: LLM-gesteuerter Loop (`core/task_chain.py`)
+  - LLM → Remote-Command → Ergebnis als Kontext → nächster LLM-Call → ... → DONE
+  - MAX_STEPS=5, Ergebnis-Trimming auf 2000 Zeichen (kein Token-Limit nötig)
+  - Eigener CHAIN_SYSTEM_PROMPT mit verfügbaren Remote-Commands
+  - on_step Callback für Zwischenstatus an Matrix
+- ✅ **Assistant**: `multi_step` als neue Aktion im System-Prompt + Pass-through
+- ✅ **MatrixBridge**: `_handle_multi_step()` – erkennt multi_step, führt Chain aus, sendet Schritte + Zusammenfassung
+- ✅ **Tests**: `tests/test_task_chain.py` (16 Tests)
 - **Konzept**: `docs/concepts/phase-20-multi-step-task-chaining.md`
 
 ## Phase 21 – Proaktive Kontext-Verknüpfung 🔗 GEPLANT

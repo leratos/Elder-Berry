@@ -1880,3 +1880,38 @@
 - "erinnere mich jeden 1. um 10:00: Miete" → monthly:1
 - "erinnerungen" → zeigt jetzt 🔁 + Wiederholungsintervall
 - "lösche erinnerung <id>" → beendet auch wiederkehrende Serien
+
+## Abgeschlossen: Phase 20 – Multi-Step Task Chaining (2026-03-19)
+- Branch: feature/phase-20-multi-step-task-chaining
+
+### Neue Dateien
+- src/elder_berry/core/task_chain.py: TaskChainRunner + StepResult + ChainResult
+  - LLM-gesteuerter Loop: User-Request → LLM plant Schritt → Command ausführen → Ergebnis als Kontext → nächster LLM-Call
+  - MAX_STEPS=5, max_result_chars=2000 (Kontext-Trimming statt Token-Limit)
+  - Eigener CHAIN_SYSTEM_PROMPT mit verfügbaren Remote-Commands
+  - on_step Callback für Zwischenstatus
+- tests/test_task_chain.py: 16 Unit-Tests (Dataclasses, Basic Flow, Errors, Context)
+
+### Geänderte Dateien
+- src/elder_berry/core/assistant.py:
+  - multi_step als Aktion im SYSTEM_PROMPT_TEMPLATE dokumentiert
+  - multi_step als Pass-through in process() (wie remote_command)
+- src/elder_berry/character/saleria.yaml:
+  - multi_step Aktion mit Beispiel im System-Prompt Template
+- src/elder_berry/comms/bridge.py:
+  - TaskChainRunner als optionale Dependency (task_chain Parameter)
+  - _handle_multi_step(): erkennt multi_step → Chain ausführen → Zwischenstatus + Zusammenfassung senden
+
+### Flow
+User: "Lies meine Mails und trag den Zahnarzttermin ein"
+  → LLM: {"action": "multi_step", "params": {"task": "..."}, "response": "Moment..."}
+  → Bridge erkennt multi_step → TaskChainRunner.run()
+    → Step 1: LLM → mails → "3 ungelesene..."
+    → Step 2: LLM → mail suche Zahnarzt → "15.04 14:00"
+    → Step 3: LLM → termin: Zahnarzt 2026-04-15 14:00 → "Erstellt"
+    → DONE → Zusammenfassung
+  → Bridge sendet Steps + Summary an Matrix
+
+### Tests
+- 16/16 test_task_chain.py ✓
+- 103/103 bestehende Tests (test_assistant.py + test_comms.py) ✓

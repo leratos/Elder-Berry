@@ -259,6 +259,7 @@ python scripts/start_saleria.py --debug           # Debug logging
 | `WeatherClient` | `tools.weather_client` | Open-Meteo API, forecast, WMO codes |
 | `ReminderStore` | `tools.reminder_store` | SQLite, UTC, restart-safe timers/reminders |
 | `GymDataClient` | `tools.gym_data` | Berry-Gym REST API client |
+| `TaskChainRunner` | `core.task_chain` | Multi-step command chaining (ReAct-style, max 5 steps) |
 | `DocumentReader` | `tools.document_reader` | PDF (pymupdf) + TXT parsing for LLM summary |
 
 ### Design Patterns
@@ -362,6 +363,12 @@ tests/                # 1170+ unit + integration tests
 | 12 | Audio Routing + Web Interface (local playback toggle, dashboard) | Done |
 | 13 | Computer Use (Anthropic Vision + PC control via screenshots) | Done |
 | 14 | Web Search (Brave Search API + LLM result formatting) | Done |
+| 15 | Self-Update (git pull + pip install + restart via Matrix) | Done |
+| 16 | Notes & Knowledge Base (key-value facts + FTS5 full-text notes) | Done |
+| 17 | Calendar Watcher (proactive meeting reminders) | Done |
+| 18 | Emotion State Machine (mood context for LLM) | Done |
+| 19 | Recurring Reminders (daily, weekly, monthly, weekdays) | Done |
+| 20 | Multi-Step Task Chaining (ReAct-style command chains) | Done |
 
 ## Hardware
 

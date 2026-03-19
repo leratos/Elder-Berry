@@ -53,6 +53,7 @@ if TYPE_CHECKING:
     from elder_berry.comms.remote_commands import RemoteCommandHandler
     from elder_berry.core.assistant import Assistant
     from elder_berry.core.audio_router import AudioRouter
+    from elder_berry.core.task_chain import TaskChainRunner
     from elder_berry.stt.base import STTEngine
     from elder_berry.tools.document_reader import DocumentReader
 
@@ -116,6 +117,7 @@ class MatrixBridge:
         calendar_watcher: CalendarWatcher | None = None,
         document_reader: DocumentReader | None = None,
         audio_router: AudioRouter | None = None,
+        task_chain: TaskChainRunner | None = None,
     ) -> None:
         self._channel = channel
         self._assistant = assistant
@@ -132,6 +134,7 @@ class MatrixBridge:
         self._calendar_watcher = calendar_watcher
         self._document_reader = document_reader
         self._audio_router = audio_router
+        self._task_chain = task_chain
         self._loop: asyncio.AbstractEventLoop | None = None
         self._thread: threading.Thread | None = None
         self._running = False
@@ -721,6 +724,15 @@ class MatrixBridge:
                 tmp_wav, chat_context,
             )
 
+            # LLM hat multi_step als Aktion gewählt → TaskChainRunner
+            if (
+                result.action_executed == "multi_step"
+                and result.action_success
+                and self._task_chain
+            ):
+                await self._handle_multi_step(msg, result, chat_context)
+                return
+
             # LLM hat remote_command als Aktion gewählt → an CommandHandler weiterleiten
             if (
                 result.action_executed == "remote_command"
@@ -825,6 +837,88 @@ class MatrixBridge:
             logger.debug("Audio lokal via sounddevice abgespielt")
         except Exception as e:
             logger.warning("Lokale Audio-Wiedergabe fehlgeschlagen: %s", e)
+
+    async def _handle_multi_step(
+        self, msg: IncomingMessage, llm_result, chat_context: str,
+    ) -> None:
+        """LLM hat multi_step gewählt → TaskChainRunner ausführen.
+
+        Sendet die initiale LLM-Antwort, dann Zwischenstatus pro Schritt,
+        und am Ende die Zusammenfassung.
+        """
+        # Initiale Antwort senden ("Ich kümmere mich darum...")
+        if llm_result.response:
+            self._chat_history.add(msg.sender, "assistant", llm_result.response)
+            await self._channel.send_text(msg.room_id, llm_result.response)
+
+        # Audio der initialen Antwort senden
+        await self._send_audio_if_available(msg.room_id, llm_result, None)
+
+        # Task-Beschreibung aus Params extrahieren
+        task_text = ""
+        if llm_result.action_params and isinstance(llm_result.action_params, dict):
+            task_text = llm_result.action_params.get("task", "")
+
+        if not task_text:
+            logger.warning("multi_step ohne task-Parameter")
+            return
+
+        logger.info("Multi-Step Chain gestartet: %s", task_text[:100])
+
+        try:
+            loop = asyncio.get_running_loop()
+
+            # Schritt-Callback: sendet Zwischenstatus an Matrix
+            step_messages: list[str] = []
+
+            def on_step(step) -> None:
+                status = "✓" if step.success else "✗"
+                step_messages.append(
+                    f"Schritt {step.step_number}: {step.command} [{status}]"
+                )
+
+            # Chain ausführen (blocking → Executor)
+            chain_result = await loop.run_in_executor(
+                None,
+                lambda: self._task_chain.run(
+                    user_request=task_text,
+                    chat_history=chat_context,
+                    on_step=on_step,
+                ),
+            )
+
+            # Zwischenstatus senden (alle Schritte zusammen)
+            if step_messages:
+                steps_text = "\n".join(step_messages)
+                await self._channel.send_text(
+                    msg.room_id, f"📋 Schritte:\n{steps_text}",
+                )
+
+            # Zusammenfassung senden
+            if chain_result.final_summary:
+                await self._channel.send_text(
+                    msg.room_id, chain_result.final_summary,
+                )
+                self._chat_history.add(
+                    msg.sender, "assistant", chain_result.final_summary,
+                )
+
+            logger.info(
+                "Multi-Step Chain abgeschlossen: %d Schritte, completed=%s",
+                chain_result.step_count,
+                chain_result.completed,
+            )
+
+        except Exception as e:
+            logger.error("Multi-Step Chain fehlgeschlagen: %s", e)
+            self._log_error(msg.sender, msg.body, e, handler="multi_step")
+            try:
+                await self._channel.send_text(
+                    msg.room_id,
+                    f"Multi-Step Fehler: {type(e).__name__}",
+                )
+            except Exception:
+                logger.error("Konnte Multi-Step Fehlermeldung nicht senden")
 
     async def _handle_llm_remote_command(
         self, msg: IncomingMessage, llm_result,
