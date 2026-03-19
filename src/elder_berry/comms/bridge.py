@@ -32,6 +32,7 @@ import asyncio
 import logging
 import os
 import re
+import subprocess
 import sys
 import tempfile
 import threading
@@ -1178,11 +1179,19 @@ class MatrixBridge:
         python = sys.executable
         args = sys.argv[:]
 
-        logger.info("os.execv(%s, %s)", python, [python, *args])
+        logger.info("Restart: %s %s", python, args)
         try:
-            os.execv(python, [python, *args])
+            if sys.platform == "win32":
+                # Windows: os.execv startet neuen Prozess ohne den alten zu
+                # beenden → subprocess.Popen + os._exit stattdessen
+                subprocess.Popen([python, *args])
+                logger.info("Neuer Prozess gestartet, beende aktuellen...")
+                os._exit(0)
+            else:
+                # Linux/macOS: os.execv ersetzt den Prozess korrekt
+                os.execv(python, [python, *args])
         except Exception as e:
-            logger.error("os.execv fehlgeschlagen: %s", e)
+            logger.error("Restart fehlgeschlagen: %s", e)
             # Fallback: Flag aufräumen
             RESTART_FLAG_FILE.unlink(missing_ok=True)
 
