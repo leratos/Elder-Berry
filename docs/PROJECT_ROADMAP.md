@@ -335,15 +335,16 @@ Schritts als Input für den nächsten dient (ReAct-Pattern).
 - ✅ **Tests**: `tests/test_task_chain.py` (16 Tests)
 - **Konzept**: `docs/concepts/phase-20-multi-step-task-chaining.md`
 
-## Phase 21 – Proaktive Kontext-Verknüpfung 🔗 GEPLANT
+## Phase 21 – Proaktive Kontext-Verknüpfung 🔗 ✅ ABGESCHLOSSEN
 
 CalendarWatcher-Alerts werden kontextbewusst: relevante Notizen, Mails und
 Wetter werden automatisch zum Termin-Reminder hinzugefügt.
 
-- ContextEnricher: Sucht NoteStore, IMAP, Weather zu einem Termin-Titel
-- LLM formatiert gesammelten Kontext als natürliche Nachricht
-- Integration in CalendarWatcher (nur beim ersten Reminder, z.B. 15 Min)
-- Graceful Degradation: fehlende Quellen werden übersprungen
+- ✅ ContextEnricher: Sucht NoteStore, IMAP, Weather, MemoryStore zum Termin-Titel
+- ✅ LLM formatiert gesammelten Kontext als natürliche Nachricht (Saleria-Stil)
+- ✅ Integration in CalendarWatcher (nur beim ersten Reminder, z.B. 15 Min)
+- ✅ Graceful Degradation: fehlende/fehlerhafte Quellen werden übersprungen (3s Timeout)
+- ✅ Template-Fallback wenn LLM nicht verfügbar
 - **Konzept**: `docs/concepts/phase-21-proaktive-kontext-verknuepfung.md`
 
 ## Phase 22 – Intent-Routing Verbesserung 🎯 GEPLANT
