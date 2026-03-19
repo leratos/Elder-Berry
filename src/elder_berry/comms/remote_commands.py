@@ -5,8 +5,9 @@ Delegiert an domänenspezifische Handler in comms/commands/:
 - CalendarCommandHandler: Termine CRUD + Suche
 - MailCommandHandler: Mails, Suche, Anhänge, per ID
 - FileCommandHandler: Clipboard, Send-File, Download
-- ProcessCommandHandler: Start/Kill, Git, Docker, WoL
+- ProcessCommandHandler: Start/Kill, Git, Docker, WoL, Self-Update
 - WeatherCommandHandler: Wetter, Timer, Erinnerungen, Briefing, Training
+- NoteCommandHandler: Notizen & Wissensdatenbank (optional, benötigt NoteStore)
 - AdvancedCommandHandler: Computer Use, Web-Suche, Dokumente, Audio
 
 Verwendung:
@@ -34,6 +35,7 @@ from elder_berry.comms.commands.file_commands import FileCommandHandler
 from elder_berry.comms.commands.process_commands import ProcessCommandHandler
 from elder_berry.comms.commands.weather_commands import WeatherCommandHandler
 from elder_berry.comms.commands.advanced_commands import AdvancedCommandHandler
+from elder_berry.comms.commands.note_commands import NoteCommandHandler
 
 if TYPE_CHECKING:
     from elder_berry.actions.base import ActionController
@@ -48,6 +50,7 @@ if TYPE_CHECKING:
     from elder_berry.tools.google_calendar import GoogleCalendarClient
     from elder_berry.tools.gym_data import GymDataClient
     from elder_berry.comms.briefing_scheduler import BriefingScheduler
+    from elder_berry.tools.note_store import NoteStore
     from elder_berry.tools.reminder_store import ReminderStore
     from elder_berry.tools.weather_client import WeatherClient
 
@@ -136,6 +139,15 @@ Timer & Erinnerungen:
 Briefing:
   briefing – Tagesübersicht (Wetter + Termine + Erinnerungen)
 
+📝 Notizen & Wissen:
+  merk dir: <schlüssel> ist <wert>  – Fakt speichern (z.B. merk dir: WLAN Büro ist xyz123)
+  notiz: <text>                      – Freitext-Notiz speichern
+  was ist <schlüssel>?               – Fakt abrufen
+  notizen suche <Begriff>            – Notizen durchsuchen
+  notizen                            – Alle Notizen anzeigen (max 20)
+  notiz löschen #<id>                – Notiz per ID löschen
+  vergiss <schlüssel>                – KV-Fakt vergessen
+
 Audio:
   audio – Audio-Modus anzeigen (matrix_only / matrix_and_local)
   audio lokal an – Lokale Wiedergabe aktivieren (Matrix + PC)
@@ -160,7 +172,10 @@ Claude-Agent:
   claude "<Auftrag>" – Komplexe Anfrage an Claude API
 
 Sprachnachrichten:
-  🎤 OGG/Opus Sprachnachricht → Whisper STT → Saleria antwortet (Text + Sprache)"""
+  🎤 OGG/Opus Sprachnachricht → Whisper STT → Saleria antwortet (Text + Sprache)
+
+🔄 Self-Update:
+  update / update dich – Git Pull + Dependencies + Neustart"""
 
 # Aggregierte Keyword-Map (aus allen Handlern zusammengeführt).
 # Wird von der Bridge für Keyword-Routing genutzt.
@@ -203,6 +218,8 @@ class RemoteCommandHandler:
         audio_router: AudioRouter | None = None,
         computer_use: ComputerUseController | None = None,
         search_client: BraveSearchClient | None = None,
+        note_store: NoteStore | None = None,
+        default_user_id: str = "",
     ) -> None:
         # Domain-Handler erstellen
         self._system = SystemCommandHandler(
@@ -232,6 +249,13 @@ class RemoteCommandHandler:
             document_reader=document_reader,
             audio_router=audio_router,
         )
+        # NoteCommandHandler: nur wenn NoteStore vorhanden
+        self._notes: NoteCommandHandler | None = None
+        if note_store is not None:
+            self._notes = NoteCommandHandler(
+                note_store=note_store,
+                default_user_id=default_user_id,
+            )
 
         # Handler-Liste (Reihenfolge bestimmt Priorität bei Pattern/Keyword-Match)
         # WICHTIG: _weather VOR _calendar, weil REMINDER_DELETE vor TERMIN_DELETE
@@ -243,8 +267,10 @@ class RemoteCommandHandler:
             self._mail,
             self._file,
             self._process,
-            self._advanced,
         ]
+        if self._notes is not None:
+            self._handlers.append(self._notes)
+        self._handlers.append(self._advanced)
 
         # Aggregierte Simple-Commands und Command→Handler Lookup
         self._simple_commands: set[str] = set()

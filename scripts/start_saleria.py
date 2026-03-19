@@ -475,6 +475,30 @@ def run_matrix(assistant, stt=None, avatar=None, audio_converter=None):
     except Exception as e:
         logger.warning("Daily Briefing nicht verfügbar: %s", e)
 
+    # CalendarWatcher – proaktive Kalender-Erinnerungen (optional)
+    calendar_watcher = None
+    if calendar:
+        try:
+            from elder_berry.comms.calendar_watcher import CalendarWatcher
+            calendar_watcher = CalendarWatcher(
+                send_alert=lambda text: None,  # Bridge setzt den echten Callback
+                calendar=calendar,
+                reminder_minutes=[15, 5],
+                poll_interval=300,
+            )
+            logger.info("CalendarWatcher: aktiv (Erinnerungen: 15min, 5min vor Termin)")
+        except Exception as e:
+            logger.warning("CalendarWatcher nicht verfügbar: %s", e)
+
+    # NoteStore – Notizen & Wissensdatenbank (optional)
+    note_store = None
+    try:
+        from elder_berry.tools.note_store import NoteStore
+        note_store = NoteStore()
+        logger.info("NoteStore: aktiv (DB: %s)", note_store._db_path)
+    except Exception as e:
+        logger.warning("NoteStore nicht verfügbar: %s", e)
+
     # DocumentReader (Phase 11)
     from elder_berry.tools.document_reader import DocumentReader
     document_reader = DocumentReader()
@@ -535,6 +559,7 @@ def run_matrix(assistant, stt=None, avatar=None, audio_converter=None):
         audio_router=audio_router,
         computer_use=computer_use,
         search_client=search_client,
+        note_store=note_store,
     )
 
     # ClaudeAgent (optional)
@@ -572,6 +597,7 @@ def run_matrix(assistant, stt=None, avatar=None, audio_converter=None):
         stt=stt,
         reminder_scheduler=reminder_scheduler,
         briefing_scheduler=briefing_scheduler,
+        calendar_watcher=calendar_watcher,
         document_reader=document_reader,
         audio_router=audio_router,
     )

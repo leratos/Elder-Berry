@@ -185,6 +185,35 @@ class GoogleCalendarClient:
         """Termine für heute."""
         return self.get_events(days=1)
 
+    def get_events_range(
+        self,
+        start: datetime,
+        end: datetime,
+        max_results: int = 20,
+    ) -> list[CalendarEvent]:
+        """Termine in einem bestimmten Zeitraum abrufen.
+
+        Args:
+            start: Beginn des Zeitraums (timezone-aware).
+            end: Ende des Zeitraums (timezone-aware).
+            max_results: Maximale Anzahl Termine.
+
+        Returns:
+            Liste von CalendarEvents im Zeitraum, nach Startzeit sortiert.
+        """
+        service = self._get_service()
+
+        result = service.events().list(
+            calendarId=self.CALENDAR_ID,
+            timeMin=start.isoformat(),
+            timeMax=end.isoformat(),
+            maxResults=max_results,
+            singleEvents=True,
+            orderBy="startTime",
+        ).execute()
+
+        return [self._parse_event(item) for item in result.get("items", [])]
+
     def get_tomorrow(self) -> list[CalendarEvent]:
         """Termine für morgen."""
         service = self._get_service()
