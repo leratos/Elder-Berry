@@ -139,6 +139,8 @@ class MatrixBridge:
         self._loop: asyncio.AbstractEventLoop | None = None
         self._thread: threading.Thread | None = None
         self._running = False
+        # Startzeitpunkt: wird in _async_main gesetzt, Nachrichten davor ignoriert
+        self._start_time: float = 0.0
         # Multi-Turn Chat-History pro User (Sliding Window)
         self._chat_history = ChatHistory(max_messages=10)
 
@@ -227,6 +229,10 @@ class MatrixBridge:
         """Async Hauptroutine: Connect, Callback registrieren, Sync-Loop starten."""
         await self._channel.connect()
 
+        # Startzeitpunkt setzen: Nachrichten vor diesem Zeitpunkt ignorieren
+        # (verhindert Restart-Schleifen durch erneutes Verarbeiten alter Commands)
+        self._start_time = datetime.now().timestamp()
+
         # Restart-Benachrichtigung senden (wenn Flag existiert)
         await self.send_restart_notification(self._channel)
 
@@ -270,6 +276,14 @@ class MatrixBridge:
         3. OGG wird als Sprachnachricht via Channel gesendet
         """
         logger.info("Nachricht von %s: %s", msg.sender, msg.body[:100])
+
+        # --- Alte Nachrichten ignorieren (vor Bridge-Start, z.B. nach Restart) ---
+        # Schwelle: 30s vor Start erlauben (Clock-Drift zwischen Server und Client)
+        if msg.timestamp > 0 and msg.timestamp < (self._start_time - 30):
+            logger.debug(
+                "Alte Nachricht ignoriert (vor Bridge-Start): %s", msg.body[:50],
+            )
+            return
 
         # --- Sender-Whitelist: Nachrichten von unbekannten Absendern ignorieren ---
         if self._allowed_senders and msg.sender not in self._allowed_senders:
