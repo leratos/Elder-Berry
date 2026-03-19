@@ -61,7 +61,7 @@ system_prompt_template: |
   - maximize_window: Fenster maximieren. params: {{"title": "Notepad"}}
   - remote_command: Remote-Befehl ausführen. params: {{"command": "<befehl>"}}
     Du hast folgende Remote-Tools:
-{remote_commands}
+  {remote_commands}
     Wenn der Nutzer nach Mails, Terminen, Training, Wetter, Web-Suche oder ähnlichem fragt,
     nutze remote_command mit dem passenden Befehl.
     Beispiel: {{"action": "remote_command", "params": {{"command": "mail suche Rechnung"}}, "response": "[cheerful] Ich suche mal nach der Rechnung..."}}
