@@ -1136,6 +1136,34 @@ class MatrixBridge:
         self._calendar_watcher._send_alert = send_alert
         self._calendar_watcher.start()
 
+    @staticmethod
+    def _release_instance_lock() -> None:
+        """Gibt den Singleton-Lock frei (für Restart).
+
+        Sucht die Lock-Freigabe-Funktion aus start_saleria.py und ruft sie auf.
+        Fallback: Lock-Datei direkt schließen/löschen.
+        """
+        # start_saleria.py registriert _release_instance_lock als atexit-Handler
+        # und speichert den File-Handle in _lock_fh. Wir importieren das Modul
+        # über sys.modules (es wurde als __main__ geladen).
+        main_module = sys.modules.get("__main__")
+        release_fn = getattr(main_module, "_release_instance_lock", None)
+        if callable(release_fn):
+            try:
+                release_fn()
+                logger.debug("Instanz-Lock über __main__ freigegeben")
+                return
+            except Exception as e:
+                logger.debug("Lock-Freigabe über __main__ fehlgeschlagen: %s", e)
+
+        # Fallback: Lock-Datei direkt löschen
+        lock_path = Path(sys.argv[0]).parent.parent / ".saleria.lock"
+        try:
+            lock_path.unlink(missing_ok=True)
+            logger.debug("Lock-Datei direkt gelöscht: %s", lock_path)
+        except Exception as e:
+            logger.debug("Lock-Datei löschen fehlgeschlagen: %s", e)
+
     async def _perform_restart(self, room_id: str) -> None:
         """Schreibt Restart-Flag und startet den Prozess neu.
 
@@ -1174,6 +1202,10 @@ class MatrixBridge:
             logger.debug("Disconnect bei Restart (ignoriert): %s", e)
 
         self._running = False
+
+        # Instanz-Lock freigeben BEVOR der neue Prozess startet,
+        # damit er den Lock sofort erwerben kann
+        self._release_instance_lock()
 
         # Prozess ersetzen: gleiche Python-Exe + gleiche Argumente
         python = sys.executable
