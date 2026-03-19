@@ -1727,3 +1727,43 @@
 - Validierung: jede ID muss @user:domain Format haben
 - Wenn nicht konfiguriert: alle Sender akzeptiert (Rückwärtskompatibilität)
 - Änderung erst nach Neustart wirksam (Bridge liest beim Start)
+
+## In Arbeit: Backup/Rollback + SelfCheck für Self-Update (2026-03-19)
+
+### Ziel
+- Backup-System: Vor Self-Update wird alter Stand gesichert, Rollback-Command zum Zurücksetzen
+- SelfCheck-Command: Systemgesundheitsprüfung (Git, Disk, RAM, Ollama, SecretStore, Imports, pip)
+
+### Scope
+- process_commands.py: Backup vor git pull, _cmd_rollback(), _cmd_selfcheck(), neue Patterns
+- remote_commands.py: HELP_TEXT für Rollback + SelfCheck ergänzen
+- tests/test_self_update.py: Tests für Backup, Rollback, SelfCheck
+
+## Abgeschlossen: Backup/Rollback + SelfCheck (2026-03-19)
+- Branch: feature/allowed-senders-dashboard
+
+### Neue/geänderte Dateien
+- src/elder_berry/comms/commands/process_commands.py:
+  - ROLLBACK_PATTERN, SELFCHECK_PATTERN, DEFAULT_BACKUP_DIR, BACKUP_FILENAME
+  - _write_backup(): JSON mit hash/branch/timestamp nach ~/.elder-berry/update_backup.json
+  - _read_backup(): Backup lesen mit Fehlerbehandlung (korrupt/fehlend → None)
+  - _cmd_update(): Schreibt Backup VOR git pull (Schritt 4)
+  - _cmd_rollback(): Liest Backup → git cat-file → git reset --hard → pip install → restart
+  - _cmd_selfcheck(): 8 Checks (Git, Python, Disk, RAM, Ollama, SecretStore, Imports, pip)
+  - simple_commands, patterns, keywords um rollback + selfcheck erweitert
+  - execute() um rollback + selfcheck erweitert
+- src/elder_berry/comms/remote_commands.py:
+  - HELP_TEXT: Rollback + Systemcheck Sektionen ergänzt
+- tests/test_self_update.py:
+  - 42 neue Tests (Pattern: 17, Registration: 6, Backup-IO: 4, Update-Backup: 1,
+    Rollback: 6, SelfCheck: 8)
+  - 3 bestehende Tests angepasst (zusätzliche Mock-Aufrufe für Backup)
+  - Imports: ROLLBACK_PATTERN, SELFCHECK_PATTERN, BACKUP_FILENAME
+
+### Tests
+- Neue Tests: 42 (alle grün)
+- Gesamt: 65 in test_self_update.py, 1426 passed gesamt, keine Regression
+
+### Commands
+- "rollback" / "update zurücksetzen" → git reset --hard auf Backup-Hash + restart
+- "selfcheck" / "systemcheck" / "prüf dich" / "alles ok?" → Gesundheitsprüfung
