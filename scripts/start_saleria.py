@@ -18,6 +18,7 @@ Voraussetzungen Tower (Windows):
 from __future__ import annotations
 
 import argparse
+import atexit
 import logging
 import os
 import platform
@@ -742,5 +743,57 @@ def main():
         run_matrix(assistant, stt=stt, avatar=avatar, audio_converter=audio_converter)
 
 
+_LOCK_FILE = _PROJECT_ROOT / ".saleria.lock"
+_lock_fh = None
+
+
+def _acquire_instance_lock() -> None:
+    """Stellt sicher, dass nur eine Instanz von Saleria gleichzeitig läuft.
+
+    Nutzt eine exklusive Dateisperre auf .saleria.lock.
+    Unter Windows: msvcrt.locking (OS gibt Lock bei Crash automatisch frei).
+    Unter Linux: fcntl.flock.
+    """
+    global _lock_fh
+    _lock_fh = open(_LOCK_FILE, "w")
+
+    try:
+        if platform.system() == "Windows":
+            import msvcrt
+            msvcrt.locking(_lock_fh.fileno(), msvcrt.LK_NBLCK, 1)
+        else:
+            import fcntl
+            fcntl.flock(_lock_fh, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except (OSError, IOError):
+        _lock_fh.close()
+        _lock_fh = None
+        print("FEHLER: Saleria läuft bereits! Nur eine Instanz erlaubt.")
+        print(f"  Lock-Datei: {_LOCK_FILE}")
+        print("  Falls kein Prozess läuft: Datei manuell löschen.")
+        sys.exit(1)
+
+    _lock_fh.write(str(os.getpid()))
+    _lock_fh.flush()
+    atexit.register(_release_instance_lock)
+    logger.info("Instanz-Lock erworben (PID %d)", os.getpid())
+
+
+def _release_instance_lock() -> None:
+    """Gibt den Instanz-Lock frei."""
+    global _lock_fh
+    if _lock_fh is None:
+        return
+    try:
+        _lock_fh.close()
+    except Exception:
+        pass
+    try:
+        _LOCK_FILE.unlink(missing_ok=True)
+    except Exception:
+        pass
+    _lock_fh = None
+
+
 if __name__ == "__main__":
+    _acquire_instance_lock()
     main()

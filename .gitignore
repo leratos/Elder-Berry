@@ -209,3 +209,5 @@ docs/personal/
 !.gitkeep
 !.env.example
 !README.md
+# Saleria instance lock
+.saleria.lock
