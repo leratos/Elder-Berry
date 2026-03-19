@@ -216,3 +216,230 @@ class TestSetMonitor:
         r = client.get("/")
         assert "monitorSelect" in r.text
         assert "Computer Use Monitor" in r.text
+
+
+# ===========================================================================
+# Allowed Senders (Matrix-Sicherheit)
+# ===========================================================================
+
+class TestGetAllowedSenders:
+    """GET /api/allowed-senders – Status abfragen."""
+
+    def test_no_secret_store(self, client_local):
+        """Ohne SecretStore: available=False."""
+        r = client_local.get("/api/allowed-senders")
+        assert r.status_code == 200
+        data = r.json()
+        assert data["available"] is False
+        assert data["configured"] is False
+        assert data["count"] == 0
+
+    def test_not_configured(self, router_local):
+        """SecretStore vorhanden, aber kein Key gesetzt."""
+        from unittest.mock import MagicMock
+        mock_store = MagicMock()
+        mock_store.get_or_none.return_value = None
+        dashboard = AudioDashboard(
+            audio_router=router_local, secret_store=mock_store,
+        )
+        client = TestClient(dashboard.app)
+
+        r = client.get("/api/allowed-senders")
+        data = r.json()
+        assert data["available"] is True
+        assert data["configured"] is False
+        assert data["count"] == 0
+
+    def test_configured_single(self, router_local):
+        """Ein Sender konfiguriert."""
+        from unittest.mock import MagicMock
+        mock_store = MagicMock()
+        mock_store.get_or_none.return_value = "@user:matrix.example.com"
+        dashboard = AudioDashboard(
+            audio_router=router_local, secret_store=mock_store,
+        )
+        client = TestClient(dashboard.app)
+
+        r = client.get("/api/allowed-senders")
+        data = r.json()
+        assert data["available"] is True
+        assert data["configured"] is True
+        assert data["count"] == 1
+
+    def test_configured_multiple(self, router_local):
+        """Mehrere Sender konfiguriert."""
+        from unittest.mock import MagicMock
+        mock_store = MagicMock()
+        mock_store.get_or_none.return_value = (
+            "@user1:matrix.example.com, @user2:matrix.example.com"
+        )
+        dashboard = AudioDashboard(
+            audio_router=router_local, secret_store=mock_store,
+        )
+        client = TestClient(dashboard.app)
+
+        r = client.get("/api/allowed-senders")
+        data = r.json()
+        assert data["count"] == 2
+
+
+class TestPostAllowedSenders:
+    """POST /api/allowed-senders – Sender setzen/entfernen."""
+
+    def test_no_secret_store(self, client_local):
+        """Ohne SecretStore: 400."""
+        r = client_local.post(
+            "/api/allowed-senders",
+            json={"senders": "@user:test.com"},
+        )
+        assert r.status_code == 400
+        assert "SecretStore" in r.json()["error"]
+
+    def test_empty_body(self, router_local):
+        """Leerer Body: 400."""
+        from unittest.mock import MagicMock
+        mock_store = MagicMock()
+        dashboard = AudioDashboard(
+            audio_router=router_local, secret_store=mock_store,
+        )
+        client = TestClient(dashboard.app)
+
+        r = client.post("/api/allowed-senders")
+        assert r.status_code == 400
+
+    def test_set_valid_sender(self, router_local):
+        """Gültigen Sender setzen."""
+        from unittest.mock import MagicMock
+        mock_store = MagicMock()
+        dashboard = AudioDashboard(
+            audio_router=router_local, secret_store=mock_store,
+        )
+        client = TestClient(dashboard.app)
+
+        r = client.post(
+            "/api/allowed-senders",
+            json={"senders": "@user:matrix.example.com"},
+        )
+        assert r.status_code == 200
+        data = r.json()
+        assert data["configured"] is True
+        assert data["count"] == 1
+        mock_store.set.assert_called_once_with(
+            "matrix_allowed_senders",
+            "@user:matrix.example.com",
+        )
+
+    def test_set_multiple_senders(self, router_local):
+        """Mehrere gültige Sender setzen."""
+        from unittest.mock import MagicMock
+        mock_store = MagicMock()
+        dashboard = AudioDashboard(
+            audio_router=router_local, secret_store=mock_store,
+        )
+        client = TestClient(dashboard.app)
+
+        r = client.post(
+            "/api/allowed-senders",
+            json={"senders": "@a:test.com, @b:test.com"},
+        )
+        assert r.status_code == 200
+        data = r.json()
+        assert data["count"] == 2
+
+    def test_invalid_sender_format(self, router_local):
+        """Ungültiges Format: kein @ oder kein : → 400."""
+        from unittest.mock import MagicMock
+        mock_store = MagicMock()
+        dashboard = AudioDashboard(
+            audio_router=router_local, secret_store=mock_store,
+        )
+        client = TestClient(dashboard.app)
+
+        r = client.post(
+            "/api/allowed-senders",
+            json={"senders": "ungueltig"},
+        )
+        assert r.status_code == 400
+        assert "Ungültige Matrix-ID" in r.json()["error"]
+        mock_store.set.assert_not_called()
+
+    def test_mixed_valid_invalid(self, router_local):
+        """Mix aus gültig und ungültig: 400, nichts wird gespeichert."""
+        from unittest.mock import MagicMock
+        mock_store = MagicMock()
+        dashboard = AudioDashboard(
+            audio_router=router_local, secret_store=mock_store,
+        )
+        client = TestClient(dashboard.app)
+
+        r = client.post(
+            "/api/allowed-senders",
+            json={"senders": "@valid:test.com, invalid"},
+        )
+        assert r.status_code == 400
+        mock_store.set.assert_not_called()
+
+    def test_remove_senders(self, router_local):
+        """Sender entfernen."""
+        from unittest.mock import MagicMock
+        mock_store = MagicMock()
+        dashboard = AudioDashboard(
+            audio_router=router_local, secret_store=mock_store,
+        )
+        client = TestClient(dashboard.app)
+
+        r = client.post(
+            "/api/allowed-senders",
+            json={"action": "remove"},
+        )
+        assert r.status_code == 200
+        data = r.json()
+        assert data["configured"] is False
+        assert data["count"] == 0
+        mock_store.delete.assert_called_once_with("matrix_allowed_senders")
+
+    def test_remove_nonexistent_ok(self, router_local):
+        """Entfernen wenn nicht vorhanden: kein Fehler."""
+        from unittest.mock import MagicMock
+        from elder_berry.core.secret_store import SecretNotFoundError
+        mock_store = MagicMock()
+        mock_store.delete.side_effect = SecretNotFoundError("nicht da")
+        dashboard = AudioDashboard(
+            audio_router=router_local, secret_store=mock_store,
+        )
+        client = TestClient(dashboard.app)
+
+        r = client.post(
+            "/api/allowed-senders",
+            json={"action": "remove"},
+        )
+        assert r.status_code == 200
+
+    def test_empty_senders_string(self, router_local):
+        """Leerer senders-String: 400."""
+        from unittest.mock import MagicMock
+        mock_store = MagicMock()
+        dashboard = AudioDashboard(
+            audio_router=router_local, secret_store=mock_store,
+        )
+        client = TestClient(dashboard.app)
+
+        r = client.post(
+            "/api/allowed-senders",
+            json={"senders": "   "},
+        )
+        assert r.status_code == 400
+
+    def test_html_contains_senders_section(self, router_local):
+        """HTML enthält Sicherheits-Sektion."""
+        from unittest.mock import MagicMock
+        mock_store = MagicMock()
+        dashboard = AudioDashboard(
+            audio_router=router_local, secret_store=mock_store,
+        )
+        client = TestClient(dashboard.app)
+
+        r = client.get("/")
+        assert "senderInput" in r.text
+        assert "Sicherheit" in r.text
+        assert "Erlaubte Matrix-Absender" in r.text

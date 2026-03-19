@@ -585,6 +585,21 @@ def run_matrix(assistant, stt=None, avatar=None, audio_converter=None):
 
     log_dir = _PROJECT_ROOT / "logs"
 
+    # --- Allowed Senders: Matrix-User-IDs aus SecretStore laden ---
+    allowed_senders = None
+    raw_senders = secrets.get_or_none("matrix_allowed_senders")
+    if raw_senders:
+        sender_list = [s.strip() for s in raw_senders.split(",") if s.strip()]
+        if sender_list:
+            allowed_senders = frozenset(sender_list)
+            logger.info("Allowed-Senders: %d konfiguriert", len(allowed_senders))
+    if not allowed_senders:
+        logger.warning(
+            "Allowed-Senders nicht konfiguriert – alle Absender werden akzeptiert. "
+            "Setze via Dashboard (http://localhost:8090) oder SecretStore: "
+            "matrix_allowed_senders = '@user:domain.com'"
+        )
+
     bridge = MatrixBridge(
         channel=channel,
         assistant=assistant,
@@ -594,6 +609,7 @@ def run_matrix(assistant, stt=None, avatar=None, audio_converter=None):
         alert_monitor=alert_monitor,
         alert_room_id=room_id,
         error_log_dir=log_dir,
+        allowed_senders=allowed_senders,
         stt=stt,
         reminder_scheduler=reminder_scheduler,
         briefing_scheduler=briefing_scheduler,
@@ -608,6 +624,7 @@ def run_matrix(assistant, stt=None, avatar=None, audio_converter=None):
         dashboard = AudioDashboard(
             audio_router=audio_router,
             computer_use=computer_use,
+            secret_store=secrets,
             port=8090,
         )
         dashboard.start()
