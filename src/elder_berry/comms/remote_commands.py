@@ -175,7 +175,12 @@ Sprachnachrichten:
   🎤 OGG/Opus Sprachnachricht → Whisper STT → Saleria antwortet (Text + Sprache)
 
 🔄 Self-Update:
-  update / update dich – Git Pull + Dependencies + Neustart"""
+  update / update dich – Git Pull + Dependencies + Neustart
+  rollback / update zurücksetzen – Auf Stand vor letztem Update zurücksetzen
+
+🩺 Systemcheck:
+  selfcheck / systemcheck / prüf dich – Gesundheitsprüfung aller Komponenten
+  alles ok? – Kurzform für Systemcheck"""
 
 # Aggregierte Keyword-Map (aus allen Handlern zusammengeführt).
 # Wird von der Bridge für Keyword-Routing genutzt.
