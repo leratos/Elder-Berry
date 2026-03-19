@@ -45,13 +45,15 @@ inside a 3D-printed elderberry tree trunk enclosure.
 - **Dev tools**: `git status`, `git pull`, `docker ps`, `docker restart synapse`
 - **Avatar**: `selfie`, `selfie angry` (sends rendered avatar image)
 - **Audio routing**: `audio` (status), `audio lokal an/aus` (toggle local playback)
+- **Web search**: `suche Dachdecker Plattenburg`, `google Python Tutorial` (Brave Search API)
+- **Computer Use**: `klick auf den OK-Button`, `tippe Hello`, `scroll runter` (Anthropic Vision)
 - **Natural language**: "schick mir ein screenshot", "nächster song", "was kannst du"
 - **Claude Agent**: complex project tasks via Anthropic API (Sonnet 4.6)
   - Read/write files in `docs/`, append to journal, run tests, git status
   - Trigger: `claude "Dokumentiere X im Journal"`
 - **Voice messages**: send a voice note in Element, Whisper transcribes it, Saleria responds with text + voice
 - **Text responses**: Saleria personality via Anthropic Sonnet 4.6 (Ollama fallback)
-- **Web dashboard**: `http://localhost:8090` – audio routing toggle (FastAPI, no framework)
+- **Web dashboard**: `http://localhost:8090` – audio routing + monitor selection (FastAPI)
 
 ## Quick Start
 
@@ -71,11 +73,26 @@ pip install -e ".[windows,tts-neural,avatar,matrix,remote,memory,stt]"
 pip install chromadb faster-whisper
 ```
 
-### 2. Set Up Secrets
+### 2. API Keys & Accounts
+
+| Service | Required | Registration | Cost |
+|---|---|---|---|
+| **Anthropic** | Yes (primary LLM) | [console.anthropic.com](https://console.anthropic.com) | Pay-per-use (~$3/MTok Sonnet) |
+| **Matrix Server** | Yes (remote features) | Self-hosted Synapse or public server | Free (self-hosted) |
+| **Google Calendar** | Optional | [console.cloud.google.com](https://console.cloud.google.com) (OAuth2 App) | Free |
+| **Brave Search** | Optional | [brave.com/search/api](https://brave.com/search/api/) | $5/1000 Req, $5 monthly credit |
+| **Email (IMAP)** | Optional | Any email provider (Strato, GMX, Gmail, ...) | Free |
+| **Berry-Gym** | Optional | Internal REST API | Free |
+| **Open-Meteo** | Optional (weather) | No registration needed | Free |
+| **Ollama** | Optional (offline fallback) | Local install, no account | Free |
+
+### 3. Set Up Secrets
 
 ```python
 from elder_berry.core.secret_store import SecretStore
 store = SecretStore()
+
+# === REQUIRED ===
 
 # Anthropic (primary LLM backend)
 store.set("anthropic_api_key", "sk-ant-...")
@@ -86,17 +103,41 @@ store.set("matrix_user_id", "@saleria:matrix.example.com")
 store.set("matrix_access_token", "syt_...")  # from /_matrix/client/v3/login
 store.set("matrix_room_id", "!roomid:matrix.example.com")
 
-# Wake-on-LAN (optional)
+# === OPTIONAL ===
+
+# Brave Search (web search)
+store.set("brave_api_key", "BSA...")
+
+# Weather (Open-Meteo, no API key – just coordinates)
+store.set("weather_latitude", "52.52")
+store.set("weather_longitude", "13.41")
+store.set("weather_city", "Berlin")
+
+# Email (IMAP – any provider)
+store.set("email_imap_host", "imap.strato.de")
+store.set("email_user", "you@example.com")
+store.set("email_password", "...")
+
+# Google Calendar (run setup first: python scripts/setup_google_oauth.py)
+# → stores OAuth2 tokens automatically in SecretStore
+
+# Berry-Gym (fitness API)
+store.set("berry_gym_api_token", "<token>")
+
+# Wake-on-LAN
 store.set("tower_mac_address", "AA:BB:CC:DD:EE:FF")
+
+# RPi5 Avatar Display
+store.set("robot_host", "http://192.168.50.220:8000")
 ```
 
-### 3. Prerequisites
+### 5. Prerequisites
 
 - **Ollama** running locally with `phi4:14b` (offline fallback): `ollama serve`
 - **Embedding model**: `ollama pull nomic-embed-text`
 - **ffmpeg** installed (for audio conversion): `winget install ffmpeg`
 
-### 4. Run
+### 6. Run
 
 ```bash
 # Full Matrix mode (recommended)
@@ -112,7 +153,7 @@ python scripts/start_saleria.py --whisper-model large-v3  # Better STT
 python scripts/start_saleria.py --debug           # Debug logging
 ```
 
-### 5. Usage via Element (Matrix Client)
+### 7. Usage via Element (Matrix Client)
 
 | You type in Element | What happens |
 |---|---|
@@ -133,6 +174,11 @@ python scripts/start_saleria.py --debug           # Debug logging
 | `erinnere mich um 18:00: Wäsche` | Set a reminder |
 | `briefing` / "guten morgen" | Daily briefing (weather + calendar + reminders) |
 | `training` / `prs` | Fitness data (Berry-Gym) |
+| `suche Dachdecker Plattenburg` | Web search (Brave Search API) |
+| `google Python Tutorial` | Web search (alias) |
+| `klick auf den OK-Button` | Computer Use: vision-based click |
+| `tippe Hello World` | Computer Use: type text |
+| `scroll runter` / `drück Strg+S` | Computer Use: scroll / press keys |
 | `zusammenfassung C:\...\report.pdf` | Summarize PDF/TXT via LLM |
 | `audio` / `audio lokal an` / `audio lokal aus` | Audio routing mode |
 | `schick mir C:\...\file.pdf` | Send file via Matrix |
@@ -152,11 +198,14 @@ python scripts/start_saleria.py --debug           # Debug logging
 [MatrixBridge] ── Command-Router:   [AudioRouter]
        |
        ├─ Audio message?   ──> STT (Faster Whisper) ──> re-route as text
-       ├─ Direct command?   ──> RemoteCommandHandler
-       │                         ├─ System: status, screenshot, volume, processes
-       │                         ├─ Tools: calendar, email, weather, timer, briefing
-       │                         ├─ Files: send, download, document summary
-       │                         └─ Audio: mode toggle (matrix_only / matrix_and_local)
+       ├─ Direct command?   ──> RemoteCommandHandler (orchestrator)
+       │                         ├─ SystemCommands: status, screenshot, volume, media, avatar
+       │                         ├─ CalendarCommands: termine, create, delete, search
+       │                         ├─ MailCommands: mails, search, attachments
+       │                         ├─ WeatherCommands: weather, timer, reminders, briefing
+       │                         ├─ FileCommands: clipboard, send file, download
+       │                         ├─ ProcessCommands: start/kill, git, docker, wol
+       │                         └─ AdvancedCommands: computer use, web search, docs, audio
        ├─ "claude" + "..."? ──> ClaudeAgent (Anthropic API, Sonnet 4.6)
        └─ Everything else   ──> Assistant (LLM + TTS + Avatar)
                                       |
@@ -190,7 +239,10 @@ python scripts/start_saleria.py --debug           # Debug logging
 | `SecretStore` | `core.secret_store` | Fernet-encrypted credential store |
 | `MatrixChannel` | `comms.matrix_channel` | matrix-nio async client |
 | `MatrixBridge` | `comms.bridge` | Async/sync bridge with command router |
-| `RemoteCommandHandler` | `comms.remote_commands` | 20+ direct commands (no LLM) |
+| `RemoteCommandHandler` | `comms.remote_commands` | Orchestrator: delegates to domain handlers |
+| `CommandHandler` (ABC) | `comms.commands.base` | Base class for domain-specific command handlers |
+| `ComputerUseController` | `actions.computer_use` | Vision-based PC control (Anthropic Computer Use API) |
+| `BraveSearchClient` | `tools.brave_search_client` | Web search via Brave Search API |
 | `ClaudeAgent` | `comms.claude_agent` | Anthropic API for complex tasks |
 | `AlertMonitor` | `comms.alert_monitor` | Proactive alerts (disk, process crash) |
 | `AudioConverter` | `comms.audio_converter` | WAV -> OGG/Opus for Matrix voice messages |
@@ -237,6 +289,7 @@ pip install -e ".[memory]"       # RAG memory (chromadb)
 pip install -e ".[stt]"          # Speech-to-text (faster-whisper)
 pip install -e ".[tools]"        # Personal assistant tools (google-api, oauthlib)
 pip install -e ".[documents]"   # Document summarization (pymupdf)
+pip install -e ".[computer-use]" # Computer Use vision control (Pillow, mss)
 pip install -e ".[robot]"        # RPi5 communication (fastapi, uvicorn)
 pip install -e ".[agent]"        # Laptop agent server (fastapi, audio)
 ```
@@ -247,7 +300,7 @@ pip install -e ".[agent]"        # Laptop agent server (fastapi, audio)
 pytest tests/ -q
 ```
 
-1100+ tests, all passing.
+1170+ tests, all passing.
 
 ## Project Structure
 
@@ -259,6 +312,7 @@ src/elder_berry/
 │   └── assets/       # Sprite components (body/, eye/, mouth/)
 ├── character/        # Character engine + Saleria personality
 ├── comms/            # Matrix, remote commands, Claude agent, alerts
+│   └── commands/     # Domain-specific command handlers (system, calendar, mail, ...)
 ├── core/             # Assistant orchestrator, secret store, audio router
 ├── llm/              # LLM clients (Anthropic, Ollama, OpenRouter, Router)
 ├── memory/           # RAG memory (ChromaDB + embeddings)
@@ -287,7 +341,7 @@ scripts/
 ├── demo_tts_live.py     # Interactive TTS testing (emotion + text)
 └── demo_integration.py  # Robot simulator integration test
 
-tests/                # 1100+ unit + integration tests
+tests/                # 1170+ unit + integration tests
 ```
 
 ## Roadmap
@@ -306,8 +360,8 @@ tests/                # 1100+ unit + integration tests
 | 10 | RPi5 Avatar-Display (Pepper's Ghost live) | Mostly done |
 | 11 | Document Summarization (PDF/TXT via LLM) | Done |
 | 12 | Audio Routing + Web Interface (local playback toggle, dashboard) | Done |
-| 13 | Computer Use (Anthropic Vision + PC control via screenshots) | Planned |
-| 14 | Web Search (Brave Search API + LLM result formatting) | Planned |
+| 13 | Computer Use (Anthropic Vision + PC control via screenshots) | Done |
+| 14 | Web Search (Brave Search API + LLM result formatting) | Done |
 
 ## Hardware
 
@@ -317,7 +371,7 @@ tests/                # 1100+ unit + integration tests
 | Laptop (RTX 4070, 8GB VRAM) | Development, testing, mobile client |
 | Raspberry Pi 5 (4GB) | Avatar display (DSI), sensors, servo |
 | RPi Touch Display 2 (5", 720x1280) | Pepper's Ghost hologram display |
-| Servo (SG90/MG996R) + turntable | Rotation towards user |
+| 28BYJ-48 Stepper + ULN2003 + turntable | Rotation towards user (360°, Hall-Sensor homing) |
 
 ## LLM Strategy
 

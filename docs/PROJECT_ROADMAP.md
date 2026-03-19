@@ -260,10 +260,10 @@ Saleria kann auf Anfrage im Internet suchen und die Ergebnisse aufbereitet zurü
 - Brave API: $5/1000 Req, aber $5 monatliches Guthaben → effektiv kostenlos unter 1000 Req/Monat
 - Claude Intent + Aufbereitung: ~500 Input + ~300 Output Tokens → ~0.5 Cent pro Suche
 
-### Offene Fragen
-- Soll Saleria automatisch erkennen wann eine Web-Suche nötig ist (ohne explizites "suche")?
-- Lokale Ergebnisse (Maps/Local Pack) vs. allgemeine Web-Suche?
-- Ergebnis-Caching (gleiche Suche innerhalb X Minuten)?
+### Entscheidungen (gelöst)
+- Auto-Erkennung: Nein – explizit ("suche ...") + LLM-Fallback über Saleria-Prompt reicht
+- Lokale Ergebnisse: Nein – Standard-Web-Suche, Brave liefert beides implizit
+- Ergebnis-Caching: Nein – bei effektiv kostenlosem Free-Tier nicht nötig
 
 ---
 
