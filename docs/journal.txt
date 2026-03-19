@@ -2005,3 +2005,37 @@ User: "Lies meine Mails und trag den Zahnarzttermin ein"
 - 107/107 test_intent_routing.py ✓
 - 25/25 test_assistant.py ✓
 - 255/256 bestehende Tests ✓ (1 vorbestehender Fehler in test_note_store.py: Timing)
+
+## In Arbeit: Phase 4 (Hardware) – Gehäuse-Session: Sensoren, Drehteller, Druckvorbereitung (2026-03-19)
+
+### Entscheidungen
+- **Pico 2 / Pico 2W → GESTRICHEN**: Alle Sensoren + Stepper direkt über RPi5 GPIO.
+  Kein Pico nötig — kein Echtzeit-Timing erforderlich, spart USB-Protokoll + MicroPython-Codebase.
+- **Display um 180° drehen**: Kamera-Flachband würde sonst verdrillt.
+  Software-Fix: `display_lcd_rotate=2` in /boot/firmware/config.txt (dreht Display + Touch).
+- **Drehteller-Lager**: 200mm Alu Lazy-Susan (60-70kg Belastbarkeit, ~10€).
+  Vorteil gegenüber Axiallager: radiale Stabilität auf 90mm Radius, ein Teil statt zwei.
+- **Verbindungstechnik Drucksegmente**: Zapfen + Nut + Fixierstifte statt Schrauben.
+  Weniger Gewindeeinsätze, besser für dünnwandiges Resin, formschlüssig.
+
+### Sensor-Platzierung (CAD fertig)
+- **APDS-9960** (Proximity/Gesture/Light): Am Sockel unten, Sensor-Fenster nach vorne (Richtung Nutzer).
+  Board in Tasche, 0,25mm Luft ringsum. Nut als Schiene: reindrücken, Schwerkraft hält.
+  Zwei 30°-Fasen links/rechts (Wandstärke 3mm vs 1mm asymmetrisch → Fasen öffnen IR-Kegel).
+  Horizontal montiert — reicht für Proximity-Erkennung auf 60-80cm Schreibtischabstand.
+- **BME280** (Temp/Humidity/Pressure): Am Boden, Sensor nach unten zeigend.
+  Mit Schraube fixiert. NICHT im Luftauslass (würde RPi-Abwärme messen statt Raumtemperatur).
+
+### Drehteller-Konstruktion (CAD in Arbeit)
+- Antrieb: Reaktionsantrieb — 28BYJ-48 Gehäuse fest am Baum, Welle steckt in festem Zentralzapfen.
+  Motor dreht Welle → Zapfen fest → Motorgehäuse (+ Baum) dreht sich entgegengesetzt.
+- Obere Platte: verbunden mit Innenring Drehkranz + Stepper-Gehäuse + Baumstamm
+- Untere Platte: verbunden mit Außenring Drehkranz + Zentralzapfen (D-Aussparung für Motorwelle)
+- Motorwelle: 0,3mm Spiel in D-Aussparung (nur Drehmoment, keine Radialkraft)
+- 0,5mm Luft axial vor Abflachungsende (kein Klemmen)
+- Schwerpunkt: 3mm aus Mitte bei 98mm Lager-Radius → kein Kipp-Risiko
+
+### Nächste Schritte
+- A3144 Hall-Sensor Anschläge für ±180° Begrenzung fertigstellen
+- Gehäuse in Drucksegmente zerteilen
+- Setzkanten an Segmentgrenzen vorsehen (Zapfen + Nut + Stift-Fixierung)

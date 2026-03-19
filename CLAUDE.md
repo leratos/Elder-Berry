@@ -103,7 +103,6 @@ Logiklücken und Fehler hin.
   - Unterwegs: kann Tower als LLM-Backend über NordVPN Meshnet nutzen
   - Fallback: eigenes Ollama lokal wenn Tower nicht erreichbar
 - RPi 5 (Linux): /home/pi/elder-berry/, Python 3.13 (System-Python Bookworm), absolute Linux-Pfade
-- Pico 2W: MicroPython, Rolle wird evaluiert (Sensoren/Drehteller, keine Motorsteuerung mehr)
 - Gleiches Modell auf Tower und Laptop → identisches Verhalten beim Testen
 - Verwende pathlib statt hartcodierte Slashes wo plattformübergreifend
 - Weise aktiv darauf hin wenn Code plattformspezifisch ist
@@ -120,24 +119,18 @@ Logiklücken und Fehler hin.
 - RTX 4070 Laptop (8GB VRAM)
 - Ollama lokal (phi4:14b)
 
-### RPi 5 (I/O-Hub)
-- Sensor-Integration: Kamera, IR, Temperatur (noch offen)
+### RPi 5 (I/O-Hub + Sensor-Hub)
+- Sensor-Integration: BME280 (I2C), APDS-9960 (I2C), Kamera (CSI)
+- Drehteller: 28BYJ-48 Stepper + ULN2003 (GPIO) + A3144 Hall-Sensoren (GPIO)
 - Kommunikation Tower ↔ RPi 5: REST via FastAPI (Port 8000, WLAN)
-- Kommunikation RPi 5 ↔ Pico 2W: WLAN oder USB (noch zu definieren)
 - Kein LLM
-
-### Pico 2W (Rolle wird evaluiert)
-- Ursprünglich: Echtzeit-Motorsteuerung → GESTRICHEN mit Mecanum
-- Mögliche neue Rolle: Sensor-Hub (Temperatur, IR), Drehteller-Servo
-- Oder: komplett weglassen, Servo direkt über RPi5 GPIO
-- MicroPython
 
 ### Roboter-Chassis → GESTRICHEN (stationär + drehbar)
 - Mecanum-Antrieb gestrichen – Mehrwert zu gering
-- Stattdessen: Drehteller (Servo + Kugellager) unter dem Baumstamm
-- 1× Servo (SG90 oder MG996R) über RPi5 GPIO
+- Stattdessen: Drehteller mit 200mm Alu Lazy-Susan Lager (60-70kg Tragkraft)
+- 1× 28BYJ-48 Stepper + ULN2003 über RPi5 GPIO (Reaktionsantrieb)
+- A3144 Hall-Sensoren für ±180° Begrenzung + Home-Position
 - Akku: optional (USB-C Netzteil für Dauerbetrieb möglich)
-- Pico 2W: Rolle wird evaluiert (Sensoren ja, Motoren nein)
 - Kamera: fest im Gehäuse
 
 ## LLM-STRATEGIE
