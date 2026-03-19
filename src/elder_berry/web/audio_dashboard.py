@@ -1,12 +1,14 @@
-"""AudioDashboard – Minimales Web-UI zum Steuern des Audio-Routing-Modus
-und der Monitor-Auswahl für Computer Use.
+"""AudioDashboard – Minimales Web-UI zum Steuern des Audio-Routing-Modus,
+der Monitor-Auswahl für Computer Use und der Allowed-Senders-Konfiguration.
 
 Stellt eine FastAPI-App bereit mit:
-- GET /             → HTML-Seite mit Audio-Toggle + Monitor-Dropdown
+- GET /             → HTML-Seite mit Audio-Toggle + Monitor-Dropdown + Sicherheit
 - GET /api/audio    → aktueller Modus (JSON)
 - POST /api/audio   → Modus setzen oder togglen (JSON)
 - GET /api/monitors → verfügbare Monitore (JSON)
 - POST /api/monitor → Monitor für Computer Use setzen (JSON)
+- GET /api/allowed-senders  → Status (configured, count) – keine Klartext-IDs
+- POST /api/allowed-senders → Sender setzen oder entfernen (JSON)
 """
 
 from __future__ import annotations
@@ -21,6 +23,7 @@ from fastapi.responses import HTMLResponse, JSONResponse
 if TYPE_CHECKING:
     from elder_berry.actions.computer_use import ComputerUseController
     from elder_berry.core.audio_router import AudioRouter
+    from elder_berry.core.secret_store import SecretStore
 
 logger = logging.getLogger(__name__)
 
@@ -42,15 +45,19 @@ class AudioDashboard:
         Port (Default: 8090).
     """
 
+    ALLOWED_SENDERS_KEY = "matrix_allowed_senders"
+
     def __init__(
         self,
         audio_router: AudioRouter,
         computer_use: ComputerUseController | None = None,
+        secret_store: SecretStore | None = None,
         host: str = "0.0.0.0",
         port: int = 8090,
     ) -> None:
         self._router = audio_router
         self._computer_use = computer_use
+        self._secret_store = secret_store
         self._host = host
         self._port = port
         self._app = FastAPI(title="Elder-Berry Settings Dashboard")
@@ -155,6 +162,85 @@ class AudioDashboard:
             return JSONResponse({
                 "selected": index,
                 "monitors": monitors,
+            })
+
+        # ----------------------------------------------------------
+        # Allowed Senders (Matrix-Sicherheit)
+        # ----------------------------------------------------------
+
+        @self._app.get("/api/allowed-senders")
+        async def get_allowed_senders():
+            if not self._secret_store:
+                return JSONResponse({
+                    "available": False,
+                    "configured": False,
+                    "count": 0,
+                })
+            raw = self._secret_store.get_or_none(self.ALLOWED_SENDERS_KEY)
+            if not raw:
+                return JSONResponse({
+                    "available": True,
+                    "configured": False,
+                    "count": 0,
+                })
+            senders = [s.strip() for s in raw.split(",") if s.strip()]
+            return JSONResponse({
+                "available": True,
+                "configured": bool(senders),
+                "count": len(senders),
+            })
+
+        @self._app.post("/api/allowed-senders")
+        async def set_allowed_senders(body: dict | None = None):
+            if not self._secret_store:
+                return JSONResponse(
+                    {"error": "SecretStore nicht verfügbar."},
+                    status_code=400,
+                )
+            if not body:
+                return JSONResponse(
+                    {"error": "Request-Body fehlt."},
+                    status_code=400,
+                )
+
+            # Entfernen-Aktion
+            if body.get("action") == "remove":
+                try:
+                    self._secret_store.delete(self.ALLOWED_SENDERS_KEY)
+                except Exception:
+                    pass  # Key existiert nicht – OK
+                logger.info("Allowed-Senders entfernt")
+                return JSONResponse({
+                    "configured": False,
+                    "count": 0,
+                })
+
+            # Setzen-Aktion
+            senders_raw = body.get("senders", "")
+            if not isinstance(senders_raw, str) or not senders_raw.strip():
+                return JSONResponse(
+                    {"error": "Parameter 'senders' fehlt oder leer."},
+                    status_code=400,
+                )
+
+            # Validierung: jede ID muss mit @ beginnen und : enthalten
+            senders = [s.strip() for s in senders_raw.split(",") if s.strip()]
+            invalid = [s for s in senders if not s.startswith("@") or ":" not in s]
+            if invalid:
+                return JSONResponse(
+                    {"error": f"Ungültige Matrix-ID(s): {', '.join(invalid)}. "
+                              "Format: @user:domain.com"},
+                    status_code=400,
+                )
+
+            self._secret_store.set(
+                self.ALLOWED_SENDERS_KEY,
+                ",".join(senders),
+            )
+            logger.info("Allowed-Senders gesetzt: %d Sender", len(senders))
+            return JSONResponse({
+                "configured": True,
+                "count": len(senders),
             })
 
     def _is_port_free(self) -> bool:

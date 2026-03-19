@@ -1684,3 +1684,46 @@
 - Neuer Abschnitt 4: Funktionsumfang mit vollständiger Command-Tabelle
 - Neuer Abschnitt 6: Erweiterungsvorschläge (10 Punkte mit Priorität)
 - Gesamtbewertung: 7.75/10 (vorher 7.1/10)
+
+## In Arbeit: Allowed-Senders Dashboard (2026-03-19)
+
+### Ziel
+- allowed_senders für MatrixBridge über Web-Dashboard konfigurierbar machen
+- Matrix-User-IDs werden im SecretStore gespeichert (Key: matrix_allowed_senders)
+- Dashboard zeigt nur ob/wie viele Sender konfiguriert sind, nicht die IDs selbst
+
+### Scope
+- audio_dashboard.py: SecretStore als DI-Parameter, GET/POST /api/allowed-senders
+- audio_dashboard.html: Neue Sektion "Sicherheit" mit Eingabefeld
+- start_saleria.py: allowed_senders aus SecretStore laden + an MatrixBridge + Dashboard übergeben
+- Tests für neue Routes
+
+## Abgeschlossen: Allowed-Senders Dashboard (2026-03-19)
+- Branch: feature/allowed-senders-dashboard
+
+### Neue/geänderte Dateien
+- src/elder_berry/web/audio_dashboard.py:
+  - SecretStore als optionaler DI-Parameter
+  - ALLOWED_SENDERS_KEY Klassenkonstante ("matrix_allowed_senders")
+  - GET /api/allowed-senders: Status-Abfrage (configured, count) – keine Klartext-IDs
+  - POST /api/allowed-senders: Sender setzen (mit Matrix-ID-Validierung) oder entfernen
+- src/elder_berry/web/templates/audio_dashboard.html:
+  - Neue Sektion "Sicherheit" mit Eingabefeld, Status-Badge, Speichern/Entfernen-Buttons
+  - Hinweis "Neustart erforderlich" nach Änderung
+- scripts/start_saleria.py:
+  - allowed_senders aus SecretStore laden (Key: matrix_allowed_senders)
+  - Kommagetrennte IDs → frozenset an MatrixBridge übergeben
+  - Warning loggen wenn nicht konfiguriert
+  - SecretStore an AudioDashboard übergeben
+- tests/test_audio_dashboard.py:
+  - 14 neue Tests (TestGetAllowedSenders: 4, TestPostAllowedSenders: 10)
+
+### Tests
+- Neue Tests: 14 (alle grün)
+- Gesamt: 33 Dashboard-Tests grün, 1384 passed gesamt, keine Regression
+
+### Sicherheitsdesign
+- Dashboard zeigt NICHT die gespeicherten IDs → kein Leak über Port 8090
+- Validierung: jede ID muss @user:domain Format haben
+- Wenn nicht konfiguriert: alle Sender akzeptiert (Rückwärtskompatibilität)
+- Änderung erst nach Neustart wirksam (Bridge liest beim Start)

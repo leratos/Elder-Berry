@@ -101,6 +101,59 @@
             color: #666;
             font-style: italic;
         }
+        input[type="text"] {
+            width: 100%;
+            padding: 0.8rem;
+            font-size: 0.95rem;
+            border: 1px solid #333;
+            border-radius: 10px;
+            background: #0f3460;
+            color: #e0e0e0;
+        }
+        input[type="text"]:focus {
+            outline: 2px solid #533483;
+        }
+        .btn-row {
+            display: flex;
+            gap: 0.5rem;
+            margin-top: 0.8rem;
+        }
+        .btn-row button {
+            flex: 1;
+        }
+        .btn-danger {
+            display: inline-block;
+            padding: 0.9rem 2rem;
+            font-size: 1rem;
+            border: none;
+            border-radius: 10px;
+            cursor: pointer;
+            background: #6b2038;
+            color: #fff;
+            transition: background 0.2s, transform 0.1s;
+        }
+        .btn-danger:hover { background: #8b2a4a; }
+        .btn-danger:active { transform: scale(0.97); }
+        .btn-danger:disabled {
+            background: #333;
+            color: #666;
+            cursor: not-allowed;
+        }
+        .status-badge {
+            display: inline-block;
+            padding: 0.3rem 0.8rem;
+            border-radius: 20px;
+            font-size: 0.85rem;
+            font-weight: 600;
+            margin-bottom: 1rem;
+        }
+        .status-badge.active { background: #1b4332; color: #a8d5a2; }
+        .status-badge.inactive { background: #4a1525; color: #e88; }
+        .sender-info {
+            font-size: 0.8rem;
+            color: #666;
+            margin-top: 0.5rem;
+        }
     </style>
 </head>
 <body>
@@ -131,6 +184,30 @@
             </select>
 
             <p class="monitor-info" id="monitorInfo"></p>
+        </div>
+
+        <!-- Allowed Senders Card -->
+        <div class="card" id="sendersCard">
+            <h2>Sicherheit</h2>
+            <p class="subtitle">Erlaubte Matrix-Absender</p>
+
+            <span class="status-badge inactive" id="senderBadge">Nicht konfiguriert</span>
+
+            <input type="text" id="senderInput"
+                   placeholder="@user:matrix.domain.com"
+                   autocomplete="off" spellcheck="false">
+            <p class="sender-info">Mehrere IDs kommagetrennt. Leer lassen = alle erlaubt.</p>
+
+            <div class="btn-row">
+                <button class="toggle-btn" id="senderSaveBtn" onclick="saveSenders()">
+                    Speichern
+                </button>
+                <button class="btn-danger" id="senderRemoveBtn" onclick="removeSenders()" disabled>
+                    Entfernen
+                </button>
+            </div>
+
+            <p class="sender-info" id="senderMsg"></p>
         </div>
     </div>
 
@@ -234,9 +311,94 @@
             }
         }
 
+        // --- Allowed Senders ---
+        const senderBadge = document.getElementById("senderBadge");
+        const senderInput = document.getElementById("senderInput");
+        const senderSaveBtn = document.getElementById("senderSaveBtn");
+        const senderRemoveBtn = document.getElementById("senderRemoveBtn");
+        const senderMsg = document.getElementById("senderMsg");
+
+        function updateSenderUI(data) {
+            if (!data.available) {
+                senderBadge.textContent = "Nicht verfügbar";
+                senderBadge.className = "status-badge inactive";
+                senderInput.disabled = true;
+                senderSaveBtn.disabled = true;
+                senderRemoveBtn.disabled = true;
+                senderMsg.textContent = "SecretStore nicht konfiguriert";
+                return;
+            }
+            senderInput.disabled = false;
+            senderSaveBtn.disabled = false;
+            if (data.configured) {
+                senderBadge.textContent = data.count + " Sender konfiguriert";
+                senderBadge.className = "status-badge active";
+                senderRemoveBtn.disabled = false;
+            } else {
+                senderBadge.textContent = "Nicht konfiguriert";
+                senderBadge.className = "status-badge inactive";
+                senderRemoveBtn.disabled = true;
+            }
+        }
+
+        async function fetchSenders() {
+            try {
+                const r = await fetch("/api/allowed-senders");
+                updateSenderUI(await r.json());
+            } catch (e) {
+                senderMsg.textContent = "Verbindungsfehler";
+            }
+        }
+
+        async function saveSenders() {
+            const val = senderInput.value.trim();
+            if (!val) {
+                senderMsg.textContent = "Bitte mindestens eine Matrix-ID eingeben.";
+                return;
+            }
+            senderSaveBtn.disabled = true;
+            senderMsg.textContent = "";
+            try {
+                const r = await fetch("/api/allowed-senders", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ senders: val }),
+                });
+                const data = await r.json();
+                if (data.error) {
+                    senderMsg.textContent = data.error;
+                } else {
+                    updateSenderUI(data);
+                    senderInput.value = "";
+                    senderMsg.textContent = "Gespeichert! Neustart erforderlich.";
+                }
+            } catch (e) {
+                senderMsg.textContent = "Fehler beim Speichern";
+            }
+            senderSaveBtn.disabled = false;
+        }
+
+        async function removeSenders() {
+            senderRemoveBtn.disabled = true;
+            senderMsg.textContent = "";
+            try {
+                const r = await fetch("/api/allowed-senders", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ action: "remove" }),
+                });
+                const data = await r.json();
+                updateSenderUI(data);
+                senderMsg.textContent = "Entfernt! Neustart erforderlich.";
+            } catch (e) {
+                senderMsg.textContent = "Fehler beim Entfernen";
+            }
+        }
+
         // Init
         fetchAudioStatus();
         fetchMonitors();
+        fetchSenders();
     </script>
 </body>
 </html>
