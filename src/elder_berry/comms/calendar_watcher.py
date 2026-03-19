@@ -28,6 +28,7 @@ from datetime import datetime, timedelta, timezone
 from typing import TYPE_CHECKING, Callable
 
 if TYPE_CHECKING:
+    from elder_berry.core.context_enricher import ContextEnricher
     from elder_berry.tools.google_calendar import CalendarEvent, GoogleCalendarClient
 
 logger = logging.getLogger(__name__)
@@ -48,6 +49,7 @@ class CalendarWatcher:
         calendar: GoogleCalendarClient,
         reminder_minutes: list[int] | None = None,
         poll_interval: int = 300,
+        context_enricher: ContextEnricher | None = None,
     ) -> None:
         """
         Args:
@@ -57,6 +59,8 @@ class CalendarWatcher:
                 Default: [15, 5] → 15 Min vorher + 5 Min vorher.
             poll_interval: Sekunden zwischen Kalender-Abfragen.
                 Default: 300 (5 Minuten). Nicht zu kurz wegen API-Rate-Limits.
+            context_enricher: Optionaler ContextEnricher für angereicherte Alerts.
+                Wird nur beim ERSTEN Reminder (max(reminder_minutes)) genutzt.
         """
         self._send_alert = send_alert
         self._calendar = calendar
@@ -64,6 +68,7 @@ class CalendarWatcher:
             reminder_minutes or [15, 5], reverse=True
         )
         self._poll_interval = poll_interval
+        self._context_enricher = context_enricher
 
         # State: event_id → Set von bereits gesendeten reminder_minutes
         self._reminded_events: dict[str, set[int]] = {}
@@ -144,7 +149,12 @@ class CalendarWatcher:
         self._cleanup_past_events(events)
 
     def _send_reminder(self, event: CalendarEvent, minutes: int) -> None:
-        """Formatiert und sendet eine Termin-Erinnerung."""
+        """Formatiert und sendet eine Termin-Erinnerung.
+
+        Beim ERSTEN Reminder (max(reminder_minutes)) wird der Alert mit
+        Kontext aus NoteStore, IMAP, Wetter etc. angereichert – sofern ein
+        ContextEnricher konfiguriert ist. Spätere Reminder bleiben schlank.
+        """
         time_str = event.start.astimezone().strftime("%H:%M")
 
         if minutes >= 60:
@@ -157,6 +167,25 @@ class CalendarWatcher:
         text = f"📅 Termin in {time_text}: **{event.summary}** ({time_str})"
         if event.location:
             text += f"\n  📍 {event.location}"
+
+        # Kontext-Anreicherung nur beim ersten Reminder
+        if (
+            self._context_enricher
+            and minutes == max(self._reminder_minutes)
+        ):
+            try:
+                result = self._context_enricher.enrich_event(
+                    title=event.summary,
+                    event_time=event.start,
+                    location=event.location,
+                )
+                if result.has_context and result.formatted:
+                    text += f"\n\n{result.formatted}"
+            except Exception as e:
+                logger.warning(
+                    "Kontext-Anreicherung fehlgeschlagen für '%s': %s",
+                    event.summary, e,
+                )
 
         try:
             self._send_alert(text)

@@ -1915,3 +1915,37 @@ User: "Lies meine Mails und trag den Zahnarzttermin ein"
 ### Tests
 - 16/16 test_task_chain.py ✓
 - 103/103 bestehende Tests (test_assistant.py + test_comms.py) ✓
+
+## Abgeschlossen: Phase 21 – Proaktive Kontext-Verknüpfung (2026-03-19)
+- Branch: feature/phase-21-proaktive-kontext-verknuepfung
+
+### Neue Dateien
+- src/elder_berry/core/context_enricher.py: ContextEnricher + EnrichmentResult
+  - Durchsucht NoteStore, IMAPEmailClient, WeatherClient, MemoryStore zum Termin-Titel
+  - Pro Quelle: 3s Timeout (ThreadPoolExecutor), Graceful Degradation
+  - LLM-Formatierung: Saleria-Stil System-Prompt, natürliche Zusammenfassung
+  - Fallback: Template-basiert wenn LLM fehlt/fehlschlägt
+- tests/test_context_enricher.py: 40 Tests
+
+### Geänderte Dateien
+- src/elder_berry/comms/calendar_watcher.py:
+  - Neuer optionaler Parameter: context_enricher (ContextEnricher | None)
+  - _send_reminder(): Kontext-Anreicherung nur beim ERSTEN Reminder (max(reminder_minutes))
+  - Fehler im Enricher → Standard-Alert wird trotzdem gesendet
+- scripts/start_saleria.py:
+  - NoteStore-Block vor CalendarWatcher verschoben (Dependency-Reihenfolge)
+  - ContextEnricher instanziiert mit allen verfügbaren Quellen
+  - default_user_id aus matrix_allowed_senders (erster Eintrag)
+  - An CalendarWatcher übergeben
+
+### Design-Entscheidungen
+- Alle Quellen durchsuchen, graceful degradation bei fehlenden
+- LLM-Formatierung (natürlich, passt zu Saleria-Charakter)
+- Immer suchen, nur relevante Treffer anzeigen
+- BriefingScheduler-Anreicherung auf spätere Phase verschoben
+- ContextEnricher als DI-Parameter am CalendarWatcher (nicht an Bridge)
+- Bridge unverändert – Verdrahtung komplett in start_saleria.py
+
+### Tests
+- 40/40 test_context_enricher.py ✓
+- 104/104 bestehende Tests (test_calendar_watcher.py + test_comms.py) ✓

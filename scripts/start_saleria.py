@@ -475,6 +475,37 @@ def run_matrix(assistant, stt=None, avatar=None, audio_converter=None):
     except Exception as e:
         logger.warning("Daily Briefing nicht verfügbar: %s", e)
 
+    # NoteStore – Notizen & Wissensdatenbank (optional)
+    note_store = None
+    try:
+        from elder_berry.tools.note_store import NoteStore
+        note_store = NoteStore()
+        logger.info("NoteStore: aktiv (DB: %s)", note_store._db_path)
+    except Exception as e:
+        logger.warning("NoteStore nicht verfügbar: %s", e)
+
+    # ContextEnricher – Kontext-Anreicherung für CalendarWatcher (Phase 21)
+    context_enricher = None
+    try:
+        from elder_berry.core.context_enricher import ContextEnricher
+        context_enricher = ContextEnricher(
+            note_store=note_store,
+            email_client=email_client,
+            weather_client=weather,
+            memory_store=assistant._memory,
+            llm=assistant._llm,
+            default_user_id=(
+                secrets.get_or_none("matrix_allowed_senders") or ""
+            ).split(",")[0].strip(),
+        )
+        sources = [s for s, v in [
+            ("Notes", note_store), ("Mail", email_client),
+            ("Weather", weather),
+        ] if v]
+        logger.info("ContextEnricher: aktiv (Quellen: %s)", ", ".join(sources) or "keine")
+    except Exception as e:
+        logger.warning("ContextEnricher nicht verfügbar: %s", e)
+
     # CalendarWatcher – proaktive Kalender-Erinnerungen (optional)
     calendar_watcher = None
     if calendar:
@@ -485,19 +516,11 @@ def run_matrix(assistant, stt=None, avatar=None, audio_converter=None):
                 calendar=calendar,
                 reminder_minutes=[15, 5],
                 poll_interval=300,
+                context_enricher=context_enricher,
             )
             logger.info("CalendarWatcher: aktiv (Erinnerungen: 15min, 5min vor Termin)")
         except Exception as e:
             logger.warning("CalendarWatcher nicht verfügbar: %s", e)
-
-    # NoteStore – Notizen & Wissensdatenbank (optional)
-    note_store = None
-    try:
-        from elder_berry.tools.note_store import NoteStore
-        note_store = NoteStore()
-        logger.info("NoteStore: aktiv (DB: %s)", note_store._db_path)
-    except Exception as e:
-        logger.warning("NoteStore nicht verfügbar: %s", e)
 
     # DocumentReader (Phase 11)
     from elder_berry.tools.document_reader import DocumentReader
