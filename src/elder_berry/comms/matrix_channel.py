@@ -86,6 +86,8 @@ class MatrixChannel(MessageChannel):
         self._callbacks: list[MessageCallback] = []
         self._connected = False
         self._should_sync = False
+        self._seen_event_ids: set[str] = set()
+        self._seen_max_size = 500
 
         self._client = AsyncClient(
             homeserver=homeserver,
@@ -394,10 +396,34 @@ class MatrixChannel(MessageChannel):
             else:
                 logger.info("Raum beigetreten: %s", room_id)
 
+    def _is_duplicate_event(self, event_id: str) -> bool:
+        """Prüft ob ein Event bereits verarbeitet wurde (Deduplizierung).
+
+        Matrix-nio kann dasselbe Event bei Sync-Overlaps oder Reconnects
+        mehrfach liefern. Diese Methode verhindert Doppelverarbeitung.
+        """
+        if event_id in self._seen_event_ids:
+            logger.debug("Duplikat-Event ignoriert: %s", event_id)
+            return True
+        self._seen_event_ids.add(event_id)
+        # Speicher begrenzen: älteste Einträge entfernen
+        if len(self._seen_event_ids) > self._seen_max_size:
+            # set hat keine Reihenfolge, aber bei 500 vs. tatsächlich relevanten
+            # Events (~50 in einer Session) ist ein Clear+Neustart ausreichend
+            oldest_half = len(self._seen_event_ids) // 2
+            it = iter(self._seen_event_ids)
+            to_remove = [next(it) for _ in range(oldest_half)]
+            self._seen_event_ids -= set(to_remove)
+        return False
+
     async def _on_room_message(self, room, event: RoomMessageText) -> None:
         """nio-Callback: wird für jede m.room.message (m.text) aufgerufen."""
         # Eigene Nachrichten ignorieren
         if event.sender == self._user_id:
+            return
+
+        # Duplikat-Schutz
+        if self._is_duplicate_event(event.event_id):
             return
 
         # Room-Whitelist prüfen
@@ -433,6 +459,10 @@ class MatrixChannel(MessageChannel):
         """
         # Eigene Nachrichten ignorieren
         if event.sender == self._user_id:
+            return
+
+        # Duplikat-Schutz
+        if self._is_duplicate_event(event.event_id):
             return
 
         # Room-Whitelist prüfen
@@ -491,6 +521,10 @@ class MatrixChannel(MessageChannel):
         """
         # Eigene Nachrichten ignorieren
         if event.sender == self._user_id:
+            return
+
+        # Duplikat-Schutz
+        if self._is_duplicate_event(event.event_id):
             return
 
         # Room-Whitelist prüfen
