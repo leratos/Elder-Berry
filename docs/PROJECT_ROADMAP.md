@@ -383,6 +383,17 @@ Salerias Avatar wird ausdrucksstärker und einfacher konfigurierbar.
 - **Effekt-Layer**: Optional (Träne, Schweißtropfen, Sparkle)
 - **Konzept**: `docs/concepts/phase-24-avatar-asset-management.md`
 
+## Phase 25 – Zentrales Logging & Error-Monitoring 📊 GEPLANT
+
+Fehler aus allen Komponenten werden zuverlässig erfasst, persistent gespeichert,
+und bei kritischen Problemen wird der Nutzer proaktiv über Matrix informiert.
+
+- Zentrales Logging: `dictConfig()` mit RotatingFileHandler (5 MB, 4 Dateien)
+- ErrorCollector: Custom logging.Handler für ERROR+, Deduplizierung, Rate-Limiting
+- Matrix-Alerting: Background-Worker-Fehler melden sich proaktiv beim Nutzer
+- bridge._log_error() entfernen: durch Standard-Logging ersetzt
+- **Konzept**: `docs/concepts/phase-25-zentrales-logging.md`
+
 ---
 
 ## Projektgrenzen (ehrliche Einschätzung)

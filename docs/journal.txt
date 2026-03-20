@@ -2040,6 +2040,14 @@ User: "Lies meine Mails und trag den Zahnarzttermin ein"
 - Gehäuse in Drucksegmente zerteilen
 - Setzkanten an Segmentgrenzen vorsehen (Zapfen + Nut + Stift-Fixierung)
 
+## Konzept erstellt: Phase 25 – Zentrales Logging & Error-Monitoring (2026-03-20)
+- Anlass: Summarizer-Fehler (NameError) war nur im Terminal sichtbar, nicht im Error-Log
+- Analyse: 34 Dateien loggen Fehler, aber nur 8 Stellen in bridge.py schreiben ins Error-Log
+- Background-Worker (CalendarWatcher, ReminderScheduler, ChatHistory Summary) loggen nur
+  ins Terminal – stille Ausfälle bleiben unbemerkt
+- Konzept: docs/concepts/phase-25-zentrales-logging.md
+- Roadmap: Phase 25 eingetragen
+
 ## Abgeschlossen: Phase 23 – Konversations-Zusammenfassung (2026-03-20)
 - Branch: feature/phase-23-konversations-zusammenfassung
 
