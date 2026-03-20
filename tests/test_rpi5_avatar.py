@@ -238,15 +238,17 @@ class TestLayeredRendererFullscreen:
 
 class TestLipSyncFix:
     def test_show_speaking_no_reset_when_already_speaking(self, mock_pygame, layered_assets):
-        """show_speaking(True) darf lip_sync_index nicht resetten wenn schon True."""
+        """show_speaking(True) darf lip_sync_mouth nicht resetten wenn schon True."""
         from elder_berry.avatar.layered_renderer import LayeredSpriteRenderer
         r = LayeredSpriteRenderer(assets_dir=layered_assets)
         r.initialize(720, 1280)
 
         r.show_speaking(True)
-        r._lip_sync_index = 2  # Simuliere Fortschritt
+        r._lip_sync_mouth = "mouth_open"  # Simuliere Fortschritt
+        last_switch = r._last_lip_switch
         r.show_speaking(True)  # Erneuter Aufruf mit True
-        assert r._lip_sync_index == 2  # Darf nicht zurückgesetzt werden
+        assert r._lip_sync_mouth == "mouth_open"  # Darf nicht zurückgesetzt werden
+        assert r._last_lip_switch == last_switch
 
     def test_show_speaking_resets_on_transition(self, mock_pygame, layered_assets):
         """show_speaking(True) resettet beim Übergang von False → True."""
@@ -255,10 +257,11 @@ class TestLipSyncFix:
         r.initialize(720, 1280)
 
         r.show_speaking(True)
-        r._lip_sync_index = 2
+        r._lip_sync_mouth = "mouth_open"
         r.show_speaking(False)
         r.show_speaking(True)  # Übergang False → True
-        assert r._lip_sync_index == 0  # Reset erwartet
+        # Reset: mouth auf ersten Key der lip_sync_keys
+        assert r._lip_sync_mouth == r._lip_sync_keys[0]
 
 
 # ---------------------------------------------------------------------------
