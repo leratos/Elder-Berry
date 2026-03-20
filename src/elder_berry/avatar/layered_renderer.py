@@ -1,5 +1,6 @@
-"""Avatar-Renderer – Layered Component System mit Blink und Lip-Sync."""
+"""Avatar-Renderer – Layered Component System mit Blink, Lip-Sync und Breathing."""
 import logging
+import math
 import random
 import time
 from dataclasses import dataclass
@@ -25,8 +26,20 @@ BLINK_MIN_INTERVAL = 2.0  # Sekunden
 BLINK_MAX_INTERVAL = 6.0
 BLINK_DURATION = 0.15  # Sekunden
 
-# Lip-Sync-Timing
-LIP_SYNC_INTERVAL = 0.18  # Sekunden zwischen Mundwechsel
+# Lip-Sync: gewichtete Mund-Zustände (Mouth-Key → Gewicht)
+LIP_SYNC_WEIGHTS: dict[str, float] = {
+    "mouth_neutral_close": 0.15,
+    "mouth_tiny": 0.15,
+    "mouth_halfopen": 0.30,
+    "mouth_open": 0.25,
+    "mouth_wide": 0.15,
+}
+LIP_SYNC_INTERVAL = 0.18   # Sekunden zwischen Mundwechsel (Basis)
+LIP_SYNC_JITTER = 0.03     # ±Jitter auf das Intervall
+
+# Breathing-Animation
+BREATH_SPEED = 1.2       # Frequenz (Zyklen/Sekunde)
+BREATH_AMPLITUDE = 2.0   # Pixel Auslenkung (±)
 
 # Idle-Animationen
 IDLE_MIN_INTERVAL = 5.0   # Sekunden zwischen Idle-Aktionen
@@ -47,12 +60,12 @@ class EmotionLayers:
 # Mapping: Emotion → Komponenten-Dateinamen (ohne Ordner-Prefix)
 EMOTION_MAP: dict[Emotion, EmotionLayers] = {
     Emotion.NEUTRAL: EmotionLayers(
-        body="idle", eye_left="eye_left_open", eye_right="eye_right_open",
+        body="relaxed", eye_left="eye_left_open", eye_right="eye_right_open",
         mouth="mouth_neutral_close", can_blink=True,
     ),
     Emotion.CHEERFUL: EmotionLayers(
-        body="idle", eye_left="eye_left_open", eye_right="eye_right_open",
-        mouth="mouth_halfopen", can_blink=True,
+        body="welcome", eye_left="eye_left_cheerful_open", eye_right="eye_right_cheerful_open",
+        mouth="mouth_friendly_open", can_blink=True,
     ),
     Emotion.ANGRY: EmotionLayers(
         body="angry", eye_left="eye_left_angry_open", eye_right="eye_right_angry_open",
@@ -60,36 +73,37 @@ EMOTION_MAP: dict[Emotion, EmotionLayers] = {
     ),
     Emotion.SARCASTIC: EmotionLayers(
         body="idle", eye_left="eye_left_side_open", eye_right="eye_right_side_open",
-        mouth="mouth_halfopen", can_blink=False,
+        mouth="mouth_smirk_open", can_blink=False,
     ),
     Emotion.MOTIVATED: EmotionLayers(
-        body="idle", eye_left="eye_left_open", eye_right="eye_right_open",
-        mouth="mouth_open", can_blink=True,
+        body="confident", eye_left="eye_left_confident_open", eye_right="eye_right_confident_open",
+        mouth="mouth_grin", can_blink=True,
     ),
     Emotion.THOUGHTFUL: EmotionLayers(
         body="thinking", eye_left="eye_left_side_open", eye_right="eye_right_side_open",
         mouth="mouth_think_close", can_blink=False,
     ),
     Emotion.WHISPER: EmotionLayers(
-        body="idle", eye_left="eye_left_open", eye_right="eye_right_open",
+        body="relaxed", eye_left="eye_left_tired_open", eye_right="eye_right_tired_open",
         mouth="mouth_halfopen", can_blink=True,
     ),
     Emotion.SHY: EmotionLayers(
-        body="idle", eye_left="eye_left_close", eye_right="eye_right_close",
-        mouth="mouth_neutral_close", can_blink=False,
+        body="shy", eye_left="eye_left_shy_open", eye_right="eye_right_shy_open",
+        mouth="mouth_shy_close", can_blink=False,
     ),
     Emotion.DEPRESSED: EmotionLayers(
-        body="idle", eye_left="eye_left_close", eye_right="eye_right_close",
-        mouth="mouth_idle_close", can_blink=False,
+        body="tired", eye_left="eye_left_tired_open", eye_right="eye_right_tired_open",
+        mouth="mouth_pout", can_blink=False,
     ),
     Emotion.SAD: EmotionLayers(
-        body="idle", eye_left="eye_left_sad_open", eye_right="eye_right_sad_open",
-        mouth="mouth_idle_close", can_blink=False,
+        body="shy", eye_left="eye_left_sad_open", eye_right="eye_right_sad_open",
+        mouth="mouth_pout", can_blink=False,
     ),
 }
 
-# Lip-Sync: Mund-Zustände die beim Sprechen durchrotiert werden
-LIP_SYNC_MOUTHS = ["mouth_neutral_close", "mouth_halfopen", "mouth_open", "mouth_halfopen"]
+# Lip-Sync: vorberechnete Listen für random.choices()
+_LIP_SYNC_KEYS = list(LIP_SYNC_WEIGHTS.keys())
+_LIP_SYNC_PROBS = list(LIP_SYNC_WEIGHTS.values())
 
 
 class LayeredSpriteRenderer(AvatarRenderer):
@@ -121,14 +135,18 @@ class LayeredSpriteRenderer(AvatarRenderer):
         self._width = 512
         self._height = 1024
 
+        # YAML-Config laden (Fallback auf hardcoded Defaults)
+        self._load_yaml_config()
+
         # Blink-State
         self._blink_active = False
         self._next_blink_time = 0.0
         self._blink_end_time = 0.0
 
-        # Lip-Sync-State
-        self._lip_sync_index = 0
+        # Lip-Sync-State (gewichtete Zufallsauswahl)
+        self._lip_sync_mouth: str = self._lip_sync_keys[0]
         self._last_lip_switch = 0.0
+        self._next_lip_interval = self._lip_sync_interval
 
         # Idle-Animation-State
         self._idle_active = False
@@ -138,6 +156,38 @@ class LayeredSpriteRenderer(AvatarRenderer):
         self._idle_mouth: str | None = None
         self._next_idle_time = 0.0
         self._idle_end_time = 0.0
+
+    def _load_yaml_config(self) -> None:
+        """Lädt die Avatar-Config aus YAML, Fallback auf hardcoded Defaults."""
+        from elder_berry.avatar.avatar_config_loader import load_avatar_config
+
+        config = load_avatar_config(self._assets_dir / "avatar_config.yaml")
+        if config and config.emotions:
+            self._emotion_map = config.emotions
+            self._lip_sync_keys = list(config.lip_sync_weights.keys()) or _LIP_SYNC_KEYS
+            self._lip_sync_probs = list(config.lip_sync_weights.values()) or _LIP_SYNC_PROBS
+            self._lip_sync_interval = config.lip_sync_interval
+            self._lip_sync_jitter = config.lip_sync_jitter
+            self._breathing_enabled = config.breathing_enabled
+            self._breathing_speed = config.breathing_speed
+            self._breathing_amplitude = config.breathing_amplitude
+            self._idle_actions_config = [
+                (a.name, a.eye_left, a.eye_right, a.mouth)
+                for a in config.idle_actions
+            ]
+            logger.info("Avatar-Config aus YAML geladen (%d Emotionen)",
+                        len(self._emotion_map))
+        else:
+            self._emotion_map = EMOTION_MAP
+            self._lip_sync_keys = _LIP_SYNC_KEYS
+            self._lip_sync_probs = _LIP_SYNC_PROBS
+            self._lip_sync_interval = LIP_SYNC_INTERVAL
+            self._lip_sync_jitter = LIP_SYNC_JITTER
+            self._breathing_enabled = True
+            self._breathing_speed = BREATH_SPEED
+            self._breathing_amplitude = BREATH_AMPLITUDE
+            self._idle_actions_config = self._IDLE_ACTIONS
+            logger.info("Avatar-Config: hardcoded Defaults (YAML nicht verfügbar)")
 
     def _load_components(self) -> None:
         """Lädt alle Komponenten-PNGs aus den Unterordnern."""
@@ -218,8 +268,9 @@ class LayeredSpriteRenderer(AvatarRenderer):
             return  # Kein Zustandswechsel → kein Reset
         self._is_speaking = is_speaking
         if is_speaking:
-            self._lip_sync_index = 0
+            self._lip_sync_mouth = self._lip_sync_keys[0]
             self._last_lip_switch = time.monotonic()
+            self._next_lip_interval = self._lip_sync_interval
 
     def update(self) -> None:
         if not self._running or self._screen is None:
@@ -231,9 +282,9 @@ class LayeredSpriteRenderer(AvatarRenderer):
                 return
 
         now = time.monotonic()
-        layers = EMOTION_MAP.get(self._current_emotion)
+        layers = self._emotion_map.get(self._current_emotion)
         if layers is None:
-            layers = EMOTION_MAP[Emotion.NEUTRAL]
+            layers = self._emotion_map[Emotion.NEUTRAL]
 
         # Idle-Animation updaten (nur wenn nicht sprechend)
         if not self._is_speaking:
@@ -241,8 +292,13 @@ class LayeredSpriteRenderer(AvatarRenderer):
 
         self._screen.fill(BG_COLOR)
 
+        # Breathing-Offset (subtile Y-Verschiebung, nur wenn nicht sprechend)
+        breath_y = 0
+        if not self._is_speaking and self._breathing_enabled:
+            breath_y = int(math.sin(now * self._breathing_speed) * self._breathing_amplitude)
+
         # Layer 1: Body
-        self._blit_centered(layers.body)
+        self._blit_centered(layers.body, y_offset=breath_y)
 
         # Layer 2: Augen (mit Blink → Idle → Emotion Priorität)
         eye_left = layers.eye_left
@@ -259,8 +315,8 @@ class LayeredSpriteRenderer(AvatarRenderer):
                 eye_left = "eye_left_close"
                 eye_right = "eye_right_close"
 
-        self._blit_centered(eye_left)
-        self._blit_centered(eye_right)
+        self._blit_centered(eye_left, y_offset=breath_y)
+        self._blit_centered(eye_right, y_offset=breath_y)
 
         # Layer 3: Mund (Lip-Sync → Idle → Emotion Priorität)
         if self._is_speaking:
@@ -270,12 +326,12 @@ class LayeredSpriteRenderer(AvatarRenderer):
         else:
             mouth_key = layers.mouth
 
-        self._blit_centered(mouth_key)
+        self._blit_centered(mouth_key, y_offset=breath_y)
 
         pygame.display.flip()
         self._clock.tick(FPS)
 
-    def _blit_centered(self, component_key: str) -> None:
+    def _blit_centered(self, component_key: str, y_offset: int = 0) -> None:
         """Zeichnet eine Komponente zentriert auf den Screen."""
         surface = self._components.get(component_key)
         if surface is None:
@@ -283,7 +339,7 @@ class LayeredSpriteRenderer(AvatarRenderer):
 
         sw, sh = surface.get_size()
         x = (self._width - sw) // 2
-        y = (self._height - sh) // 2
+        y = (self._height - sh) // 2 + y_offset
         self._screen.blit(surface, (x, y))
 
     def _schedule_next_blink(self) -> None:
@@ -302,11 +358,17 @@ class LayeredSpriteRenderer(AvatarRenderer):
             self._blink_end_time = now + BLINK_DURATION
 
     def _get_lip_sync_mouth(self, now: float) -> str:
-        """Gibt den aktuellen Lip-Sync-Mund zurück."""
-        if now - self._last_lip_switch >= LIP_SYNC_INTERVAL:
-            self._lip_sync_index = (self._lip_sync_index + 1) % len(LIP_SYNC_MOUTHS)
+        """Gibt den aktuellen Lip-Sync-Mund zurück (gewichtete Zufallsauswahl)."""
+        if now - self._last_lip_switch >= self._next_lip_interval:
+            self._lip_sync_mouth = random.choices(
+                self._lip_sync_keys, weights=self._lip_sync_probs, k=1,
+            )[0]
             self._last_lip_switch = now
-        return LIP_SYNC_MOUTHS[self._lip_sync_index]
+            # Jitter: nächstes Intervall leicht variieren
+            self._next_lip_interval = self._lip_sync_interval + random.uniform(
+                -self._lip_sync_jitter, self._lip_sync_jitter,
+            )
+        return self._lip_sync_mouth
 
     # -- Idle-Animationen ------------------------------------------------------
 
@@ -343,7 +405,7 @@ class LayeredSpriteRenderer(AvatarRenderer):
 
     def _start_idle_action(self) -> None:
         """Startet eine zufällige Idle-Aktion."""
-        action_name, eye_l, eye_r, mouth = random.choice(self._IDLE_ACTIONS)
+        action_name, eye_l, eye_r, mouth = random.choice(self._idle_actions_config)
 
         # Prüfe ob die benötigten Komponenten existieren
         if eye_l and eye_l not in self._components:
@@ -371,7 +433,7 @@ class LayeredSpriteRenderer(AvatarRenderer):
         """
         self._ensure_components_loaded()
 
-        layers = EMOTION_MAP.get(emotion, EMOTION_MAP[Emotion.NEUTRAL])
+        layers = self._emotion_map.get(emotion, self._emotion_map[Emotion.NEUTRAL])
 
         # Offscreen-Surface erstellen
         surface = pygame.Surface((self._width, self._height))

@@ -2040,6 +2040,53 @@ User: "Lies meine Mails und trag den Zahnarzttermin ein"
 - Gehäuse in Drucksegmente zerteilen
 - Setzkanten an Segmentgrenzen vorsehen (Zapfen + Nut + Stift-Fixierung)
 
+## Abgeschlossen: Phase 24 (Teilschritte 1-4) – Avatar Assets & Animationen (2026-03-20)
+- Branch: feature/phase-24-avatar-assets
+- Teilschritte 5-6 (Web-Interface, Effekt-Layer) → eigener Chat
+
+### Asset-Inventur (45 Assets)
+- 8 Bodies: idle, angry, thinking, relaxed, shy, welcome, confident, tired
+- 11 Augenpaare (22 Sprites): open, close, side, sad, surprise, angry, confident,
+  welcome, cheerful, shy, tired
+- 15 Münder: neutral_close, idle_close, halfopen, open, wide, tiny, angry_open,
+  think_close, confident_halfopen, friendly_open, shy_close, grin, pout,
+  smirk_open, tired_close
+- Dateinamen-Fixes: Idle→idle, cheerfull→cheerful, _Kopie entfernt, shiy entfernt
+
+### EMOTION_MAP aktualisiert
+- Jede der 10 Emotionen hat jetzt eine visuell unterscheidbare Kombination
+- neutral→relaxed, cheerful→welcome+cheerful_eyes+friendly_open,
+  sarcastic→idle+side+smirk, motivated→confident+confident_eyes+grin,
+  whisper→relaxed+tired_eyes, shy→shy+shy_eyes+shy_close,
+  depressed→tired+tired_eyes+pout, sad→shy+sad_eyes+pout
+
+### Breathing-Animation (Code-only)
+- Sinus-Offset auf Y-Achse (±2px, 1.2 Hz)
+- Nur aktiv wenn nicht sprechend
+- Alle Layer (Body+Eyes+Mouth) bewegen sich synchron
+
+### Randomisierte Lip-Sync
+- Gewichtete Zufallsauswahl statt fester Rotation
+- 5 Mund-Stufen: neutral_close(0.15), tiny(0.15), halfopen(0.30), open(0.25), wide(0.15)
+- ±30ms Jitter auf das Intervall (0.18s Basis)
+
+### YAML-Config externalisiert
+- avatar_config.yaml: Emotions, Lip-Sync, Breathing, Idle-Actions
+- AvatarConfigLoader: Lädt + validiert YAML, Fallback auf hardcoded Defaults
+- Hot-Reload-fähig (Config kann zur Laufzeit neu geladen werden)
+
+### Geänderte/Neue Dateien
+- src/elder_berry/avatar/layered_renderer.py: EMOTION_MAP, Breathing, Lip-Sync,
+  YAML-Config Integration, y_offset in _blit_centered
+- src/elder_berry/avatar/avatar_config_loader.py: **Neu** – YAML Config-Loader
+- src/elder_berry/avatar/assets/avatar_config.yaml: **Neu** – externalisierte Config
+- tests/test_layered_renderer.py: 54 Tests (vorher 28) – Breathing, Lip-Sync Jitter,
+  YAML-Config, ConfigLoader, distinct-combination-Test
+
+### Tests
+- 54/54 test_layered_renderer.py ✓
+- 23/23 test_avatar_renderer.py ✓ (keine Regressionen)
+
 ## Konzept erstellt: Phase 25 – Zentrales Logging & Error-Monitoring (2026-03-20)
 - Anlass: Summarizer-Fehler (NameError) war nur im Terminal sichtbar, nicht im Error-Log
 - Analyse: 34 Dateien loggen Fehler, aber nur 8 Stellen in bridge.py schreiben ins Error-Log

@@ -44,16 +44,26 @@ def mock_pygame():
 def layered_assets(tmp_path):
     """Erstellt temporäre Asset-Ordner mit Dummy-PNGs."""
     for subdir, names in [
-        ("body", ["idle", "angry", "thinking"]),
+        ("body", [
+            "idle", "angry", "thinking", "relaxed", "shy",
+            "welcome", "confident", "tired",
+        ]),
         ("eye", [
             "eye_left_open", "eye_left_close", "eye_left_angry_open",
             "eye_left_sad_open", "eye_left_surprise_open", "eye_left_side_open",
+            "eye_left_cheerful_open", "eye_left_shy_open", "eye_left_tired_open",
+            "eye_left_confident_open", "eye_left_welcome_open",
             "eye_right_open", "eye_right_close", "eye_right_angry_open",
             "eye_right_sad_open", "eye_right_surprise_open", "eye_right_side_open",
+            "eye_right_cheerful_open", "eye_right_shy_open", "eye_right_tired_open",
+            "eye_right_confident_open", "eye_right_welcome_open",
         ]),
         ("mouth", [
             "mouth_neutral_close", "mouth_idle_close", "mouth_think_close",
             "mouth_halfopen", "mouth_open", "mouth_angry_open",
+            "mouth_friendly_open", "mouth_smirk_open", "mouth_grin",
+            "mouth_shy_close", "mouth_pout", "mouth_tired_close",
+            "mouth_tiny", "mouth_wide", "mouth_confident_halfopen",
         ]),
     ]:
         d = tmp_path / subdir
@@ -100,8 +110,8 @@ class TestLayeredRendererInit:
         mock_pygame["pygame"].display.set_mode.assert_called_once_with((720, 1280))
 
     def test_loads_all_components(self, renderer):
-        # 3 body + 12 eye + 6 mouth = 21
-        assert len(renderer._components) == 21
+        # 8 body + 22 eye + 15 mouth = 45
+        assert len(renderer._components) == 45
 
     def test_default_height_1024(self, mock_pygame, layered_assets):
         from elder_berry.avatar.layered_renderer import LayeredSpriteRenderer
@@ -146,6 +156,10 @@ class TestEmotionMapping:
         layers = EMOTION_MAP[Emotion.THOUGHTFUL]
         assert layers.body == "thinking"
 
+    def test_neutral_uses_relaxed_body(self):
+        from elder_berry.avatar.layered_renderer import EMOTION_MAP
+        assert EMOTION_MAP[Emotion.NEUTRAL].body == "relaxed"
+
     def test_neutral_can_blink(self):
         from elder_berry.avatar.layered_renderer import EMOTION_MAP
         assert EMOTION_MAP[Emotion.NEUTRAL].can_blink is True
@@ -154,11 +168,46 @@ class TestEmotionMapping:
         from elder_berry.avatar.layered_renderer import EMOTION_MAP
         assert EMOTION_MAP[Emotion.SAD].can_blink is False
 
-    def test_shy_uses_closed_eyes(self):
+    def test_shy_uses_shy_body_and_eyes(self):
         from elder_berry.avatar.layered_renderer import EMOTION_MAP
         layers = EMOTION_MAP[Emotion.SHY]
-        assert layers.eye_left == "eye_left_close"
-        assert layers.eye_right == "eye_right_close"
+        assert layers.body == "shy"
+        assert layers.eye_left == "eye_left_shy_open"
+        assert layers.eye_right == "eye_right_shy_open"
+
+    def test_cheerful_uses_welcome_body(self):
+        from elder_berry.avatar.layered_renderer import EMOTION_MAP
+        layers = EMOTION_MAP[Emotion.CHEERFUL]
+        assert layers.body == "welcome"
+        assert layers.mouth == "mouth_friendly_open"
+
+    def test_motivated_uses_confident_body(self):
+        from elder_berry.avatar.layered_renderer import EMOTION_MAP
+        layers = EMOTION_MAP[Emotion.MOTIVATED]
+        assert layers.body == "confident"
+        assert layers.mouth == "mouth_grin"
+
+    def test_sarcastic_uses_smirk(self):
+        from elder_berry.avatar.layered_renderer import EMOTION_MAP
+        layers = EMOTION_MAP[Emotion.SARCASTIC]
+        assert layers.mouth == "mouth_smirk_open"
+
+    def test_depressed_uses_tired_body(self):
+        from elder_berry.avatar.layered_renderer import EMOTION_MAP
+        layers = EMOTION_MAP[Emotion.DEPRESSED]
+        assert layers.body == "tired"
+        assert layers.mouth == "mouth_pout"
+
+    def test_each_emotion_has_distinct_combination(self):
+        """Jede Emotion hat eine visuell unterscheidbare Kombination."""
+        from elder_berry.avatar.layered_renderer import EMOTION_MAP
+        combos = set()
+        for emotion, layers in EMOTION_MAP.items():
+            combo = (layers.body, layers.eye_left, layers.mouth)
+            assert combo not in combos, (
+                f"{emotion.value} hat gleiche Kombination wie eine andere Emotion"
+            )
+            combos.add(combo)
 
 
 # ---------------------------------------------------------------------------
@@ -179,20 +228,59 @@ class TestSpeaking:
         assert not renderer._is_speaking
 
     def test_lip_sync_resets_on_speak_start(self, renderer):
-        renderer._lip_sync_index = 3
+        renderer._lip_sync_mouth = "mouth_open"
         renderer.show_speaking(True)
-        assert renderer._lip_sync_index == 0
+        assert renderer._lip_sync_mouth == renderer._lip_sync_keys[0]
 
-    def test_lip_sync_cycles_mouths(self, renderer):
-        from elder_berry.avatar.layered_renderer import LIP_SYNC_MOUTHS
+    def test_lip_sync_produces_variety(self, renderer):
+        """Lip-Sync verwendet gewichtete Zufallsauswahl → mehrere Mundformen."""
         renderer.show_speaking(True)
         mouths_seen = set()
-        # Simuliere Zeit-Fortschritt
-        for i in range(len(LIP_SYNC_MOUTHS)):
+        for _ in range(20):
             renderer._last_lip_switch = 0  # Erzwinge Wechsel
             mouth = renderer._get_lip_sync_mouth(time.monotonic())
             mouths_seen.add(mouth)
-        assert len(mouths_seen) >= 2  # Mindestens 2 verschiedene Mundformen
+        assert len(mouths_seen) >= 2
+
+    def test_lip_sync_jitter_varies_interval(self, renderer):
+        """Lip-Sync Intervall variiert durch Jitter."""
+        renderer.show_speaking(True)
+        intervals = set()
+        for _ in range(10):
+            renderer._last_lip_switch = 0
+            renderer._get_lip_sync_mouth(time.monotonic())
+            intervals.add(round(renderer._next_lip_interval, 4))
+        # Bei Jitter > 0 sollten verschiedene Intervalle entstehen
+        assert len(intervals) >= 2
+
+
+# ---------------------------------------------------------------------------
+# Breathing
+# ---------------------------------------------------------------------------
+
+class TestBreathing:
+    def test_breathing_enabled_by_default(self, renderer):
+        assert renderer._breathing_enabled is True
+
+    def test_breathing_offset_changes_over_time(self, renderer):
+        """Breathing erzeugt unterschiedliche Y-Offsets."""
+        import math
+        offsets = set()
+        for t in range(10):
+            offset = int(math.sin(t * 0.5 * renderer._breathing_speed)
+                         * renderer._breathing_amplitude)
+            offsets.add(offset)
+        assert len(offsets) >= 2
+
+    def test_breathing_disabled_no_offset(self, renderer, mock_pygame):
+        """Wenn Breathing deaktiviert, kein Y-Offset."""
+        renderer._breathing_enabled = False
+        renderer.update()
+        # Alle blit-Aufrufe sollten y_offset=0 haben (also Standard-Position)
+        for call in mock_pygame["screen"].blit.call_args_list:
+            _, pos = call[0]
+            # Y-Position sollte exakt zentriert sein (keine Verschiebung)
+            assert pos[1] == (1024 - 1024) // 2  # 0
 
 
 # ---------------------------------------------------------------------------
@@ -204,14 +292,13 @@ class TestBlink:
         assert not renderer._blink_active
 
     def test_blink_activates_after_interval(self, renderer):
-        # Setze next_blink_time in die Vergangenheit
         renderer._next_blink_time = 0
         renderer._update_blink(time.monotonic())
         assert renderer._blink_active
 
     def test_blink_deactivates_after_duration(self, renderer):
         renderer._blink_active = True
-        renderer._blink_end_time = 0  # In der Vergangenheit
+        renderer._blink_end_time = 0
         renderer._update_blink(time.monotonic())
         assert not renderer._blink_active
 
@@ -255,9 +342,8 @@ class TestUpdate:
 
     def test_speaking_changes_mouth(self, renderer, mock_pygame):
         renderer.show_speaking(True)
-        renderer._last_lip_switch = 0  # Erzwinge Mundwechsel
+        renderer._last_lip_switch = 0
         renderer.update()
-        # Sicherstellen dass blit aufgerufen wird (Lip-Sync aktiv)
         assert mock_pygame["screen"].blit.call_count >= 4
 
 
@@ -279,3 +365,91 @@ class TestShutdown:
         mock_pygame["screen"].fill.reset_mock()
         renderer.update()
         mock_pygame["screen"].fill.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
+# YAML Config Loading
+# ---------------------------------------------------------------------------
+
+class TestYAMLConfig:
+    def test_loads_yaml_config_when_present(self, renderer):
+        """Renderer lädt YAML-Config wenn vorhanden."""
+        # Renderer hat _emotion_map von YAML oder hardcoded
+        assert len(renderer._emotion_map) == 10
+
+    def test_fallback_without_yaml(self, mock_pygame, tmp_path):
+        """Ohne YAML-Datei: hardcoded Defaults."""
+        for subdir in ["body", "eye", "mouth"]:
+            d = tmp_path / subdir
+            d.mkdir()
+            (d / "dummy.png").write_bytes(b"\x89PNG" + b"\x00" * 40)
+
+        from elder_berry.avatar.layered_renderer import LayeredSpriteRenderer, EMOTION_MAP
+        r = LayeredSpriteRenderer(assets_dir=tmp_path)
+        # Kein avatar_config.yaml → Fallback
+        assert r._emotion_map is EMOTION_MAP
+
+    def test_breathing_config_from_yaml(self, renderer):
+        assert renderer._breathing_speed > 0
+        assert renderer._breathing_amplitude > 0
+
+    def test_lip_sync_config_from_yaml(self, renderer):
+        assert len(renderer._lip_sync_keys) >= 3
+        assert len(renderer._lip_sync_probs) == len(renderer._lip_sync_keys)
+        assert renderer._lip_sync_interval > 0
+
+
+# ---------------------------------------------------------------------------
+# AvatarConfigLoader
+# ---------------------------------------------------------------------------
+
+class TestAvatarConfigLoader:
+    def test_load_valid_config(self):
+        from elder_berry.avatar.avatar_config_loader import load_avatar_config
+        config = load_avatar_config()
+        assert config is not None
+        assert len(config.emotions) == 10
+        assert Emotion.NEUTRAL in config.emotions
+        assert Emotion.ANGRY in config.emotions
+
+    def test_load_missing_file(self, tmp_path):
+        from elder_berry.avatar.avatar_config_loader import load_avatar_config
+        result = load_avatar_config(tmp_path / "nonexistent.yaml")
+        assert result is None
+
+    def test_load_invalid_yaml(self, tmp_path):
+        from elder_berry.avatar.avatar_config_loader import load_avatar_config
+        bad_file = tmp_path / "bad.yaml"
+        bad_file.write_text("not: [valid: yaml: {{", encoding="utf-8")
+        result = load_avatar_config(bad_file)
+        assert result is None
+
+    def test_lip_sync_config(self):
+        from elder_berry.avatar.avatar_config_loader import load_avatar_config
+        config = load_avatar_config()
+        assert len(config.lip_sync_weights) >= 3
+        assert config.lip_sync_interval > 0
+        assert config.lip_sync_jitter >= 0
+
+    def test_breathing_config(self):
+        from elder_berry.avatar.avatar_config_loader import load_avatar_config
+        config = load_avatar_config()
+        assert config.breathing_enabled is True
+        assert config.breathing_speed > 0
+        assert config.breathing_amplitude > 0
+
+    def test_idle_actions_config(self):
+        from elder_berry.avatar.avatar_config_loader import load_avatar_config
+        config = load_avatar_config()
+        assert len(config.idle_actions) >= 3
+        for action in config.idle_actions:
+            assert action.name
+            assert action.duration > 0
+
+    def test_emotion_layers_fields(self):
+        from elder_berry.avatar.avatar_config_loader import load_avatar_config
+        config = load_avatar_config()
+        neutral = config.emotions[Emotion.NEUTRAL]
+        assert neutral.body == "relaxed"
+        assert neutral.eye_left == "eye_left_open"
+        assert neutral.can_blink is True

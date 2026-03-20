@@ -1,0 +1,100 @@
+version: 1
+
+emotions:
+  neutral:
+    body: relaxed
+    eye_left: eye_left_open
+    eye_right: eye_right_open
+    mouth: mouth_neutral_close
+    can_blink: true
+  cheerful:
+    body: welcome
+    eye_left: eye_left_cheerful_open
+    eye_right: eye_right_cheerful_open
+    mouth: mouth_friendly_open
+    can_blink: true
+  angry:
+    body: angry
+    eye_left: eye_left_angry_open
+    eye_right: eye_right_angry_open
+    mouth: mouth_angry_open
+    can_blink: false
+  sarcastic:
+    body: idle
+    eye_left: eye_left_side_open
+    eye_right: eye_right_side_open
+    mouth: mouth_smirk_open
+    can_blink: false
+  motivated:
+    body: confident
+    eye_left: eye_left_confident_open
+    eye_right: eye_right_confident_open
+    mouth: mouth_grin
+    can_blink: true
+  thoughtful:
+    body: thinking
+    eye_left: eye_left_side_open
+    eye_right: eye_right_side_open
+    mouth: mouth_think_close
+    can_blink: false
+  whisper:
+    body: relaxed
+    eye_left: eye_left_tired_open
+    eye_right: eye_right_tired_open
+    mouth: mouth_halfopen
+    can_blink: true
+  shy:
+    body: shy
+    eye_left: eye_left_shy_open
+    eye_right: eye_right_shy_open
+    mouth: mouth_shy_close
+    can_blink: false
+  depressed:
+    body: tired
+    eye_left: eye_left_tired_open
+    eye_right: eye_right_tired_open
+    mouth: mouth_pout
+    can_blink: false
+  sad:
+    body: shy
+    eye_left: eye_left_sad_open
+    eye_right: eye_right_sad_open
+    mouth: mouth_pout
+    can_blink: false
+
+lip_sync:
+  frames:
+    mouth_neutral_close: 0.15
+    mouth_tiny: 0.15
+    mouth_halfopen: 0.30
+    mouth_open: 0.25
+    mouth_wide: 0.15
+  interval: 0.18
+  jitter: 0.03
+
+breathing:
+  enabled: true
+  speed: 1.2
+  amplitude: 2.0
+
+idle_actions:
+  - name: glance_left
+    eye_left: eye_left_side_open
+    eye_right: eye_right_side_open
+    duration: 2.0
+  - name: glance_right
+    eye_left: eye_left_side_open
+    eye_right: eye_right_side_open
+    duration: 2.0
+  - name: smile
+    mouth: mouth_friendly_open
+    duration: 2.0
+  - name: soft_close
+    eye_left: eye_left_close
+    eye_right: eye_right_close
+    duration: 2.0
+  - name: surprise
+    eye_left: eye_left_surprise_open
+    eye_right: eye_right_surprise_open
+    mouth: mouth_open
+    duration: 1.5
