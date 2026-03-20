@@ -235,18 +235,27 @@ class MatrixBridge:
         # Startzeitpunkt setzen: Nachrichten vor diesem Zeitpunkt ignorieren.
         # Bei Restart: Server-Timestamp aus Flag-File (gleiche Clock-Domain wie
         # msg.timestamp → kein Clock-Drift). Sonst: lokale Zeit als Fallback.
+        is_restart = RESTART_FLAG_FILE.exists()
         restart_server_ts = self._read_restart_timestamp()
         if restart_server_ts > 0:
+            # Server-Timestamp vorhanden → exakte Filterung (gleiche Clock)
             self._start_time = restart_server_ts
+        elif is_restart:
+            # Restart ohne Server-TS (altes Flag-Format) →
+            # lokale Zeit + 10s Puffer für Clock-Drift
+            self._start_time = datetime.now().timestamp() + 10
+        else:
+            # Normaler Start (kein Restart)
+            self._start_time = datetime.now().timestamp()
+
+        if is_restart:
             # Restart-Cooldown: 60s lang keine weiteren restart-Befehle
             self._restart_cooldown_until = time.monotonic() + 60
             logger.info(
-                "Restart erkannt: _start_time=%.3f (Server-TS), "
+                "Restart erkannt: _start_time=%.3f (server_ts=%.3f), "
                 "Cooldown 60s aktiv",
-                self._start_time,
+                self._start_time, restart_server_ts,
             )
-        else:
-            self._start_time = datetime.now().timestamp()
 
         # Restart-Benachrichtigung senden (wenn Flag existiert)
         await self.send_restart_notification(self._channel)
@@ -290,13 +299,16 @@ class MatrixBridge:
         2. AudioConverter konvertiert WAV → OGG/Opus
         3. OGG wird als Sprachnachricht via Channel gesendet
         """
-        logger.info("Nachricht von %s: %s", msg.sender, msg.body[:100])
+        logger.info(
+            "Nachricht von %s (ts=%.3f): %s",
+            msg.sender, msg.timestamp, msg.body[:100],
+        )
 
         # --- Alte Nachrichten ignorieren (vor Bridge-Start, z.B. nach Restart) ---
         # _start_time ist Server-Timestamp (bei Restart) oder lokale Zeit (Normal).
         # Kein Grace-Period: alles VOR dem Startzeitpunkt wird verworfen.
         if msg.timestamp > 0 and msg.timestamp <= self._start_time:
-            logger.debug(
+            logger.info(
                 "Alte Nachricht ignoriert (ts=%.3f <= start=%.3f): %s",
                 msg.timestamp, self._start_time, msg.body[:50],
             )
@@ -1225,10 +1237,11 @@ class MatrixBridge:
         """
         logger.info("Restart angefordert, starte Prozess neu...")
 
-        # Flag-Datei schreiben: room_id + Server-Timestamp (Zeile 1 + 2)
+        # Flag-Datei schreiben: room_id + Server-Timestamp als ms-Integer (Zeile 2)
+        # Integer statt Float: vermeidet Rundungsfehler beim Rücklesen
         flag_content = room_id
         if msg_server_ts > 0:
-            flag_content += f"\n{msg_server_ts:.3f}"
+            flag_content += f"\n{int(msg_server_ts * 1000)}"
         try:
             RESTART_FLAG_FILE.write_text(flag_content, encoding="utf-8")
         except Exception as e:
@@ -1284,15 +1297,19 @@ class MatrixBridge:
     def _read_restart_timestamp() -> float:
         """Liest den Server-Timestamp aus dem Restart-Flag (Zeile 2).
 
+        Flag-Format Zeile 2: Integer-Millisekunden (identisch mit
+        event.server_timestamp aus matrix-nio → keine Float-Rundungsfehler).
+
         Returns:
-            Server-Timestamp (float) oder 0.0 wenn kein Flag/kein Timestamp.
+            Server-Timestamp in Sekunden (float) oder 0.0 wenn nicht vorhanden.
         """
         if not RESTART_FLAG_FILE.exists():
             return 0.0
         try:
             lines = RESTART_FLAG_FILE.read_text(encoding="utf-8").strip().splitlines()
             if len(lines) >= 2:
-                return float(lines[1])
+                # ms-Integer → Sekunden-Float (gleiche Rechnung wie matrix_channel.py)
+                return int(lines[1]) / 1000.0
         except (ValueError, OSError) as e:
             logger.debug("Restart-Timestamp lesen fehlgeschlagen: %s", e)
         return 0.0

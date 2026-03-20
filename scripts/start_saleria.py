@@ -22,6 +22,7 @@ import atexit
 import logging
 import os
 import platform
+import signal
 import sys
 from pathlib import Path
 
@@ -811,6 +812,17 @@ def _release_instance_lock() -> None:
     _lock_fh = None
 
 
+def _sigint_handler(signum, frame):
+    """Ctrl+C: Lock freigeben und sauber beenden.
+
+    atexit-Handler laufen nicht zuverlässig wenn asyncio-Loops auf
+    Windows per Ctrl+C unterbrochen werden. Daher explizit aufräumen.
+    """
+    _release_instance_lock()
+    sys.exit(0)
+
+
 if __name__ == "__main__":
+    signal.signal(signal.SIGINT, _sigint_handler)
     _acquire_instance_lock()
     main()
