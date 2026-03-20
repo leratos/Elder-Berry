@@ -1229,9 +1229,11 @@ class TestRestartNotification:
         # Flag aufräumen falls von vorherigem Test
         RESTART_FLAG_FILE.unlink(missing_ok=True)
 
-        # _perform_restart aufrufen (os.execv wird gemockt)
+        # _perform_restart aufrufen (Restart-Mechanismus wird gemockt)
         from unittest.mock import patch as _patch
-        with _patch("elder_berry.comms.bridge.os.execv"):
+        with _patch("elder_berry.comms.bridge.os.execv"), \
+             _patch("elder_berry.comms.bridge.os._exit"), \
+             _patch("elder_berry.comms.bridge.subprocess.Popen", create=True):
             run_async(bridge._perform_restart("!test:room"))
 
         assert RESTART_FLAG_FILE.exists()
@@ -1304,8 +1306,10 @@ class TestRestartNotification:
         assert len(channel._sent_texts) == 1
         assert "Starte neu" in channel._sent_texts[0][1]
 
-        # _perform_restart wurde aufgerufen
-        mock_restart.assert_called_once_with("!room:test")
+        # _perform_restart wurde aufgerufen (mit room_id + Server-Timestamp)
+        mock_restart.assert_called_once_with(
+            "!room:test", msg_server_ts=0.0,
+        )
 
 
 # ---------------------------------------------------------------------------

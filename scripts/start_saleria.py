@@ -18,9 +18,11 @@ Voraussetzungen Tower (Windows):
 from __future__ import annotations
 
 import argparse
+import atexit
 import logging
 import os
 import platform
+import signal
 import sys
 from pathlib import Path
 
@@ -742,5 +744,85 @@ def main():
         run_matrix(assistant, stt=stt, avatar=avatar, audio_converter=audio_converter)
 
 
+_LOCK_FILE = _PROJECT_ROOT / ".saleria.lock"
+_lock_fh = None
+
+
+def _acquire_instance_lock() -> None:
+    """Stellt sicher, dass nur eine Instanz von Saleria gleichzeitig läuft.
+
+    Nutzt eine exklusive Dateisperre auf .saleria.lock.
+    Unter Windows: msvcrt.locking (OS gibt Lock bei Crash automatisch frei).
+    Unter Linux: fcntl.flock.
+
+    Bei einem Restart (alter Prozess beendet sich gerade) kann der Lock
+    kurz belegt sein. Daher bis zu 5 Versuche mit 1s Pause.
+    """
+    import time
+
+    global _lock_fh
+    max_attempts = 5
+
+    for attempt in range(max_attempts):
+        _lock_fh = open(_LOCK_FILE, "w")
+        try:
+            if platform.system() == "Windows":
+                import msvcrt
+                msvcrt.locking(_lock_fh.fileno(), msvcrt.LK_NBLCK, 1)
+            else:
+                import fcntl
+                fcntl.flock(_lock_fh, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            # Lock erfolgreich erworben
+            break
+        except (OSError, IOError):
+            _lock_fh.close()
+            _lock_fh = None
+            if attempt < max_attempts - 1:
+                logger.info(
+                    "Lock belegt, warte 1s (Versuch %d/%d)...",
+                    attempt + 1, max_attempts,
+                )
+                time.sleep(1)
+                continue
+            # Alle Versuche aufgebraucht
+            print("FEHLER: Saleria läuft bereits! Nur eine Instanz erlaubt.")
+            print(f"  Lock-Datei: {_LOCK_FILE}")
+            print("  Falls kein Prozess läuft: Datei manuell löschen.")
+            sys.exit(1)
+
+    _lock_fh.write(str(os.getpid()))
+    _lock_fh.flush()
+    atexit.register(_release_instance_lock)
+    logger.info("Instanz-Lock erworben (PID %d)", os.getpid())
+
+
+def _release_instance_lock() -> None:
+    """Gibt den Instanz-Lock frei."""
+    global _lock_fh
+    if _lock_fh is None:
+        return
+    try:
+        _lock_fh.close()
+    except Exception:
+        pass
+    try:
+        _LOCK_FILE.unlink(missing_ok=True)
+    except Exception:
+        pass
+    _lock_fh = None
+
+
+def _sigint_handler(signum, frame):
+    """Ctrl+C: Lock freigeben und sauber beenden.
+
+    atexit-Handler laufen nicht zuverlässig wenn asyncio-Loops auf
+    Windows per Ctrl+C unterbrochen werden. Daher explizit aufräumen.
+    """
+    _release_instance_lock()
+    sys.exit(0)
+
+
 if __name__ == "__main__":
+    signal.signal(signal.SIGINT, _sigint_handler)
+    _acquire_instance_lock()
     main()

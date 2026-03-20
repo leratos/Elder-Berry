@@ -2039,3 +2039,18 @@ User: "Lies meine Mails und trag den Zahnarzttermin ein"
 - A3144 Hall-Sensor Anschläge für ±180° Begrenzung fertigstellen
 - Gehäuse in Drucksegmente zerteilen
 - Setzkanten an Segmentgrenzen vorsehen (Zapfen + Nut + Stift-Fixierung)
+
+## Abgeschlossen: Bugfix – Restart-Schleife (Singleton Lock Branch)
+- Branch: fix/singleton-lock
+- Problem: Nach "restart" gerät Saleria in Endlosschleife (restart → reconnect → restart → ...)
+- Ursache: Timestamp-Filter in bridge.py vergleicht lokale Zeit mit Server-Zeit (Clock-Drift)
+  und hat 30s Grace-Period die den restart-Befehl durchlässt
+- Fix Teil 1: Server-Timestamp der auslösenden Nachricht im Restart-Flag speichern
+  → _perform_restart() bekommt msg_server_ts, schreibt ihn in Flag-File (Zeile 2)
+  → _async_main() liest Timestamp und setzt _start_time auf Server-Zeit (gleiche Clock-Domain)
+- Fix Teil 2: Restart-Cooldown (60s nach letztem Restart keine restart-Befehle)
+  → _restart_cooldown_until via time.monotonic() + 60
+  → _handle_remote_command() prüft Cooldown und sendet Info-Nachricht
+- Fix Teil 3: Timestamp-Filter verschärft: <= statt < mit -30s Grace-Period
+- Geänderte Dateien: bridge.py, tests/test_comms.py
+- Tests: 384 passed, 0 failed (Comms/Matrix/Bridge-Tests)
