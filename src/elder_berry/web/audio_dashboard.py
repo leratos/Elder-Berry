@@ -1,5 +1,4 @@
-"""AudioDashboard – Minimales Web-UI zum Steuern des Audio-Routing-Modus,
-der Monitor-Auswahl für Computer Use und der Allowed-Senders-Konfiguration.
+"""AudioDashboard – Web-UI für Systemeinstellungen und Avatar-Editor.
 
 Stellt eine FastAPI-App bereit mit:
 - GET /             → HTML-Seite mit Audio-Toggle + Monitor-Dropdown + Sicherheit
@@ -9,6 +8,8 @@ Stellt eine FastAPI-App bereit mit:
 - POST /api/monitor → Monitor für Computer Use setzen (JSON)
 - GET /api/allowed-senders  → Status (configured, count) – keine Klartext-IDs
 - POST /api/allowed-senders → Sender setzen oder entfernen (JSON)
+- GET /avatar/editor        → Avatar-Editor Web-UI
+- GET/PUT /api/avatar/*     → Avatar-Config CRUD + Asset-Serving
 """
 
 from __future__ import annotations
@@ -22,6 +23,7 @@ from fastapi.responses import HTMLResponse, JSONResponse
 
 if TYPE_CHECKING:
     from elder_berry.actions.computer_use import ComputerUseController
+    from elder_berry.avatar.layered_renderer import LayeredSpriteRenderer
     from elder_berry.core.audio_router import AudioRouter
     from elder_berry.core.secret_store import SecretStore
 
@@ -75,6 +77,7 @@ class AudioDashboard:
         audio_router: AudioRouter,
         computer_use: ComputerUseController | None = None,
         secret_store: SecretStore | None = None,
+        avatar_renderer: LayeredSpriteRenderer | None = None,
         host: str = "0.0.0.0",
         port: int = 8090,
     ) -> None:
@@ -86,6 +89,10 @@ class AudioDashboard:
         self._app = FastAPI(title="Elder-Berry Settings Dashboard")
         self._thread = None
         self._register_routes()
+
+        # Avatar-Editor-Routen registrieren
+        from elder_berry.web.avatar_editor import register_avatar_editor_routes
+        register_avatar_editor_routes(self._app, renderer=avatar_renderer)
 
     @property
     def app(self) -> FastAPI:

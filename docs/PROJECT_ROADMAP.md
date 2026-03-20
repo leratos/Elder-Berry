@@ -370,17 +370,18 @@ zu einer Rolling Summary komprimiert.
 - ✅ **Tests**: `tests/test_chat_history.py` (34 Tests)
 - **Konzept**: `docs/concepts/phase-23-konversations-zusammenfassung.md`
 
-## Phase 24 – Avatar Asset Management & Animationssystem 🎨 KONZEPT
+## Phase 24 – Avatar Asset Management & Animationssystem 🎨 TEILWEISE ABGESCHLOSSEN
 
 Salerias Avatar wird ausdrucksstärker und einfacher konfigurierbar.
 
-- **Neue Assets**: 4 Bodies (relaxed, energetic, withdrawn, gesture),
-  4 Münder (smile, smirk, pout, grin), 4 Augen-Paare (cheerful, halfclose)
-- **Breathing**: Subtile Atembewegung per Sinus-Offset (Code-only, kein Asset)
-- **Verbesserte Lip-Sync**: Randomisiert → mehr Frames → Audio-basiert (3 Stufen)
-- **YAML-Config**: EMOTION_MAP externalisieren, Hot-Reload statt hardcoded Dict
-- **Web-Interface**: Avatar-Editor mit Canvas-Preview, Emotion-Zuordnung per Dropdown
-- **Effekt-Layer**: Optional (Träne, Schweißtropfen, Sparkle)
+- ✅ **Neue Assets**: 8 Bodies, 11 Augenpaare, 15 Münder (45 Assets gesamt)
+- ✅ **EMOTION_MAP**: Jede Emotion visuell unterscheidbar (10 distinct Combos)
+- ✅ **Breathing**: Subtile Atembewegung per Sinus-Offset (±2px, 1.2 Hz)
+- ✅ **Verbesserte Lip-Sync**: Gewichtete Zufallsauswahl, 5 Stufen, ±30ms Jitter
+- ✅ **YAML-Config**: EMOTION_MAP + Lip-Sync + Breathing externalisiert, Fallback auf Defaults
+- ✅ **Tests**: 54 Tests (Renderer + ConfigLoader)
+- **Offen:** Web-Interface (Avatar-Editor mit Canvas-Preview)
+- **Offen:** Effekt-Layer (Träne, Schweißtropfen, Sparkle)
 - **Konzept**: `docs/concepts/phase-24-avatar-asset-management.md`
 
 ## Phase 25 – Zentrales Logging & Error-Monitoring 📊 GEPLANT
