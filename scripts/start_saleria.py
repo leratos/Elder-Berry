@@ -642,7 +642,7 @@ def run_matrix(assistant, stt=None, avatar=None, audio_converter=None):
             f"Aktualisiere die Zusammenfassung. Maximal 3 Sätze. "
             f"Behalte nur was für den weiteren Gesprächsverlauf relevant ist."
         )
-        return llm.generate(prompt, system="Du fasst Gespräche zusammen.")
+        return assistant._llm.generate(prompt, system="Du fasst Gespräche zusammen.")
 
     bridge = MatrixBridge(
         channel=channel,
