@@ -814,10 +814,21 @@ def _acquire_instance_lock() -> None:
 
 
 def _release_instance_lock() -> None:
-    """Gibt den Instanz-Lock frei."""
+    """Gibt den Instanz-Lock frei.
+
+    Auf Windows: explizit msvcrt.locking(LK_UNLCK) vor close(),
+    da close() allein den Lock nicht zuverlässig freigibt.
+    """
     global _lock_fh
     if _lock_fh is None:
         return
+    try:
+        if platform.system() == "Windows":
+            import msvcrt
+            _lock_fh.seek(0)
+            msvcrt.locking(_lock_fh.fileno(), msvcrt.LK_UNLCK, 1)
+    except Exception:
+        pass
     try:
         _lock_fh.close()
     except Exception:
@@ -830,16 +841,19 @@ def _release_instance_lock() -> None:
 
 
 def _sigint_handler(signum, frame):
-    """Ctrl+C: Lock freigeben und sauber beenden.
+    """Ctrl+C / SIGBREAK: Lock freigeben und sofort beenden.
 
-    atexit-Handler laufen nicht zuverlässig wenn asyncio-Loops auf
-    Windows per Ctrl+C unterbrochen werden. Daher explizit aufräumen.
+    os._exit() statt sys.exit(): erzwingt sofortiges Beenden auch wenn
+    asyncio-Loops oder Threads hängen (häufig auf Windows in VS Code).
     """
     _release_instance_lock()
-    sys.exit(0)
+    os._exit(0)
 
 
 if __name__ == "__main__":
     signal.signal(signal.SIGINT, _sigint_handler)
+    # SIGBREAK: Windows-spezifisch, wird von VS Code PowerShell gesendet
+    if hasattr(signal, "SIGBREAK"):
+        signal.signal(signal.SIGBREAK, _sigint_handler)
     _acquire_instance_lock()
     main()

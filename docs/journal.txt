@@ -2076,6 +2076,18 @@ User: "Lies meine Mails und trag den Zahnarzttermin ein"
 - 34/34 test_chat_history.py ✓ (19 bestehend + 15 neu)
 - 103/103 test_comms.py + test_assistant.py ✓ (keine Regressionen)
 
+## Abgeschlossen: Bugfix – Ctrl+C Lock-Cleanup (2026-03-20)
+- Branch: feature/phase-23-konversations-zusammenfassung (mitgenommen)
+- Problem: Ctrl+C in VS Code PowerShell fährt Saleria nicht richtig runter,
+  Lock-Datei bleibt → Neustart blockiert ("Saleria läuft bereits")
+- Ursache 1: msvcrt.locking(LK_NBLCK) wurde nie explizit mit LK_UNLCK freigegeben
+- Ursache 2: sys.exit(0) im Signal-Handler → SystemExit kann von asyncio/Threads
+  abgefangen werden → Prozess stirbt nicht → Lock bleibt gehalten
+- Ursache 3: SIGBREAK (VS Code PowerShell) wurde nicht behandelt
+- Fix: explizites msvcrt.locking(LK_UNLCK) + seek(0) vor close(),
+  os._exit(0) statt sys.exit(0), SIGBREAK-Handler registriert
+- Geänderte Datei: scripts/start_saleria.py
+
 ## Abgeschlossen: Bugfix – Restart-Schleife (Singleton Lock Branch)
 - Branch: fix/singleton-lock
 - Problem: Nach "restart" gerät Saleria in Endlosschleife (restart → reconnect → restart → ...)
