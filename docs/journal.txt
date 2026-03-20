@@ -2112,3 +2112,17 @@ User: "Lies meine Mails und trag den Zahnarzttermin ein"
   - Ursache: Keyword "kalender" in termine-Keywords zu breit → Substring-Match
   - Fix: "kalender" aus Keywords entfernen, als simple_command (exakter Match)
 - Dateien: bridge.py, calendar_commands.py
+
+## Konzept erstellt: Phase 24 – Avatar Asset Management & Animationssystem (2026-03-20)
+- Konzeptdokument: docs/concepts/phase-24-avatar-asset-management.md
+- Asset-Analyse: 21 Assets bewertet (3 Bodies, 14 Augen, 6 Münder)
+- Kernproblem: 8/10 Emotionen visuell kaum unterscheidbar (gleicher idle-Body)
+- 6 Teilschritte geplant:
+  1. Neue Assets: 4 Bodies (relaxed, energetic, withdrawn, gesture),
+     4 Münder (smile, smirk, pout, grin), 4 Augen (cheerful, halfclose)
+  2. Breathing-Animation: Sinus-Offset ±2px (Code-only, kein Asset)
+  3. Verbesserte Lip-Sync: randomisiert → mehr Frames → Audio-basiert (3 Stufen)
+  4. YAML-Config: EMOTION_MAP externalisieren, Hot-Reload
+  5. Web-Interface: Avatar-Editor mit Canvas-Preview + Config-Speicherung
+  6. Effekt-Layer: Träne, Schweißtropfen, Sparkle (Optional)
+- body_relaxed Asset bereits vorbereitet (Hand an Hüfte, Upload heute Abend)

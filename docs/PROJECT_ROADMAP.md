@@ -370,6 +370,19 @@ zu einer Rolling Summary komprimiert.
 - ✅ **Tests**: `tests/test_chat_history.py` (34 Tests)
 - **Konzept**: `docs/concepts/phase-23-konversations-zusammenfassung.md`
 
+## Phase 24 – Avatar Asset Management & Animationssystem 🎨 KONZEPT
+
+Salerias Avatar wird ausdrucksstärker und einfacher konfigurierbar.
+
+- **Neue Assets**: 4 Bodies (relaxed, energetic, withdrawn, gesture),
+  4 Münder (smile, smirk, pout, grin), 4 Augen-Paare (cheerful, halfclose)
+- **Breathing**: Subtile Atembewegung per Sinus-Offset (Code-only, kein Asset)
+- **Verbesserte Lip-Sync**: Randomisiert → mehr Frames → Audio-basiert (3 Stufen)
+- **YAML-Config**: EMOTION_MAP externalisieren, Hot-Reload statt hardcoded Dict
+- **Web-Interface**: Avatar-Editor mit Canvas-Preview, Emotion-Zuordnung per Dropdown
+- **Effekt-Layer**: Optional (Träne, Schweißtropfen, Sparkle)
+- **Konzept**: `docs/concepts/phase-24-avatar-asset-management.md`
+
 ---
 
 ## Projektgrenzen (ehrliche Einschätzung)
