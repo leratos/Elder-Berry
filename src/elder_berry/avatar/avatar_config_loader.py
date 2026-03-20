@@ -29,6 +29,7 @@ class EmotionLayers:
     eye_right: str
     mouth: str
     can_blink: bool
+    effect: str | None = None
 
 
 @dataclass(frozen=True)
@@ -105,6 +106,7 @@ def _parse_config(data: dict) -> AvatarConfig:
             eye_right=layers_data["eye_right"],
             mouth=layers_data["mouth"],
             can_blink=layers_data.get("can_blink", True),
+            effect=layers_data.get("effect"),
         )
 
     # Lip-Sync

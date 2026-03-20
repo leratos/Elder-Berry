@@ -1,0 +1,719 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Elder-Berry – Avatar-Editor</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: 'Segoe UI', system-ui, sans-serif;
+            background: #0d0d1a;
+            color: #e0e0e0;
+            min-height: 100vh;
+        }
+
+        /* Top Bar */
+        .topbar {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 12px 24px;
+            background: #1a1a2e;
+            border-bottom: 1px solid #2a2a4a;
+        }
+        .topbar h1 { font-size: 18px; color: #ff6b8a; }
+        .topbar a { color: #8888cc; text-decoration: none; font-size: 14px; }
+        .topbar a:hover { color: #aaaaee; }
+
+        /* Layout */
+        .layout {
+            display: grid;
+            grid-template-columns: 280px 1fr 320px;
+            gap: 16px;
+            padding: 16px;
+            max-height: calc(100vh - 56px);
+        }
+
+        /* Panels */
+        .panel {
+            background: #1a1a2e;
+            border-radius: 8px;
+            border: 1px solid #2a2a4a;
+            overflow-y: auto;
+        }
+        .panel-header {
+            padding: 12px 16px;
+            border-bottom: 1px solid #2a2a4a;
+            font-weight: 600;
+            font-size: 14px;
+            color: #ff6b8a;
+            position: sticky;
+            top: 0;
+            background: #1a1a2e;
+            z-index: 1;
+        }
+        .panel-body { padding: 12px 16px; }
+
+        /* Asset Browser (Left Panel) */
+        .asset-category { margin-bottom: 16px; }
+        .asset-category h3 {
+            font-size: 12px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            color: #888;
+            margin-bottom: 8px;
+        }
+        .asset-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 6px;
+        }
+        .asset-thumb {
+            position: relative;
+            background: #111;
+            border: 2px solid #2a2a4a;
+            border-radius: 4px;
+            cursor: pointer;
+            overflow: hidden;
+            aspect-ratio: 1/2;
+        }
+        .asset-thumb:hover { border-color: #ff6b8a; }
+        .asset-thumb.active { border-color: #ff6b8a; box-shadow: 0 0 8px rgba(255,107,138,0.3); }
+        .asset-thumb img {
+            width: 100%;
+            height: 100%;
+            object-fit: contain;
+        }
+        .asset-thumb .asset-name {
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            background: rgba(0,0,0,0.8);
+            font-size: 9px;
+            padding: 2px 4px;
+            text-align: center;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+        /* Eye assets: square aspect ratio */
+        .asset-grid.eye-grid { grid-template-columns: repeat(3, 1fr); }
+        .asset-grid.eye-grid .asset-thumb,
+        .asset-grid.mouth-grid .asset-thumb { aspect-ratio: 1/1; }
+        .asset-grid.mouth-grid { grid-template-columns: repeat(3, 1fr); }
+
+        /* Canvas Preview (Center Panel) */
+        .preview-area {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            max-height: calc(100vh - 56px);
+        }
+        #avatar-canvas {
+            background: #000;
+            border-radius: 4px;
+            max-width: 100%;
+            max-height: calc(100vh - 160px);
+        }
+        .preview-controls {
+            display: flex;
+            gap: 8px;
+            padding: 12px;
+            flex-wrap: wrap;
+            justify-content: center;
+        }
+
+        /* Config Panel (Right Panel) */
+        .emotion-section { margin-bottom: 16px; }
+        .emotion-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 6px 0;
+            cursor: pointer;
+            user-select: none;
+        }
+        .emotion-header:hover { color: #ff6b8a; }
+        .emotion-name {
+            font-weight: 600;
+            font-size: 13px;
+            text-transform: capitalize;
+        }
+        .emotion-toggle { font-size: 10px; color: #666; }
+        .emotion-fields { display: none; padding: 8px 0 8px 8px; }
+        .emotion-fields.open { display: block; }
+        .field-row {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-bottom: 6px;
+        }
+        .field-row label {
+            font-size: 11px;
+            color: #999;
+            min-width: 55px;
+        }
+        .field-row select {
+            flex: 1;
+            background: #111;
+            color: #e0e0e0;
+            border: 1px solid #2a2a4a;
+            border-radius: 4px;
+            padding: 4px 6px;
+            font-size: 12px;
+        }
+        .field-row select:focus { border-color: #ff6b8a; outline: none; }
+        .field-row input[type="checkbox"] { accent-color: #ff6b8a; }
+
+        /* Param Section */
+        .param-section { margin-top: 16px; border-top: 1px solid #2a2a4a; padding-top: 12px; }
+        .param-section h3 {
+            font-size: 12px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            color: #888;
+            margin-bottom: 8px;
+        }
+        .param-row {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-bottom: 6px;
+        }
+        .param-row label {
+            font-size: 11px;
+            color: #999;
+            min-width: 80px;
+        }
+        .param-row input[type="number"] {
+            width: 70px;
+            background: #111;
+            color: #e0e0e0;
+            border: 1px solid #2a2a4a;
+            border-radius: 4px;
+            padding: 4px 6px;
+            font-size: 12px;
+        }
+        .param-row input:focus { border-color: #ff6b8a; outline: none; }
+
+        /* Buttons */
+        .btn {
+            padding: 8px 16px;
+            border: none;
+            border-radius: 4px;
+            font-size: 13px;
+            cursor: pointer;
+            font-weight: 500;
+            transition: background 0.2s;
+        }
+        .btn-primary { background: #ff6b8a; color: #fff; }
+        .btn-primary:hover { background: #ff4d73; }
+        .btn-secondary { background: #2a2a4a; color: #e0e0e0; }
+        .btn-secondary:hover { background: #3a3a5a; }
+        .btn-small { padding: 4px 10px; font-size: 11px; }
+        .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+        /* Status Messages */
+        .status-msg {
+            padding: 8px 12px;
+            border-radius: 4px;
+            font-size: 12px;
+            margin: 8px 0;
+            display: none;
+        }
+        .status-msg.success { display: block; background: #1a3a1a; color: #6f6; border: 1px solid #2a5a2a; }
+        .status-msg.error { display: block; background: #3a1a1a; color: #f66; border: 1px solid #5a2a2a; }
+
+        /* Scrollbar */
+        ::-webkit-scrollbar { width: 6px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: #2a2a4a; border-radius: 3px; }
+        ::-webkit-scrollbar-thumb:hover { background: #3a3a5a; }
+    </style>
+</head>
+<body>
+    <div class="topbar">
+        <h1>Avatar-Editor</h1>
+        <a href="/">&#8592; Dashboard</a>
+    </div>
+
+    <div class="layout">
+        <!-- Left: Asset Browser -->
+        <div class="panel" id="asset-panel">
+            <div class="panel-header">Asset-Browser</div>
+            <div class="panel-body" id="asset-browser">
+                <p style="color:#666; font-size:12px;">Lade Assets...</p>
+            </div>
+        </div>
+
+        <!-- Center: Canvas Preview -->
+        <div class="panel preview-area">
+            <div class="panel-header" style="align-self:stretch;">Preview</div>
+            <canvas id="avatar-canvas" width="512" height="1024"></canvas>
+            <div class="preview-controls">
+                <select id="preview-emotion" class="btn btn-secondary btn-small">
+                    <!-- filled by JS -->
+                </select>
+                <button class="btn btn-secondary btn-small" onclick="toggleBlink()">Blink</button>
+                <button class="btn btn-secondary btn-small" onclick="toggleSpeaking()">Lip-Sync</button>
+            </div>
+        </div>
+
+        <!-- Right: Config Editor -->
+        <div class="panel" id="config-panel">
+            <div class="panel-header">Emotion-Config</div>
+            <div class="panel-body">
+                <div id="emotion-editor">
+                    <p style="color:#666; font-size:12px;">Lade Config...</p>
+                </div>
+
+                <div class="param-section">
+                    <h3>Lip-Sync</h3>
+                    <div class="param-row">
+                        <label>Interval (s)</label>
+                        <input type="number" id="param-lip-interval" step="0.01" min="0.05" max="1.0">
+                    </div>
+                    <div class="param-row">
+                        <label>Jitter (s)</label>
+                        <input type="number" id="param-lip-jitter" step="0.01" min="0" max="0.2">
+                    </div>
+                </div>
+
+                <div class="param-section">
+                    <h3>Breathing</h3>
+                    <div class="param-row">
+                        <label>Enabled</label>
+                        <input type="checkbox" id="param-breath-enabled">
+                    </div>
+                    <div class="param-row">
+                        <label>Speed (Hz)</label>
+                        <input type="number" id="param-breath-speed" step="0.1" min="0.1" max="5.0">
+                    </div>
+                    <div class="param-row">
+                        <label>Amplitude (px)</label>
+                        <input type="number" id="param-breath-amplitude" step="0.5" min="0" max="10">
+                    </div>
+                </div>
+
+                <div class="param-section">
+                    <div style="display:flex; gap:8px; flex-wrap:wrap;">
+                        <button class="btn btn-primary" onclick="saveConfig()">Speichern</button>
+                        <button class="btn btn-secondary" id="btn-reload" onclick="reloadRenderer()">Hot-Reload</button>
+                    </div>
+                    <div id="status-msg" class="status-msg"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+<script>
+// ===== State =====
+let assets = {};       // {body: [...], eye: [...], mouth: [...], effect: [...]}
+let config = null;     // raw YAML config as object
+let emotions = [];     // list of emotion names
+let reloadAvailable = false;
+let selectedEmotion = 'neutral';
+let imageCache = {};   // "category/name" → Image
+let isSpeaking = false;
+let lipSyncTimer = null;
+
+// ===== Init =====
+async function init() {
+    const [assetsResp, configResp] = await Promise.all([
+        fetch('/api/avatar/assets').then(r => r.json()),
+        fetch('/api/avatar/config').then(r => r.json()),
+    ]);
+
+    assets = assetsResp;
+    config = configResp.config;
+    emotions = configResp.emotions;
+    reloadAvailable = configResp.reload_available;
+
+    if (!reloadAvailable) {
+        document.getElementById('btn-reload').disabled = true;
+        document.getElementById('btn-reload').title = 'Kein Renderer verbunden';
+    }
+
+    buildAssetBrowser();
+    buildEmotionEditor();
+    buildPreviewDropdown();
+    fillParams();
+    preloadImages().then(() => renderPreview());
+}
+
+// ===== Asset Browser =====
+function buildAssetBrowser() {
+    const container = document.getElementById('asset-browser');
+    container.innerHTML = '';
+
+    const categories = [
+        { key: 'body', label: 'Bodies', gridClass: '' },
+        { key: 'eye', label: 'Eyes', gridClass: 'eye-grid' },
+        { key: 'mouth', label: 'Mouths', gridClass: 'mouth-grid' },
+        { key: 'effect', label: 'Effects', gridClass: 'mouth-grid' },
+    ];
+
+    for (const cat of categories) {
+        const items = assets[cat.key] || [];
+        if (items.length === 0 && cat.key === 'effect') continue;
+
+        const section = document.createElement('div');
+        section.className = 'asset-category';
+        section.innerHTML = `<h3>${cat.label} (${items.length})</h3>`;
+
+        const grid = document.createElement('div');
+        grid.className = `asset-grid ${cat.gridClass}`;
+
+        for (const name of items) {
+            const thumb = document.createElement('div');
+            thumb.className = 'asset-thumb';
+            thumb.dataset.category = cat.key;
+            thumb.dataset.name = name;
+            thumb.innerHTML = `
+                <img src="/api/avatar/assets/${cat.key}/${name}" loading="lazy" alt="${name}">
+                <span class="asset-name">${name}</span>
+            `;
+            thumb.onclick = () => selectAsset(cat.key, name);
+            grid.appendChild(thumb);
+        }
+
+        section.appendChild(grid);
+        container.appendChild(section);
+    }
+}
+
+function selectAsset(category, name) {
+    // Info-Anzeige: welcher Asset ausgewählt wurde
+    const thumbs = document.querySelectorAll(`.asset-thumb[data-category="${category}"]`);
+    thumbs.forEach(t => t.classList.toggle('active', t.dataset.name === name));
+}
+
+// ===== Emotion Editor =====
+function buildEmotionEditor() {
+    const container = document.getElementById('emotion-editor');
+    container.innerHTML = '';
+
+    const emotionData = config.emotions || {};
+
+    for (const emo of emotions) {
+        const layers = emotionData[emo] || {};
+        const section = document.createElement('div');
+        section.className = 'emotion-section';
+
+        const isOpen = emo === selectedEmotion;
+        section.innerHTML = `
+            <div class="emotion-header" onclick="toggleEmotion(this)">
+                <span class="emotion-name">${emo}</span>
+                <span class="emotion-toggle">${isOpen ? '▼' : '▶'}</span>
+            </div>
+            <div class="emotion-fields ${isOpen ? 'open' : ''}" id="fields-${emo}">
+                <div class="field-row">
+                    <label>Body</label>
+                    <select data-emotion="${emo}" data-field="body">
+                        ${optionsFor('body', layers.body)}
+                    </select>
+                </div>
+                <div class="field-row">
+                    <label>Eye L</label>
+                    <select data-emotion="${emo}" data-field="eye_left">
+                        ${optionsFor('eye', layers.eye_left, 'eye_left_')}
+                    </select>
+                </div>
+                <div class="field-row">
+                    <label>Eye R</label>
+                    <select data-emotion="${emo}" data-field="eye_right">
+                        ${optionsFor('eye', layers.eye_right, 'eye_right_')}
+                    </select>
+                </div>
+                <div class="field-row">
+                    <label>Mouth</label>
+                    <select data-emotion="${emo}" data-field="mouth">
+                        ${optionsFor('mouth', layers.mouth)}
+                    </select>
+                </div>
+                <div class="field-row">
+                    <label>Effect</label>
+                    <select data-emotion="${emo}" data-field="effect">
+                        <option value="">(none)</option>
+                        ${optionsFor('effect', layers.effect || '')}
+                    </select>
+                </div>
+                <div class="field-row">
+                    <label>Blink</label>
+                    <input type="checkbox" data-emotion="${emo}" data-field="can_blink"
+                           ${layers.can_blink !== false ? 'checked' : ''}>
+                </div>
+            </div>
+        `;
+        container.appendChild(section);
+    }
+
+    // Attach change handlers for live preview
+    container.querySelectorAll('select, input[type="checkbox"]').forEach(el => {
+        el.addEventListener('change', () => {
+            updateConfigFromEditor();
+            renderPreview();
+        });
+    });
+}
+
+function optionsFor(category, selected, filterPrefix) {
+    const items = assets[category] || [];
+    const filtered = filterPrefix
+        ? items.filter(n => n.startsWith(filterPrefix))
+        : items;
+    return filtered.map(n =>
+        `<option value="${n}" ${n === selected ? 'selected' : ''}>${n}</option>`
+    ).join('');
+}
+
+function toggleEmotion(header) {
+    const fields = header.nextElementSibling;
+    const toggle = header.querySelector('.emotion-toggle');
+    const isOpen = fields.classList.toggle('open');
+    toggle.textContent = isOpen ? '▼' : '▶';
+
+    if (isOpen) {
+        const emo = header.querySelector('.emotion-name').textContent;
+        selectedEmotion = emo;
+        document.getElementById('preview-emotion').value = emo;
+        renderPreview();
+    }
+}
+
+// ===== Preview =====
+function buildPreviewDropdown() {
+    const select = document.getElementById('preview-emotion');
+    select.innerHTML = emotions.map(e =>
+        `<option value="${e}" ${e === selectedEmotion ? 'selected' : ''}>${e}</option>`
+    ).join('');
+    select.onchange = () => {
+        selectedEmotion = select.value;
+        renderPreview();
+    };
+}
+
+async function preloadImages() {
+    const promises = [];
+    for (const [category, items] of Object.entries(assets)) {
+        for (const name of items) {
+            const key = `${category}/${name}`;
+            if (!imageCache[key]) {
+                const p = new Promise((resolve) => {
+                    const img = new Image();
+                    img.onload = () => { imageCache[key] = img; resolve(); };
+                    img.onerror = () => resolve();
+                    img.src = `/api/avatar/assets/${category}/${name}`;
+                });
+                promises.push(p);
+            }
+        }
+    }
+    await Promise.all(promises);
+}
+
+function renderPreview() {
+    const canvas = document.getElementById('avatar-canvas');
+    const ctx = canvas.getContext('2d');
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.fillStyle = '#000';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    const emoConfig = config.emotions[selectedEmotion];
+    if (!emoConfig) return;
+
+    // Draw layers: body → eye_left → eye_right → mouth → effect
+    const layers = [
+        { category: 'body', name: emoConfig.body },
+        { category: 'eye', name: emoConfig.eye_left },
+        { category: 'eye', name: emoConfig.eye_right },
+    ];
+
+    // Mouth: if speaking, pick random lip-sync mouth
+    if (isSpeaking) {
+        const lipMouth = getRandomLipSyncMouth();
+        layers.push({ category: 'mouth', name: lipMouth });
+    } else {
+        layers.push({ category: 'mouth', name: emoConfig.mouth });
+    }
+
+    // Effect layer (optional)
+    if (emoConfig.effect) {
+        layers.push({ category: 'effect', name: emoConfig.effect });
+    }
+
+    for (const layer of layers) {
+        const img = imageCache[`${layer.category}/${layer.name}`];
+        if (!img) continue;
+
+        // Center the image
+        const scale = Math.min(canvas.width / img.naturalWidth, canvas.height / img.naturalHeight);
+        const w = img.naturalWidth * scale;
+        const h = img.naturalHeight * scale;
+        const x = (canvas.width - w) / 2;
+        const y = (canvas.height - h) / 2;
+        ctx.drawImage(img, x, y, w, h);
+    }
+}
+
+function getRandomLipSyncMouth() {
+    const frames = config.lip_sync?.frames || {};
+    const keys = Object.keys(frames);
+    const weights = Object.values(frames);
+    if (keys.length === 0) return 'mouth_neutral_close';
+
+    const total = weights.reduce((a, b) => a + b, 0);
+    let r = Math.random() * total;
+    for (let i = 0; i < keys.length; i++) {
+        r -= weights[i];
+        if (r <= 0) return keys[i];
+    }
+    return keys[keys.length - 1];
+}
+
+function toggleBlink() {
+    const emoConfig = config.emotions[selectedEmotion];
+    if (!emoConfig) return;
+
+    // Temporarily swap eyes to closed
+    const canvas = document.getElementById('avatar-canvas');
+    const ctx = canvas.getContext('2d');
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.fillStyle = '#000';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    drawCentered(ctx, canvas, 'body', emoConfig.body);
+    drawCentered(ctx, canvas, 'eye', 'eye_left_close');
+    drawCentered(ctx, canvas, 'eye', 'eye_right_close');
+    drawCentered(ctx, canvas, 'mouth', emoConfig.mouth);
+    if (emoConfig.effect) drawCentered(ctx, canvas, 'effect', emoConfig.effect);
+
+    setTimeout(() => renderPreview(), 150);
+}
+
+function toggleSpeaking() {
+    isSpeaking = !isSpeaking;
+    if (isSpeaking) {
+        const interval = (config.lip_sync?.interval || 0.18) * 1000;
+        lipSyncTimer = setInterval(() => renderPreview(), interval);
+    } else {
+        clearInterval(lipSyncTimer);
+        lipSyncTimer = null;
+        renderPreview();
+    }
+}
+
+function drawCentered(ctx, canvas, category, name) {
+    const img = imageCache[`${category}/${name}`];
+    if (!img) return;
+    const scale = Math.min(canvas.width / img.naturalWidth, canvas.height / img.naturalHeight);
+    const w = img.naturalWidth * scale;
+    const h = img.naturalHeight * scale;
+    const x = (canvas.width - w) / 2;
+    const y = (canvas.height - h) / 2;
+    ctx.drawImage(img, x, y, w, h);
+}
+
+// ===== Config sync =====
+function updateConfigFromEditor() {
+    const container = document.getElementById('emotion-editor');
+
+    for (const emo of emotions) {
+        if (!config.emotions[emo]) config.emotions[emo] = {};
+        const layers = config.emotions[emo];
+
+        for (const field of ['body', 'eye_left', 'eye_right', 'mouth', 'effect']) {
+            const sel = container.querySelector(`select[data-emotion="${emo}"][data-field="${field}"]`);
+            if (sel) {
+                if (field === 'effect') {
+                    if (sel.value) {
+                        layers.effect = sel.value;
+                    } else {
+                        delete layers.effect;
+                    }
+                } else {
+                    layers[field] = sel.value;
+                }
+            }
+        }
+
+        const cb = container.querySelector(`input[data-emotion="${emo}"][data-field="can_blink"]`);
+        if (cb) layers.can_blink = cb.checked;
+    }
+}
+
+function fillParams() {
+    const ls = config.lip_sync || {};
+    document.getElementById('param-lip-interval').value = ls.interval || 0.18;
+    document.getElementById('param-lip-jitter').value = ls.jitter || 0.03;
+
+    const br = config.breathing || {};
+    document.getElementById('param-breath-enabled').checked = br.enabled !== false;
+    document.getElementById('param-breath-speed').value = br.speed || 1.2;
+    document.getElementById('param-breath-amplitude').value = br.amplitude || 2.0;
+}
+
+function collectParams() {
+    config.lip_sync = config.lip_sync || {};
+    config.lip_sync.interval = parseFloat(document.getElementById('param-lip-interval').value);
+    config.lip_sync.jitter = parseFloat(document.getElementById('param-lip-jitter').value);
+
+    config.breathing = config.breathing || {};
+    config.breathing.enabled = document.getElementById('param-breath-enabled').checked;
+    config.breathing.speed = parseFloat(document.getElementById('param-breath-speed').value);
+    config.breathing.amplitude = parseFloat(document.getElementById('param-breath-amplitude').value);
+}
+
+// ===== Save & Reload =====
+async function saveConfig() {
+    updateConfigFromEditor();
+    collectParams();
+
+    const statusEl = document.getElementById('status-msg');
+    try {
+        const resp = await fetch('/api/avatar/config', {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ config: config }),
+        });
+        const data = await resp.json();
+        if (resp.ok) {
+            statusEl.className = 'status-msg success';
+            statusEl.textContent = 'Config gespeichert!';
+        } else {
+            statusEl.className = 'status-msg error';
+            statusEl.textContent = data.error || 'Fehler beim Speichern';
+        }
+    } catch (err) {
+        statusEl.className = 'status-msg error';
+        statusEl.textContent = 'Netzwerkfehler: ' + err.message;
+    }
+    setTimeout(() => { statusEl.className = 'status-msg'; }, 4000);
+}
+
+async function reloadRenderer() {
+    const statusEl = document.getElementById('status-msg');
+    try {
+        const resp = await fetch('/api/avatar/reload', { method: 'POST' });
+        const data = await resp.json();
+        if (resp.ok) {
+            statusEl.className = 'status-msg success';
+            statusEl.textContent = 'Renderer Config neu geladen!';
+        } else {
+            statusEl.className = 'status-msg error';
+            statusEl.textContent = data.error || 'Reload fehlgeschlagen';
+        }
+    } catch (err) {
+        statusEl.className = 'status-msg error';
+        statusEl.textContent = 'Netzwerkfehler: ' + err.message;
+    }
+    setTimeout(() => { statusEl.className = 'status-msg'; }, 4000);
+}
+
+// ===== Start =====
+init();
+</script>
+</body>
+</html>

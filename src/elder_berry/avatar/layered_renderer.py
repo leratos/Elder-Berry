@@ -55,6 +55,7 @@ class EmotionLayers:
     eye_right: str
     mouth: str
     can_blink: bool
+    effect: str | None = None
 
 
 # Mapping: Emotion → Komponenten-Dateinamen (ohne Ordner-Prefix)
@@ -191,7 +192,7 @@ class LayeredSpriteRenderer(AvatarRenderer):
 
     def _load_components(self) -> None:
         """Lädt alle Komponenten-PNGs aus den Unterordnern."""
-        subdirs = {"body": "body", "eye": "eye", "mouth": "mouth"}
+        subdirs = {"body": "body", "eye": "eye", "mouth": "mouth", "effect": "effect"}
         total = 0
 
         for subdir_name, subdir_key in subdirs.items():
@@ -328,6 +329,10 @@ class LayeredSpriteRenderer(AvatarRenderer):
 
         self._blit_centered(mouth_key, y_offset=breath_y)
 
+        # Layer 4: Effekt (optional)
+        if layers.effect:
+            self._blit_centered(layers.effect, y_offset=breath_y)
+
         pygame.display.flip()
         self._clock.tick(FPS)
 
@@ -439,11 +444,13 @@ class LayeredSpriteRenderer(AvatarRenderer):
         surface = pygame.Surface((self._width, self._height))
         surface.fill(BG_COLOR)
 
-        # Layers compositen (Body → Eyes → Mouth)
+        # Layers compositen (Body → Eyes → Mouth → Effect)
         self._blit_to(surface, layers.body)
         self._blit_to(surface, layers.eye_left)
         self._blit_to(surface, layers.eye_right)
         self._blit_to(surface, layers.mouth)
+        if layers.effect:
+            self._blit_to(surface, layers.effect)
 
         pygame.image.save(surface, str(output_path))
         logger.debug("Avatar gerendert: %s (emotion=%s)", output_path, emotion.value)
@@ -458,7 +465,7 @@ class LayeredSpriteRenderer(AvatarRenderer):
             pygame.init()
 
         # Komponenten laden ohne convert_alpha (braucht kein Display)
-        subdirs = ("body", "eye", "mouth")
+        subdirs = ("body", "eye", "mouth", "effect")
         total = 0
         for subdir_name in subdirs:
             subdir = self._assets_dir / subdir_name
@@ -481,6 +488,20 @@ class LayeredSpriteRenderer(AvatarRenderer):
         x = (self._width - sw) // 2
         y = (self._height - sh) // 2
         target.blit(surface, (x, y))
+
+    def reload_config(self) -> bool:
+        """Lädt die YAML-Config neu (Hot-Reload).
+
+        Returns:
+            True wenn die Config erfolgreich geladen wurde, False bei Fehler.
+        """
+        try:
+            self._load_yaml_config()
+            logger.info("Avatar-Config hot-reloaded")
+            return True
+        except Exception:
+            logger.exception("Fehler beim Hot-Reload der Avatar-Config")
+            return False
 
     def shutdown(self) -> None:
         self._running = False

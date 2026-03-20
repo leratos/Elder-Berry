@@ -2181,3 +2181,43 @@ User: "Lies meine Mails und trag den Zahnarzttermin ein"
   5. Web-Interface: Avatar-Editor mit Canvas-Preview + Config-Speicherung
   6. Effekt-Layer: Träne, Schweißtropfen, Sparkle (Optional)
 - body_relaxed Asset bereits vorbereitet (Hand an Hüfte, Upload heute Abend)
+
+## Abgeschlossen: Phase 24 (Teilschritte 5+6) – Web-Interface + Effekt-Layer (2026-03-20)
+- Branch: feature/phase-24-avatar-assets (fortgesetzt)
+
+### Teilschritt 5: Web-Interface (Avatar-Editor)
+- Neue Route /avatar/editor im bestehenden FastAPI-Dashboard (Port 8090)
+- Backend-Endpoints: GET/PUT /api/avatar/config, GET /api/avatar/assets, POST /api/avatar/reload
+- Asset-Browser: Thumbnail-Grid pro Kategorie (body/eye/mouth/effect)
+- Emotion-Editor: Dropdowns für Body, Eye L/R, Mouth, Effect, Blink pro Emotion
+- Canvas-Preview: Layer-Compositing direkt im Browser (Body → Eyes → Mouth → Effect)
+- Animation-Preview: Blink-Simulation + Lip-Sync-Simulation im Canvas
+- Lip-Sync/Breathing Parameter-Editor (interval, jitter, speed, amplitude)
+- Save → YAML validiert + geschrieben, Hot-Reload-Button → Renderer lädt Config neu
+- Pfad-Traversal-Schutz bei Asset-Serving (Path.name Sanitization)
+
+### Teilschritt 6: Effekt-Layer
+- Neuer Ordner assets/effect/ (leer, bereit für Effekt-Sprites)
+- Optionaler effect-Key in YAML pro Emotion (Default: None)
+- EmotionLayers Dataclass um effect: str | None erweitert (ConfigLoader + Renderer)
+- Renderer zeichnet Effect als 4. Layer (nach Body → Eyes → Mouth)
+- render_to_file() unterstützt ebenfalls Effekt-Layer
+- Komponenten-Loader lädt auch effect/-Unterordner
+
+### Neue Dateien
+- src/elder_berry/web/avatar_editor.py: FastAPI-Endpoints (6 Routen + Validierung)
+- src/elder_berry/web/templates/avatar_editor.html: Editor-UI (HTML + Vanilla JS + Canvas)
+- tests/test_avatar_editor.py: 31 Tests (Editor-Seite, Assets, Config CRUD, Reload, Effekt-Layer)
+
+### Geänderte Dateien
+- src/elder_berry/web/audio_dashboard.py: avatar_renderer-Parameter, Avatar-Editor-Routen Import
+- src/elder_berry/avatar/layered_renderer.py: reload_config(), effect-Layer im update()/render_to_file()
+- src/elder_berry/avatar/avatar_config_loader.py: effect-Feld in EmotionLayers
+
+### Tests
+- 31/31 test_avatar_editor.py ✓
+- 54/54 test_layered_renderer.py ✓ (keine Regressionen)
+- 23/23 test_avatar_renderer.py ✓ (keine Regressionen)
+- 33/33 test_audio_dashboard.py ✓ (keine Regressionen)
+
+### Phase 24 komplett abgeschlossen (alle 6 Teilschritte)
