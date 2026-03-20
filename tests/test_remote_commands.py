@@ -1363,9 +1363,19 @@ class TestCalendarCommands:
         handler = RemoteCommandHandler()
         assert handler.parse_command("termine woche") == "termine"
 
-    def test_parse_termine_keyword_kalender(self):
+    def test_parse_termine_keyword_kalender_exact(self):
+        """'kalender' allein → simple_command (exakter Match, listet Termine)."""
         handler = RemoteCommandHandler()
-        assert handler.parse_command("was steht heute im kalender") == "termine"
+        assert handler.parse_command("kalender") == "kalender"
+
+    def test_parse_kalender_substring_no_match(self):
+        """'kalender' als Substring soll NICHT matchen (→ LLM-Fallthrough).
+
+        Verhindert False-Positives wie 'trag den termin in den kalender ein'.
+        """
+        handler = RemoteCommandHandler()
+        assert handler.parse_command("was steht heute im kalender") is None
+        assert handler.parse_command("ja trag bitte den termin in den kalender ein") is None
 
     def test_parse_termin_create(self):
         handler = RemoteCommandHandler()

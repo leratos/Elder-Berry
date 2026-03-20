@@ -133,7 +133,7 @@ class CalendarCommandHandler(CommandHandler):
 
     @property
     def simple_commands(self) -> set[str]:
-        return {"termine"}
+        return {"termine", "kalender"}
 
     @property
     def patterns(self) -> list[tuple[re.Pattern, str, bool, bool]]:
@@ -170,7 +170,7 @@ class CalendarCommandHandler(CommandHandler):
                 "bin ich morgen frei", "was hab ich morgen vor",
             ],
             "termine": [
-                "was steht an", "welche termine", "kalender",
+                "was steht an", "welche termine",
                 "nächster termin", "termine heute", "habe ich termine",
                 "zeitplan", "terminplan", "agenda", "was hab ich vor",
                 "hab ich heute was", "bin ich heute frei",
@@ -179,7 +179,7 @@ class CalendarCommandHandler(CommandHandler):
 
     def execute(self, command: str, raw_text: str) -> CommandResult:
         """Führt einen erkannten Calendar-Command aus."""
-        if command == "termine":
+        if command in ("termine", "kalender"):
             return self._cmd_termine(raw_text, variant="termine")
         if command == "termine_woche":
             return self._cmd_termine(raw_text, variant="termine_woche")

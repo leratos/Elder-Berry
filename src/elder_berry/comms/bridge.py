@@ -370,6 +370,15 @@ class MatrixBridge:
                 await self._handle_document_summary(msg, result)
                 return
 
+            # Mail per ID: Body ans LLM schicken für kontextbewusste Antwort
+            if (
+                result.command == "mail_by_id"
+                and result.success
+                and result.history_text
+            ):
+                await self._handle_mail_summary(msg, result)
+                return
+
             # Text-Antwort senden
             if result.text:
                 await self._channel.send_text(msg.room_id, result.text)
@@ -561,6 +570,54 @@ class MatrixBridge:
                 await self._channel.send_text(
                     msg.room_id,
                     f"{result.text}\n\n(LLM-Zusammenfassung fehlgeschlagen: {type(e).__name__})",
+                )
+            except Exception:
+                logger.error("Konnte Fehlermeldung nicht senden")
+
+    async def _handle_mail_summary(self, msg: IncomingMessage, result) -> None:
+        """Schickt Mail-Body ans LLM für eine kontextbewusste Antwort.
+
+        Analog zu _handle_document_summary: Der Remote Command liefert den
+        Mail-Body in result.history_text. Das LLM bekommt den Body + Chat-Kontext
+        und kann zusammenfassen, Fragen beantworten oder Termine extrahieren.
+        """
+        try:
+            loop = asyncio.get_running_loop()
+
+            # Mail-Body in Chat-History für Rückfragen
+            self._chat_history.add(msg.sender, "user", msg.body)
+            self._chat_history.add(msg.sender, "assistant", result.history_text)
+
+            # LLM mit Mail-Body + Chat-Kontext
+            summary_prompt = (
+                f"Der Nutzer hat folgende E-Mail abgerufen.\n\n"
+                f"{result.history_text}\n\n"
+                f"Beantworte die Anfrage des Nutzers basierend auf dem Inhalt "
+                f"dieser Mail und dem bisherigen Gesprächsverlauf."
+            )
+            chat_context = self._chat_history.format_for_prompt(msg.sender)
+
+            tmp_wav = Path(tempfile.mktemp(suffix=".wav")) if self._audio_to_matrix else None
+            llm_result = await loop.run_in_executor(
+                None, self._assistant.process, summary_prompt, tmp_wav, chat_context,
+            )
+
+            # Header + LLM-Antwort senden
+            if llm_result.response:
+                response = f"{result.text}\n\n{llm_result.response}"
+                self._chat_history.add(msg.sender, "assistant", llm_result.response)
+                await self._channel.send_text(msg.room_id, response)
+            else:
+                await self._channel.send_text(msg.room_id, result.text)
+
+            await self._send_audio_if_available(msg.room_id, llm_result, tmp_wav)
+
+        except Exception as e:
+            logger.error("Mail-Summary LLM fehlgeschlagen: %s", e)
+            try:
+                await self._channel.send_text(
+                    msg.room_id,
+                    f"{result.text}\n\n(LLM-Verarbeitung fehlgeschlagen: {type(e).__name__})",
                 )
             except Exception:
                 logger.error("Konnte Fehlermeldung nicht senden")

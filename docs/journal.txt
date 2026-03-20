@@ -2102,3 +2102,13 @@ User: "Lies meine Mails und trag den Zahnarzttermin ein"
 - Fix Teil 3: Timestamp-Filter verschärft: <= statt < mit -30s Grace-Period
 - Geänderte Dateien: bridge.py, tests/test_comms.py
 - Tests: 384 passed, 0 failed (Comms/Matrix/Bridge-Tests)
+
+## Abgeschlossen: Bugfix – Mail-Summary + Kalender-Keyword (2026-03-20)
+- Bug 1: "Fasse die 103 zusammen" → nur Header statt Zusammenfassung
+  - Ursache: _handle_remote_command sendet mail_by_id result.text (Header) direkt,
+    Body (history_text) geht nur in Chat-History → kein LLM-Summary-Durchlauf
+  - Fix: _handle_mail_summary analog zu _handle_document_summary in bridge.py
+- Bug 2: "Ja trag bitte den termin in den Kalender ein" → Termine aufgelistet
+  - Ursache: Keyword "kalender" in termine-Keywords zu breit → Substring-Match
+  - Fix: "kalender" aus Keywords entfernen, als simple_command (exakter Match)
+- Dateien: bridge.py, calendar_commands.py
