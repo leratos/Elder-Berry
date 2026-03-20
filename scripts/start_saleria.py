@@ -628,6 +628,22 @@ def run_matrix(assistant, stt=None, avatar=None, audio_converter=None):
             "matrix_allowed_senders = '@user:domain.com'"
         )
 
+    # Summarizer für ChatHistory Rolling Summary (Phase 23)
+    from elder_berry.comms.chat_history import ChatMessage
+
+    def summarizer(old_summary: str, evicted: list[ChatMessage]) -> str:
+        evicted_text = "\n".join(
+            f"{'User' if m.role == 'user' else 'Saleria'}: {m.text}"
+            for m in evicted
+        )
+        prompt = (
+            f"Bisherige Zusammenfassung: {old_summary or 'Keine'}\n\n"
+            f"Neue Nachrichten:\n{evicted_text}\n\n"
+            f"Aktualisiere die Zusammenfassung. Maximal 3 Sätze. "
+            f"Behalte nur was für den weiteren Gesprächsverlauf relevant ist."
+        )
+        return llm.generate(prompt, system="Du fasst Gespräche zusammen.")
+
     bridge = MatrixBridge(
         channel=channel,
         assistant=assistant,
@@ -644,6 +660,7 @@ def run_matrix(assistant, stt=None, avatar=None, audio_converter=None):
         calendar_watcher=calendar_watcher,
         document_reader=document_reader,
         audio_router=audio_router,
+        summarizer=summarizer,
     )
 
     # Settings-Dashboard (Web-UI für Audio-Routing + Monitor-Auswahl)
