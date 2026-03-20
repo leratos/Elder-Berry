@@ -2040,6 +2040,42 @@ User: "Lies meine Mails und trag den Zahnarzttermin ein"
 - Gehäuse in Drucksegmente zerteilen
 - Setzkanten an Segmentgrenzen vorsehen (Zapfen + Nut + Stift-Fixierung)
 
+## Abgeschlossen: Phase 23 – Konversations-Zusammenfassung (2026-03-20)
+- Branch: feature/phase-23-konversations-zusammenfassung
+
+### Konzept
+- ChatHistory vergisst evicted Messages nicht mehr – Rolling Summary komprimiert sie
+- Batch-Eviction: alle 3 evicted Messages → 1 LLM-Call (Summarizer)
+- Summary wird im Background-Thread erstellt (blockiert nicht den Response)
+- Max 3 Sätze, fix → vorhersagbares Token-Budget (~50-80 Tokens)
+- In-Memory (konsistent mit ChatHistory, bei Neustart startet neue Konversation)
+
+### Entscheidungen
+- Batch (EVICTION_BATCH_SIZE=3) statt pro Evict → weniger LLM-Calls
+- Gleicher LLM wie Konversation (kein separater, keine zweite Konfiguration)
+- In-Memory Persistenz (kein SQLite)
+- Fix 3 Sätze Summary-Länge
+
+### Geänderte Dateien
+- src/elder_berry/comms/chat_history.py: Rolling Summary Logik, Summarizer-Callback (DI),
+  Eviction-Buffer, Background-Thread, Thread-Lock, get_summary()
+- src/elder_berry/comms/bridge.py: summarizer-Parameter durchreichen an ChatHistory
+- scripts/start_saleria.py: Summarizer-Factory (nutzt bestehenden LLM)
+- tests/test_chat_history.py: 15 neue Tests (Summary-Trigger, Format, Clear, Multi-User,
+  Error-Handling, Rückwärtskompatibilität)
+- docs/PROJECT_ROADMAP.md: Phase 22 als abgeschlossen markiert
+
+### API-Änderungen (rückwärtskompatibel)
+- ChatHistory: neuer optionaler Parameter `summarizer` (Default None → altes Verhalten)
+- ChatHistory: `get_summary(sender)` Methode neu
+- format_for_prompt(): Header von "Bisheriger Gesprächsverlauf:" zu "Letzte Nachrichten:"
+  (+ optionaler "Zusammenfassung bisheriges Gespräch:" Block davor)
+- MatrixBridge: neuer optionaler Parameter `summarizer`
+
+### Tests
+- 34/34 test_chat_history.py ✓ (19 bestehend + 15 neu)
+- 103/103 test_comms.py + test_assistant.py ✓ (keine Regressionen)
+
 ## Abgeschlossen: Bugfix – Restart-Schleife (Singleton Lock Branch)
 - Branch: fix/singleton-lock
 - Problem: Nach "restart" gerät Saleria in Endlosschleife (restart → reconnect → restart → ...)

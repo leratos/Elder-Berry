@@ -42,7 +42,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from elder_berry.comms.chat_history import ChatHistory
+from elder_berry.comms.chat_history import ChatHistory, Summarizer
 from elder_berry.comms.message_channel import IncomingMessage, MessageChannel
 
 if TYPE_CHECKING:
@@ -120,6 +120,7 @@ class MatrixBridge:
         document_reader: DocumentReader | None = None,
         audio_router: AudioRouter | None = None,
         task_chain: TaskChainRunner | None = None,
+        summarizer: Summarizer | None = None,
     ) -> None:
         self._channel = channel
         self._assistant = assistant
@@ -144,8 +145,10 @@ class MatrixBridge:
         self._start_time: float = 0.0
         # Restart-Cooldown: Zeitpunkt bis zu dem restart-Befehle ignoriert werden
         self._restart_cooldown_until: float = 0.0
-        # Multi-Turn Chat-History pro User (Sliding Window)
-        self._chat_history = ChatHistory(max_messages=10)
+        # Multi-Turn Chat-History pro User (Sliding Window + Rolling Summary)
+        self._chat_history = ChatHistory(
+            max_messages=10, summarizer=summarizer
+        )
 
     @property
     def _audio_to_matrix(self) -> bool:

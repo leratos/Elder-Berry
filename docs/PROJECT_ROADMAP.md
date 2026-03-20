@@ -346,25 +346,28 @@ Wetter werden automatisch zum Termin-Reminder hinzugefügt.
 - ✅ Template-Fallback wenn LLM nicht verfügbar
 - **Konzept**: `docs/concepts/phase-21-proaktive-kontext-verknuepfung.md`
 
-## Phase 22 – Intent-Routing Verbesserung 🎯 GEPLANT
+## Phase 22 – Intent-Routing Verbesserung 🎯 ✅ ABGESCHLOSSEN
 
 Die Erkennung, ob eine User-Nachricht ein direkter Command oder eine
-LLM-Konversation ist, wird verbessert.
+LLM-Konversation ist, wurde verbessert.
 
-- Keyword-Audit: fehlende Synonyme/Umgangssprache ergänzen
-- Dynamischer Command-Prompt: `get_command_summary()` statt statischer Block
-- Retry bei Parse-Fehler: LLM bekommt Feedback wenn Command nicht erkannt
+- ✅ Keyword-Audit: fehlende Synonyme/Umgangssprache ergänzt (alle 9 Handler)
+- ✅ Dynamischer Command-Prompt: `get_command_summary()` statt statischer Block
+- ✅ Retry bei Parse-Fehler: LLM bekommt Feedback wenn Command nicht erkannt (max 1 Retry)
+- ✅ **Tests**: `tests/test_intent_routing.py` (107 Tests)
 - **Konzept**: `docs/concepts/phase-22-intent-routing.md`
 
-## Phase 23 – Konversations-Zusammenfassung 📝 GEPLANT
+## Phase 23 – Konversations-Zusammenfassung 📝 ✅ ABGESCHLOSSEN
 
 ChatHistory vergisst den Gesprächsanfang nicht mehr – evicted Messages werden
 zu einer Rolling Summary komprimiert.
 
-- ChatHistory: Rolling Summary bei Eviction (LLM-basiert, max 3 Sätze)
-- Summarizer-Callback als DI-Parameter (kein direkter LLM-Import)
-- Summary wird im format_for_prompt() vor den letzten Nachrichten angezeigt
-- Async/Background: Summary blockiert nicht den Response
+- ✅ ChatHistory: Rolling Summary bei Eviction (LLM-basiert, max 3 Sätze)
+- ✅ Batch-Eviction: alle 3 evicted Messages → 1 LLM-Call
+- ✅ Summarizer-Callback als DI-Parameter (kein direkter LLM-Import)
+- ✅ Summary wird im format_for_prompt() vor den letzten Nachrichten angezeigt
+- ✅ Background-Thread: Summary blockiert nicht den Response
+- ✅ **Tests**: `tests/test_chat_history.py` (34 Tests)
 - **Konzept**: `docs/concepts/phase-23-konversations-zusammenfassung.md`
 
 ---
