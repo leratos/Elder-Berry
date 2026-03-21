@@ -1,5 +1,4 @@
 version: 1
-
 emotions:
   neutral:
     body: relaxed
@@ -61,40 +60,37 @@ emotions:
     eye_right: eye_right_sad_open
     mouth: mouth_pout
     can_blink: false
-
 lip_sync:
   frames:
     mouth_neutral_close: 0.15
     mouth_tiny: 0.15
-    mouth_halfopen: 0.30
+    mouth_halfopen: 0.3
     mouth_open: 0.25
     mouth_wide: 0.15
   interval: 0.18
   jitter: 0.03
-
 breathing:
   enabled: true
   speed: 1.2
-  amplitude: 2.0
-
+  amplitude: 5
 idle_actions:
-  - name: glance_left
-    eye_left: eye_left_side_open
-    eye_right: eye_right_side_open
-    duration: 2.0
-  - name: glance_right
-    eye_left: eye_left_side_open
-    eye_right: eye_right_side_open
-    duration: 2.0
-  - name: smile
-    mouth: mouth_friendly_open
-    duration: 2.0
-  - name: soft_close
-    eye_left: eye_left_close
-    eye_right: eye_right_close
-    duration: 2.0
-  - name: surprise
-    eye_left: eye_left_surprise_open
-    eye_right: eye_right_surprise_open
-    mouth: mouth_open
-    duration: 1.5
+- name: glance_left
+  eye_left: eye_left_side_open
+  eye_right: eye_right_side_open
+  duration: 2
+- name: glance_right
+  eye_left: eye_left_side_open
+  eye_right: eye_right_side_open
+  duration: 2
+- name: smile
+  mouth: mouth_friendly_open
+  duration: 2
+- name: soft_close
+  eye_left: eye_left_close
+  eye_right: eye_right_close
+  duration: 2
+- name: surprise
+  eye_left: eye_left_surprise_open
+  eye_right: eye_right_surprise_open
+  mouth: mouth_open
+  duration: 1.5
