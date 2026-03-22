@@ -15,6 +15,9 @@ from elder_berry.robot.simulator import (  # noqa: E402
 )
 from elder_berry.robot.server import RobotServer  # noqa: E402
 
+# Pillow ist optional – Tests die capture_jpeg() aufrufen brauchen es
+_pil = pytest.importorskip("PIL", reason="Pillow nicht installiert")
+
 
 # ---------------------------------------------------------------------------
 # SimulatedCamera
