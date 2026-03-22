@@ -15,6 +15,7 @@ import logging
 import random
 import time
 
+from elder_berry.robot.camera_controller import CameraController
 from elder_berry.robot.protocol import BatteryStatus
 from elder_berry.robot.server import (
     AvatarDisplay,
@@ -119,6 +120,30 @@ class SimulatedSensors(SensorManager):
                 "distance_cm": round(random.uniform(10, 200), 1),
             },
         }
+
+
+class SimulatedCamera(CameraController):
+    """Simulierte Kamera für lokale Entwicklung."""
+
+    def __init__(self, resolution: tuple[int, int] = (1920, 1080)) -> None:
+        self._resolution = resolution
+
+    def is_available(self) -> bool:
+        return True
+
+    def capture_jpeg(self, quality: int = 85) -> bytes:
+        """Generiert ein minimales JPEG-Testbild (320x240, dunkelgrau)."""
+        from PIL import Image
+        import io
+
+        img = Image.new("RGB", (320, 240), color=(40, 40, 40))
+        buffer = io.BytesIO()
+        img.save(buffer, format="JPEG", quality=quality)
+        logger.info("[SIM] Camera: Simulated capture")
+        return buffer.getvalue()
+
+    def get_resolution(self) -> tuple[int, int]:
+        return self._resolution
 
 
 def create_simulator(

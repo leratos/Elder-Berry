@@ -87,11 +87,25 @@ def main() -> None:
     motors = SimulatedMotors()
     sensors = SimulatedSensors()
 
+    # -- Kamera (optional) -----------------------------------------------------
+    camera = None
+    try:
+        from elder_berry.robot.camera_controller import RPi5Camera
+        camera = RPi5Camera(resolution=(1920, 1080))
+        if camera.is_available():
+            logger.info("Kamera erkannt: RPi Camera Module 3")
+        else:
+            logger.warning("Kamera nicht erkannt – Capture deaktiviert")
+            camera = None
+    except Exception as e:
+        logger.warning("Kamera-Init fehlgeschlagen: %s", e)
+
     # -- RobotServer -----------------------------------------------------------
     server = RobotServer(
         motors=motors,
         avatar=avatar,
         sensors=sensors,
+        camera=camera,
         hostname="elder-berry-rpi5",
     )
 
