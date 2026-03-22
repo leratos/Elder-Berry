@@ -49,7 +49,7 @@
 - STT: FasterWhisperEngine (GPU-beschleunigt, VAD-Filter, Lazy-Load)
 - Startup-Script: start_saleria.py (Terminal/Matrix/Voice-Modus)
 - **Offen:** Emotion-State-Machine (Persistente Stimmung über Konversation hinweg)
-- **Offen:** Multimodale Kamera-Eingabe (Webcam → OpenRouter Vision)
+- **→ Phase 26:** ~~Multimodale Kamera-Eingabe~~ ✅ (RPi Camera + Anthropic Vision)
 - **Offen:** Feinschliff Aktions-Logik (komplexe Verkettungen)
 
 ## Phase 6 – Matrix-Integration ✅ ABGESCHLOSSEN
@@ -126,11 +126,8 @@ Saleria als echte Alltagsassistentin – Kalender, E-Mail, Fitness, Wetter, Smar
 
 ## Phase 9 – Multimodal + Autonomie 🔭 VISION
 
-### Kamera-Integration (Multimodal)
-- Webcam oder RTSP-Feed → Bild → OpenRouter Vision (GPT-4o / Claude Vision)
-- Commands: "was siehst du", "screenshot vom eingang"
-- Anwendung: Paketlieferung erkennen, Haustier beobachten, Schreibtisch-Check
-- Voraussetzung: Kamera physisch installiert (RPi Camera Module 3 bestellt, noch nicht verbaut)
+### ~~Kamera-Integration (Multimodal)~~ → Phase 26 ✅
+- Umgesetzt als Phase 26 mit RPi Camera Module 3 + Anthropic Vision API
 
 ### Emotion Recognition (Voice)
 - Audio-basierte Emotionserkennung → Saleria passt Antwortton an
@@ -152,8 +149,9 @@ Saleria als echte Alltagsassistentin – Kalender, E-Mail, Fitness, Wetter, Smar
 - ✅ Idle-Animationen (Glance, Smile, Soft-Close, Surprise)
 - ✅ Lip-Sync Fix (show_speaking Reset-Bug)
 - ✅ systemd-Autostart dokumentiert
-- **Offen:** Drehteller (28BYJ-48 Stepper + 200mm Lazy-Susan + Hall-Sensor Homing)
-- **Offen:** Sensor-Integration (Kamera, BME280, APDS-9960) – alle direkt über RPi5 GPIO/I2C
+- **→ Phase 27:** Drehteller-Steuerung (28BYJ-48 + A3144 Hall-Sensor)
+- **→ Phase 26:** Kamera-Integration (RPi Camera Module 3) ✅
+- **Offen:** Sensor-Integration (BME280, APDS-9960) – direkt über RPi5 GPIO/I2C
 - **Offen:** Gehäuse-Finish (Resin-Druck, Rinde, Moos)
 
 ## Phase 11 – Dokument-Zusammenfassung 📄 ✅ ABGESCHLOSSEN
@@ -394,6 +392,34 @@ und bei kritischen Problemen wird der Nutzer proaktiv über Matrix informiert.
 - Matrix-Alerting: Background-Worker-Fehler melden sich proaktiv beim Nutzer
 - bridge._log_error() entfernen: durch Standard-Logging ersetzt
 - **Konzept**: `docs/concepts/phase-25-zentrales-logging.md`
+
+## Phase 26 – Kamera-Integration (RPi Camera Module 3) 📷 ✅ ABGESCHLOSSEN
+
+RPi Camera Module 3 in die Projekt-Architektur integriert.
+
+- ✅ **CameraController ABC + RPi5Camera**: picamera2, lazy-init
+- ✅ **Server-Endpoints**: GET /camera/capture + /camera/status
+- ✅ **RobotClient**: capture_image() + camera_status()
+- ✅ **AnthropicClient**: describe_image() (Standard Vision API)
+- ✅ **CameraCommandHandler**: foto + camera_describe Commands
+- ✅ **SimulatedCamera**: 320x240 dunkelgrau Testbild
+- ✅ **Tests**: 29 Tests (11 camera_controller + 18 camera_commands)
+- **Konzept**: `docs/concepts/phase-26-kamera-integration.md`
+
+## Phase 27 – Drehteller-Steuerung (28BYJ-48 + A3144 Hall-Sensor) 🔄 IN ARBEIT
+
+Software-Integration des Drehtellers in die Projekt-Architektur.
+Hardware bereits getestet (test_stepper.py, test_hall.py).
+
+- TurntableController ABC + RPi5TurntableController (lgpio, Background-Thread)
+- Hall-Sensor Homing (immer CCW, Sicherheitslimit 4200 Steps)
+- ±180° Soft-Limit (USB-C Kabel-Constraint)
+- Server-Endpoints: /turntable/rotate, /turntable/home, /turntable/stop, /turntable/status
+- RobotClient: rotate_turntable(), home_turntable(), stop_turntable(), turntable_status()
+- TurntableCommandHandler: "dreh dich", "schau nach links/rechts", "drehteller home/status"
+- SimulatedTurntable für Tower-Tests
+- 44 Tests geplant
+- **Konzept**: `docs/concepts/phase-27-drehteller-steuerung.md`
 
 ---
 
