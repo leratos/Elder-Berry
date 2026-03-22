@@ -2221,3 +2221,47 @@ User: "Lies meine Mails und trag den Zahnarzttermin ein"
 - 33/33 test_audio_dashboard.py ✓ (keine Regressionen)
 
 ### Phase 24 komplett abgeschlossen (alle 6 Teilschritte)
+
+## Abgeschlossen: Phase 25 – Zentrales Logging & Error-Monitoring (2026-03-22)
+- Branch: feature/phase-25-zentrales-logging
+- Konzept: docs/concepts/phase-25-zentrales-logging.md
+
+### Schritt 1: Logging-Config zentralisiert
+- start_saleria.py: basicConfig() → dictConfig() mit 3 Handlers
+- StreamHandler (Console, INFO) – wie bisher
+- RotatingFileHandler → logs/elder_berry.log (5 MB, 3 Backups, UTF-8)
+- ErrorCollectorHandler (ERROR+) – für Alerting + Deduplizierung
+
+### Schritt 2: ErrorCollector implementiert
+- Neue Datei: src/elder_berry/core/error_collector.py
+- logging.Handler-Subclass mit Deduplizierung (Logger+Exception-Typ, 5 Min Cooldown)
+- Rate-Limiting: max 5 Alerts pro 10-Minuten-Fenster
+- set_alert_callback() für nachträgliche Matrix-Verdrahtung
+- Thread-safe (eigener Lock für _seen Dict)
+
+### Schritt 3: Matrix-Alerting verdrahtet
+- bridge.py: _setup_error_alerting() sucht ErrorCollectorHandler im Root-Logger
+- Setzt thread-safe Callback (asyncio.run_coroutine_threadsafe → Matrix)
+- Alert-Room = bestehender alert_room_id (gleicher Room wie AlertMonitor)
+- Format: kurz ("⚠ ComponentName: ErrorType – Message")
+
+### Schritt 4: _log_error() entfernt
+- Alle 7 Stellen in bridge.py: self._log_error() → logger.error() mit extra={}
+- _log_error() Methode komplett entfernt
+- error_log_dir Parameter aus Bridge-Konstruktor entfernt
+- start_saleria.py: error_log_dir=log_dir entfernt
+- Ungenutzter traceback-Import entfernt
+
+### Neue Dateien
+- src/elder_berry/core/error_collector.py: ErrorCollectorHandler
+- tests/test_error_collector.py: 13 Tests (Basic, Deduplizierung, Rate-Limiting, Format)
+
+### Geänderte Dateien
+- scripts/start_saleria.py: dictConfig statt basicConfig
+- src/elder_berry/comms/bridge.py: _log_error() → logger.error(), Error-Alerting
+- tests/test_comms.py: TestBridgeErrorLog → TestBridgeErrorLogging (4 Tests)
+
+### Tests
+- 13/13 test_error_collector.py ✓
+- 75/75 test_comms.py ✓ (keine Regressionen)
+- 33/33 test_audio_dashboard.py ✓ (keine Regressionen)

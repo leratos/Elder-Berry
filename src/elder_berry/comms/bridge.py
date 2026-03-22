@@ -37,7 +37,6 @@ import sys
 import tempfile
 import time
 import threading
-import traceback
 from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -111,7 +110,6 @@ class MatrixBridge:
         claude_agent: ClaudeAgent | None = None,
         alert_monitor: AlertMonitor | None = None,
         alert_room_id: str | None = None,
-        error_log_dir: Path | None = None,
         allowed_senders: frozenset[str] | None = None,
         stt: STTEngine | None = None,
         reminder_scheduler: ReminderScheduler | None = None,
@@ -129,7 +127,6 @@ class MatrixBridge:
         self._claude_agent = claude_agent
         self._alert_monitor = alert_monitor
         self._alert_room_id = alert_room_id
-        self._error_log_dir = error_log_dir
         self._allowed_senders = allowed_senders
         self._stt = stt
         self._reminder_scheduler = reminder_scheduler
@@ -266,6 +263,10 @@ class MatrixBridge:
         self._channel.on_message(self._handle_message)
         logger.info("Bridge verbunden, warte auf Nachrichten...")
 
+        # Error-Alerting verdrahten (ErrorCollectorHandler → Matrix)
+        if self._alert_room_id:
+            self._setup_error_alerting()
+
         # AlertMonitor starten (wenn vorhanden)
         if self._alert_monitor and self._alert_room_id:
             self._start_alert_monitor()
@@ -392,10 +393,10 @@ class MatrixBridge:
 
             # Fehlgeschlagene Commands loggen (kein Crash, aber success=False)
             if not result.success:
-                self._log_error(
-                    msg.sender, msg.body,
-                    RuntimeError(result.text or "Command fehlgeschlagen"),
-                    handler=f"command:{command}",
+                logger.error(
+                    "Command '%s' fehlgeschlagen: %s",
+                    command, result.text or "Command fehlgeschlagen",
+                    extra={"sender": msg.sender, "handler": f"command:{command}"},
                 )
 
             # Bild senden (z.B. Screenshot)
@@ -456,8 +457,10 @@ class MatrixBridge:
                 )
 
         except Exception as e:
-            logger.error("Remote-Command '%s' fehlgeschlagen: %s", command, e)
-            self._log_error(msg.sender, msg.body, e, handler="command")
+            logger.error(
+                "Remote-Command '%s' fehlgeschlagen: %s", command, e,
+                extra={"sender": msg.sender, "handler": "command"},
+            )
             try:
                 await self._channel.send_text(
                     msg.room_id,
@@ -513,8 +516,10 @@ class MatrixBridge:
                     await self._channel.send_text(msg.room_id, details)
 
         except Exception as e:
-            logger.error("ClaudeAgent Fehler: %s", e)
-            self._log_error(msg.sender, msg.body, e, handler="agent")
+            logger.error(
+                "ClaudeAgent Fehler: %s", e,
+                extra={"sender": msg.sender, "handler": "agent"},
+            )
             try:
                 await self._channel.send_text(
                     msg.room_id,
@@ -701,8 +706,10 @@ class MatrixBridge:
             await self._handle_message(text_msg)
 
         except Exception as e:
-            logger.error("Fehler bei Audio-Transkription: %s", e)
-            self._log_error(msg.sender, msg.body, e, handler="stt")
+            logger.error(
+                "Fehler bei Audio-Transkription: %s", e,
+                extra={"sender": msg.sender, "handler": "stt"},
+            )
             try:
                 await self._channel.send_text(
                     msg.room_id,
@@ -808,8 +815,10 @@ class MatrixBridge:
             await self._send_audio_if_available(msg.room_id, llm_result, tmp_wav)
 
         except Exception as e:
-            logger.error("Datei-Verarbeitung fehlgeschlagen (%s): %s", file_name, e)
-            self._log_error(msg.sender, file_name, e, handler="document")
+            logger.error(
+                "Datei-Verarbeitung fehlgeschlagen (%s): %s", file_name, e,
+                extra={"sender": msg.sender, "handler": "document"},
+            )
             try:
                 await self._channel.send_text(
                     msg.room_id,
@@ -872,8 +881,10 @@ class MatrixBridge:
             await self._send_audio_if_available(msg.room_id, result, tmp_wav)
 
         except Exception as e:
-            logger.error("Fehler bei Nachrichtenverarbeitung: %s", e)
-            self._log_error(msg.sender, msg.body, e, handler="llm")
+            logger.error(
+                "Fehler bei Nachrichtenverarbeitung: %s", e,
+                extra={"sender": msg.sender, "handler": "llm"},
+            )
             try:
                 await self._channel.send_text(
                     msg.room_id,
@@ -1028,8 +1039,10 @@ class MatrixBridge:
             )
 
         except Exception as e:
-            logger.error("Multi-Step Chain fehlgeschlagen: %s", e)
-            self._log_error(msg.sender, msg.body, e, handler="multi_step")
+            logger.error(
+                "Multi-Step Chain fehlgeschlagen: %s", e,
+                extra={"sender": msg.sender, "handler": "multi_step"},
+            )
             try:
                 await self._channel.send_text(
                     msg.room_id,
@@ -1146,44 +1159,37 @@ class MatrixBridge:
 
         return None
 
-    def _log_error(
-        self, sender: str, message: str, error: Exception,
-        handler: str = "unknown",
-    ) -> None:
-        """Schreibt einen Fehler in logs/error_log.txt.
+    def _setup_error_alerting(self) -> None:
+        """Verdrahtet den ErrorCollectorHandler mit Matrix-Alerting.
 
-        Args:
-            sender: Absender der Nachricht (z.B. @user:matrix.example.com).
-            message: Originale Nachricht die den Fehler ausgelöst hat.
-            error: Die aufgetretene Exception.
-            handler: Welcher Handler den Fehler hatte (command/agent/llm).
+        Sucht den ErrorCollectorHandler in den Root-Logger-Handlers und
+        setzt einen thread-safe Callback der Alerts in den async Loop dispatcht.
         """
-        if not self._error_log_dir:
+        from elder_berry.core.error_collector import ErrorCollectorHandler
+
+        loop = self._loop
+        room_id = self._alert_room_id
+        channel = self._channel
+
+        collector = None
+        for handler in logging.getLogger().handlers:
+            if isinstance(handler, ErrorCollectorHandler):
+                collector = handler
+                break
+
+        if not collector:
+            logger.debug("Kein ErrorCollectorHandler gefunden – Error-Alerting inaktiv")
             return
 
-        try:
-            self._error_log_dir.mkdir(parents=True, exist_ok=True)
-            log_file = self._error_log_dir / "error_log.txt"
+        def alert(msg: str) -> None:
+            if loop and loop.is_running():
+                asyncio.run_coroutine_threadsafe(
+                    channel.send_text(room_id, msg),
+                    loop,
+                )
 
-            timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-            tb = traceback.format_exception(type(error), error, error.__traceback__)
-            tb_str = "".join(tb).strip()
-
-            entry = (
-                f"[{timestamp}] handler={handler}\n"
-                f"  sender: {sender}\n"
-                f"  message: {message}\n"
-                f"  error: {type(error).__name__}: {error}\n"
-                f"  traceback:\n"
-                + "\n".join(f"    {line}" for line in tb_str.splitlines())
-                + "\n\n"
-            )
-
-            with open(log_file, "a", encoding="utf-8") as f:
-                f.write(entry)
-
-        except Exception as log_err:
-            logger.debug("Error-Log schreiben fehlgeschlagen: %s", log_err)
+        collector.set_alert_callback(alert)
+        logger.info("Error-Alerting via Matrix aktiviert")
 
     def _start_alert_monitor(self) -> None:
         """Konfiguriert und startet den AlertMonitor mit thread-safe Callback."""

@@ -2,7 +2,7 @@
 import asyncio
 import time
 from pathlib import Path
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -958,22 +958,25 @@ class TestBridgeClaudeAgentRouting:
         run_async(_test())
 
 
+
 # ---------------------------------------------------------------------------
-# MatrixBridge – AlertMonitor Integration
+# MatrixBridge – Error-Alerting via ErrorCollector
 # ---------------------------------------------------------------------------
 
-class TestBridgeErrorLog:
+class TestBridgeErrorLogging:
+    """Prüft dass Bridge-Fehler via logger.error() geloggt werden (statt _log_error)."""
+
     def _make_assistant_mock(self):
         assistant = MagicMock()
         assistant.process.return_value = AssistantResult(
-            response="ok",
+            response="ok", emotion="neutral",
             action_executed=None,
             action_success=False,
         )
         return assistant
 
-    def test_error_log_written_on_exception(self, tmp_path):
-        """Exception bei Command schreibt Error-Log-Eintrag."""
+    def test_command_exception_logs_error(self):
+        """Exception bei Command erzeugt logger.error() mit extra-Kontext."""
         async def _test():
             channel = MockChannel()
             assistant = self._make_assistant_mock()
@@ -982,7 +985,7 @@ class TestBridgeErrorLog:
             handler.execute.side_effect = RuntimeError("psutil kaputt")
             bridge = MatrixBridge(
                 channel=channel, assistant=assistant,
-                remote_commands=handler, error_log_dir=tmp_path,
+                remote_commands=handler,
             )
             await channel.connect()
 
@@ -990,21 +993,17 @@ class TestBridgeErrorLog:
                 sender="@user:x", room_id="!r:x", body="status",
                 timestamp=1.0,
             )
-            await bridge._handle_message(msg)
-
-            log_file = tmp_path / "error_log.txt"
-            assert log_file.exists()
-            content = log_file.read_text(encoding="utf-8")
-            assert "handler=command" in content
-            assert "@user:x" in content
-            assert "status" in content
-            assert "psutil kaputt" in content
-            assert "RuntimeError" in content
+            with patch("elder_berry.comms.bridge.logger") as mock_logger:
+                await bridge._handle_message(msg)
+                mock_logger.error.assert_called()
+                call_kwargs = mock_logger.error.call_args
+                assert "extra" in call_kwargs.kwargs
+                assert call_kwargs.kwargs["extra"]["handler"] == "command"
 
         run_async(_test())
 
-    def test_error_log_on_failed_command(self, tmp_path):
-        """success=False bei Command schreibt Error-Log-Eintrag."""
+    def test_failed_command_logs_error(self):
+        """success=False bei Command erzeugt logger.error()."""
         async def _test():
             channel = MockChannel()
             assistant = self._make_assistant_mock()
@@ -1016,7 +1015,7 @@ class TestBridgeErrorLog:
             )
             bridge = MatrixBridge(
                 channel=channel, assistant=assistant,
-                remote_commands=handler, error_log_dir=tmp_path,
+                remote_commands=handler,
             )
             await channel.connect()
 
@@ -1024,38 +1023,39 @@ class TestBridgeErrorLog:
                 sender="@user:x", room_id="!r:x", body="status",
                 timestamp=1.0,
             )
-            await bridge._handle_message(msg)
-
-            log_file = tmp_path / "error_log.txt"
-            assert log_file.exists()
-            content = log_file.read_text(encoding="utf-8")
-            assert "command:status" in content
-            assert "nicht verfügbar" in content
+            with patch("elder_berry.comms.bridge.logger") as mock_logger:
+                await bridge._handle_message(msg)
+                mock_logger.error.assert_called_once()
+                call_kwargs = mock_logger.error.call_args
+                assert "command:status" in call_kwargs.kwargs["extra"]["handler"]
 
         run_async(_test())
 
-    def test_no_error_log_without_dir(self):
-        """Ohne error_log_dir wird nichts geschrieben (kein Crash)."""
+    def test_llm_error_logs_with_handler_extra(self):
+        """LLM-Fehler erzeugt logger.error() mit handler=llm."""
         async def _test():
             channel = MockChannel()
             assistant = MagicMock()
-            assistant.process.side_effect = RuntimeError("crash")
+            assistant.process.side_effect = RuntimeError("Ollama down")
             bridge = MatrixBridge(
                 channel=channel, assistant=assistant,
             )
             await channel.connect()
 
             msg = IncomingMessage(
-                sender="@u:x", room_id="!r:x", body="test",
+                sender="@user:x", room_id="!r:x", body="Hallo",
                 timestamp=1.0,
             )
-            await bridge._handle_message(msg)
-            # Kein Crash, kein Log
+            with patch("elder_berry.comms.bridge.logger") as mock_logger:
+                await bridge._handle_message(msg)
+                mock_logger.error.assert_called()
+                call_kwargs = mock_logger.error.call_args
+                assert call_kwargs.kwargs["extra"]["handler"] == "llm"
 
         run_async(_test())
 
-    def test_no_error_log_on_success(self, tmp_path):
-        """Erfolgreicher Command schreibt kein Error-Log."""
+    def test_no_error_on_success(self):
+        """Erfolgreicher Command erzeugt keinen logger.error()."""
         async def _test():
             channel = MockChannel()
             assistant = self._make_assistant_mock()
@@ -1066,7 +1066,7 @@ class TestBridgeErrorLog:
             )
             bridge = MatrixBridge(
                 channel=channel, assistant=assistant,
-                remote_commands=handler, error_log_dir=tmp_path,
+                remote_commands=handler,
             )
             await channel.connect()
 
@@ -1074,89 +1074,9 @@ class TestBridgeErrorLog:
                 sender="@user:x", room_id="!r:x", body="status",
                 timestamp=1.0,
             )
-            await bridge._handle_message(msg)
-
-            log_file = tmp_path / "error_log.txt"
-            assert not log_file.exists()
-
-        run_async(_test())
-
-    def test_error_log_on_llm_error(self, tmp_path):
-        """LLM-Fehler schreibt Error-Log."""
-        async def _test():
-            channel = MockChannel()
-            assistant = MagicMock()
-            assistant.process.side_effect = RuntimeError("Ollama down")
-            bridge = MatrixBridge(
-                channel=channel, assistant=assistant,
-                error_log_dir=tmp_path,
-            )
-            await channel.connect()
-
-            msg = IncomingMessage(
-                sender="@user:x", room_id="!r:x", body="Hallo Saleria",
-                timestamp=1.0,
-            )
-            await bridge._handle_message(msg)
-
-            log_file = tmp_path / "error_log.txt"
-            assert log_file.exists()
-            content = log_file.read_text(encoding="utf-8")
-            assert "handler=llm" in content
-            assert "Ollama down" in content
-            assert "Hallo Saleria" in content
-
-        run_async(_test())
-
-    def test_error_log_on_agent_error(self, tmp_path):
-        """Agent-Fehler schreibt Error-Log."""
-        async def _test():
-            channel = MockChannel()
-            assistant = self._make_assistant_mock()
-            claude_agent = MagicMock()
-            claude_agent.process.side_effect = RuntimeError("API quota")
-            bridge = MatrixBridge(
-                channel=channel, assistant=assistant,
-                claude_agent=claude_agent, error_log_dir=tmp_path,
-            )
-            await channel.connect()
-
-            msg = IncomingMessage(
-                sender="@user:x", room_id="!r:x",
-                body='Claude "test"', timestamp=1.0,
-            )
-            await bridge._handle_message(msg)
-
-            log_file = tmp_path / "error_log.txt"
-            assert log_file.exists()
-            content = log_file.read_text(encoding="utf-8")
-            assert "handler=agent" in content
-            assert "API quota" in content
-
-        run_async(_test())
-
-    def test_multiple_errors_appended(self, tmp_path):
-        """Mehrere Fehler werden angehängt, nicht überschrieben."""
-        async def _test():
-            channel = MockChannel()
-            assistant = MagicMock()
-            assistant.process.side_effect = RuntimeError("error")
-            bridge = MatrixBridge(
-                channel=channel, assistant=assistant,
-                error_log_dir=tmp_path,
-            )
-            await channel.connect()
-
-            for i in range(3):
-                msg = IncomingMessage(
-                    sender="@u:x", room_id="!r:x",
-                    body=f"msg {i}", timestamp=float(i),
-                )
+            with patch("elder_berry.comms.bridge.logger") as mock_logger:
                 await bridge._handle_message(msg)
-
-            log_file = tmp_path / "error_log.txt"
-            content = log_file.read_text(encoding="utf-8")
-            assert content.count("handler=llm") == 3
+                mock_logger.error.assert_not_called()
 
         run_async(_test())
 
