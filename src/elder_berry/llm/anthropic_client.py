@@ -121,6 +121,71 @@ class AnthropicClient(LLMClient):
         except _anthropic.RateLimitError as e:
             raise RuntimeError(f"Anthropic Rate-Limit erreicht: {e}") from e
 
+    def describe_image(
+        self,
+        image_base64: str,
+        prompt: str = "Beschreibe was du auf diesem Bild siehst.",
+        system: str = "",
+        media_type: str = "image/jpeg",
+    ) -> str:
+        """Analysiert ein Bild per Claude Vision API.
+
+        Nutzt die Standard Messages API (kein Beta nötig).
+
+        Args:
+            image_base64: Base64-kodiertes Bild.
+            prompt: Frage/Anweisung zum Bild.
+            system: Optionaler System-Prompt.
+            media_type: MIME-Type (default: image/jpeg).
+
+        Returns:
+            Textuelle Beschreibung des Bildes.
+
+        Raises:
+            RuntimeError: Bei API-Fehlern.
+        """
+        self._check_available()
+
+        messages = [
+            {
+                "role": "user",
+                "content": [
+                    {
+                        "type": "image",
+                        "source": {
+                            "type": "base64",
+                            "media_type": media_type,
+                            "data": image_base64,
+                        },
+                    },
+                    {
+                        "type": "text",
+                        "text": prompt,
+                    },
+                ],
+            }
+        ]
+
+        kwargs: dict = {
+            "model": self.model,
+            "max_tokens": 1024,
+            "messages": messages,
+        }
+        if system:
+            kwargs["system"] = system
+
+        try:
+            msg = self._get_client().messages.create(**kwargs)
+            return msg.content[0].text
+        except _anthropic.APIStatusError as e:
+            raise RuntimeError(
+                f"Anthropic API-Fehler: {e.status_code} – {e.message}"
+            ) from e
+        except _anthropic.APIConnectionError as e:
+            raise RuntimeError(f"Anthropic nicht erreichbar: {e}") from e
+        except _anthropic.RateLimitError as e:
+            raise RuntimeError(f"Anthropic Rate-Limit erreicht: {e}") from e
+
     def computer_use(
         self,
         screenshot_base64: str,

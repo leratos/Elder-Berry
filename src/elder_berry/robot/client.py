@@ -133,3 +133,34 @@ class RobotClient:
         r = self._client.get("/sensor/all")
         r.raise_for_status()
         return r.json()
+
+    # --- Kamera ---
+
+    def capture_image(self, quality: int = 85) -> bytes | None:
+        """Nimmt ein Bild über die RPi5-Kamera auf.
+
+        Args:
+            quality: JPEG-Qualität (1-100).
+
+        Returns:
+            JPEG-Bytes oder None wenn Kamera nicht verfügbar.
+
+        Raises:
+            httpx.HTTPError: Bei Verbindungsproblemen.
+        """
+        r = self._client.get("/camera/capture", params={"quality": quality})
+        r.raise_for_status()
+        data = r.json()
+
+        if not data.get("success"):
+            logger.warning("Kamera: %s", data.get("message", "unbekannter Fehler"))
+            return None
+
+        import base64
+        return base64.b64decode(data["image_base64"])
+
+    def camera_status(self) -> dict:
+        """Gibt den Kamera-Status vom RPi5 zurück."""
+        r = self._client.get("/camera/status")
+        r.raise_for_status()
+        return r.json()

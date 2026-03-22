@@ -18,6 +18,7 @@ from dataclasses import asdict
 from fastapi import FastAPI
 from pydantic import BaseModel
 
+from elder_berry.robot.camera_controller import CameraController
 from elder_berry.robot.protocol import (
     ApiResponse,
     BatteryStatus,
@@ -124,11 +125,13 @@ class RobotServer:
         motors: MotorController,
         avatar: AvatarDisplay,
         sensors: SensorManager,
+        camera: CameraController | None = None,
         hostname: str = "elder-berry-rpi",
     ) -> None:
         self._motors = motors
         self._avatar = avatar
         self._sensors = sensors
+        self._camera = camera
         self._hostname = hostname
         self._start_time = time.monotonic()
 
@@ -208,3 +211,50 @@ class RobotServer:
         @self.app.get("/sensor/all")
         def sensors() -> dict:
             return self._sensors.get_all()
+
+        # --- Kamera ---
+
+        @self.app.get("/camera/capture")
+        def camera_capture(quality: int = 85) -> dict:
+            """Nimmt ein Bild auf und gibt JPEG als Base64 zurück."""
+            if not self._camera:
+                return asdict(ApiResponse(
+                    success=False,
+                    message="Keine Kamera verfügbar",
+                ))
+            if not self._camera.is_available():
+                return asdict(ApiResponse(
+                    success=False,
+                    message="Kamera nicht erkannt",
+                ))
+            try:
+                import base64
+                jpeg_bytes = self._camera.capture_jpeg(quality=quality)
+                b64 = base64.b64encode(jpeg_bytes).decode("ascii")
+                width, height = self._camera.get_resolution()
+                return {
+                    "success": True,
+                    "image_base64": b64,
+                    "format": "jpeg",
+                    "width": width,
+                    "height": height,
+                    "size_bytes": len(jpeg_bytes),
+                }
+            except Exception as e:
+                logger.error("Kamera-Capture fehlgeschlagen: %s", e)
+                return asdict(ApiResponse(
+                    success=False,
+                    message=f"Capture fehlgeschlagen: {e}",
+                ))
+
+        @self.app.get("/camera/status")
+        def camera_status() -> dict:
+            """Gibt den Kamera-Status zurück."""
+            if not self._camera:
+                return {"available": False, "reason": "Keine Kamera konfiguriert"}
+            available = self._camera.is_available()
+            resolution = self._camera.get_resolution() if available else None
+            return {
+                "available": available,
+                "resolution": resolution,
+            }

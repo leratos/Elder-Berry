@@ -2279,3 +2279,34 @@ User: "Lies meine Mails und trag den Zahnarzttermin ein"
   5. CameraCommandHandler (foto + camera_describe Commands)
   6. Integration (remote_commands.py, start_rpi5.py, start_saleria.py)
   7. Tests (28 Tests geplant)
+
+## Abgeschlossen: Phase 26 – Kamera-Integration (RPi Camera Module 3)
+- Branch: feature/phase-26-kamera-integration
+
+### Neue Dateien
+- src/elder_berry/robot/camera_controller.py: CameraController ABC + RPi5Camera (picamera2, lazy-init)
+- src/elder_berry/comms/commands/camera_commands.py: CameraCommandHandler (foto + camera_describe)
+- tests/test_camera_controller.py: 11 Tests (SimulatedCamera, Server-Endpoints, Client)
+- tests/test_camera_commands.py: 18 Tests (Parsing, Keywords, Execution, Kollision)
+
+### Geänderte Dateien
+- src/elder_berry/robot/simulator.py: SimulatedCamera ergänzt (320x240 dunkelgrau)
+- src/elder_berry/robot/server.py: camera DI-Parameter, GET /camera/capture + /camera/status
+- src/elder_berry/robot/client.py: capture_image() + camera_status()
+- src/elder_berry/llm/anthropic_client.py: describe_image() (Standard Vision API, kein Beta)
+- src/elder_berry/comms/remote_commands.py: CameraCommandHandler Import, DI, Handler-Liste, HELP_TEXT
+- scripts/start_rpi5.py: RPi5Camera instanziieren + an RobotServer übergeben
+- scripts/start_saleria.py: robot + vision_client an RemoteCommandHandler übergeben
+
+### Commands
+- foto / kamera / kamerabild: Foto aufnehmen und an Matrix senden (kostenlos)
+- was siehst du [kontext]: Foto + Anthropic Vision-Analyse (~3 Cent pro Call)
+- Keywords: "mach ein foto", "schau mal was/ob", "guck mal was/ob", "beschreibe deine umgebung"
+
+### Keyword-Kollision behoben
+- "schau mal" war zu breit → kollidierte mit "schau mal im netz" (web_search)
+- Fix: Keywords auf "schau mal was"/"schau mal ob" eingeschränkt
+
+### Tests
+- 29/29 neue Tests grün (11 camera_controller + 18 camera_commands)
+- 1873/1873 Gesamttests grün, keine Regressionen

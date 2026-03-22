@@ -407,7 +407,7 @@ def run_voice(assistant, stt):
         print("\nAuf Wiedersehen!")
 
 
-def run_matrix(assistant, stt=None, avatar=None, audio_converter=None):
+def run_matrix(assistant, stt=None, avatar=None, audio_converter=None, robot=None):
     """Matrix-Modus: MatrixBridge startet bidirektionalen Chat über Matrix."""
     from elder_berry.core.secret_store import SecretStore
     from elder_berry.comms.matrix_channel import MatrixChannel
@@ -607,6 +607,19 @@ def run_matrix(assistant, stt=None, avatar=None, audio_converter=None):
     else:
         logger.info("BraveSearchClient: inaktiv (brave_api_key fehlt)")
 
+    # AnthropicClient für Kamera-Vision (Phase 26)
+    vision_client = None
+    try:
+        from elder_berry.llm.anthropic_client import AnthropicClient
+        vision_client = AnthropicClient()
+        if vision_client.is_available():
+            logger.info("Vision-Client (Kamera): aktiv")
+        else:
+            logger.info("Vision-Client (Kamera): inaktiv (ANTHROPIC_API_KEY fehlt)")
+            vision_client = None
+    except Exception as e:
+        logger.warning("Vision-Client nicht verfügbar: %s", e)
+
     # RemoteCommandHandler – alle Dependencies übergeben
     remote = RemoteCommandHandler(
         system_monitor=SystemMonitor(),
@@ -625,6 +638,8 @@ def run_matrix(assistant, stt=None, avatar=None, audio_converter=None):
         computer_use=computer_use,
         search_client=search_client,
         note_store=note_store,
+        robot_client=robot,
+        anthropic_client=vision_client,
     )
 
     # Assistant: dynamischer Command-Prompt aus Handler-Definitionen
@@ -795,7 +810,7 @@ def main():
     elif args.mode == "voice":
         run_voice(assistant, stt)
     else:
-        run_matrix(assistant, stt=stt, avatar=avatar, audio_converter=audio_converter)
+        run_matrix(assistant, stt=stt, avatar=avatar, audio_converter=audio_converter, robot=robot)
 
 
 _LOCK_FILE = _PROJECT_ROOT / ".saleria.lock"

@@ -35,6 +35,7 @@ from elder_berry.comms.commands.file_commands import FileCommandHandler
 from elder_berry.comms.commands.process_commands import ProcessCommandHandler
 from elder_berry.comms.commands.weather_commands import WeatherCommandHandler
 from elder_berry.comms.commands.advanced_commands import AdvancedCommandHandler
+from elder_berry.comms.commands.camera_commands import CameraCommandHandler
 from elder_berry.comms.commands.note_commands import NoteCommandHandler
 
 if TYPE_CHECKING:
@@ -43,6 +44,8 @@ if TYPE_CHECKING:
     from elder_berry.avatar.base import AvatarRenderer
     from elder_berry.core.audio_router import AudioRouter
     from elder_berry.core.secret_store import SecretStore
+    from elder_berry.llm.anthropic_client import AnthropicClient
+    from elder_berry.robot.client import RobotClient
     from elder_berry.system.info import SystemMonitor
     from elder_berry.tools.brave_search_client import BraveSearchClient
     from elder_berry.tools.document_reader import DocumentReader
@@ -154,6 +157,10 @@ Briefing:
   notiz löschen #<id>                – Notiz per ID löschen
   vergiss <schlüssel>                – KV-Fakt vergessen
 
+Kamera:
+  foto / kamera – Foto aufnehmen und senden
+  was siehst du [kontext] – Kamerabild + KI-Beschreibung
+
 Audio:
   audio – Audio-Modus anzeigen (matrix_only / matrix_and_local)
   audio lokal an – Lokale Wiedergabe aktivieren (Matrix + PC)
@@ -230,6 +237,8 @@ class RemoteCommandHandler:
         computer_use: ComputerUseController | None = None,
         search_client: BraveSearchClient | None = None,
         note_store: NoteStore | None = None,
+        robot_client: RobotClient | None = None,
+        anthropic_client: AnthropicClient | None = None,
         default_user_id: str = "",
     ) -> None:
         # Domain-Handler erstellen
@@ -253,6 +262,10 @@ class RemoteCommandHandler:
             reminder_store=reminder_store,
             briefing_scheduler=briefing_scheduler,
             gym_client=gym_client,
+        )
+        self._camera = CameraCommandHandler(
+            robot_client=robot_client,
+            anthropic_client=anthropic_client,
         )
         self._advanced = AdvancedCommandHandler(
             computer_use=computer_use,
@@ -278,6 +291,7 @@ class RemoteCommandHandler:
             self._mail,
             self._file,
             self._process,
+            self._camera,
         ]
         if self._notes is not None:
             self._handlers.append(self._notes)
