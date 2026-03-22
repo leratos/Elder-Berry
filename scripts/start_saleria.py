@@ -20,6 +20,7 @@ from __future__ import annotations
 import argparse
 import atexit
 import logging
+import logging.config
 import os
 import platform
 import signal
@@ -33,11 +34,50 @@ sys.path.insert(0, str(_PROJECT_ROOT / "src"))
 from dotenv import load_dotenv
 load_dotenv(_PROJECT_ROOT / ".env")
 
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
-    datefmt="%H:%M:%S",
-)
+# logs/ Verzeichnis anlegen (für RotatingFileHandler)
+_LOG_DIR = _PROJECT_ROOT / "logs"
+_LOG_DIR.mkdir(parents=True, exist_ok=True)
+
+LOGGING_CONFIG = {
+    "version": 1,
+    "disable_existing_loggers": False,
+    "formatters": {
+        "standard": {
+            "format": "%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+            "datefmt": "%H:%M:%S",
+        },
+        "file": {
+            "format": "%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+            "datefmt": "%Y-%m-%d %H:%M:%S",
+        },
+    },
+    "handlers": {
+        "console": {
+            "class": "logging.StreamHandler",
+            "formatter": "standard",
+            "level": "INFO",
+        },
+        "file": {
+            "class": "logging.handlers.RotatingFileHandler",
+            "filename": str(_LOG_DIR / "elder_berry.log"),
+            "formatter": "file",
+            "level": "INFO",
+            "maxBytes": 5_000_000,
+            "backupCount": 3,
+            "encoding": "utf-8",
+        },
+        "error_collector": {
+            "class": "elder_berry.core.error_collector.ErrorCollectorHandler",
+            "level": "ERROR",
+        },
+    },
+    "root": {
+        "level": "INFO",
+        "handlers": ["console", "file", "error_collector"],
+    },
+}
+
+logging.config.dictConfig(LOGGING_CONFIG)
 logger = logging.getLogger("saleria")
 
 # ---------------------------------------------------------------------------
@@ -611,8 +651,6 @@ def run_matrix(assistant, stt=None, avatar=None, audio_converter=None):
     if stt:
         logger.info("Matrix-STT: Sprachnachrichten werden transkribiert")
 
-    log_dir = _PROJECT_ROOT / "logs"
-
     # --- Allowed Senders: Matrix-User-IDs aus SecretStore laden ---
     allowed_senders = None
     raw_senders = secrets.get_or_none("matrix_allowed_senders")
@@ -652,7 +690,6 @@ def run_matrix(assistant, stt=None, avatar=None, audio_converter=None):
         claude_agent=claude_agent,
         alert_monitor=alert_monitor,
         alert_room_id=room_id,
-        error_log_dir=log_dir,
         allowed_senders=allowed_senders,
         stt=stt,
         reminder_scheduler=reminder_scheduler,
