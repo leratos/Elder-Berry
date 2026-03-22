@@ -96,9 +96,10 @@ class RPi5Camera(CameraController):
 
         from PIL import Image
 
-        # picamera2 capture_array → numpy → PIL → JPEG bytes
+        # picamera2 capture_array liefert bei "RGB888" tatsächlich BGR
+        # (libcamera-Konvention: RGB888 = BGR in Speicherreihenfolge)
         array = self._camera.capture_array()
-        image = Image.fromarray(array)
+        image = Image.fromarray(array[:, :, ::-1])
 
         buffer = io.BytesIO()
         image.save(buffer, format="JPEG", quality=quality)
