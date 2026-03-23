@@ -396,18 +396,13 @@ class TestCallWithRetry:
 
     def test_delete_event_410_gone_returns_true(self):
         """delete_event: 410 Gone auf Retry = Erfolg (Idempotenz)."""
-        from googleapiclient.errors import HttpError
-
         store = _make_store_mock()
         client = GoogleCalendarClient(secret_store=store)
 
         mock_service = MagicMock()
-        # Simuliere 410 Gone
-        resp = MagicMock()
-        resp.status = 410
-        resp.reason = "Gone"
+        # Simuliere 410 Gone - Produktionscode prueft String, kein HttpError noetig
         mock_service.events.return_value.delete.return_value.execute.side_effect = (
-            HttpError(resp, b"Resource has been deleted")
+            Exception("<HttpError 410 when requesting ... returned 'Gone'>")
         )
 
         with patch.object(client, "_get_service", return_value=mock_service):
