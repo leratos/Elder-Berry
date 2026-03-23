@@ -368,7 +368,7 @@ zu einer Rolling Summary komprimiert.
 - ✅ **Tests**: `tests/test_chat_history.py` (34 Tests)
 - **Konzept**: `docs/concepts/phase-23-konversations-zusammenfassung.md`
 
-## Phase 24 – Avatar Asset Management & Animationssystem 🎨 TEILWEISE ABGESCHLOSSEN
+## Phase 24 – Avatar Asset Management & Animationssystem 🎨 ✅ ABGESCHLOSSEN
 
 Salerias Avatar wird ausdrucksstärker und einfacher konfigurierbar.
 
@@ -377,20 +377,21 @@ Salerias Avatar wird ausdrucksstärker und einfacher konfigurierbar.
 - ✅ **Breathing**: Subtile Atembewegung per Sinus-Offset (±2px, 1.2 Hz)
 - ✅ **Verbesserte Lip-Sync**: Gewichtete Zufallsauswahl, 5 Stufen, ±30ms Jitter
 - ✅ **YAML-Config**: EMOTION_MAP + Lip-Sync + Breathing externalisiert, Fallback auf Defaults
-- ✅ **Tests**: 54 Tests (Renderer + ConfigLoader)
-- **Offen:** Web-Interface (Avatar-Editor mit Canvas-Preview)
-- **Offen:** Effekt-Layer (Träne, Schweißtropfen, Sparkle)
+- ✅ **Web-Interface**: Avatar-Editor mit Canvas-Preview, Asset-Browser, Animation-Preview
+- ✅ **Effekt-Layer**: Optionaler 4. Layer (effect/) pro Emotion, render_to_file() Support
+- ✅ **Tests**: 54 Tests (Renderer + ConfigLoader) + 31 Tests (Avatar-Editor)
 - **Konzept**: `docs/concepts/phase-24-avatar-asset-management.md`
 
-## Phase 25 – Zentrales Logging & Error-Monitoring 📊 GEPLANT
+## Phase 25 – Zentrales Logging & Error-Monitoring 📊 ✅ ABGESCHLOSSEN
 
 Fehler aus allen Komponenten werden zuverlässig erfasst, persistent gespeichert,
 und bei kritischen Problemen wird der Nutzer proaktiv über Matrix informiert.
 
-- Zentrales Logging: `dictConfig()` mit RotatingFileHandler (5 MB, 4 Dateien)
-- ErrorCollector: Custom logging.Handler für ERROR+, Deduplizierung, Rate-Limiting
-- Matrix-Alerting: Background-Worker-Fehler melden sich proaktiv beim Nutzer
-- bridge._log_error() entfernen: durch Standard-Logging ersetzt
+- ✅ Zentrales Logging: `dictConfig()` mit RotatingFileHandler (5 MB, 3 Backups, UTF-8)
+- ✅ ErrorCollector: Custom logging.Handler für ERROR+, Deduplizierung (5 Min Cooldown), Rate-Limiting (5/10 Min)
+- ✅ Matrix-Alerting: ErrorCollectorHandler → asyncio Callback → Matrix-Room
+- ✅ bridge._log_error() entfernt: alle 7 Stellen durch Standard-Logging ersetzt
+- ✅ **Tests**: 13 Tests (ErrorCollector)
 - **Konzept**: `docs/concepts/phase-25-zentrales-logging.md`
 
 ## Phase 26 – Kamera-Integration (RPi Camera Module 3) 📷 ✅ ABGESCHLOSSEN

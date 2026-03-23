@@ -100,12 +100,24 @@ def main() -> None:
     except Exception as e:
         logger.warning("Kamera-Init fehlgeschlagen: %s", e)
 
+    # -- Drehteller (optional) -------------------------------------------------
+    turntable = None
+    try:
+        from elder_berry.robot.turntable_controller import RPi5TurntableController
+        turntable = RPi5TurntableController(step_delay_ms=2.0)
+        logger.info("Drehteller initialisiert (Homing manuell via API)")
+    except ImportError:
+        logger.info("Drehteller: lgpio nicht verfügbar (kein RPi5?)")
+    except Exception as e:
+        logger.warning("Drehteller-Init fehlgeschlagen: %s", e)
+
     # -- RobotServer -----------------------------------------------------------
     server = RobotServer(
         motors=motors,
         avatar=avatar,
         sensors=sensors,
         camera=camera,
+        turntable=turntable,
         hostname="elder-berry-rpi5",
     )
 
@@ -143,6 +155,8 @@ def main() -> None:
         pass
     finally:
         avatar.stop()
+        if turntable:
+            turntable.close()
         logger.info("RPi5 beendet")
 
 

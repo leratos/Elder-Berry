@@ -36,6 +36,7 @@ from elder_berry.comms.commands.process_commands import ProcessCommandHandler
 from elder_berry.comms.commands.weather_commands import WeatherCommandHandler
 from elder_berry.comms.commands.advanced_commands import AdvancedCommandHandler
 from elder_berry.comms.commands.camera_commands import CameraCommandHandler
+from elder_berry.comms.commands.turntable_commands import TurntableCommandHandler
 from elder_berry.comms.commands.note_commands import NoteCommandHandler
 
 if TYPE_CHECKING:
@@ -175,6 +176,15 @@ Web-Suche:
   such mal <Begriff> – Alias für suche
   google <Begriff> – Alias für suche
 
+Drehteller:
+  drehteller home – Home-Position anfahren
+  dreh dich um <grad> [nach links/rechts] – Relativ drehen
+  dreh dich nach links/rechts – 90 Grad in Richtung drehen
+  dreh dich auf <grad> – Auf absolute Position fahren
+  schau nach links/rechts – Drehteller in Richtung drehen
+  drehteller stopp – Rotation sofort abbrechen
+  drehteller status – Aktuelle Position anzeigen
+
 Computer Use (Vision-gesteuert):
   klick auf <Element> – Klickt auf ein Bildschirmelement (z.B. klick auf den Discord-Button)
   tippe <Text> – Tippt Text an der aktuellen Position
@@ -263,6 +273,9 @@ class RemoteCommandHandler:
             briefing_scheduler=briefing_scheduler,
             gym_client=gym_client,
         )
+        self._turntable = TurntableCommandHandler(
+            robot_client=robot_client,
+        )
         self._camera = CameraCommandHandler(
             robot_client=robot_client,
             anthropic_client=anthropic_client,
@@ -284,6 +297,7 @@ class RemoteCommandHandler:
         # Handler-Liste (Reihenfolge bestimmt Priorität bei Pattern/Keyword-Match)
         # WICHTIG: _weather VOR _calendar, weil REMINDER_DELETE vor TERMIN_DELETE
         # matchen muss ("lösche erinnerung" vs "lösche termin")
+        # WICHTIG: _turntable VOR _camera wegen "schau nach" Pattern-Prioritaet
         self._handlers: list[CommandHandler] = [
             self._system,
             self._weather,
@@ -291,6 +305,7 @@ class RemoteCommandHandler:
             self._mail,
             self._file,
             self._process,
+            self._turntable,
             self._camera,
         ]
         if self._notes is not None:
