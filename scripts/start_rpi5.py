@@ -124,7 +124,7 @@ def main() -> None:
         turntable=turntable,
         hostname="elder-berry-rpi5",
         project_root=project_root,
-        service_name="elder-berry-rpi",
+        service_name="elder-berry",
     )
 
     # -- Graceful Shutdown -----------------------------------------------------
