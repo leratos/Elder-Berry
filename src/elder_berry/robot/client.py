@@ -164,3 +164,38 @@ class RobotClient:
         r = self._client.get("/camera/status")
         r.raise_for_status()
         return r.json()
+
+    # --- Drehteller ---
+
+    def rotate_turntable(
+        self,
+        target_degrees: float | None = None,
+        relative_degrees: float | None = None,
+    ) -> ApiResponse:
+        """Drehteller rotieren (absolut oder relativ)."""
+        payload: dict = {}
+        if target_degrees is not None:
+            payload["target_degrees"] = target_degrees
+        if relative_degrees is not None:
+            payload["relative_degrees"] = relative_degrees
+        r = self._client.post("/turntable/rotate", json=payload)
+        r.raise_for_status()
+        return ApiResponse(**r.json())
+
+    def home_turntable(self) -> ApiResponse:
+        """Homing-Sequenz des Drehtellers starten."""
+        r = self._client.post("/turntable/home")
+        r.raise_for_status()
+        return ApiResponse(**r.json())
+
+    def stop_turntable(self) -> ApiResponse:
+        """Drehteller-Rotation sofort stoppen."""
+        r = self._client.post("/turntable/stop")
+        r.raise_for_status()
+        return ApiResponse(**r.json())
+
+    def turntable_status(self) -> dict:
+        """Drehteller-Status abfragen."""
+        r = self._client.get("/turntable/status")
+        r.raise_for_status()
+        return r.json()

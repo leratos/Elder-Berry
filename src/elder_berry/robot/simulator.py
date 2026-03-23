@@ -23,6 +23,12 @@ from elder_berry.robot.server import (
     RobotServer,
     SensorManager,
 )
+from elder_berry.robot.turntable_controller import (
+    MAX_DEGREES,
+    TurntableController,
+    degrees_to_steps,
+    steps_to_degrees,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -122,6 +128,55 @@ class SimulatedSensors(SensorManager):
         }
 
 
+class SimulatedTurntable(TurntableController):
+    """Simulierter Drehteller fuer Tower-Tests ohne Hardware."""
+
+    def __init__(self) -> None:
+        self._position_steps: int = 0
+        self._is_homed: bool = False
+        self._is_moving: bool = False
+
+    def home(self) -> None:
+        self._position_steps = 0
+        self._is_homed = True
+        logger.info("[SIM] Turntable: Homed")
+
+    def rotate_to(self, degrees: float) -> None:
+        if not self._is_homed:
+            raise RuntimeError("Nicht gehomed -- erst home() aufrufen")
+        clamped = max(-MAX_DEGREES, min(MAX_DEGREES, degrees))
+        self._position_steps = degrees_to_steps(clamped)
+        logger.info("[SIM] Turntable: rotate_to(%.1f)", clamped)
+
+    def rotate_by(self, degrees: float) -> None:
+        if not self._is_homed:
+            raise RuntimeError("Nicht gehomed -- erst home() aufrufen")
+        current = steps_to_degrees(self._position_steps)
+        target = max(-MAX_DEGREES, min(MAX_DEGREES, current + degrees))
+        self._position_steps = degrees_to_steps(target)
+        logger.info("[SIM] Turntable: rotate_by(%.1f) -> %.1f", degrees, target)
+
+    def stop(self) -> None:
+        self._is_moving = False
+        logger.info("[SIM] Turntable: Stop")
+
+    def get_position(self) -> float:
+        if not self._is_homed:
+            return float("nan")
+        return steps_to_degrees(self._position_steps)
+
+    @property
+    def is_homed(self) -> bool:
+        return self._is_homed
+
+    @property
+    def is_moving(self) -> bool:
+        return self._is_moving
+
+    def close(self) -> None:
+        pass
+
+
 class SimulatedCamera(CameraController):
     """Simulierte Kamera für lokale Entwicklung."""
 
@@ -155,6 +210,7 @@ def create_simulator(
         motors=SimulatedMotors(),
         avatar=SimulatedAvatar(),
         sensors=SimulatedSensors(),
+        turntable=SimulatedTurntable(),
         hostname="elder-berry-simulator",
     )
     logger.info("Simulator bereit auf %s:%d", host, port)

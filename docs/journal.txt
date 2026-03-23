@@ -2328,3 +2328,35 @@ User: "Lies meine Mails und trag den Zahnarzttermin ein"
 ### Tests
 - 26/26 test_google_calendar.py ✓ (21 bestehende + 5 neue)
 - 26/26 test_calendar_watcher.py ✓ (keine Regressionen)
+
+## Abgeschlossen: Phase 27 – Drehteller-Steuerung (28BYJ-48 + A3144 Hall-Sensor) (2026-03-23)
+- Branch: feature/phase-27-drehteller-steuerung
+- Konzept: docs/concepts/phase-27-drehteller-steuerung.md
+
+### Neue Dateien
+- src/elder_berry/robot/turntable_controller.py: TurntableController ABC + RPi5TurntableController
+  - Half-Step-Sequenz (4096 Steps/Umdrehung), Background-Thread pro Rotation
+  - Homing: CCW bis Hall-Sensor (A3144), Sicherheitslimit 4200 Steps
+  - Soft-Limits: +/-180 Grad mit Clamp + Warnung
+  - degrees_to_steps / steps_to_degrees Hilfsfunktionen
+- src/elder_berry/comms/commands/turntable_commands.py: TurntableCommandHandler
+  - 7 Commands: home, stopp, status, rotate_by, rotate_to, rotate_dir, look_dir
+  - Regex: ROTATE_BY/TO/DIRECTION/LOOK_DIRECTION_PATTERN
+  - Keywords: "dreh dich", "schau nach links/rechts", "wo schaust du hin"
+- tests/test_turntable_controller.py: 12 Tests (Helpers + SimulatedTurntable)
+- tests/test_turntable_server.py: 9 Tests (Server-Endpoints)
+- tests/test_turntable_client.py: 5 Tests (Client-Methoden)
+- tests/test_turntable_commands.py: 21 Tests (Patterns, Keywords, Execution, Kollision)
+
+### Geaenderte Dateien
+- src/elder_berry/robot/server.py: turntable DI + TurntableRotateRequest + 4 Endpoints
+  - POST /turntable/rotate, /turntable/home, /turntable/stop, GET /turntable/status
+- src/elder_berry/robot/client.py: 4 neue Methoden (rotate, home, stop, status)
+- src/elder_berry/robot/simulator.py: SimulatedTurntable + create_simulator angepasst
+- src/elder_berry/comms/remote_commands.py: Import + DI + Handler-Liste (vor _camera) + HELP_TEXT
+- scripts/start_rpi5.py: RPi5TurntableController Init + close()
+- docs/PROJECT_ROADMAP.md: Phase 24 + 25 Status korrigiert (ABGESCHLOSSEN)
+
+### Tests
+- 47/47 neue Tests gruen
+- 350/351 bestehende Tests gruen (1 vorbestehender Skip), keine Regressionen

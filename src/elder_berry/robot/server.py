@@ -19,6 +19,7 @@ from fastapi import FastAPI
 from pydantic import BaseModel
 
 from elder_berry.robot.camera_controller import CameraController
+from elder_berry.robot.turntable_controller import TurntableController
 from elder_berry.robot.protocol import (
     ApiResponse,
     BatteryStatus,
@@ -49,6 +50,12 @@ class DriveRequest(BaseModel):
 class StopRequest(BaseModel):
     """Request: Notfall-Stopp."""
     reason: str = "manual"
+
+
+class TurntableRotateRequest(BaseModel):
+    """Request: Drehteller rotieren."""
+    target_degrees: float | None = None    # Absolute Position
+    relative_degrees: float | None = None  # Relative Rotation
 
 
 # ---------------------------------------------------------------------------
@@ -126,12 +133,14 @@ class RobotServer:
         avatar: AvatarDisplay,
         sensors: SensorManager,
         camera: CameraController | None = None,
+        turntable: TurntableController | None = None,
         hostname: str = "elder-berry-rpi",
     ) -> None:
         self._motors = motors
         self._avatar = avatar
         self._sensors = sensors
         self._camera = camera
+        self._turntable = turntable
         self._hostname = hostname
         self._start_time = time.monotonic()
 
@@ -257,4 +266,67 @@ class RobotServer:
             return {
                 "available": available,
                 "resolution": resolution,
+            }
+
+        # --- Drehteller ---
+
+        @self.app.post("/turntable/rotate")
+        def turntable_rotate(request: TurntableRotateRequest) -> dict:
+            if not self._turntable:
+                return asdict(ApiResponse(
+                    success=False, message="Kein Drehteller",
+                ))
+            if request.target_degrees is None and request.relative_degrees is None:
+                return asdict(ApiResponse(
+                    success=False,
+                    message="target_degrees oder relative_degrees erforderlich",
+                ))
+            try:
+                if request.target_degrees is not None:
+                    self._turntable.rotate_to(request.target_degrees)
+                    msg = f"Rotation zu {request.target_degrees} Grad gestartet"
+                else:
+                    self._turntable.rotate_by(request.relative_degrees)
+                    msg = f"Rotation um {request.relative_degrees} Grad gestartet"
+                return asdict(ApiResponse(success=True, message=msg))
+            except RuntimeError as e:
+                return asdict(ApiResponse(success=False, message=str(e)))
+
+        @self.app.post("/turntable/home")
+        def turntable_home() -> dict:
+            if not self._turntable:
+                return asdict(ApiResponse(
+                    success=False, message="Kein Drehteller",
+                ))
+            try:
+                self._turntable.home()
+                return asdict(ApiResponse(
+                    success=True, message="Homing gestartet",
+                ))
+            except RuntimeError as e:
+                return asdict(ApiResponse(success=False, message=str(e)))
+
+        @self.app.post("/turntable/stop")
+        def turntable_stop() -> dict:
+            if not self._turntable:
+                return asdict(ApiResponse(
+                    success=False, message="Kein Drehteller",
+                ))
+            self._turntable.stop()
+            return asdict(ApiResponse(
+                success=True, message="Rotation gestoppt",
+            ))
+
+        @self.app.get("/turntable/status")
+        def turntable_status() -> dict:
+            if not self._turntable:
+                return {
+                    "available": False,
+                    "reason": "Kein Drehteller konfiguriert",
+                }
+            return {
+                "available": True,
+                "is_homed": self._turntable.is_homed,
+                "is_moving": self._turntable.is_moving,
+                "position_degrees": self._turntable.get_position(),
             }
