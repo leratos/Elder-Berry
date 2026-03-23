@@ -25,6 +25,7 @@ from elder_berry.comms.commands.base import CommandHandler, CommandResult
 
 if TYPE_CHECKING:
     from elder_berry.core.secret_store import SecretStore
+    from elder_berry.robot.client import RobotClient
 
 logger = logging.getLogger(__name__)
 
@@ -71,6 +72,18 @@ ROLLBACK_PATTERN = re.compile(
 # Regex für SelfCheck: "selfcheck", "systemcheck", "prüf dich", "alles ok"
 SELFCHECK_PATTERN = re.compile(
     r"^(?:self\s*check|system\s*check|prüf\s*dich|alles\s*ok\??|gesundheitscheck)$",
+    re.IGNORECASE,
+)
+
+# Regex für RPi-Update: "update rpi", "rpi update", "aktualisiere rpi"
+UPDATE_RPI_PATTERN = re.compile(
+    r"^(?:update\s+rpi|rpi\s+update|aktualisier(?:e)?\s+rpi)$",
+    re.IGNORECASE,
+)
+
+# Regex für Alles-Update: "update alles", "alles updaten"
+UPDATE_ALL_PATTERN = re.compile(
+    r"^(?:update\s+alles|alles\s+update[n]?)$",
     re.IGNORECASE,
 )
 
@@ -129,9 +142,11 @@ class ProcessCommandHandler(CommandHandler):
         self,
         secret_store: SecretStore | None = None,
         project_root: Path | None = None,
+        robot_client: RobotClient | None = None,
     ) -> None:
         self._secret_store = secret_store
         self._project_root = project_root
+        self._robot = robot_client
 
     # ------------------------------------------------------------------
     # CommandHandler interface
@@ -139,7 +154,7 @@ class ProcessCommandHandler(CommandHandler):
 
     @property
     def simple_commands(self) -> set[str]:
-        return {"wol", "update", "rollback", "selfcheck"}
+        return {"wol", "update", "rollback", "selfcheck", "update rpi", "update alles"}
 
     @property
     def patterns(self) -> list[tuple[re.Pattern, str, bool, bool]]:
@@ -149,6 +164,8 @@ class ProcessCommandHandler(CommandHandler):
             (GIT_PATTERN, "git", False, False),
             (DOCKER_PATTERN, "docker", False, False),
             (UPDATE_PATTERN, "update", False, False),
+            (UPDATE_RPI_PATTERN, "update_rpi", False, False),
+            (UPDATE_ALL_PATTERN, "update_all", False, False),
             (ROLLBACK_PATTERN, "rollback", False, False),
             (SELFCHECK_PATTERN, "selfcheck", False, False),
         ]
@@ -161,7 +178,9 @@ class ProcessCommandHandler(CommandHandler):
             "wol: Wake-on-LAN (Tower aufwecken)",
             "git status / git pull / git log / git diff: Git-Befehle",
             "docker ps / docker restart / docker logs: Docker-Befehle",
-            "update: Git Pull + Dependencies + Neustart",
+            "update: Git Pull + Dependencies + Neustart (Tower)",
+            "update rpi: RPi5 aktualisieren (git pull + pip + restart)",
+            "update alles: Tower + RPi5 nacheinander aktualisieren",
             "rollback: Auf Stand vor letztem Update zurücksetzen",
             "selfcheck: Gesundheitsprüfung aller Komponenten",
         ]
@@ -178,6 +197,14 @@ class ProcessCommandHandler(CommandHandler):
                 "update dich", "aktualisiere dich", "neue funktionen",
                 "schau dir deine neuen funktionen an", "mach ein update",
                 "git pull und neustart", "update saleria",
+            ],
+            "update_rpi": [
+                "update rpi", "rpi aktualisieren", "rpi updaten",
+                "raspberry update", "aktualisiere den rpi",
+            ],
+            "update_all": [
+                "update alles", "alles updaten", "alles aktualisieren",
+                "update überall",
             ],
             "rollback": [
                 "update zurücksetzen", "zurückrollen", "mach update rückgängig",
@@ -204,6 +231,10 @@ class ProcessCommandHandler(CommandHandler):
             return self._cmd_docker(raw_text)
         if command == "update":
             return self._cmd_update()
+        if command in ("update_rpi", "update rpi"):
+            return self._cmd_update_rpi()
+        if command in ("update_all", "update alles"):
+            return self._cmd_update_all()
         if command == "rollback":
             return self._cmd_rollback()
         if command == "selfcheck":
@@ -695,6 +726,58 @@ class ProcessCommandHandler(CommandHandler):
             success=True,
             text="\n".join(steps),
             restart=True,
+        )
+
+    def _cmd_update_rpi(self) -> CommandResult:
+        """RPi5 aktualisieren: git pull + pip install + systemctl restart."""
+        if not self._robot:
+            return CommandResult(
+                command="update_rpi",
+                success=False,
+                text="RobotClient nicht verfügbar (RPi5 nicht verbunden).",
+            )
+        try:
+            resp = self._robot.update_rpi()
+            return CommandResult(
+                command="update_rpi",
+                success=resp.success,
+                text=f"RPi5 Update: {resp.message}",
+            )
+        except Exception as e:
+            logger.error("RPi5 Update fehlgeschlagen: %s", e)
+            return CommandResult(
+                command="update_rpi",
+                success=False,
+                text=f"RPi5 Update fehlgeschlagen: {e}",
+            )
+
+    def _cmd_update_all(self) -> CommandResult:
+        """Tower + RPi5 nacheinander aktualisieren.
+
+        1. RPi5 zuerst (kann im Hintergrund neustarten)
+        2. Tower danach (restart=True)
+        """
+        steps: list[str] = []
+
+        # RPi5 zuerst
+        if self._robot:
+            rpi_result = self._cmd_update_rpi()
+            if rpi_result.success:
+                steps.append(f"RPi5: {rpi_result.text}")
+            else:
+                steps.append(f"RPi5: {rpi_result.text}")
+        else:
+            steps.append("RPi5: nicht verbunden, uebersprungen")
+
+        # Tower
+        tower_result = self._cmd_update()
+        steps.append(f"Tower: {tower_result.text}")
+
+        return CommandResult(
+            command="update_all",
+            success=tower_result.success,
+            text="\n\n".join(steps),
+            restart=tower_result.restart,
         )
 
     # ------------------------------------------------------------------

@@ -198,7 +198,9 @@ Sprachnachrichten:
   🎤 OGG/Opus Sprachnachricht → Whisper STT → Saleria antwortet (Text + Sprache)
 
 🔄 Self-Update:
-  update / update dich – Git Pull + Dependencies + Neustart
+  update / update dich – Git Pull + Dependencies + Neustart (Tower)
+  update rpi – RPi5 aktualisieren (git pull + pip + systemctl restart)
+  update alles – Tower + RPi5 nacheinander aktualisieren
   rollback / update zurücksetzen – Auf Stand vor letztem Update zurücksetzen
 
 🩺 Systemcheck:
@@ -266,6 +268,7 @@ class RemoteCommandHandler:
         self._process = ProcessCommandHandler(
             secret_store=secret_store,
             project_root=project_root,
+            robot_client=robot_client,
         )
         self._weather = WeatherCommandHandler(
             weather=weather,

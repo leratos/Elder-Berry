@@ -12,9 +12,13 @@ from elder_berry.comms.commands.process_commands import (
     ProcessCommandHandler,
     ROLLBACK_PATTERN,
     SELFCHECK_PATTERN,
+    UPDATE_ALL_PATTERN,
     UPDATE_PATTERN,
+    UPDATE_RPI_PATTERN,
     _CmdResult,
 )
+from elder_berry.comms.commands.base import CommandResult
+from elder_berry.robot.protocol import ApiResponse
 
 
 # ---------------------------------------------------------------------------
@@ -763,3 +767,135 @@ class TestSelfCheckExecute:
 
         assert "dependencies" in result.text.lower()
         assert "package-x" in result.text.lower()
+
+
+# ---------------------------------------------------------------------------
+# RPi-Update Pattern Tests
+# ---------------------------------------------------------------------------
+
+class TestUpdateRpiPattern:
+    def test_update_rpi(self):
+        assert UPDATE_RPI_PATTERN.match("update rpi")
+
+    def test_rpi_update(self):
+        assert UPDATE_RPI_PATTERN.match("rpi update")
+
+    def test_aktualisiere_rpi(self):
+        assert UPDATE_RPI_PATTERN.match("aktualisiere rpi")
+
+    def test_case_insensitive(self):
+        assert UPDATE_RPI_PATTERN.match("Update RPi")
+
+    def test_no_match_update_alone(self):
+        assert UPDATE_RPI_PATTERN.match("update") is None
+
+    def test_no_match_update_dich(self):
+        assert UPDATE_RPI_PATTERN.match("update dich") is None
+
+
+class TestUpdateAllPattern:
+    def test_update_alles(self):
+        assert UPDATE_ALL_PATTERN.match("update alles")
+
+    def test_alles_updaten(self):
+        assert UPDATE_ALL_PATTERN.match("alles updaten")
+
+    def test_alles_update(self):
+        assert UPDATE_ALL_PATTERN.match("alles update")
+
+    def test_case_insensitive(self):
+        assert UPDATE_ALL_PATTERN.match("Update Alles")
+
+    def test_no_match_update_alone(self):
+        assert UPDATE_ALL_PATTERN.match("update") is None
+
+
+# ---------------------------------------------------------------------------
+# RPi-Update Registration Tests
+# ---------------------------------------------------------------------------
+
+class TestUpdateRpiRegistration:
+    def test_simple_commands(self, handler):
+        assert "update rpi" in handler.simple_commands
+        assert "update alles" in handler.simple_commands
+
+    def test_keywords_update_rpi(self, handler):
+        kws = handler.keywords
+        assert "update_rpi" in kws
+        assert "update rpi" in kws["update_rpi"]
+
+    def test_keywords_update_all(self, handler):
+        kws = handler.keywords
+        assert "update_all" in kws
+        assert "update alles" in kws["update_all"]
+
+    def test_command_descriptions(self, handler):
+        descs = "\n".join(handler.command_descriptions)
+        assert "update rpi" in descs.lower()
+        assert "update alles" in descs.lower() or "tower + rpi" in descs.lower()
+
+
+# ---------------------------------------------------------------------------
+# RPi-Update Execute Tests
+# ---------------------------------------------------------------------------
+
+class TestUpdateRpiExecute:
+    def test_no_robot_client(self, handler):
+        result = handler.execute("update_rpi", "update rpi")
+        assert result.success is False
+        assert "nicht verfügbar" in result.text.lower() or "nicht verbunden" in result.text.lower()
+
+    def test_rpi_update_success(self, tmp_path):
+        robot = MagicMock()
+        robot.update_rpi.return_value = ApiResponse(
+            success=True, message="2 Commits | Code aktualisiert | Neustart",
+        )
+        h = ProcessCommandHandler(project_root=tmp_path, robot_client=robot)
+        result = h.execute("update_rpi", "update rpi")
+        assert result.success is True
+        assert "RPi5" in result.text
+        robot.update_rpi.assert_called_once()
+
+    def test_rpi_update_failure(self, tmp_path):
+        robot = MagicMock()
+        robot.update_rpi.return_value = ApiResponse(
+            success=False, message="Git Pull fehlgeschlagen",
+        )
+        h = ProcessCommandHandler(project_root=tmp_path, robot_client=robot)
+        result = h.execute("update_rpi", "update rpi")
+        assert result.success is False
+
+    def test_rpi_update_connection_error(self, tmp_path):
+        robot = MagicMock()
+        robot.update_rpi.side_effect = Exception("Connection refused")
+        h = ProcessCommandHandler(project_root=tmp_path, robot_client=robot)
+        result = h.execute("update_rpi", "update rpi")
+        assert result.success is False
+        assert "fehlgeschlagen" in result.text.lower()
+
+
+class TestUpdateAllExecute:
+    @patch.object(ProcessCommandHandler, "_cmd_update")
+    def test_update_all_both_succeed(self, mock_tower_update, tmp_path):
+        robot = MagicMock()
+        robot.update_rpi.return_value = ApiResponse(
+            success=True, message="RPi5 aktualisiert",
+        )
+        mock_tower_update.return_value = CommandResult(
+            command="update", success=True, text="Tower aktualisiert", restart=True,
+        )
+        h = ProcessCommandHandler(project_root=tmp_path, robot_client=robot)
+        result = h.execute("update_all", "update alles")
+        assert result.success is True
+        assert result.restart is True
+        assert "RPi5" in result.text
+        assert "Tower" in result.text
+
+    @patch.object(ProcessCommandHandler, "_cmd_update")
+    def test_update_all_no_robot(self, mock_tower_update, tmp_path):
+        mock_tower_update.return_value = CommandResult(
+            command="update", success=True, text="Alles aktuell", restart=False,
+        )
+        h = ProcessCommandHandler(project_root=tmp_path, robot_client=None)
+        result = h.execute("update_all", "update alles")
+        assert "uebersprungen" in result.text.lower() or "nicht verbunden" in result.text.lower()

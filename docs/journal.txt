@@ -2360,3 +2360,27 @@ User: "Lies meine Mails und trag den Zahnarzttermin ein"
 ### Tests
 - 47/47 neue Tests gruen
 - 350/351 bestehende Tests gruen (1 vorbestehender Skip), keine Regressionen
+
+## Abgeschlossen: RPi5 Remote-Update (update rpi / update alles) (2026-03-23)
+- Branch: feature/phase-27-drehteller-steuerung (fortgesetzt)
+
+### Neue Funktionalitaet
+- RPi5 laesst sich jetzt remote per Matrix aktualisieren
+- 3 Commands: update (Tower), update rpi (RPi5), update alles (beide nacheinander)
+- RPi5 Update: git pull --ff-only + pip install + systemctl restart elder-berry-rpi
+
+### Geaenderte Dateien
+- src/elder_berry/robot/server.py: POST /system/update Endpoint (git pull + pip + systemctl restart)
+  - Neue DI-Parameter: project_root, service_name
+- src/elder_berry/robot/client.py: update_rpi() Methode (POST /system/update, 120s Timeout)
+- src/elder_berry/comms/commands/process_commands.py:
+  - robot_client DI-Parameter (fuer RPi5-Kommunikation)
+  - UPDATE_RPI_PATTERN, UPDATE_ALL_PATTERN (neue Regex)
+  - _cmd_update_rpi(), _cmd_update_all() Handler
+  - Keywords: "update rpi", "rpi aktualisieren", "update alles", "alles updaten"
+- src/elder_berry/comms/remote_commands.py: robot_client an ProcessCommandHandler + HELP_TEXT
+- scripts/start_rpi5.py: project_root + service_name an RobotServer uebergeben
+
+### Tests
+- 24 neue Tests (Pattern, Registration, Execute, Server, Client)
+- 431/432 bestehende Tests gruen (1 vorbestehender Failure: cryptography fehlt)

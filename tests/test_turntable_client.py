@@ -20,6 +20,19 @@ def _mock_transport(responses: dict):
     return httpx.MockTransport(handler)
 
 
+class TestSystemClient:
+
+    def test_update_rpi(self):
+        transport = _mock_transport({
+            "POST /system/update": {"success": True, "message": "2 Commits | Code aktualisiert"},
+        })
+        client = RobotClient.__new__(RobotClient)
+        client._client = httpx.Client(transport=transport, base_url="http://test")
+        resp = client.update_rpi()
+        assert resp.success is True
+        assert "aktualisiert" in resp.message.lower()
+
+
 class TestTurntableClient:
 
     def test_rotate_turntable_absolute(self):

@@ -199,3 +199,11 @@ class RobotClient:
         r = self._client.get("/turntable/status")
         r.raise_for_status()
         return r.json()
+
+    # --- System ---
+
+    def update_rpi(self) -> ApiResponse:
+        """RPi5 aktualisieren: git pull + pip install + systemctl restart."""
+        r = self._client.post("/system/update", timeout=120.0)
+        r.raise_for_status()
+        return ApiResponse(**r.json())

@@ -28,6 +28,17 @@ def _create_server(turntable=None):
     )
 
 
+class TestSystemUpdateEndpoint:
+
+    def test_update_no_project_root(self):
+        server = _create_server()
+        client = TestClient(server.app)
+        r = client.post("/system/update")
+        assert r.status_code == 200
+        assert r.json()["success"] is False
+        assert "nicht konfiguriert" in r.json()["message"].lower()
+
+
 class TestTurntableEndpoints:
 
     def test_status_no_turntable(self):

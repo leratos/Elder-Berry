@@ -19,6 +19,7 @@ import logging
 import signal
 import sys
 import threading
+from pathlib import Path
 
 logger = logging.getLogger("elder_berry.rpi5")
 
@@ -112,6 +113,9 @@ def main() -> None:
         logger.warning("Drehteller-Init fehlgeschlagen: %s", e)
 
     # -- RobotServer -----------------------------------------------------------
+    # Projekt-Root ermitteln (scripts/ ist ein Unterverzeichnis)
+    project_root = Path(__file__).resolve().parent.parent
+
     server = RobotServer(
         motors=motors,
         avatar=avatar,
@@ -119,6 +123,8 @@ def main() -> None:
         camera=camera,
         turntable=turntable,
         hostname="elder-berry-rpi5",
+        project_root=project_root,
+        service_name="elder-berry-rpi",
     )
 
     # -- Graceful Shutdown -----------------------------------------------------

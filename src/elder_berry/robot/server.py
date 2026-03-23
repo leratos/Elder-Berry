@@ -4,16 +4,20 @@ Stellt REST-Endpoints bereit über die der Tower den Roboter steuert:
 - Avatar (Emotion, Lip-Sync)
 - Motoren (Fahrbefehle, Stopp)
 - Sensoren (Akku, Temperatur)
-- Health (Heartbeat)
+- Drehteller (Rotation, Homing)
+- System (Update, Health)
 
 Plattformhinweis: Läuft auf RPi5 (Linux) und Windows (Simulator).
 """
 from __future__ import annotations
 
 import logging
+import subprocess
+import sys
 import time
 from abc import ABC, abstractmethod
 from dataclasses import asdict
+from pathlib import Path
 
 from fastapi import FastAPI
 from pydantic import BaseModel
@@ -135,6 +139,8 @@ class RobotServer:
         camera: CameraController | None = None,
         turntable: TurntableController | None = None,
         hostname: str = "elder-berry-rpi",
+        project_root: Path | None = None,
+        service_name: str = "elder-berry-rpi",
     ) -> None:
         self._motors = motors
         self._avatar = avatar
@@ -142,6 +148,8 @@ class RobotServer:
         self._camera = camera
         self._turntable = turntable
         self._hostname = hostname
+        self._project_root = project_root
+        self._service_name = service_name
         self._start_time = time.monotonic()
 
         self.app = FastAPI(title="Elder-Berry Robot API", version="0.1.0")
@@ -330,3 +338,102 @@ class RobotServer:
                 "is_moving": self._turntable.is_moving,
                 "position_degrees": self._turntable.get_position(),
             }
+
+        # --- System ---
+
+        @self.app.post("/system/update")
+        def system_update() -> dict:
+            """Git pull + pip install + systemctl restart."""
+            if not self._project_root:
+                return asdict(ApiResponse(
+                    success=False,
+                    message="Projekt-Root nicht konfiguriert",
+                ))
+
+            cwd = str(self._project_root)
+            steps: list[str] = []
+
+            # 1. git fetch
+            try:
+                r = subprocess.run(
+                    ["git", "fetch", "origin"],
+                    capture_output=True, text=True,
+                    timeout=30, cwd=cwd,
+                )
+                if r.returncode != 0:
+                    return asdict(ApiResponse(
+                        success=False,
+                        message=f"Git Fetch fehlgeschlagen: {r.stderr}",
+                    ))
+            except Exception as e:
+                return asdict(ApiResponse(
+                    success=False, message=f"Git Fetch Fehler: {e}",
+                ))
+
+            # 2. Commits behind?
+            try:
+                r = subprocess.run(
+                    ["git", "rev-list", "--count", "HEAD..@{u}"],
+                    capture_output=True, text=True,
+                    timeout=10, cwd=cwd,
+                )
+                behind = int(r.stdout.strip()) if r.returncode == 0 else 0
+            except Exception:
+                behind = 0
+
+            if behind == 0:
+                return asdict(ApiResponse(
+                    success=True,
+                    message="Alles aktuell -- kein Update noetig.",
+                ))
+
+            steps.append(f"{behind} neue(r) Commit(s)")
+
+            # 3. git pull --ff-only
+            try:
+                r = subprocess.run(
+                    ["git", "pull", "--ff-only"],
+                    capture_output=True, text=True,
+                    timeout=60, cwd=cwd,
+                )
+                if r.returncode != 0:
+                    return asdict(ApiResponse(
+                        success=False,
+                        message=f"Git Pull fehlgeschlagen: {r.stderr}",
+                    ))
+                steps.append("Code aktualisiert")
+            except Exception as e:
+                return asdict(ApiResponse(
+                    success=False, message=f"Git Pull Fehler: {e}",
+                ))
+
+            # 4. pip install (immer, RPi hat weniger extras)
+            try:
+                r = subprocess.run(
+                    [sys.executable, "-m", "pip", "install", "-e", ".",
+                     "--quiet"],
+                    capture_output=True, text=True,
+                    timeout=300, cwd=cwd,
+                )
+                if r.returncode == 0:
+                    steps.append("Dependencies installiert")
+                else:
+                    steps.append(f"pip Warnung: {r.stderr[:200]}")
+            except Exception as e:
+                steps.append(f"pip Fehler: {e}")
+
+            # 5. systemctl restart
+            try:
+                subprocess.Popen(
+                    ["sudo", "systemctl", "restart", self._service_name],
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                )
+                steps.append(f"Neustart via systemctl ({self._service_name})")
+            except Exception as e:
+                steps.append(f"Neustart fehlgeschlagen: {e}")
+
+            return asdict(ApiResponse(
+                success=True,
+                message=" | ".join(steps),
+            ))
