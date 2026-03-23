@@ -293,3 +293,124 @@ class TestCreateEvent:
 
         call_body = mock_service.events.return_value.insert.call_args
         assert call_body.kwargs["body"]["location"] == "Büro"
+
+
+
+# ---------------------------------------------------------------------------
+# Retry-Logik (_call_with_retry)
+# ---------------------------------------------------------------------------
+
+class TestCallWithRetry:
+    """Tests für _call_with_retry: stale Connection Recovery."""
+
+    def test_ssl_error_triggers_retry_and_succeeds(self):
+        """SSL-EOF beim ersten Versuch → Service neu aufbauen → Retry OK."""
+        import ssl
+
+        store = _make_store_mock()
+        client = GoogleCalendarClient(secret_store=store)
+
+        mock_service_bad = MagicMock()
+        mock_service_good = MagicMock()
+
+        # Erster Call: SSL-Fehler, zweiter Call: Erfolg
+        mock_service_bad.events.return_value.list.return_value.execute.side_effect = (
+            ssl.SSLError("EOF occurred in violation of protocol")
+        )
+        mock_service_good.events.return_value.list.return_value.execute.return_value = {
+            "items": [
+                {
+                    "id": "e1",
+                    "summary": "Test",
+                    "start": {"dateTime": "2026-03-20T14:00:00+01:00"},
+                    "end": {"dateTime": "2026-03-20T15:00:00+01:00"},
+                },
+            ],
+        }
+
+        with patch.object(client, "_get_service") as mock_gs:
+            mock_gs.side_effect = [mock_service_bad, mock_service_good]
+            events = client.get_events(days=1)
+
+        assert len(events) == 1
+        assert events[0].summary == "Test"
+        # Service muss 2x geholt worden sein (original + retry)
+        assert mock_gs.call_count == 2
+
+    def test_connection_error_triggers_retry(self):
+        """ConnectionError wird ebenfalls retried."""
+        store = _make_store_mock()
+        client = GoogleCalendarClient(secret_store=store)
+
+        mock_service_bad = MagicMock()
+        mock_service_good = MagicMock()
+
+        mock_service_bad.events.return_value.list.return_value.execute.side_effect = (
+            ConnectionError("Connection reset by peer")
+        )
+        mock_service_good.events.return_value.list.return_value.execute.return_value = {
+            "items": [],
+        }
+
+        with patch.object(client, "_get_service") as mock_gs:
+            mock_gs.side_effect = [mock_service_bad, mock_service_good]
+            events = client.get_events(days=1)
+
+        assert events == []
+        assert mock_gs.call_count == 2
+
+    def test_non_retriable_error_propagates(self):
+        """Nicht-Connection-Fehler werden sofort hochgeworfen."""
+        store = _make_store_mock()
+        client = GoogleCalendarClient(secret_store=store)
+
+        mock_service = MagicMock()
+        mock_service.events.return_value.list.return_value.execute.side_effect = (
+            ValueError("Totally different error")
+        )
+
+        with patch.object(client, "_get_service", return_value=mock_service):
+            with pytest.raises(ValueError, match="Totally different"):
+                client.get_events(days=1)
+
+    def test_service_invalidated_after_ssl_error(self):
+        """Nach SSL-Fehler muss _service auf None stehen."""
+        import ssl
+
+        store = _make_store_mock()
+        client = GoogleCalendarClient(secret_store=store)
+        client._service = MagicMock()  # Simuliere gecachten Service
+
+        call_count = 0
+
+        def fake_operation():
+            nonlocal call_count
+            call_count += 1
+            if call_count == 1:
+                raise ssl.SSLError("EOF")
+            return "ok"
+
+        result = client._call_with_retry(fake_operation)
+        assert result == "ok"
+        assert client._service is None  # Wurde invalidiert
+
+    def test_delete_event_410_gone_returns_true(self):
+        """delete_event: 410 Gone auf Retry = Erfolg (Idempotenz)."""
+        from googleapiclient.errors import HttpError
+
+        store = _make_store_mock()
+        client = GoogleCalendarClient(secret_store=store)
+
+        mock_service = MagicMock()
+        # Simuliere 410 Gone
+        resp = MagicMock()
+        resp.status = 410
+        resp.reason = "Gone"
+        mock_service.events.return_value.delete.return_value.execute.side_effect = (
+            HttpError(resp, b"Resource has been deleted")
+        )
+
+        with patch.object(client, "_get_service", return_value=mock_service):
+            result = client.delete_event("already-gone-id")
+
+        assert result is True

@@ -2310,3 +2310,21 @@ User: "Lies meine Mails und trag den Zahnarzttermin ein"
 ### Tests
 - 29/29 neue Tests grün (11 camera_controller + 18 camera_commands)
 - 1873/1873 Gesamttests grün, keine Regressionen
+
+
+## Abgeschlossen: Bugfix – GoogleCalendarClient SSL EOF bei stale Connections
+- Symptom: "EOF occurred in violation of protocol (_ssl.c:2406)" alle ~15 Min
+- Ursache: gecachter _service hält tote TCP/TLS-Verbindung offen
+- Fix: _call_with_retry() – bei SSL/Connection/OS-Fehler Service invalidieren + 1x retry
+- Alle 6 API-Methoden nutzen jetzt _call_with_retry()
+- delete_event: 410 Gone wird als Erfolg gewertet (Idempotenz bei Retry)
+
+### Geänderte Dateien
+- src/elder_berry/tools/google_calendar.py: _call_with_retry(), ssl Import, alle Methoden refactored
+
+### Neue Tests
+- tests/test_google_calendar.py: 5 neue Tests (TestCallWithRetry)
+
+### Tests
+- 26/26 test_google_calendar.py ✓ (21 bestehende + 5 neue)
+- 26/26 test_calendar_watcher.py ✓ (keine Regressionen)
