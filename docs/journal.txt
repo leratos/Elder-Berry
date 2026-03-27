@@ -2384,3 +2384,30 @@ User: "Lies meine Mails und trag den Zahnarzttermin ein"
 ### Tests
 - 24 neue Tests (Pattern, Registration, Execute, Server, Client)
 - 431/432 bestehende Tests gruen (1 vorbestehender Failure: cryptography fehlt)
+
+## Abgeschlossen: Phase 28 – Konzeptdokument Email-Reply via Matrix (2026-03-26)
+- Konzept: docs/concepts/phase-28-email-reply.md (1308 Zeilen)
+- Scope: EmailSender (SMTP), generisches PendingConfirmation-Pattern, mail_reply Command
+- Draft-Generierung via Anthropic API (Claude Sonnet 4.6)
+
+### Neue Dateien (geplant)
+- src/elder_berry/tools/email_sender.py: EmailSender – SMTP-Client
+- src/elder_berry/comms/pending_confirmation.py: PendingConfirmationStore + PendingAction
+- tests/test_email_sender.py, test_pending_confirmation.py, test_mail_reply_commands.py
+
+### Geaenderte Dateien (geplant)
+- src/elder_berry/tools/email_client.py: EmailMessage +message_id, +references
+- src/elder_berry/comms/commands/base.py: CommandResult +pending_confirmation, +pending_data
+- src/elder_berry/comms/commands/mail_commands.py: +MAIL_REPLY_PATTERN, +_cmd_mail_reply, +_generate_draft
+- src/elder_berry/comms/bridge.py: PendingConfirmation-Intercept, email_sender DI
+- src/elder_berry/comms/remote_commands.py: anthropic_client an MailCommandHandler, HELP_TEXT
+- scripts/start.py: EmailSender erstellen + durchreichen
+
+### Architektur-Entscheidungen
+- SMTP als eigene Klasse (SRP), nicht in IMAPEmailClient
+- PendingConfirmation generisch (wiederverwendbar fuer Mail-Delete, File-Delete etc.)
+- Eine PendingAction pro User, 5 Min TTL, "aendern:"-Prefix fuer iteratives Verfeinern
+- Confirm loescht PendingAction erst NACH erfolgreichem Senden (Retry bei SMTP-Fehler)
+
+## In Arbeit: Phase 29 + 30 – Konzeptdokumente Kontaktbuch + To-Do-Liste
+- nächster Schritt: docs/concepts/phase-29-kontaktbuch.md + phase-30-todo-liste.md
