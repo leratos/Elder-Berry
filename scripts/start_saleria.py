@@ -466,6 +466,20 @@ def run_matrix(assistant, stt=None, avatar=None, audio_converter=None, robot=Non
         except Exception as e:
             logger.warning("Email nicht verfügbar: %s", e)
 
+    # Email / SMTP – EmailSender (optional, Phase 28)
+    email_sender = None
+    if email_client and secrets.get_or_none("email_user"):
+        try:
+            from elder_berry.tools.email_sender import EmailSender
+            email_sender = EmailSender.from_secret_store(secrets)
+            if email_sender.is_available():
+                logger.info("Email: SMTP verfügbar")
+            else:
+                logger.warning("SMTP nicht erreichbar")
+                email_sender = None
+        except Exception as e:
+            logger.warning("EmailSender nicht verfügbar: %s", e)
+
     # Berry-Gym (optional)
     gym_client = None
     if secrets.get_or_none("berry_gym_api_token"):
@@ -713,6 +727,7 @@ def run_matrix(assistant, stt=None, avatar=None, audio_converter=None, robot=Non
         document_reader=document_reader,
         audio_router=audio_router,
         summarizer=summarizer,
+        email_sender=email_sender,
     )
 
     # Settings-Dashboard (Web-UI für Audio-Routing + Monitor-Auswahl)

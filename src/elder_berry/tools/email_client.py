@@ -56,6 +56,12 @@ class EmailMessage:
     msg_id: str = ""
     """IMAP UID für späteren Zugriff (Anhänge, Details)."""
 
+    message_id: str = ""
+    """RFC Message-ID Header (für In-Reply-To bei Replies)."""
+
+    references: str = ""
+    """References Header (Message-ID-Kette für Threading)."""
+
     def format_short(self) -> str:
         """Einzeilige Darstellung."""
         date_str = self.date.strftime("%d.%m. %H:%M") if self.date else "?"
@@ -393,6 +399,10 @@ class IMAPEmailClient:
         # Body extrahieren (Text/Plain bevorzugt)
         body = IMAPEmailClient._extract_body(msg)
 
+        # Reply-Header für Threading extrahieren
+        message_id_header = msg.get("Message-ID", "").strip()
+        references_header = msg.get("References", "").strip()
+
         return EmailMessage(
             subject=subject or "(Kein Betreff)",
             sender=sender or "(Unbekannt)",
@@ -400,6 +410,8 @@ class IMAPEmailClient:
             body_preview=body[:MAX_BODY_CHARS] if body else "",
             is_unread=is_unread,
             msg_id=msg_id,
+            message_id=message_id_header,
+            references=references_header,
         )
 
     @staticmethod
