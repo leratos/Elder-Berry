@@ -11,6 +11,7 @@ from typing import TYPE_CHECKING
 
 from elder_berry.actions.base import ActionController
 from elder_berry.actions.db import ActionsDB
+from elder_berry.core.prompts import SYSTEM_PROMPT_TEMPLATE
 from elder_berry.llm.base import LLMClient
 from elder_berry.tts.base import TTSEngine
 
@@ -25,50 +26,8 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-SYSTEM_PROMPT_TEMPLATE = """\
-Du bist Elder-Berry, eine hilfreiche Assistentin.
-Aktuelles Datum und Uhrzeit: {current_datetime}
 
-Du kannst PC-Aktionen ausführen. Antworte IMMER im folgenden JSON-Format:
-
-{{"action": "<action_type oder null>", "params": {{}}, "response": "<deine Antwort an den Nutzer>"}}
-
-Verfügbare Aktionen:
-- press_key: Taste drücken. params: {{"key": "enter"}}
-- type_text: Text tippen. params: {{"text": "hello"}}
-- hotkey: Tastenkombination. params: {{"keys": ["ctrl", "c"]}}
-- set_volume: Lautstärke setzen (0.0-1.0). params: {{"level": 0.5}}
-- mute: Stummschalten. params: {{"state": true}}
-- focus_window: Fenster fokussieren. params: {{"title": "Notepad"}}
-- minimize_window: Fenster minimieren. params: {{"title": "Notepad"}}
-- maximize_window: Fenster maximieren. params: {{"title": "Notepad"}}
-- system_status: PC-Zustand abfragen (CPU, RAM, GPU, Prozesse). params: {{}}
-- robot_drive: Roboter fahren. params: {{"direction": "forward", "speed": 0.5}}
-  Richtungen: forward, backward, left, right, rotate_left, rotate_right
-- robot_stop: Roboter stoppen. params: {{"reason": "hindernis"}}
-- remote_command: Remote-Befehl ausführen. params: {{"command": "<befehl>"}}
-  Du hast folgende Remote-Tools:
-{remote_commands}
-  Wenn der Nutzer nach Mails, Terminen, Training, Wetter, Web-Suche oder ähnlichem fragt,
-  nutze remote_command mit dem passenden Befehl als "command"-Parameter.
-  Beispiel: Nutzer fragt "Suche das Angebot von RK Bedachung in meinen Mails"
-  → {{"action": "remote_command", "params": {{"command": "mail suche RK Bedachung"}}, "response": "Ich suche nach Mails von RK Bedachung..."}}
-- multi_step: Mehrstufige Aufgabe ausführen (mehrere Commands verketten).
-  params: {{"task": "<beschreibung der gesamten aufgabe>"}}
-  Nutze dies wenn der Nutzer eine Aufgabe beschreibt die mehrere Schritte braucht.
-  Beispiel: "Lies meine Mails und trag den Zahnarzttermin ein"
-  → {{"action": "multi_step", "params": {{"task": "Mails lesen und Zahnarzttermin eintragen"}}, "response": "Ich kümmere mich darum..."}}
-
-{action_list}
-
-{robot_status}
-
-WICHTIG: Führe nur dann eine Aktion aus, wenn der Nutzer explizit danach fragt.
-Bei normalen Fragen oder Gesprächen setze "action" auf null und antworte direkt.
-Antworte immer auf Deutsch.
-
-{memory_context}
-"""
+# SYSTEM_PROMPT_TEMPLATE → ausgelagert nach core/prompts.py
 
 
 @dataclass
@@ -117,6 +76,7 @@ class Assistant:
         self._memory = memory
         self._remote_commands = remote_commands
         self._session_id: str = memory.new_session() if memory else ""
+        self._agent_online_cache: bool | None = None
 
     def process(
         self, user_input: str, audio_output: Path | None = None,
@@ -140,6 +100,9 @@ class Assistant:
             return AssistantResult(
                 response="Leere Eingabe.", action_executed=None, action_success=False
             )
+
+        # Reset request-scoped cache
+        self._agent_online_cache = None
 
         memory_context = self._get_memory_context(user_input)
         system_prompt = self._build_system_prompt(
@@ -553,9 +516,13 @@ class Assistant:
         """Prüft ob der Laptop-Agent erreichbar ist (cached pro Request)."""
         if not self._agent:
             return False
+        if self._agent_online_cache is not None:
+            return self._agent_online_cache
         try:
-            return self._agent.is_online()
+            self._agent_online_cache = self._agent.is_online()
+            return self._agent_online_cache
         except Exception:
+            self._agent_online_cache = False
             return False
 
     def _tts_via_agent(self, text: str, emotion: str | None) -> None:

@@ -149,10 +149,10 @@ Saleria als echte Alltagsassistentin – Kalender, E-Mail, Fitness, Wetter, Smar
 - ✅ Idle-Animationen (Glance, Smile, Soft-Close, Surprise)
 - ✅ Lip-Sync Fix (show_speaking Reset-Bug)
 - ✅ systemd-Autostart dokumentiert
-- **→ Phase 27:** Drehteller-Steuerung (28BYJ-48 + A3144 Hall-Sensor)
+- **→ Phase 27:** Drehteller-Steuerung (28BYJ-48 + A3144 Hall-Sensor) ✅
 - **→ Phase 26:** Kamera-Integration (RPi Camera Module 3) ✅
-- **Offen:** Sensor-Integration (BME280, APDS-9960) – direkt über RPi5 GPIO/I2C
-- **Offen:** Gehäuse-Finish (Resin-Druck, Rinde, Moos)
+- **Offen:** Sensor-Integration (BME280, APDS-9960) – direkt ueber RPi5 GPIO/I2C
+- **Offen:** Gehaeuse-Finish (Resin-Druck, Rinde, Moos)
 
 ## Phase 11 – Dokument-Zusammenfassung 📄 ✅ ABGESCHLOSSEN
 
@@ -407,19 +407,21 @@ RPi Camera Module 3 in die Projekt-Architektur integriert.
 - ✅ **Tests**: 29 Tests (11 camera_controller + 18 camera_commands)
 - **Konzept**: `docs/concepts/phase-26-kamera-integration.md`
 
-## Phase 27 – Drehteller-Steuerung (28BYJ-48 + A3144 Hall-Sensor) 🔄 IN ARBEIT
+## Phase 27 – Drehteller-Steuerung (28BYJ-48 + A3144 Hall-Sensor) ✅ ABGESCHLOSSEN
 
 Software-Integration des Drehtellers in die Projekt-Architektur.
 Hardware bereits getestet (test_stepper.py, test_hall.py).
 
-- TurntableController ABC + RPi5TurntableController (lgpio, Background-Thread)
-- Hall-Sensor Homing (immer CCW, Sicherheitslimit 4200 Steps)
-- ±180° Soft-Limit (USB-C Kabel-Constraint)
-- Server-Endpoints: /turntable/rotate, /turntable/home, /turntable/stop, /turntable/status
-- RobotClient: rotate_turntable(), home_turntable(), stop_turntable(), turntable_status()
-- TurntableCommandHandler: "dreh dich", "schau nach links/rechts", "drehteller home/status"
-- SimulatedTurntable für Tower-Tests
-- 44 Tests geplant
+- ✅ **TurntableController ABC + RPi5TurntableController**: lgpio, Background-Thread, Half-Step-Sequenz
+- ✅ **Hall-Sensor Homing**: immer CCW, Sicherheitslimit 4200 Steps (~369 Grad)
+- ✅ **Soft-Limits**: +/-180 Grad mit Clamp + Warnung (USB-C Kabel-Constraint)
+- ✅ **Server-Endpoints**: /turntable/rotate, /turntable/home, /turntable/stop, /turntable/status
+- ✅ **RobotClient**: rotate_turntable(), home_turntable(), stop_turntable(), turntable_status()
+- ✅ **TurntableCommandHandler**: 7 Commands ("dreh dich", "schau nach links/rechts", "drehteller home/status")
+- ✅ **SimulatedTurntable**: Synchroner Simulator fuer Tower-Tests
+- ✅ **RPi5 Remote-Update**: `update rpi` / `update alles` via Matrix (git pull + pip + systemctl restart)
+- ✅ **Server-Endpoint**: POST /system/update (git pull + pip install + systemctl restart)
+- ✅ **Tests**: 47 Tests (Controller + Server + Client + Commands)
 - **Konzept**: `docs/concepts/phase-27-drehteller-steuerung.md`
 
 ---
@@ -458,6 +460,8 @@ Ein physischer Assistent auf dem Schreibtisch (Holunder-Hologramm), erreichbar v
 - Fakten und Notizen speichert und abruft (Wissensdatenbank)
 - Im Internet sucht und Ergebnisse aufbereitet (Brave Search)
 - Den PC/Tower remote steuert (Screenshots, Medien, Prozesse, Computer Use)
+- Sich physisch zum Nutzer dreht (Drehteller mit Hall-Sensor Homing)
+- Sich selbst aktualisiert (Tower + RPi5 per Matrix-Command)
 - Das Smart Home steuert (Lichter, Heizung via HA – nach Umzug)
 - Sich an Gespräche erinnert (RAG-Memory)
 - Proaktiv auf wichtige Events aufmerksam macht (Alerts)
