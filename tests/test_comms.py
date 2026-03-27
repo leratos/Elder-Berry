@@ -7,7 +7,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from elder_berry.comms.message_channel import IncomingMessage, MessageChannel
-from elder_berry.comms.bridge import MatrixBridge, extract_claude_message
+from elder_berry.comms.bridge import MatrixBridge
 from elder_berry.comms.claude_agent import AgentResult
 from elder_berry.comms.remote_commands import CommandResult, RemoteCommandHandler
 from elder_berry.core.assistant import AssistantResult
@@ -673,44 +673,44 @@ class TestBridgeCommandRouting:
 
 
 # ---------------------------------------------------------------------------
-# extract_claude_message – Keyword-Routing (Phase 7 Schritt 3)
+# MatrixBridge.extract_claude_message – Keyword-Routing (Phase 7 Schritt 3)
 # ---------------------------------------------------------------------------
 
 class TestExtractClaudeMessage:
     def test_claude_with_quotes(self):
-        result = extract_claude_message('Sag Claude bitte "Dokumentiere X im Journal"')
+        result = MatrixBridge.extract_claude_message('Sag Claude bitte "Dokumentiere X im Journal"')
         assert result == "Dokumentiere X im Journal"
 
     def test_claude_lowercase(self):
-        result = extract_claude_message('claude "Was war der letzte Schritt?"')
+        result = MatrixBridge.extract_claude_message('claude "Was war der letzte Schritt?"')
         assert result == "Was war der letzte Schritt?"
 
     def test_claude_uppercase(self):
-        result = extract_claude_message('CLAUDE "Zeig mir die Tests"')
+        result = MatrixBridge.extract_claude_message('CLAUDE "Zeig mir die Tests"')
         assert result == "Zeig mir die Tests"
 
     def test_no_claude_keyword(self):
-        result = extract_claude_message("Wie geht's dir?")
+        result = MatrixBridge.extract_claude_message("Wie geht's dir?")
         assert result is None
 
     def test_claude_without_quotes(self):
-        result = extract_claude_message("Claude mach mal was")
+        result = MatrixBridge.extract_claude_message("Claude mach mal was")
         assert result is None
 
     def test_quotes_without_claude(self):
-        result = extract_claude_message('Sag Saleria "Hallo"')
+        result = MatrixBridge.extract_claude_message('Sag Saleria "Hallo"')
         assert result is None
 
     def test_empty_string(self):
-        result = extract_claude_message("")
+        result = MatrixBridge.extract_claude_message("")
         assert result is None
 
     def test_empty_quotes(self):
-        result = extract_claude_message('Claude ""')
+        result = MatrixBridge.extract_claude_message('Claude ""')
         assert result is None
 
     def test_first_quoted_text_extracted(self):
-        result = extract_claude_message('Claude "erster Auftrag" und "zweiter"')
+        result = MatrixBridge.extract_claude_message('Claude "erster Auftrag" und "zweiter"')
         assert result == "erster Auftrag"
 
 
