@@ -20,9 +20,9 @@ from elder_berry.comms.commands.file_commands import (
     MAX_FILE_SIZE_BYTES,
     SEND_FILE_PATTERN,
 )
+from elder_berry.comms.commands.docker_commands import DOCKER_PATTERN
+from elder_berry.comms.commands.git_commands import GIT_PATTERN
 from elder_berry.comms.commands.process_commands import (
-    DOCKER_PATTERN,
-    GIT_PATTERN,
     KILL_PROCESS_PATTERN,
     KILL_WHITELIST,
     START_PROCESS_PATTERN,

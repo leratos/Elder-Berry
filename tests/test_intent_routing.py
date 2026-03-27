@@ -390,7 +390,7 @@ class TestRetryLogic:
         msg.body = "zeig mails von gestern"
         msg.timestamp = 0
 
-        asyncio.run(bridge._handle_llm_remote_command(msg, llm_result))
+        asyncio.run(bridge._handler._handle_llm_remote_command(msg, llm_result))
 
         # LLM wurde für Retry aufgerufen
         assert assistant.process.called
@@ -411,7 +411,7 @@ class TestRetryLogic:
         msg.body = "zeig mails"
         msg.timestamp = 0
 
-        asyncio.run(bridge._handle_llm_remote_command(msg, llm_result))
+        asyncio.run(bridge._handler._handle_llm_remote_command(msg, llm_result))
 
         # Kein Retry nötig – parse_command matcht direkt
         assert not assistant.process.called
@@ -441,7 +441,7 @@ class TestRetryLogic:
         msg.body = "zeig die elektronische korrespondenz"
         msg.timestamp = 0
 
-        asyncio.run(bridge._handle_llm_remote_command(msg, llm_result))
+        asyncio.run(bridge._handler._handle_llm_remote_command(msg, llm_result))
 
         # Retry wurde aufgerufen
         assert assistant.process.called
@@ -463,7 +463,7 @@ class TestRetryLogic:
         msg.timestamp = 0
 
         # Darf nicht crashen
-        asyncio.run(bridge._handle_llm_remote_command(msg, llm_result))
+        asyncio.run(bridge._handler._handle_llm_remote_command(msg, llm_result))
         assert not assistant.process.called
 
 

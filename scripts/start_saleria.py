@@ -407,16 +407,10 @@ def run_voice(assistant, stt):
         print("\nAuf Wiedersehen!")
 
 
-def run_matrix(assistant, stt=None, avatar=None, audio_converter=None, robot=None):
-    """Matrix-Modus: MatrixBridge startet bidirektionalen Chat über Matrix."""
-    from elder_berry.core.secret_store import SecretStore
+def _init_matrix_channel(secrets):
+    """Initialisiert MatrixChannel mit Credentials aus SecretStore."""
     from elder_berry.comms.matrix_channel import MatrixChannel
-    from elder_berry.comms.bridge import MatrixBridge
-    from elder_berry.comms.remote_commands import RemoteCommandHandler
-    from elder_berry.comms.alert_monitor import AlertMonitor, AlertConfig
-    from elder_berry.system.info import SystemMonitor
 
-    secrets = SecretStore()
     homeserver = secrets.get_or_none("matrix_homeserver") or os.environ.get(
         "MATRIX_HOMESERVER", "https://matrix.last-strawberry.com"
     )
@@ -440,14 +434,19 @@ def run_matrix(assistant, stt=None, avatar=None, audio_converter=None, robot=Non
         homeserver=homeserver, user_id=user_id, access_token=token,
         allowed_rooms=allowed_rooms,
     )
+    return channel, user_id, room_id
 
-    # Google Calendar (optional)
-    calendar = None
+
+def _init_productivity_services(secrets, default_user_id):
+    """Initialisiert Produktivitäts-Tools: Calendar, Email, Contacts, Todos, etc."""
+    svc = {}
+
+    # Google Calendar
     try:
         from elder_berry.tools.google_calendar import GoogleCalendarClient
         cal = GoogleCalendarClient(secret_store=secrets)
         if cal.is_available():
-            calendar = cal
+            svc["calendar"] = cal
             logger.info("Google Calendar: aktiv")
         else:
             logger.debug("Google Calendar: keine Tokens konfiguriert")
@@ -456,98 +455,91 @@ def run_matrix(assistant, stt=None, avatar=None, audio_converter=None, robot=Non
     except Exception as e:
         logger.warning("Google Calendar nicht verfügbar: %s", e)
 
-    # Email / IMAP (optional)
-    email_client = None
+    # Email / IMAP
     if secrets.get_or_none("email_imap_host"):
         try:
             from elder_berry.tools.email_client import IMAPEmailClient
-            email_client = IMAPEmailClient.from_secret_store(secrets)
+            svc["email_client"] = IMAPEmailClient.from_secret_store(secrets)
             logger.info("Email: IMAP %s", secrets.get("email_imap_host"))
         except Exception as e:
             logger.warning("Email nicht verfügbar: %s", e)
 
-    # Email / SMTP – EmailSender (optional, Phase 28)
-    email_sender = None
-    if email_client and secrets.get_or_none("email_user"):
+    # Email / SMTP
+    if svc.get("email_client") and secrets.get_or_none("email_user"):
         try:
             from elder_berry.tools.email_sender import EmailSender
-            email_sender = EmailSender.from_secret_store(secrets)
-            if email_sender.is_available():
+            sender = EmailSender.from_secret_store(secrets)
+            if sender.is_available():
+                svc["email_sender"] = sender
                 logger.info("Email: SMTP verfügbar")
             else:
                 logger.warning("SMTP nicht erreichbar")
-                email_sender = None
         except Exception as e:
             logger.warning("EmailSender nicht verfügbar: %s", e)
 
-    # ContactStore (Phase 29)
-    contact_store = None
+    # ContactStore
     try:
         from elder_berry.tools.contact_store import ContactStore
-        contact_store = ContactStore()
-        logger.info("ContactStore initialisiert: %s", contact_store._db_path)
+        svc["contact_store"] = ContactStore()
+        logger.info("ContactStore initialisiert: %s", svc["contact_store"]._db_path)
     except Exception as e:
         logger.warning("ContactStore nicht verfügbar: %s", e)
 
-    # TodoStore (Phase 30)
-    todo_store = None
+    # TodoStore
     try:
         from elder_berry.tools.todo_store import TodoStore
-        todo_store = TodoStore()
-        logger.info("TodoStore initialisiert: %s", todo_store._db_path)
+        svc["todo_store"] = TodoStore()
+        logger.info("TodoStore initialisiert: %s", svc["todo_store"]._db_path)
     except Exception as e:
         logger.warning("TodoStore nicht verfügbar: %s", e)
 
-    # Default-User-ID für Stores (erster konfigurierter Sender)
-    default_user_id = (
-        secrets.get_or_none("matrix_allowed_senders") or ""
-    ).split(",")[0].strip()
-
-    # Berry-Gym (optional)
-    gym_client = None
+    # Berry-Gym
     if secrets.get_or_none("berry_gym_api_token"):
         try:
             from elder_berry.tools.gym_data import GymDataClient
-            gym_client = GymDataClient(secret_store=secrets)
-            logger.info("Berry-Gym: aktiv (%s)", gym_client._base_url)
+            svc["gym_client"] = GymDataClient(secret_store=secrets)
+            logger.info("Berry-Gym: aktiv (%s)", svc["gym_client"]._base_url)
         except Exception as e:
             logger.warning("Berry-Gym nicht verfügbar: %s", e)
 
-    # Weather (optional)
-    weather = None
+    # Weather
     try:
         from elder_berry.tools.weather_client import WeatherClient
-        weather = WeatherClient(secret_store=secrets)
+        svc["weather"] = WeatherClient(secret_store=secrets)
         logger.info("Weather: aktiv")
     except Exception as e:
         logger.warning("Weather nicht verfügbar: %s", e)
 
-    # Reminders (optional)
-    reminder_store = None
-    reminder_scheduler = None
+    # NoteStore
+    try:
+        from elder_berry.tools.note_store import NoteStore
+        svc["note_store"] = NoteStore()
+        logger.info("NoteStore: aktiv (DB: %s)", svc["note_store"]._db_path)
+    except Exception as e:
+        logger.warning("NoteStore nicht verfügbar: %s", e)
+
+    # Reminders
     try:
         from elder_berry.tools.reminder_store import ReminderStore
         from elder_berry.comms.reminder_scheduler import ReminderScheduler
-        reminder_store = ReminderStore()
-        # Scheduler mit Platzhalter-Callback (Bridge setzt den echten)
-        reminder_scheduler = ReminderScheduler(
-            store=reminder_store,
+        svc["reminder_store"] = ReminderStore()
+        svc["reminder_scheduler"] = ReminderScheduler(
+            store=svc["reminder_store"],
             send_reminder=lambda user_id, text: None,
         )
-        logger.info("Reminders: aktiv (DB: %s)", reminder_store._db_path)
+        logger.info("Reminders: aktiv (DB: %s)", svc["reminder_store"]._db_path)
     except Exception as e:
         logger.warning("Reminders nicht verfügbar: %s", e)
 
-    # Daily Briefing (optional)
-    briefing_scheduler = None
+    # Daily Briefing
     try:
         from elder_berry.comms.briefing_scheduler import BriefingScheduler
-        briefing_scheduler = BriefingScheduler(
-            send_briefing=lambda text: None,  # Bridge setzt den echten Callback
-            calendar=calendar,
-            weather=weather,
-            reminder_store=reminder_store,
-            todo_store=todo_store,
+        svc["briefing_scheduler"] = BriefingScheduler(
+            send_briefing=lambda text: None,
+            calendar=svc.get("calendar"),
+            weather=svc.get("weather"),
+            reminder_store=svc.get("reminder_store"),
+            todo_store=svc.get("todo_store"),
             default_user_id=default_user_id,
             briefing_hour=7,
             briefing_minute=30,
@@ -556,157 +548,176 @@ def run_matrix(assistant, stt=None, avatar=None, audio_converter=None, robot=Non
     except Exception as e:
         logger.warning("Daily Briefing nicht verfügbar: %s", e)
 
-    # NoteStore – Notizen & Wissensdatenbank (optional)
-    note_store = None
-    try:
-        from elder_berry.tools.note_store import NoteStore
-        note_store = NoteStore()
-        logger.info("NoteStore: aktiv (DB: %s)", note_store._db_path)
-    except Exception as e:
-        logger.warning("NoteStore nicht verfügbar: %s", e)
+    return svc
 
-    # ContextEnricher – Kontext-Anreicherung für CalendarWatcher (Phase 21)
-    context_enricher = None
+
+def _init_context_and_tools(secrets, assistant, svc):
+    """Initialisiert ContextEnricher, CalendarWatcher und Werkzeuge."""
+    default_user_id = (
+        secrets.get_or_none("matrix_allowed_senders") or ""
+    ).split(",")[0].strip()
+    tools = {}
+
+    # ContextEnricher
     try:
         from elder_berry.core.context_enricher import ContextEnricher
-        context_enricher = ContextEnricher(
-            note_store=note_store,
-            email_client=email_client,
-            weather_client=weather,
+        tools["context_enricher"] = ContextEnricher(
+            note_store=svc.get("note_store"),
+            email_client=svc.get("email_client"),
+            weather_client=svc.get("weather"),
             memory_store=assistant._memory,
             llm=assistant._llm,
             default_user_id=default_user_id,
         )
         sources = [s for s, v in [
-            ("Notes", note_store), ("Mail", email_client),
-            ("Weather", weather),
+            ("Notes", svc.get("note_store")), ("Mail", svc.get("email_client")),
+            ("Weather", svc.get("weather")),
         ] if v]
         logger.info("ContextEnricher: aktiv (Quellen: %s)", ", ".join(sources) or "keine")
     except Exception as e:
         logger.warning("ContextEnricher nicht verfügbar: %s", e)
 
-    # CalendarWatcher – proaktive Kalender-Erinnerungen (optional)
-    calendar_watcher = None
-    if calendar:
+    # CalendarWatcher
+    if svc.get("calendar"):
         try:
             from elder_berry.comms.calendar_watcher import CalendarWatcher
-            calendar_watcher = CalendarWatcher(
-                send_alert=lambda text: None,  # Bridge setzt den echten Callback
-                calendar=calendar,
+            tools["calendar_watcher"] = CalendarWatcher(
+                send_alert=lambda text: None,
+                calendar=svc["calendar"],
                 reminder_minutes=[15, 5],
                 poll_interval=300,
-                context_enricher=context_enricher,
+                context_enricher=tools.get("context_enricher"),
             )
             logger.info("CalendarWatcher: aktiv (Erinnerungen: 15min, 5min vor Termin)")
         except Exception as e:
             logger.warning("CalendarWatcher nicht verfügbar: %s", e)
 
-    # DocumentReader (Phase 11)
+    # DocumentReader
     from elder_berry.tools.document_reader import DocumentReader
-    document_reader = DocumentReader()
+    tools["document_reader"] = DocumentReader()
 
-    # AudioRouter (Phase 12) – prüfe ob lokale Wiedergabe möglich
+    # AudioRouter
     from elder_berry.core.audio_router import AudioRouter
     local_audio_available = _check_local_audio(assistant)
-    audio_router = AudioRouter(local_available=local_audio_available)
+    tools["audio_router"] = AudioRouter(local_available=local_audio_available)
     logger.info(
         "AudioRouter: lokale Wiedergabe %s",
         "verfügbar" if local_audio_available else "nicht verfügbar",
     )
 
-    # ComputerUseController (Phase 13) – Vision-gesteuerte PC-Bedienung
-    computer_use = None
+    # ComputerUseController
     if assistant._controller:
         try:
             from elder_berry.actions.computer_use import ComputerUseController
             from elder_berry.llm.anthropic_client import AnthropicClient
             cu_client = AnthropicClient()
             if cu_client.is_available():
-                computer_use = ComputerUseController(
+                tools["computer_use"] = ComputerUseController(
                     anthropic_client=cu_client,
                     controller=assistant._controller,
                 )
-                logger.info("ComputerUseController: aktiv (Monitor %d)", computer_use.monitor_index)
+                logger.info("ComputerUseController: aktiv (Monitor %d)", tools["computer_use"].monitor_index)
             else:
                 logger.info("ComputerUseController: inaktiv (ANTHROPIC_API_KEY fehlt)")
         except Exception as e:
             logger.warning("ComputerUseController nicht verfügbar: %s", e)
 
-    # BraveSearchClient (Phase 14) – Web-Suche
-    search_client = None
+    # BraveSearchClient
     if secrets.get_or_none("brave_api_key"):
         try:
             from elder_berry.tools.brave_search_client import BraveSearchClient
-            search_client = BraveSearchClient(secret_store=secrets)
+            tools["search_client"] = BraveSearchClient(secret_store=secrets)
             logger.info("BraveSearchClient: aktiv")
         except Exception as e:
             logger.warning("BraveSearchClient nicht verfügbar: %s", e)
     else:
         logger.info("BraveSearchClient: inaktiv (brave_api_key fehlt)")
 
-    # AnthropicClient für Kamera-Vision (Phase 26)
-    vision_client = None
+    # Vision-Client (Kamera)
     try:
         from elder_berry.llm.anthropic_client import AnthropicClient
-        vision_client = AnthropicClient()
-        if vision_client.is_available():
+        vision = AnthropicClient()
+        if vision.is_available():
+            tools["vision_client"] = vision
             logger.info("Vision-Client (Kamera): aktiv")
         else:
             logger.info("Vision-Client (Kamera): inaktiv (ANTHROPIC_API_KEY fehlt)")
-            vision_client = None
     except Exception as e:
         logger.warning("Vision-Client nicht verfügbar: %s", e)
 
-    # RemoteCommandHandler – alle Dependencies übergeben
+    return tools
+
+
+def run_matrix(assistant, stt=None, avatar=None, audio_converter=None, robot=None):
+    """Matrix-Modus: MatrixBridge startet bidirektionalen Chat über Matrix."""
+    from elder_berry.core.secret_store import SecretStore
+    from elder_berry.comms.bridge import MatrixBridge
+    from elder_berry.comms.remote_commands import RemoteCommandHandler
+    from elder_berry.comms.alert_monitor import AlertMonitor, AlertConfig
+    from elder_berry.system.info import SystemMonitor
+
+    secrets = SecretStore()
+
+    # --- 1. Matrix-Channel ---
+    channel, user_id, room_id = _init_matrix_channel(secrets)
+
+    # Default-User-ID (erster konfigurierter Sender)
+    default_user_id = (
+        secrets.get_or_none("matrix_allowed_senders") or ""
+    ).split(",")[0].strip()
+
+    # --- 2. Produktivitäts-Services ---
+    svc = _init_productivity_services(secrets, default_user_id)
+
+    # --- 3. Kontext & Werkzeuge ---
+    tools = _init_context_and_tools(secrets, assistant, svc)
+
+    # --- 4. RemoteCommandHandler ---
     remote = RemoteCommandHandler(
         system_monitor=SystemMonitor(),
         controller=assistant._controller,
         secret_store=secrets,
         project_root=_PROJECT_ROOT,
         avatar_renderer=avatar,
-        calendar=calendar,
-        email_client=email_client,
-        gym_client=gym_client,
-        weather=weather,
-        reminder_store=reminder_store,
-        briefing_scheduler=briefing_scheduler,
-        document_reader=document_reader,
-        audio_router=audio_router,
-        computer_use=computer_use,
-        search_client=search_client,
-        note_store=note_store,
-        contact_store=contact_store,
-        todo_store=todo_store,
+        calendar=svc.get("calendar"),
+        email_client=svc.get("email_client"),
+        gym_client=svc.get("gym_client"),
+        weather=svc.get("weather"),
+        reminder_store=svc.get("reminder_store"),
+        briefing_scheduler=svc.get("briefing_scheduler"),
+        document_reader=tools.get("document_reader"),
+        audio_router=tools.get("audio_router"),
+        computer_use=tools.get("computer_use"),
+        search_client=tools.get("search_client"),
+        note_store=svc.get("note_store"),
+        contact_store=svc.get("contact_store"),
+        todo_store=svc.get("todo_store"),
         robot_client=robot,
-        anthropic_client=vision_client,
+        anthropic_client=tools.get("vision_client"),
         default_user_id=default_user_id,
     )
-
-    # Assistant: dynamischer Command-Prompt aus Handler-Definitionen
     assistant._remote_commands = remote
 
-    # ClaudeAgent (optional)
+    # --- 5. ClaudeAgent ---
     claude_agent = None
     anthropic_key = secrets.get_or_none("anthropic_api_key") or os.environ.get("ANTHROPIC_API_KEY")
     if anthropic_key:
         try:
             from elder_berry.comms.claude_agent import ClaudeAgent
-            claude_agent = ClaudeAgent(
-                api_key=anthropic_key,
-                project_root=_PROJECT_ROOT,
-            )
+            claude_agent = ClaudeAgent(api_key=anthropic_key, project_root=_PROJECT_ROOT)
             logger.info("ClaudeAgent: aktiv")
         except Exception as e:
             logger.warning("ClaudeAgent nicht verfügbar: %s", e)
 
-    # AlertMonitor
-    alert_config = AlertConfig(disk_threshold_percent=90.0)
-    alert_monitor = AlertMonitor(send_alert=lambda text: None, config=alert_config)
+    # --- 6. Monitoring & Security ---
+    alert_monitor = AlertMonitor(
+        send_alert=lambda text: None,
+        config=AlertConfig(disk_threshold_percent=90.0),
+    )
 
     if stt:
         logger.info("Matrix-STT: Sprachnachrichten werden transkribiert")
 
-    # --- Allowed Senders: Matrix-User-IDs aus SecretStore laden ---
     allowed_senders = None
     raw_senders = secrets.get_or_none("matrix_allowed_senders")
     if raw_senders:
@@ -721,7 +732,7 @@ def run_matrix(assistant, stt=None, avatar=None, audio_converter=None, robot=Non
             "matrix_allowed_senders = '@user:domain.com'"
         )
 
-    # Summarizer für ChatHistory Rolling Summary (Phase 23)
+    # --- 7. Summarizer + Bridge ---
     from elder_berry.comms.chat_history import ChatMessage
 
     def summarizer(old_summary: str, evicted: list[ChatMessage]) -> str:
@@ -747,21 +758,21 @@ def run_matrix(assistant, stt=None, avatar=None, audio_converter=None, robot=Non
         alert_room_id=room_id,
         allowed_senders=allowed_senders,
         stt=stt,
-        reminder_scheduler=reminder_scheduler,
-        briefing_scheduler=briefing_scheduler,
-        calendar_watcher=calendar_watcher,
-        document_reader=document_reader,
-        audio_router=audio_router,
+        reminder_scheduler=svc.get("reminder_scheduler"),
+        briefing_scheduler=svc.get("briefing_scheduler"),
+        calendar_watcher=tools.get("calendar_watcher"),
+        document_reader=tools.get("document_reader"),
+        audio_router=tools.get("audio_router"),
         summarizer=summarizer,
-        email_sender=email_sender,
+        email_sender=svc.get("email_sender"),
     )
 
-    # Settings-Dashboard (Web-UI für Audio-Routing + Monitor-Auswahl)
+    # --- 8. Dashboard + Start ---
     try:
         from elder_berry.web.audio_dashboard import AudioDashboard
         dashboard = AudioDashboard(
-            audio_router=audio_router,
-            computer_use=computer_use,
+            audio_router=tools.get("audio_router"),
+            computer_use=tools.get("computer_use"),
             secret_store=secrets,
             port=8090,
         )
