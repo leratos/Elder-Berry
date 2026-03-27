@@ -43,6 +43,7 @@ from typing import TYPE_CHECKING
 
 from elder_berry.comms.chat_history import ChatHistory, Summarizer
 from elder_berry.comms.message_channel import IncomingMessage, MessageChannel
+from elder_berry.comms.scheduler_manager import SchedulerManager
 
 if TYPE_CHECKING:
     from elder_berry.comms.alert_monitor import AlertMonitor
@@ -67,29 +68,6 @@ RESTART_FLAG_FILE = Path(tempfile.gettempdir()) / "elder_berry_restart.flag"
 _QUOTED_TEXT_PATTERN = re.compile(r'"([^"]+)"')
 
 
-def extract_claude_message(text: str) -> str | None:
-    """Prüft ob eine Nachricht an den ClaudeAgent gerichtet ist.
-
-    Erkennung: Das Wort "claude" muss im Text vorkommen UND der eigentliche
-    Auftrag muss in Anführungszeichen stehen.
-
-    Beispiele:
-        "Sag Claude bitte \"Dokumentiere X im Journal\""  → "Dokumentiere X im Journal"
-        "Claude \"Was war der letzte Schritt?\""           → "Was war der letzte Schritt?"
-        "Wie geht's dir?"                                  → None (kein "claude")
-        "Claude mach mal was"                              → None (keine Anführungszeichen)
-
-    Returns:
-        Der extrahierte Text in Anführungszeichen oder None.
-    """
-    if "claude" not in text.lower():
-        return None
-
-    match = _QUOTED_TEXT_PATTERN.search(text)
-    if not match:
-        return None
-
-    return match.group(1)
 
 
 class MatrixBridge:
@@ -146,6 +124,32 @@ class MatrixBridge:
         self._chat_history = ChatHistory(
             max_messages=10, summarizer=summarizer
         )
+        self._scheduler_mgr: SchedulerManager | None = None
+
+    @staticmethod
+    def extract_claude_message(text: str) -> str | None:
+        """Prüft ob eine Nachricht an den ClaudeAgent gerichtet ist.
+
+        Erkennung: Das Wort "claude" muss im Text vorkommen UND der eigentliche
+        Auftrag muss in Anführungszeichen stehen.
+
+        Beispiele:
+            "Sag Claude bitte \"Dokumentiere X im Journal\""  → "Dokumentiere X im Journal"
+            "Claude \"Was war der letzte Schritt?\""           → "Was war der letzte Schritt?"
+            "Wie geht's dir?"                                  → None (kein "claude")
+            "Claude mach mal was"                              → None (keine Anführungszeichen)
+
+        Returns:
+            Der extrahierte Text in Anführungszeichen oder None.
+        """
+        if "claude" not in text.lower():
+            return None
+
+        match = _QUOTED_TEXT_PATTERN.search(text)
+        if not match:
+            return None
+
+        return match.group(1)
 
     @property
     def _audio_to_matrix(self) -> bool:
@@ -183,21 +187,9 @@ class MatrixBridge:
         if not self._running:
             return
 
-        # AlertMonitor stoppen
-        if self._alert_monitor and self._alert_monitor.is_running:
-            self._alert_monitor.stop()
-
-        # ReminderScheduler stoppen
-        if self._reminder_scheduler and self._reminder_scheduler.is_running:
-            self._reminder_scheduler.stop()
-
-        # BriefingScheduler stoppen
-        if self._briefing_scheduler and self._briefing_scheduler.is_running:
-            self._briefing_scheduler.stop()
-
-        # CalendarWatcher stoppen
-        if self._calendar_watcher and self._calendar_watcher.is_running:
-            self._calendar_watcher.stop()
+        # Alle Scheduler stoppen (AlertMonitor, Reminder, Briefing, Calendar)
+        if self._scheduler_mgr:
+            self._scheduler_mgr.stop_all()
 
         self._running = False
 
@@ -267,21 +259,38 @@ class MatrixBridge:
         if self._alert_room_id:
             self._setup_error_alerting()
 
-        # AlertMonitor starten (wenn vorhanden)
+        # Scheduler über SchedulerManager registrieren und starten
+        self._scheduler_mgr = SchedulerManager(
+            channel=self._channel,
+            room_id=self._alert_room_id,
+            loop=self._loop,
+        )
+
         if self._alert_monitor and self._alert_room_id:
-            self._start_alert_monitor()
+            self._scheduler_mgr.register(
+                "AlertMonitor", self._alert_monitor,
+                "_send_alert", prefix="\U0001f514",
+            )
 
-        # ReminderScheduler starten (wenn vorhanden)
         if self._reminder_scheduler:
-            self._start_reminder_scheduler()
+            self._scheduler_mgr.register(
+                "ReminderScheduler", self._reminder_scheduler,
+                "_send_reminder",
+            )
 
-        # BriefingScheduler starten (wenn vorhanden)
         if self._briefing_scheduler:
-            self._start_briefing_scheduler()
+            self._scheduler_mgr.register(
+                "BriefingScheduler", self._briefing_scheduler,
+                "_send_briefing",
+            )
 
-        # CalendarWatcher starten (wenn vorhanden)
         if self._calendar_watcher:
-            self._start_calendar_watcher()
+            self._scheduler_mgr.register(
+                "CalendarWatcher", self._calendar_watcher,
+                "_send_alert",
+            )
+
+        self._scheduler_mgr.start_all()
 
         try:
             await self._channel.sync_loop()
@@ -342,7 +351,7 @@ class MatrixBridge:
 
         # --- Claude Agent: nur bei explizitem "claude" + "..." ---
         if self._claude_agent:
-            claude_text = extract_claude_message(msg.body)
+            claude_text = self.extract_claude_message(msg.body)
             if claude_text:
                 await self._handle_claude_agent(msg, claude_text)
                 return
@@ -358,8 +367,11 @@ class MatrixBridge:
 
         try:
             loop = asyncio.get_running_loop()
-            result = await loop.run_in_executor(
-                None, self._remote_commands.execute, command, msg.body,
+            result = await asyncio.wait_for(
+                loop.run_in_executor(
+                    None, self._remote_commands.execute, command, msg.body,
+                ),
+                timeout=60.0,
             )
 
             # Dokument-Zusammenfassung: Rohtext ans LLM schicken
@@ -456,6 +468,15 @@ class MatrixBridge:
                     msg.room_id, msg_server_ts=msg.timestamp,
                 )
 
+        except asyncio.TimeoutError:
+            logger.error("Timeout bei Remote-Command '%s' (60s)", command)
+            try:
+                await self._channel.send_text(
+                    msg.room_id,
+                    "Zeitüberschreitung bei der Command-Ausführung.",
+                )
+            except Exception:
+                pass
         except Exception as e:
             logger.error(
                 "Remote-Command '%s' fehlgeschlagen: %s", command, e,
@@ -482,8 +503,11 @@ class MatrixBridge:
 
         try:
             loop = asyncio.get_running_loop()
-            result = await loop.run_in_executor(
-                None, self._claude_agent.process, claude_text,
+            result = await asyncio.wait_for(
+                loop.run_in_executor(
+                    None, self._claude_agent.process, claude_text,
+                ),
+                timeout=180.0,
             )
 
             # Zusammenfassung senden
@@ -515,6 +539,15 @@ class MatrixBridge:
                         details = details[:4000] + "\n... (gekürzt)"
                     await self._channel.send_text(msg.room_id, details)
 
+        except asyncio.TimeoutError:
+            logger.error("Timeout bei ClaudeAgent (180s)")
+            try:
+                await self._channel.send_text(
+                    msg.room_id,
+                    "Zeitüberschreitung beim Claude-Agent. Bitte erneut versuchen.",
+                )
+            except Exception:
+                pass
         except Exception as e:
             logger.error(
                 "ClaudeAgent Fehler: %s", e,
@@ -528,104 +561,90 @@ class MatrixBridge:
             except Exception:
                 logger.error("Konnte Fehlermeldung nicht senden")
 
-    async def _handle_document_summary(self, msg: IncomingMessage, result) -> None:
-        """Schickt extrahierten Dokumenttext ans LLM für eine Zusammenfassung.
+    async def _handle_llm_enrichment(
+        self,
+        msg: IncomingMessage,
+        result,
+        prompt_intro: str,
+        prompt_instruction: str,
+        error_log_msg: str,
+        error_fallback_suffix: str,
+    ) -> None:
+        """Gemeinsame Logik für LLM-basierte Anreicherung (Dokumente, Mails).
 
-        Der Remote Command liefert den Rohtext in result.history_text.
-        Hier wird der Text ans LLM geschickt, die Zusammenfassung an den User
-        gesendet und der Rohtext in die Chat-History geschrieben (für Rückfragen).
+        Args:
+            msg: Original-Nachricht (für room_id, sender).
+            result: CommandResult mit history_text und text.
+            prompt_intro: Einleitung für den LLM-Prompt.
+            prompt_instruction: Anweisung an das LLM.
+            error_log_msg: Log-Meldung bei Fehler (mit %s Placeholder).
+            error_fallback_suffix: Suffix für die Fallback-Nachricht.
         """
         try:
             loop = asyncio.get_running_loop()
 
-            # Rohtext in Chat-History für Rückfragen
+            # Inhalt in Chat-History für Rückfragen
             self._chat_history.add(msg.sender, "user", msg.body)
             self._chat_history.add(msg.sender, "assistant", result.history_text)
 
-            # LLM-Zusammenfassung
             summary_prompt = (
-                f"Der Nutzer möchte folgendes Dokument zusammengefasst haben.\n\n"
+                f"{prompt_intro}\n\n"
                 f"{result.history_text}\n\n"
-                f"Fasse den Inhalt zusammen."
+                f"{prompt_instruction}"
             )
             chat_context = self._chat_history.format_for_prompt(msg.sender)
 
-            # Audio-Datei generieren wenn AudioConverter verfügbar
             tmp_wav = Path(tempfile.mktemp(suffix=".wav")) if self._audio_to_matrix else None
-            llm_result = await loop.run_in_executor(
-                None, self._assistant.process, summary_prompt, tmp_wav, chat_context,
+            llm_result = await asyncio.wait_for(
+                loop.run_in_executor(
+                    None, self._assistant.process, summary_prompt, tmp_wav, chat_context,
+                ),
+                timeout=120.0,
             )
 
-            # Header + LLM-Zusammenfassung senden
             if llm_result.response:
                 response = f"{result.text}\n\n{llm_result.response}"
                 self._chat_history.add(msg.sender, "assistant", llm_result.response)
                 await self._channel.send_text(msg.room_id, response)
             else:
-                # Fallback: Header senden wenn LLM keine Antwort liefert
                 await self._channel.send_text(msg.room_id, result.text)
 
-            # Audio senden (WAV → OGG → Matrix)
             await self._send_audio_if_available(msg.room_id, llm_result, tmp_wav)
 
         except Exception as e:
-            logger.error("Dokument-Zusammenfassung LLM fehlgeschlagen: %s", e)
-            # Fallback: zumindest den Header senden
+            logger.error(error_log_msg, e)
             try:
                 await self._channel.send_text(
                     msg.room_id,
-                    f"{result.text}\n\n(LLM-Zusammenfassung fehlgeschlagen: {type(e).__name__})",
+                    f"{result.text}\n\n({error_fallback_suffix}: {type(e).__name__})",
                 )
             except Exception:
                 logger.error("Konnte Fehlermeldung nicht senden")
+
+    async def _handle_document_summary(self, msg: IncomingMessage, result) -> None:
+        """Schickt extrahierten Dokumenttext ans LLM für eine Zusammenfassung."""
+        await self._handle_llm_enrichment(
+            msg=msg,
+            result=result,
+            prompt_intro="Der Nutzer möchte folgendes Dokument zusammengefasst haben.",
+            prompt_instruction="Fasse den Inhalt zusammen.",
+            error_log_msg="Dokument-Zusammenfassung LLM fehlgeschlagen: %s",
+            error_fallback_suffix="LLM-Zusammenfassung fehlgeschlagen",
+        )
 
     async def _handle_mail_summary(self, msg: IncomingMessage, result) -> None:
-        """Schickt Mail-Body ans LLM für eine kontextbewusste Antwort.
-
-        Analog zu _handle_document_summary: Der Remote Command liefert den
-        Mail-Body in result.history_text. Das LLM bekommt den Body + Chat-Kontext
-        und kann zusammenfassen, Fragen beantworten oder Termine extrahieren.
-        """
-        try:
-            loop = asyncio.get_running_loop()
-
-            # Mail-Body in Chat-History für Rückfragen
-            self._chat_history.add(msg.sender, "user", msg.body)
-            self._chat_history.add(msg.sender, "assistant", result.history_text)
-
-            # LLM mit Mail-Body + Chat-Kontext
-            summary_prompt = (
-                f"Der Nutzer hat folgende E-Mail abgerufen.\n\n"
-                f"{result.history_text}\n\n"
-                f"Beantworte die Anfrage des Nutzers basierend auf dem Inhalt "
-                f"dieser Mail und dem bisherigen Gesprächsverlauf."
-            )
-            chat_context = self._chat_history.format_for_prompt(msg.sender)
-
-            tmp_wav = Path(tempfile.mktemp(suffix=".wav")) if self._audio_to_matrix else None
-            llm_result = await loop.run_in_executor(
-                None, self._assistant.process, summary_prompt, tmp_wav, chat_context,
-            )
-
-            # Header + LLM-Antwort senden
-            if llm_result.response:
-                response = f"{result.text}\n\n{llm_result.response}"
-                self._chat_history.add(msg.sender, "assistant", llm_result.response)
-                await self._channel.send_text(msg.room_id, response)
-            else:
-                await self._channel.send_text(msg.room_id, result.text)
-
-            await self._send_audio_if_available(msg.room_id, llm_result, tmp_wav)
-
-        except Exception as e:
-            logger.error("Mail-Summary LLM fehlgeschlagen: %s", e)
-            try:
-                await self._channel.send_text(
-                    msg.room_id,
-                    f"{result.text}\n\n(LLM-Verarbeitung fehlgeschlagen: {type(e).__name__})",
-                )
-            except Exception:
-                logger.error("Konnte Fehlermeldung nicht senden")
+        """Schickt Mail-Body ans LLM für kontextbewusste Antwort."""
+        await self._handle_llm_enrichment(
+            msg=msg,
+            result=result,
+            prompt_intro="Der Nutzer hat folgende E-Mail abgerufen.",
+            prompt_instruction=(
+                "Beantworte die Anfrage des Nutzers basierend auf dem Inhalt "
+                "dieser Mail und dem bisherigen Gesprächsverlauf."
+            ),
+            error_log_msg="Mail-Summary LLM fehlgeschlagen: %s",
+            error_fallback_suffix="LLM-Verarbeitung fehlgeschlagen",
+        )
 
     async def _handle_audio_message(self, msg: IncomingMessage) -> None:
         """Transkribiert eine Audio-Nachricht via STT und delegiert an den Assistant.
@@ -672,8 +691,11 @@ class MatrixBridge:
                 tmp_path.name, len(msg.audio_data),
             )
 
-            result = await loop.run_in_executor(
-                None, self._stt.transcribe, tmp_path,
+            result = await asyncio.wait_for(
+                loop.run_in_executor(
+                    None, self._stt.transcribe, tmp_path,
+                ),
+                timeout=30.0,
             )
 
             if result.is_empty():
@@ -775,8 +797,11 @@ class MatrixBridge:
 
             # Text extrahieren
             loop = asyncio.get_running_loop()
-            result = await loop.run_in_executor(
-                None, self._document_reader.read_file, tmp_file,
+            result = await asyncio.wait_for(
+                loop.run_in_executor(
+                    None, self._document_reader.read_file, tmp_file,
+                ),
+                timeout=30.0,
             )
 
             # Extrahierten Text in Chat-History speichern (für Rückfragen)
@@ -798,8 +823,11 @@ class MatrixBridge:
 
             # Audio-Datei generieren wenn AudioConverter verfügbar
             tmp_wav = Path(tempfile.mktemp(suffix=".wav")) if self._audio_to_matrix else None
-            llm_result = await loop.run_in_executor(
-                None, self._assistant.process, summary_prompt, tmp_wav, chat_context,
+            llm_result = await asyncio.wait_for(
+                loop.run_in_executor(
+                    None, self._assistant.process, summary_prompt, tmp_wav, chat_context,
+                ),
+                timeout=120.0,
             )
 
             # Antwort senden
@@ -846,9 +874,12 @@ class MatrixBridge:
 
             # Audio immer als Datei generieren (→ Matrix), nie lokal abspielen
             tmp_wav = Path(tempfile.mktemp(suffix=".wav")) if self._audio_to_matrix else None
-            result = await loop.run_in_executor(
-                None, self._assistant.process, user_input,
-                tmp_wav, chat_context,
+            result = await asyncio.wait_for(
+                loop.run_in_executor(
+                    None, self._assistant.process, user_input,
+                    tmp_wav, chat_context,
+                ),
+                timeout=120.0,
             )
 
             # LLM hat multi_step als Aktion gewählt → TaskChainRunner
@@ -880,6 +911,15 @@ class MatrixBridge:
             # Audio senden (WAV → OGG → Matrix)
             await self._send_audio_if_available(msg.room_id, result, tmp_wav)
 
+        except asyncio.TimeoutError:
+            logger.error("Timeout bei LLM-Verarbeitung (120s)")
+            try:
+                await self._channel.send_text(
+                    msg.room_id,
+                    "Zeitüberschreitung bei der Verarbeitung. Bitte erneut versuchen.",
+                )
+            except Exception:
+                pass
         except Exception as e:
             logger.error(
                 "Fehler bei Nachrichtenverarbeitung: %s", e,
@@ -1007,13 +1047,16 @@ class MatrixBridge:
                 )
 
             # Chain ausführen (blocking → Executor)
-            chain_result = await loop.run_in_executor(
-                None,
-                lambda: self._task_chain.run(
-                    user_request=task_text,
-                    chat_history=chat_context,
-                    on_step=on_step,
+            chain_result = await asyncio.wait_for(
+                loop.run_in_executor(
+                    None,
+                    lambda: self._task_chain.run(
+                        user_request=task_text,
+                        chat_history=chat_context,
+                        on_step=on_step,
+                    ),
                 ),
+                timeout=300.0,
             )
 
             # Zwischenstatus senden (alle Schritte zusammen)
@@ -1038,6 +1081,15 @@ class MatrixBridge:
                 chain_result.completed,
             )
 
+        except asyncio.TimeoutError:
+            logger.error("Timeout bei Multi-Step Chain (300s)")
+            try:
+                await self._channel.send_text(
+                    msg.room_id,
+                    "Zeitüberschreitung bei der Multi-Step-Verarbeitung.",
+                )
+            except Exception:
+                pass
         except Exception as e:
             logger.error(
                 "Multi-Step Chain fehlgeschlagen: %s", e,
@@ -1131,8 +1183,11 @@ class MatrixBridge:
         try:
             loop = asyncio.get_running_loop()
             chat_context = self._chat_history.format_for_prompt(msg.sender)
-            result = await loop.run_in_executor(
-                None, self._assistant.process, retry_prompt, None, chat_context,
+            result = await asyncio.wait_for(
+                loop.run_in_executor(
+                    None, self._assistant.process, retry_prompt, None, chat_context,
+                ),
+                timeout=60.0,
             )
 
             # Korrigierten Command aus der LLM-Antwort extrahieren
@@ -1191,74 +1246,6 @@ class MatrixBridge:
         collector.set_alert_callback(alert)
         logger.info("Error-Alerting via Matrix aktiviert")
 
-    def _start_alert_monitor(self) -> None:
-        """Konfiguriert und startet den AlertMonitor mit thread-safe Callback."""
-        loop = self._loop
-        room_id = self._alert_room_id
-        channel = self._channel
-
-        def send_alert(text: str) -> None:
-            """Thread-safe Alert-Sender: dispatcht in den async Event-Loop."""
-            if loop and loop.is_running():
-                asyncio.run_coroutine_threadsafe(
-                    channel.send_text(room_id, f"🔔 {text}"),
-                    loop,
-                )
-
-        self._alert_monitor._send_alert = send_alert
-        self._alert_monitor.start()
-
-    def _start_reminder_scheduler(self) -> None:
-        """Konfiguriert und startet den ReminderScheduler mit thread-safe Callback."""
-        loop = self._loop
-        room_id = self._alert_room_id  # Erinnerungen gehen an denselben Raum
-        channel = self._channel
-
-        def send_reminder(user_id: str, text: str) -> None:
-            """Thread-safe Reminder-Sender: dispatcht in den async Event-Loop."""
-            if loop and loop.is_running():
-                asyncio.run_coroutine_threadsafe(
-                    channel.send_text(room_id, text),
-                    loop,
-                )
-
-        self._reminder_scheduler._send_reminder = send_reminder
-        self._reminder_scheduler.start()
-
-    def _start_briefing_scheduler(self) -> None:
-        """Konfiguriert und startet den BriefingScheduler mit thread-safe Callback."""
-        loop = self._loop
-        room_id = self._alert_room_id
-        channel = self._channel
-
-        def send_briefing(text: str) -> None:
-            """Thread-safe Briefing-Sender: dispatcht in den async Event-Loop."""
-            if loop and loop.is_running():
-                asyncio.run_coroutine_threadsafe(
-                    channel.send_text(room_id, text),
-                    loop,
-                )
-
-        self._briefing_scheduler._send_briefing = send_briefing
-        self._briefing_scheduler.start()
-
-    def _start_calendar_watcher(self) -> None:
-        """Konfiguriert und startet den CalendarWatcher mit thread-safe Callback."""
-        loop = self._loop
-        room_id = self._alert_room_id
-        channel = self._channel
-
-        def send_alert(text: str) -> None:
-            """Thread-safe Alert-Sender: dispatcht in den async Event-Loop."""
-            if loop and loop.is_running():
-                asyncio.run_coroutine_threadsafe(
-                    channel.send_text(room_id, text),
-                    loop,
-                )
-
-        self._calendar_watcher._send_alert = send_alert
-        self._calendar_watcher.start()
-
     @staticmethod
     def _release_instance_lock() -> None:
         """Gibt den Singleton-Lock frei (für Restart).
@@ -1313,21 +1300,10 @@ class MatrixBridge:
         except Exception as e:
             logger.error("Restart-Flag schreiben fehlgeschlagen: %s", e)
 
-        # AlertMonitor stoppen (wenn vorhanden)
-        if self._alert_monitor and self._alert_monitor.is_running:
-            self._alert_monitor.stop()
+        # Alle Scheduler stoppen
+        if self._scheduler_mgr:
+            self._scheduler_mgr.stop_all()
 
-        # ReminderScheduler stoppen (wenn vorhanden)
-        if self._reminder_scheduler and self._reminder_scheduler.is_running:
-            self._reminder_scheduler.stop()
-
-        # BriefingScheduler stoppen (wenn vorhanden)
-        if self._briefing_scheduler and self._briefing_scheduler.is_running:
-            self._briefing_scheduler.stop()
-
-        # CalendarWatcher stoppen (wenn vorhanden)
-        if self._calendar_watcher and self._calendar_watcher.is_running:
-            self._calendar_watcher.stop()
         try:
             await self._channel.disconnect()
         except Exception as e:

@@ -330,10 +330,34 @@ class RemoteCommandHandler:
             for cmd in handler.keywords:
                 self._command_handler_map[cmd] = handler
 
-        # Aggregierte Keyword-Map (global verfügbar für Bridge)
+        # Aggregierte Keyword-Map (instance attribute ist primary source)
+        self.keyword_map = _build_keyword_map(self._handlers)
+        # Update global for backwards compat (deprecated, use instance.keyword_map instead)
         global KEYWORD_MAP
         KEYWORD_MAP.clear()
-        KEYWORD_MAP.update(_build_keyword_map(self._handlers))
+        KEYWORD_MAP.update(self.keyword_map)
+
+    def validate_help_text(self) -> list[str]:
+        """Prüft ob HELP_TEXT und Handler-Registrierung synchron sind.
+
+        Returns:
+            Liste von Warnungen (leer wenn alles konsistent).
+        """
+        warnings: list[str] = []
+        help_lower = HELP_TEXT.lower()
+        for handler in self._handlers:
+            for desc in handler.command_descriptions:
+                # Ersten Command-Namen extrahieren (vor dem ':')
+                cmd_name = desc.split(":")[0].strip().split()[0]
+                if cmd_name and cmd_name not in help_lower:
+                    warnings.append(
+                        f"Command '{cmd_name}' aus {type(handler).__name__}"
+                        f" fehlt in HELP_TEXT"
+                    )
+        if warnings:
+            for w in warnings:
+                logger.warning("HELP_TEXT Sync: %s", w)
+        return warnings
 
     def get_command_summary(self) -> str:
         """Generiert eine kompakte Übersicht aller verfügbaren Remote-Commands.
@@ -386,7 +410,6 @@ class RemoteCommandHandler:
                 check_text = text.strip() if use_original else normalized
                 match = pattern.search(check_text) if use_search else pattern.match(check_text)
                 if match:
-                    self._command_handler_map[command] = handler
                     return command
 
         # Stufe 3: Keyword-Suche in natürlicher Sprache
@@ -394,7 +417,6 @@ class RemoteCommandHandler:
             for command, keywords in handler.keywords.items():
                 for keyword in keywords:
                     if keyword in normalized:
-                        self._command_handler_map[command] = handler
                         return command
 
         return None
