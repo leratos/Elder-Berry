@@ -118,6 +118,9 @@ E-Mail:
   mail <ID> / mail #<ID> – Mail anzeigen (z.B. mail 99, fasse mail #99 zusammen)
   mail anhang <ID> – Anhänge einer Mail senden (ID aus Suchergebnis)
   mail zusammenfassung – LLM-Zusammenfassung ungelesener Mails
+  antworte auf #<ID> <Anweisung> – Email-Antwort generieren
+    Beispiele: antworte auf #4523 positiv, bedanke dich
+    → Saleria zeigt Entwurf, du bestätigst mit 'ja'
 
 Fitness (Berry-Gym):
   training – Zusammenfassung (letztes Training, Woche, Gewicht)
@@ -260,7 +263,10 @@ class RemoteCommandHandler:
             avatar_renderer=avatar_renderer,
         )
         self._calendar = CalendarCommandHandler(calendar=calendar)
-        self._mail = MailCommandHandler(email_client=email_client)
+        self._mail = MailCommandHandler(
+            email_client=email_client,
+            anthropic_client=anthropic_client,
+        )
         self._file = FileCommandHandler(
             download_dir=download_dir,
             send_file_allowed_roots=send_file_allowed_roots,

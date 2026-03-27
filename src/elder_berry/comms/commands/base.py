@@ -9,6 +9,7 @@ import re
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Any
 
 
 @dataclass
@@ -39,6 +40,14 @@ class CommandResult:
 
     restart: bool = False
     """True wenn der Bot nach diesem Command neu starten soll."""
+
+    pending_confirmation: bool = False
+    """True wenn diese Aktion eine Nutzer-Bestätigung erfordert.
+    Die Bridge erstellt dann eine PendingAction aus pending_data."""
+
+    pending_data: dict[str, Any] | None = None
+    """Daten für die PendingAction (z.B. Draft-Text, Empfänger).
+    Nur relevant wenn pending_confirmation=True."""
 
 
 @dataclass

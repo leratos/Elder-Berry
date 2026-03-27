@@ -43,6 +43,10 @@ from typing import TYPE_CHECKING
 
 from elder_berry.comms.chat_history import ChatHistory, Summarizer
 from elder_berry.comms.message_channel import IncomingMessage, MessageChannel
+from elder_berry.comms.pending_confirmation import (
+    PendingAction,
+    PendingConfirmationStore,
+)
 from elder_berry.comms.scheduler_manager import SchedulerManager
 
 if TYPE_CHECKING:
@@ -58,6 +62,7 @@ if TYPE_CHECKING:
     from elder_berry.core.task_chain import TaskChainRunner
     from elder_berry.stt.base import STTEngine
     from elder_berry.tools.document_reader import DocumentReader
+    from elder_berry.tools.email_sender import EmailSender
 
 logger = logging.getLogger(__name__)
 
@@ -97,6 +102,8 @@ class MatrixBridge:
         audio_router: AudioRouter | None = None,
         task_chain: TaskChainRunner | None = None,
         summarizer: Summarizer | None = None,
+        email_sender: EmailSender | None = None,
+        pending_store: PendingConfirmationStore | None = None,
     ) -> None:
         self._channel = channel
         self._assistant = assistant
@@ -124,6 +131,8 @@ class MatrixBridge:
         self._chat_history = ChatHistory(
             max_messages=10, summarizer=summarizer
         )
+        self._email_sender = email_sender
+        self._pending = pending_store or PendingConfirmationStore()
         self._scheduler_mgr: SchedulerManager | None = None
 
     @staticmethod
@@ -342,6 +351,30 @@ class MatrixBridge:
             await self._handle_file_message(msg)
             return
 
+        # --- Pending Confirmation Intercept (Phase 28) ---
+        response_type, action = self._pending.check_response(
+            msg.sender, msg.body,
+        )
+        if response_type == "confirm":
+            await self._handle_pending_confirm(msg, action)
+            return
+        if response_type == "cancel":
+            await self._channel.send_text(msg.room_id, "\u274c Verworfen.")
+            self._chat_history.add(msg.sender, "user", msg.body)
+            self._chat_history.add(msg.sender, "assistant", "Verworfen.")
+            return
+        if response_type == "modify":
+            await self._handle_pending_modify(msg, action)
+            return
+        if response_type == "pending":
+            await self._channel.send_text(
+                msg.room_id,
+                f"\u23f3 Du hast noch eine offene Aktion ({action.action_type}).\n"
+                f"Antworte mit 'ja' zum Bestätigen, 'nein' zum Verwerfen, "
+                f"oder 'ändern: <Anweisung>' zum Anpassen.",
+            )
+            return
+
         # --- Command-Router: direkte Commands vor LLM ---
         if self._remote_commands:
             command = self._remote_commands.parse_command(msg.body)
@@ -390,6 +423,22 @@ class MatrixBridge:
                 and result.history_text
             ):
                 await self._handle_mail_summary(msg, result)
+                return
+
+            # Pending Confirmation Commands (Phase 28: Email-Reply Draft)
+            if result.pending_confirmation and result.pending_data:
+                pending_action = PendingAction(
+                    action_type=result.command,
+                    description=result.text or "",
+                    data=result.pending_data,
+                )
+                self._pending.set(msg.sender, pending_action)
+                if result.text:
+                    await self._channel.send_text(msg.room_id, result.text)
+                self._chat_history.add(msg.sender, "user", msg.body)
+                self._chat_history.add(
+                    msg.sender, "assistant", result.text or "",
+                )
                 return
 
             # Text-Antwort senden
@@ -489,6 +538,144 @@ class MatrixBridge:
                 )
             except Exception:
                 logger.error("Konnte Fehlermeldung nicht senden")
+
+    # -- Phase 28: Pending Confirmation Handlers ---------------------------
+
+    async def _handle_pending_confirm(
+        self, msg: IncomingMessage, action: PendingAction,
+    ) -> None:
+        """Führt eine bestätigte PendingAction aus."""
+        if action.action_type in ("mail_reply", "mail_reply_modify"):
+            await self._execute_mail_send(msg, action)
+        else:
+            logger.warning("Unbekannter PendingAction-Typ: %s", action.action_type)
+            await self._channel.send_text(
+                msg.room_id, f"Unbekannte Aktion: {action.action_type}",
+            )
+            self._pending.clear(msg.sender)
+
+    async def _execute_mail_send(
+        self, msg: IncomingMessage, action: PendingAction,
+    ) -> None:
+        """Sendet eine bestätigte Email-Antwort via SMTP."""
+        if not self._email_sender:
+            await self._channel.send_text(
+                msg.room_id, "SMTP nicht konfiguriert.",
+            )
+            self._pending.clear(msg.sender)
+            return
+
+        try:
+            loop = asyncio.get_running_loop()
+            result = await asyncio.wait_for(
+                loop.run_in_executor(
+                    None,
+                    lambda: self._email_sender.send_reply(
+                        to=action.data["to"],
+                        subject=action.data["subject"],
+                        body=action.data["draft_text"],
+                        in_reply_to=action.data.get("in_reply_to", ""),
+                        references=action.data.get("references", ""),
+                    ),
+                ),
+                timeout=30.0,
+            )
+
+            if result.success:
+                self._pending.clear(msg.sender)
+                await self._channel.send_text(
+                    msg.room_id,
+                    f"\u2705 Antwort auf #{action.data['msg_id']} gesendet "
+                    f"an {result.to}.",
+                )
+                self._chat_history.add(msg.sender, "user", "ja")
+                self._chat_history.add(
+                    msg.sender, "assistant",
+                    f"Email-Antwort gesendet an {result.to}: "
+                    f"{action.data['subject']}",
+                )
+            else:
+                # Bei Fehler: Action bleibt offen → User kann erneut "ja" sagen
+                await self._channel.send_text(
+                    msg.room_id,
+                    f"\u274c Senden fehlgeschlagen: {result.error}\n"
+                    f"Versuche es mit 'ja' erneut oder 'nein' zum Verwerfen.",
+                )
+        except asyncio.TimeoutError:
+            logger.error("Timeout beim Email-Senden (30s)")
+            await self._channel.send_text(
+                msg.room_id,
+                "Zeitüberschreitung beim Email-Senden.\n"
+                "Versuche es mit 'ja' erneut oder 'nein' zum Verwerfen.",
+            )
+        except Exception as e:
+            logger.error("Email senden fehlgeschlagen: %s", e)
+            await self._channel.send_text(
+                msg.room_id,
+                f"\u274c Fehler beim Senden: {type(e).__name__}",
+            )
+            self._pending.clear(msg.sender)
+
+    async def _handle_pending_modify(
+        self, msg: IncomingMessage, action: PendingAction,
+    ) -> None:
+        """Generiert einen neuen Draft basierend auf der Änderungsanweisung."""
+        if action.action_type not in ("mail_reply", "mail_reply_modify"):
+            await self._channel.send_text(
+                msg.room_id,
+                "Ändern wird für diesen Aktionstyp nicht unterstützt.",
+            )
+            return
+
+        modify_instruction = action.data.get("modify_instruction", "")
+        if not modify_instruction:
+            await self._channel.send_text(
+                msg.room_id, "Format: ändern: <was soll anders sein>",
+            )
+            return
+
+        try:
+            loop = asyncio.get_running_loop()
+            new_result = await asyncio.wait_for(
+                loop.run_in_executor(
+                    None,
+                    self._remote_commands.execute,
+                    "mail_reply_modify",
+                    f"#{action.data['msg_id']} {modify_instruction}",
+                ),
+                timeout=120.0,
+            )
+            if new_result.success and new_result.pending_data:
+                new_action = PendingAction(
+                    action_type="mail_reply",
+                    description=new_result.text or "",
+                    data=new_result.pending_data,
+                )
+                self._pending.set(msg.sender, new_action)
+                await self._channel.send_text(
+                    msg.room_id, new_result.text,
+                )
+                self._chat_history.add(msg.sender, "user", msg.body)
+                self._chat_history.add(
+                    msg.sender, "assistant", new_result.text or "",
+                )
+            else:
+                await self._channel.send_text(
+                    msg.room_id,
+                    new_result.text or "Draft-Änderung fehlgeschlagen.",
+                )
+        except asyncio.TimeoutError:
+            logger.error("Timeout bei Draft-Änderung (120s)")
+            await self._channel.send_text(
+                msg.room_id,
+                "Zeitüberschreitung bei der Draft-Generierung.",
+            )
+        except Exception as e:
+            logger.error("Draft-Änderung fehlgeschlagen: %s", e)
+            await self._channel.send_text(
+                msg.room_id,
+                f"\u274c Änderung fehlgeschlagen: {type(e).__name__}",
+            )
 
     async def _handle_claude_agent(
         self, msg: IncomingMessage, claude_text: str,
