@@ -38,6 +38,8 @@ from elder_berry.comms.commands.advanced_commands import AdvancedCommandHandler
 from elder_berry.comms.commands.camera_commands import CameraCommandHandler
 from elder_berry.comms.commands.turntable_commands import TurntableCommandHandler
 from elder_berry.comms.commands.note_commands import NoteCommandHandler
+from elder_berry.comms.commands.contact_commands import ContactCommandHandler
+from elder_berry.comms.commands.todo_commands import TodoCommandHandler
 
 if TYPE_CHECKING:
     from elder_berry.actions.base import ActionController
@@ -55,6 +57,8 @@ if TYPE_CHECKING:
     from elder_berry.tools.gym_data import GymDataClient
     from elder_berry.comms.briefing_scheduler import BriefingScheduler
     from elder_berry.tools.note_store import NoteStore
+    from elder_berry.tools.contact_store import ContactStore
+    from elder_berry.tools.todo_store import TodoStore
     from elder_berry.tools.reminder_store import ReminderStore
     from elder_berry.tools.weather_client import WeatherClient
 
@@ -161,6 +165,25 @@ Briefing:
   notiz löschen #<id>                – Notiz per ID löschen
   vergiss <schlüssel>                – KV-Fakt vergessen
 
+📇 Kontakte:
+  kontakt: Name, Rolle, Email, Anrede – Kontakt anlegen
+    Beispiel: kontakt: Herr Müller, Vermieter, info@mueller.de, förmlich
+  wer ist <Name>? – Kontakt abrufen
+  kontakte – Alle Kontakte anzeigen
+  kontakte suche <Begriff> – Kontakt suchen
+  kontakt löschen #<ID> – Kontakt löschen
+
+✅ Aufgaben (To-Do):
+  todo: <text> – Aufgabe anlegen (optional: , hoch/mittel, Kategorie)
+  todos / aufgaben – Offene Aufgaben anzeigen
+  todos hoch / todos Arbeit – Gefiltert nach Priorität/Kategorie
+  todo erledigt #<ID> – Aufgabe abhaken
+  todo wieder öffnen #<ID> – Aufgabe wieder öffnen
+  todo priorität #<ID> hoch – Priorität ändern (hoch/mittel/niedrig)
+  todo löschen #<ID> – Aufgabe löschen
+  todos erledigt – Erledigte Aufgaben anzeigen
+  todos aufräumen – Alle erledigten löschen
+
 Kamera:
   foto / kamera – Foto aufnehmen und senden
   was siehst du [kontext] – Kamerabild + KI-Beschreibung
@@ -252,6 +275,8 @@ class RemoteCommandHandler:
         computer_use: ComputerUseController | None = None,
         search_client: BraveSearchClient | None = None,
         note_store: NoteStore | None = None,
+        contact_store: ContactStore | None = None,
+        todo_store: TodoStore | None = None,
         robot_client: RobotClient | None = None,
         anthropic_client: AnthropicClient | None = None,
         default_user_id: str = "",
@@ -266,6 +291,8 @@ class RemoteCommandHandler:
         self._mail = MailCommandHandler(
             email_client=email_client,
             anthropic_client=anthropic_client,
+            contact_store=contact_store,
+            default_user_id=default_user_id,
         )
         self._file = FileCommandHandler(
             download_dir=download_dir,
@@ -303,6 +330,22 @@ class RemoteCommandHandler:
                 default_user_id=default_user_id,
             )
 
+        # ContactCommandHandler: nur wenn ContactStore vorhanden
+        self._contacts: ContactCommandHandler | None = None
+        if contact_store is not None:
+            self._contacts = ContactCommandHandler(
+                contact_store=contact_store,
+                default_user_id=default_user_id,
+            )
+
+        # TodoCommandHandler: nur wenn TodoStore vorhanden
+        self._todos: TodoCommandHandler | None = None
+        if todo_store is not None:
+            self._todos = TodoCommandHandler(
+                todo_store=todo_store,
+                default_user_id=default_user_id,
+            )
+
         # Handler-Liste (Reihenfolge bestimmt Priorität bei Pattern/Keyword-Match)
         # WICHTIG: _weather VOR _calendar, weil REMINDER_DELETE vor TERMIN_DELETE
         # matchen muss ("lösche erinnerung" vs "lösche termin")
@@ -319,6 +362,10 @@ class RemoteCommandHandler:
         ]
         if self._notes is not None:
             self._handlers.append(self._notes)
+        if self._contacts is not None:
+            self._handlers.append(self._contacts)
+        if self._todos is not None:
+            self._handlers.append(self._todos)
         self._handlers.append(self._advanced)
 
         # Aggregierte Simple-Commands und Command→Handler Lookup

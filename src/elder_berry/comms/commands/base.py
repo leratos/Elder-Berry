@@ -49,6 +49,10 @@ class CommandResult:
     """Daten für die PendingAction (z.B. Draft-Text, Empfänger).
     Nur relevant wenn pending_confirmation=True."""
 
+    fallthrough: bool = False
+    """True wenn der Command nichts gefunden hat und die Bridge
+    zum LLM-Fallback weiterleiten soll."""
+
 
 @dataclass
 class PatternMatch:

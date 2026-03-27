@@ -27,6 +27,7 @@ from typing import TYPE_CHECKING, Callable
 if TYPE_CHECKING:
     from elder_berry.tools.google_calendar import GoogleCalendarClient
     from elder_berry.tools.reminder_store import ReminderStore
+    from elder_berry.tools.todo_store import TodoStore
     from elder_berry.tools.weather_client import WeatherClient
 
 logger = logging.getLogger(__name__)
@@ -45,6 +46,8 @@ class BriefingScheduler:
         calendar: GoogleCalendarClient | None = None,
         weather: WeatherClient | None = None,
         reminder_store: ReminderStore | None = None,
+        todo_store: TodoStore | None = None,
+        default_user_id: str = "",
         briefing_hour: int = 7,
         briefing_minute: int = 30,
     ) -> None:
@@ -54,6 +57,8 @@ class BriefingScheduler:
             calendar: GoogleCalendarClient (optional).
             weather: WeatherClient (optional).
             reminder_store: ReminderStore (optional).
+            todo_store: TodoStore (optional, Phase 30).
+            default_user_id: Matrix-User-ID für TodoStore-Abfrage.
             briefing_hour: Stunde des Briefings (0-23, Lokalzeit).
             briefing_minute: Minute des Briefings (0-59).
         """
@@ -61,6 +66,8 @@ class BriefingScheduler:
         self._calendar = calendar
         self._weather = weather
         self._reminder_store = reminder_store
+        self._todo_store = todo_store
+        self._default_user_id = default_user_id
         self._briefing_hour = briefing_hour
         self._briefing_minute = briefing_minute
         self._thread: threading.Thread | None = None
@@ -170,6 +177,17 @@ class BriefingScheduler:
                     sections.append("\n".join(lines))
             except Exception as e:
                 logger.debug("Briefing: Erinnerungen fehlgeschlagen: %s", e)
+
+        # --- Offene Todos ---
+        if self._todo_store and self._default_user_id:
+            try:
+                todo_text = self._todo_store.format_for_briefing(
+                    self._default_user_id,
+                )
+                if todo_text:
+                    sections.append(todo_text)
+            except Exception as e:
+                logger.debug("Briefing: Todos fehlgeschlagen: %s", e)
 
         # --- Zusammenbauen ---
         if not sections:

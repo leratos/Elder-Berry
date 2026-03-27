@@ -407,6 +407,12 @@ class MatrixBridge:
                 timeout=60.0,
             )
 
+            # Fallthrough: Command erkannt aber nichts gefunden → LLM
+            if result.fallthrough:
+                logger.debug("Command '%s' fallthrough → LLM", command)
+                await self._handle_assistant_message(msg)
+                return
+
             # Dokument-Zusammenfassung: Rohtext ans LLM schicken
             if (
                 result.command == "document_summary"
