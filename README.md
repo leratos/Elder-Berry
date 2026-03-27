@@ -1,465 +1,174 @@
 # Elder-Berry
 
-> Virtual AI Assistant with V-Tuber character, voice cloning and remote control.
-> Part of the Last-Strawberry project family.
+> Virtueller KI-Assistent mit V-Tuber-Charakter, Voice Cloning und Fernsteuerung.
+> Teil der [Last-Strawberry](https://last-strawberry.com) Projektfamilie.
 
-## Overview
+## Was ist Elder-Berry?
 
-Elder-Berry is a modular AI assistant built around a V-Tuber character named **Saleria Berry**.
-She combines LLM processing (Anthropic + Ollama), voice cloning (XTTS v2), emotion-driven
-avatar rendering, PC control, speech recognition and remote access via Matrix into a single
-cohesive system.
+Elder-Berry ist ein modularer KI-Assistent rund um den V-Tuber-Charakter **Saleria Berry**.
+Sie kombiniert LLM-Verarbeitung (Anthropic + Ollama), Voice Cloning (XTTS v2), emotionsgesteuerte
+Avatar-Darstellung, PC-Steuerung, Spracherkennung und Fernzugriff via Matrix zu einem
+vollständigen persönlichen Assistenten.
 
-Saleria is designed as a stationary desk companion with a Pepper's Ghost hologram display
-inside a 3D-printed elderberry tree trunk enclosure.
+Saleria ist als stationäre Schreibtisch-Begleiterin konzipiert – mit einem Pepper's Ghost
+Hologramm-Display in einem 3D-gedruckten Holunder-Baumstamm-Gehäuse.
 
-## What Saleria Can Do
+## Funktionsübersicht
 
-### Local (PC)
+### Gespräch & Persönlichkeit
+- Konversation mit eigenem Charakter, Emotion-Tagging und Sarkasmus
+- Sprachausgabe via Coqui XTTS v2 Voice Cloning (10 Emotionen, Deutsch)
+- Spracheingabe via Faster Whisper STT (GPU-beschleunigt)
+- RAG-Gedächtnis: ChromaDB + Ollama Embeddings
+- Emotionaler Kontext: Stimmungs-Tracking über mehrere Nachrichten
 
-- **Conversation** with personality, emotion tagging and sarcasm
-- **Voice output** via Coqui XTTS v2 voice cloning (10 emotions, German)
-- **Speech input** via Faster Whisper STT (GPU-accelerated, VAD filter)
-- **PC control**: keyboard, mouse, window management, volume
-- **System monitoring**: CPU, RAM, GPU, disk, top processes
-- **Avatar display**: layered sprite rendering with blink + lip-sync (Pepper's Ghost optimized)
-- **RAG memory**: ChromaDB + Ollama embeddings (remembers past conversations)
+### Persönlicher Assistent
+- **Kalender**: Termine anzeigen, erstellen, löschen, suchen (Google Calendar)
+- **E-Mail**: Mails abrufen, suchen, Anhänge senden, Antworten generieren (IMAP/SMTP)
+- **Kontaktbuch**: Kontakte anlegen, suchen, bei E-Mail-Antworten als Kontext nutzen
+- **Aufgabenliste**: Todos mit Prioritäten und Kategorien, im Morgen-Briefing integriert
+- **Wetter**: Aktuell, Morgen, Woche (Open-Meteo, kostenlos)
+- **Timer & Erinnerungen**: Einmalig und wiederkehrend (täglich, wöchentlich, monatlich)
+- **Briefing**: Tagesübersicht um 07:30 (Wetter + Termine + Erinnerungen + Todos)
+- **Notizen**: Fakten-Speicher + Freitext mit Volltextsuche (SQLite + FTS5)
+- **Web-Suche**: Brave Search API + LLM-Aufbereitung der Ergebnisse
+- **Dokumente**: PDF/TXT zusammenfassen via LLM
 
-### Personal Assistant
+### Fernsteuerung (via Matrix / Element)
+- 50+ direkte Commands ohne LLM (Status, Screenshot, Medien, Clipboard, Dateien, ...)
+- PC-Steuerung via Anthropic Vision (Computer Use)
+- Git, Docker, Wake-on-LAN, Self-Update (Tower + RPi5)
+- Sprachnachrichten: Whisper transkribiert, Saleria antwortet mit Text + Sprache
+- Claude Agent: komplexe Aufgaben via Anthropic API
 
-- **Calendar**: `termine`, `termine morgen`, `termine woche`, `termin suche`, create/delete events (Google Calendar, OAuth2)
-- **Email**: `mails`, `mail suche <query>`, `mail #42`, `mail anhang <ID>` (IMAP, provider-agnostic)
-- **Weather**: `wetter`, `wetter morgen`, `wetter woche` (Open-Meteo, no API key)
-- **Timer & Reminders**: `timer 20 min`, `erinnere mich um 18:00: Wäsche`, `erinnerungen` (SQLite, restart-safe)
-- **Daily Briefing**: `briefing` or "guten morgen" → weather + calendar + reminders combined (auto 07:30)
-- **Fitness**: `training`, `training details`, `prs` (Berry-Gym REST API)
-- **Documents**: send PDF/TXT via Matrix or `zusammenfassung <path>` → LLM summary, follow-up questions possible
+### Hardware
+- **Avatar**: Pepper's Ghost Hologramm (RPi5 + 5" DSI Display)
+- **Drehteller**: 360° Rotation mit Hall-Sensor Homing
+- **Kamera**: RPi Camera Module 3 + Anthropic Vision
 
-### Remote (via Matrix / Element)
+## 3-Tier-System
 
-- **Direct commands**: `status`, `screenshot`, `pause`, `play`, `skip`, `volume 50`
-- **Clipboard**: `clipboard` (read), `clip: text` (write)
-- **Files**: `schick mir C:\...\datei.pdf`, `download https://...`
-- **Processes**: `starte chrome`, `kill blender` (whitelisted)
-- **System**: `wol` (Wake-on-LAN), `restart` (bot self-restart after git pull)
-- **Dev tools**: `git status`, `git pull`, `docker ps`, `docker restart synapse`
-- **Avatar**: `selfie`, `selfie angry` (sends rendered avatar image)
-- **Audio routing**: `audio` (status), `audio lokal an/aus` (toggle local playback)
-- **Web search**: `suche Dachdecker Plattenburg`, `google Python Tutorial` (Brave Search API)
-- **Computer Use**: `klick auf den OK-Button`, `tippe Hello`, `scroll runter` (Anthropic Vision)
-- **Natural language**: "schick mir ein screenshot", "nächster song", "was kannst du"
-- **Claude Agent**: complex project tasks via Anthropic API (Sonnet 4.6)
-  - Read/write files in `docs/`, append to journal, run tests, git status
-  - Trigger: `claude "Dokumentiere X im Journal"`
-- **Voice messages**: send a voice note in Element, Whisper transcribes it, Saleria responds with text + voice
-- **Text responses**: Saleria personality via Anthropic Sonnet 4.6 (Ollama fallback)
-- **Web dashboard**: `http://localhost:8090` – audio routing + monitor selection (FastAPI)
+| Tier | Gerät | Rolle |
+|---|---|---|
+| Tower | Windows-PC (RTX 4070 Ti Super, 16 GB VRAM) | Gehirn: LLM + TTS, Dauerbetrieb |
+| Laptop | Windows-PC (RTX 4070, 8 GB VRAM) | Client: PC-Steuerung + Audio |
+| RPi5 | Raspberry Pi 5 (4 GB) | Körper: Avatar-Display, Sensoren, Servo |
 
-## Quick Start
-
-### 1. Install
+## Schnellstart
 
 ```bash
-# Clone
+# Repository klonen
 git clone https://github.com/leratos/Elder-Berry.git
 cd Elder-Berry
 
-# Create venv
+# Virtuelle Umgebung erstellen
 py -3.12 -m venv .venv
 .venv\Scripts\activate  # Windows
 
-# Full installation (recommended for Tower)
+# Vollinstallation (empfohlen für Tower)
 pip install -e ".[windows,tts-neural,avatar,matrix,remote,memory,stt]"
 pip install chromadb faster-whisper
 ```
 
-### 2. API Keys & Accounts
-
-| Service | Required | Registration | Cost |
-|---|---|---|---|
-| **Anthropic** | Yes (primary LLM) | [console.anthropic.com](https://console.anthropic.com) | Pay-per-use (~$3/MTok Sonnet) |
-| **Matrix Server** | Yes (remote features) | Self-hosted Synapse or public server | Free (self-hosted) |
-| **Google Calendar** | Optional | [console.cloud.google.com](https://console.cloud.google.com) (OAuth2 App) | Free |
-| **Brave Search** | Optional | [brave.com/search/api](https://brave.com/search/api/) | $5/1000 Req, $5 monthly credit |
-| **Email (IMAP)** | Optional | Any email provider (Strato, GMX, Gmail, ...) | Free |
-| **Berry-Gym** | Optional | Internal REST API | Free |
-| **Open-Meteo** | Optional (weather) | No registration needed | Free |
-| **Ollama** | Optional (offline fallback) | Local install, no account | Free |
-
-### 3. Set Up Secrets
+Mindestens benötigt: ein Anthropic API-Key und Matrix-Zugangsdaten.
 
 ```python
 from elder_berry.core.secret_store import SecretStore
 store = SecretStore()
-
-# === REQUIRED ===
-
-# Anthropic (primary LLM backend)
 store.set("anthropic_api_key", "sk-ant-...")
-
-# Matrix (required for remote features)
 store.set("matrix_homeserver", "https://matrix.example.com")
 store.set("matrix_user_id", "@saleria:matrix.example.com")
-store.set("matrix_access_token", "syt_...")  # from /_matrix/client/v3/login
+store.set("matrix_access_token", "syt_...")
 store.set("matrix_room_id", "!roomid:matrix.example.com")
-
-# === OPTIONAL ===
-
-# Brave Search (web search)
-store.set("brave_api_key", "BSA...")
-
-# Weather (Open-Meteo, no API key – just coordinates)
-store.set("weather_latitude", "52.52")
-store.set("weather_longitude", "13.41")
-store.set("weather_city", "Berlin")
-
-# Email (IMAP – any provider)
-store.set("email_imap_host", "imap.strato.de")
-store.set("email_user", "you@example.com")
-store.set("email_password", "...")
-
-# Google Calendar (run setup first: python scripts/setup_google_oauth.py)
-# → stores OAuth2 tokens automatically in SecretStore
-
-# Berry-Gym (fitness API)
-store.set("berry_gym_api_token", "<token>")
-
-# Wake-on-LAN
-store.set("tower_mac_address", "AA:BB:CC:DD:EE:FF")
-
-# RPi5 Avatar Display
-store.set("robot_host", "http://192.168.50.220:8000")
 ```
-
-### 5. Prerequisites
-
-- **Ollama** running locally with `phi4:14b` (offline fallback): `ollama serve`
-- **Embedding model**: `ollama pull nomic-embed-text`
-- **ffmpeg** installed (for audio conversion): `winget install ffmpeg`
-
-### 6. Run
 
 ```bash
-# Full Matrix mode (recommended)
-python scripts/start_saleria.py
-
-# Terminal mode (local testing, no Matrix needed)
-python scripts/start_saleria.py --mode terminal
-
-# With options
-python scripts/start_saleria.py --no-memory      # Without RAG memory
-python scripts/start_saleria.py --no-tts          # Without voice output
-python scripts/start_saleria.py --whisper-model large-v3  # Better STT
-python scripts/start_saleria.py --debug           # Debug logging
+# Starten
+python scripts/start_saleria.py                  # Matrix-Modus (Standard)
+python scripts/start_saleria.py --mode terminal  # Terminal-Modus (lokal, ohne Matrix)
 ```
 
-### 7. Usage via Element (Matrix Client)
+Für die vollständige Installations-Anleitung, alle API-Keys und optionale Dienste
+siehe **[docs/INSTALLATION.md](docs/INSTALLATION.md)**.
 
-| You type in Element | What happens |
+## Dokumentation
+
+| Dokument | Inhalt |
 |---|---|
-| `status` | System status (CPU, RAM, GPU, disk) |
-| `screenshot` | Screenshot sent as image |
-| `pause` / `play` / `skip` | Media control |
-| `volume 50` | Set volume to 50% |
-| `clipboard` | Read clipboard content |
-| `clip: some text` | Write to clipboard |
-| `selfie` / `selfie angry` | Saleria sends avatar image |
-| `hilfe` | Show all available commands |
-| `termine` / `termine morgen` / `termine woche` | Calendar events (Google) |
-| `termin: Zahnarzt morgen 14:00` | Create calendar event |
-| `mails` / `mail suche Rechnung` | Unread emails / search (IMAP) |
-| `mail #42` / `mail anhang 42` | Show mail / send attachments |
-| `wetter` / `wetter morgen` | Weather forecast (Open-Meteo) |
-| `timer 20 min` | Set a timer |
-| `erinnere mich um 18:00: Wäsche` | Set a reminder |
-| `briefing` / "guten morgen" | Daily briefing (weather + calendar + reminders) |
-| `training` / `prs` | Fitness data (Berry-Gym) |
-| `suche Dachdecker Plattenburg` | Web search (Brave Search API) |
-| `google Python Tutorial` | Web search (alias) |
-| `klick auf den OK-Button` | Computer Use: vision-based click |
-| `tippe Hello World` | Computer Use: type text |
-| `scroll runter` / `drück Strg+S` | Computer Use: scroll / press keys |
-| `zusammenfassung C:\...\report.pdf` | Summarize PDF/TXT via LLM |
-| `audio` / `audio lokal an` / `audio lokal aus` | Audio routing mode |
-| `schick mir C:\...\file.pdf` | Send file via Matrix |
-| `starte chrome` / `kill blender` | Process control (whitelisted) |
-| `git status` / `git pull` | Git commands (whitelisted) |
-| `restart` | Bot self-restart (after git pull) |
-| `claude "Was war der letzte Schritt?"` | Claude API reads journal and answers |
-| `Wie geht's dir?` | Saleria answers with personality + voice message |
-| Voice message | Whisper transcribes, routes through commands/LLM |
+| **[INSTALLATION.md](docs/INSTALLATION.md)** | Installation, API-Keys, Secrets, Voraussetzungen |
+| **[USAGE.md](docs/USAGE.md)** | Alle Commands, Workflows, Beispiele |
+| **[ARCHITECTURE.md](docs/ARCHITECTURE.md)** | System-Design, Klassen, Patterns, Projektstruktur |
+| **[RPI5_SETUP.md](docs/RPI5_SETUP.md)** | RPi5-spezifische Einrichtung (Avatar, Drehteller, Kamera) |
+| **[PROJECT_ROADMAP.md](docs/PROJECT_ROADMAP.md)** | Vollständige Roadmap (Phase 1–30) |
 
-## Architecture
+## Architektur (Kurzfassung)
 
 ```text
 [Element / Matrix]              [Web Dashboard :8090]
        |                               |
        v                               v
-[MatrixBridge] ── Command-Router:   [AudioRouter]
+[MatrixBridge] ── Command-Router    [AudioRouter]
        |
-       ├─ Audio message?   ──> STT (Faster Whisper) ──> re-route as text
-       ├─ Direct command?   ──> RemoteCommandHandler (orchestrator)
-       │                         ├─ SystemCommands: status, screenshot, volume, media, avatar
-       │                         ├─ CalendarCommands: termine, create, delete, search
-       │                         ├─ MailCommands: mails, search, attachments
-       │                         ├─ WeatherCommands: weather, timer, reminders, briefing
-       │                         ├─ FileCommands: clipboard, send file, download
-       │                         ├─ ProcessCommands: start/kill, git, docker, wol
-       │                         └─ AdvancedCommands: computer use, web search, docs, audio
-       ├─ "claude" + "..."? ──> ClaudeAgent (Anthropic API, Sonnet 4.6)
-       └─ Everything else   ──> Assistant (LLM + TTS + Avatar)
+       ├─ Sprachnachricht?  ──> STT (Faster Whisper) ──> Text weiterleiten
+       ├─ Direkter Command? ──> RemoteCommandHandler (Orchestrator)
+       │                         ├─ SystemCommands     (Status, Screenshot, Medien)
+       │                         ├─ CalendarCommands   (Termine CRUD + Suche)
+       │                         ├─ MailCommands       (Mails, Suche, Antworten)
+       │                         ├─ WeatherCommands    (Wetter, Timer, Erinnerungen)
+       │                         ├─ NoteCommands       (Notizen + Wissensdatenbank)
+       │                         ├─ ContactCommands    (Kontaktbuch)
+       │                         ├─ TodoCommands       (Aufgabenliste)
+       │                         ├─ CameraCommands     (Foto, Vision-Beschreibung)
+       │                         ├─ TurntableCommands  (Drehteller-Steuerung)
+       │                         └─ AdvancedCommands   (Computer Use, Web-Suche, Docs)
+       ├─ "claude" + "..."? ──> ClaudeAgent (Anthropic API)
+       └─ Alles andere      ──> Assistant (LLM + TTS + Avatar)
                                       |
                           ┌───────────┼───────────┐
                           v           v           v
                    ActionController  CoquiTTS   MemoryStore
-                   (PC control)      (XTTS v2)  (ChromaDB)
+                   (PC-Steuerung)    (XTTS v2)  (ChromaDB)
 ```
 
-### 3-Tier System
+Detaillierte Architektur mit allen Klassen und Patterns: **[ARCHITECTURE.md](docs/ARCHITECTURE.md)**
 
-| Tier | Device | Role |
-|---|---|---|
-| Tower | Windows PC (RTX 4070 Ti Super, 16GB VRAM) | Brain: LLM + TTS generation, always on |
-| Laptop | Windows PC (RTX 4070, 8GB VRAM) | Client: PC control + audio receiver |
-| RPi5 | Raspberry Pi 5 (4GB) | Body: avatar display, sensors, servo |
+## Charakter: Saleria Berry
 
-### Key Classes
+- **Persönlichkeit**: Direkt, entspannt, schlagfertig. Wie eine clevere Freundin, die hilft und locker bleibt.
+- **10 Emotionen**: neutral, cheerful, sarcastic, motivated, thoughtful, whisper, shy, depressed, sad, angry
+- **Stimme**: XTTS v2 Voice Cloning mit pro-Emotion Speaker-WAVs
+- **Avatar**: Layered Sprite System (Body + Augen + Mund), Blink-Animation, Lip-Sync
+- **Display**: Pepper's Ghost Hologramm (LCD horizontal + Acryl 45°, schwarzer Hintergrund)
 
-| Class | Module | Description |
-|---|---|---|
-| `Assistant` | `core.assistant` | Orchestrator: LLM -> Action -> TTS -> Avatar -> Memory |
-| `SaleriaEngine` | `character.saleria` | Character personality, emotion extraction |
-| `CoquiTTSEngine` | `tts.coqui_engine` | XTTS v2 voice cloning, 10 emotion samples |
-| `FasterWhisperEngine` | `stt.faster_whisper_engine` | Speech-to-text, GPU, VAD filter |
-| `LayeredSpriteRenderer` | `avatar.layered_renderer` | Sprite compositing, blink + lip-sync |
-| `WindowsActionController` | `actions.windows_controller` | PC control (keyboard, mouse, volume) |
-| `LLMRouter` | `llm.router` | Anthropic (primary) -> Ollama (fallback) |
-| `AnthropicClient` | `llm.anthropic_client` | Sonnet 4.6, primary LLM backend |
-| `ChromaMemoryStore` | `memory.chroma_memory` | RAG memory with Ollama embeddings |
-| `SecretStore` | `core.secret_store` | Fernet-encrypted credential store |
-| `MatrixChannel` | `comms.matrix_channel` | matrix-nio async client |
-| `MatrixBridge` | `comms.bridge` | Async/sync bridge with command router |
-| `RemoteCommandHandler` | `comms.remote_commands` | Orchestrator: delegates to domain handlers |
-| `CommandHandler` (ABC) | `comms.commands.base` | Base class for domain-specific command handlers |
-| `ComputerUseController` | `actions.computer_use` | Vision-based PC control (Anthropic Computer Use API) |
-| `BraveSearchClient` | `tools.brave_search_client` | Web search via Brave Search API |
-| `ClaudeAgent` | `comms.claude_agent` | Anthropic API for complex tasks |
-| `AlertMonitor` | `comms.alert_monitor` | Proactive alerts (disk, process crash) |
-| `AudioConverter` | `comms.audio_converter` | WAV -> OGG/Opus for Matrix voice messages |
-| `ChatHistory` | `comms.chat_history` | Sliding window per user (multi-turn context) |
-| `ReminderScheduler` | `comms.reminder_scheduler` | Daemon thread, 15s poll, Matrix callback |
-| `BriefingScheduler` | `comms.briefing_scheduler` | Daily briefing (weather + calendar + reminders) |
-| `RobotClient/Server` | `robot.*` | Tower <-> RPi5 communication (FastAPI) |
-| `ActionsDB` | `actions.db` | SQLite action registry with self-learning |
-| `SystemMonitor` | `system.info` | CPU, RAM, GPU, disk, process monitoring |
-| `AudioRouter` | `core.audio_router` | Thread-safe audio output mode (matrix_only / matrix_and_local) |
-| `AudioDashboard` | `web.audio_dashboard` | FastAPI web UI for audio routing (port 8090) |
-| `GoogleCalendarClient` | `tools.google_calendar` | OAuth2, CRUD events, natural language dates |
-| `IMAPEmailClient` | `tools.email_client` | IMAP search, attachments, provider-agnostic |
-| `WeatherClient` | `tools.weather_client` | Open-Meteo API, forecast, WMO codes |
-| `ReminderStore` | `tools.reminder_store` | SQLite, UTC, restart-safe timers/reminders |
-| `GymDataClient` | `tools.gym_data` | Berry-Gym REST API client |
-| `TaskChainRunner` | `core.task_chain` | Multi-step command chaining (ReAct-style, max 5 steps) |
-| `DocumentReader` | `tools.document_reader` | PDF (pymupdf) + TXT parsing for LLM summary |
-
-### Design Patterns
-
-- **ABC + Implementation + DI** consistently across all components
-- One class per file, snake_case naming
-- Optional dependencies via `pyproject.toml` groups
-- Graceful degradation: missing dependencies produce error text, never crash
-
-## Character: Saleria Berry
-
-- **Personality**: Direct, relaxed, witty. Like a clever friend who helps and stays chill.
-- **10 emotions**: neutral, cheerful, sarcastic, motivated, thoughtful, whisper, shy, depressed, sad, angry
-- **Voice**: XTTS v2 voice cloning with per-emotion speaker WAVs
-- **Avatar**: Layered sprite system (body + eyes L/R + mouth), blink animation, lip-sync
-- **Display**: Pepper's Ghost hologram (LCD horizontal + acrylic 45deg, black background)
-
-## Installation Options
-
-```bash
-pip install -e "."                # Core only (LLM, actions DB)
-pip install -e ".[windows]"      # PC control (pyautogui, pycaw)
-pip install -e ".[tts-neural]"   # XTTS v2 voice cloning (coqui-tts, CUDA)
-pip install -e ".[avatar]"       # Avatar display (pygame)
-pip install -e ".[matrix]"       # Matrix integration (matrix-nio, pydub)
-pip install -e ".[remote]"       # Remote features (anthropic, mss, pyperclip)
-pip install -e ".[memory]"       # RAG memory (chromadb)
-pip install -e ".[stt]"          # Speech-to-text (faster-whisper)
-pip install -e ".[tools]"        # Personal assistant tools (google-api, oauthlib)
-pip install -e ".[documents]"   # Document summarization (pymupdf)
-pip install -e ".[computer-use]" # Computer Use vision control (Pillow, mss)
-pip install -e ".[robot]"        # RPi5 communication (fastapi, uvicorn)
-pip install -e ".[agent]"        # Laptop agent server (fastapi, audio)
-```
-
-## Testing
+## Tests
 
 ```bash
 pytest tests/ -q
 ```
 
-1170+ tests, all passing.
+1200+ Tests.
 
-## Project Structure
-
-```text
-src/elder_berry/
-├── actions/          # PC control + action database
-├── agent/            # Laptop agent server/client
-├── avatar/           # Avatar rendering (sprite + layered)
-│   └── assets/       # Sprite components (body/, eye/, mouth/)
-├── character/        # Character engine + Saleria personality
-├── comms/            # Matrix, remote commands, Claude agent, alerts
-│   └── commands/     # Domain-specific command handlers (system, calendar, mail, ...)
-├── core/             # Assistant orchestrator, secret store, audio router
-├── llm/              # LLM clients (Anthropic, Ollama, OpenRouter, Router)
-├── memory/           # RAG memory (ChromaDB + embeddings)
-├── robot/            # RPi5 communication (server, client, simulator)
-├── stt/              # Speech-to-text (Faster Whisper)
-├── system/           # System monitoring
-├── tools/            # Personal assistant tools (calendar, email, weather, gym, reminders, documents)
-├── tts/              # TTS engines (Windows SAPI, Coqui XTTS)
-│   └── voices/       # Voice samples per emotion
-└── web/              # Web dashboard (audio routing)
-    └── templates/    # HTML templates
-
-docs/
-├── concepts/         # Phase concept documents
-├── journal.txt       # Living project log (single source of truth)
-└── personal/         # Personal notes (gitignored)
-
-hardware/
-├── electronics/      # KiCad 9 schematics
-├── enclosure/        # Enclosure CAD (Inventor)
-│   └── iLogic/       # Parametric scripts (bark, roots)
-└── bom/              # Bill of materials
-
-scripts/
-├── start_saleria.py     # Main entry point (Terminal/Matrix/Voice mode)
-├── demo_tts_live.py     # Interactive TTS testing (emotion + text)
-└── demo_integration.py  # Robot simulator integration test
-
-tests/                # 1170+ unit + integration tests
-```
-
-## Roadmap
+## Roadmap (Auszug)
 
 | Phase | Name | Status |
 |---|---|---|
-| 1 | Software Basic (PC control, TTS, LLM, Assistant) | Done |
-| 2 | RPi5 Integration (protocol, simulator, agent server) | Done (software) |
-| 3 | Character / V-Tuber (Saleria, XTTS, Avatar) | Done |
-| 4 | Enclosure + Turntable (tree trunk, Pepper's Ghost) | In progress (hardware) |
-| 5 | Software Advance (Anthropic, Memory, STT, Startup) | Mostly done |
-| 6 | Matrix Integration (remote messaging, voice messages) | Done |
-| 7 | Remote Features (commands, Claude agent, alerts) | Done |
-| 8 | Personal Assistant Tools (calendar, email, gym, weather, timer, briefing) | Done |
-| 9 | Multimodal + Autonomie (camera, emotion recognition) | Vision |
-| 10 | RPi5 Avatar-Display (Pepper's Ghost live) | Mostly done |
-| 11 | Document Summarization (PDF/TXT via LLM) | Done |
-| 12 | Audio Routing + Web Interface (local playback toggle, dashboard) | Done |
-| 13 | Computer Use (Anthropic Vision + PC control via screenshots) | Done |
-| 14 | Web Search (Brave Search API + LLM result formatting) | Done |
-| 15 | Self-Update (git pull + pip install + restart via Matrix) | Done |
-| 16 | Notes & Knowledge Base (key-value facts + FTS5 full-text notes) | Done |
-| 17 | Calendar Watcher (proactive meeting reminders) | Done |
-| 18 | Emotion State Machine (mood context for LLM) | Done |
-| 19 | Recurring Reminders (daily, weekly, monthly, weekdays) | Done |
-| 20 | Multi-Step Task Chaining (ReAct-style command chains) | Done |
+| 1–3 | Basis-Software, RPi5, Charakter/V-Tuber | ✅ Fertig |
+| 4 | Gehäuse + Drehteller (Hardware) | 🔧 In Arbeit |
+| 5–8 | Fortgeschrittene Software, Matrix, Remote, Assistent-Tools | ✅ Fertig |
+| 9 | Multimodal + Autonomie | 🔭 Vision |
+| 10–14 | Avatar-Display, Dokumente, Audio, Computer Use, Web-Suche | ✅ Fertig |
+| 15–20 | Self-Update, Notizen, Kalender-Watcher, Emotion, Erinnerungen, Task Chains | ✅ Fertig |
+| 21–25 | Kontext-Verknüpfung, Intent-Routing, Chat-Summary, Avatar-Assets, Logging | ✅ Fertig |
+| 26–27 | Kamera-Integration, Drehteller-Steuerung | ✅ Fertig |
+| 28 | E-Mail-Antworten via Matrix | ✅ Fertig |
+| 29 | Kontaktbuch (ContactStore) | ✅ Fertig |
+| 30 | Aufgabenliste (TodoStore) | ✅ Fertig |
 
-## Hardware
+Vollständige Roadmap mit Details: **[PROJECT_ROADMAP.md](docs/PROJECT_ROADMAP.md)**
 
-| Component | Role |
-|---|---|
-| Tower PC (RTX 4070 Ti Super, 16GB VRAM) | LLM host, TTS generation |
-| Laptop (RTX 4070, 8GB VRAM) | Development, testing, mobile client |
-| Raspberry Pi 5 (4GB) | Avatar display (DSI), sensors, servo |
-| RPi Touch Display 2 (5", 720x1280) | Pepper's Ghost hologram display |
-| 28BYJ-48 Stepper + ULN2003 + turntable | Rotation towards user (360°, Hall-Sensor homing) |
-
-## LLM Strategy
-
-| Mode | Model | Use Case |
-| --- | --- | --- |
-| Primary | Anthropic Sonnet 4.6 | Conversation, PC control, all tasks |
-| Fallback | Ollama phi4:14b | Offline mode, no internet required |
-| Agent | Anthropic Sonnet 4.6 | Project tasks via Matrix (journal, docs, tests) |
-
-## RPi5 Setup (Avatar Display)
-
-The RPi5 runs the avatar display (Pepper's Ghost hologram) and the Robot API.
-
-### Install
-
-```bash
-cd /home/pi/elder-berry
-python3 -m venv .venv
-source .venv/bin/activate
-pip install -e ".[robot,avatar]"
-pip install pygame-ce
-```
-
-### Manual Start
-
-```bash
-SDL_VIDEODRIVER=kmsdrm python scripts/start_rpi5.py              # Fullscreen (DSI)
-SDL_VIDEODRIVER=kmsdrm python scripts/start_rpi5.py --windowed   # Debug
-```
-
-### Autostart (systemd)
-
-```bash
-sudo nano /etc/systemd/system/elder-berry.service
-```
-
-```ini
-[Unit]
-Description=Elder-Berry Avatar Display
-After=network.target
-
-[Service]
-Type=simple
-User=pi
-WorkingDirectory=/home/pi/elder-berry
-ExecStart=/home/pi/elder-berry/.venv/bin/python scripts/start_rpi5.py
-Restart=on-failure
-RestartSec=5
-Environment=SDL_VIDEODRIVER=kmsdrm
-Environment=DISPLAY=:0
-
-[Install]
-WantedBy=multi-user.target
-```
-
-```bash
-sudo systemctl daemon-reload
-sudo systemctl enable elder-berry    # Autostart on boot
-sudo systemctl start elder-berry     # Start now
-sudo systemctl status elder-berry    # Check status
-sudo journalctl -u elder-berry -f    # Live logs
-```
-
-### Tower Connection
-
-On the Tower, set the RPi5 IP in SecretStore:
-
-```python
-from elder_berry.core.secret_store import SecretStore
-SecretStore().set("robot_host", "http://192.168.50.220:8000")
-```
-
-The Tower then controls the avatar automatically via `RobotClient`:
-
-- LLM emotion → `POST /avatar/emotion` → display changes
-- TTS speaking → lip-sync on display
-- Health check → `GET /health`
-
-## Project Family
+## Projektfamilie
 
 - [last-strawberry.com](https://last-strawberry.com)
 - last-strawberry-DnD
 - Gym-Berry
-- **Elder-Berry** ← you are here
+- **Elder-Berry** ← du bist hier

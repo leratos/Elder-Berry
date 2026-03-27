@@ -458,6 +458,9 @@ Ein physischer Assistent auf dem Schreibtisch (Holunder-Hologramm), erreichbar v
 - Kalender, Wetter, Erinnerungen managed
 - Proaktiv vor Terminen erinnert (Kalender-Watcher)
 - Fakten und Notizen speichert und abruft (Wissensdatenbank)
+- Kontakte verwaltet und bei E-Mail-Antworten berücksichtigt (Kontaktbuch)
+- Aufgaben mit Prioritäten und Kategorien verwaltet (To-Do-Liste)
+- Auf E-Mails antwortet mit Draft-Generierung und Bestätigung
 - Im Internet sucht und Ergebnisse aufbereitet (Brave Search)
 - Den PC/Tower remote steuert (Screenshots, Medien, Prozesse, Computer Use)
 - Sich physisch zum Nutzer dreht (Drehteller mit Hall-Sensor Homing)
@@ -467,3 +470,50 @@ Ein physischer Assistent auf dem Schreibtisch (Holunder-Hologramm), erreichbar v
 - Proaktiv auf wichtige Events aufmerksam macht (Alerts)
 
 Das ist ein vollständiges, nützliches Produkt – kein Prototyp mehr.
+
+## Phase 28 – E-Mail-Antworten via Matrix ✅ ABGESCHLOSSEN
+
+Saleria kann auf E-Mails antworten – mit Draft-Generierung, Bestätigungsfluss
+und SMTP-Versand.
+
+- ✅ **EmailSender**: SMTP-Versand (SSL/STARTTLS), `tools/email_sender.py`
+- ✅ **PendingConfirmationStore**: Generischer Bestätigungsspeicher (1 pro User, 5 Min TTL)
+- ✅ **MailCommandHandler erweitert**: `antworte auf #<ID> <Anweisung>` Command
+  - LLM generiert Antwort-Entwurf basierend auf Original-Mail + Anweisung
+  - Nutzer bestätigt ("ja") oder korrigiert ("nein, förmlicher")
+- ✅ **MatrixBridge**: Bestätigungs-Logik für pending Drafts
+- ✅ **setup_email.py erweitert**: SMTP-Konfiguration + Verbindungstest (9 Provider)
+- ✅ **Tests**: 34 Tests (EmailSender + PendingStore + MailCommands)
+- **Konzept**: `docs/concepts/phase-28-email-reply.md`
+
+## Phase 29 – Kontaktbuch (ContactStore) ✅ ABGESCHLOSSEN
+
+Persönliches Kontaktbuch mit Volltextsuche und E-Mail-Integration.
+
+- ✅ **ContactStore**: SQLite + FTS5, Upsert per Name (case-insensitive), `tools/contact_store.py`
+  - Felder: Name, Rolle, E-Mail, Formalität (förmlich/locker), Notizen
+  - `find_by_email()` für automatischen Kontakt-Lookup bei E-Mail-Antworten
+- ✅ **ContactCommandHandler**: `comms/commands/contact_commands.py`
+  - Commands: kontakt:, wer ist, kontakte, kontakte suche, kontakt löschen
+  - Automatische Feld-Erkennung: `@` → E-Mail, "förmlich"/"locker" → Anrede
+  - `fallthrough=True` wenn Kontakt nicht gefunden → LLM beantwortet "wer ist Einstein?"
+- ✅ **CommandResult.fallthrough**: Neues Feld in `base.py`, Bridge-Check vor LLM-Routing
+- ✅ **Mail-Integration**: Kontaktkontext in LLM-Prompt bei E-Mail-Antworten (Phase 28)
+- ✅ **Tests**: 51 Tests (ContactStore + ContactCommandHandler)
+- **Konzept**: `docs/concepts/phase-29-kontaktbuch.md`
+
+## Phase 30 – Aufgabenliste (TodoStore) ✅ ABGESCHLOSSEN
+
+To-Do-Liste mit Prioritäten, Kategorien und Briefing-Integration.
+
+- ✅ **TodoStore**: SQLite + WAL, Prioritäten (hoch/mittel/niedrig), Kategorien, `tools/todo_store.py`
+  - `format_for_briefing()` für Morgen-Briefing Integration
+  - 90-Tage Auto-Cleanup erledigter Todos
+- ✅ **TodoCommandHandler**: `comms/commands/todo_commands.py`
+  - Commands: todo:, todos, todo erledigt, todo wieder öffnen, todo priorität, todo löschen
+  - Filter: todos hoch, todos Arbeit, todos erledigt, todos aufräumen
+  - Flexible Feld-Erkennung: `todo: Dachdecker anrufen, hoch, Arbeit`
+- ✅ **Briefing-Integration**: Offene Todos im BriefingScheduler
+- ✅ **Tests**: 74 Tests (TodoStore + TodoCommandHandler)
+- **Konzept**: `docs/concepts/phase-30-todo-liste.md`
+
