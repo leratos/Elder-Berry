@@ -311,6 +311,44 @@ class IMAPEmailClient:
             logger.error("Mail UID %s abrufen fehlgeschlagen: %s", msg_id, e)
             return None
 
+    def delete(self, msg_id: str) -> bool:
+        """Löscht eine E-Mail per IMAP UID.
+
+        Setzt das \\Deleted-Flag und führt EXPUNGE aus.
+
+        Args:
+            msg_id: IMAP UID der Mail.
+
+        Returns:
+            True wenn erfolgreich gelöscht.
+
+        Raises:
+            RuntimeError: Bei Verbindungs- oder IMAP-Fehlern.
+        """
+        try:
+            conn = self._connect()
+            conn.select(self._mailbox, readonly=False)
+
+            uid_bytes = msg_id.encode() if isinstance(msg_id, str) else msg_id
+            result, _ = conn.uid("store", uid_bytes, "+FLAGS", "(\\Deleted)")
+
+            if result != "OK":
+                conn.logout()
+                raise RuntimeError(
+                    f"IMAP STORE fehlgeschlagen für UID {msg_id}: {result}"
+                )
+
+            conn.expunge()
+            conn.logout()
+            logger.info("Mail UID %s gelöscht", msg_id)
+            return True
+
+        except RuntimeError:
+            raise
+        except Exception as e:
+            logger.error("Mail UID %s löschen fehlgeschlagen: %s", msg_id, e)
+            raise RuntimeError(f"Mail löschen fehlgeschlagen: {e}") from e
+
     # ------------------------------------------------------------------
     # Interne Methoden
     # ------------------------------------------------------------------

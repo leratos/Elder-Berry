@@ -330,6 +330,61 @@ class TestGetAttachments:
                 client.get_attachments("12345")
 
 
+class TestDelete:
+    def test_delete_success(self):
+        """Mail per UID löschen → True."""
+        client = IMAPEmailClient("host", "user", "pass")
+
+        mock_conn = MagicMock()
+        mock_conn.uid.return_value = ("OK", [b"1"])
+        mock_conn.select.return_value = ("OK", [b"1"])
+
+        with patch.object(client, "_connect", return_value=mock_conn):
+            result = client.delete("4523")
+
+        assert result is True
+        mock_conn.uid.assert_called_once_with(
+            "store", b"4523", "+FLAGS", "(\\Deleted)",
+        )
+        mock_conn.expunge.assert_called_once()
+        mock_conn.logout.assert_called_once()
+
+    def test_delete_store_fails(self):
+        """IMAP STORE fehlgeschlagen → RuntimeError."""
+        client = IMAPEmailClient("host", "user", "pass")
+
+        mock_conn = MagicMock()
+        mock_conn.uid.return_value = ("NO", [b"error"])
+        mock_conn.select.return_value = ("OK", [b"1"])
+
+        with patch.object(client, "_connect", return_value=mock_conn):
+            with pytest.raises(RuntimeError, match="STORE fehlgeschlagen"):
+                client.delete("4523")
+
+    def test_delete_connection_error(self):
+        """Verbindungsfehler → RuntimeError."""
+        client = IMAPEmailClient("host", "user", "pass")
+
+        with patch.object(
+            client, "_connect", side_effect=ConnectionError("timeout"),
+        ):
+            with pytest.raises(RuntimeError, match="fehlgeschlagen"):
+                client.delete("4523")
+
+    def test_delete_readonly_false(self):
+        """select() muss mit readonly=False aufgerufen werden."""
+        client = IMAPEmailClient("host", "user", "pass")
+
+        mock_conn = MagicMock()
+        mock_conn.uid.return_value = ("OK", [b"1"])
+        mock_conn.select.return_value = ("OK", [b"1"])
+
+        with patch.object(client, "_connect", return_value=mock_conn):
+            client.delete("123")
+
+        mock_conn.select.assert_called_once_with("INBOX", readonly=False)
+
+
 class TestSearch:
     def test_search_builds_correct_criteria(self):
         """search() baut korrekte IMAP OR-Suche."""

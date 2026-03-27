@@ -2411,3 +2411,31 @@ User: "Lies meine Mails und trag den Zahnarzttermin ein"
 
 ## In Arbeit: Phase 29 + 30 – Konzeptdokumente Kontaktbuch + To-Do-Liste
 - nächster Schritt: docs/concepts/phase-29-kontaktbuch.md + phase-30-todo-liste.md
+
+## Abgeschlossen: Bugfix – Mail-Löschen Command (2026-03-27)
+- Bug: "Lösche die mail" wurde von TERMIN_DELETE_PATTERN gefangen → 404 Calendar API
+- Root Cause: Kein mail_delete Command, TERMIN_DELETE fängt "lösche" + beliebig
+
+### Neue Funktionalität
+- IMAPEmailClient.delete(uid): IMAP \Deleted Flag + Expunge
+- MAIL_DELETE_PATTERN: "lösche mail #123", "lösch die mail", "entferne mail", etc.
+- _cmd_mail_delete(): Per UID oder letzte abgerufene Mail (via _last_mails State)
+- _last_mails: Wird bei mails/mail_search/mail_by_id gesetzt (analog _last_events bei Terminen)
+- Wenn nur 1 Mail in _last_mails → "lösche die mail" löscht direkt
+- Wenn mehrere → Rückfrage "Welche? Sag z.B. lösche mail #123"
+
+### Geänderte Dateien
+- src/elder_berry/tools/email_client.py: +delete(uid) Methode
+- src/elder_berry/comms/commands/mail_commands.py: +MAIL_DELETE_PATTERN, +_cmd_mail_delete,
+  +_last_mails State-Tracking in allen Mail-Abruf-Commands
+- src/elder_berry/comms/remote_commands.py: Handler-Reihenfolge _mail VOR _calendar,
+  HELP_TEXT um mail-löschen ergänzt
+
+### Neue Tests
+- tests/test_mail_delete_commands.py: 29 Tests (Pattern, Delete, State-Tracking)
+- tests/test_email_client.py: +4 Tests (TestDelete: success, store_fails, connection_error, readonly)
+
+### Tests
+- 68/68 neue Tests grün
+- 136/136 bestehende Tests (mail_reply, intent_routing) grün
+- 65/65 remote_commands Parse-Tests grün

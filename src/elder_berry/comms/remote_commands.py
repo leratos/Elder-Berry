@@ -125,6 +125,8 @@ E-Mail:
   antworte auf #<ID> <Anweisung> – Email-Antwort generieren
     Beispiele: antworte auf #4523 positiv, bedanke dich
     → Saleria zeigt Entwurf, du bestätigst mit 'ja'
+  lösche mail #<ID> – Mail löschen (z.B. lösche mail #4523)
+  lösche die mail – Letzte abgerufene Mail löschen
 
 Fitness (Berry-Gym):
   training – Zusammenfassung (letztes Training, Woche, Gewicht)
@@ -349,12 +351,14 @@ class RemoteCommandHandler:
         # Handler-Liste (Reihenfolge bestimmt Priorität bei Pattern/Keyword-Match)
         # WICHTIG: _weather VOR _calendar, weil REMINDER_DELETE vor TERMIN_DELETE
         # matchen muss ("lösche erinnerung" vs "lösche termin")
+        # WICHTIG: _mail VOR _calendar, weil MAIL_DELETE vor TERMIN_DELETE
+        # matchen muss ("lösche die mail" vs "lösche termin")
         # WICHTIG: _turntable VOR _camera wegen "schau nach" Pattern-Prioritaet
         self._handlers: list[CommandHandler] = [
             self._system,
             self._weather,
-            self._calendar,
             self._mail,
+            self._calendar,
             self._file,
             self._process,
             self._turntable,

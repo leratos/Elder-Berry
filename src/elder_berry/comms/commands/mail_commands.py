@@ -87,6 +87,18 @@ Regeln:
 - Wenn der Nutzer spezifische Formulierungen vorgibt: nutze diese
 """
 
+# Regex fuer Mail löschen:
+# "lösche mail #123", "mail löschen #123", "lösche die mail", "mail löschen"
+# "lösch die mail #456", "entferne mail 789", "lösche mail 2"
+# "lösche den 2. mail" (Index-basiert aus letztem Ergebnis)
+MAIL_DELETE_PATTERN = re.compile(
+    r"(?:mails?\s+(?:löschen|lösche|lösch|entferne[n]?)\s*#?(\d+)?"
+    r"|(?:lösche?|lösch|entferne?)\s+(?:die\s+|den\s+\d+\.\s+)?(?:mail|email|e-mail)\s*#?(\d+)?"
+    r"|(?:lösche?|lösch|entferne?)\s+(?:die\s+)?(?:letzte\s+)?mail)"
+    r"$",
+    re.IGNORECASE,
+)
+
 # Regex fuer Mail per ID: "mail 99", "mail #99", "fasse mail #99 zusammen", "zeig mail 99"
 MAIL_ID_PATTERN = re.compile(
     r"(?:(?:fasse?|zeig|lies|hole?|öffne)\s+)?mail\s*#?(\d+)(?:\s+(?:zusammen|zusammenfassung|details|anzeigen))?$",
@@ -108,6 +120,7 @@ class MailCommandHandler(CommandHandler):
         self._anthropic = anthropic_client
         self._contacts = contact_store
         self._default_user_id = default_user_id
+        self._last_mails: list = []
 
     # -- CommandHandler interface ------------------------------------------
 
@@ -122,6 +135,7 @@ class MailCommandHandler(CommandHandler):
         return [
             (MAIL_REPLY_PATTERN, "mail_reply", False, True),
             (MAIL_REPLY_MODIFY_PATTERN, "mail_reply_modify", False, False),
+            (MAIL_DELETE_PATTERN, "mail_delete", False, False),
             (MAIL_ID_PATTERN, "mail_by_id", False, False),
             (MAIL_ATTACHMENT_PATTERN, "mail_attachment", False, True),
             (MAIL_SEARCH_PATTERN, "mail_search", False, True),
@@ -138,6 +152,7 @@ class MailCommandHandler(CommandHandler):
             "mail anhang <ID>: Anhänge einer Mail senden",
             "mail zusammenfassung: LLM-Zusammenfassung ungelesener Mails",
             "antworte auf #<ID> <Anweisung>: Email-Antwort generieren",
+            "lösche mail #<ID>: Mail löschen (oder: lösche die mail → letzte abgerufene)",
         ]
 
     @property
@@ -158,6 +173,11 @@ class MailCommandHandler(CommandHandler):
                 "antwort auf die mail", "mail beantworten",
                 "gib auf die mail", "schreib auf die mail",
             ],
+            "mail_delete": [
+                "lösche die mail", "mail löschen",
+                "lösch die mail", "entferne die mail",
+                "lösche die email", "email löschen",
+            ],
         }
 
     def execute(self, command: str, raw_text: str) -> CommandResult:
@@ -169,6 +189,8 @@ class MailCommandHandler(CommandHandler):
             return self._cmd_mail_attachment(raw_text)
         if command == "mail_by_id":
             return self._cmd_mail_by_id(raw_text)
+        if command == "mail_delete":
+            return self._cmd_mail_delete(raw_text)
         if command == "mail_reply":
             return self._cmd_mail_reply(raw_text)
         if command == "mail_reply_modify":
@@ -202,6 +224,7 @@ class MailCommandHandler(CommandHandler):
                         command="mails", success=True,
                         text="Keine ungelesenen E-Mails.",
                     )
+                self._last_mails = mails
                 text = self._email_client.format_mails_detailed(mails)
                 return CommandResult(command="mails", success=True, text=text)
 
@@ -213,6 +236,7 @@ class MailCommandHandler(CommandHandler):
                 mails = self._email_client.get_unread(max_results=15)
                 label = "Ungelesene E-Mails"
 
+            self._last_mails = mails
             count = len(mails)
             text = f"{label} ({count}):\n{self._email_client.format_mails(mails)}"
             return CommandResult(command="mails", success=True, text=text)
@@ -250,6 +274,7 @@ class MailCommandHandler(CommandHandler):
                     text=f"Keine Mails gefunden für '{query}'.",
                 )
 
+            self._last_mails = mails
             # Kurzliste für den User
             text = f"Suche '{query}' ({len(mails)} Treffer):\n"
             text += self._email_client.format_mails(mails)
@@ -358,6 +383,8 @@ class MailCommandHandler(CommandHandler):
                     text=f"Mail #{msg_id} nicht gefunden.",
                 )
 
+            self._last_mails = [mail]
+
             date_str = mail.date.strftime("%d.%m.%Y %H:%M") if mail.date else "?"
             short_text = (
                 f"\U0001f4e7 Mail #{msg_id}:\n"
@@ -388,6 +415,69 @@ class MailCommandHandler(CommandHandler):
                 command="mail_by_id", success=False,
                 text=f"Mail abrufen fehlgeschlagen: {e}",
             )
+
+    # -- Mail-Delete Command ------------------------------------------------
+
+    def _cmd_mail_delete(self, raw_text: str) -> CommandResult:
+        """Mail per UID oder letzte abgerufene Mail löschen."""
+        if not self._email_client:
+            return CommandResult(
+                command="mail_delete", success=False,
+                text="E-Mail nicht konfiguriert.",
+            )
+
+        match = MAIL_DELETE_PATTERN.match(raw_text.strip())
+        msg_id = None
+        if match:
+            # Zwei alternative Gruppen: (1) "mail löschen #123", (2) "lösche mail #123"
+            msg_id = match.group(1) or match.group(2)
+
+        if msg_id:
+            return self._delete_mail_by_uid(msg_id)
+
+        # Keine ID angegeben → letzte abgerufene Mail
+        if not self._last_mails:
+            return CommandResult(
+                command="mail_delete", success=False,
+                text="Keine Mail zum Löschen. Ruf erst Mails ab "
+                     "(z.B. 'mails' oder 'mail #123').",
+            )
+
+        if len(self._last_mails) == 1:
+            mail = self._last_mails[0]
+            return self._delete_mail_by_uid(mail.msg_id)
+
+        return CommandResult(
+            command="mail_delete", success=False,
+            text=f"Welche? Es gibt {len(self._last_mails)} Mails.\n"
+                 "Sag z.B. 'lösche mail #123' mit der ID aus der Liste.",
+        )
+
+    def _delete_mail_by_uid(self, msg_id: str) -> CommandResult:
+        """Löscht eine einzelne Mail per UID."""
+        if not msg_id:
+            return CommandResult(
+                command="mail_delete", success=False,
+                text="Keine Mail-ID angegeben.",
+            )
+
+        try:
+            self._email_client.delete(msg_id)
+        except Exception as e:
+            logger.error("Mail UID %s löschen fehlgeschlagen: %s", msg_id, e)
+            return CommandResult(
+                command="mail_delete", success=False,
+                text=f"Löschen fehlgeschlagen: {e}",
+            )
+
+        # Aus _last_mails entfernen
+        self._last_mails = [
+            m for m in self._last_mails if m.msg_id != msg_id
+        ]
+        return CommandResult(
+            command="mail_delete", success=True,
+            text=f"Mail #{msg_id} gelöscht.",
+        )
 
     # -- Phase 28: Email-Reply Commands -----------------------------------
 
