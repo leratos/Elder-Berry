@@ -1,4 +1,4 @@
-"""Tests: Self-Update, Backup/Rollback, SelfCheck in ProcessCommandHandler."""
+"""Tests: Self-Update, Backup/Rollback, SelfCheck – aufgeteilt in eigene Handler."""
 from __future__ import annotations
 
 import json
@@ -7,16 +7,19 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from elder_berry.comms.commands.process_commands import (
+from elder_berry.comms.commands.update_commands import (
     BACKUP_FILENAME,
-    ProcessCommandHandler,
+    UpdateCommandHandler,
     ROLLBACK_PATTERN,
-    SELFCHECK_PATTERN,
     UPDATE_ALL_PATTERN,
     UPDATE_PATTERN,
     UPDATE_RPI_PATTERN,
-    _CmdResult,
 )
+from elder_berry.comms.commands.selfcheck_commands import (
+    SelfcheckCommandHandler,
+    SELFCHECK_PATTERN,
+)
+from elder_berry.comms.commands.cmd_utils import CmdResult
 from elder_berry.comms.commands.base import CommandResult
 from elder_berry.robot.protocol import ApiResponse
 
@@ -27,14 +30,20 @@ from elder_berry.robot.protocol import ApiResponse
 
 @pytest.fixture
 def handler(tmp_path):
-    """ProcessCommandHandler mit temporärem project_root."""
-    return ProcessCommandHandler(project_root=tmp_path)
+    """UpdateCommandHandler mit temporärem project_root."""
+    return UpdateCommandHandler(project_root=tmp_path)
 
 
 @pytest.fixture
 def handler_no_root():
-    """ProcessCommandHandler ohne project_root."""
-    return ProcessCommandHandler(project_root=None)
+    """UpdateCommandHandler ohne project_root."""
+    return UpdateCommandHandler(project_root=None)
+
+
+@pytest.fixture
+def selfcheck_handler(tmp_path):
+    """SelfcheckCommandHandler mit temporärem project_root."""
+    return SelfcheckCommandHandler(project_root=tmp_path)
 
 
 # ---------------------------------------------------------------------------
@@ -114,9 +123,9 @@ def _make_run_result(success: bool, output: str = "") -> MagicMock:
 
 class TestUpdateExecute:
     def _patch_run(self, side_effects):
-        """Patcht subprocess.run mit einer Liste von Return-Values."""
+        """Patcht subprocess.run via cmd_utils (dort wird subprocess genutzt)."""
         return patch(
-            "elder_berry.comms.commands.process_commands.subprocess.run",
+            "elder_berry.comms.commands.cmd_utils.subprocess.run",
             side_effect=side_effects,
         )
 
@@ -231,43 +240,46 @@ class TestUpdateExecute:
 
 
 # ---------------------------------------------------------------------------
-# _run_cmd() – Helper-Tests
+# run_cmd() – Helper-Tests
 # ---------------------------------------------------------------------------
 
 class TestRunCmd:
-    def test_timeout(self, handler, tmp_path):
+    def test_timeout(self, tmp_path):
         """Timeout → success=False."""
+        from elder_berry.comms.commands.cmd_utils import run_cmd
         with patch(
-            "elder_berry.comms.commands.process_commands.subprocess.run",
+            "elder_berry.comms.commands.cmd_utils.subprocess.run",
             side_effect=__import__("subprocess").TimeoutExpired(cmd=["x"], timeout=1),
         ):
-            result = handler._run_cmd(["x"], cwd=str(tmp_path), timeout=1)
+            result = run_cmd(["x"], cwd=str(tmp_path), timeout=1)
         assert not result.success
         assert "timeout" in result.output.lower()
 
-    def test_file_not_found(self, handler, tmp_path):
+    def test_file_not_found(self, tmp_path):
         """FileNotFoundError → success=False."""
+        from elder_berry.comms.commands.cmd_utils import run_cmd
         with patch(
-            "elder_berry.comms.commands.process_commands.subprocess.run",
+            "elder_berry.comms.commands.cmd_utils.subprocess.run",
             side_effect=FileNotFoundError,
         ):
-            result = handler._run_cmd(["nonexistent_cmd"], cwd=str(tmp_path))
+            result = run_cmd(["nonexistent_cmd"], cwd=str(tmp_path))
         assert not result.success
         assert "nicht gefunden" in result.output.lower()
 
-    def test_success(self, handler, tmp_path):
+    def test_success(self, tmp_path):
         """Erfolgreicher Befehl → success=True."""
+        from elder_berry.comms.commands.cmd_utils import run_cmd
         with patch(
-            "elder_berry.comms.commands.process_commands.subprocess.run",
+            "elder_berry.comms.commands.cmd_utils.subprocess.run",
             return_value=_make_run_result(True, "hello\n"),
         ):
-            result = handler._run_cmd(["echo", "hello"], cwd=str(tmp_path))
+            result = run_cmd(["echo", "hello"], cwd=str(tmp_path))
         assert result.success
         assert "hello" in result.output
 
     def test_cmd_result_dataclass(self):
-        """_CmdResult DTO korrekt initialisiert."""
-        r = _CmdResult(success=True, output="test")
+        """CmdResult DTO korrekt initialisiert."""
+        r = CmdResult(success=True, output="test")
         assert r.success
         assert r.output == "test"
 
@@ -345,23 +357,23 @@ class TestNewCommandRegistration:
     def test_rollback_in_simple_commands(self, handler):
         assert "rollback" in handler.simple_commands
 
-    def test_selfcheck_in_simple_commands(self, handler):
-        assert "selfcheck" in handler.simple_commands
+    def test_selfcheck_in_simple_commands(self, selfcheck_handler):
+        assert "selfcheck" in selfcheck_handler.simple_commands
 
     def test_rollback_in_keywords(self, handler):
         assert "rollback" in handler.keywords
         assert "update zurücksetzen" in handler.keywords["rollback"]
 
-    def test_selfcheck_in_keywords(self, handler):
-        assert "selfcheck" in handler.keywords
-        assert "prüf dich" in handler.keywords["selfcheck"]
+    def test_selfcheck_in_keywords(self, selfcheck_handler):
+        assert "selfcheck" in selfcheck_handler.keywords
+        assert "prüf dich" in selfcheck_handler.keywords["selfcheck"]
 
     def test_rollback_pattern_in_patterns(self, handler):
         pattern_commands = [name for (_, name, _, _) in handler.patterns]
         assert "rollback" in pattern_commands
 
-    def test_selfcheck_pattern_in_patterns(self, handler):
-        pattern_commands = [name for (_, name, _, _) in handler.patterns]
+    def test_selfcheck_pattern_in_patterns(self, selfcheck_handler):
+        pattern_commands = [name for (_, name, _, _) in selfcheck_handler.patterns]
         assert "selfcheck" in pattern_commands
 
 
@@ -372,9 +384,9 @@ class TestNewCommandRegistration:
 class TestBackupIO:
     def test_write_and_read_backup(self, tmp_path):
         """Backup schreiben und wieder lesen."""
-        handler = ProcessCommandHandler(project_root=tmp_path)
+        handler = UpdateCommandHandler(project_root=tmp_path)
         with patch(
-            "elder_berry.comms.commands.process_commands.DEFAULT_BACKUP_DIR",
+            "elder_berry.comms.commands.update_commands.DEFAULT_BACKUP_DIR",
             tmp_path,
         ):
             handler._write_backup("abc123full", "main")
@@ -387,31 +399,31 @@ class TestBackupIO:
 
     def test_read_no_backup(self, tmp_path):
         """Kein Backup vorhanden → None."""
-        handler = ProcessCommandHandler(project_root=tmp_path)
+        handler = UpdateCommandHandler(project_root=tmp_path)
         with patch(
-            "elder_berry.comms.commands.process_commands.DEFAULT_BACKUP_DIR",
+            "elder_berry.comms.commands.update_commands.DEFAULT_BACKUP_DIR",
             tmp_path,
         ):
             assert handler._read_backup() is None
 
     def test_read_corrupt_backup(self, tmp_path):
         """Kaputte JSON-Datei → None."""
-        handler = ProcessCommandHandler(project_root=tmp_path)
+        handler = UpdateCommandHandler(project_root=tmp_path)
         backup_file = tmp_path / BACKUP_FILENAME
         backup_file.write_text("not json {{{", encoding="utf-8")
         with patch(
-            "elder_berry.comms.commands.process_commands.DEFAULT_BACKUP_DIR",
+            "elder_berry.comms.commands.update_commands.DEFAULT_BACKUP_DIR",
             tmp_path,
         ):
             assert handler._read_backup() is None
 
     def test_read_backup_missing_hash(self, tmp_path):
         """JSON ohne 'hash' Key → None."""
-        handler = ProcessCommandHandler(project_root=tmp_path)
+        handler = UpdateCommandHandler(project_root=tmp_path)
         backup_file = tmp_path / BACKUP_FILENAME
         backup_file.write_text('{"branch": "main"}', encoding="utf-8")
         with patch(
-            "elder_berry.comms.commands.process_commands.DEFAULT_BACKUP_DIR",
+            "elder_berry.comms.commands.update_commands.DEFAULT_BACKUP_DIR",
             tmp_path,
         ):
             assert handler._read_backup() is None
@@ -424,13 +436,13 @@ class TestBackupIO:
 class TestUpdateWritesBackup:
     def _patch_run(self, side_effects):
         return patch(
-            "elder_berry.comms.commands.process_commands.subprocess.run",
+            "elder_berry.comms.commands.cmd_utils.subprocess.run",
             side_effect=side_effects,
         )
 
     def test_update_creates_backup(self, tmp_path):
         """Erfolgreicher Update erstellt Backup-Datei."""
-        handler = ProcessCommandHandler(project_root=tmp_path)
+        handler = UpdateCommandHandler(project_root=tmp_path)
         with self._patch_run([
             _make_run_result(True),               # fetch
             _make_run_result(True, "1\n"),          # rev-list
@@ -443,7 +455,7 @@ class TestUpdateWritesBackup:
             _make_run_result(True, "feat: x\n"),    # git log
             _make_run_result(True, "src/x.py\n"),   # diff --name-only
         ]), patch(
-            "elder_berry.comms.commands.process_commands.DEFAULT_BACKUP_DIR",
+            "elder_berry.comms.commands.update_commands.DEFAULT_BACKUP_DIR",
             tmp_path,
         ):
             result = handler.execute("update", "update")
@@ -467,22 +479,22 @@ class TestUpdateWritesBackup:
 class TestRollbackExecute:
     def _patch_run(self, side_effects):
         return patch(
-            "elder_berry.comms.commands.process_commands.subprocess.run",
+            "elder_berry.comms.commands.cmd_utils.subprocess.run",
             side_effect=side_effects,
         )
 
     def test_no_project_root(self):
         """Kein project_root → Fehler."""
-        handler = ProcessCommandHandler(project_root=None)
+        handler = UpdateCommandHandler(project_root=None)
         result = handler.execute("rollback", "rollback")
         assert not result.success
         assert "nicht konfiguriert" in result.text.lower()
 
     def test_no_backup(self, tmp_path):
         """Kein Backup vorhanden → Fehler."""
-        handler = ProcessCommandHandler(project_root=tmp_path)
+        handler = UpdateCommandHandler(project_root=tmp_path)
         with patch(
-            "elder_berry.comms.commands.process_commands.DEFAULT_BACKUP_DIR",
+            "elder_berry.comms.commands.update_commands.DEFAULT_BACKUP_DIR",
             tmp_path,
         ):
             result = handler.execute("rollback", "rollback")
@@ -491,7 +503,7 @@ class TestRollbackExecute:
 
     def test_hash_not_found(self, tmp_path):
         """Commit existiert nicht mehr → Fehler."""
-        handler = ProcessCommandHandler(project_root=tmp_path)
+        handler = UpdateCommandHandler(project_root=tmp_path)
         backup_file = tmp_path / BACKUP_FILENAME
         backup_file.write_text(
             json.dumps({"hash": "deadbeef", "branch": "main", "timestamp": "t"}),
@@ -500,7 +512,7 @@ class TestRollbackExecute:
         with self._patch_run([
             _make_run_result(False, "fatal: not a valid object"),  # cat-file
         ]), patch(
-            "elder_berry.comms.commands.process_commands.DEFAULT_BACKUP_DIR",
+            "elder_berry.comms.commands.update_commands.DEFAULT_BACKUP_DIR",
             tmp_path,
         ):
             result = handler.execute("rollback", "rollback")
@@ -509,7 +521,7 @@ class TestRollbackExecute:
 
     def test_git_reset_fails(self, tmp_path):
         """git reset fehlgeschlagen → Fehler."""
-        handler = ProcessCommandHandler(project_root=tmp_path)
+        handler = UpdateCommandHandler(project_root=tmp_path)
         backup_file = tmp_path / BACKUP_FILENAME
         backup_file.write_text(
             json.dumps({"hash": "abc123", "branch": "main", "timestamp": "t"}),
@@ -519,7 +531,7 @@ class TestRollbackExecute:
             _make_run_result(True, "commit"),       # cat-file
             _make_run_result(False, "error: reset"),  # reset --hard
         ]), patch(
-            "elder_berry.comms.commands.process_commands.DEFAULT_BACKUP_DIR",
+            "elder_berry.comms.commands.update_commands.DEFAULT_BACKUP_DIR",
             tmp_path,
         ):
             result = handler.execute("rollback", "rollback")
@@ -528,7 +540,7 @@ class TestRollbackExecute:
 
     def test_success_with_restart(self, tmp_path):
         """Erfolgreicher Rollback → restart=True, Backup gelöscht."""
-        handler = ProcessCommandHandler(project_root=tmp_path)
+        handler = UpdateCommandHandler(project_root=tmp_path)
         backup_file = tmp_path / BACKUP_FILENAME
         backup_file.write_text(
             json.dumps({"hash": "abc123full", "branch": "main", "timestamp": "t"}),
@@ -539,7 +551,7 @@ class TestRollbackExecute:
             _make_run_result(True, "HEAD is now at"), # reset --hard
             _make_run_result(True, ""),               # pip install
         ]), patch(
-            "elder_berry.comms.commands.process_commands.DEFAULT_BACKUP_DIR",
+            "elder_berry.comms.commands.update_commands.DEFAULT_BACKUP_DIR",
             tmp_path,
         ):
             result = handler.execute("rollback", "rollback")
@@ -552,7 +564,7 @@ class TestRollbackExecute:
 
     def test_pip_warning_not_fatal(self, tmp_path):
         """pip install Warnung → trotzdem Erfolg."""
-        handler = ProcessCommandHandler(project_root=tmp_path)
+        handler = UpdateCommandHandler(project_root=tmp_path)
         backup_file = tmp_path / BACKUP_FILENAME
         backup_file.write_text(
             json.dumps({"hash": "abc123", "branch": "main", "timestamp": "t"}),
@@ -563,7 +575,7 @@ class TestRollbackExecute:
             _make_run_result(True, "HEAD is now at"),
             _make_run_result(False, "ERROR: pip"),    # pip fail
         ]), patch(
-            "elder_berry.comms.commands.process_commands.DEFAULT_BACKUP_DIR",
+            "elder_berry.comms.commands.update_commands.DEFAULT_BACKUP_DIR",
             tmp_path,
         ):
             result = handler.execute("rollback", "rollback")
@@ -579,13 +591,13 @@ class TestRollbackExecute:
 class TestSelfCheckExecute:
     def _patch_run(self, side_effects):
         return patch(
-            "elder_berry.comms.commands.process_commands.subprocess.run",
+            "elder_berry.comms.commands.cmd_utils.subprocess.run",
             side_effect=side_effects,
         )
 
     def test_no_project_root(self):
         """Ohne project_root → Warnung, aber kein Crash."""
-        handler = ProcessCommandHandler(project_root=None)
+        handler = SelfcheckCommandHandler(project_root=None)
         result = handler.execute("selfcheck", "selfcheck")
         assert "systemcheck" in result.text.lower()
         assert "nicht konfiguriert" in result.text.lower()
@@ -594,7 +606,7 @@ class TestSelfCheckExecute:
         """Alles OK → success=True, 'Alles in Ordnung'."""
         mock_store = MagicMock()
         mock_store.list_keys.return_value = ["key1"]
-        handler = ProcessCommandHandler(
+        handler = SelfcheckCommandHandler(
             project_root=tmp_path, secret_store=mock_store,
         )
 
@@ -605,7 +617,7 @@ class TestSelfCheckExecute:
             _make_run_result(True, "0\n"),           # rev-list behind
             _make_run_result(True, ""),              # pip check
         ]), patch(
-            "elder_berry.comms.commands.process_commands.DEFAULT_BACKUP_DIR",
+            "elder_berry.comms.commands.selfcheck_commands.DEFAULT_BACKUP_DIR",
             tmp_path,
         ), patch(
             "urllib.request.urlopen",
@@ -626,7 +638,7 @@ class TestSelfCheckExecute:
 
     def test_git_dirty_shows_warning(self, tmp_path):
         """Uncommitted changes → Warnung."""
-        handler = ProcessCommandHandler(project_root=tmp_path)
+        handler = SelfcheckCommandHandler(project_root=tmp_path)
 
         with self._patch_run([
             _make_run_result(True, "main\n"),        # branch
@@ -635,7 +647,7 @@ class TestSelfCheckExecute:
             _make_run_result(True, "0\n"),            # rev-list
             _make_run_result(True, ""),               # pip check
         ]), patch(
-            "elder_berry.comms.commands.process_commands.DEFAULT_BACKUP_DIR",
+            "elder_berry.comms.commands.selfcheck_commands.DEFAULT_BACKUP_DIR",
             tmp_path,
         ), patch(
             "urllib.request.urlopen",
@@ -647,7 +659,7 @@ class TestSelfCheckExecute:
 
     def test_behind_remote_shows_warning(self, tmp_path):
         """Hinter Remote → Warnung mit Commit-Anzahl."""
-        handler = ProcessCommandHandler(project_root=tmp_path)
+        handler = SelfcheckCommandHandler(project_root=tmp_path)
 
         with self._patch_run([
             _make_run_result(True, "main\n"),
@@ -656,7 +668,7 @@ class TestSelfCheckExecute:
             _make_run_result(True, "3\n"),             # 3 behind
             _make_run_result(True, ""),                # pip check
         ]), patch(
-            "elder_berry.comms.commands.process_commands.DEFAULT_BACKUP_DIR",
+            "elder_berry.comms.commands.selfcheck_commands.DEFAULT_BACKUP_DIR",
             tmp_path,
         ), patch(
             "urllib.request.urlopen",
@@ -668,7 +680,7 @@ class TestSelfCheckExecute:
 
     def test_ollama_unreachable(self, tmp_path):
         """Ollama nicht erreichbar → Fehler."""
-        handler = ProcessCommandHandler(project_root=tmp_path)
+        handler = SelfcheckCommandHandler(project_root=tmp_path)
 
         with self._patch_run([
             _make_run_result(True, "main\n"),
@@ -677,7 +689,7 @@ class TestSelfCheckExecute:
             _make_run_result(True, "0\n"),
             _make_run_result(True, ""),               # pip check
         ]), patch(
-            "elder_berry.comms.commands.process_commands.DEFAULT_BACKUP_DIR",
+            "elder_berry.comms.commands.selfcheck_commands.DEFAULT_BACKUP_DIR",
             tmp_path,
         ), patch(
             "urllib.request.urlopen",
@@ -692,7 +704,7 @@ class TestSelfCheckExecute:
         """SecretStore Fehler → Fehler anzeigen."""
         mock_store = MagicMock()
         mock_store.list_keys.side_effect = Exception("decrypt failed")
-        handler = ProcessCommandHandler(
+        handler = SelfcheckCommandHandler(
             project_root=tmp_path, secret_store=mock_store,
         )
 
@@ -703,7 +715,7 @@ class TestSelfCheckExecute:
             _make_run_result(True, "0\n"),
             _make_run_result(True, ""),
         ]), patch(
-            "elder_berry.comms.commands.process_commands.DEFAULT_BACKUP_DIR",
+            "elder_berry.comms.commands.selfcheck_commands.DEFAULT_BACKUP_DIR",
             tmp_path,
         ), patch(
             "urllib.request.urlopen",
@@ -717,7 +729,7 @@ class TestSelfCheckExecute:
 
     def test_backup_shown_in_selfcheck(self, tmp_path):
         """Wenn Backup existiert → wird im SelfCheck angezeigt."""
-        handler = ProcessCommandHandler(project_root=tmp_path)
+        handler = SelfcheckCommandHandler(project_root=tmp_path)
         backup_file = tmp_path / BACKUP_FILENAME
         backup_file.write_text(
             json.dumps({
@@ -735,7 +747,7 @@ class TestSelfCheckExecute:
             _make_run_result(True, "0\n"),
             _make_run_result(True, ""),
         ]), patch(
-            "elder_berry.comms.commands.process_commands.DEFAULT_BACKUP_DIR",
+            "elder_berry.comms.commands.selfcheck_commands.DEFAULT_BACKUP_DIR",
             tmp_path,
         ), patch(
             "urllib.request.urlopen",
@@ -748,7 +760,7 @@ class TestSelfCheckExecute:
 
     def test_pip_check_conflict(self, tmp_path):
         """pip check findet Konflikte → Warnung."""
-        handler = ProcessCommandHandler(project_root=tmp_path)
+        handler = SelfcheckCommandHandler(project_root=tmp_path)
 
         with self._patch_run([
             _make_run_result(True, "main\n"),
@@ -757,7 +769,7 @@ class TestSelfCheckExecute:
             _make_run_result(True, "0\n"),
             _make_run_result(False, "package-x 1.0 requires y>=2.0\n"),
         ]), patch(
-            "elder_berry.comms.commands.process_commands.DEFAULT_BACKUP_DIR",
+            "elder_berry.comms.commands.selfcheck_commands.DEFAULT_BACKUP_DIR",
             tmp_path,
         ), patch(
             "urllib.request.urlopen",
@@ -850,7 +862,7 @@ class TestUpdateRpiExecute:
         robot.update_rpi.return_value = ApiResponse(
             success=True, message="2 Commits | Code aktualisiert | Neustart",
         )
-        h = ProcessCommandHandler(project_root=tmp_path, robot_client=robot)
+        h = UpdateCommandHandler(project_root=tmp_path, robot_client=robot)
         result = h.execute("update_rpi", "update rpi")
         assert result.success is True
         assert "RPi5" in result.text
@@ -861,21 +873,21 @@ class TestUpdateRpiExecute:
         robot.update_rpi.return_value = ApiResponse(
             success=False, message="Git Pull fehlgeschlagen",
         )
-        h = ProcessCommandHandler(project_root=tmp_path, robot_client=robot)
+        h = UpdateCommandHandler(project_root=tmp_path, robot_client=robot)
         result = h.execute("update_rpi", "update rpi")
         assert result.success is False
 
     def test_rpi_update_connection_error(self, tmp_path):
         robot = MagicMock()
         robot.update_rpi.side_effect = Exception("Connection refused")
-        h = ProcessCommandHandler(project_root=tmp_path, robot_client=robot)
+        h = UpdateCommandHandler(project_root=tmp_path, robot_client=robot)
         result = h.execute("update_rpi", "update rpi")
         assert result.success is False
         assert "fehlgeschlagen" in result.text.lower()
 
 
 class TestUpdateAllExecute:
-    @patch.object(ProcessCommandHandler, "_cmd_update")
+    @patch.object(UpdateCommandHandler, "_cmd_update")
     def test_update_all_both_succeed(self, mock_tower_update, tmp_path):
         robot = MagicMock()
         robot.update_rpi.return_value = ApiResponse(
@@ -884,18 +896,18 @@ class TestUpdateAllExecute:
         mock_tower_update.return_value = CommandResult(
             command="update", success=True, text="Tower aktualisiert", restart=True,
         )
-        h = ProcessCommandHandler(project_root=tmp_path, robot_client=robot)
+        h = UpdateCommandHandler(project_root=tmp_path, robot_client=robot)
         result = h.execute("update_all", "update alles")
         assert result.success is True
         assert result.restart is True
         assert "RPi5" in result.text
         assert "Tower" in result.text
 
-    @patch.object(ProcessCommandHandler, "_cmd_update")
+    @patch.object(UpdateCommandHandler, "_cmd_update")
     def test_update_all_no_robot(self, mock_tower_update, tmp_path):
         mock_tower_update.return_value = CommandResult(
             command="update", success=True, text="Alles aktuell", restart=False,
         )
-        h = ProcessCommandHandler(project_root=tmp_path, robot_client=None)
+        h = UpdateCommandHandler(project_root=tmp_path, robot_client=None)
         result = h.execute("update_all", "update alles")
         assert "uebersprungen" in result.text.lower() or "nicht verbunden" in result.text.lower()

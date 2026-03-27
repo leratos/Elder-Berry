@@ -12,40 +12,30 @@ Architektur:
     │  on_message(cb)     │<────│  → result         │
     └─────────────────────┘     └──────────────────┘
 
-Command-Router (Phase 7):
-    Nachricht rein → RemoteCommandHandler.parse_command()
-      ├─ Command erkannt → execute() → send result (text/image)
-      └─ Kein Command → "claude" + "..." → ClaudeAgent → sonst lokales LLM
-
-Audio-Pipeline (wenn AudioConverter vorhanden):
-    Assistant.process(audio_output=tmp.wav) → WAV → AudioConverter → OGG/Opus → Matrix
-
-Verwendung:
-    bridge = MatrixBridge(channel=matrix_channel, assistant=assistant)
-    bridge.start()   # Startet async Loop + Message-Handler
-    ...
-    bridge.stop()    # Stoppt sauber
+Handler-Logik ist in separate Module ausgelagert:
+- message_handlers.py: BridgeMessageHandler (Commands, LLM, Claude Agent)
+- audio_pipeline.py: AudioPipeline (STT, TTS, Dateien)
+- restart_manager.py: Restart-Logik (Flag, Lock, Prozess-Ersetzung)
 """
 from __future__ import annotations
 
 import asyncio
 import logging
-import os
 import re
-import subprocess
-import sys
-import tempfile
 import time
 import threading
 from datetime import datetime
-from pathlib import Path
 from typing import TYPE_CHECKING
 
+from elder_berry.comms.audio_pipeline import AudioPipeline
 from elder_berry.comms.chat_history import ChatHistory, Summarizer
 from elder_berry.comms.message_channel import IncomingMessage, MessageChannel
-from elder_berry.comms.pending_confirmation import (
-    PendingAction,
-    PendingConfirmationStore,
+from elder_berry.comms.message_handlers import BridgeMessageHandler
+from elder_berry.comms.pending_confirmation import PendingConfirmationStore
+from elder_berry.comms.restart_manager import (
+    RESTART_FLAG_FILE,
+    read_restart_timestamp,
+    send_restart_notification,
 )
 from elder_berry.comms.scheduler_manager import SchedulerManager
 
@@ -66,22 +56,16 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-# Restart-Flag: wird vor os.execv geschrieben, beim Start geprüft
-RESTART_FLAG_FILE = Path(tempfile.gettempdir()) / "elder_berry_restart.flag"
-
 # Regex: Text in Anführungszeichen extrahieren (erste Fundstelle)
 _QUOTED_TEXT_PATTERN = re.compile(r'"([^"]+)"')
-
-
 
 
 class MatrixBridge:
     """Verbindet einen async MessageChannel mit dem synchronen Assistant.
 
     - Startet den MessageChannel sync_loop in einem eigenen Thread mit eigenem Event-Loop.
-    - Empfangene Nachrichten werden an Assistant.process() delegiert (in Thread-Pool).
-    - Antworten (Text + optional Audio) werden über den Kanal zurückgesendet.
-    - Optional: AudioConverter für WAV→OGG/Opus Konvertierung (Sprachnachrichten).
+    - Empfangene Nachrichten werden an BridgeMessageHandler delegiert.
+    - Optional: AudioPipeline für STT/TTS, RestartManager für Neustarts.
     """
 
     def __init__(
@@ -107,33 +91,50 @@ class MatrixBridge:
     ) -> None:
         self._channel = channel
         self._assistant = assistant
-        self._audio_converter = audio_converter
         self._remote_commands = remote_commands
         self._claude_agent = claude_agent
         self._alert_monitor = alert_monitor
         self._alert_room_id = alert_room_id
         self._allowed_senders = allowed_senders
-        self._stt = stt
         self._reminder_scheduler = reminder_scheduler
         self._briefing_scheduler = briefing_scheduler
         self._calendar_watcher = calendar_watcher
-        self._document_reader = document_reader
-        self._audio_router = audio_router
-        self._task_chain = task_chain
+
         self._loop: asyncio.AbstractEventLoop | None = None
         self._thread: threading.Thread | None = None
         self._running = False
-        # Startzeitpunkt (Server-Zeit): Nachrichten davor ignoriert
         self._start_time: float = 0.0
-        # Restart-Cooldown: Zeitpunkt bis zu dem restart-Befehle ignoriert werden
         self._restart_cooldown_until: float = 0.0
-        # Multi-Turn Chat-History pro User (Sliding Window + Rolling Summary)
+
         self._chat_history = ChatHistory(
-            max_messages=10, summarizer=summarizer
+            max_messages=10, summarizer=summarizer,
         )
-        self._email_sender = email_sender
         self._pending = pending_store or PendingConfirmationStore()
         self._scheduler_mgr: SchedulerManager | None = None
+
+        # AudioPipeline (STT, TTS, Dateien)
+        self._audio = AudioPipeline(
+            channel=channel,
+            assistant=assistant,
+            chat_history=self._chat_history,
+            stt=stt,
+            audio_converter=audio_converter,
+            audio_router=audio_router,
+            document_reader=document_reader,
+        )
+
+        # MessageHandler (Commands, LLM, Claude Agent, Pending)
+        self._handler = BridgeMessageHandler(
+            channel=channel,
+            assistant=assistant,
+            audio_pipeline=self._audio,
+            chat_history=self._chat_history,
+            pending=self._pending,
+            remote_commands=remote_commands,
+            claude_agent=claude_agent,
+            task_chain=task_chain,
+            email_sender=email_sender,
+        )
 
     @staticmethod
     def extract_claude_message(text: str) -> str | None:
@@ -142,42 +143,32 @@ class MatrixBridge:
         Erkennung: Das Wort "claude" muss im Text vorkommen UND der eigentliche
         Auftrag muss in Anführungszeichen stehen.
 
-        Beispiele:
-            "Sag Claude bitte \"Dokumentiere X im Journal\""  → "Dokumentiere X im Journal"
-            "Claude \"Was war der letzte Schritt?\""           → "Was war der letzte Schritt?"
-            "Wie geht's dir?"                                  → None (kein "claude")
-            "Claude mach mal was"                              → None (keine Anführungszeichen)
-
         Returns:
             Der extrahierte Text in Anführungszeichen oder None.
         """
         if "claude" not in text.lower():
             return None
-
         match = _QUOTED_TEXT_PATTERN.search(text)
         if not match:
             return None
-
         return match.group(1)
 
     @property
     def _audio_to_matrix(self) -> bool:
         """True wenn TTS-Audio als Datei generiert werden soll (für Matrix)."""
-        return (
-            self._audio_converter is not None
-            and self._audio_converter.ffmpeg_available
-        )
+        return self._audio.audio_to_matrix
 
     @property
     def is_running(self) -> bool:
         """True wenn die Bridge aktiv ist."""
         return self._running
 
-    def start(self) -> None:
-        """Startet die Bridge in einem Hintergrund-Thread.
+    # ------------------------------------------------------------------
+    # Lifecycle
+    # ------------------------------------------------------------------
 
-        Nicht-blockierend – kehrt sofort zurück.
-        """
+    def start(self) -> None:
+        """Startet die Bridge in einem Hintergrund-Thread."""
         if self._running:
             logger.warning("Bridge läuft bereits")
             return
@@ -196,14 +187,12 @@ class MatrixBridge:
         if not self._running:
             return
 
-        # Alle Scheduler stoppen (AlertMonitor, Reminder, Briefing, Calendar)
         if self._scheduler_mgr:
             self._scheduler_mgr.stop_all()
 
         self._running = False
 
         if self._loop and self._loop.is_running():
-            # Schedule disconnect im async Loop
             asyncio.run_coroutine_threadsafe(
                 self._shutdown(), self._loop,
             )
@@ -233,47 +222,42 @@ class MatrixBridge:
         """Async Hauptroutine: Connect, Callback registrieren, Sync-Loop starten."""
         await self._channel.connect()
 
-        # Startzeitpunkt setzen: Nachrichten vor diesem Zeitpunkt ignorieren.
-        # Bei Restart: Server-Timestamp aus Flag-File (gleiche Clock-Domain wie
-        # msg.timestamp → kein Clock-Drift). Sonst: lokale Zeit als Fallback.
+        # Startzeitpunkt setzen
         is_restart = RESTART_FLAG_FILE.exists()
-        restart_server_ts = self._read_restart_timestamp()
+        restart_server_ts = read_restart_timestamp()
         if restart_server_ts > 0:
-            # Server-Timestamp vorhanden → exakte Filterung (gleiche Clock)
             self._start_time = restart_server_ts
         elif is_restart:
-            # Restart ohne Server-TS (altes Flag-Format) →
-            # lokale Zeit + 10s Puffer für Clock-Drift
             self._start_time = datetime.now().timestamp() + 10
         else:
-            # Normaler Start (kein Restart)
             self._start_time = datetime.now().timestamp()
 
         if is_restart:
-            # Restart-Cooldown: 60s lang keine weiteren restart-Befehle
             self._restart_cooldown_until = time.monotonic() + 60
+            self._handler.restart_cooldown_until = self._restart_cooldown_until
             logger.info(
                 "Restart erkannt: _start_time=%.3f (server_ts=%.3f), "
                 "Cooldown 60s aktiv",
                 self._start_time, restart_server_ts,
             )
 
-        # Restart-Benachrichtigung senden (wenn Flag existiert)
-        await self.send_restart_notification(self._channel)
+        await send_restart_notification(self._channel)
 
         self._channel.on_message(self._handle_message)
+        self._audio.set_message_callback(self._handle_message)
         logger.info("Bridge verbunden, warte auf Nachrichten...")
 
-        # Error-Alerting verdrahten (ErrorCollectorHandler → Matrix)
+        # Error-Alerting verdrahten
         if self._alert_room_id:
             self._setup_error_alerting()
 
-        # Scheduler über SchedulerManager registrieren und starten
+        # Scheduler registrieren und starten
         self._scheduler_mgr = SchedulerManager(
             channel=self._channel,
             room_id=self._alert_room_id,
             loop=self._loop,
         )
+        self._handler._scheduler_mgr = self._scheduler_mgr
 
         if self._alert_monitor and self._alert_room_id:
             self._scheduler_mgr.register(
@@ -308,27 +292,18 @@ class MatrixBridge:
         except Exception as e:
             logger.error("Sync-Loop Fehler: %s", e)
 
+    # ------------------------------------------------------------------
+    # Message Dispatcher
+    # ------------------------------------------------------------------
+
     async def _handle_message(self, msg: IncomingMessage) -> None:
-        """Callback für eingehende Nachrichten.
-
-        Command-Router (Phase 7):
-        1. Prüft ob die Nachricht ein direkter Command ist (RemoteCommandHandler)
-        2. Wenn ja: execute → send result (text/image)
-        3. Wenn nein: weiter an Assistant (bestehender Flow)
-
-        Audio-Pipeline (wenn AudioConverter vorhanden):
-        1. Assistant generiert WAV in Temp-Datei (audio_output Parameter)
-        2. AudioConverter konvertiert WAV → OGG/Opus
-        3. OGG wird als Sprachnachricht via Channel gesendet
-        """
+        """Callback für eingehende Nachrichten – dispatcht an Handler."""
         logger.info(
             "Nachricht von %s (ts=%.3f): %s",
             msg.sender, msg.timestamp, msg.body[:100],
         )
 
-        # --- Alte Nachrichten ignorieren (vor Bridge-Start, z.B. nach Restart) ---
-        # _start_time ist Server-Timestamp (bei Restart) oder lokale Zeit (Normal).
-        # Kein Grace-Period: alles VOR dem Startzeitpunkt wird verworfen.
+        # Alte Nachrichten ignorieren
         if msg.timestamp > 0 and msg.timestamp <= self._start_time:
             logger.info(
                 "Alte Nachricht ignoriert (ts=%.3f <= start=%.3f): %s",
@@ -336,27 +311,27 @@ class MatrixBridge:
             )
             return
 
-        # --- Sender-Whitelist: Nachrichten von unbekannten Absendern ignorieren ---
+        # Sender-Whitelist
         if self._allowed_senders and msg.sender not in self._allowed_senders:
             logger.warning("Nachricht von unbekanntem Sender ignoriert: %s", msg.sender)
             return
 
-        # --- Audio-Nachricht: STT → Text → Assistant ---
+        # Audio → STT → Text → Re-Dispatch
         if msg.audio_data is not None:
-            await self._handle_audio_message(msg)
+            await self._audio.handle_audio_message(msg)
             return
 
-        # --- Datei-Nachricht: PDF/TXT → DocumentReader → LLM ---
+        # Datei → DocumentReader → LLM
         if msg.file_data is not None:
-            await self._handle_file_message(msg)
+            await self._audio.handle_file_message(msg)
             return
 
-        # --- Pending Confirmation Intercept (Phase 28) ---
+        # Pending Confirmation Intercept (Phase 28)
         response_type, action = self._pending.check_response(
             msg.sender, msg.body,
         )
         if response_type == "confirm":
-            await self._handle_pending_confirm(msg, action)
+            await self._handler.handle_pending_confirm(msg, action)
             return
         if response_type == "cancel":
             await self._channel.send_text(msg.room_id, "\u274c Verworfen.")
@@ -364,7 +339,7 @@ class MatrixBridge:
             self._chat_history.add(msg.sender, "assistant", "Verworfen.")
             return
         if response_type == "modify":
-            await self._handle_pending_modify(msg, action)
+            await self._handler.handle_pending_modify(msg, action)
             return
         if response_type == "pending":
             await self._channel.send_text(
@@ -375,1044 +350,29 @@ class MatrixBridge:
             )
             return
 
-        # --- Command-Router: direkte Commands vor LLM ---
+        # Command-Router: direkte Commands vor LLM
         if self._remote_commands:
             command = self._remote_commands.parse_command(msg.body)
             if command:
-                await self._handle_remote_command(msg, command)
+                await self._handler.handle_remote_command(msg, command)
                 return
 
-        # --- Claude Agent: nur bei explizitem "claude" + "..." ---
+        # Claude Agent: nur bei explizitem "claude" + "..."
         if self._claude_agent:
             claude_text = self.extract_claude_message(msg.body)
             if claude_text:
-                await self._handle_claude_agent(msg, claude_text)
+                await self._handler.handle_claude_agent(msg, claude_text)
                 return
 
-        # --- LLM-Fallback: bestehender Assistant-Flow ---
-        await self._handle_assistant_message(msg)
-
-    async def _handle_remote_command(
-        self, msg: IncomingMessage, command: str,
-    ) -> None:
-        """Führt einen direkten Remote-Command aus und sendet das Ergebnis."""
-        logger.info("Remote-Command erkannt: %s", command)
-
-        try:
-            loop = asyncio.get_running_loop()
-            result = await asyncio.wait_for(
-                loop.run_in_executor(
-                    None, self._remote_commands.execute, command, msg.body,
-                ),
-                timeout=60.0,
-            )
-
-            # Fallthrough: Command erkannt aber nichts gefunden → LLM
-            if result.fallthrough:
-                logger.debug("Command '%s' fallthrough → LLM", command)
-                await self._handle_assistant_message(msg)
-                return
-
-            # Dokument-Zusammenfassung: Rohtext ans LLM schicken
-            if (
-                result.command == "document_summary"
-                and result.success
-                and result.history_text
-            ):
-                await self._handle_document_summary(msg, result)
-                return
-
-            # Mail per ID: Body ans LLM schicken für kontextbewusste Antwort
-            if (
-                result.command == "mail_by_id"
-                and result.success
-                and result.history_text
-            ):
-                await self._handle_mail_summary(msg, result)
-                return
-
-            # Pending Confirmation Commands (Phase 28: Email-Reply Draft)
-            if result.pending_confirmation and result.pending_data:
-                pending_action = PendingAction(
-                    action_type=result.command,
-                    description=result.text or "",
-                    data=result.pending_data,
-                )
-                self._pending.set(msg.sender, pending_action)
-                if result.text:
-                    await self._channel.send_text(msg.room_id, result.text)
-                self._chat_history.add(msg.sender, "user", msg.body)
-                self._chat_history.add(
-                    msg.sender, "assistant", result.text or "",
-                )
-                return
-
-            # Text-Antwort senden
-            if result.text:
-                await self._channel.send_text(msg.room_id, result.text)
-
-            # Command-Ergebnis in Chat-History speichern
-            # history_text bevorzugen (z.B. Mail-Body für LLM-Kontext)
-            if result.success and result.text:
-                history_content = result.history_text or result.text
-                self._chat_history.add(msg.sender, "user", msg.body)
-                self._chat_history.add(msg.sender, "assistant", history_content)
-
-            # Fehlgeschlagene Commands loggen (kein Crash, aber success=False)
-            if not result.success:
-                logger.error(
-                    "Command '%s' fehlgeschlagen: %s",
-                    command, result.text or "Command fehlgeschlagen",
-                    extra={"sender": msg.sender, "handler": f"command:{command}"},
-                )
-
-            # Bild senden (z.B. Screenshot)
-            if result.image_path and result.image_path.exists():
-                try:
-                    await self._channel.send_image(
-                        msg.room_id, result.image_path,
-                    )
-                except NotImplementedError:
-                    await self._channel.send_text(
-                        msg.room_id,
-                        "Screenshot aufgenommen, aber Bild-Upload nicht unterstützt.",
-                    )
-                finally:
-                    result.image_path.unlink(missing_ok=True)
-
-            # Datei senden (z.B. PDF)
-            if result.file_path and result.file_path.exists():
-                try:
-                    await self._channel.send_file(
-                        msg.room_id, result.file_path,
-                    )
-                except NotImplementedError:
-                    await self._channel.send_text(
-                        msg.room_id,
-                        "Datei-Upload nicht unterstützt.",
-                    )
-
-            # Mehrere Dateien senden (z.B. Mail-Anhänge)
-            for fpath in (result.file_paths or []):
-                if fpath.exists():
-                    try:
-                        await self._channel.send_file(msg.room_id, fpath)
-                    except NotImplementedError:
-                        await self._channel.send_text(
-                            msg.room_id,
-                            "Datei-Upload nicht unterstützt.",
-                        )
-                    finally:
-                        fpath.unlink(missing_ok=True)
-
-            # Restart: Flag schreiben + Prozess ersetzen
-            if result.restart:
-                if time.monotonic() < self._restart_cooldown_until:
-                    logger.warning(
-                        "Restart-Cooldown aktiv, ignoriere restart-Befehl "
-                        "(noch %.0fs)",
-                        self._restart_cooldown_until - time.monotonic(),
-                    )
-                    await self._channel.send_text(
-                        msg.room_id,
-                        "Restart-Cooldown aktiv – ich wurde gerade erst "
-                        "neu gestartet. Bitte warte noch etwas.",
-                    )
-                    return
-                await self._perform_restart(
-                    msg.room_id, msg_server_ts=msg.timestamp,
-                )
-
-        except asyncio.TimeoutError:
-            logger.error("Timeout bei Remote-Command '%s' (60s)", command)
-            try:
-                await self._channel.send_text(
-                    msg.room_id,
-                    "Zeitüberschreitung bei der Command-Ausführung.",
-                )
-            except Exception:
-                pass
-        except Exception as e:
-            logger.error(
-                "Remote-Command '%s' fehlgeschlagen: %s", command, e,
-                extra={"sender": msg.sender, "handler": "command"},
-            )
-            try:
-                await self._channel.send_text(
-                    msg.room_id,
-                    f"Command-Fehler: {type(e).__name__}",
-                )
-            except Exception:
-                logger.error("Konnte Fehlermeldung nicht senden")
-
-    # -- Phase 28: Pending Confirmation Handlers ---------------------------
-
-    async def _handle_pending_confirm(
-        self, msg: IncomingMessage, action: PendingAction,
-    ) -> None:
-        """Führt eine bestätigte PendingAction aus."""
-        if action.action_type in ("mail_reply", "mail_reply_modify"):
-            await self._execute_mail_send(msg, action)
-        else:
-            logger.warning("Unbekannter PendingAction-Typ: %s", action.action_type)
-            await self._channel.send_text(
-                msg.room_id, f"Unbekannte Aktion: {action.action_type}",
-            )
-            self._pending.clear(msg.sender)
-
-    async def _execute_mail_send(
-        self, msg: IncomingMessage, action: PendingAction,
-    ) -> None:
-        """Sendet eine bestätigte Email-Antwort via SMTP."""
-        if not self._email_sender:
-            await self._channel.send_text(
-                msg.room_id, "SMTP nicht konfiguriert.",
-            )
-            self._pending.clear(msg.sender)
-            return
-
-        try:
-            loop = asyncio.get_running_loop()
-            result = await asyncio.wait_for(
-                loop.run_in_executor(
-                    None,
-                    lambda: self._email_sender.send_reply(
-                        to=action.data["to"],
-                        subject=action.data["subject"],
-                        body=action.data["draft_text"],
-                        in_reply_to=action.data.get("in_reply_to", ""),
-                        references=action.data.get("references", ""),
-                    ),
-                ),
-                timeout=30.0,
-            )
-
-            if result.success:
-                self._pending.clear(msg.sender)
-                await self._channel.send_text(
-                    msg.room_id,
-                    f"\u2705 Antwort auf #{action.data['msg_id']} gesendet "
-                    f"an {result.to}.",
-                )
-                self._chat_history.add(msg.sender, "user", "ja")
-                self._chat_history.add(
-                    msg.sender, "assistant",
-                    f"Email-Antwort gesendet an {result.to}: "
-                    f"{action.data['subject']}",
-                )
-            else:
-                # Bei Fehler: Action bleibt offen → User kann erneut "ja" sagen
-                await self._channel.send_text(
-                    msg.room_id,
-                    f"\u274c Senden fehlgeschlagen: {result.error}\n"
-                    f"Versuche es mit 'ja' erneut oder 'nein' zum Verwerfen.",
-                )
-        except asyncio.TimeoutError:
-            logger.error("Timeout beim Email-Senden (30s)")
-            await self._channel.send_text(
-                msg.room_id,
-                "Zeitüberschreitung beim Email-Senden.\n"
-                "Versuche es mit 'ja' erneut oder 'nein' zum Verwerfen.",
-            )
-        except Exception as e:
-            logger.error("Email senden fehlgeschlagen: %s", e)
-            await self._channel.send_text(
-                msg.room_id,
-                f"\u274c Fehler beim Senden: {type(e).__name__}",
-            )
-            self._pending.clear(msg.sender)
-
-    async def _handle_pending_modify(
-        self, msg: IncomingMessage, action: PendingAction,
-    ) -> None:
-        """Generiert einen neuen Draft basierend auf der Änderungsanweisung."""
-        if action.action_type not in ("mail_reply", "mail_reply_modify"):
-            await self._channel.send_text(
-                msg.room_id,
-                "Ändern wird für diesen Aktionstyp nicht unterstützt.",
-            )
-            return
-
-        modify_instruction = action.data.get("modify_instruction", "")
-        if not modify_instruction:
-            await self._channel.send_text(
-                msg.room_id, "Format: ändern: <was soll anders sein>",
-            )
-            return
-
-        try:
-            loop = asyncio.get_running_loop()
-            new_result = await asyncio.wait_for(
-                loop.run_in_executor(
-                    None,
-                    self._remote_commands.execute,
-                    "mail_reply_modify",
-                    f"#{action.data['msg_id']} {modify_instruction}",
-                ),
-                timeout=120.0,
-            )
-            if new_result.success and new_result.pending_data:
-                new_action = PendingAction(
-                    action_type="mail_reply",
-                    description=new_result.text or "",
-                    data=new_result.pending_data,
-                )
-                self._pending.set(msg.sender, new_action)
-                await self._channel.send_text(
-                    msg.room_id, new_result.text,
-                )
-                self._chat_history.add(msg.sender, "user", msg.body)
-                self._chat_history.add(
-                    msg.sender, "assistant", new_result.text or "",
-                )
-            else:
-                await self._channel.send_text(
-                    msg.room_id,
-                    new_result.text or "Draft-Änderung fehlgeschlagen.",
-                )
-        except asyncio.TimeoutError:
-            logger.error("Timeout bei Draft-Änderung (120s)")
-            await self._channel.send_text(
-                msg.room_id,
-                "Zeitüberschreitung bei der Draft-Generierung.",
-            )
-        except Exception as e:
-            logger.error("Draft-Änderung fehlgeschlagen: %s", e)
-            await self._channel.send_text(
-                msg.room_id,
-                f"\u274c Änderung fehlgeschlagen: {type(e).__name__}",
-            )
-
-    async def _handle_claude_agent(
-        self, msg: IncomingMessage, claude_text: str,
-    ) -> None:
-        """Delegiert an ClaudeAgent.process() für komplexe Anfragen.
-
-        Args:
-            msg: Original-Nachricht (für room_id).
-            claude_text: Extrahierter Text aus Anführungszeichen.
-        """
-        logger.info("ClaudeAgent verarbeitet: %s", claude_text[:100])
-
-        try:
-            loop = asyncio.get_running_loop()
-            result = await asyncio.wait_for(
-                loop.run_in_executor(
-                    None, self._claude_agent.process, claude_text,
-                ),
-                timeout=180.0,
-            )
-
-            # Zusammenfassung senden
-            if result.summary:
-                await self._channel.send_text(msg.room_id, result.summary)
-
-            # Details senden (z.B. Dateiinhalt, Testergebnis)
-            if result.details:
-                # Screenshot: Bild senden statt Pfad-Text
-                if result.action_taken == "screenshot" and result.success:
-                    image_path = Path(result.details)
-                    if image_path.exists():
-                        try:
-                            await self._channel.send_image(
-                                msg.room_id, image_path,
-                            )
-                        except NotImplementedError:
-                            await self._channel.send_text(
-                                msg.room_id,
-                                "Screenshot aufgenommen, aber Bild-Upload "
-                                "nicht unterstützt.",
-                            )
-                        finally:
-                            image_path.unlink(missing_ok=True)
-                else:
-                    # Lange Details kürzen für Matrix
-                    details = result.details
-                    if len(details) > 4000:
-                        details = details[:4000] + "\n... (gekürzt)"
-                    await self._channel.send_text(msg.room_id, details)
-
-        except asyncio.TimeoutError:
-            logger.error("Timeout bei ClaudeAgent (180s)")
-            try:
-                await self._channel.send_text(
-                    msg.room_id,
-                    "Zeitüberschreitung beim Claude-Agent. Bitte erneut versuchen.",
-                )
-            except Exception:
-                pass
-        except Exception as e:
-            logger.error(
-                "ClaudeAgent Fehler: %s", e,
-                extra={"sender": msg.sender, "handler": "agent"},
-            )
-            try:
-                await self._channel.send_text(
-                    msg.room_id,
-                    f"Agent-Fehler: {type(e).__name__}",
-                )
-            except Exception:
-                logger.error("Konnte Fehlermeldung nicht senden")
-
-    async def _handle_llm_enrichment(
-        self,
-        msg: IncomingMessage,
-        result,
-        prompt_intro: str,
-        prompt_instruction: str,
-        error_log_msg: str,
-        error_fallback_suffix: str,
-    ) -> None:
-        """Gemeinsame Logik für LLM-basierte Anreicherung (Dokumente, Mails).
-
-        Args:
-            msg: Original-Nachricht (für room_id, sender).
-            result: CommandResult mit history_text und text.
-            prompt_intro: Einleitung für den LLM-Prompt.
-            prompt_instruction: Anweisung an das LLM.
-            error_log_msg: Log-Meldung bei Fehler (mit %s Placeholder).
-            error_fallback_suffix: Suffix für die Fallback-Nachricht.
-        """
-        try:
-            loop = asyncio.get_running_loop()
-
-            # Inhalt in Chat-History für Rückfragen
-            self._chat_history.add(msg.sender, "user", msg.body)
-            self._chat_history.add(msg.sender, "assistant", result.history_text)
-
-            summary_prompt = (
-                f"{prompt_intro}\n\n"
-                f"{result.history_text}\n\n"
-                f"{prompt_instruction}"
-            )
-            chat_context = self._chat_history.format_for_prompt(msg.sender)
-
-            tmp_wav = Path(tempfile.mktemp(suffix=".wav")) if self._audio_to_matrix else None
-            llm_result = await asyncio.wait_for(
-                loop.run_in_executor(
-                    None, self._assistant.process, summary_prompt, tmp_wav, chat_context,
-                ),
-                timeout=120.0,
-            )
-
-            if llm_result.response:
-                response = f"{result.text}\n\n{llm_result.response}"
-                self._chat_history.add(msg.sender, "assistant", llm_result.response)
-                await self._channel.send_text(msg.room_id, response)
-            else:
-                await self._channel.send_text(msg.room_id, result.text)
-
-            await self._send_audio_if_available(msg.room_id, llm_result, tmp_wav)
-
-        except Exception as e:
-            logger.error(error_log_msg, e)
-            try:
-                await self._channel.send_text(
-                    msg.room_id,
-                    f"{result.text}\n\n({error_fallback_suffix}: {type(e).__name__})",
-                )
-            except Exception:
-                logger.error("Konnte Fehlermeldung nicht senden")
-
-    async def _handle_document_summary(self, msg: IncomingMessage, result) -> None:
-        """Schickt extrahierten Dokumenttext ans LLM für eine Zusammenfassung."""
-        await self._handle_llm_enrichment(
-            msg=msg,
-            result=result,
-            prompt_intro="Der Nutzer möchte folgendes Dokument zusammengefasst haben.",
-            prompt_instruction="Fasse den Inhalt zusammen.",
-            error_log_msg="Dokument-Zusammenfassung LLM fehlgeschlagen: %s",
-            error_fallback_suffix="LLM-Zusammenfassung fehlgeschlagen",
-        )
-
-    async def _handle_mail_summary(self, msg: IncomingMessage, result) -> None:
-        """Schickt Mail-Body ans LLM für kontextbewusste Antwort."""
-        await self._handle_llm_enrichment(
-            msg=msg,
-            result=result,
-            prompt_intro="Der Nutzer hat folgende E-Mail abgerufen.",
-            prompt_instruction=(
-                "Beantworte die Anfrage des Nutzers basierend auf dem Inhalt "
-                "dieser Mail und dem bisherigen Gesprächsverlauf."
-            ),
-            error_log_msg="Mail-Summary LLM fehlgeschlagen: %s",
-            error_fallback_suffix="LLM-Verarbeitung fehlgeschlagen",
-        )
-
-    async def _handle_audio_message(self, msg: IncomingMessage) -> None:
-        """Transkribiert eine Audio-Nachricht via STT und delegiert an den Assistant.
-
-        Flow:
-            1. audio_data in temp-Datei schreiben
-            2. STTEngine.transcribe() → TranscriptionResult
-            3. Erkannter Text → _handle_assistant_message()
-            4. Kein Text erkannt → Fehlermeldung an Raum senden
-
-        Ohne STT-Engine: Fehlermeldung mit Hinweis senden.
-        """
-        if self._stt is None:
-            logger.warning(
-                "Audio-Nachricht empfangen, aber kein STT konfiguriert (msg von %s)",
-                msg.sender,
-            )
-            try:
-                await self._channel.send_text(
-                    msg.room_id,
-                    "Sprachnachrichten werden gerade nicht unterstützt "
-                    "(STT nicht konfiguriert).",
-                )
-            except Exception:
-                pass
-            return
-
-        tmp_path: Path | None = None
-        try:
-            loop = asyncio.get_running_loop()
-
-            # Audio-Bytes in temp-Datei schreiben (.ogg – Endung für ffmpeg/whisper)
-            suffix = ".ogg"
-            if isinstance(msg.body, str) and "." in msg.body:
-                suffix = Path(msg.body).suffix or suffix
-
-            import tempfile
-            with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as tmp:
-                tmp.write(msg.audio_data)
-                tmp_path = Path(tmp.name)
-
-            logger.debug(
-                "Audio-Nachricht transkribieren: %s (%d bytes)",
-                tmp_path.name, len(msg.audio_data),
-            )
-
-            result = await asyncio.wait_for(
-                loop.run_in_executor(
-                    None, self._stt.transcribe, tmp_path,
-                ),
-                timeout=30.0,
-            )
-
-            if result.is_empty():
-                logger.info(
-                    "STT: kein Text erkannt (Sender: %s)", msg.sender,
-                )
-                await self._channel.send_text(
-                    msg.room_id,
-                    "Ich konnte die Sprachnachricht leider nicht verstehen. "
-                    "Bitte deutlich sprechen oder als Text senden.",
-                )
-                return
-
-            logger.info(
-                "STT erkannt [%s, %.0f%%]: %s",
-                result.language or "?",
-                (result.confidence or 0.0) * 100,
-                result.text[:80],
-            )
-
-            # Transkription als Text-Nachricht weiterverarbeiten
-            # Geht durch den vollen Router (Commands, Claude, LLM)
-            text_msg = IncomingMessage(
-                sender=msg.sender,
-                room_id=msg.room_id,
-                body=result.text,
-                timestamp=msg.timestamp,
-                raw=msg.raw,
-            )
-            await self._handle_message(text_msg)
-
-        except Exception as e:
-            logger.error(
-                "Fehler bei Audio-Transkription: %s", e,
-                extra={"sender": msg.sender, "handler": "stt"},
-            )
-            try:
-                await self._channel.send_text(
-                    msg.room_id,
-                    f"Fehler bei der Sprachverarbeitung: {type(e).__name__}",
-                )
-            except Exception:
-                logger.error("Konnte STT-Fehlermeldung nicht senden")
-        finally:
-            if tmp_path and tmp_path.exists():
-                tmp_path.unlink(missing_ok=True)
-
-    async def _handle_file_message(self, msg: IncomingMessage) -> None:
-        """Verarbeitet eine Datei-Nachricht (PDF/TXT via Matrix-Upload).
-
-        Flow:
-            1. Datei-Bytes in temp-Datei schreiben
-            2. DocumentReader.read_file() → Text extrahieren
-            3. Text in Chat-History speichern (für Rückfragen)
-            4. Text an LLM mit "Fasse zusammen"-Prompt senden
-        """
-        file_name = msg.file_name or msg.body or "unknown"
-        tmp_file: Path | None = None
-
-        # Prüfe ob DocumentReader verfügbar
-        if self._document_reader is None:
-            logger.warning(
-                "Datei empfangen (%s), aber kein DocumentReader konfiguriert",
-                file_name,
-            )
-            try:
-                await self._channel.send_text(
-                    msg.room_id,
-                    "Dokument-Verarbeitung nicht verfügbar.",
-                )
-            except Exception:
-                pass
-            return
-
-        # Prüfe ob Dateiformat unterstützt wird
-        from elder_berry.tools.document_reader import DocumentReader
-        if not DocumentReader.is_supported(Path(file_name)):
-            logger.info("Nicht unterstütztes Dateiformat: %s", file_name)
-            try:
-                await self._channel.send_text(
-                    msg.room_id,
-                    f"Dateiformat '{Path(file_name).suffix}' nicht unterstützt. "
-                    f"Ich kann PDF und TXT verarbeiten.",
-                )
-            except Exception:
-                pass
-            return
-
-        try:
-            # Datei in temp-Verzeichnis schreiben
-            suffix = Path(file_name).suffix or ".tmp"
-            tmp_file = Path(tempfile.mktemp(suffix=suffix))
-            tmp_file.write_bytes(msg.file_data)
-
-            logger.info(
-                "Datei verarbeiten: %s (%d bytes)",
-                file_name, len(msg.file_data),
-            )
-
-            # Text extrahieren
-            loop = asyncio.get_running_loop()
-            result = await asyncio.wait_for(
-                loop.run_in_executor(
-                    None, self._document_reader.read_file, tmp_file,
-                ),
-                timeout=30.0,
-            )
-
-            # Extrahierten Text in Chat-History speichern (für Rückfragen)
-            doc_context = (
-                f"Dokument '{result.source}' ({result.pages} Seiten):\n\n"
-                f"{result.text}"
-            )
-            self._chat_history.add(msg.sender, "user", f"[Datei: {file_name}]")
-            self._chat_history.add(msg.sender, "assistant", doc_context)
-
-            # Text an LLM senden mit Zusammenfassungs-Prompt
-            summary_prompt = (
-                f"Der Nutzer hat folgendes Dokument geschickt: {file_name}\n\n"
-                f"Inhalt:\n{result.text}\n\n"
-                f"Fasse den Inhalt zusammen."
-            )
-
-            chat_context = self._chat_history.format_for_prompt(msg.sender)
-
-            # Audio-Datei generieren wenn AudioConverter verfügbar
-            tmp_wav = Path(tempfile.mktemp(suffix=".wav")) if self._audio_to_matrix else None
-            llm_result = await asyncio.wait_for(
-                loop.run_in_executor(
-                    None, self._assistant.process, summary_prompt, tmp_wav, chat_context,
-                ),
-                timeout=120.0,
-            )
-
-            # Antwort senden
-            if llm_result.response:
-                header = f"📄 {result.source} ({result.pages} Seite(n))"
-                if result.truncated:
-                    header += " [gekürzt]"
-                response = f"{header}\n\n{llm_result.response}"
-                self._chat_history.add(msg.sender, "assistant", llm_result.response)
-                await self._channel.send_text(msg.room_id, response)
-
-            # Audio senden (WAV → OGG → Matrix)
-            await self._send_audio_if_available(msg.room_id, llm_result, tmp_wav)
-
-        except Exception as e:
-            logger.error(
-                "Datei-Verarbeitung fehlgeschlagen (%s): %s", file_name, e,
-                extra={"sender": msg.sender, "handler": "document"},
-            )
-            try:
-                await self._channel.send_text(
-                    msg.room_id,
-                    f"Fehler beim Verarbeiten von '{file_name}': {type(e).__name__}",
-                )
-            except Exception:
-                logger.error("Konnte Fehlermeldung nicht senden")
-        finally:
-            if tmp_file and tmp_file.exists():
-                tmp_file.unlink(missing_ok=True)
-
-    async def _handle_assistant_message(self, msg: IncomingMessage) -> None:
-        """Delegiert an Assistant.process() (bestehender Flow)."""
-        tmp_wav: Path | None = None
-
-        try:
-            loop = asyncio.get_running_loop()
-
-            # User-Nachricht in Chat-History speichern
-            self._chat_history.add(msg.sender, "user", msg.body)
-
-            # Chat-History als Kontext für das LLM
-            user_input = msg.body
-            chat_context = self._chat_history.format_for_prompt(msg.sender)
-
-            # Audio immer als Datei generieren (→ Matrix), nie lokal abspielen
-            tmp_wav = Path(tempfile.mktemp(suffix=".wav")) if self._audio_to_matrix else None
-            result = await asyncio.wait_for(
-                loop.run_in_executor(
-                    None, self._assistant.process, user_input,
-                    tmp_wav, chat_context,
-                ),
-                timeout=120.0,
-            )
-
-            # LLM hat multi_step als Aktion gewählt → TaskChainRunner
-            if (
-                result.action_executed == "multi_step"
-                and result.action_success
-                and self._task_chain
-            ):
-                await self._handle_multi_step(msg, result, chat_context)
-                return
-
-            # LLM hat remote_command als Aktion gewählt → an CommandHandler weiterleiten
-            if (
-                result.action_executed == "remote_command"
-                and result.action_success
-                and self._remote_commands
-            ):
-                await self._handle_llm_remote_command(msg, result)
-                return
-
-            # Antwort in Chat-History speichern
-            if result.response:
-                self._chat_history.add(msg.sender, "assistant", result.response)
-
-            # Textantwort senden
-            if result.response:
-                await self._channel.send_text(msg.room_id, result.response)
-
-            # Audio senden (WAV → OGG → Matrix)
-            await self._send_audio_if_available(msg.room_id, result, tmp_wav)
-
-        except asyncio.TimeoutError:
-            logger.error("Timeout bei LLM-Verarbeitung (120s)")
-            try:
-                await self._channel.send_text(
-                    msg.room_id,
-                    "Zeitüberschreitung bei der Verarbeitung. Bitte erneut versuchen.",
-                )
-            except Exception:
-                pass
-        except Exception as e:
-            logger.error(
-                "Fehler bei Nachrichtenverarbeitung: %s", e,
-                extra={"sender": msg.sender, "handler": "llm"},
-            )
-            try:
-                await self._channel.send_text(
-                    msg.room_id,
-                    f"Fehler bei der Verarbeitung: {type(e).__name__}",
-                )
-            except Exception:
-                logger.error("Konnte Fehlermeldung nicht senden")
-        finally:
-            # Temp-Dateien aufräumen
-            if tmp_wav and tmp_wav.exists():
-                tmp_wav.unlink(missing_ok=True)
-
-    async def _send_audio_if_available(
-        self, room_id: str, result, tmp_wav: Path | None,
-    ) -> None:
-        """Konvertiert WAV→OGG und sendet Audio an Matrix (wenn vorhanden).
-
-        Wenn AudioRouter auf matrix_and_local steht, wird das WAV zusätzlich
-        lokal abgespielt (sounddevice oder AgentClient).
-        """
-        if not result.audio_path or not result.audio_path.exists():
-            return
-        if not self._audio_converter:
-            return
-
-        tmp_ogg: Path | None = None
-        try:
-            tmp_ogg = result.audio_path.with_suffix(".ogg")
-            ogg_path, _duration = self._audio_converter.to_ogg_opus(
-                result.audio_path, output_path=tmp_ogg,
-            )
-            await self._channel.send_audio(room_id, ogg_path)
-            logger.debug("Sprachnachricht gesendet: %s", ogg_path.name)
-        except Exception as e:
-            logger.error("Audio-Senden fehlgeschlagen: %s", e)
-
-        # Lokale Wiedergabe (wenn AudioRouter das will und WAV noch existiert)
-        if (
-            self._audio_router
-            and self._audio_router.should_play_local()
-            and result.audio_path.exists()
-        ):
-            self._play_audio_local(result.audio_path)
-
-        # Cleanup
-        try:
-            if result.audio_path.exists():
-                result.audio_path.unlink(missing_ok=True)
-            if tmp_ogg and tmp_ogg.exists():
-                tmp_ogg.unlink(missing_ok=True)
-        except OSError as e:
-            logger.debug("Audio-Cleanup Fehler: %s", e)
-
-    def _play_audio_local(self, wav_path: Path) -> None:
-        """Spielt eine WAV-Datei lokal ab (sounddevice oder AgentClient)."""
-        # Versuch 1: AgentClient (Laptop-Wiedergabe)
-        agent = getattr(self._assistant, "_agent", None)
-        if agent is not None:
-            try:
-                agent.play_audio_file(wav_path)
-                logger.debug("Audio lokal via AgentClient abgespielt")
-                return
-            except Exception as e:
-                logger.debug("AgentClient-Wiedergabe fehlgeschlagen: %s", e)
-
-        # Versuch 2: sounddevice (Tower-Wiedergabe)
-        try:
-            import sounddevice as sd  # noqa: F811
-            import wave
-
-            with wave.open(str(wav_path), "rb") as wf:
-                frames = wf.readframes(wf.getnframes())
-                sd.play(
-                    __import__("numpy").frombuffer(frames, dtype="int16"),
-                    samplerate=wf.getframerate(),
-                    blocksize=4096,
-                )
-                sd.wait()
-            logger.debug("Audio lokal via sounddevice abgespielt")
-        except Exception as e:
-            logger.warning("Lokale Audio-Wiedergabe fehlgeschlagen: %s", e)
-
-    async def _handle_multi_step(
-        self, msg: IncomingMessage, llm_result, chat_context: str,
-    ) -> None:
-        """LLM hat multi_step gewählt → TaskChainRunner ausführen.
-
-        Sendet die initiale LLM-Antwort, dann Zwischenstatus pro Schritt,
-        und am Ende die Zusammenfassung.
-        """
-        # Initiale Antwort senden ("Ich kümmere mich darum...")
-        if llm_result.response:
-            self._chat_history.add(msg.sender, "assistant", llm_result.response)
-            await self._channel.send_text(msg.room_id, llm_result.response)
-
-        # Audio der initialen Antwort senden
-        await self._send_audio_if_available(msg.room_id, llm_result, None)
-
-        # Task-Beschreibung aus Params extrahieren
-        task_text = ""
-        if llm_result.action_params and isinstance(llm_result.action_params, dict):
-            task_text = llm_result.action_params.get("task", "")
-
-        if not task_text:
-            logger.warning("multi_step ohne task-Parameter")
-            return
-
-        logger.info("Multi-Step Chain gestartet: %s", task_text[:100])
-
-        try:
-            loop = asyncio.get_running_loop()
-
-            # Schritt-Callback: sendet Zwischenstatus an Matrix
-            step_messages: list[str] = []
-
-            def on_step(step) -> None:
-                status = "✓" if step.success else "✗"
-                step_messages.append(
-                    f"Schritt {step.step_number}: {step.command} [{status}]"
-                )
-
-            # Chain ausführen (blocking → Executor)
-            chain_result = await asyncio.wait_for(
-                loop.run_in_executor(
-                    None,
-                    lambda: self._task_chain.run(
-                        user_request=task_text,
-                        chat_history=chat_context,
-                        on_step=on_step,
-                    ),
-                ),
-                timeout=300.0,
-            )
-
-            # Zwischenstatus senden (alle Schritte zusammen)
-            if step_messages:
-                steps_text = "\n".join(step_messages)
-                await self._channel.send_text(
-                    msg.room_id, f"📋 Schritte:\n{steps_text}",
-                )
-
-            # Zusammenfassung senden
-            if chain_result.final_summary:
-                await self._channel.send_text(
-                    msg.room_id, chain_result.final_summary,
-                )
-                self._chat_history.add(
-                    msg.sender, "assistant", chain_result.final_summary,
-                )
-
-            logger.info(
-                "Multi-Step Chain abgeschlossen: %d Schritte, completed=%s",
-                chain_result.step_count,
-                chain_result.completed,
-            )
-
-        except asyncio.TimeoutError:
-            logger.error("Timeout bei Multi-Step Chain (300s)")
-            try:
-                await self._channel.send_text(
-                    msg.room_id,
-                    "Zeitüberschreitung bei der Multi-Step-Verarbeitung.",
-                )
-            except Exception:
-                pass
-        except Exception as e:
-            logger.error(
-                "Multi-Step Chain fehlgeschlagen: %s", e,
-                extra={"sender": msg.sender, "handler": "multi_step"},
-            )
-            try:
-                await self._channel.send_text(
-                    msg.room_id,
-                    f"Multi-Step Fehler: {type(e).__name__}",
-                )
-            except Exception:
-                logger.error("Konnte Multi-Step Fehlermeldung nicht senden")
-
-    async def _handle_llm_remote_command(
-        self, msg: IncomingMessage, llm_result,
-    ) -> None:
-        """LLM hat remote_command Aktion gewählt → Command ausführen.
-
-        Sendet die LLM-Antwort (z.B. "Ich suche nach der Rechnung...") als Text,
-        dann führt den eigentlichen Command aus und sendet dessen Ergebnis.
-        Bei Parse-Fehler: 1 Retry mit Feedback an das LLM.
-        """
-        # LLM-Antwort senden und in History speichern
-        if llm_result.response:
-            self._chat_history.add(msg.sender, "assistant", llm_result.response)
-            await self._channel.send_text(msg.room_id, llm_result.response)
-
-        # Audio der LLM-Antwort senden (wenn vorhanden)
-        await self._send_audio_if_available(msg.room_id, llm_result, None)
-
-        # Command aus LLM-Params extrahieren: {"command": "mail suche RK Bedachung"}
-        command_text = None
-        if llm_result.action_params and isinstance(llm_result.action_params, dict):
-            command_text = llm_result.action_params.get("command", "")
-
-        if not command_text:
-            logger.debug("LLM remote_command ohne command-Parameter")
-            return
-
-        logger.info("LLM → remote_command: %s", command_text)
-
-        # Command durch den Handler parsen und ausführen
-        cmd = self._remote_commands.parse_command(command_text)
-        if cmd:
-            cmd_msg = IncomingMessage(
-                sender=msg.sender,
-                room_id=msg.room_id,
-                body=command_text,
-                timestamp=msg.timestamp,
-            )
-            await self._handle_remote_command(cmd_msg, cmd)
-            return
-
-        # Parse fehlgeschlagen → Retry mit Feedback an das LLM
-        logger.info(
-            "LLM remote_command nicht erkannt: '%s' – starte Retry", command_text,
-        )
-        retry_cmd = await self._retry_llm_remote_command(msg, command_text)
-        if retry_cmd:
-            cmd_msg = IncomingMessage(
-                sender=msg.sender,
-                room_id=msg.room_id,
-                body=retry_cmd,
-                timestamp=msg.timestamp,
-            )
-            parsed = self._remote_commands.parse_command(retry_cmd)
-            if parsed:
-                await self._handle_remote_command(cmd_msg, parsed)
-                return
-
-        logger.warning(
-            "LLM remote_command nach Retry nicht erkannt: '%s'", command_text,
-        )
-
-    async def _retry_llm_remote_command(
-        self, msg: IncomingMessage, failed_command: str,
-    ) -> str | None:
-        """Gibt dem LLM Feedback über den fehlgeschlagenen Command und fordert Korrektur.
-
-        Returns:
-            Korrigierter Command-String oder None wenn Retry fehlschlägt.
-        """
-        summary = self._remote_commands.get_command_summary()
-        retry_prompt = (
-            f"Der Command '{failed_command}' wurde nicht erkannt. "
-            f"Verfügbare Remote-Commands:\n{summary}\n\n"
-            f"Antworte NUR mit dem korrekten Command-String, nichts anderes. "
-            f"Beispiel: mail suche Rechnung"
-        )
-
-        try:
-            loop = asyncio.get_running_loop()
-            chat_context = self._chat_history.format_for_prompt(msg.sender)
-            result = await asyncio.wait_for(
-                loop.run_in_executor(
-                    None, self._assistant.process, retry_prompt, None, chat_context,
-                ),
-                timeout=60.0,
-            )
-
-            # Korrigierten Command aus der LLM-Antwort extrahieren
-            if (
-                result.action_executed == "remote_command"
-                and result.action_params
-                and isinstance(result.action_params, dict)
-            ):
-                corrected = result.action_params.get("command", "")
-                if corrected:
-                    logger.info("LLM Retry → korrigierter Command: %s", corrected)
-                    return corrected
-
-            # Fallback: Vielleicht hat das LLM direkt den Command als Text geantwortet
-            if result.response:
-                raw = result.response.strip()
-                # Prüfe ob die rohe Antwort ein gültiger Command ist
-                if self._remote_commands.parse_command(raw):
-                    logger.info("LLM Retry → Command aus Response: %s", raw)
-                    return raw
-
-        except Exception as e:
-            logger.error("LLM Retry fehlgeschlagen: %s", e)
-
-        return None
+        # LLM-Fallback
+        await self._handler.handle_assistant_message(msg)
+
+    # ------------------------------------------------------------------
+    # Error Alerting
+    # ------------------------------------------------------------------
 
     def _setup_error_alerting(self) -> None:
-        """Verdrahtet den ErrorCollectorHandler mit Matrix-Alerting.
-
-        Sucht den ErrorCollectorHandler in den Root-Logger-Handlers und
-        setzt einen thread-safe Callback der Alerts in den async Loop dispatcht.
-        """
+        """Verdrahtet den ErrorCollectorHandler mit Matrix-Alerting."""
         from elder_berry.core.error_collector import ErrorCollectorHandler
 
         loop = self._loop
@@ -1439,140 +399,9 @@ class MatrixBridge:
         collector.set_alert_callback(alert)
         logger.info("Error-Alerting via Matrix aktiviert")
 
-    @staticmethod
-    def _release_instance_lock() -> None:
-        """Gibt den Singleton-Lock frei (für Restart).
-
-        Sucht die Lock-Freigabe-Funktion aus start_saleria.py und ruft sie auf.
-        Fallback: Lock-Datei direkt schließen/löschen.
-        """
-        # start_saleria.py registriert _release_instance_lock als atexit-Handler
-        # und speichert den File-Handle in _lock_fh. Wir importieren das Modul
-        # über sys.modules (es wurde als __main__ geladen).
-        main_module = sys.modules.get("__main__")
-        release_fn = getattr(main_module, "_release_instance_lock", None)
-        if callable(release_fn):
-            try:
-                release_fn()
-                logger.debug("Instanz-Lock über __main__ freigegeben")
-                return
-            except Exception as e:
-                logger.debug("Lock-Freigabe über __main__ fehlgeschlagen: %s", e)
-
-        # Fallback: Lock-Datei direkt löschen
-        lock_path = Path(sys.argv[0]).parent.parent / ".saleria.lock"
-        try:
-            lock_path.unlink(missing_ok=True)
-            logger.debug("Lock-Datei direkt gelöscht: %s", lock_path)
-        except Exception as e:
-            logger.debug("Lock-Datei löschen fehlgeschlagen: %s", e)
-
-    async def _perform_restart(
-        self, room_id: str, *, msg_server_ts: float = 0.0,
-    ) -> None:
-        """Schreibt Restart-Flag und startet den Prozess neu.
-
-        Wird innerhalb des Bridge-Threads aufgerufen, daher kein self.stop()
-        (Thread kann sich nicht selbst joinen). Stattdessen: disconnect → Flag → execv.
-
-        Args:
-            room_id: Room-ID für die Rückmeldung nach dem Restart.
-            msg_server_ts: Server-Timestamp der auslösenden Nachricht.
-                Wird ins Flag-File geschrieben damit der neue Prozess
-                Nachrichten vor diesem Zeitpunkt ignorieren kann.
-        """
-        logger.info("Restart angefordert, starte Prozess neu...")
-
-        # Flag-Datei schreiben: room_id + Server-Timestamp als ms-Integer (Zeile 2)
-        # Integer statt Float: vermeidet Rundungsfehler beim Rücklesen
-        flag_content = room_id
-        if msg_server_ts > 0:
-            flag_content += f"\n{int(msg_server_ts * 1000)}"
-        try:
-            RESTART_FLAG_FILE.write_text(flag_content, encoding="utf-8")
-        except Exception as e:
-            logger.error("Restart-Flag schreiben fehlgeschlagen: %s", e)
-
-        # Alle Scheduler stoppen
-        if self._scheduler_mgr:
-            self._scheduler_mgr.stop_all()
-
-        try:
-            await self._channel.disconnect()
-        except Exception as e:
-            logger.debug("Disconnect bei Restart (ignoriert): %s", e)
-
-        self._running = False
-
-        # Instanz-Lock freigeben BEVOR der neue Prozess startet,
-        # damit er den Lock sofort erwerben kann
-        self._release_instance_lock()
-
-        # Prozess ersetzen: gleiche Python-Exe + gleiche Argumente
-        python = sys.executable
-        args = sys.argv[:]
-
-        logger.info("Restart: %s %s", python, args)
-        try:
-            if sys.platform == "win32":
-                # Windows: os.execv startet neuen Prozess ohne den alten zu
-                # beenden → subprocess.Popen + os._exit stattdessen
-                subprocess.Popen([python, *args])
-                logger.info("Neuer Prozess gestartet, beende aktuellen...")
-                os._exit(0)
-            else:
-                # Linux/macOS: os.execv ersetzt den Prozess korrekt
-                os.execv(python, [python, *args])
-        except Exception as e:
-            logger.error("Restart fehlgeschlagen: %s", e)
-            # Fallback: Flag aufräumen
-            RESTART_FLAG_FILE.unlink(missing_ok=True)
-
-    @staticmethod
-    def _read_restart_timestamp() -> float:
-        """Liest den Server-Timestamp aus dem Restart-Flag (Zeile 2).
-
-        Flag-Format Zeile 2: Integer-Millisekunden (identisch mit
-        event.server_timestamp aus matrix-nio → keine Float-Rundungsfehler).
-
-        Returns:
-            Server-Timestamp in Sekunden (float) oder 0.0 wenn nicht vorhanden.
-        """
-        if not RESTART_FLAG_FILE.exists():
-            return 0.0
-        try:
-            lines = RESTART_FLAG_FILE.read_text(encoding="utf-8").strip().splitlines()
-            if len(lines) >= 2:
-                # ms-Integer → Sekunden-Float (gleiche Rechnung wie matrix_channel.py)
-                return int(lines[1]) / 1000.0
-        except (ValueError, OSError) as e:
-            logger.debug("Restart-Timestamp lesen fehlgeschlagen: %s", e)
-        return 0.0
-
-    @staticmethod
-    async def send_restart_notification(channel: MessageChannel) -> None:
-        """Prüft ob ein Restart-Flag existiert und sendet Begrüßung.
-
-        Wird beim Start aufgerufen (vor sync_loop). Löscht das Flag nach dem Senden.
-        Flag-Format: Zeile 1 = room_id, Zeile 2 = server_timestamp (optional).
-        """
-        if not RESTART_FLAG_FILE.exists():
-            return
-
-        try:
-            lines = RESTART_FLAG_FILE.read_text(encoding="utf-8").strip().splitlines()
-            RESTART_FLAG_FILE.unlink(missing_ok=True)
-
-            room_id = lines[0].strip() if lines else ""
-            if room_id:
-                await channel.send_text(
-                    room_id,
-                    "Bin wieder da! Neustart erfolgreich. ✅",
-                )
-                logger.info("Restart-Benachrichtigung gesendet an %s", room_id)
-        except Exception as e:
-            logger.error("Restart-Benachrichtigung fehlgeschlagen: %s", e)
-            RESTART_FLAG_FILE.unlink(missing_ok=True)
+    # ------------------------------------------------------------------
+    # Shutdown
+    # ------------------------------------------------------------------
 
     async def _shutdown(self) -> None:
         """Async Shutdown: Disconnect und Loop stoppen."""
@@ -1581,7 +410,6 @@ class MatrixBridge:
         except Exception as e:
             logger.debug("Disconnect-Fehler (ignoriert): %s", e)
 
-        # Alle laufenden Tasks abbrechen
         loop = asyncio.get_running_loop()
         for task in asyncio.all_tasks(loop):
             if task is not asyncio.current_task():

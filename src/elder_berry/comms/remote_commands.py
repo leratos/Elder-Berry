@@ -5,7 +5,12 @@ Delegiert an domänenspezifische Handler in comms/commands/:
 - CalendarCommandHandler: Termine CRUD + Suche
 - MailCommandHandler: Mails, Suche, Anhänge, per ID
 - FileCommandHandler: Clipboard, Send-File, Download
-- ProcessCommandHandler: Start/Kill, Git, Docker, WoL, Self-Update
+- ProcessCommandHandler: Prozess Start/Kill
+- GitCommandHandler: Git-Befehle (status, pull, log, diff)
+- DockerCommandHandler: Docker-Befehle (ps, restart, logs)
+- WolCommandHandler: Wake-on-LAN
+- UpdateCommandHandler: Self-Update, Rollback, Backup
+- SelfcheckCommandHandler: Systemgesundheitsprüfung
 - WeatherCommandHandler: Wetter, Timer, Erinnerungen, Briefing, Training
 - NoteCommandHandler: Notizen & Wissensdatenbank (optional, benötigt NoteStore)
 - AdvancedCommandHandler: Computer Use, Web-Suche, Dokumente, Audio
@@ -33,6 +38,11 @@ from elder_berry.comms.commands.calendar_commands import CalendarCommandHandler
 from elder_berry.comms.commands.mail_commands import MailCommandHandler
 from elder_berry.comms.commands.file_commands import FileCommandHandler
 from elder_berry.comms.commands.process_commands import ProcessCommandHandler
+from elder_berry.comms.commands.git_commands import GitCommandHandler
+from elder_berry.comms.commands.docker_commands import DockerCommandHandler
+from elder_berry.comms.commands.wol_commands import WolCommandHandler
+from elder_berry.comms.commands.update_commands import UpdateCommandHandler
+from elder_berry.comms.commands.selfcheck_commands import SelfcheckCommandHandler
 from elder_berry.comms.commands.weather_commands import WeatherCommandHandler
 from elder_berry.comms.commands.advanced_commands import AdvancedCommandHandler
 from elder_berry.comms.commands.camera_commands import CameraCommandHandler
@@ -300,10 +310,17 @@ class RemoteCommandHandler:
             download_dir=download_dir,
             send_file_allowed_roots=send_file_allowed_roots,
         )
-        self._process = ProcessCommandHandler(
-            secret_store=secret_store,
+        self._process = ProcessCommandHandler()
+        self._git = GitCommandHandler(project_root=project_root)
+        self._docker = DockerCommandHandler()
+        self._wol = WolCommandHandler(secret_store=secret_store)
+        self._update = UpdateCommandHandler(
             project_root=project_root,
             robot_client=robot_client,
+        )
+        self._selfcheck = SelfcheckCommandHandler(
+            project_root=project_root,
+            secret_store=secret_store,
         )
         self._weather = WeatherCommandHandler(
             weather=weather,
@@ -361,6 +378,11 @@ class RemoteCommandHandler:
             self._calendar,
             self._file,
             self._process,
+            self._git,
+            self._docker,
+            self._wol,
+            self._update,
+            self._selfcheck,
             self._turntable,
             self._camera,
         ]

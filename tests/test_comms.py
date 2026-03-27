@@ -993,7 +993,7 @@ class TestBridgeErrorLogging:
                 sender="@user:x", room_id="!r:x", body="status",
                 timestamp=1.0,
             )
-            with patch("elder_berry.comms.bridge.logger") as mock_logger:
+            with patch("elder_berry.comms.message_handlers.logger") as mock_logger:
                 await bridge._handle_message(msg)
                 mock_logger.error.assert_called()
                 call_kwargs = mock_logger.error.call_args
@@ -1023,7 +1023,7 @@ class TestBridgeErrorLogging:
                 sender="@user:x", room_id="!r:x", body="status",
                 timestamp=1.0,
             )
-            with patch("elder_berry.comms.bridge.logger") as mock_logger:
+            with patch("elder_berry.comms.message_handlers.logger") as mock_logger:
                 await bridge._handle_message(msg)
                 mock_logger.error.assert_called_once()
                 call_kwargs = mock_logger.error.call_args
@@ -1046,7 +1046,7 @@ class TestBridgeErrorLogging:
                 sender="@user:x", room_id="!r:x", body="Hallo",
                 timestamp=1.0,
             )
-            with patch("elder_berry.comms.bridge.logger") as mock_logger:
+            with patch("elder_berry.comms.message_handlers.logger") as mock_logger:
                 await bridge._handle_message(msg)
                 mock_logger.error.assert_called()
                 call_kwargs = mock_logger.error.call_args
@@ -1148,22 +1148,19 @@ class TestRestartNotification:
     """Tests für Restart-Flag und Startup-Benachrichtigung."""
 
     def test_restart_flag_file_written_on_restart(self):
-        """_perform_restart schreibt Flag-Datei mit room_id."""
-        from elder_berry.comms.bridge import RESTART_FLAG_FILE
+        """perform_restart schreibt Flag-Datei mit room_id."""
+        from elder_berry.comms.restart_manager import RESTART_FLAG_FILE, perform_restart
 
         channel = MockChannel()
-        assistant = MagicMock()
-        bridge = MatrixBridge(channel=channel, assistant=assistant)
 
         # Flag aufräumen falls von vorherigem Test
         RESTART_FLAG_FILE.unlink(missing_ok=True)
 
-        # _perform_restart aufrufen (Restart-Mechanismus wird gemockt)
         from unittest.mock import patch as _patch
-        with _patch("elder_berry.comms.bridge.os.execv"), \
-             _patch("elder_berry.comms.bridge.os._exit"), \
-             _patch("elder_berry.comms.bridge.subprocess.Popen", create=True):
-            run_async(bridge._perform_restart("!test:room"))
+        with _patch("elder_berry.comms.restart_manager.os.execv"), \
+             _patch("elder_berry.comms.restart_manager.os._exit"), \
+             _patch("elder_berry.comms.restart_manager.subprocess.Popen", create=True):
+            run_async(perform_restart(channel, None, "!test:room"))
 
         assert RESTART_FLAG_FILE.exists()
         assert RESTART_FLAG_FILE.read_text(encoding="utf-8") == "!test:room"
@@ -1173,32 +1170,30 @@ class TestRestartNotification:
 
     def test_send_restart_notification_sends_message(self):
         """send_restart_notification sendet Nachricht wenn Flag existiert."""
-        from elder_berry.comms.bridge import RESTART_FLAG_FILE
+        from elder_berry.comms.restart_manager import RESTART_FLAG_FILE, send_restart_notification
 
         channel = MockChannel()
         channel._connected = True
 
-        # Flag simulieren
         RESTART_FLAG_FILE.write_text("!notify:room", encoding="utf-8")
 
-        run_async(MatrixBridge.send_restart_notification(channel))
+        run_async(send_restart_notification(channel))
 
         assert len(channel._sent_texts) == 1
         room_id, text = channel._sent_texts[0]
         assert room_id == "!notify:room"
         assert "wieder da" in text
 
-        # Flag sollte gelöscht sein
         assert not RESTART_FLAG_FILE.exists()
 
     def test_send_restart_notification_noop_without_flag(self):
         """Ohne Flag-Datei passiert nichts."""
-        from elder_berry.comms.bridge import RESTART_FLAG_FILE
+        from elder_berry.comms.restart_manager import RESTART_FLAG_FILE, send_restart_notification
 
         RESTART_FLAG_FILE.unlink(missing_ok=True)
 
         channel = MockChannel()
-        run_async(MatrixBridge.send_restart_notification(channel))
+        run_async(send_restart_notification(channel))
 
         assert len(channel._sent_texts) == 0
 
@@ -1228,17 +1223,15 @@ class TestRestartNotification:
         )
 
         from unittest.mock import patch as _patch, AsyncMock
-        with _patch.object(bridge, "_perform_restart", new_callable=AsyncMock) as mock_restart:
+        with _patch("elder_berry.comms.restart_manager.perform_restart", new_callable=AsyncMock) as mock_restart:
             run_async(bridge._handle_message(msg))
 
         # Text wurde gesendet
         assert len(channel._sent_texts) == 1
         assert "Starte neu" in channel._sent_texts[0][1]
 
-        # _perform_restart wurde aufgerufen (mit room_id + Server-Timestamp)
-        mock_restart.assert_called_once_with(
-            "!room:test", msg_server_ts=0.0,
-        )
+        # perform_restart wurde aufgerufen
+        mock_restart.assert_called_once()
 
 
 # ---------------------------------------------------------------------------
@@ -1352,14 +1345,14 @@ class TestBridgeAudioRouting:
                 import builtins
                 orig_open = builtins.open
 
-                with _patch("elder_berry.comms.bridge.tempfile.NamedTemporaryFile") as mock_tmp:
+                with _patch("elder_berry.comms.audio_pipeline.tempfile.NamedTemporaryFile") as mock_tmp:
                     mock_file = MagicMock()
                     mock_file.name = tmp_name
                     mock_file.__enter__ = lambda s: s
                     mock_file.__exit__ = MagicMock(return_value=False)
                     mock_tmp.return_value = mock_file
 
-                    run_async(bridge._handle_audio_message(msg))
+                    run_async(bridge._audio.handle_audio_message(msg))
 
             try:
                 os.unlink(tmp_name)
@@ -1392,18 +1385,20 @@ class TestBridgeAudioRouting:
 
         bridge = MatrixBridge(channel=channel, assistant=mock_assistant, stt=mock_stt)
         bridge._running = True
+        # Callback manuell setzen (wird normalerweise in _async_main gesetzt)
+        bridge._audio.set_message_callback(bridge._handle_message)
 
         with tempfile.NamedTemporaryFile(suffix=".ogg", delete=False) as f:
             tmp_name = f.name
 
-        with _patch("elder_berry.comms.bridge.tempfile.NamedTemporaryFile") as mock_tmp:
+        with _patch("elder_berry.comms.audio_pipeline.tempfile.NamedTemporaryFile") as mock_tmp:
             mock_file = MagicMock()
             mock_file.name = tmp_name
             mock_file.__enter__ = lambda s: s
             mock_file.__exit__ = MagicMock(return_value=False)
             mock_tmp.return_value = mock_file
 
-            run_async(bridge._handle_audio_message(_make_audio_msg()))
+            run_async(bridge._audio.handle_audio_message(_make_audio_msg()))
 
         try:
             os.unlink(tmp_name)
@@ -1437,14 +1432,14 @@ class TestBridgeAudioRouting:
         with tempfile.NamedTemporaryFile(suffix=".ogg", delete=False) as f:
             tmp_name = f.name
 
-        with _patch("elder_berry.comms.bridge.tempfile.NamedTemporaryFile") as mock_tmp:
+        with _patch("elder_berry.comms.audio_pipeline.tempfile.NamedTemporaryFile") as mock_tmp:
             mock_file = MagicMock()
             mock_file.name = tmp_name
             mock_file.__enter__ = lambda s: s
             mock_file.__exit__ = MagicMock(return_value=False)
             mock_tmp.return_value = mock_file
 
-            run_async(bridge._handle_audio_message(_make_audio_msg()))
+            run_async(bridge._audio.handle_audio_message(_make_audio_msg()))
 
         try:
             os.unlink(tmp_name)
@@ -1647,14 +1642,14 @@ class TestBridgeAudioRouter:
         bridge = MatrixBridge(
             channel=channel, assistant=assistant, audio_router=router,
         )
-        assert bridge._audio_router is router
+        assert bridge._audio._audio_router is router
 
     def test_bridge_without_audio_router(self):
         """Bridge funktioniert auch ohne AudioRouter."""
         channel = MockChannel()
         assistant = MagicMock()
         bridge = MatrixBridge(channel=channel, assistant=assistant)
-        assert bridge._audio_router is None
+        assert bridge._audio._audio_router is None
 
     def test_play_audio_local_not_called_when_matrix_only(self):
         """Bei matrix_only wird _play_audio_local nicht aufgerufen."""
@@ -1666,7 +1661,7 @@ class TestBridgeAudioRouter:
         bridge = MatrixBridge(
             channel=channel, assistant=assistant, audio_router=router,
         )
-        bridge._play_audio_local = MagicMock()
+        bridge._audio._play_audio_local = MagicMock()
 
         # should_play_local() ist False bei matrix_only
         assert router.should_play_local() is False

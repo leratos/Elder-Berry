@@ -2439,3 +2439,45 @@ User: "Lies meine Mails und trag den Zahnarzttermin ein"
 - 68/68 neue Tests grün
 - 136/136 bestehende Tests (mail_reply, intent_routing) grün
 - 65/65 remote_commands Parse-Tests grün
+
+## Abgeschlossen: Phase 31 – Bridge Refactoring (Technische Schulden) (2026-03-27)
+- Branch: feature/phase-31-bridge-refactoring
+
+### Teilschritt 1: process_commands.py aufteilen (1142 → 6 Dateien)
+- process_commands.py: 1142 → 200 Zeilen (nur noch Start/Kill Prozesse)
+- Neue Dateien:
+  - commands/git_commands.py: GitCommandHandler (124 Zeilen)
+  - commands/docker_commands.py: DockerCommandHandler (124 Zeilen)
+  - commands/wol_commands.py: WolCommandHandler (114 Zeilen)
+  - commands/update_commands.py: UpdateCommandHandler (449 Zeilen)
+  - commands/selfcheck_commands.py: SelfcheckCommandHandler (256 Zeilen)
+  - commands/cmd_utils.py: CmdResult + run_cmd (53 Zeilen)
+- remote_commands.py: 6 neue Handler registriert (Handler-Liste erweitert)
+
+### Teilschritt 2: bridge.py aufteilen (1589 → 4 Dateien)
+- bridge.py: 1589 → 417 Zeilen (74% Reduktion, nur Lifecycle + Dispatcher)
+- Neue Dateien:
+  - comms/message_handlers.py: BridgeMessageHandler (774 Zeilen)
+  - comms/audio_pipeline.py: AudioPipeline (315 Zeilen)
+  - comms/restart_manager.py: Restart-Funktionen (152 Zeilen)
+- Bridge delegiert via Komposition an Handler, AudioPipeline, RestartManager
+
+### Teilschritt 3: start_saleria.py refactoren
+- run_matrix() (377 Zeilen) in 3 Helper-Funktionen aufgeteilt:
+  - _init_matrix_channel(): Channel + Credentials
+  - _init_productivity_services(): Calendar, Email, Contacts, Todos, etc.
+  - _init_context_and_tools(): ContextEnricher, CalendarWatcher, Werkzeuge
+- run_matrix() selbst: ~120 Zeilen Orchestrierung
+
+### Geaenderte Dateien
+- src/elder_berry/comms/commands/process_commands.py (verschlankt)
+- src/elder_berry/comms/bridge.py (verschlankt)
+- src/elder_berry/comms/remote_commands.py (neue Handler registriert)
+- scripts/start_saleria.py (refactored)
+- tests/test_self_update.py (Imports aktualisiert)
+- tests/test_remote_commands.py (Imports aktualisiert)
+- tests/test_comms.py (Patch-Pfade aktualisiert)
+- tests/test_intent_routing.py (Attribut-Zugriffe aktualisiert)
+
+### Tests
+- 1866/1866 bestehende Tests gruen, keine Regressionen
