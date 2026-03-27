@@ -1124,8 +1124,17 @@ class TestBridgeAlertMonitor:
             channel=channel,
             assistant=assistant,
             alert_monitor=alert_monitor,
+            alert_room_id="!test:matrix.org",
         )
         bridge._running = True
+        # SchedulerManager simulieren: AlertMonitor registrieren
+        from elder_berry.comms.scheduler_manager import SchedulerManager
+        bridge._scheduler_mgr = SchedulerManager(
+            channel=channel, room_id="!test:matrix.org",
+        )
+        bridge._scheduler_mgr.register(
+            "AlertMonitor", alert_monitor, "_send_alert",
+        )
         bridge.stop()
 
         alert_monitor.stop.assert_called_once()
