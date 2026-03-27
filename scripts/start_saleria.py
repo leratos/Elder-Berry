@@ -480,6 +480,29 @@ def run_matrix(assistant, stt=None, avatar=None, audio_converter=None, robot=Non
         except Exception as e:
             logger.warning("EmailSender nicht verfügbar: %s", e)
 
+    # ContactStore (Phase 29)
+    contact_store = None
+    try:
+        from elder_berry.tools.contact_store import ContactStore
+        contact_store = ContactStore()
+        logger.info("ContactStore initialisiert: %s", contact_store._db_path)
+    except Exception as e:
+        logger.warning("ContactStore nicht verfügbar: %s", e)
+
+    # TodoStore (Phase 30)
+    todo_store = None
+    try:
+        from elder_berry.tools.todo_store import TodoStore
+        todo_store = TodoStore()
+        logger.info("TodoStore initialisiert: %s", todo_store._db_path)
+    except Exception as e:
+        logger.warning("TodoStore nicht verfügbar: %s", e)
+
+    # Default-User-ID für Stores (erster konfigurierter Sender)
+    default_user_id = (
+        secrets.get_or_none("matrix_allowed_senders") or ""
+    ).split(",")[0].strip()
+
     # Berry-Gym (optional)
     gym_client = None
     if secrets.get_or_none("berry_gym_api_token"):
@@ -524,6 +547,8 @@ def run_matrix(assistant, stt=None, avatar=None, audio_converter=None, robot=Non
             calendar=calendar,
             weather=weather,
             reminder_store=reminder_store,
+            todo_store=todo_store,
+            default_user_id=default_user_id,
             briefing_hour=7,
             briefing_minute=30,
         )
@@ -550,9 +575,7 @@ def run_matrix(assistant, stt=None, avatar=None, audio_converter=None, robot=Non
             weather_client=weather,
             memory_store=assistant._memory,
             llm=assistant._llm,
-            default_user_id=(
-                secrets.get_or_none("matrix_allowed_senders") or ""
-            ).split(",")[0].strip(),
+            default_user_id=default_user_id,
         )
         sources = [s for s, v in [
             ("Notes", note_store), ("Mail", email_client),
@@ -652,8 +675,11 @@ def run_matrix(assistant, stt=None, avatar=None, audio_converter=None, robot=Non
         computer_use=computer_use,
         search_client=search_client,
         note_store=note_store,
+        contact_store=contact_store,
+        todo_store=todo_store,
         robot_client=robot,
         anthropic_client=vision_client,
+        default_user_id=default_user_id,
     )
 
     # Assistant: dynamischer Command-Prompt aus Handler-Definitionen

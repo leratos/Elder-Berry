@@ -19,6 +19,7 @@ from elder_berry.comms.commands.base import CommandHandler, CommandResult
 
 if TYPE_CHECKING:
     from elder_berry.core.anthropic_client import AnthropicClient
+    from elder_berry.tools.contact_store import ContactStore
     from elder_berry.tools.email_client import IMAPEmailClient
 
 logger = logging.getLogger(__name__)
@@ -100,9 +101,13 @@ class MailCommandHandler(CommandHandler):
         self,
         email_client: IMAPEmailClient | None = None,
         anthropic_client: AnthropicClient | None = None,
+        contact_store: ContactStore | None = None,
+        default_user_id: str = "",
     ) -> None:
         self._email_client = email_client
         self._anthropic = anthropic_client
+        self._contacts = contact_store
+        self._default_user_id = default_user_id
 
     # -- CommandHandler interface ------------------------------------------
 
@@ -572,7 +577,20 @@ class MailCommandHandler(CommandHandler):
             f"Anweisung des Nutzers: {instruction}\n\n"
             f"Schreibe jetzt die Antwort-Mail (nur den Body, keine Header)."
         )
-        return self._anthropic.generate(prompt, system=EMAIL_SYSTEM_PROMPT)
+        # Kontakt-Lookup per Absender-Email (Phase 29)
+        system = EMAIL_SYSTEM_PROMPT
+        if self._contacts and self._default_user_id:
+            sender_email = self._extract_email_address(original.sender)
+            contact = self._contacts.find_by_email(
+                self._default_user_id, sender_email,
+            )
+            if contact:
+                system += (
+                    f"\n\nKontext zum Empfänger:\n"
+                    f"{contact.format_for_llm()}\n"
+                )
+
+        return self._anthropic.generate(prompt, system=system)
 
     def _parse_reply_args(self, raw_text: str) -> tuple[str, str]:
         """Extrahiert Mail-ID und Anweisung aus dem Command-Text.
