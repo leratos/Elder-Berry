@@ -20,6 +20,7 @@ if TYPE_CHECKING:
     from elder_berry.avatar.base import AvatarRenderer
     from elder_berry.character.base import CharacterEngine
     from elder_berry.comms.remote_commands import RemoteCommandHandler
+    from elder_berry.core.smart_context import SmartContextProvider
     from elder_berry.memory.base import MemoryStore
     from elder_berry.robot.client import RobotClient
     from elder_berry.system.info import SystemMonitor
@@ -63,6 +64,7 @@ class Assistant:
         system_monitor: SystemMonitor | None = None,
         memory: MemoryStore | None = None,
         remote_commands: RemoteCommandHandler | None = None,
+        smart_context: SmartContextProvider | None = None,
     ) -> None:
         self._llm = llm
         self._actions_db = actions_db
@@ -75,6 +77,7 @@ class Assistant:
         self._system_monitor = system_monitor
         self._memory = memory
         self._remote_commands = remote_commands
+        self._smart_context = smart_context
         self._session_id: str = memory.new_session() if memory else ""
         self._agent_online_cache: bool | None = None
 
@@ -105,9 +108,11 @@ class Assistant:
         self._agent_online_cache = None
 
         memory_context = self._get_memory_context(user_input)
+        smart_context = self._get_smart_context(user_input)
         system_prompt = self._build_system_prompt(
             memory_context=memory_context,
             chat_history=chat_history,
+            smart_context=smart_context,
         )
         logger.debug("System-Prompt: %d Zeichen", len(system_prompt))
 
@@ -257,6 +262,7 @@ class Assistant:
 
     def _build_system_prompt(
         self, memory_context: str = "", chat_history: str = "",
+        smart_context: str = "",
     ) -> str:
         """Generiert System-Prompt – aus CharacterEngine oder Fallback-Template."""
         db_actions = self._actions_db.list_all()
@@ -288,6 +294,8 @@ class Assistant:
                 prompt += f"\n\n{mood_context}"
             if robot_status:
                 prompt += f"\n\n{robot_status}"
+            if smart_context:
+                prompt += f"\n\n{smart_context}"
             if chat_history:
                 prompt += f"\n\n{chat_history}"
             return prompt
@@ -298,6 +306,7 @@ class Assistant:
             current_datetime=current_dt,
             memory_context=memory_context,
             remote_commands=remote_commands,
+            smart_context=smart_context,
         )
         if chat_history:
             full_prompt += f"\n\n{chat_history}"
@@ -317,6 +326,16 @@ class Assistant:
             return ctx.to_prompt_text() if not ctx.is_empty() else ""
         except Exception as e:
             logger.warning("Memory-Abruf fehlgeschlagen: %s", e)
+            return ""
+
+    def _get_smart_context(self, user_input: str) -> str:
+        """Ruft kontextuelle Informationen aus Stores ab (keyword-basiert)."""
+        if not self._smart_context:
+            return ""
+        try:
+            return self._smart_context.get_context(user_input)
+        except Exception as e:
+            logger.warning("SmartContext-Abruf fehlgeschlagen: %s", e)
             return ""
 
     def _save_to_memory(

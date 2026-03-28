@@ -42,5 +42,7 @@ WICHTIG: Führe nur dann eine Aktion aus, wenn der Nutzer explizit danach fragt.
 Bei normalen Fragen oder Gesprächen setze "action" auf null und antworte direkt.
 Antworte immer auf Deutsch.
 
+{smart_context}
+
 {memory_context}
 """

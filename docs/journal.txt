@@ -2533,3 +2533,38 @@ User: "Lies meine Mails und trag den Zahnarzttermin ein"
 ### Tests
 - 128/128 neue Tests grün
 - Bestehende Tests: keine Regressionen (467 relevante Tests verifiziert)
+
+## Abgeschlossen: Phase 33 – Smart Context Layer (2026-03-28)
+- Branch: feature/phase-33-smart-context-layer
+
+### Neue Dateien
+- src/elder_berry/core/smart_context.py: SmartContextProvider (~280 Zeilen)
+  - Keyword-basierte Input-Analyse: erkennt welche Stores relevant sind
+  - 6 Quellen: Calendar, Todos, Notes, Contacts, Reminders, Weather
+  - 11 Meta-Phrasen ("was muss ich", "briefing", "tagesplan", etc.) → multi-source
+  - Parallele Abfrage via ThreadPoolExecutor, 3s Timeout pro Quelle
+  - Graceful Degradation: fehlende/fehlerhafte Stores werden übersprungen
+  - Formatiert Ergebnisse als "=== Aktueller Kontext ===" Block
+- tests/test_smart_context.py: 52 Tests (Keyword-Erkennung, Query-Methoden,
+  Integration, Timeout, Fehlerbehandlung, Edge Cases)
+
+### Geänderte Dateien
+- src/elder_berry/core/assistant.py:
+  - __init__(): neuer optionaler Parameter smart_context
+  - process(): ruft _get_smart_context(user_input) auf
+  - _build_system_prompt(): injiziert smart_context Block vor memory_context
+- src/elder_berry/core/prompts.py: {smart_context} Platzhalter im Template
+- scripts/start_saleria.py:
+  - _init_context_and_tools(): erstellt SmartContextProvider mit allen Stores
+  - run_matrix(): setzt assistant._smart_context
+
+### Architektur-Entscheidungen
+- Eigene Klasse, eigene Datei (kein Umbau des bestehenden ContextEnricher)
+- ContextEnricher bleibt für CalendarWatcher-Alerts (Event-spezifisch)
+- SmartContextProvider ist für allgemeine LLM-Anfragen (Input-basiert)
+- Keyword-basiert statt LLM-Klassifikation: keine zusätzliche Latenz
+- DI über Konstruktor: alle Stores optional, wie bei ContextEnricher
+
+### Tests
+- 52/52 neue Tests grün
+- 2754/2754 Gesamttests grün, keine Regressionen
