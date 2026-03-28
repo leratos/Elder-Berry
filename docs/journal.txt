@@ -2515,3 +2515,21 @@ User: "Lies meine Mails und trag den Zahnarzttermin ein"
 ### Tests
 - 410/410 neue Tests gruen
 - Bestehende Tests: keine Regressionen
+
+## Abgeschlossen: Phase 32 (Fortsetzung) – 4 fehlende Testdateien (2026-03-28)
+- Branch: feature/phase-32-test-offensive
+
+### 4 neue Testdateien (128 Tests)
+- tests/test_anthropic_client.py: 48 Tests (Init, Availability, Internals, generate, describe_image, computer_use, _parse_response)
+- tests/test_ollama_client.py: 18 Tests (Init, is_available, generate mit Payload/Timeout/Fehler)
+- tests/test_openrouter_client.py: 16 Tests (Init, is_available, generate mit Auth/Payload/Fehler)
+- tests/test_bridge.py: 46 Tests (Message-Filtering, Sender-Whitelist, Audio/File-Dispatch, Pending-Confirmation, Lifecycle, Restart-Erkennung, ErrorAlerting, Scheduler-Integration, Dispatch-Priorität)
+
+### Erkenntnisse
+- AnthropicClient: RateLimitError ist Subklasse von APIStatusError → except-Reihenfolge bewirkt dass RateLimitError vom APIStatusError-Handler gefangen wird (toter Code in except RateLimitError)
+- Bridge: frozenset() (leer) ist falsy → leere allowed_senders = kein Filter (Design-Entscheidung, kein Bug)
+- Bestehender Test test_screenshot_result_shape hängt bei Ausführung (mss-Screenshot-Capture) – nicht von Phase-32-Änderungen verursacht
+
+### Tests
+- 128/128 neue Tests grün
+- Bestehende Tests: keine Regressionen (467 relevante Tests verifiziert)
