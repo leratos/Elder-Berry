@@ -1,4 +1,4 @@
-# Elder-Berry – Project Roadmap
+﻿# Elder-Berry – Project Roadmap
 
 ---
 
@@ -518,32 +518,71 @@ To-Do-Liste mit Prioritäten, Kategorien und Briefing-Integration.
 - **Konzept**: `docs/concepts/phase-30-todo-liste.md`
 
 
-## Phase 36 – Smart Home Integration 🏠 GEPLANT
+## Phase 34 – Briefing 2.0 ✅ ABGESCHLOSSEN
+
+Personalisiertes Morgenbriefing mit Geburtstagen, offenen E-Mails,
+"Vor einem Jahr"-Notizen und Wochenend-Variante.
+
+- ✅ Geburtstage aus ContactStore (birthday-Feld: YYYY-MM-DD / 0000-MM-DD)
+- ✅ Offene E-Mails (Anzahl ungelesener Mails als Einzeiler)
+- ✅ Flashback-Notizen (≥330 Tage alte Notizen aus NoteStore)
+- ✅ Wochenend-Variante (entspannter Ton, Todos/Erinnerungen ausgeblendet)
+- ✅ Tests: 18 neue Tests, 2772 gesamt grün
+
+## Phase 35 – Web-Zusammenfassung 🌐 GEPLANT
+
+"Fasse https://... zusammen" als neuer Command. Natürliche Erweiterung von
+DocumentReader (Phase 16) auf Web-Inhalte.
+
+- **WebFetcher**: `httpx` (bereits vorhanden) + `trafilatura` für Text-Extraktion
+- **WebSummaryCommandHandler**: Pattern `fasse .* zusammen` / `zusammenfassung von .*`
+- **LLM-Pipeline**: bereits vorhanden (gleiche Logik wie Dokument-Zusammenfassung)
+- **Fallback**: Brave Search Snippet wenn URL nicht abrufbar (robots.txt, Paywall)
+- **Aufwand**: 1–2 Tage
+- **Konzept**: `docs/concepts/phase-35-web-zusammenfassung.md`
+
+## Phase 36 – Dashboard 2.0 (Modulare Smart Home PWA) 📱 GEPLANT
+
+Mobile-first PWA auf dem Rootserver als modulare UI-Grundlage für Phase 37+.
+Ersetzt keine bestehenden Tools — das AudioDashboard (Tower :8090) bleibt als Dev-Settings.
+
+- **PWA**: installierbar auf Handy, HTTPS, Rootserver
+- **Modul-Architektur**: jedes Modul eigenständige JS-Klasse, ein-/ausblendbar
+- **Modul 1**: Harmony Remote (Phase 37.1 — RPi5 :8001/harmony/*)
+- **Modul 2**: System-Status (RPi5 + Tower Health, immer sichtbar)
+- **Modul 3**: Saleria-Status (Tower-abhängig, graceful offline)
+- **Modul 4**: Home Assistant (Platzhalter, Phase 37.3)
+- **Service Worker**: Offline-Cache für statische Assets
+- **Design**: Weiterführung der bestehenden Ästhetik (#1a1a2e, Saleria-Lila)
+- **Konzept**: `docs/concepts/phase-36-dashboard-2.0.md`
+- **Abhängigkeit**: wird parallel zu Phase 37.1 implementiert
+
+## Phase 37 – Smart Home Integration 🏠 GEPLANT
 
 Vollständige lokale Smart-Home-Steuerung über eine erweiterbare Adapter-Architektur.
 Logitech-Cloud wird sofort abgelöst (nicht erst bei Server-Shutdown).
 
 ### Unterphasen
-- **36.1** Harmony Hub vollständige Ablösung (HarmonyAdapter auf RPi5, Config-Mock-Server, PWA)
-- **36.2** SmartHomeInterface ABC + SmartHomeRegistry (Plugin-Architektur, Tower)
-- **36.3** Home Assistant Adapter (REST API, lokal, nach Umzug)
-- **36.4** Alexa-Integration via Emulated Hue (RPi5, nach Umzug + HA stabil)
+- **37.1** Harmony Hub vollständige Ablösung (HarmonyAdapter auf RPi5, Config-Mock-Server, PWA)
+- **37.2** SmartHomeInterface ABC + SmartHomeRegistry (Plugin-Architektur, Tower)
+- **37.3** Home Assistant Adapter (REST API, lokal, nach Umzug)
+- **37.4** Alexa-Integration via Emulated Hue (RPi5, nach Umzug + HA stabil)
 
-- **Konzept**: `docs/concepts/phase-36-smart-home-integration.md`
-- **Abhängigkeit**: 36.3/36.4 nach Umzug; 36.1+36.2 sofort
+- **Konzept**: `docs/concepts/phase-37-smart-home-integration.md`
+- **Abhängigkeit**: 37.3/37.4 nach Umzug; 37.1+37.2 sofort
 
-## Phase 37 – Sprachsteuerung / Alexa-Ablösung 🎙️ GEPLANT
+## Phase 38 – Sprachsteuerung / Alexa-Ablösung 🎙️ GEPLANT
 
 Saleria erhält eine eigene Sprachschnittstelle — unabhängig von Amazon.
 Zwei Modi werden parallel unterstützt, sodass zwischen Alexa und Saleria
 gewechselt werden kann (Flexibilität, kein harter Cut).
 
 ### Unterphasen
-- **37.1** Alexa Skill "Saleria" (Proxy-Modus, keine neue Hardware)
+- **38.1** Alexa Skill "Saleria" (Proxy-Modus, keine neue Hardware)
   → Echo macht Wake Word + STT, Text geht an Salerias API
-- **37.2** Natives Wake Word + Mic Array (vollständige Unabhängigkeit)
+- **38.2** Natives Wake Word + Mic Array (vollständige Unabhängigkeit)
   → OpenWakeWord auf RPi5, faster-whisper auf Tower-GPU
   → Hardware: ReSpeaker USB Array (~60€) oder Umbau vorhandener Hardware
 
-- **Konzept**: `docs/concepts/phase-37-sprachsteuerung.md`
-- **Abhängigkeit**: 37.1 nach 36.4; 37.2 nach 37.1 (Hardware-Entscheidung)
+- **Konzept**: `docs/concepts/phase-38-sprachsteuerung.md`
+- **Abhängigkeit**: 38.1 nach 37.4; 38.2 nach 38.1 (Hardware-Entscheidung)

@@ -1,4 +1,4 @@
-# Phase 36 – Smart Home Integration
+# Phase 37 – Smart Home Integration
 
 ## Übersicht & Architekturprinzip
 
@@ -27,10 +27,10 @@ SmartHomeCommandHandler
 
 | Phase | Titel | Abhängigkeit | Priorität |
 |-------|-------|-------------|-----------|
-| 36.1 | Harmony Hub – vollständige Ablösung | keine | sofort |
-| 36.2 | SmartHomeInterface + Plugin-Registry | 36.1 als Referenzimplementierung | nach 36.1 |
-| 36.3 | Home Assistant Adapter | 36.2 | parallel möglich |
-| 36.4 | Alexa-Integration (Emulated Hue) | 36.1 + 36.3 | nach Umzug |
+| 37.1 | Harmony Hub – vollständige Ablösung | keine | sofort |
+| 37.2 | SmartHomeInterface + Plugin-Registry | 37.1 als Referenzimplementierung | nach 37.1 |
+| 37.3 | Home Assistant Adapter | 37.2 | parallel möglich |
+| 37.4 | Alexa-Integration (Emulated Hue) | 37.1 + 37.3 | nach Umzug |
 
 **Begründung für sofortige Logitech-Ablösung (36.1):**
 - Letztes Logitech-Server-Update: September 2024
@@ -40,7 +40,7 @@ SmartHomeCommandHandler
 
 ---
 
-# Phase 36.1 – Harmony Hub: Vollständige Logitech-Ablösung
+# Phase 37.1 – Harmony Hub: Vollständige Logitech-Ablösung
 
 ## Deployment-Entscheidung: HarmonyAdapter läuft auf dem RPi5
 
@@ -102,7 +102,7 @@ Saleria → HarmonyAdapter.start_activity("Fernsehen") → Hub
 
 ---
 
-## 36.1.A – Schritt 0: Konfigurations-Backup (einmalig, sofort)
+## 37.1.A – Schritt 0: Konfigurations-Backup (einmalig, sofort)
 
 Solange Logitech-Server noch läuft — dieser Schritt ist zeitkritisch.
 
@@ -126,7 +126,7 @@ damit `harmony_hub_ip` in der Konfiguration dauerhaft stimmt.
 
 ---
 
-## 36.1.B – HarmonyAdapter (läuft auf RPi5)
+## 37.1.B – HarmonyAdapter (läuft auf RPi5)
 
 **Datei**: `src/elder_berry/robot/harmony_adapter.py`
 
@@ -281,7 +281,7 @@ _DEFAULT_CONFIG_PATH = Path.home() / ".elder-berry" / "harmony_config.json"
 
 ---
 
-## 36.1.C – Config-Mock-Server (Logitech vollständig ablösen)
+## 37.1.C – Config-Mock-Server (Logitech vollständig ablösen)
 
 **Ziel**: Der Hub kann weiterhin Konfigurationsänderungen vornehmen (neue Geräte,
 Aktivitäten ändern) — ohne dass Logitechs Server erreichbar sein muss.
@@ -420,7 +420,7 @@ Für 36.1 reicht Option 1 + 3. Option 2 als spätere Erweiterung.
 
 ---
 
-## 36.1.D – HarmonyCommandHandler
+## 37.1.D – HarmonyCommandHandler
 
 **Datei**: `src/elder_berry/comms/commands/harmony_commands.py`
 
@@ -483,7 +483,7 @@ class HarmonyCommandHandler:
 
 ---
 
-## 36.1.E – Neue Endpoints in server.py (RPi5)
+## 37.1.E – Neue Endpoints in server.py (RPi5)
 
 **Datei**: `src/elder_berry/robot/server.py` — erweitern, nicht neue Datei.
 Folgt dem Muster der bestehenden `/camera/*` und `/turntable/*` Endpoints.
@@ -597,7 +597,7 @@ class CommandRequest(BaseModel):
 
 ---
 
-## 36.1.F – Implementierungsreihenfolge
+## 37.1.F – Implementierungsreihenfolge
 
 ```
 Schritt 0 (sofort, einmalig — auf Tower ausführen):
@@ -641,7 +641,7 @@ Schritt 5 – PWA (Rootserver):
   API:     Spricht gegen RPi5 :8001/harmony/* (Tower nicht nötig)
 ```
 
-## 36.1.G – Testliste (~95 Tests)
+## 37.1.G – Testliste (~95 Tests)
 
 ### test_harmony_adapter.py (~35 Tests)
 ```
@@ -713,7 +713,7 @@ get_device_info_known_device, get_device_info_unknown_device_404
 
 ---
 
-# Phase 36.2 – SmartHomeInterface (Plugin/Adapter-Architektur)
+# Phase 37.2 – SmartHomeInterface (Plugin/Adapter-Architektur)
 
 ## Warum eine Abstraktion
 
@@ -1085,7 +1085,7 @@ test_smart_home_commands.py (~10):
 
 ---
 
-# Phase 36.3 – Home Assistant Adapter
+# Phase 37.3 – Home Assistant Adapter
 
 ## Übersicht
 
@@ -1229,7 +1229,7 @@ Gesamttests Phase 36: ~170 (36.1: ~95, 36.2: ~45, 36.3: ~30)
 
 ---
 
-# Phase 36.4 – Alexa-Integration (Platzhalter)
+# Phase 37.4 – Alexa-Integration (Platzhalter)
 
 ## Kontext
 

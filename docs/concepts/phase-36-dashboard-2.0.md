@@ -1,4 +1,4 @@
-# Dashboard 2.0 – Modulare Smart Home PWA
+# Phase 36 – Dashboard 2.0 (Modulare Smart Home PWA)
 
 ## Übersicht
 

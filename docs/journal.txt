@@ -2691,3 +2691,20 @@ User: "Lies meine Mails und trag den Zahnarzttermin ein"
 - Nginx: dashboard.last-strawberry.com, IP-Whitelist Heimnetz
 - CORS: RPi5 muss Dashboard-Origin erlauben (FastAPI allow_origins)
 - Deploy: rsync-Script Tower → Rootserver
+
+## Abgeschlossen: Phase 35 – Dashboard 2.0 als Phase definiert (2026-03-28)
+- Konzeptdatei umbenannt: dashboard-2.0.md → phase-35-dashboard-2.0.md
+- Phase 35 in PROJECT_ROADMAP.md eingetragen (vor Phase 36)
+- Wird parallel zu Phase 36.1 implementiert (Harmony = Modul 1)
+
+## Abgeschlossen: Phase 34 – Web-Zusammenfassung in Roadmap eingetragen (2026-03-28)
+- Phase 34: Web-Zusammenfassung (vor Dashboard 2.0)
+- Phasen-Nummern final: 34=Web-Zusammenfassung, 35=Dashboard 2.0, 36=Smart Home, 37=Sprache
+- Kein Konzept-Dokument erstellt (wird in eigenem Implementierungs-Chat gemacht)
+
+## Abgeschlossen: Phasen-Nummern finalisiert (2026-03-28)
+- PROJECT_ROADMAP.md: 34=Briefing 2.0 (✅), 35=Web-Zusammenfassung, 36=Dashboard 2.0,
+  37=Smart Home, 38=Sprachsteuerung
+- Konzeptdateien umbenannt: phase-36→37 (Smart Home), phase-37→38 (Sprache),
+  phase-35→36 (Dashboard)
+- Titel in Konzeptdateien angepasst (Phase 37.1–37.4 Unterphasen)
