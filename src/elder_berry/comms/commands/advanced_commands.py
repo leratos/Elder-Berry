@@ -16,8 +16,18 @@ if TYPE_CHECKING:
     from elder_berry.core.audio_router import AudioRouter
     from elder_berry.tools.brave_search_client import BraveSearchClient
     from elder_berry.tools.document_reader import DocumentReader
+    from elder_berry.tools.web_fetcher import WebFetcher
 
 logger = logging.getLogger(__name__)
+
+# Regex fuer Web-Zusammenfassung: "fasse https://... zusammen",
+# "zusammenfassung von https://...", "fasse die seite https://... zusammen"
+WEB_SUMMARY_PATTERN = re.compile(
+    r"^(?:fasse(?:\s+mal)?\s+)?(https?://\S+)(?:\s+zusammen)?$"
+    r"|^zusammenfassung\s+von\s+(https?://\S+)$"
+    r"|^(?:fasse(?:\s+mal)?\s+)?(?:die\s+)?seite\s+(https?://\S+)(?:\s+zusammen)?$",
+    re.IGNORECASE,
+)
 
 # Regex fuer Audio-Modus: "audio lokal an", "audio lokal aus"
 AUDIO_LOCAL_PATTERN = re.compile(
@@ -63,11 +73,13 @@ class AdvancedCommandHandler(CommandHandler):
         search_client: BraveSearchClient | None = None,
         document_reader: DocumentReader | None = None,
         audio_router: AudioRouter | None = None,
+        web_fetcher: WebFetcher | None = None,
     ) -> None:
         self._computer_use = computer_use
         self._search_client = search_client
         self._document_reader = document_reader
         self._audio_router = audio_router
+        self._web_fetcher = web_fetcher
 
     @property
     def simple_commands(self) -> set[str]:
@@ -77,6 +89,7 @@ class AdvancedCommandHandler(CommandHandler):
     def patterns(self) -> list[tuple[re.Pattern, str, bool, bool]]:
         return [
             (AUDIO_LOCAL_PATTERN, "audio_toggle", False, False),
+            (WEB_SUMMARY_PATTERN, "web_summary", True, True),
             (DOCUMENT_SUMMARY_PATTERN, "document_summary", True, True),
             (COMPUTER_USE_PATTERN, "computer_use", False, False),
             (WEB_SEARCH_PATTERN, "web_search", False, False),
@@ -86,6 +99,7 @@ class AdvancedCommandHandler(CommandHandler):
     def command_descriptions(self) -> list[str]:
         return [
             "zusammenfassung <pfad>: PDF/TXT zusammenfassen",
+            "fasse <url> zusammen: Webseite zusammenfassen",
             "suche <begriff>: Im Internet suchen (Brave Search)",
             "klick auf <element> / tippe <text> / scroll runter|hoch / drück <taste>: PC-Steuerung per Vision",
             "audio / audio lokal an / audio lokal aus: Audio-Modus steuern",
@@ -94,6 +108,11 @@ class AdvancedCommandHandler(CommandHandler):
     @property
     def keywords(self) -> dict[str, list[str]]:
         return {
+            "web_summary": [
+                "fasse die seite zusammen", "webseite zusammenfassen",
+                "url zusammenfassen", "fasse den artikel zusammen",
+                "artikel zusammenfassen", "link zusammenfassen",
+            ],
             "document_summary": [
                 "fasse die pdf zusammen", "pdf zusammenfassen",
                 "dokument zusammenfassen", "zusammenfassung der datei",
@@ -119,6 +138,9 @@ class AdvancedCommandHandler(CommandHandler):
         }
 
     def execute(self, command: str, raw_text: str) -> CommandResult:
+        if command == "web_summary":
+            return self._cmd_web_summary(raw_text)
+
         if command == "document_summary":
             return self._cmd_document_summary(raw_text)
 
@@ -274,6 +296,69 @@ class AdvancedCommandHandler(CommandHandler):
             success=result.success,
             text=result.message,
             image_path=result.verification_image_path,
+        )
+
+    # ------------------------------------------------------------------
+    # Web-Zusammenfassung
+    # ------------------------------------------------------------------
+
+    def _cmd_web_summary(self, raw_text: str) -> CommandResult:
+        """Webseite abrufen und Klartext fuer LLM-Zusammenfassung liefern."""
+        if not self._web_fetcher:
+            return CommandResult(
+                command="web_summary", success=False,
+                text="WebFetcher nicht verfuegbar.",
+            )
+
+        # URL aus dem Regex extrahieren (3 Gruppen moeglich)
+        match = WEB_SUMMARY_PATTERN.search(raw_text.strip())
+        if not match:
+            return CommandResult(
+                command="web_summary", success=False,
+                text="URL nicht erkannt. Beispiel: fasse https://example.com zusammen",
+            )
+
+        url = match.group(1) or match.group(2) or match.group(3)
+
+        try:
+            content = self._web_fetcher.fetch(url)
+        except ValueError as exc:
+            return CommandResult(
+                command="web_summary", success=False,
+                text=f"Ungueltige URL: {exc}",
+            )
+        except Exception as exc:
+            logger.error("Web-Zusammenfassung fehlgeschlagen fuer %s: %s", url, exc)
+
+            # Fallback: Brave Search Snippet
+            if self._search_client:
+                try:
+                    results = self._search_client.search(url)
+                    snippet = self._search_client.format_results(results)
+                    if snippet:
+                        return CommandResult(
+                            command="web_summary",
+                            success=True,
+                            text=f"\U0001f310 {url} [Volltext nicht verfuegbar, Snippet:]",
+                            history_text=f"Webseite '{url}' (Snippet via Suche):\n\n{snippet}",
+                        )
+                except Exception as search_exc:
+                    logger.warning("Brave-Search-Fallback fehlgeschlagen: %s", search_exc)
+
+            return CommandResult(
+                command="web_summary", success=False,
+                text=f"Seite konnte nicht gelesen werden: {exc}",
+            )
+
+        header = f"\U0001f310 {content.title} ({content.url})"
+        if content.truncated:
+            header += " [gekuerzt]"
+
+        return CommandResult(
+            command="web_summary",
+            success=True,
+            text=header,
+            history_text=f"Webseite '{content.title}' ({content.url}):\n\n{content.text}",
         )
 
     # ------------------------------------------------------------------

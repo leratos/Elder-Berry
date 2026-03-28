@@ -2707,4 +2707,37 @@ User: "Lies meine Mails und trag den Zahnarzttermin ein"
   37=Smart Home, 38=Sprachsteuerung
 - Konzeptdateien umbenannt: phase-36→37 (Smart Home), phase-37→38 (Sprache),
   phase-35→36 (Dashboard)
+
+## Abgeschlossen: Phase 35 – Web-Zusammenfassung (2026-03-28)
+- Branch: feature/phase-35-web-zusammenfassung
+
+### Neue Dateien
+- src/elder_berry/tools/web_fetcher.py:
+  - WebContent Dataclass (url, title, text, truncated, source)
+  - WebFetcher Klasse: fetch(url) → WebContent
+  - Primär trafilatura, Fallback BeautifulSoup (h1 + p-Tags)
+  - Timeout 10s, User-Agent Elder-Berry/1.0, max_chars 8000
+- tests/test_web_fetcher.py: 28 Tests (Pattern 9, DTO 2, Fetcher 11, Handler 6)
+
+### Geänderte Dateien
+- src/elder_berry/comms/commands/advanced_commands.py:
+  - WEB_SUMMARY_PATTERN (3 Varianten: fasse URL zusammen, zusammenfassung von URL, seite URL)
+  - Pattern VOR DOCUMENT_SUMMARY_PATTERN (Kollisionsvermeidung)
+  - DI: web_fetcher Parameter
+  - _cmd_web_summary(): URL extrahieren → fetch → CommandResult mit history_text
+  - Brave Search Fallback bei Fetch-Fehler (wenn search_client vorhanden)
+- src/elder_berry/comms/remote_commands.py:
+  - web_fetcher Parameter durchgereicht an AdvancedCommandHandler
+  - HELP_TEXT: Web-Zusammenfassung Sektion ergänzt
+- scripts/start_saleria.py: WebFetcher instanziiert + an RemoteCommandHandler
+- pyproject.toml: Neue optionale Gruppe [web] mit trafilatura + beautifulsoup4
+
+### Tests
+- 28 neue Tests (test_web_fetcher.py), 341 bestehende Tests unverändert grün
+- Gesamt: 28 + 341 = 369 getestet, 0 Fehler
+
+### Architektur-Entscheidungen
+- Kein neuer Handler – thematisch in AdvancedCommandHandler (text → LLM-Zusammenfassung)
+- Brave Search Fallback nur wenn search_client injiziert (graceful degradation)
+- trafilatura als optionale Dependency (Gruppe [web]) – nicht in [dependencies]
 - Titel in Konzeptdateien angepasst (Phase 37.1–37.4 Unterphasen)
