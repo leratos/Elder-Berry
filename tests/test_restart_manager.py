@@ -148,13 +148,14 @@ class TestPerformRestart:
             channel = AsyncMock()
             scheduler = MagicMock()
 
-            # Prevent actual process restart
-            with patch("elder_berry.comms.restart_manager.release_instance_lock"):
-                with patch("elder_berry.comms.restart_manager.subprocess.Popen"):
-                    with patch("elder_berry.comms.restart_manager.os._exit"):
-                        await perform_restart(
-                            channel, scheduler, "!room123", msg_server_ts=1711.5,
-                        )
+            # Prevent actual process restart (Windows: Popen+_exit, Linux: execv)
+            with patch("elder_berry.comms.restart_manager.release_instance_lock"), \
+                 patch("elder_berry.comms.restart_manager.subprocess.Popen"), \
+                 patch("elder_berry.comms.restart_manager.os._exit"), \
+                 patch("elder_berry.comms.restart_manager.os.execv"):
+                await perform_restart(
+                    channel, scheduler, "!room123", msg_server_ts=1711.5,
+                )
 
             assert flag.exists()
             content = flag.read_text(encoding="utf-8")
@@ -172,10 +173,12 @@ class TestPerformRestart:
             )
             channel = AsyncMock()
 
-            with patch("elder_berry.comms.restart_manager.release_instance_lock"):
-                with patch("elder_berry.comms.restart_manager.subprocess.Popen"):
-                    with patch("elder_berry.comms.restart_manager.os._exit"):
-                        await perform_restart(channel, None, "!room123")
+            # Prevent actual process restart (Windows: Popen+_exit, Linux: execv)
+            with patch("elder_berry.comms.restart_manager.release_instance_lock"), \
+                 patch("elder_berry.comms.restart_manager.subprocess.Popen"), \
+                 patch("elder_berry.comms.restart_manager.os._exit"), \
+                 patch("elder_berry.comms.restart_manager.os.execv"):
+                await perform_restart(channel, None, "!room123")
 
             assert flag.exists()
         run_async(_test())
