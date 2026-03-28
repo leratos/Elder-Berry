@@ -558,6 +558,30 @@ def _init_context_and_tools(secrets, assistant, svc):
     ).split(",")[0].strip()
     tools = {}
 
+    # SmartContextProvider (automatische Kontext-Anreicherung für LLM-Anfragen)
+    try:
+        from elder_berry.core.smart_context import SmartContextProvider
+        tools["smart_context_provider"] = SmartContextProvider(
+            calendar=svc.get("calendar"),
+            todo_store=svc.get("todo_store"),
+            note_store=svc.get("note_store"),
+            contact_store=svc.get("contact_store"),
+            reminder_store=svc.get("reminder_store"),
+            weather_client=svc.get("weather"),
+            default_user_id=default_user_id,
+        )
+        smart_sources = [s for s, v in [
+            ("Calendar", svc.get("calendar")),
+            ("Todos", svc.get("todo_store")),
+            ("Notes", svc.get("note_store")),
+            ("Contacts", svc.get("contact_store")),
+            ("Reminders", svc.get("reminder_store")),
+            ("Weather", svc.get("weather")),
+        ] if v]
+        logger.info("SmartContextProvider: aktiv (Quellen: %s)", ", ".join(smart_sources) or "keine")
+    except Exception as e:
+        logger.warning("SmartContextProvider nicht verfügbar: %s", e)
+
     # ContextEnricher
     try:
         from elder_berry.core.context_enricher import ContextEnricher
@@ -697,6 +721,8 @@ def run_matrix(assistant, stt=None, avatar=None, audio_converter=None, robot=Non
         default_user_id=default_user_id,
     )
     assistant._remote_commands = remote
+    if tools.get("smart_context_provider"):
+        assistant._smart_context = tools["smart_context_provider"]
 
     # --- 5. ClaudeAgent ---
     claude_agent = None
