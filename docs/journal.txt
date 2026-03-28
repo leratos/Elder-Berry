@@ -2603,3 +2603,11 @@ User: "Lies meine Mails und trag den Zahnarzttermin ein"
 - Tower-RobotClient bekommt harmony_*() Methoden
 - Config-Mock-Server bleibt auf Rootserver
 - Konzeptdatei wird entsprechend aktualisiert
+
+## Abgeschlossen: Phase 36 – Konzept vollständig (2026-03-28)
+- docs/concepts/phase-36-smart-home-integration.md (~1150 Zeilen, final)
+- Architektur-Fix: HarmonyAdapter auf RPi5, Tower-Seite via HarmonyRobotClientProxy
+- Proxy-Pattern verhindert Direktkopplung Tower↔HarmonyAdapter über Maschinen
+- HomeAssistantAdapter läuft direkt auf Tower (nur REST-API, kein RPi5-Umweg)
+- Gesamtübersicht aller neuen Dateien + ~170 Tests (36.1: ~95, 36.2: ~45, 36.3: ~30)
+- Offene Entscheidungen dokumentiert (DNS-Override, Hub-IP, HA-Deployment)
