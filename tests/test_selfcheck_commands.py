@@ -81,10 +81,12 @@ class TestSelfcheckExecute:
         result = handler.execute("unknown", "unknown")
         assert result.success is False
 
+    @patch("urllib.request.urlopen")
     @patch("elder_berry.comms.commands.selfcheck_commands.run_cmd")
     @patch("shutil.disk_usage")
-    def test_selfcheck_happy_path(self, mock_disk, mock_run_cmd, handler):
-        """Selfcheck mit allen Prüfungen (Git, Disk, etc.)."""
+    def test_selfcheck_happy_path(self, mock_disk, mock_run_cmd, mock_urlopen, handler):
+        """Selfcheck mit allen Prüfungen (Git, Disk, Ollama etc.)."""
+        import json
         from elder_berry.comms.commands.cmd_utils import CmdResult
 
         # Git-Commands mocken
@@ -100,6 +102,16 @@ class TestSelfcheckExecute:
         mock_disk.return_value = MagicMock(
             total=500 * 1024**3, used=200 * 1024**3, free=300 * 1024**3,
         )
+
+        # Ollama – Mock urllib.request.urlopen
+        ollama_resp = MagicMock()
+        ollama_resp.status = 200
+        ollama_resp.__enter__ = MagicMock(return_value=ollama_resp)
+        ollama_resp.__exit__ = MagicMock(return_value=False)
+        ollama_resp.read.return_value = json.dumps(
+            {"models": [{"name": "phi4:14b"}]},
+        ).encode()
+        mock_urlopen.return_value = ollama_resp
 
         result = handler.execute("selfcheck", "selfcheck")
         assert result.success is True

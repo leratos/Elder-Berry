@@ -15,6 +15,15 @@ from elder_berry.comms.restart_manager import (
 
 
 # ---------------------------------------------------------------------------
+# Helper
+# ---------------------------------------------------------------------------
+
+def run_async(coro):
+    """Führt eine Coroutine synchron aus (für Tests ohne pytest-asyncio)."""
+    return asyncio.run(coro)
+
+
+# ---------------------------------------------------------------------------
 # read_restart_timestamp
 # ---------------------------------------------------------------------------
 
@@ -57,39 +66,45 @@ class TestReadRestartTimestamp:
 # ---------------------------------------------------------------------------
 
 class TestSendRestartNotification:
-    async def test_no_flag_does_nothing(self, tmp_path, monkeypatch):
-        fake = tmp_path / "nonexistent.flag"
-        monkeypatch.setattr(
-            "elder_berry.comms.restart_manager.RESTART_FLAG_FILE", fake,
-        )
-        channel = AsyncMock()
-        await send_restart_notification(channel)
-        channel.send_text.assert_not_called()
+    def test_no_flag_does_nothing(self, tmp_path, monkeypatch):
+        async def _test():
+            fake = tmp_path / "nonexistent.flag"
+            monkeypatch.setattr(
+                "elder_berry.comms.restart_manager.RESTART_FLAG_FILE", fake,
+            )
+            channel = AsyncMock()
+            await send_restart_notification(channel)
+            channel.send_text.assert_not_called()
+        run_async(_test())
 
-    async def test_sends_notification_and_deletes_flag(self, tmp_path, monkeypatch):
-        flag = tmp_path / "restart.flag"
-        flag.write_text("!room456\n1711500000000", encoding="utf-8")
-        monkeypatch.setattr(
-            "elder_berry.comms.restart_manager.RESTART_FLAG_FILE", flag,
-        )
-        channel = AsyncMock()
-        await send_restart_notification(channel)
-        channel.send_text.assert_called_once()
-        args = channel.send_text.call_args
-        assert args[0][0] == "!room456"
-        assert "wieder da" in args[0][1].lower() or "Neustart" in args[0][1]
-        assert not flag.exists()
+    def test_sends_notification_and_deletes_flag(self, tmp_path, monkeypatch):
+        async def _test():
+            flag = tmp_path / "restart.flag"
+            flag.write_text("!room456\n1711500000000", encoding="utf-8")
+            monkeypatch.setattr(
+                "elder_berry.comms.restart_manager.RESTART_FLAG_FILE", flag,
+            )
+            channel = AsyncMock()
+            await send_restart_notification(channel)
+            channel.send_text.assert_called_once()
+            args = channel.send_text.call_args
+            assert args[0][0] == "!room456"
+            assert "wieder da" in args[0][1].lower() or "Neustart" in args[0][1]
+            assert not flag.exists()
+        run_async(_test())
 
-    async def test_exception_during_send_cleans_flag(self, tmp_path, monkeypatch):
-        flag = tmp_path / "restart.flag"
-        flag.write_text("!room789", encoding="utf-8")
-        monkeypatch.setattr(
-            "elder_berry.comms.restart_manager.RESTART_FLAG_FILE", flag,
-        )
-        channel = AsyncMock()
-        channel.send_text.side_effect = Exception("network error")
-        await send_restart_notification(channel)
-        assert not flag.exists()
+    def test_exception_during_send_cleans_flag(self, tmp_path, monkeypatch):
+        async def _test():
+            flag = tmp_path / "restart.flag"
+            flag.write_text("!room789", encoding="utf-8")
+            monkeypatch.setattr(
+                "elder_berry.comms.restart_manager.RESTART_FLAG_FILE", flag,
+            )
+            channel = AsyncMock()
+            channel.send_text.side_effect = Exception("network error")
+            await send_restart_notification(channel)
+            assert not flag.exists()
+        run_async(_test())
 
 
 # ---------------------------------------------------------------------------
@@ -124,39 +139,43 @@ class TestReleaseInstanceLock:
 # ---------------------------------------------------------------------------
 
 class TestPerformRestart:
-    async def test_writes_flag_and_disconnects(self, tmp_path, monkeypatch):
-        flag = tmp_path / "restart.flag"
-        monkeypatch.setattr(
-            "elder_berry.comms.restart_manager.RESTART_FLAG_FILE", flag,
-        )
-        channel = AsyncMock()
-        scheduler = MagicMock()
+    def test_writes_flag_and_disconnects(self, tmp_path, monkeypatch):
+        async def _test():
+            flag = tmp_path / "restart.flag"
+            monkeypatch.setattr(
+                "elder_berry.comms.restart_manager.RESTART_FLAG_FILE", flag,
+            )
+            channel = AsyncMock()
+            scheduler = MagicMock()
 
-        # Prevent actual process restart
-        with patch("elder_berry.comms.restart_manager.release_instance_lock"):
-            with patch("elder_berry.comms.restart_manager.subprocess.Popen"):
-                with patch("elder_berry.comms.restart_manager.os._exit"):
-                    await perform_restart(
-                        channel, scheduler, "!room123", msg_server_ts=1711.5,
-                    )
+            # Prevent actual process restart
+            with patch("elder_berry.comms.restart_manager.release_instance_lock"):
+                with patch("elder_berry.comms.restart_manager.subprocess.Popen"):
+                    with patch("elder_berry.comms.restart_manager.os._exit"):
+                        await perform_restart(
+                            channel, scheduler, "!room123", msg_server_ts=1711.5,
+                        )
 
-        assert flag.exists()
-        content = flag.read_text(encoding="utf-8")
-        assert "!room123" in content
-        assert "1711500" in content
-        scheduler.stop_all.assert_called_once()
-        channel.disconnect.assert_called_once()
+            assert flag.exists()
+            content = flag.read_text(encoding="utf-8")
+            assert "!room123" in content
+            assert "1711500" in content
+            scheduler.stop_all.assert_called_once()
+            channel.disconnect.assert_called_once()
+        run_async(_test())
 
-    async def test_no_scheduler(self, tmp_path, monkeypatch):
-        flag = tmp_path / "restart.flag"
-        monkeypatch.setattr(
-            "elder_berry.comms.restart_manager.RESTART_FLAG_FILE", flag,
-        )
-        channel = AsyncMock()
+    def test_no_scheduler(self, tmp_path, monkeypatch):
+        async def _test():
+            flag = tmp_path / "restart.flag"
+            monkeypatch.setattr(
+                "elder_berry.comms.restart_manager.RESTART_FLAG_FILE", flag,
+            )
+            channel = AsyncMock()
 
-        with patch("elder_berry.comms.restart_manager.release_instance_lock"):
-            with patch("elder_berry.comms.restart_manager.subprocess.Popen"):
-                with patch("elder_berry.comms.restart_manager.os._exit"):
-                    await perform_restart(channel, None, "!room123")
+            with patch("elder_berry.comms.restart_manager.release_instance_lock"):
+                with patch("elder_berry.comms.restart_manager.subprocess.Popen"):
+                    with patch("elder_berry.comms.restart_manager.os._exit"):
+                        await perform_restart(channel, None, "!room123")
 
-        assert flag.exists()
+            assert flag.exists()
+        run_async(_test())
