@@ -2533,3 +2533,73 @@ User: "Lies meine Mails und trag den Zahnarzttermin ein"
 ### Tests
 - 128/128 neue Tests grün
 - Bestehende Tests: keine Regressionen (467 relevante Tests verifiziert)
+
+## Abgeschlossen: Phase 33 – Smart Context Layer (2026-03-28)
+- Branch: feature/phase-33-smart-context-layer
+
+### Neue Dateien
+- src/elder_berry/core/smart_context.py: SmartContextProvider (~280 Zeilen)
+  - Keyword-basierte Input-Analyse: erkennt welche Stores relevant sind
+  - 6 Quellen: Calendar, Todos, Notes, Contacts, Reminders, Weather
+  - 11 Meta-Phrasen ("was muss ich", "briefing", "tagesplan", etc.) → multi-source
+  - Parallele Abfrage via ThreadPoolExecutor, 3s Timeout pro Quelle
+  - Graceful Degradation: fehlende/fehlerhafte Stores werden übersprungen
+  - Formatiert Ergebnisse als "=== Aktueller Kontext ===" Block
+- tests/test_smart_context.py: 52 Tests (Keyword-Erkennung, Query-Methoden,
+  Integration, Timeout, Fehlerbehandlung, Edge Cases)
+
+### Geänderte Dateien
+- src/elder_berry/core/assistant.py:
+  - __init__(): neuer optionaler Parameter smart_context
+  - process(): ruft _get_smart_context(user_input) auf
+  - _build_system_prompt(): injiziert smart_context Block vor memory_context
+- src/elder_berry/core/prompts.py: {smart_context} Platzhalter im Template
+- scripts/start_saleria.py:
+  - _init_context_and_tools(): erstellt SmartContextProvider mit allen Stores
+  - run_matrix(): setzt assistant._smart_context
+
+### Architektur-Entscheidungen
+- Eigene Klasse, eigene Datei (kein Umbau des bestehenden ContextEnricher)
+- ContextEnricher bleibt für CalendarWatcher-Alerts (Event-spezifisch)
+- SmartContextProvider ist für allgemeine LLM-Anfragen (Input-basiert)
+- Keyword-basiert statt LLM-Klassifikation: keine zusätzliche Latenz
+- DI über Konstruktor: alle Stores optional, wie bei ContextEnricher
+
+### Tests
+- 52/52 neue Tests grün
+- 2754/2754 Gesamttests grün, keine Regressionen
+## In Arbeit: Phase 36 – Konzeptdatei erstellen (2026-03-28)
+- Erstelle docs/concepts/phase-36-smart-home-integration.md
+- Scope: Phase 36.1 (Harmony Hub Bridge) vollständig ausgearbeitet
+- Phase 36.2 (Config-Mock-Server) als Platzhalter
+- Home Assistant Integration als spätere Unterphase (nach Umzug)
+
+## Abgeschlossen: Phase 36 – Konzeptdatei erstellt (2026-03-28)
+- docs/concepts/phase-36-smart-home-integration.md (635 Zeilen)
+- Phase 36.1 (Harmony Hub Bridge) vollständig ausgearbeitet:
+  HarmonyBridge, harmony_routes, HarmonyCommandHandler, PWA, ~85 Tests definiert
+- Phase 36.2 (Config-Mock-Server) als Platzhalter (Trigger: Logitech-Shutdown)
+- Phase 36.3 (Home Assistant) nach Umzug
+- Offener Punkt: Lautstärke-Kollision mit SystemVolumeHandler → Konfigurationsoption
+
+## In Arbeit: Phase 36 – Konzept grundlegend überarbeiten (2026-03-28)
+- Nutzer-Entscheidung: Logitech sofort vollständig ablösen (nicht warten auf Shutdown)
+- Config-Mock-Server wird Teil von 36.1 (nicht Platzhalter)
+- Home Automation als Plugin/Adapter-Architektur von Anfang an
+- Neue Struktur: 36.1 Harmony vollständig, 36.2 SmartHomeInterface, 36.3 HA-Adapter
+- Schreibt phase-36-smart-home-integration.md komplett neu
+
+## Abgeschlossen: Phase 36 – Konzept vollständig überarbeitet (2026-03-28)
+- docs/concepts/phase-36-smart-home-integration.md (~800 Zeilen)
+- 36.1: Harmony vollständig ablösen (Bridge + Config-Mock-Server + PWA) – sofort
+- 36.2: SmartHomeInterface ABC + SmartHomeRegistry (Plugin-Architektur)
+- 36.3: HomeAssistantAdapter (REST API, lokal, mockbar ohne HA-Instanz)
+- ~160 Tests definiert (36.1: ~90, 36.2: ~40, 36.3: ~30)
+- Offene Entscheidungen: Hub-IP statisch setzen, DNS-Override (Pi-hole vs. Router)
+
+## In Arbeit: Phase 36 – Architektur-Update RPi5 (2026-03-28)
+- Entscheidung: HarmonyAdapter läuft auf RPi5 (immer an), nicht Tower
+- RPi5 bekommt neue /harmony/* Endpoints (neben /camera/*, /turntable/*)
+- Tower-RobotClient bekommt harmony_*() Methoden
+- Config-Mock-Server bleibt auf Rootserver
+- Konzeptdatei wird entsprechend aktualisiert
