@@ -1,0 +1,265 @@
+"""Tests: WebFetcher + WEB_SUMMARY_PATTERN + _cmd_web_summary."""
+from unittest.mock import MagicMock, patch
+
+import pytest
+
+from elder_berry.comms.commands.advanced_commands import (
+    DOCUMENT_SUMMARY_PATTERN,
+    WEB_SUMMARY_PATTERN,
+    AdvancedCommandHandler,
+)
+from elder_berry.tools.web_fetcher import WebContent, WebFetcher
+
+
+# ---------------------------------------------------------------------------
+# Fixtures
+# ---------------------------------------------------------------------------
+
+@pytest.fixture
+def fetcher():
+    """Standard-WebFetcher."""
+    return WebFetcher(max_chars=8000)
+
+
+@pytest.fixture
+def small_fetcher():
+    """WebFetcher mit niedrigem max_chars fuer Truncation-Tests."""
+    return WebFetcher(max_chars=50)
+
+
+@pytest.fixture
+def mock_fetcher():
+    """Mock-WebFetcher fuer Handler-Tests."""
+    return MagicMock(spec=WebFetcher)
+
+
+@pytest.fixture
+def handler(mock_fetcher):
+    """AdvancedCommandHandler mit gemocktem WebFetcher."""
+    return AdvancedCommandHandler(web_fetcher=mock_fetcher)
+
+
+# ---------------------------------------------------------------------------
+# Pattern-Tests (kein HTTP)
+# ---------------------------------------------------------------------------
+
+class TestWebSummaryPattern:
+    def test_pattern_simple_url(self):
+        m = WEB_SUMMARY_PATTERN.match("https://example.com")
+        assert m is not None
+        assert m.group(1) == "https://example.com"
+
+    def test_pattern_url_with_zusammen_suffix(self):
+        m = WEB_SUMMARY_PATTERN.match("fasse https://example.com/page zusammen")
+        assert m is not None
+        assert m.group(1) == "https://example.com/page"
+
+    def test_pattern_fasse_mal(self):
+        m = WEB_SUMMARY_PATTERN.match("fasse mal https://example.com zusammen")
+        assert m is not None
+        assert m.group(1) == "https://example.com"
+
+    def test_pattern_zusammenfassung_von_url(self):
+        m = WEB_SUMMARY_PATTERN.match("zusammenfassung von https://example.com")
+        assert m is not None
+        assert m.group(2) == "https://example.com"
+
+    def test_pattern_seite_url(self):
+        m = WEB_SUMMARY_PATTERN.match("fasse die seite https://example.com zusammen")
+        assert m is not None
+        assert m.group(3) == "https://example.com"
+
+    def test_pattern_seite_url_without_fasse(self):
+        m = WEB_SUMMARY_PATTERN.match("seite https://example.com zusammen")
+        assert m is not None
+        assert m.group(3) == "https://example.com"
+
+    def test_pattern_no_match_local_path(self):
+        m = WEB_SUMMARY_PATTERN.match("fasse C:\\Docs\\report.pdf zusammen")
+        assert m is None
+
+    def test_pattern_no_match_bare_text(self):
+        m = WEB_SUMMARY_PATTERN.match("fasse den Bericht zusammen")
+        assert m is None
+
+    def test_no_collision_with_document_summary_pattern(self):
+        """WEB_SUMMARY_PATTERN matcht URLs, DOCUMENT_SUMMARY_PATTERN matcht Pfade."""
+        url_text = "fasse https://example.com zusammen"
+        path_text = "fasse C:\\Docs\\report.pdf zusammen"
+
+        assert WEB_SUMMARY_PATTERN.search(url_text) is not None
+        assert DOCUMENT_SUMMARY_PATTERN.search(url_text) is None
+
+        assert WEB_SUMMARY_PATTERN.search(path_text) is None
+        assert DOCUMENT_SUMMARY_PATTERN.search(path_text) is not None
+
+
+# ---------------------------------------------------------------------------
+# WebContent DTO
+# ---------------------------------------------------------------------------
+
+class TestWebContent:
+    def test_frozen(self):
+        wc = WebContent(url="https://x.com", title="X", text="hello", truncated=False)
+        with pytest.raises(AttributeError):
+            wc.text = "changed"
+
+    def test_source_default(self):
+        wc = WebContent(url="https://x.com", title="X", text="hello", truncated=False)
+        assert wc.source == "web"
+
+
+# ---------------------------------------------------------------------------
+# WebFetcher Unit Tests (mit unittest.mock)
+# ---------------------------------------------------------------------------
+
+class TestWebFetcherFetch:
+    def test_fetch_success_returns_web_content(self, fetcher):
+        html = "<html><title>Test Page</title><body><p>Hello world</p></body></html>"
+        with patch.object(fetcher, "_download", return_value=html), \
+             patch.object(fetcher, "_extract", return_value=("Test Page", "Hello world")):
+            result = fetcher.fetch("https://example.com")
+        assert isinstance(result, WebContent)
+        assert result.url == "https://example.com"
+        assert result.title == "Test Page"
+        assert result.text == "Hello world"
+        assert result.truncated is False
+
+    def test_fetch_uses_trafilatura_extraction(self, fetcher):
+        html = "<html><title>T</title><body><p>Content</p></body></html>"
+        with patch.object(fetcher, "_download", return_value=html), \
+             patch(
+                 "elder_berry.tools.web_fetcher.WebFetcher._extract_trafilatura",
+                 return_value=("T", "Content"),
+             ):
+            result = fetcher.fetch("https://example.com")
+        assert result.text == "Content"
+        assert result.title == "T"
+
+    def test_fetch_fallback_beautifulsoup_when_trafilatura_none(self, fetcher):
+        html = "<html><title>BS Title</title><body><p>Fallback text</p></body></html>"
+        with patch.object(fetcher, "_download", return_value=html), \
+             patch(
+                 "elder_berry.tools.web_fetcher.WebFetcher._extract_trafilatura",
+                 return_value=("", ""),
+             ), \
+             patch(
+                 "elder_berry.tools.web_fetcher.WebFetcher._extract_beautifulsoup",
+                 return_value=("BS Title", "Fallback text"),
+             ):
+            result = fetcher.fetch("https://example.com")
+        assert result.title == "BS Title"
+        assert result.text == "Fallback text"
+
+    def test_fetch_truncates_at_max_chars(self, small_fetcher):
+        long_text = "A" * 100
+        with patch.object(small_fetcher, "_download", return_value="<html></html>"), \
+             patch.object(small_fetcher, "_extract", return_value=("Title", long_text)):
+            result = small_fetcher.fetch("https://example.com")
+        assert len(result.text) == 50
+        assert result.truncated is True
+
+    def test_fetch_sets_truncated_true_when_cut(self, small_fetcher):
+        text_exact = "A" * 51  # 1 char over limit
+        with patch.object(small_fetcher, "_download", return_value="<html></html>"), \
+             patch.object(small_fetcher, "_extract", return_value=("T", text_exact)):
+            result = small_fetcher.fetch("https://example.com")
+        assert result.truncated is True
+
+    def test_fetch_not_truncated_when_under_limit(self, small_fetcher):
+        text_short = "A" * 50  # exactly at limit
+        with patch.object(small_fetcher, "_download", return_value="<html></html>"), \
+             patch.object(small_fetcher, "_extract", return_value=("T", text_short)):
+            result = small_fetcher.fetch("https://example.com")
+        assert result.truncated is False
+
+    def test_fetch_timeout_raises_meaningful_error(self, fetcher):
+        import httpx
+        with patch.object(fetcher, "_download", side_effect=httpx.TimeoutException("timeout")):
+            with pytest.raises(httpx.TimeoutException):
+                fetcher.fetch("https://example.com")
+
+    def test_fetch_connection_error_raises_meaningful_error(self, fetcher):
+        import httpx
+        with patch.object(fetcher, "_download", side_effect=httpx.ConnectError("refused")):
+            with pytest.raises(httpx.ConnectError):
+                fetcher.fetch("https://example.com")
+
+    def test_fetch_invalid_url_raises_value_error(self, fetcher):
+        with pytest.raises(ValueError, match="Ungueltige URL"):
+            fetcher.fetch("not-a-url")
+
+    def test_fetch_empty_url_raises_value_error(self, fetcher):
+        with pytest.raises(ValueError, match="Keine URL"):
+            fetcher.fetch("")
+
+    def test_fetch_empty_extraction_raises_error(self, fetcher):
+        with patch.object(fetcher, "_download", return_value="<html></html>"), \
+             patch.object(fetcher, "_extract", return_value=("Title", "")):
+            with pytest.raises(RuntimeError, match="Kein Text"):
+                fetcher.fetch("https://example.com")
+
+
+# ---------------------------------------------------------------------------
+# Handler Tests (mock WebFetcher)
+# ---------------------------------------------------------------------------
+
+class TestCmdWebSummary:
+    def test_cmd_web_summary_success(self, handler, mock_fetcher):
+        mock_fetcher.fetch.return_value = WebContent(
+            url="https://example.com",
+            title="Example",
+            text="Some content",
+            truncated=False,
+        )
+        result = handler.execute("web_summary", "fasse https://example.com zusammen")
+        assert result.success is True
+        assert "Example" in result.text
+        assert "https://example.com" in result.text
+        assert result.history_text is not None
+        assert "Some content" in result.history_text
+
+    def test_cmd_web_summary_truncated_note_in_text(self, handler, mock_fetcher):
+        mock_fetcher.fetch.return_value = WebContent(
+            url="https://example.com",
+            title="Example",
+            text="Truncated content",
+            truncated=True,
+        )
+        result = handler.execute("web_summary", "fasse https://example.com zusammen")
+        assert result.success is True
+        assert "gekuerzt" in result.text
+
+    def test_cmd_web_summary_fetcher_not_configured(self):
+        handler = AdvancedCommandHandler(web_fetcher=None)
+        result = handler.execute("web_summary", "fasse https://example.com zusammen")
+        assert result.success is False
+        assert "nicht verfuegbar" in result.text
+
+    def test_cmd_web_summary_fetch_error_graceful(self, handler, mock_fetcher):
+        mock_fetcher.fetch.side_effect = RuntimeError("Kein Text extrahierbar")
+        result = handler.execute("web_summary", "fasse https://example.com zusammen")
+        assert result.success is False
+        assert "nicht gelesen" in result.text
+
+    def test_cmd_web_summary_fetch_error_brave_fallback(self, mock_fetcher):
+        """Bei Fetch-Fehler wird Brave Search als Fallback verwendet."""
+        mock_search = MagicMock()
+        mock_search.search.return_value = [{"title": "R", "snippet": "Snippet text"}]
+        mock_search.format_results.return_value = "Formatted snippet"
+
+        handler = AdvancedCommandHandler(
+            web_fetcher=mock_fetcher,
+            search_client=mock_search,
+        )
+        mock_fetcher.fetch.side_effect = RuntimeError("JS-only")
+
+        result = handler.execute("web_summary", "fasse https://example.com zusammen")
+        assert result.success is True
+        assert "Snippet" in (result.history_text or "")
+        assert "Volltext nicht verfuegbar" in result.text
+
+    def test_cmd_web_summary_no_url_match(self, handler):
+        result = handler.execute("web_summary", "fasse das dokument zusammen")
+        assert result.success is False
+        assert "URL nicht erkannt" in result.text

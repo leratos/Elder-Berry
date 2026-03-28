@@ -71,6 +71,7 @@ if TYPE_CHECKING:
     from elder_berry.tools.todo_store import TodoStore
     from elder_berry.tools.reminder_store import ReminderStore
     from elder_berry.tools.weather_client import WeatherClient
+    from elder_berry.tools.web_fetcher import WebFetcher
 
 logger = logging.getLogger(__name__)
 
@@ -209,6 +210,11 @@ Dokumente:
   zusammenfassung <Pfad> – PDF/TXT zusammenfassen (z.B. zusammenfassung C:\\Docs\\report.pdf)
   fasse zusammen <Pfad> – Alias für zusammenfassung
 
+Web-Zusammenfassung:
+  fasse <URL> zusammen – Webseite zusammenfassen (z.B. fasse https://example.com zusammen)
+  zusammenfassung von <URL> – Alias für fasse zusammen
+  fasse die seite <URL> zusammen – Alias für fasse zusammen
+
 Web-Suche:
   suche <Begriff> – Im Internet suchen (z.B. suche Dachdecker Plattenburg)
   such mal <Begriff> – Alias für suche
@@ -286,6 +292,7 @@ class RemoteCommandHandler:
         audio_router: AudioRouter | None = None,
         computer_use: ComputerUseController | None = None,
         search_client: BraveSearchClient | None = None,
+        web_fetcher: WebFetcher | None = None,
         note_store: NoteStore | None = None,
         contact_store: ContactStore | None = None,
         todo_store: TodoStore | None = None,
@@ -340,6 +347,7 @@ class RemoteCommandHandler:
             search_client=search_client,
             document_reader=document_reader,
             audio_router=audio_router,
+            web_fetcher=web_fetcher,
         )
         # NoteCommandHandler: nur wenn NoteStore vorhanden
         self._notes: NoteCommandHandler | None = None

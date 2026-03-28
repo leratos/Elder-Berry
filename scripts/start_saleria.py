@@ -649,6 +649,14 @@ def _init_context_and_tools(secrets, assistant, svc):
         except Exception as e:
             logger.warning("ComputerUseController nicht verfügbar: %s", e)
 
+    # WebFetcher
+    try:
+        from elder_berry.tools.web_fetcher import WebFetcher
+        tools["web_fetcher"] = WebFetcher()
+        logger.info("WebFetcher: aktiv")
+    except Exception as e:
+        logger.warning("WebFetcher nicht verfügbar: %s", e)
+
     # BraveSearchClient
     if secrets.get_or_none("brave_api_key"):
         try:
@@ -716,6 +724,7 @@ def run_matrix(assistant, stt=None, avatar=None, audio_converter=None, robot=Non
         audio_router=tools.get("audio_router"),
         computer_use=tools.get("computer_use"),
         search_client=tools.get("search_client"),
+        web_fetcher=tools.get("web_fetcher"),
         note_store=svc.get("note_store"),
         contact_store=svc.get("contact_store"),
         todo_store=svc.get("todo_store"),
