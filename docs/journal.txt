@@ -2611,3 +2611,83 @@ User: "Lies meine Mails und trag den Zahnarzttermin ein"
 - HomeAssistantAdapter läuft direkt auf Tower (nur REST-API, kein RPi5-Umweg)
 - Gesamtübersicht aller neuen Dateien + ~170 Tests (36.1: ~95, 36.2: ~45, 36.3: ~30)
 - Offene Entscheidungen dokumentiert (DNS-Override, Hub-IP, HA-Deployment)
+
+## In Arbeit: Phase 36.4 – Alexa-Integration als Platzhalter (2026-03-28)
+
+## Abgeschlossen: Phase 36.4 – Alexa-Integration als Platzhalter (2026-03-28)
+- Unterphase 36.4 in Konzeptdatei eingefügt
+- Ansatz: Emulated Hue auf RPi5 (lokal, kein Nabu Casa)
+- Trigger: nach Umzug + HA stabil (36.3 abgeschlossen)
+- Konzept wird in eigenem Chat ausgearbeitet wenn 36.3 fertig
+
+## In Arbeit: Phase 37 – Wake Word / Voice Independence (2026-03-28)
+- Alexa-Ablösung als feste Phase, Wechseloption Alexa↔Saleria
+- Alexa Echo als Mikrofon-Proxy untersuchen
+- Konzeptdatei + Roadmap-Eintrag
+
+## Abgeschlossen: Phase 37 – Konzept + Roadmap (2026-03-28)
+- docs/concepts/phase-37-sprachsteuerung.md (276 Zeilen)
+- PROJECT_ROADMAP.md: Phase 36+37 ergänzt, Wake-Word aus "nicht implementiert" entfernt
+- 37.1: Alexa Custom Skill "Saleria" (Proxy, keine neue Hardware, Amazon STT)
+- 37.2: Natives Wake Word (OpenWakeWord + ReSpeaker ~60€, vollständig lokal)
+- Wechsel-Mechanismus: voice_mode in elder_berry.json (alexa_proxy/native/both)
+- Echo als rohes Mikrofon: nicht möglich (Amazon sperrt Audio-Stream), dokumentiert
+- Reihenfolge: 36.4 → 37.1 → 37.2 (Hardware-Entscheidung nach Latenz-Test)
+
+## In Arbeit: Phase 34 – Briefing 2.0 (2026-03-28)
+- Nächster Schritt: ContactStore birthday-Feld + Migration
+- Dann: NoteStore.get_notes_from_date(), BriefingScheduler 3 neue Sektionen + Wochenend-Variante
+- start_saleria.py: email_client, contact_store, note_store an BriefingScheduler
+- Tests erweitern
+
+## Abgeschlossen: Phase 34 – Briefing 2.0 (2026-03-28)
+- Branch: feature/phase-34-briefing-2
+
+### Geänderte Dateien
+- src/elder_berry/tools/contact_store.py:
+  - Contact-Dataclass: neues birthday-Feld (str, Format YYYY-MM-DD, 0000 wenn Jahr unbekannt)
+  - DB-Schema: birthday-Spalte + Migration (_migrate_birthday_column, graceful)
+  - add()/update()/_upsert_existing(): birthday-Parameter durchgereicht
+  - Neue Methode: get_birthdays_today(user_id, today?) → list[Contact]
+  - Alle SELECTs um birthday-Spalte erweitert
+- src/elder_berry/tools/note_store.py:
+  - Neue Methode: get_notes_from_date(user_id, month, day, limit) → list[Note]
+  - ±1 Tag Toleranz, sucht über alle Jahre, Windows-kompatibel (kein %-m strftime)
+- src/elder_berry/comms/briefing_scheduler.py:
+  - 3 neue DI-Parameter: email_client, contact_store, note_store
+  - 3 neue Sektionen: Geburtstage (🎂), Ungelesene E-Mails (📧), Vor einem Jahr (📅)
+  - Wochenend-Variante: anderer Greeting/Footer, keine Todos/Erinnerungen, Montag-Vorschau
+  - build_briefing(now=None): optionaler Zeitpunkt für Tests
+  - Sektions-Logik in Helper-Methoden ausgelagert (_build_*_section)
+  - Montag-Vorschau nutzt calendar.get_events_range() (Sa→+2, So→+1)
+- scripts/start_saleria.py: email_client, contact_store, note_store an BriefingScheduler
+- tests/test_briefing_scheduler.py:
+  - 18 neue Tests (Geburtstage 4, E-Mails 4, Flashback 3, Wochenende 7)
+  - Bestehende Tests auf festen Wochentag (_WEDNESDAY) umgestellt
+  - 28/28 Tests grün
+
+### Tests
+- 2772 passed, 0 failed (18 neu + 2754 bestehend)
+
+### Architektur-Entscheidungen
+- birthday als String (nicht date): erlaubt 0000-MM-DD für unbekanntes Jahr
+- Flashback-Filter: Notizen müssen mindestens 330 Tage alt sein (≈11 Monate)
+- Wochenende: Todos + Erinnerungen bewusst ausgeblendet (entspannter Ton)
+- Keine neuen Dependencies nötig
+
+## In Arbeit: Dashboard 2.0 – Konzeptdatei erstellen (2026-03-28)
+- Modulare PWA auf Rootserver als Grundlage für Phase 36
+- Harmony-Remote = Modul #1, HA = Modul #2 etc.
+- AudioDashboard bleibt unverändert (Dev-Settings, Tower)
+
+## Abgeschlossen: Dashboard 2.0 – Konzept erstellt (2026-03-28)
+- docs/concepts/dashboard-2.0.md (489 Zeilen)
+- Modulares System: base.js + loader.js + je Modul eine JS-Datei
+- Modul 1: HarmonyModule (Phase 36.1, RPi5 :8001)
+- Modul 2: SystemModule (immer, RPi5 + Tower Health)
+- Modul 3: SaleriaModule (Tower-abhängig, graceful offline)
+- Modul 4: HomeAssistantModule (Platzhalter, Phase 36.3)
+- PWA: manifest.json + Service Worker (Offline-Cache für statische Assets)
+- Nginx: dashboard.last-strawberry.com, IP-Whitelist Heimnetz
+- CORS: RPi5 muss Dashboard-Origin erlauben (FastAPI allow_origins)
+- Deploy: rsync-Script Tower → Rootserver

@@ -17,7 +17,7 @@ import logging
 import re
 import sqlite3
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
 logger = logging.getLogger(__name__)
@@ -269,6 +269,44 @@ class NoteStore:
             "FROM notes WHERE user_id = ? "
             "ORDER BY updated_at DESC, id DESC LIMIT ?",
             (user_id, limit),
+        ).fetchall()
+        return [self._row_to_note(r) for r in rows]
+
+    def get_notes_from_date(self, user_id: str, month: int, day: int,
+                            limit: int = 5) -> list[Note]:
+        """Notizen die an einem bestimmten Tag erstellt wurden (±1 Tag Toleranz).
+
+        Sucht über alle Jahre hinweg nach Notizen deren created_at auf
+        den angegebenen Monat/Tag fällt (±1 Tag).
+
+        Args:
+            user_id: Matrix-User-ID.
+            month: Monat (1-12).
+            day: Tag (1-31).
+            limit: Maximale Ergebnisse.
+
+        Returns:
+            Liste von Notes, neueste zuerst.
+        """
+        try:
+            ref = date(2000, month, day)
+            dates = [ref + timedelta(days=d) for d in (-1, 0, 1)]
+        except ValueError:
+            return []
+
+        conditions = " OR ".join(
+            "created_at LIKE ?" for _ in dates
+        )
+        params: list[str | int] = [user_id]
+        for d in dates:
+            # created_at ist ISO: '2025-03-28T12:00:00+00:00'
+            params.append(f"%-{d.month:02d}-{d.day:02d}T%")
+
+        rows = self._conn.execute(
+            "SELECT id, user_id, key, content, tags, created_at, updated_at "
+            "FROM notes WHERE user_id = ? AND (" + conditions + ") "
+            "ORDER BY created_at DESC LIMIT ?",
+            (*params, limit),
         ).fetchall()
         return [self._row_to_note(r) for r in rows]
 

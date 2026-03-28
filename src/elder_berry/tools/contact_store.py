@@ -17,7 +17,7 @@ from __future__ import annotations
 import logging
 import sqlite3
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from pathlib import Path
 
 logger = logging.getLogger(__name__)
@@ -41,6 +41,8 @@ class Contact:
     """Anrede-Stil: 'förmlich' (Sie) oder 'locker' (Du). Default: 'förmlich'."""
     notes: str
     """Freie Notizen (z.B. 'hat Hund namens Rex')."""
+    birthday: str
+    """Geburtstag im Format 'YYYY-MM-DD' oder leer. Jahr=0000 wenn unbekannt."""
     created_at: datetime
     updated_at: datetime
 
@@ -92,6 +94,7 @@ class ContactStore:
                 role        TEXT NOT NULL DEFAULT '',
                 formality   TEXT NOT NULL DEFAULT 'förmlich',
                 notes       TEXT NOT NULL DEFAULT '',
+                birthday    TEXT NOT NULL DEFAULT '',
                 created_at  TEXT NOT NULL,
                 updated_at  TEXT NOT NULL
             );
@@ -126,6 +129,21 @@ class ContactStore:
             END;
         """)
         self._conn.commit()
+        self._migrate_birthday_column()
+
+    def _migrate_birthday_column(self) -> None:
+        """Fügt birthday-Spalte hinzu wenn sie noch nicht existiert."""
+        try:
+            self._conn.execute("SELECT birthday FROM contacts LIMIT 1")
+        except sqlite3.OperationalError:
+            try:
+                self._conn.execute(
+                    "ALTER TABLE contacts ADD COLUMN birthday TEXT NOT NULL DEFAULT ''",
+                )
+                self._conn.commit()
+                logger.info("Migration: birthday-Spalte zu contacts hinzugefügt")
+            except sqlite3.OperationalError as e:
+                logger.warning("Migration birthday-Spalte fehlgeschlagen: %s", e)
 
     # ------------------------------------------------------------------
     # Schreiben
@@ -133,7 +151,7 @@ class ContactStore:
 
     def add(self, user_id: str, name: str, email: str = "",
             role: str = "", formality: str = "",
-            notes: str = "") -> Contact:
+            notes: str = "", birthday: str = "") -> Contact:
         """Kontakt hinzufügen oder aktualisieren (Upsert per Name).
 
         Wenn ein Kontakt mit gleichem Namen (case-insensitive) existiert,
@@ -146,38 +164,42 @@ class ContactStore:
             return self._upsert_existing(
                 existing, email=email, role=role,
                 formality=formality, notes=notes,
+                birthday=birthday,
             )
         # Neuer Kontakt: Default-Formalität wenn nicht angegeben
         insert_formality = formality if formality else "förmlich"
         cursor = self._conn.execute(
             "INSERT INTO contacts "
-            "(user_id, name, email, role, formality, notes, "
-            "created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-            (user_id, name, email, role, insert_formality, notes, now, now),
+            "(user_id, name, email, role, formality, notes, birthday, "
+            "created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (user_id, name, email, role, insert_formality, notes,
+             birthday, now, now),
         )
         self._conn.commit()
         return self._get_by_rowid(cursor.lastrowid)
 
     def _upsert_existing(self, existing: Contact, email: str,
                          role: str, formality: str,
-                         notes: str) -> Contact:
+                         notes: str, birthday: str = "") -> Contact:
         """Aktualisiert bestehenden Kontakt – nur non-empty Felder."""
         now = datetime.now(timezone.utc).isoformat()
         new_email = email if email else existing.email
         new_role = role if role else existing.role
         new_formality = formality if formality else existing.formality
         new_notes = notes if notes else existing.notes
+        new_birthday = birthday if birthday else existing.birthday
         self._conn.execute(
             "UPDATE contacts SET email = ?, role = ?, formality = ?, "
-            "notes = ?, updated_at = ? WHERE id = ?",
-            (new_email, new_role, new_formality, new_notes, now, existing.id),
+            "notes = ?, birthday = ?, updated_at = ? WHERE id = ?",
+            (new_email, new_role, new_formality, new_notes, new_birthday,
+             now, existing.id),
         )
         self._conn.commit()
         return self._get_by_rowid(existing.id)
 
     def update(self, contact_id: int, name: str = "", email: str = "",
                role: str = "", formality: str = "",
-               notes: str = "") -> Contact | None:
+               notes: str = "", birthday: str = "") -> Contact | None:
         """Kontakt per ID aktualisieren. Nur non-empty Felder überschreiben."""
         existing = self.get_by_id(contact_id)
         if not existing:
@@ -188,10 +210,11 @@ class ContactStore:
         r = role if role else existing.role
         f = formality if formality else existing.formality
         no = notes if notes else existing.notes
+        bd = birthday if birthday else existing.birthday
         self._conn.execute(
             "UPDATE contacts SET name=?, email=?, role=?, formality=?, "
-            "notes=?, updated_at=? WHERE id=?",
-            (n, e, r, f, no, now, contact_id),
+            "notes=?, birthday=?, updated_at=? WHERE id=?",
+            (n, e, r, f, no, bd, now, contact_id),
         )
         self._conn.commit()
         return self._get_by_rowid(contact_id)
@@ -203,7 +226,7 @@ class ContactStore:
     def find_by_email(self, user_id: str, email: str) -> Contact | None:
         """Kontakt per Email-Adresse finden (case-insensitive)."""
         row = self._conn.execute(
-            "SELECT id, user_id, name, email, role, formality, notes, "
+            "SELECT id, user_id, name, email, role, formality, notes, birthday, "
             "created_at, updated_at "
             "FROM contacts WHERE user_id=? AND email=? COLLATE NOCASE",
             (user_id, email.strip()),
@@ -213,7 +236,7 @@ class ContactStore:
     def find_by_name(self, user_id: str, name: str) -> Contact | None:
         """Kontakt per Name finden (case-insensitive)."""
         row = self._conn.execute(
-            "SELECT id, user_id, name, email, role, formality, notes, "
+            "SELECT id, user_id, name, email, role, formality, notes, birthday, "
             "created_at, updated_at "
             "FROM contacts WHERE user_id=? AND name=? COLLATE NOCASE",
             (user_id, name.strip()),
@@ -227,7 +250,7 @@ class ContactStore:
             fts_query = query.strip() + "*"
             rows = self._conn.execute(
                 "SELECT c.id, c.user_id, c.name, c.email, c.role, "
-                "c.formality, c.notes, c.created_at, c.updated_at "
+                "c.formality, c.notes, c.birthday, c.created_at, c.updated_at "
                 "FROM contacts c JOIN contacts_fts f ON c.id = f.rowid "
                 "WHERE f.contacts_fts MATCH ? AND c.user_id=? LIMIT ?",
                 (fts_query, user_id, limit),
@@ -239,7 +262,7 @@ class ContactStore:
     def list_all(self, user_id: str, limit: int = 20) -> list[Contact]:
         """Alle Kontakte eines Users (alphabetisch nach Name)."""
         rows = self._conn.execute(
-            "SELECT id, user_id, name, email, role, formality, notes, "
+            "SELECT id, user_id, name, email, role, formality, notes, birthday, "
             "created_at, updated_at FROM contacts WHERE user_id=? "
             "ORDER BY name COLLATE NOCASE LIMIT ?",
             (user_id, limit),
@@ -249,11 +272,35 @@ class ContactStore:
     def get_by_id(self, contact_id: int) -> Contact | None:
         """Kontakt per ID abrufen."""
         row = self._conn.execute(
-            "SELECT id, user_id, name, email, role, formality, notes, "
+            "SELECT id, user_id, name, email, role, formality, notes, birthday, "
             "created_at, updated_at FROM contacts WHERE id=?",
             (contact_id,),
         ).fetchone()
         return self._row_to_contact(row) if row else None
+
+    def get_birthdays_today(self, user_id: str,
+                            today: date | None = None) -> list[Contact]:
+        """Kontakte deren Geburtstag heute ist.
+
+        Vergleicht Monat+Tag des birthday-Felds (Format: YYYY-MM-DD).
+
+        Args:
+            user_id: Matrix-User-ID.
+            today: Optionales Datum (für Tests). Default: date.today().
+
+        Returns:
+            Liste von Contacts mit heutigem Geburtstag.
+        """
+        if today is None:
+            today = date.today()
+        mm_dd = today.strftime("%m-%d")
+        rows = self._conn.execute(
+            "SELECT id, user_id, name, email, role, formality, notes, birthday, "
+            "created_at, updated_at "
+            "FROM contacts WHERE user_id=? AND birthday LIKE ?",
+            (user_id, f"%-{mm_dd}"),
+        ).fetchall()
+        return [self._row_to_contact(r) for r in rows]
 
     # ------------------------------------------------------------------
     # Löschen
@@ -291,7 +338,7 @@ class ContactStore:
     def _get_by_rowid(self, rowid: int) -> Contact:
         """Holt Contact per rowid (nach INSERT/UPDATE)."""
         row = self._conn.execute(
-            "SELECT id, user_id, name, email, role, formality, notes, "
+            "SELECT id, user_id, name, email, role, formality, notes, birthday, "
             "created_at, updated_at FROM contacts WHERE id=?",
             (rowid,),
         ).fetchone()
@@ -301,10 +348,11 @@ class ContactStore:
     def _row_to_contact(row: tuple) -> Contact:
         """Konvertiert DB-Row in Contact-DTO."""
         (id_, user_id, name, email, role, formality, notes,
-         created_at, updated_at) = row
+         birthday, created_at, updated_at) = row
         return Contact(
             id=id_, user_id=user_id, name=name, email=email,
             role=role, formality=formality, notes=notes,
+            birthday=birthday or "",
             created_at=datetime.fromisoformat(created_at),
             updated_at=datetime.fromisoformat(updated_at),
         )
