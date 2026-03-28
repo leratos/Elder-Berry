@@ -211,3 +211,4 @@ docs/personal/
 !README.md
 # Saleria instance lock
 .saleria.lock
+.claude/settings.json

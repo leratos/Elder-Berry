@@ -2481,3 +2481,55 @@ User: "Lies meine Mails und trag den Zahnarzttermin ein"
 
 ### Tests
 - 1866/1866 bestehende Tests gruen, keine Regressionen
+
+## Abgeschlossen: Phase 32 – Test-Offensive (2026-03-28)
+- Branch: feature/phase-32-test-offensive
+
+### 15 neue Testdateien (410 Tests)
+
+**6 ungetestete Command-Handler (Alt):**
+- tests/test_advanced_commands.py: 31 Tests (Computer Use, Web Search, Document Summary, Audio)
+- tests/test_calendar_commands.py: 43 Tests (Termine CRUD, Pattern, _parse_natural_date, _parse_index)
+- tests/test_file_commands.py: 21 Tests (Clipboard R/W, Send-File, Download, Path-Validierung)
+- tests/test_mail_commands.py: 34 Tests (Mails, Suche, Attachment, Mail-by-ID, _extract_email)
+- tests/test_process_commands.py: 17 Tests (Start/Kill Prozesse, Whitelist, psutil-Mock)
+- tests/test_system_commands.py: 27 Tests (Status, Media, Volume, Avatar, Screenshot, Restart)
+
+**9 neue Module aus Phase 31:**
+- tests/test_git_commands.py: 17 Tests (Pattern, Whitelist, Truncation, Fehlerbehandlung)
+- tests/test_docker_commands.py: 16 Tests (Pattern, Whitelist, Container-Name-Validierung)
+- tests/test_wol_commands.py: 13 Tests (MAC-Validierung, Magic Packet, Socket-Mock)
+- tests/test_update_commands.py: 24 Tests (Pattern, Update-Flow, Rollback, Backup R/W)
+- tests/test_selfcheck_commands.py: 9 Tests (8-Punkte-Check, Warnungen, ohne project_root)
+- tests/test_cmd_utils.py: 9 Tests (CmdResult DTO, run_cmd mit Timeout/FileNotFound/Error)
+- tests/test_audio_pipeline.py: 12 Tests (STT, File-Messages, send_audio_if_available)
+- tests/test_message_handlers.py: 16 Tests (Remote Commands, Pending Confirm/Modify, Restart-Cooldown)
+- tests/test_restart_manager.py: 9 Tests (Flag R/W, Notification, Lock-Release, perform_restart)
+
+### Architektur-Entscheidungen
+- Lazy Imports (pyperclip, psutil, mss): sys.modules patching statt Modul-Level-Patch
+- Update-Backup-Tests: monkeypatch DEFAULT_BACKUP_DIR auf tmp_path fuer Isolation
+- Path.exists auf Windows: MagicMock statt realer Path (read-only Attribut)
+- perform_restart: Patch auf restart_manager-Modul (lazy import im Handler)
+
+### Tests
+- 410/410 neue Tests gruen
+- Bestehende Tests: keine Regressionen
+
+## Abgeschlossen: Phase 32 (Fortsetzung) – 4 fehlende Testdateien (2026-03-28)
+- Branch: feature/phase-32-test-offensive
+
+### 4 neue Testdateien (128 Tests)
+- tests/test_anthropic_client.py: 48 Tests (Init, Availability, Internals, generate, describe_image, computer_use, _parse_response)
+- tests/test_ollama_client.py: 18 Tests (Init, is_available, generate mit Payload/Timeout/Fehler)
+- tests/test_openrouter_client.py: 16 Tests (Init, is_available, generate mit Auth/Payload/Fehler)
+- tests/test_bridge.py: 46 Tests (Message-Filtering, Sender-Whitelist, Audio/File-Dispatch, Pending-Confirmation, Lifecycle, Restart-Erkennung, ErrorAlerting, Scheduler-Integration, Dispatch-Priorität)
+
+### Erkenntnisse
+- AnthropicClient: RateLimitError ist Subklasse von APIStatusError → except-Reihenfolge bewirkt dass RateLimitError vom APIStatusError-Handler gefangen wird (toter Code in except RateLimitError)
+- Bridge: frozenset() (leer) ist falsy → leere allowed_senders = kein Filter (Design-Entscheidung, kein Bug)
+- Bestehender Test test_screenshot_result_shape hängt bei Ausführung (mss-Screenshot-Capture) – nicht von Phase-32-Änderungen verursacht
+
+### Tests
+- 128/128 neue Tests grün
+- Bestehende Tests: keine Regressionen (467 relevante Tests verifiziert)
