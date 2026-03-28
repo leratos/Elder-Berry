@@ -30,6 +30,7 @@ SmartHomeCommandHandler
 | 36.1 | Harmony Hub – vollständige Ablösung | keine | sofort |
 | 36.2 | SmartHomeInterface + Plugin-Registry | 36.1 als Referenzimplementierung | nach 36.1 |
 | 36.3 | Home Assistant Adapter | 36.2 | parallel möglich |
+| 36.4 | Alexa-Integration (Emulated Hue) | 36.1 + 36.3 | nach Umzug |
 
 **Begründung für sofortige Logitech-Ablösung (36.1):**
 - Letztes Logitech-Server-Update: September 2024
@@ -1186,6 +1187,7 @@ test_home_assistant_adapter.py:
 | PWA-Zugang | Kein Login / IP-Whitelist / VPN | Nginx `allow 192.168.50.0/24; deny all;` |
 | RPi5 Port | :8001 (neben :8000 Tower)? | RPi5 läuft bereits auf :8001 prüfen (steht in robot/server.py) |
 | HA-Deployment | Eigener RPi / VM / Container | Entscheidung nach Umzug — adapter ist bereits mockbar |
+| Alexa-Emulation | Emulated Hue vs. HA Cloud-Alexa | Emulated Hue (lokal, kein Amazon-Account nötig) |
 
 ## Neue Dateien (Gesamtübersicht)
 
@@ -1224,3 +1226,81 @@ Tests:
 ```
 
 Gesamttests Phase 36: ~170 (36.1: ~95, 36.2: ~45, 36.3: ~30)
+
+---
+
+# Phase 36.4 – Alexa-Integration (Platzhalter)
+
+## Kontext
+
+Alexa wird täglich für Heimsteuerung genutzt ("Alexa schalte Kronleuchter ein",
+"schalte Fernseher ein"). Aktuell läuft das über Logitech-Cloud (Harmony) und
+direkte Geräte-Skills. Nach Phase 36.1–36.3 soll Alexa gegen die eigene
+Infrastruktur sprechen — lokal, ohne Logitech-Cloud, ohne herstellerspezifische Skills.
+
+## Abhängigkeiten
+
+- **36.1 muss abgeschlossen sein**: Harmony läuft lokal auf RPi5
+- **36.3 sollte abgeschlossen sein**: HA ist der natürliche Alexa-Unterbau
+- **Umzug muss erfolgt sein**: HA-Instanz muss stabil laufen
+
+## Technischer Ansatz: Emulated Hue
+
+Der RPi5 gibt sich gegenüber Alexa als Philips-Hue-Bridge aus.
+Alexa entdeckt ihn automatisch im lokalen Netzwerk (UPnP-Discovery).
+Geräte und Szenen erscheinen als Hue-Lampen — Alexa kann sie
+ein-/ausschalten ohne Cloud-Verbindung zu Drittanbietern.
+
+```
+Alexa → (UPnP Discovery) → RPi5 :80 (Emulated Hue API)
+      → "schalte Fernseher ein"
+      → RPi5 → HarmonyAdapter → Hub → IR → TV
+
+Alexa → "schalte Kronleuchter ein"
+      → RPi5 → HomeAssistantAdapter → HA → Zigbee/Z-Wave → Lampe
+```
+
+## Alternativer Ansatz: HA Cloud + Alexa Skill
+
+Home Assistant hat einen offiziellen Alexa-Skill über Nabu Casa (kostenpflichtig,
+~7€/Monat) oder selbst-gehostete HA Cloud. Vorteil: volle HA-Entity-Unterstützung
+inklusive Dimmen, Farbtemperatur, Szenen. Nachteil: erfordert externe Erreichbarkeit
+des HA-Servers (HTTPS, Port-Forwarding oder Nabu Casa).
+
+**Empfehlung**: Emulated Hue für einfache Ein/Aus-Befehle, HA Cloud-Option
+wenn Dimmen und komplexere Szenen gebraucht werden.
+
+## Was implementiert werden muss (Phase 36.4)
+
+```
+Auf RPi5:
+  - Emulated Hue Server (Python: phue-emulator oder aiohue-emulator)
+  - Device-Registry: welche HA-Entities / Harmony-Aktivitäten als
+    "Hue-Lampen" erscheinen sollen
+  - Mapping: Alexa-Gerätename → SmartHomeInterface-Befehl
+
+Konfiguration (elder_berry.json auf RPi5):
+  "alexa_devices": {
+    "Kronleuchter":   {"adapter": "homeassistant", "entity": "light.kronleuchter"},
+    "Fernseher":      {"adapter": "harmony",        "activity": "Fernsehen"},
+    "Musik":          {"adapter": "harmony",        "activity": "Musik"}
+  }
+```
+
+## Testliste Phase 36.4 (~20 Tests, noch nicht ausgearbeitet)
+
+```
+- UPnP-Discovery antwortet korrekt
+- Alexa-Gerät erscheint nach Discovery
+- turn_on mappt auf korrekten Adapter-Befehl
+- turn_off mappt auf korrekten Adapter-Befehl
+- Unbekanntes Gerät: 404
+- Mapping aus elder_berry.json wird korrekt geladen
+- Konfigurationsänderung ohne Neustart wirksam
+```
+
+## Hinweis
+
+Phase 36.4 ist bewusst nicht ausgearbeitet — Implementierungsdetails
+hängen von der HA-Instanz und dem konkreten Gerätepark nach dem Umzug ab.
+Das Konzept wird in einem eigenen Chat ausgearbeitet wenn 36.3 abgeschlossen ist.

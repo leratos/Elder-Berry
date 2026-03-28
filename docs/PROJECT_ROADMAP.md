@@ -448,7 +448,6 @@ Hardware bereits getestet (test_stepper.py, test_hall.py).
 ### Was absichtlich nicht implementiert wird
 - **Sicherheits-Infrastruktur für mehrere User** – nicht der Use-Case
 - **Mobile App** – Element ist der Client, keine eigene App geplant
-- **Wake-Word** ("Hey Saleria") – würde ständig laufenden STT-Prozess brauchen; zu viel Ressourcen
 - **Emotionale Manipulation / Dark Patterns** – Saleria soll helfen, nicht abhängig machen
 - **Autonome Code-Änderungen** – ClaudeAgent darf Docs schreiben, aber nicht `src/` ändern (Sicherheit)
 
@@ -466,6 +465,7 @@ Ein physischer Assistent auf dem Schreibtisch (Holunder-Hologramm), erreichbar v
 - Sich physisch zum Nutzer dreht (Drehteller mit Hall-Sensor Homing)
 - Sich selbst aktualisiert (Tower + RPi5 per Matrix-Command)
 - Das Smart Home steuert (Lichter, Heizung via HA – nach Umzug)
+- Sprachbefehle per Wake Word entgegennimmt ("Hey Saleria") oder Alexa als Proxy nutzt
 - Sich an Gespräche erinnert (RAG-Memory)
 - Proaktiv auf wichtige Events aufmerksam macht (Alerts)
 
@@ -517,3 +517,33 @@ To-Do-Liste mit Prioritäten, Kategorien und Briefing-Integration.
 - ✅ **Tests**: 74 Tests (TodoStore + TodoCommandHandler)
 - **Konzept**: `docs/concepts/phase-30-todo-liste.md`
 
+
+## Phase 36 – Smart Home Integration 🏠 GEPLANT
+
+Vollständige lokale Smart-Home-Steuerung über eine erweiterbare Adapter-Architektur.
+Logitech-Cloud wird sofort abgelöst (nicht erst bei Server-Shutdown).
+
+### Unterphasen
+- **36.1** Harmony Hub vollständige Ablösung (HarmonyAdapter auf RPi5, Config-Mock-Server, PWA)
+- **36.2** SmartHomeInterface ABC + SmartHomeRegistry (Plugin-Architektur, Tower)
+- **36.3** Home Assistant Adapter (REST API, lokal, nach Umzug)
+- **36.4** Alexa-Integration via Emulated Hue (RPi5, nach Umzug + HA stabil)
+
+- **Konzept**: `docs/concepts/phase-36-smart-home-integration.md`
+- **Abhängigkeit**: 36.3/36.4 nach Umzug; 36.1+36.2 sofort
+
+## Phase 37 – Sprachsteuerung / Alexa-Ablösung 🎙️ GEPLANT
+
+Saleria erhält eine eigene Sprachschnittstelle — unabhängig von Amazon.
+Zwei Modi werden parallel unterstützt, sodass zwischen Alexa und Saleria
+gewechselt werden kann (Flexibilität, kein harter Cut).
+
+### Unterphasen
+- **37.1** Alexa Skill "Saleria" (Proxy-Modus, keine neue Hardware)
+  → Echo macht Wake Word + STT, Text geht an Salerias API
+- **37.2** Natives Wake Word + Mic Array (vollständige Unabhängigkeit)
+  → OpenWakeWord auf RPi5, faster-whisper auf Tower-GPU
+  → Hardware: ReSpeaker USB Array (~60€) oder Umbau vorhandener Hardware
+
+- **Konzept**: `docs/concepts/phase-37-sprachsteuerung.md`
+- **Abhängigkeit**: 37.1 nach 36.4; 37.2 nach 37.1 (Hardware-Entscheidung)
