@@ -78,6 +78,7 @@ web = [
 ]
 nextcloud = [
     "caldav>=1.0",
+    "vobject>=0.9",
 ]
 
 [tool.setuptools.packages.find]

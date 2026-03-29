@@ -214,3 +214,59 @@ class TestContactKeywords:
 
     def test_command_descriptions(self, handler: ContactCommandHandler) -> None:
         assert len(handler.command_descriptions) >= 3
+
+
+# ── Sync-Pattern Tests ──
+
+class TestContactSyncPattern:
+    def test_sync_bidirectional(self) -> None:
+        from elder_berry.comms.commands.contact_commands import CONTACT_SYNC_PATTERN
+        m = CONTACT_SYNC_PATTERN.match("kontakte sync")
+        assert m is not None
+        assert m.group(1) is None
+
+    def test_sync_push(self) -> None:
+        from elder_berry.comms.commands.contact_commands import CONTACT_SYNC_PATTERN
+        m = CONTACT_SYNC_PATTERN.match("kontakte sync push")
+        assert m is not None
+        assert m.group(1) == "push"
+
+    def test_sync_pull(self) -> None:
+        from elder_berry.comms.commands.contact_commands import CONTACT_SYNC_PATTERN
+        m = CONTACT_SYNC_PATTERN.match("kontakte sync pull")
+        assert m is not None
+        assert m.group(1) == "pull"
+
+    def test_sync_singular(self) -> None:
+        from elder_berry.comms.commands.contact_commands import CONTACT_SYNC_PATTERN
+        m = CONTACT_SYNC_PATTERN.match("kontakt sync")
+        assert m is not None
+
+
+# ── Sync-Command Tests ──
+
+class TestContactSyncCommand:
+    def test_sync_no_carddav(self, store: ContactStore) -> None:
+        """Kein CardDAV-Client → Fehlermeldung."""
+        h = ContactCommandHandler(
+            contact_store=store, default_user_id=USER,
+        )
+        r = h.execute("contact_sync", "kontakte sync")
+        assert not r.success
+        assert "nicht konfiguriert" in r.text
+
+    def test_sync_success(self, store: ContactStore) -> None:
+        """Erfolgreicher Sync mit gemocktem Client."""
+        from unittest.mock import MagicMock
+        from elder_berry.tools.carddav_sync import SyncResult
+
+        mock_sync = MagicMock()
+        mock_sync.sync.return_value = SyncResult(pushed=2, pulled=1)
+        h = ContactCommandHandler(
+            contact_store=store, default_user_id=USER,
+            carddav_sync=mock_sync,
+        )
+        r = h.execute("contact_sync", "kontakte sync")
+        assert r.success
+        assert "2 gepusht" in r.text
+        assert "1 gepullt" in r.text

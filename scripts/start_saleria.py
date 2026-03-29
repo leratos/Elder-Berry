@@ -564,6 +564,21 @@ def _init_productivity_services(secrets, default_user_id):
         except Exception as e:
             logger.warning("Nextcloud Files nicht verfügbar: %s", e)
 
+    # Nextcloud CardDAV Sync
+    if secrets.get_or_none("nextcloud_url"):
+        try:
+            from elder_berry.tools.carddav_sync import CardDAVSyncClient
+            carddav = CardDAVSyncClient(secret_store=secrets)
+            if carddav.is_available():
+                svc["carddav_sync"] = carddav
+                logger.info("CardDAV Sync: aktiv (%s)", secrets.get("nextcloud_url"))
+            else:
+                logger.debug("CardDAV Sync: nicht erreichbar")
+        except ImportError:
+            logger.debug("CardDAV: vobject nicht installiert")
+        except Exception as e:
+            logger.warning("CardDAV Sync nicht verfügbar: %s", e)
+
     # Daily Briefing
     try:
         from elder_berry.comms.briefing_scheduler import BriefingScheduler
@@ -764,6 +779,7 @@ def run_matrix(assistant, stt=None, avatar=None, audio_converter=None, robot=Non
         robot_client=robot,
         anthropic_client=tools.get("vision_client"),
         nextcloud_files=svc.get("nextcloud_files"),
+        carddav_sync=svc.get("carddav_sync"),
         default_user_id=default_user_id,
     )
     assistant._remote_commands = remote

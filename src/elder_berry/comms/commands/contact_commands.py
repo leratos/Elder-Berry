@@ -18,9 +18,15 @@ from typing import TYPE_CHECKING
 from elder_berry.comms.commands.base import CommandHandler, CommandResult
 
 if TYPE_CHECKING:
+    from elder_berry.tools.carddav_sync import CardDAVSyncClient
     from elder_berry.tools.contact_store import ContactStore
 
 logger = logging.getLogger(__name__)
+
+CONTACT_SYNC_PATTERN = re.compile(
+    r"^kontakte?\s+sync(?:\s+(push|pull))?\s*$",
+    re.IGNORECASE,
+)
 
 CONTACT_ADD_PATTERN = re.compile(
     r"^(?:neuer?\s+)?kontakt[:\s]+(.+)$", re.IGNORECASE,
@@ -51,9 +57,11 @@ class ContactCommandHandler(CommandHandler):
     """Kontaktbuch-Commands für Matrix."""
 
     def __init__(self, contact_store: ContactStore | None = None,
-                 default_user_id: str = "") -> None:
+                 default_user_id: str = "",
+                 carddav_sync: CardDAVSyncClient | None = None) -> None:
         self._store = contact_store
         self._default_user_id = default_user_id
+        self._carddav_sync = carddav_sync
 
     @property
     def simple_commands(self) -> set[str]:
@@ -62,6 +70,7 @@ class ContactCommandHandler(CommandHandler):
     @property
     def patterns(self) -> list[tuple[re.Pattern, str, bool, bool]]:
         return [
+            (CONTACT_SYNC_PATTERN, "contact_sync", False, False),
             (CONTACT_ADD_PATTERN, "contact_add", False, False),
             (CONTACT_UPDATE_PATTERN, "contact_update", False, True),
             (CONTACT_WHO_PATTERN, "contact_who", False, False),
@@ -90,6 +99,9 @@ class ContactCommandHandler(CommandHandler):
             "kontakte – Alle Kontakte auflisten",
             "kontakte suche <Begriff> – Kontakt suchen",
             "kontakt löschen #<ID> – Kontakt löschen",
+            "kontakte sync – Kontakte mit Nextcloud synchronisieren",
+            "kontakte sync push – Nur lokal → Nextcloud",
+            "kontakte sync pull – Nur Nextcloud → lokal",
         ]
 
     def execute(self, command: str, raw_text: str) -> CommandResult:
@@ -106,6 +118,7 @@ class ContactCommandHandler(CommandHandler):
             "contact_who": self._cmd_who,
             "contact_search": self._cmd_search,
             "contact_delete": self._cmd_delete,
+            "contact_sync": self._cmd_sync,
         }
         handler = dispatch.get(command)
         if handler:
@@ -229,6 +242,48 @@ class ContactCommandHandler(CommandHandler):
                                  text=f"📇 Kontakt {label} gelöscht.")
         return CommandResult(command="contact_delete", success=False,
                              text=f"Kontakt {label} nicht gefunden.")
+
+    def _cmd_sync(self, raw_text: str) -> CommandResult:
+        if not self._carddav_sync:
+            return CommandResult(
+                command="contact_sync", success=False,
+                text="CardDAV-Sync nicht konfiguriert (Nextcloud-Credentials fehlen).",
+            )
+        match = CONTACT_SYNC_PATTERN.match(raw_text.strip())
+        direction = match.group(1).lower() if match and match.group(1) else None
+        user_id = self._default_user_id
+
+        try:
+            if direction == "push":
+                contacts = self._store.list_all(user_id, limit=1000)
+                result = self._carddav_sync.push_contacts(contacts)
+            elif direction == "pull":
+                remote = self._carddav_sync.pull_contacts(user_id)
+                pulled = 0
+                for rc in remote:
+                    self._store.add(
+                        user_id, name=rc.name, email=rc.email,
+                        role=rc.role, formality=rc.formality,
+                        notes=rc.notes, birthday=rc.birthday,
+                    )
+                    pulled += 1
+                from elder_berry.tools.carddav_sync import SyncResult
+                result = SyncResult(pulled=pulled)
+            else:
+                result = self._carddav_sync.sync(self._store, user_id)
+        except Exception as exc:
+            logger.error("CardDAV Sync fehlgeschlagen: %s", exc)
+            return CommandResult(
+                command="contact_sync", success=False,
+                text=f"Sync fehlgeschlagen: {exc}",
+            )
+
+        text = f"📇 Kontakte-Sync abgeschlossen: {result}"
+        if result.errors:
+            text += "\n⚠️ Fehler:\n" + "\n".join(
+                f"  - {e}" for e in result.errors
+            )
+        return CommandResult(command="contact_sync", success=True, text=text)
 
     # ------------------------------------------------------------------
     # Parsing
