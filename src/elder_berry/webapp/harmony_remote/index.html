@@ -1,0 +1,245 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="theme-color" content="#1a1a2e">
+    <title>Harmony Remote</title>
+    <link rel="manifest" href="manifest.json">
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            background: #1a1a2e;
+            color: #eee;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 16px;
+            -webkit-tap-highlight-color: transparent;
+        }
+        h1 { font-size: 1.2em; margin-bottom: 8px; color: #9b59b6; }
+        #status {
+            font-size: 0.85em;
+            color: #888;
+            margin-bottom: 16px;
+            text-align: center;
+        }
+        #status.active { color: #2ecc71; }
+        #status.error { color: #e74c3c; }
+        .section { width: 100%; max-width: 400px; margin-bottom: 16px; }
+        .section-title {
+            font-size: 0.75em;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            color: #666;
+            margin-bottom: 8px;
+        }
+        .btn-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 8px;
+        }
+        .btn-grid.single { grid-template-columns: 1fr; }
+        .btn-grid.triple { grid-template-columns: 1fr 1fr 1fr; }
+        button {
+            background: #16213e;
+            color: #eee;
+            border: 1px solid #333;
+            border-radius: 12px;
+            padding: 16px 12px;
+            font-size: 1em;
+            cursor: pointer;
+            transition: background 0.15s, transform 0.1s;
+            touch-action: manipulation;
+        }
+        button:active { background: #9b59b6; transform: scale(0.96); }
+        button.danger { border-color: #c0392b; color: #e74c3c; }
+        button.danger:active { background: #c0392b; color: #fff; }
+        button.primary { border-color: #9b59b6; color: #9b59b6; }
+        button.primary:active { background: #9b59b6; color: #fff; }
+        .volume-row {
+            display: grid;
+            grid-template-columns: 1fr 1fr 1fr;
+            gap: 8px;
+        }
+        .volume-row button { font-size: 1.3em; padding: 20px 12px; }
+        #settings {
+            margin-top: 16px;
+            width: 100%;
+            max-width: 400px;
+        }
+        #settings input {
+            width: 100%;
+            padding: 10px;
+            background: #16213e;
+            border: 1px solid #333;
+            border-radius: 8px;
+            color: #eee;
+            font-size: 0.9em;
+        }
+        #settings label {
+            font-size: 0.75em;
+            color: #666;
+            display: block;
+            margin-bottom: 4px;
+        }
+        .toast {
+            position: fixed;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: #333;
+            color: #eee;
+            padding: 10px 20px;
+            border-radius: 8px;
+            font-size: 0.85em;
+            opacity: 0;
+            transition: opacity 0.3s;
+            pointer-events: none;
+        }
+        .toast.show { opacity: 1; }
+    </style>
+</head>
+<body>
+    <h1>Harmony Remote</h1>
+    <div id="status">Verbinde...</div>
+
+    <div class="section">
+        <div class="section-title">Aktivitaeten</div>
+        <div id="activities" class="btn-grid">
+            <!-- Dynamisch gefuellt -->
+        </div>
+    </div>
+
+    <div class="section">
+        <div class="section-title">Lautstaerke</div>
+        <div class="volume-row">
+            <button onclick="sendCommand('Denon AVR-X3500H','VolumeDown')">-</button>
+            <button onclick="sendCommand('Denon AVR-X3500H','Mute')">Stumm</button>
+            <button onclick="sendCommand('Denon AVR-X3500H','VolumeUp')">+</button>
+        </div>
+    </div>
+
+    <div class="section">
+        <div class="section-title">Steuerung</div>
+        <div class="btn-grid single">
+            <button class="danger" onclick="powerOff()">Alles Aus</button>
+        </div>
+    </div>
+
+    <div id="settings">
+        <label for="apiUrl">API-URL (RPi5)</label>
+        <input id="apiUrl" type="url" placeholder="http://192.168.50.220:8000">
+    </div>
+
+    <div id="toast" class="toast"></div>
+
+    <script>
+        const apiUrlInput = document.getElementById('apiUrl');
+        const statusEl = document.getElementById('status');
+        const activitiesEl = document.getElementById('activities');
+        const toastEl = document.getElementById('toast');
+
+        // API-URL aus localStorage oder Default
+        const DEFAULT_API = window.location.port
+            ? `${window.location.protocol}//${window.location.hostname}:8000`
+            : `${window.location.protocol}//${window.location.hostname}:8000`;
+
+        apiUrlInput.value = localStorage.getItem('harmony_api_url') || DEFAULT_API;
+        apiUrlInput.addEventListener('change', () => {
+            localStorage.setItem('harmony_api_url', apiUrlInput.value);
+            loadConfig();
+            pollStatus();
+        });
+
+        function getApi() {
+            return apiUrlInput.value.replace(/\/+$/, '');
+        }
+
+        function showToast(msg, ms = 2000) {
+            toastEl.textContent = msg;
+            toastEl.classList.add('show');
+            setTimeout(() => toastEl.classList.remove('show'), ms);
+        }
+
+        async function apiCall(method, path, body) {
+            const url = getApi() + path;
+            const opts = { method, headers: { 'Content-Type': 'application/json' } };
+            if (body) opts.body = JSON.stringify(body);
+            const r = await fetch(url, opts);
+            return r.json();
+        }
+
+        async function pollStatus() {
+            try {
+                const data = await apiCall('GET', '/harmony/status');
+                if (data.connected) {
+                    statusEl.className = 'active';
+                    statusEl.textContent = data.current_activity
+                        ? `Aktiv: ${data.current_activity}`
+                        : 'Verbunden (alles aus)';
+                } else {
+                    statusEl.className = 'error';
+                    statusEl.textContent = 'Hub nicht verbunden';
+                }
+            } catch {
+                statusEl.className = 'error';
+                statusEl.textContent = 'RPi5 nicht erreichbar';
+            }
+        }
+
+        async function loadConfig() {
+            try {
+                const data = await apiCall('GET', '/harmony/config');
+                activitiesEl.innerHTML = '';
+                (data.activities || []).forEach(name => {
+                    const btn = document.createElement('button');
+                    btn.className = 'primary';
+                    btn.textContent = name;
+                    btn.onclick = () => startActivity(name);
+                    activitiesEl.appendChild(btn);
+                });
+            } catch {
+                activitiesEl.innerHTML = '<button disabled>Nicht erreichbar</button>';
+            }
+        }
+
+        async function startActivity(name) {
+            try {
+                const data = await apiCall('POST', '/harmony/activity', { activity: name });
+                showToast(data.success ? `${name} gestartet` : 'Fehler');
+                pollStatus();
+            } catch { showToast('Verbindungsfehler'); }
+        }
+
+        async function sendCommand(device, command) {
+            try {
+                const data = await apiCall('POST', '/harmony/command', { device, command });
+                if (!data.success) showToast('Befehl fehlgeschlagen');
+            } catch { showToast('Verbindungsfehler'); }
+        }
+
+        async function powerOff() {
+            try {
+                const data = await apiCall('POST', '/harmony/off');
+                showToast(data.success ? 'Alles aus' : 'Fehler');
+                pollStatus();
+            } catch { showToast('Verbindungsfehler'); }
+        }
+
+        // Init
+        loadConfig();
+        pollStatus();
+        setInterval(pollStatus, 10000);
+
+        // Service Worker
+        if ('serviceWorker' in navigator) {
+            navigator.serviceWorker.register('sw.js').catch(() => {});
+        }
+    </script>
+</body>
+</html>

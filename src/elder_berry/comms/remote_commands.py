@@ -52,6 +52,7 @@ from elder_berry.comms.commands.note_commands import NoteCommandHandler
 from elder_berry.comms.commands.contact_commands import ContactCommandHandler
 from elder_berry.comms.commands.todo_commands import TodoCommandHandler
 from elder_berry.comms.commands.cloud_commands import CloudCommandHandler
+from elder_berry.comms.commands.harmony_commands import HarmonyCommandHandler
 
 if TYPE_CHECKING:
     from elder_berry.actions.base import ActionController
@@ -234,6 +235,17 @@ Web-Suche:
   such mal <Begriff> – Alias für suche
   google <Begriff> – Alias für suche
 
+Harmony Hub (Smart Home):
+  <aktivität> an – Aktivität starten (z.B. fernsehen an, musik an)
+  alles aus / harmony aus – Alle Geräte ausschalten
+  lauter / mach lauter – Lautstärke erhöhen (Receiver)
+  leiser / mach leiser – Lautstärke senken (Receiver)
+  stummschalten / stumm – Receiver stummschalten
+  was läuft / harmony status – Aktuelle Aktivität anzeigen
+  harmony aktivitäten – Alle Aktivitäten auflisten
+  harmony geräte – Alle Geräte auflisten
+  harmony befehle <gerät> – Verfügbare Befehle für ein Gerät
+
 Drehteller:
   drehteller home – Home-Position anfahren
   dreh dich um <grad> [nach links/rechts] – Relativ drehen
@@ -361,6 +373,9 @@ class RemoteCommandHandler:
         self._cloud = CloudCommandHandler(
             nextcloud_files=nextcloud_files,
         )
+        self._harmony = HarmonyCommandHandler(
+            robot_client=robot_client,
+        )
         self._advanced = AdvancedCommandHandler(
             computer_use=computer_use,
             search_client=search_client,
@@ -413,6 +428,7 @@ class RemoteCommandHandler:
             self._update,
             self._selfcheck,
             self._turntable,
+            self._harmony,
             self._camera,
         ]
         if self._notes is not None:

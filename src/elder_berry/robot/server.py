@@ -20,9 +20,11 @@ from dataclasses import asdict
 from pathlib import Path
 
 from fastapi import FastAPI
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
 from elder_berry.robot.camera_controller import CameraController
+from elder_berry.robot.harmony_adapter import HarmonyAdapter
 from elder_berry.robot.turntable_controller import TurntableController
 from elder_berry.robot.protocol import (
     ApiResponse,
@@ -60,6 +62,18 @@ class TurntableRotateRequest(BaseModel):
     """Request: Drehteller rotieren."""
     target_degrees: float | None = None    # Absolute Position
     relative_degrees: float | None = None  # Relative Rotation
+
+
+class HarmonyActivityRequest(BaseModel):
+    """Request: Harmony-Aktivitaet starten."""
+    activity: str  # z.B. "Fernsehen"
+
+
+class HarmonyCommandRequest(BaseModel):
+    """Request: Harmony-Geraetebefehl senden."""
+    device: str    # z.B. "Receiver"
+    command: str   # z.B. "VolumeUp"
+    repeat: int = 1
 
 
 # ---------------------------------------------------------------------------
@@ -138,6 +152,7 @@ class RobotServer:
         sensors: SensorManager,
         camera: CameraController | None = None,
         turntable: TurntableController | None = None,
+        harmony: HarmonyAdapter | None = None,
         hostname: str = "elder-berry-rpi",
         project_root: Path | None = None,
         service_name: str = "elder-berry-rpi",
@@ -147,6 +162,7 @@ class RobotServer:
         self._sensors = sensors
         self._camera = camera
         self._turntable = turntable
+        self._harmony = harmony
         self._hostname = hostname
         self._project_root = project_root
         self._service_name = service_name
@@ -437,3 +453,71 @@ class RobotServer:
                 success=True,
                 message=" | ".join(steps),
             ))
+
+        # --- Harmony Hub ---
+
+        @self.app.get("/harmony/status")
+        async def harmony_status() -> dict:
+            """Harmony-Hub Status: Verbindung und aktuelle Aktivitaet."""
+            if not self._harmony:
+                return JSONResponse(
+                    {"error": "Harmony nicht konfiguriert"},
+                    status_code=503,
+                )
+            current = await self._harmony.get_current_activity()
+            return {
+                "connected": self._harmony.is_connected,
+                "current_activity": current,
+            }
+
+        @self.app.get("/harmony/config")
+        async def harmony_config() -> dict:
+            """Harmony-Hub Konfiguration: Aktivitaeten und Geraete."""
+            if not self._harmony:
+                return JSONResponse(
+                    {"error": "Harmony nicht konfiguriert"},
+                    status_code=503,
+                )
+            activities = await self._harmony.list_activities()
+            devices = await self._harmony.list_devices()
+            return {
+                "activities": activities,
+                "devices": devices,
+            }
+
+        @self.app.post("/harmony/activity")
+        async def harmony_activity(request: HarmonyActivityRequest) -> dict:
+            """Startet eine Harmony-Aktivitaet."""
+            if not self._harmony:
+                return JSONResponse(
+                    {"error": "Harmony nicht konfiguriert"},
+                    status_code=503,
+                )
+            success = await self._harmony.start_activity(request.activity)
+            return {"success": success, "activity": request.activity}
+
+        @self.app.post("/harmony/command")
+        async def harmony_command(request: HarmonyCommandRequest) -> dict:
+            """Sendet einen Geraetebefehl ueber den Harmony Hub."""
+            if not self._harmony:
+                return JSONResponse(
+                    {"error": "Harmony nicht konfiguriert"},
+                    status_code=503,
+                )
+            success = await self._harmony.send_command(
+                device=request.device,
+                command=request.command,
+                repeat=request.repeat,
+            )
+            return {"success": success}
+
+        @self.app.post("/harmony/off")
+        async def harmony_off() -> dict:
+            """Schaltet alle Geraete aus (PowerOff)."""
+            if not self._harmony:
+                return JSONResponse(
+                    {"error": "Harmony nicht konfiguriert"},
+                    status_code=503,
+                )
+            success = await self._harmony.power_off()
+            return {"success": success}
