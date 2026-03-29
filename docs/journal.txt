@@ -2849,3 +2849,42 @@ User: "Lies meine Mails und trag den Zahnarzttermin ein"
 ### Tests
 - 2893 Tests gesamt, 0 Fehler
 - Bestehende Retry-Tests in test_intent_routing.py auf generate_raw migriert
+
+## Abgeschlossen: Phase 36.2 – CalDAV Kalender (Google Calendar ersetzen) (2026-03-29)
+- Branch: feature/phase-36-2-caldav-calendar
+
+### Neue Dateien
+- src/elder_berry/tools/caldav_calendar.py:
+  - CalDAVCalendarClient: CalDAV-Client für Nextcloud Calendar
+  - Identisches Interface wie GoogleCalendarClient (Duck Typing)
+  - Methoden: get_events, search_events, get_today, get_tomorrow, get_events_range, create_event, delete_event, format_events
+  - Credentials aus SecretStore (nextcloud_url, nextcloud_user, nextcloud_app_password)
+  - Lazy-Init: Verbindung erst bei erstem Zugriff
+  - Retry-Logik: Bei Connection-Fehler Calendar invalidieren → automatischer Reconnect
+  - iCal-Parsing via icalendar-Library (transitiv über caldav)
+  - CalendarEvent wird aus google_calendar.py importiert (nicht kopiert)
+- tests/test_caldav_calendar.py: 30 Tests (Credentials 5, GetEvents 8, Search 3, Create 5, Delete 3, Parse 5, Recovery 1)
+
+### Geänderte Dateien
+- scripts/start_saleria.py:
+  - Calendar-Init: Nextcloud CalDAV bevorzugt, Google Calendar als Fallback
+  - Automatische Erkennung über vorhandene Credentials (kein Config-Flag)
+- src/elder_berry/comms/commands/calendar_commands.py:
+  - Fehlermeldungen "Google Calendar nicht konfiguriert" → "Kalender nicht konfiguriert" (4 Stellen)
+  - Docstrings: "Google Calendar Commands" → "Kalender-Commands"
+- pyproject.toml:
+  - Neue optionale Gruppe: nextcloud = ["caldav>=1.0"]
+
+### Tests
+- 30 neue Tests, 2893 bestehende Tests unverändert grün
+- Gesamt: 2923 getestet, 0 Fehler
+
+### Architektur-Entscheidungen
+- CalendarEvent aus google_calendar.py importiert (Single Source of Truth)
+- format_events() 1:1 kopiert (arbeitet nur auf CalendarEvent, kein API-Code)
+- Clientseitiges Filtern bei search_events (CalDAV text-match ist serverspezifisch)
+- caldav-Library für CalDAV-Protokoll (kein manuelles XML wie bei WebDAV-FilesClient)
+- GoogleCalendarClient bleibt als Fallback im Code
+
+### Nächster Schritt
+- Phase 36.3: CardDAV Kontakte (Google Contacts ersetzen) → eigener Chat

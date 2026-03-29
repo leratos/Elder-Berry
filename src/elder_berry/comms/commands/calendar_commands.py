@@ -1,5 +1,6 @@
-"""CalendarCommandHandler – Google Calendar Commands (Termine).
+"""CalendarCommandHandler – Kalender-Commands (Termine).
 
+Unterstützt CalDAV (Nextcloud) und Google Calendar als Backend.
 Commands:
 - termine / termine morgen / termine woche / termine N → Termine abfragen
 - termin: Titel Datum Uhrzeit → Termin erstellen
@@ -143,7 +144,7 @@ def _parse_recurrence(text: str) -> list[str] | None:
 # ------------------------------------------------------------------
 
 class CalendarCommandHandler(CommandHandler):
-    """Handler für Google Calendar Commands (Termine)."""
+    """Handler für Kalender-Commands (Termine)."""
 
     def __init__(
         self,
@@ -228,8 +229,7 @@ class CalendarCommandHandler(CommandHandler):
             return CommandResult(
                 command="termine",
                 success=False,
-                text="Google Calendar nicht konfiguriert.\n"
-                     "Setup: python scripts/setup_google_oauth.py",
+                text="Kalender nicht konfiguriert.",
             )
 
         normalized = raw_text.strip().lower()
@@ -282,7 +282,7 @@ class CalendarCommandHandler(CommandHandler):
             return CommandResult(
                 command="termin_create",
                 success=False,
-                text="Google Calendar nicht konfiguriert.",
+                text="Kalender nicht konfiguriert.",
             )
 
         match = TERMIN_CREATE_PATTERN.match(raw_text.strip())
@@ -352,7 +352,7 @@ class CalendarCommandHandler(CommandHandler):
         if not self._calendar:
             return CommandResult(
                 command="termin_search", success=False,
-                text="Google Calendar nicht konfiguriert.",
+                text="Kalender nicht konfiguriert.",
             )
 
         match = TERMIN_SEARCH_PATTERN.search(raw_text.strip())
@@ -390,7 +390,7 @@ class CalendarCommandHandler(CommandHandler):
         if not self._calendar:
             return CommandResult(
                 command="termin_delete", success=False,
-                text="Google Calendar nicht konfiguriert.",
+                text="Kalender nicht konfiguriert.",
             )
 
         normalized = raw_text.strip().lower()
