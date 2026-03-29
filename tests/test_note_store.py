@@ -278,3 +278,79 @@ class TestNormalizeKey:
 
     def test_multiple_spaces(self):
         assert NoteStore._normalize_key("wlan  büro  passwort") == "wlan büro passwort"
+
+
+# ---------------------------------------------------------------------------
+# _sanitize_fts_query – Tests
+# ---------------------------------------------------------------------------
+
+class TestSanitizeFtsQuery:
+    def test_normal_query(self):
+        assert NoteStore._sanitize_fts_query("Vermieter Müller") == "Vermieter Müller"
+
+    def test_apostrophes(self):
+        result = NoteStore._sanitize_fts_query(
+            "Der Command 'termin' wurde nicht erkannt"
+        )
+        assert "'" not in result
+        assert "termin" in result
+        assert "erkannt" in result
+
+    def test_parentheses(self):
+        result = NoteStore._sanitize_fts_query("test (wichtig)")
+        assert "(" not in result
+        assert ")" not in result
+        assert "test" in result
+        assert "wichtig" in result
+
+    def test_quotes(self):
+        result = NoteStore._sanitize_fts_query('suche "das hier"')
+        assert '"' not in result
+        assert "suche" in result
+        assert "das" in result
+
+    def test_fts_operators_removed(self):
+        result = NoteStore._sanitize_fts_query("NOT AND OR")
+        assert result == ""
+
+    def test_only_special_chars_empty(self):
+        result = NoteStore._sanitize_fts_query("'()\"*!@#$%")
+        assert result == ""
+
+    def test_mixed_operators_and_words(self):
+        result = NoteStore._sanitize_fts_query("Katze AND Hund")
+        assert result == "Katze Hund"
+
+    def test_umlauts_preserved(self):
+        result = NoteStore._sanitize_fts_query("Büro Straße Ärger")
+        assert "Büro" in result
+        assert "Straße" in result
+        assert "Ärger" in result
+
+
+class TestSearchSanitized:
+    """Integration: search() mit problematischen Queries crasht nicht."""
+
+    def test_search_with_apostrophes(self, store):
+        store.add_note(USER_A, "Termin um 14 Uhr")
+        results = store.search(USER_A, "Der Command 'termin' wurde nicht erkannt")
+        # Kein Crash – Ergebnis kann leer oder match sein
+        assert isinstance(results, list)
+
+    def test_search_with_parentheses(self, store):
+        store.add_note(USER_A, "Test wichtig")
+        results = store.search(USER_A, "test (wichtig)")
+        assert isinstance(results, list)
+
+    def test_search_with_quotes(self, store):
+        store.add_note(USER_A, "das hier finden")
+        results = store.search(USER_A, 'suche "das hier"')
+        assert isinstance(results, list)
+
+    def test_search_only_operators(self, store):
+        results = store.search(USER_A, "NOT AND OR")
+        assert results == []
+
+    def test_search_only_special_chars(self, store):
+        results = store.search(USER_A, "'()\"*")
+        assert results == []

@@ -34,6 +34,8 @@ TERMINE_PATTERN = re.compile(
 # "termin: Zahnarzt morgen 14:00"
 # "termin: Zahnarzt 30.03 14:00"
 # "termin: Zahnarzt 30.03.2026 14:00"
+# "termin: Geburtstag Lisa 28.09 jährlich"  (Ganztags + Wiederholung)
+# "termin: Urlaub 15.07"  (Ganztags ohne Uhrzeit)
 # Auch ohne Doppelpunkt: "termin Zahnarzt morgen 14:00"
 # Auch mit "erstelle": "erstelle termin Zahnarzt morgen 14:00"
 TERMIN_CREATE_PATTERN = re.compile(
@@ -43,7 +45,10 @@ TERMIN_CREATE_PATTERN = re.compile(
     r"(morgen|übermorgen|uebermorgen"                           # Wort-Datum
     r"|\d{1,2}\.\d{1,2}(?:\.\d{2,4})?"                        # DD.MM oder DD.MM.YY(YY)
     r"|\d{4}-\d{2}-\d{2})"                                    # YYYY-MM-DD
-    r"\s+(?:um\s+)?(\d{1,2}:\d{2})(?:\s*uhr)?$",              # Uhrzeit (optional "um"/"Uhr")
+    r"(?:\s+(?:um\s+)?(\d{1,2}:\d{2})(?:\s*uhr)?)?"           # Uhrzeit (optional)
+    r"(?:\s+(jährlich|monatlich|wöchentlich|täglich"            # Wiederholung (optional)
+    r"|yearly|monthly|weekly|daily)"
+    r"(?:\s+wiederhol(?:en|end))?)?$",
     re.IGNORECASE,
 )
 
@@ -113,6 +118,24 @@ def _parse_natural_date(date_str: str) -> datetime | None:
             pass
 
     return None
+
+
+def _parse_recurrence(text: str) -> list[str] | None:
+    """Übersetzt Wiederholungstext in RRULE-Strings für die Google Calendar API."""
+    if not text:
+        return None
+    mapping = {
+        "jährlich": "RRULE:FREQ=YEARLY",
+        "yearly": "RRULE:FREQ=YEARLY",
+        "monatlich": "RRULE:FREQ=MONTHLY",
+        "monthly": "RRULE:FREQ=MONTHLY",
+        "wöchentlich": "RRULE:FREQ=WEEKLY",
+        "weekly": "RRULE:FREQ=WEEKLY",
+        "täglich": "RRULE:FREQ=DAILY",
+        "daily": "RRULE:FREQ=DAILY",
+    }
+    rrule = mapping.get(text.lower().strip())
+    return [rrule] if rrule else None
 
 
 # ------------------------------------------------------------------
@@ -268,12 +291,14 @@ class CalendarCommandHandler(CommandHandler):
                 command="termin_create",
                 success=False,
                 text="Format: termin: Titel morgen 14:00\n"
+                     "Oder Ganztags: termin: Titel 30.03\n"
                      "Datum-Formate: morgen, übermorgen, 30.03, 30.03.2026, 2026-03-30",
             )
 
         title = match.group(1).strip()
         date_str = match.group(2)
-        time_str = match.group(3)
+        time_str = match.group(3)  # None wenn keine Uhrzeit
+        recurrence_str = match.group(4)  # None wenn keine Wiederholung
 
         # Natürliche Datumsangaben parsen (morgen, DD.MM, etc.)
         date_parsed = _parse_natural_date(date_str)
@@ -285,22 +310,34 @@ class CalendarCommandHandler(CommandHandler):
                      "Erlaubt: morgen, übermorgen, 30.03, 30.03.2026, 2026-03-30",
             )
 
-        try:
-            hour, minute = time_str.split(":")
-            start = date_parsed.replace(hour=int(hour), minute=int(minute))
-        except (ValueError, IndexError):
-            return CommandResult(
-                command="termin_create",
-                success=False,
-                text=f"Ungültige Uhrzeit: '{time_str}'. Format: HH:MM",
-            )
+        all_day = time_str is None
+        if not all_day:
+            try:
+                hour, minute = time_str.split(":")
+                start = date_parsed.replace(hour=int(hour), minute=int(minute))
+            except (ValueError, IndexError):
+                return CommandResult(
+                    command="termin_create",
+                    success=False,
+                    text=f"Ungültige Uhrzeit: '{time_str}'. Format: HH:MM",
+                )
+        else:
+            start = date_parsed
+
+        recurrence = _parse_recurrence(recurrence_str) if recurrence_str else None
 
         try:
-            event = self._calendar.create_event(summary=title, start=start)
+            event = self._calendar.create_event(
+                summary=title, start=start,
+                all_day=all_day, recurrence=recurrence,
+            )
+            text = f"Termin erstellt: {event.format_short()}"
+            if recurrence:
+                text += f" (wiederholt: {recurrence_str})"
             return CommandResult(
                 command="termin_create",
                 success=True,
-                text=f"Termin erstellt: {event.format_short()}",
+                text=text,
             )
         except Exception as e:
             logger.error("Termin erstellen fehlgeschlagen: %s", e)

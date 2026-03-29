@@ -341,3 +341,43 @@ class TestAssistantResult:
         assert r.response == "ok"
         assert r.action_executed == "press_key"
         assert r.action_success is True
+
+
+# ---------------------------------------------------------------------------
+# generate_raw – Tests
+# ---------------------------------------------------------------------------
+
+class TestGenerateRaw:
+    def test_returns_raw_llm_text(self, assistant, mock_llm):
+        mock_llm.generate.return_value = "mail suche Rechnung"
+        result = assistant.generate_raw("Was ist der Command?")
+        assert result == "mail suche Rechnung"
+        mock_llm.generate.assert_called_once()
+
+    def test_does_not_call_smart_context(self, assistant, mock_llm):
+        mock_smart = MagicMock()
+        assistant._smart_context = mock_smart
+        mock_llm.generate.return_value = "ok"
+        assistant.generate_raw("test")
+        mock_smart.get_context.assert_not_called()
+
+    def test_does_not_call_memory(self, assistant, mock_llm):
+        mock_memory = MagicMock()
+        assistant._memory = mock_memory
+        mock_llm.generate.return_value = "ok"
+        assistant.generate_raw("test")
+        mock_memory.get_context.assert_not_called()
+        mock_memory.add.assert_not_called()
+
+    def test_does_not_call_tts(self, assistant, mock_llm, mock_tts):
+        mock_llm.generate.return_value = "ok"
+        assistant.generate_raw("test")
+        mock_tts.speak.assert_not_called()
+
+    def test_passes_system_and_history(self, assistant, mock_llm):
+        mock_llm.generate.return_value = "ok"
+        assistant.generate_raw("input", system="sys", chat_history="hist")
+        call_args = mock_llm.generate.call_args
+        assert call_args[0][0] == "input"
+        assert "sys" in call_args[1]["system"]
+        assert "hist" in call_args[1]["system"]

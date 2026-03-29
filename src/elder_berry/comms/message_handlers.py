@@ -733,7 +733,11 @@ class BridgeMessageHandler:
     async def _retry_llm_remote_command(
         self, msg: IncomingMessage, failed_command: str,
     ) -> str | None:
-        """Gibt dem LLM Feedback über den fehlgeschlagenen Command."""
+        """Gibt dem LLM Feedback über den fehlgeschlagenen Command.
+
+        Ruft generate_raw() auf, um SmartContext, Memory, TTS und
+        Emotion-Extraktion zu umgehen.
+        """
         summary = self._remote_commands.get_command_summary()
         retry_prompt = (
             f"Der Command '{failed_command}' wurde nicht erkannt. "
@@ -745,28 +749,19 @@ class BridgeMessageHandler:
         try:
             loop = asyncio.get_running_loop()
             chat_context = self._chat_history.format_for_prompt(msg.sender)
-            result = await asyncio.wait_for(
+            raw = await asyncio.wait_for(
                 loop.run_in_executor(
-                    None, self._assistant.process, retry_prompt, None, chat_context,
+                    None, self._assistant.generate_raw,
+                    retry_prompt, "", chat_context,
                 ),
                 timeout=60.0,
             )
 
-            if (
-                result.action_executed == "remote_command"
-                and result.action_params
-                and isinstance(result.action_params, dict)
-            ):
-                corrected = result.action_params.get("command", "")
-                if corrected:
-                    logger.info("LLM Retry → korrigierter Command: %s", corrected)
-                    return corrected
-
-            if result.response:
-                raw = result.response.strip()
-                if self._remote_commands.parse_command(raw):
-                    logger.info("LLM Retry → Command aus Response: %s", raw)
-                    return raw
+            if raw:
+                candidate = raw.strip()
+                if self._remote_commands.parse_command(candidate):
+                    logger.info("LLM Retry → Command aus Response: %s", candidate)
+                    return candidate
 
         except Exception as e:
             logger.error("LLM Retry fehlgeschlagen: %s", e)

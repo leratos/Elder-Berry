@@ -238,6 +238,10 @@ class NoteStore:
         Returns:
             Liste von Notes, nach Relevanz sortiert.
         """
+        sanitized = self._sanitize_fts_query(query)
+        if not sanitized:
+            return []
+
         try:
             rows = self._conn.execute(
                 "SELECT n.id, n.user_id, n.key, n.content, n.tags, "
@@ -247,12 +251,26 @@ class NoteStore:
                 "WHERE notes_fts MATCH ? AND n.user_id = ? "
                 "ORDER BY rank "
                 "LIMIT ?",
-                (query, user_id, limit),
+                (sanitized, user_id, limit),
             ).fetchall()
             return [self._row_to_note(r) for r in rows]
         except sqlite3.OperationalError as e:
             logger.warning("FTS-Suche fehlgeschlagen (Query: %r): %s", query, e)
             return []
+
+    @staticmethod
+    def _sanitize_fts_query(query: str) -> str:
+        """Bereinigt einen Query-String für FTS5 MATCH.
+
+        Behält nur alphanumerische Wörter (inkl. Umlaute/ß), entfernt
+        FTS5-Sonderzeichen und Operatoren. Leere Wörter werden gefiltert.
+        """
+        # Nur Wort-Zeichen behalten (Unicode-Buchstaben, Ziffern, Unterstriche)
+        words = re.findall(r"[\w]+", query, re.UNICODE)
+        # FTS5-Operatoren entfernen
+        fts_operators = {"AND", "OR", "NOT", "NEAR"}
+        words = [w for w in words if w.upper() not in fts_operators]
+        return " ".join(words)
 
     def list_all(self, user_id: str, limit: int = 20) -> list[Note]:
         """Alle Notizen eines Users (neueste zuerst).

@@ -376,13 +376,8 @@ class TestRetryLogic:
         llm_result.action_params = {"command": "zeig mails von gestern"}
         llm_result.audio_path = None
 
-        # Retry: LLM korrigiert zu "mails"
-        retry_result = MagicMock()
-        retry_result.action_executed = "remote_command"
-        retry_result.action_params = {"command": "mails"}
-        retry_result.response = "mails"
-        retry_result.audio_path = None
-        assistant.process.return_value = retry_result
+        # Retry: generate_raw gibt korrigierten Command zurück
+        assistant.generate_raw.return_value = "mails"
 
         msg = MagicMock()
         msg.sender = "@user:test"
@@ -392,8 +387,9 @@ class TestRetryLogic:
 
         asyncio.run(bridge._handler._handle_llm_remote_command(msg, llm_result))
 
-        # LLM wurde für Retry aufgerufen
-        assert assistant.process.called
+        # generate_raw wurde für Retry aufgerufen (nicht process)
+        assert assistant.generate_raw.called
+        assert not assistant.process.called
 
     def test_no_retry_when_parse_succeeds(self):
         """Wenn parse_command sofort matcht, kein Retry."""
@@ -417,7 +413,7 @@ class TestRetryLogic:
         assert not assistant.process.called
 
     def test_retry_with_corrected_command_from_response(self):
-        """Retry: LLM antwortet mit Command als Klartext (nicht als action)."""
+        """Retry: LLM antwortet mit Command als Klartext."""
         bridge, channel, assistant, remote = self._make_bridge()
 
         llm_result = MagicMock()
@@ -427,13 +423,8 @@ class TestRetryLogic:
         llm_result.action_params = {"command": "zeig die elektronische korrespondenz"}
         llm_result.audio_path = None
 
-        # Retry: LLM antwortet ohne action, aber mit "mails" als Text
-        retry_result = MagicMock()
-        retry_result.action_executed = None
-        retry_result.action_params = None
-        retry_result.response = "mails"
-        retry_result.audio_path = None
-        assistant.process.return_value = retry_result
+        # Retry: generate_raw gibt "mails" zurück
+        assistant.generate_raw.return_value = "mails"
 
         msg = MagicMock()
         msg.sender = "@user:test"
@@ -443,8 +434,9 @@ class TestRetryLogic:
 
         asyncio.run(bridge._handler._handle_llm_remote_command(msg, llm_result))
 
-        # Retry wurde aufgerufen
-        assert assistant.process.called
+        # generate_raw wurde für Retry aufgerufen (nicht process)
+        assert assistant.generate_raw.called
+        assert not assistant.process.called
 
     def test_no_command_text_does_nothing(self):
         """Leerer command-Parameter → kein Crash, kein Retry."""

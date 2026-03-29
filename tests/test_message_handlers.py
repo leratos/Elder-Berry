@@ -341,3 +341,55 @@ class TestHandleAssistantMessage:
             channel.send_text.assert_called_once()
             assert "Hallo" in channel.send_text.call_args[0][1]
         run_async(_test())
+
+
+# ---------------------------------------------------------------------------
+# Retry LLM Remote Command – generate_raw bypass
+# ---------------------------------------------------------------------------
+
+class TestRetryLlmRemoteCommand:
+    def test_retry_uses_generate_raw_not_process(
+        self, handler, assistant, remote_commands, chat_history,
+    ):
+        async def _test():
+            assistant.generate_raw.return_value = "termine"
+            remote_commands.get_command_summary.return_value = "termine: Termine"
+            remote_commands.parse_command.return_value = "termine"
+            chat_history.format_for_prompt.return_value = ""
+
+            msg = _make_msg("termin zeigen")
+            result = await handler._retry_llm_remote_command(msg, "termin zeigen")
+
+            assistant.generate_raw.assert_called_once()
+            assistant.process.assert_not_called()
+            assert result == "termine"
+        run_async(_test())
+
+    def test_retry_returns_none_if_not_parseable(
+        self, handler, assistant, remote_commands, chat_history,
+    ):
+        async def _test():
+            assistant.generate_raw.return_value = "ich weiß nicht"
+            remote_commands.get_command_summary.return_value = "termine: Termine"
+            remote_commands.parse_command.return_value = None
+            chat_history.format_for_prompt.return_value = ""
+
+            msg = _make_msg("xyz")
+            result = await handler._retry_llm_remote_command(msg, "xyz")
+
+            assert result is None
+        run_async(_test())
+
+    def test_retry_handles_exception(
+        self, handler, assistant, remote_commands, chat_history,
+    ):
+        async def _test():
+            assistant.generate_raw.side_effect = RuntimeError("LLM down")
+            remote_commands.get_command_summary.return_value = "termine: Termine"
+            chat_history.format_for_prompt.return_value = ""
+
+            msg = _make_msg("test")
+            result = await handler._retry_llm_remote_command(msg, "test")
+
+            assert result is None
+        run_async(_test())
