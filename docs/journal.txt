@@ -2780,3 +2780,45 @@ User: "Lies meine Mails und trag den Zahnarzttermin ein"
 
 ### Nächster Schritt
 - Phase 36.2: NextcloudFilesClient (WebDAV) implementieren → eigener Chat
+
+## Abgeschlossen: Phase 36.1 – NextcloudFilesClient + Cloud-Commands (2026-03-29)
+- Branch: feature/phase-36-1-nextcloud-files
+
+### Neue Dateien
+- src/elder_berry/tools/nextcloud_files.py:
+  - NextcloudFile Dataclass (name, path, is_dir, size, modified)
+  - NextcloudFilesClient: WebDAV-Client für Nextcloud (httpx + xml.etree)
+  - Methoden: upload, download, list_dir, search, share_link
+  - Credentials aus SecretStore (nextcloud_url, nextcloud_user, nextcloud_app_password)
+  - Fehlerklassen: NextcloudError, NextcloudConnectionError, NextcloudAuthError
+  - Upload-Limit: 100 MB, automatische MKCOL für Zwischenordner
+- src/elder_berry/comms/commands/cloud_commands.py:
+  - CloudCommandHandler (CommandHandler ABC)
+  - 5 Commands: cloud upload/download/dateien/suche/link
+  - Pattern-Varianten: ls/list, search/find, share/teile
+  - Graceful Degradation wenn Nextcloud nicht konfiguriert
+- tests/test_nextcloud_files.py: 24 Tests (Credentials 5, Upload 7, Download 3, List 3, Search 3, Share 3)
+- tests/test_cloud_commands.py: 25 Tests (Pattern 12, Kollision 1, Execution 10, Help 1, No-NC 2 [sic])
+
+### Geänderte Dateien
+- src/elder_berry/comms/remote_commands.py:
+  - Import + TYPE_CHECKING für CloudCommandHandler + NextcloudFilesClient
+  - nextcloud_files Parameter in __init__
+  - CloudCommandHandler in _handlers Liste (nach _file, vor _process)
+  - HELP_TEXT: Cloud (Nextcloud) Sektion ergänzt
+- scripts/start_saleria.py:
+  - NextcloudFilesClient Init in _init_productivity_services()
+  - nextcloud_files an RemoteCommandHandler durchgereicht
+
+### Tests
+- 49 neue Tests, 2800 bestehende Tests unverändert grün
+- Gesamt: 2849 getestet, 0 Fehler
+
+### Architektur-Entscheidungen
+- httpx direkt für WebDAV (kein neues Dependency)
+- XML-Parsing mit xml.etree.ElementTree (stdlib)
+- Eigener CloudCommandHandler statt Erweiterung von FileCommandHandler (saubere Trennung)
+- Alle Patterns starten mit "cloud " → keine Kollision mit bestehenden Commands
+
+### Nächster Schritt
+- Phase 36.2: CalDAV Kalender (Google Calendar ersetzen) → eigener Chat

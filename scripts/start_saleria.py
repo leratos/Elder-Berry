@@ -531,6 +531,19 @@ def _init_productivity_services(secrets, default_user_id):
     except Exception as e:
         logger.warning("Reminders nicht verfügbar: %s", e)
 
+    # Nextcloud Files
+    if secrets.get_or_none("nextcloud_url"):
+        try:
+            from elder_berry.tools.nextcloud_files import NextcloudFilesClient
+            nc = NextcloudFilesClient(secret_store=secrets)
+            if nc.is_available():
+                svc["nextcloud_files"] = nc
+                logger.info("Nextcloud Files: aktiv (%s)", secrets.get("nextcloud_url"))
+            else:
+                logger.warning("Nextcloud Files: nicht erreichbar")
+        except Exception as e:
+            logger.warning("Nextcloud Files nicht verfügbar: %s", e)
+
     # Daily Briefing
     try:
         from elder_berry.comms.briefing_scheduler import BriefingScheduler
@@ -730,6 +743,7 @@ def run_matrix(assistant, stt=None, avatar=None, audio_converter=None, robot=Non
         todo_store=svc.get("todo_store"),
         robot_client=robot,
         anthropic_client=tools.get("vision_client"),
+        nextcloud_files=svc.get("nextcloud_files"),
         default_user_id=default_user_id,
     )
     assistant._remote_commands = remote

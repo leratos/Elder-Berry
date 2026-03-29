@@ -5,6 +5,7 @@ Delegiert an domänenspezifische Handler in comms/commands/:
 - CalendarCommandHandler: Termine CRUD + Suche
 - MailCommandHandler: Mails, Suche, Anhänge, per ID
 - FileCommandHandler: Clipboard, Send-File, Download
+- CloudCommandHandler: Nextcloud Upload/Download/List/Search/Share
 - ProcessCommandHandler: Prozess Start/Kill
 - GitCommandHandler: Git-Befehle (status, pull, log, diff)
 - DockerCommandHandler: Docker-Befehle (ps, restart, logs)
@@ -50,6 +51,7 @@ from elder_berry.comms.commands.turntable_commands import TurntableCommandHandle
 from elder_berry.comms.commands.note_commands import NoteCommandHandler
 from elder_berry.comms.commands.contact_commands import ContactCommandHandler
 from elder_berry.comms.commands.todo_commands import TodoCommandHandler
+from elder_berry.comms.commands.cloud_commands import CloudCommandHandler
 
 if TYPE_CHECKING:
     from elder_berry.actions.base import ActionController
@@ -71,6 +73,7 @@ if TYPE_CHECKING:
     from elder_berry.tools.todo_store import TodoStore
     from elder_berry.tools.reminder_store import ReminderStore
     from elder_berry.tools.weather_client import WeatherClient
+    from elder_berry.tools.nextcloud_files import NextcloudFilesClient
     from elder_berry.tools.web_fetcher import WebFetcher
 
 logger = logging.getLogger(__name__)
@@ -104,6 +107,13 @@ Clipboard:
 Dateien:
   schick mir <pfad> – Datei senden (max 50 MB, nur erlaubte Verzeichnisse)
   download <url> – Datei herunterladen
+
+Cloud (Nextcloud):
+  cloud upload <pfad> [ziel] – Datei zu Nextcloud hochladen
+  cloud download <pfad> – Datei aus Nextcloud herunterladen
+  cloud dateien [ordner] – Verzeichnis auflisten
+  cloud suche <query> – Dateien suchen
+  cloud link <pfad> – Öffentlichen Share-Link erstellen
 
 Prozesse:
   starte <programm> – Programm starten (Whitelist)
@@ -298,6 +308,7 @@ class RemoteCommandHandler:
         todo_store: TodoStore | None = None,
         robot_client: RobotClient | None = None,
         anthropic_client: AnthropicClient | None = None,
+        nextcloud_files: NextcloudFilesClient | None = None,
         default_user_id: str = "",
     ) -> None:
         # Domain-Handler erstellen
@@ -342,6 +353,9 @@ class RemoteCommandHandler:
             robot_client=robot_client,
             anthropic_client=anthropic_client,
         )
+        self._cloud = CloudCommandHandler(
+            nextcloud_files=nextcloud_files,
+        )
         self._advanced = AdvancedCommandHandler(
             computer_use=computer_use,
             search_client=search_client,
@@ -385,6 +399,7 @@ class RemoteCommandHandler:
             self._mail,
             self._calendar,
             self._file,
+            self._cloud,
             self._process,
             self._git,
             self._docker,
