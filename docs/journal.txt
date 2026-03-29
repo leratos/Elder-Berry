@@ -2888,3 +2888,48 @@ User: "Lies meine Mails und trag den Zahnarzttermin ein"
 
 ### Nächster Schritt
 - Phase 36.3: CardDAV Kontakte (Google Contacts ersetzen) → eigener Chat
+
+## Abgeschlossen: Phase 36.3 – CardDAV Kontakte (Nextcloud-Sync) (2026-03-29)
+- Branch: feature/phase-36-3-carddav-contacts
+
+### Neue Dateien
+- src/elder_berry/tools/carddav_sync.py:
+  - CardDAVSyncClient: CardDAV-Sync für Nextcloud Contacts
+  - SyncResult: DTO mit pushed/pulled/conflicts/errors
+  - Push: Lokale Kontakte → Nextcloud (PUT vCards)
+  - Pull: Nextcloud → lokale Contact-Objekte (PROPFIND + GET + Parse)
+  - Sync: Bidirektionaler Merge (Name-basiertes Matching, lokal gewinnt bei Konflikt)
+  - vCard-Konvertierung: Contact ↔ vCard 3.0 (via vobject)
+  - Custom X-ELDERBERRY-FORMALITY Extension für Anrede-Stil
+  - Rolle als NOTE-Prefix ("Rolle: xyz") statt ORG
+  - Birthday: 0000-MM-DD ↔ --MM-DD (vCard partial date)
+- tests/test_carddav_sync.py: 29 Tests (Availability 3, ContactToVCard 5, VCardToContact 7, Push 4, Pull 3, Sync 5, SyncResult 2)
+
+### Geänderte Dateien
+- src/elder_berry/comms/commands/contact_commands.py:
+  - CONTACT_SYNC_PATTERN: "kontakte sync [push|pull]"
+  - _cmd_sync(): Dispatch für Push/Pull/Bidirektional
+  - DI: carddav_sync Parameter im __init__
+- tests/test_contact_commands.py: 6 neue Tests (Pattern 4, Command 2)
+- src/elder_berry/comms/remote_commands.py:
+  - TYPE_CHECKING: CardDAVSyncClient Import
+  - __init__: carddav_sync Parameter, an ContactCommandHandler durchgereicht
+  - HELP_TEXT: Sync-Commands unter Kontakte ergänzt
+- scripts/start_saleria.py:
+  - CardDAVSyncClient Init in _init_productivity_services()
+  - carddav_sync an RemoteCommandHandler durchgereicht
+- pyproject.toml: vobject>=0.9 zur [nextcloud] Gruppe
+
+### Tests
+- 35 neue Tests, 2923 bestehende Tests unverändert grün
+- Gesamt: 2958 getestet, 0 Fehler
+
+### Architektur-Entscheidungen
+- vobject für vCard-Parsing/Serialisierung (korrekt Escaping, Folding, etc.)
+- httpx direkt für CardDAV HTTP (PROPFIND, GET, PUT) – wie NextcloudFilesClient
+- SQLite bleibt primäre Datenquelle – CardDAV nur als Sync-Kanal
+- Matching per Name (case-insensitive), bei Konflikt lokal gewinnt
+- Kein Echtzeit-Sync, kein automatischer Timer, kein Löschen über Sync
+
+### Nächster Schritt
+- Phase 37 oder nächste Feature-Phase → eigener Chat

@@ -212,3 +212,4 @@ docs/personal/
 # Saleria instance lock
 .saleria.lock
 .claude/settings.json
+config/harmony_config_backup.json

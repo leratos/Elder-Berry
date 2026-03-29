@@ -73,6 +73,7 @@ if TYPE_CHECKING:
     from elder_berry.tools.todo_store import TodoStore
     from elder_berry.tools.reminder_store import ReminderStore
     from elder_berry.tools.weather_client import WeatherClient
+    from elder_berry.tools.carddav_sync import CardDAVSyncClient
     from elder_berry.tools.nextcloud_files import NextcloudFilesClient
     from elder_berry.tools.web_fetcher import WebFetcher
 
@@ -195,6 +196,9 @@ Briefing:
   kontakte – Alle Kontakte anzeigen
   kontakte suche <Begriff> – Kontakt suchen
   kontakt löschen #<ID> – Kontakt löschen
+  kontakte sync – Kontakte mit Nextcloud synchronisieren
+  kontakte sync push – Nur lokal → Nextcloud
+  kontakte sync pull – Nur Nextcloud → lokal
 
 ✅ Aufgaben (To-Do):
   todo: <text> – Aufgabe anlegen (optional: , hoch/mittel, Kategorie)
@@ -309,6 +313,7 @@ class RemoteCommandHandler:
         robot_client: RobotClient | None = None,
         anthropic_client: AnthropicClient | None = None,
         nextcloud_files: NextcloudFilesClient | None = None,
+        carddav_sync: CardDAVSyncClient | None = None,
         default_user_id: str = "",
     ) -> None:
         # Domain-Handler erstellen
@@ -377,6 +382,7 @@ class RemoteCommandHandler:
             self._contacts = ContactCommandHandler(
                 contact_store=contact_store,
                 default_user_id=default_user_id,
+                carddav_sync=carddav_sync,
             )
 
         # TodoCommandHandler: nur wenn TodoStore vorhanden
