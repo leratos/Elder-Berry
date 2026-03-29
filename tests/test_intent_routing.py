@@ -50,8 +50,8 @@ class TestKeywordAudit:
         ("vorheriger song", "prev"),
         ("lied zurück", "prev"),
         ("lautstärke", "volume"),
-        ("leiser", "volume"),
-        ("lauter", "volume"),
+        ("leiser", "harmony_volume_down"),
+        ("lauter", "harmony_volume_up"),
         ("starte dich neu", "restart"),
         ("zeig mir die befehle", "hilfe"),
     ])

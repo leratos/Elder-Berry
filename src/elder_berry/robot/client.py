@@ -200,6 +200,65 @@ class RobotClient:
         r.raise_for_status()
         return r.json()
 
+    # --- Harmony Hub ---
+
+    def harmony_status(self) -> dict:
+        """GET /harmony/status → {"connected": bool, "current_activity": str|null}"""
+        try:
+            r = self._client.get("/harmony/status")
+            r.raise_for_status()
+            return r.json()
+        except (httpx.HTTPError, Exception) as e:
+            logger.error("harmony_status fehlgeschlagen: %s", e)
+            return {"connected": False, "current_activity": None}
+
+    def harmony_config(self) -> dict:
+        """GET /harmony/config → {"activities": [...], "devices": [...]}"""
+        try:
+            r = self._client.get("/harmony/config")
+            r.raise_for_status()
+            return r.json()
+        except (httpx.HTTPError, Exception) as e:
+            logger.error("harmony_config fehlgeschlagen: %s", e)
+            return {"activities": [], "devices": []}
+
+    def harmony_start_activity(self, activity: str) -> bool:
+        """POST /harmony/activity"""
+        try:
+            r = self._client.post(
+                "/harmony/activity", json={"activity": activity},
+            )
+            r.raise_for_status()
+            return r.json().get("success", False)
+        except (httpx.HTTPError, Exception) as e:
+            logger.error("harmony_start_activity fehlgeschlagen: %s", e)
+            return False
+
+    def harmony_send_command(
+        self, device: str, command: str, repeat: int = 1,
+    ) -> bool:
+        """POST /harmony/command"""
+        try:
+            r = self._client.post(
+                "/harmony/command",
+                json={"device": device, "command": command, "repeat": repeat},
+            )
+            r.raise_for_status()
+            return r.json().get("success", False)
+        except (httpx.HTTPError, Exception) as e:
+            logger.error("harmony_send_command fehlgeschlagen: %s", e)
+            return False
+
+    def harmony_power_off(self) -> bool:
+        """POST /harmony/off"""
+        try:
+            r = self._client.post("/harmony/off")
+            r.raise_for_status()
+            return r.json().get("success", False)
+        except (httpx.HTTPError, Exception) as e:
+            logger.error("harmony_power_off fehlgeschlagen: %s", e)
+            return False
+
     # --- System ---
 
     def update_rpi(self) -> ApiResponse:

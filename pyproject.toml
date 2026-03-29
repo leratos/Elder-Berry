@@ -80,6 +80,9 @@ nextcloud = [
     "caldav>=1.0",
     "vobject>=0.9",
 ]
+harmony = [
+    "aioharmony>=0.5.0",
+]
 
 [tool.setuptools.packages.find]
 where = ["src"]

@@ -2933,3 +2933,43 @@ User: "Lies meine Mails und trag den Zahnarzttermin ein"
 
 ### Nächster Schritt
 - Phase 37 oder nächste Feature-Phase → eigener Chat
+
+## Abgeschlossen: Phase 37.1 – Harmony Hub: Lokale Steuerung via RPi5 (2026-03-29)
+- Branch: feature/phase-37-1-harmony-hub
+- Tests: 3082 grün (124 neu + 2958 bestehend)
+
+### Neue Dateien
+- src/elder_berry/robot/harmony_adapter.py – Async-Controller für Hub via WebSocket :8088
+  - Verbindung mit Fallback auf Backup-Config, case-insensitive Lookups
+  - Methoden: connect, disconnect, start_activity, power_off, get_current_activity,
+    list_activities, send_command, list_commands, list_devices
+- src/elder_berry/comms/commands/harmony_commands.py – Matrix-Sprachbefehle
+  - fernsehen/tv/musik an, alles aus, lauter/leiser, stumm, status, listen
+  - "lauter"/"leiser" gehen jetzt an Harmony (Receiver) statt PC-Lautstärke
+- src/elder_berry/server/harmony_mock_server.py – Logitech-Config-Server-Ersatz
+  - POST /account/getConfig, saveConfig, getDeviceInfo
+- src/elder_berry/webapp/harmony_remote/ – PWA (index.html + SW + manifest)
+  - Mobile-first, große Tap-Buttons, Offline-fähig
+
+### Geänderte Dateien
+- src/elder_berry/robot/server.py – 5 Harmony-Endpoints (/harmony/status, config,
+  activity, command, off), neuer harmony-Parameter im Konstruktor
+- src/elder_berry/robot/client.py – 5 synchrone Methoden (harmony_status, harmony_config,
+  harmony_start_activity, harmony_send_command, harmony_power_off)
+- src/elder_berry/comms/remote_commands.py – HarmonyCommandHandler registriert + HELP_TEXT
+- pyproject.toml – harmony = ["aioharmony>=0.5.0"]
+- tests/test_intent_routing.py – "lauter"/"leiser" → harmony_volume_up/down (korrekt)
+
+### Testdateien (124 Tests)
+- tests/test_harmony_adapter.py (46 Tests)
+- tests/test_robot_server_harmony.py (14 Tests)
+- tests/test_robot_client_harmony.py (14 Tests)
+- tests/test_harmony_commands.py (40 Tests)
+- tests/test_harmony_mock_server.py (10 Tests)
+
+### Hinweise
+- Deployment auf RPi5 nötig: aioharmony installieren, harmony_config.json kopieren,
+  HarmonyAdapter in server.py mit hub_ip initialisieren
+- Config-Mock-Server Deployment auf Rootserver nötig (Nginx + SSL + DNS-Override)
+- PWA Deployment auf Rootserver nötig (Nginx vhost)
+- Phase 37.2: SmartHomeInterface + Registry (Harmony als Referenzimplementierung)
