@@ -20,6 +20,7 @@ from dataclasses import asdict
 from pathlib import Path
 
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
@@ -169,6 +170,12 @@ class RobotServer:
         self._start_time = time.monotonic()
 
         self.app = FastAPI(title="Elder-Berry Robot API", version="0.1.0")
+        self.app.add_middleware(
+            CORSMiddleware,
+            allow_origins=["*"],
+            allow_methods=["*"],
+            allow_headers=["*"],
+        )
         self._register_routes()
 
         logger.info("RobotServer initialisiert: %s", hostname)
