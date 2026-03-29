@@ -102,6 +102,34 @@ class TestHarmonyConfig:
         assert result == {"activities": [], "devices": []}
 
 
+class TestHarmonyConfigDetailed:
+    def test_harmony_config_detailed_returns_dict(self):
+        client = _make_client({
+            ("GET", "/harmony/config/detailed"): _json_response({
+                "activities": [
+                    {"id": "38979034", "label": "Fernsehen",
+                     "volume_device": "Denon AVR-X3500H"},
+                ],
+                "devices": [
+                    {"id": "74828509", "label": "Denon AVR-X3500H",
+                     "control_groups": [
+                         {"name": "Volume",
+                          "commands": ["VolumeUp", "VolumeDown"]},
+                     ]},
+                ],
+            }),
+        })
+        result = client.harmony_config_detailed()
+        assert len(result["activities"]) == 1
+        assert result["activities"][0]["volume_device"] == "Denon AVR-X3500H"
+        assert len(result["devices"]) == 1
+
+    def test_harmony_config_detailed_connection_error(self):
+        client = _make_client({})
+        result = client.harmony_config_detailed()
+        assert result == {"activities": [], "devices": []}
+
+
 class TestHarmonyStartActivity:
     def test_harmony_start_activity_success(self):
         client = _make_client({

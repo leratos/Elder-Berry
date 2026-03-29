@@ -537,6 +537,16 @@ class RobotServer:
             )
             return {"success": success}
 
+        @self.app.get("/harmony/config/detailed")
+        async def harmony_config_detailed() -> dict:
+            """Vollstaendige Device-Config mit ControlGroups und Commands."""
+            if not self._harmony:
+                return JSONResponse(
+                    {"error": "Harmony nicht konfiguriert"},
+                    status_code=503,
+                )
+            return self._harmony.get_detailed_config()
+
         @self.app.post("/harmony/off")
         async def harmony_off() -> dict:
             """Schaltet alle Geraete aus (PowerOff)."""

@@ -312,6 +312,62 @@ class HarmonyAdapter:
                 result.append(label)
         return result
 
+    # -- Detaillierte Config ------------------------------------------------ #
+
+    def get_detailed_config(self) -> dict:
+        """Vollstaendige Config fuer die PWA (Geraete-Modus + Aktivitaeten).
+
+        Returns:
+            Dict mit "activities" und "devices", jeweils mit allen
+            ControlGroups und Commands. Fuer die PWA-Geraeteansicht.
+        """
+        activities = []
+        for activity in self._get_activities():
+            act_id = str(activity.get("id", ""))
+            if act_id == str(_POWER_OFF_ACTIVITY_ID):
+                continue
+            entry: dict = {
+                "id": act_id,
+                "label": activity.get("label", ""),
+            }
+            # Volume/Channel-Device-Zuordnung (Device-ID → Name aufloesen)
+            vol_id = activity.get("VolumeActivityRole")
+            if vol_id:
+                entry["volume_device"] = self._device_id_to_label(str(vol_id))
+            ch_id = activity.get("ChannelChangingActivityRole")
+            if ch_id:
+                entry["channel_device"] = self._device_id_to_label(str(ch_id))
+            activities.append(entry)
+
+        devices = []
+        for dev in self._get_devices():
+            control_groups = []
+            for group in dev.get("controlGroup", []):
+                commands = [
+                    f.get("name", "")
+                    for f in group.get("function", [])
+                    if f.get("name")
+                ]
+                if commands:
+                    control_groups.append({
+                        "name": group.get("name", ""),
+                        "commands": commands,
+                    })
+            devices.append({
+                "id": str(dev.get("id", "")),
+                "label": dev.get("label", ""),
+                "control_groups": control_groups,
+            })
+
+        return {"activities": activities, "devices": devices}
+
+    def _device_id_to_label(self, device_id: str) -> str:
+        """Loest Device-ID zu Label auf, Fallback auf ID."""
+        for dev in self._get_devices():
+            if str(dev.get("id", "")) == device_id:
+                return dev.get("label", device_id)
+        return device_id
+
     # -- Intern ------------------------------------------------------------ #
 
     def _load_backup_config(self) -> dict:

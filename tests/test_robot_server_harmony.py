@@ -150,6 +150,37 @@ class TestHarmonyOff:
         mock_harmony.power_off.assert_awaited_once()
 
 
+DETAILED_CONFIG = {
+    "activities": [
+        {"id": "38979034", "label": "Fernsehen",
+         "volume_device": "Denon AVR-X3500H",
+         "channel_device": "Samsung TV"},
+    ],
+    "devices": [
+        {"id": "74828509", "label": "Denon AVR-X3500H",
+         "control_groups": [
+             {"name": "Volume", "commands": ["VolumeUp", "VolumeDown", "Mute"]},
+         ]},
+    ],
+}
+
+
+class TestHarmonyConfigDetailed:
+    def test_get_config_detailed(self, client_with_harmony, mock_harmony):
+        mock_harmony.get_detailed_config = MagicMock(return_value=DETAILED_CONFIG)
+        r = client_with_harmony.get("/harmony/config/detailed")
+        assert r.status_code == 200
+        data = r.json()
+        assert len(data["activities"]) == 1
+        assert data["activities"][0]["volume_device"] == "Denon AVR-X3500H"
+        assert len(data["devices"]) == 1
+        assert data["devices"][0]["control_groups"][0]["name"] == "Volume"
+
+    def test_config_detailed_503_without_harmony(self, client_without_harmony):
+        r = client_without_harmony.get("/harmony/config/detailed")
+        assert r.status_code == 503
+
+
 class TestHarmony503:
     def test_status_503_when_not_configured(self, client_without_harmony):
         r = client_without_harmony.get("/harmony/status")

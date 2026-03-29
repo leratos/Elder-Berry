@@ -222,6 +222,16 @@ class RobotClient:
             logger.error("harmony_config fehlgeschlagen: %s", e)
             return {"activities": [], "devices": []}
 
+    def harmony_config_detailed(self) -> dict:
+        """GET /harmony/config/detailed → Devices mit ControlGroups + Commands."""
+        try:
+            r = self._client.get("/harmony/config/detailed")
+            r.raise_for_status()
+            return r.json()
+        except (httpx.HTTPError, Exception) as e:
+            logger.error("harmony_config_detailed fehlgeschlagen: %s", e)
+            return {"activities": [], "devices": []}
+
     def harmony_start_activity(self, activity: str) -> bool:
         """POST /harmony/activity"""
         try:
