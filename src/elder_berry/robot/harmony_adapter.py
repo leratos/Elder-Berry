@@ -282,7 +282,9 @@ class HarmonyAdapter:
         try:
             from aioharmony.harmonyapi import SendCommandDevice
 
-            send_cmd = SendCommandDevice(device=device_id, command=cmd_match)
+            send_cmd = SendCommandDevice(
+                device=int(device_id), command=cmd_match, delay=0,
+            )
             for _ in range(repeat):
                 await self._client.send_command(send_cmd)
             logger.info(
