@@ -6,6 +6,9 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+# vobject ist optionale Dependency – Tests überspringen wenn nicht installiert
+vobject = pytest.importorskip("vobject", reason="vobject nicht installiert")
+
 from elder_berry.tools.carddav_sync import CardDAVSyncClient, SyncResult
 from elder_berry.tools.contact_store import Contact
 
