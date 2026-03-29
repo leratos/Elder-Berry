@@ -24,8 +24,8 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-# Receiver-Name fuer Lautstaerke-Befehle
-_RECEIVER_DEVICE = "Denon AV-Empfänger"
+# Geraet fuer Lautstaerke-Befehle (Samsung TV steuert Denon via ARC/CEC)
+_VOLUME_DEVICE = "Samsung TV"
 
 # -- Patterns -------------------------------------------------------------- #
 
@@ -208,7 +208,7 @@ class HarmonyCommandHandler(CommandHandler):
     def _cmd_volume(self, command: str, label: str) -> CommandResult:
         try:
             success = self._robot.harmony_send_command(
-                _RECEIVER_DEVICE, command,
+                _VOLUME_DEVICE, command,
             )
             if success:
                 return CommandResult(

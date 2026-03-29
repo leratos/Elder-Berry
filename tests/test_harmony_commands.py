@@ -32,7 +32,7 @@ def mock_robot():
     })
     robot.harmony_config = MagicMock(return_value={
         "activities": ["Fernsehen", "Musik"],
-        "devices": ["Denon AV-Empfänger", "Samsung TV"],
+        "devices": ["Samsung TV", "Samsung TV"],
     })
     return robot
 
@@ -111,9 +111,9 @@ class TestPatterns:
         assert LIST_DEVICES_PATTERN.match("harmony geräte")
 
     def test_list_commands_with_device(self):
-        m = LIST_COMMANDS_PATTERN.match("harmony befehle Denon AV-Empfänger")
+        m = LIST_COMMANDS_PATTERN.match("harmony befehle Samsung TV")
         assert m
-        assert m.group("device") == "Denon AV-Empfänger"
+        assert m.group("device") == "Samsung TV"
 
     def test_no_false_positive_on_random_text(self):
         """Zufaelliger Text soll kein Pattern matchen."""
@@ -149,21 +149,21 @@ class TestExecution:
         result = handler.execute("harmony_volume_up", "lauter")
         assert result.success
         mock_robot.harmony_send_command.assert_called_once_with(
-            "Denon AV-Empfänger", "VolumeUp",
+            "Samsung TV", "VolumeUp",
         )
 
     def test_volume_down(self, handler, mock_robot):
         result = handler.execute("harmony_volume_down", "leiser")
         assert result.success
         mock_robot.harmony_send_command.assert_called_once_with(
-            "Denon AV-Empfänger", "VolumeDown",
+            "Samsung TV", "VolumeDown",
         )
 
     def test_mute(self, handler, mock_robot):
         result = handler.execute("harmony_mute", "stumm")
         assert result.success
         mock_robot.harmony_send_command.assert_called_once_with(
-            "Denon AV-Empfänger", "Mute",
+            "Samsung TV", "Mute",
         )
 
     def test_current_activity_active(self, handler, mock_robot):
@@ -188,11 +188,11 @@ class TestExecution:
     def test_list_devices(self, handler, mock_robot):
         result = handler.execute("harmony_list_devices", "harmony geräte")
         assert result.success
-        assert "Denon AV-Empfänger" in result.text
+        assert "Samsung TV" in result.text
 
     def test_list_commands_with_device(self, handler, mock_robot):
         result = handler.execute(
-            "harmony_list_commands", "harmony befehle Denon AV-Empfänger",
+            "harmony_list_commands", "harmony befehle Samsung TV",
         )
         assert result.success
 
