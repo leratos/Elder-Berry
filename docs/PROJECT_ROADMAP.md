@@ -541,48 +541,72 @@ DocumentReader (Phase 16) auf Web-Inhalte.
 - **Aufwand**: 1–2 Tage
 - **Konzept**: `docs/concepts/phase-35-web-zusammenfassung.md`
 
-## Phase 36 – Dashboard 2.0 (Modulare Smart Home PWA) 📱 GEPLANT
+## Phase 36 – Nextcloud-Integration ☁️ GEPLANT
 
-Mobile-first PWA auf dem Rootserver als modulare UI-Grundlage für Phase 37+.
+Self-Hosted Nextcloud als Backend für Dateien, Kalender und Kontakte.
+Ersetzt Google-Calendar-Abhängigkeit, ergänzt bestehende Stores um Sync.
+
+### Unterphasen
+- **36.1** Nextcloud Setup + WebDAV Files (NextcloudFilesClient)
+  → Dateien hoch-/runterladen, Verzeichnisse listen, Share-Links
+- **36.2** CalDAV Kalender (CalDAVCalendarClient → GoogleCalendarClient ersetzen)
+  → Gleiche Methoden, DI-Austausch, CalendarWatcher/Briefing bleiben unverändert
+- **36.3** CardDAV Kontakte (optional, Hybrid: SQLite bleibt primär + Sync)
+  → Kontakte per DAVx5 auf dem Handy verfügbar
+
+### Nicht migriert
+
+- NoteStore, TodoStore (SQLite + FTS5 ist schneller und offline-fähig)
+- E-Mail (direktes IMAP ist besser als Nextcloud Mail)
+
+- **Konzept**: `docs/concepts/phase-36-nextcloud-integration.md`
+- **Infrastruktur**: Rootserver (Xeon E-2276G, 32 GB RAM, Plesk, Ubuntu 24.04)
+- **Abhängigkeit**: 36.1 zuerst (Nextcloud muss laufen), 36.2+36.3 danach
+
+## Phase 37 – Dashboard 2.0 (Modulare Smart Home PWA) 📱 GEPLANT
+
+Mobile-first PWA auf dem Rootserver als modulare UI-Grundlage für Phase 38+.
 Ersetzt keine bestehenden Tools — das AudioDashboard (Tower :8090) bleibt als Dev-Settings.
 
 - **PWA**: installierbar auf Handy, HTTPS, Rootserver
 - **Modul-Architektur**: jedes Modul eigenständige JS-Klasse, ein-/ausblendbar
-- **Modul 1**: Harmony Remote (Phase 37.1 — RPi5 :8001/harmony/*)
+- **Modul 1**: Harmony Remote (Phase 38.1 — RPi5 :8001/harmony/*)
 - **Modul 2**: System-Status (RPi5 + Tower Health, immer sichtbar)
 - **Modul 3**: Saleria-Status (Tower-abhängig, graceful offline)
-- **Modul 4**: Home Assistant (Platzhalter, Phase 37.3)
+- **Modul 4**: Home Assistant (Platzhalter, Phase 38.3)
 - **Service Worker**: Offline-Cache für statische Assets
 - **Design**: Weiterführung der bestehenden Ästhetik (#1a1a2e, Saleria-Lila)
 - **Konzept**: `docs/concepts/phase-36-dashboard-2.0.md`
-- **Abhängigkeit**: wird parallel zu Phase 37.1 implementiert
+- **Abhängigkeit**: wird parallel zu Phase 38.1 implementiert
 
-## Phase 37 – Smart Home Integration 🏠 GEPLANT
+## Phase 38 – Smart Home Integration 🏠 GEPLANT
 
 Vollständige lokale Smart-Home-Steuerung über eine erweiterbare Adapter-Architektur.
 Logitech-Cloud wird sofort abgelöst (nicht erst bei Server-Shutdown).
 
 ### Unterphasen
-- **37.1** Harmony Hub vollständige Ablösung (HarmonyAdapter auf RPi5, Config-Mock-Server, PWA)
-- **37.2** SmartHomeInterface ABC + SmartHomeRegistry (Plugin-Architektur, Tower)
-- **37.3** Home Assistant Adapter (REST API, lokal, nach Umzug)
-- **37.4** Alexa-Integration via Emulated Hue (RPi5, nach Umzug + HA stabil)
+
+- **38.1** Harmony Hub vollständige Ablösung (HarmonyAdapter auf RPi5, Config-Mock-Server, PWA)
+- **38.2** SmartHomeInterface ABC + SmartHomeRegistry (Plugin-Architektur, Tower)
+- **38.3** Home Assistant Adapter (REST API, lokal, nach Umzug)
+- **38.4** Alexa-Integration via Emulated Hue (RPi5, nach Umzug + HA stabil)
 
 - **Konzept**: `docs/concepts/phase-37-smart-home-integration.md`
-- **Abhängigkeit**: 37.3/37.4 nach Umzug; 37.1+37.2 sofort
+- **Abhängigkeit**: 38.3/38.4 nach Umzug; 38.1+38.2 sofort
 
-## Phase 38 – Sprachsteuerung / Alexa-Ablösung 🎙️ GEPLANT
+## Phase 39 – Sprachsteuerung / Alexa-Ablösung 🎙️ GEPLANT
 
 Saleria erhält eine eigene Sprachschnittstelle — unabhängig von Amazon.
 Zwei Modi werden parallel unterstützt, sodass zwischen Alexa und Saleria
 gewechselt werden kann (Flexibilität, kein harter Cut).
 
 ### Unterphasen
-- **38.1** Alexa Skill "Saleria" (Proxy-Modus, keine neue Hardware)
+
+- **39.1** Alexa Skill "Saleria" (Proxy-Modus, keine neue Hardware)
   → Echo macht Wake Word + STT, Text geht an Salerias API
-- **38.2** Natives Wake Word + Mic Array (vollständige Unabhängigkeit)
+- **39.2** Natives Wake Word + Mic Array (vollständige Unabhängigkeit)
   → OpenWakeWord auf RPi5, faster-whisper auf Tower-GPU
   → Hardware: ReSpeaker USB Array (~60€) oder Umbau vorhandener Hardware
 
 - **Konzept**: `docs/concepts/phase-38-sprachsteuerung.md`
-- **Abhängigkeit**: 38.1 nach 37.4; 38.2 nach 38.1 (Hardware-Entscheidung)
+- **Abhängigkeit**: 39.1 nach 38.4; 39.2 nach 39.1 (Hardware-Entscheidung)

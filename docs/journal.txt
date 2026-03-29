@@ -2741,3 +2741,42 @@ User: "Lies meine Mails und trag den Zahnarzttermin ein"
 - Brave Search Fallback nur wenn search_client injiziert (graceful degradation)
 - trafilatura als optionale Dependency (Gruppe [web]) – nicht in [dependencies]
 - Titel in Konzeptdateien angepasst (Phase 37.1–37.4 Unterphasen)
+
+## Abgeschlossen: Phase 36 – Nextcloud-Integration (Roadmap + Konzept)
+- Nextcloud als Self-Hosted-Backend für Dateien, Kalender, Kontakte
+- Phasenweise Integration: WebDAV Files → CalDAV Kalender → CardDAV Kontakte
+- Einordnung in Roadmap vor Smart Home (ehem. Phase 36–38 → 37–39)
+- Dateien:
+  - docs/concepts/phase-36-nextcloud-integration.md (Konzeptdokument)
+  - docs/PROJECT_ROADMAP.md (Phase 36 eingefügt, 36→37, 37→38, 38→39 umnummeriert)
+
+
+## In Arbeit: Phase 36.1 – Nextcloud Server-Setup (2026-03-28)
+- Subdomain cloud.last-strawberry.com + SSL: ✅ (Plesk)
+- MariaDB: DB=cloud, User=nc: ✅
+- Nächster Schritt: Nextcloud herunterladen + installieren
+
+## Abgeschlossen: Phase 36.1 – Nextcloud Server-Setup (2026-03-28)
+- Nextcloud 33.0.1 installiert auf cloud.last-strawberry.com
+- Server: Rootserver (Xeon E-2276G, 32 GB RAM, Ubuntu 24.04 LTS, Plesk Obsidian)
+- PHP 8.3.30 (Plesk), MariaDB 10.11.14, alle Module vorhanden
+
+### Setup-Details
+- Subdomain: cloud.last-strawberry.com (SSL via Wildcard-Zertifikat)
+- DB: cloud (User: nc), MariaDB via Plesk
+- Datadirectory: /var/www/vhosts/last-strawberry.com/nextcloud-data (außerhalb Webroot)
+- Cache: APCu (local) + Redis (locking), beides aktiv
+- Cron-Job: alle 5 Min via /opt/plesk/php/8.3/bin/php
+- Pretty URLs: aktiv (htaccess.RewriteBase + occ update)
+- HSTS-Header: gesetzt (Nginx-Directive, max-age=15552000)
+- PHP-Settings: memory_limit=512M, upload_max_filesize=1G, post_max_size=1G
+- Wartungsfenster: 03:00 Uhr, Telefonregion: DE
+
+### Hinweise für spätere Phasen
+- occ-Alias: occ='sudo -u lera /opt/plesk/php/8.3/bin/php -d memory_limit=512M /var/www/vhosts/.../occ'
+- Plesk CLI-PHP != Plesk FPM-PHP → occ immer mit /opt/plesk/php/8.3/bin/php aufrufen
+- App-Passwort für Saleria: noch zu generieren (Einstellungen → Sicherheit)
+- Verbleibende Warnungen: alle unkritisch (Codeintegrität=Plesk-Dateien, getenv=Plesk, AppAPI/2FA/E-Mail/ServerID=optional)
+
+### Nächster Schritt
+- Phase 36.2: NextcloudFilesClient (WebDAV) implementieren → eigener Chat
