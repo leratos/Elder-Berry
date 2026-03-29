@@ -76,6 +76,9 @@ web = [
     "trafilatura>=1.6",
     "beautifulsoup4>=4.12",
 ]
+nextcloud = [
+    "caldav>=1.0",
+]
 
 [tool.setuptools.packages.find]
 where = ["src"]

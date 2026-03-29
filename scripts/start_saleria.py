@@ -441,19 +441,39 @@ def _init_productivity_services(secrets, default_user_id):
     """Initialisiert Produktivitäts-Tools: Calendar, Email, Contacts, Todos, etc."""
     svc = {}
 
-    # Google Calendar
-    try:
-        from elder_berry.tools.google_calendar import GoogleCalendarClient
-        cal = GoogleCalendarClient(secret_store=secrets)
-        if cal.is_available():
-            svc["calendar"] = cal
-            logger.info("Google Calendar: aktiv")
-        else:
-            logger.debug("Google Calendar: keine Tokens konfiguriert")
-    except ImportError:
-        logger.debug("Google Calendar: google-api-python-client nicht installiert")
-    except Exception as e:
-        logger.warning("Google Calendar nicht verfügbar: %s", e)
+    # Calendar: Nextcloud CalDAV (bevorzugt) oder Google Calendar (Fallback)
+    calendar_client = None
+
+    # Versuch 1: Nextcloud CalDAV
+    if secrets.get_or_none("nextcloud_url"):
+        try:
+            from elder_berry.tools.caldav_calendar import CalDAVCalendarClient
+            cal = CalDAVCalendarClient(secret_store=secrets)
+            if cal.is_available():
+                calendar_client = cal
+                logger.info("Calendar: Nextcloud CalDAV (%s)", secrets.get("nextcloud_url"))
+        except ImportError:
+            logger.debug("CalDAV: caldav-Library nicht installiert")
+        except Exception as e:
+            logger.warning("CalDAV nicht verfügbar: %s", e)
+
+    # Versuch 2: Google Calendar Fallback
+    if calendar_client is None:
+        try:
+            from elder_berry.tools.google_calendar import GoogleCalendarClient
+            cal = GoogleCalendarClient(secret_store=secrets)
+            if cal.is_available():
+                calendar_client = cal
+                logger.info("Calendar: Google Calendar (Fallback)")
+        except ImportError:
+            logger.debug("Google Calendar: google-api-python-client nicht installiert")
+        except Exception as e:
+            logger.warning("Google Calendar nicht verfügbar: %s", e)
+
+    if calendar_client:
+        svc["calendar"] = calendar_client
+    else:
+        logger.info("Calendar: kein Provider konfiguriert")
 
     # Email / IMAP
     if secrets.get_or_none("email_imap_host"):
