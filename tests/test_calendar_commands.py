@@ -11,6 +11,7 @@ from elder_berry.comms.commands.calendar_commands import (
     TERMINE_PATTERN,
     CalendarCommandHandler,
     _parse_natural_date,
+    _parse_recurrence,
 )
 
 
@@ -79,8 +80,39 @@ class TestTerminCreatePattern:
     def test_valid(self, text):
         assert TERMIN_CREATE_PATTERN.match(text) is not None
 
-    def test_no_time(self):
-        assert TERMIN_CREATE_PATTERN.match("termin: Zahnarzt morgen") is None
+    def test_no_time_is_all_day(self):
+        """Ohne Uhrzeit = Ganztags-Event (kein Fehler mehr)."""
+        m = TERMIN_CREATE_PATTERN.match("termin: Urlaub morgen")
+        assert m is not None
+        assert m.group(3) is None  # Keine Uhrzeit
+
+    def test_all_day_with_date(self):
+        m = TERMIN_CREATE_PATTERN.match("termin: Urlaub 15.07")
+        assert m is not None
+        assert m.group(1).strip() == "Urlaub"
+        assert m.group(3) is None
+
+    def test_recurrence_yearly(self):
+        m = TERMIN_CREATE_PATTERN.match("termin: Geburtstag Lisa 28.09 jährlich")
+        assert m is not None
+        assert m.group(3) is None  # Keine Uhrzeit
+        assert m.group(4).lower() == "jährlich"
+
+    def test_recurrence_daily_with_time(self):
+        m = TERMIN_CREATE_PATTERN.match("termin: Standup morgen 09:00 täglich wiederholen")
+        assert m is not None
+        assert m.group(3) == "09:00"
+        assert m.group(4).lower() == "täglich"
+
+    def test_recurrence_weekly(self):
+        m = TERMIN_CREATE_PATTERN.match("termin: Jour fixe 01.04 10:00 wöchentlich")
+        assert m is not None
+        assert m.group(4).lower() == "wöchentlich"
+
+    def test_recurrence_english(self):
+        m = TERMIN_CREATE_PATTERN.match("termin: Backup 01.04 yearly")
+        assert m is not None
+        assert m.group(4).lower() == "yearly"
 
 
 class TestTerminDeletePattern:
@@ -338,6 +370,88 @@ class TestParseIndex:
 
     def test_invalid(self):
         assert CalendarCommandHandler._parse_index("abc") is None
+
+
+# ---------------------------------------------------------------------------
+# Unknown Command
+# ---------------------------------------------------------------------------
+
+# ---------------------------------------------------------------------------
+# _parse_recurrence
+# ---------------------------------------------------------------------------
+
+class TestParseRecurrence:
+    @pytest.mark.parametrize("text,expected_freq", [
+        ("jährlich", "YEARLY"),
+        ("yearly", "YEARLY"),
+        ("monatlich", "MONTHLY"),
+        ("monthly", "MONTHLY"),
+        ("wöchentlich", "WEEKLY"),
+        ("weekly", "WEEKLY"),
+        ("täglich", "DAILY"),
+        ("daily", "DAILY"),
+    ])
+    def test_valid(self, text, expected_freq):
+        result = _parse_recurrence(text)
+        assert result == [f"RRULE:FREQ={expected_freq}"]
+
+    def test_none_input(self):
+        assert _parse_recurrence(None) is None
+
+    def test_empty_string(self):
+        assert _parse_recurrence("") is None
+
+    def test_unknown(self):
+        assert _parse_recurrence("stündlich") is None
+
+
+# ---------------------------------------------------------------------------
+# Termin Create – All-Day + Recurrence
+# ---------------------------------------------------------------------------
+
+class TestTerminCreateAllDay:
+    def test_create_all_day(self, handler, calendar):
+        evt = _make_event("Urlaub", "new_ad")
+        calendar.create_event.return_value = evt
+        result = handler.execute("termin_create", "termin: Urlaub 15.07")
+        assert result.success is True
+        calendar.create_event.assert_called_once()
+        call_kwargs = calendar.create_event.call_args.kwargs
+        assert call_kwargs["all_day"] is True
+        assert call_kwargs["recurrence"] is None
+
+    def test_create_with_recurrence_yearly(self, handler, calendar):
+        evt = _make_event("Geburtstag Lisa", "new_rec")
+        calendar.create_event.return_value = evt
+        result = handler.execute(
+            "termin_create", "termin: Geburtstag Lisa 28.09 jährlich",
+        )
+        assert result.success is True
+        call_kwargs = calendar.create_event.call_args.kwargs
+        assert call_kwargs["all_day"] is True
+        assert call_kwargs["recurrence"] == ["RRULE:FREQ=YEARLY"]
+        assert "wiederholt" in result.text
+
+    def test_create_with_time_and_recurrence(self, handler, calendar):
+        evt = _make_event("Standup", "new_daily")
+        calendar.create_event.return_value = evt
+        result = handler.execute(
+            "termin_create", "termin: Standup morgen 09:00 täglich wiederholen",
+        )
+        assert result.success is True
+        call_kwargs = calendar.create_event.call_args.kwargs
+        assert call_kwargs["all_day"] is False
+        assert call_kwargs["recurrence"] == ["RRULE:FREQ=DAILY"]
+
+    def test_create_with_time_no_recurrence(self, handler, calendar):
+        """Bestehender Fall: Uhrzeit ohne Wiederholung bleibt wie bisher."""
+        evt = _make_event("Zahnarzt", "evt_std")
+        calendar.create_event.return_value = evt
+        result = handler.execute("termin_create", "termin: Zahnarzt morgen 14:00")
+        assert result.success is True
+        call_kwargs = calendar.create_event.call_args.kwargs
+        assert call_kwargs["all_day"] is False
+        assert call_kwargs["recurrence"] is None
 
 
 # ---------------------------------------------------------------------------

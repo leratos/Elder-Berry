@@ -361,6 +361,26 @@ class Assistant:
         except Exception as e:
             logger.warning("Memory-Speicherung fehlgeschlagen: %s", e)
 
+    def generate_raw(
+        self, user_input: str, system: str = "", chat_history: str = "",
+    ) -> str:
+        """Ruft nur das LLM auf, ohne SmartContext, Memory, TTS oder Emotion.
+
+        Nützlich für interne Retry-Logik die keine Seiteneffekte braucht.
+
+        Args:
+            user_input: Text-Eingabe.
+            system: Optionaler System-Prompt (wenn leer → kein System-Prompt).
+            chat_history: Optionaler Chat-Verlauf als Kontext.
+
+        Returns:
+            Rohe LLM-Antwort als String.
+        """
+        prompt = system
+        if chat_history:
+            prompt = f"{prompt}\n\n{chat_history}" if prompt else chat_history
+        return self._llm.generate(user_input, system=prompt)
+
     def new_session(self) -> None:
         """Startet eine neue Konversations-Session (setzt Session-ID zurück)."""
         if self._memory:

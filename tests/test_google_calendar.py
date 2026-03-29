@@ -294,6 +294,84 @@ class TestCreateEvent:
         call_body = mock_service.events.return_value.insert.call_args
         assert call_body.kwargs["body"]["location"] == "Büro"
 
+    @patch("elder_berry.tools.google_calendar.GoogleCalendarClient._get_service")
+    def test_create_event_all_day(self, mock_get_service):
+        mock_service = MagicMock()
+        mock_get_service.return_value = mock_service
+
+        mock_service.events.return_value.insert.return_value.execute.return_value = {
+            "id": "ad123",
+            "summary": "Urlaub",
+            "start": {"date": "2026-07-15"},
+            "end": {"date": "2026-07-16"},
+        }
+
+        store = _make_store_mock()
+        client = GoogleCalendarClient(secret_store=store)
+
+        event = client.create_event(
+            summary="Urlaub",
+            start=datetime(2026, 7, 15),
+            all_day=True,
+        )
+
+        assert event.all_day is True
+        call_body = mock_service.events.return_value.insert.call_args.kwargs["body"]
+        assert "date" in call_body["start"]
+        assert "dateTime" not in call_body["start"]
+        assert call_body["start"]["date"] == "2026-07-15"
+        assert call_body["end"]["date"] == "2026-07-16"
+
+    @patch("elder_berry.tools.google_calendar.GoogleCalendarClient._get_service")
+    def test_create_event_with_recurrence(self, mock_get_service):
+        mock_service = MagicMock()
+        mock_get_service.return_value = mock_service
+
+        mock_service.events.return_value.insert.return_value.execute.return_value = {
+            "id": "rec123",
+            "summary": "Geburtstag",
+            "start": {"date": "2026-09-28"},
+            "end": {"date": "2026-09-29"},
+        }
+
+        store = _make_store_mock()
+        client = GoogleCalendarClient(secret_store=store)
+
+        client.create_event(
+            summary="Geburtstag",
+            start=datetime(2026, 9, 28),
+            all_day=True,
+            recurrence=["RRULE:FREQ=YEARLY"],
+        )
+
+        call_body = mock_service.events.return_value.insert.call_args.kwargs["body"]
+        assert call_body["recurrence"] == ["RRULE:FREQ=YEARLY"]
+
+    @patch("elder_berry.tools.google_calendar.GoogleCalendarClient._get_service")
+    def test_create_event_timed_no_recurrence_no_date_key(self, mock_get_service):
+        """Normaler Termin mit Uhrzeit hat dateTime, nicht date."""
+        mock_service = MagicMock()
+        mock_get_service.return_value = mock_service
+
+        mock_service.events.return_value.insert.return_value.execute.return_value = {
+            "id": "std123",
+            "summary": "Meeting",
+            "start": {"dateTime": "2026-03-20T14:00:00"},
+            "end": {"dateTime": "2026-03-20T15:00:00"},
+        }
+
+        store = _make_store_mock()
+        client = GoogleCalendarClient(secret_store=store)
+
+        client.create_event(
+            summary="Meeting",
+            start=datetime(2026, 3, 20, 14, 0),
+        )
+
+        call_body = mock_service.events.return_value.insert.call_args.kwargs["body"]
+        assert "dateTime" in call_body["start"]
+        assert "date" not in call_body["start"]
+        assert "recurrence" not in call_body
 
 
 # ---------------------------------------------------------------------------

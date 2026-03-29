@@ -82,21 +82,49 @@ Nextcloud läuft auf demselben Server wie Matrix-Synapse.
 - `caldav` – Pure-Python CalDAV-Client
 - Neue optionale Gruppe: `[nextcloud]` in pyproject.toml
 
-### 36.3 – CardDAV Kontakte (optional, ergänzend)
+### 36.3 – CardDAV Kontakte (bidirektionaler Sync)
 
-**Ziel:** ContactStore optional um CardDAV-Sync erweitern.
+**Ziel:** Kontakte zwischen Saleria und Endgeräten synchronisieren via Nextcloud CardDAV.
 
-#### Ansatz: Hybrid (SQLite + CardDAV-Sync)
-- ContactStore bleibt primäre Datenquelle (schnell, offline)
-- CardDAV-Sync als optionaler Export/Import:
-  - `sync_to_nextcloud()` – lokale Kontakte → Nextcloud vCards
-  - `sync_from_nextcloud()` – Nextcloud vCards → lokale Kontakte
-  - Manuell per Command: `kontakte sync`
-- Kein Echtzeit-Sync (zu komplex, Konflikte)
-- Vorteil: Kontakte auf dem Handy per DAVx5 verfügbar
+#### Architektur: Hybrid (SQLite primär + CardDAV-Sync)
+- ContactStore (SQLite + FTS5) bleibt primäre Datenquelle (schnell, offline, FTS5-Suche)
+- CardDAV-Sync als bidirektionale Brücke zwischen Saleria und Endgeräten
+
+#### Sync-Richtung 1: Saleria → Endgeräte
+- `ContactStore.add()` / `.update()` schreibt weiterhin ins lokale SQLite
+- Zusätzlich: CardDAV-Push nach Nextcloud (vCard-Standardfelder: Name, Email, Telefon, Geburtstag)
+- Nextcloud synct automatisch auf Endgeräte (Handy via DAVx5, Laptop via native Clients)
+- Trigger: synchron bei jedem Schreibvorgang (fail-silent, Warnung im Log)
+
+#### Sync-Richtung 2: Endgeräte → Saleria
+- Periodischer CardDAV-Pull (z.B. alle 15 Min oder manuell per `kontakte sync`)
+- Neue/geänderte vCards → SQLite aktualisieren (Upsert per Name oder Email als Match-Key)
+- Nur vCard-Standardfelder werden überschrieben — Saleria-Felder bleiben unangetastet
+
+#### Was lokal bleibt (nicht in vCard)
+- `formality` (förmlich/locker) — Saleria-spezifisch, kein vCard-Standardfeld
+- `notes` (LLM-Kontext) — für Email-Drafts und Konversation, nicht für Adressbuch
+- `format_for_llm()` — rein intern
+- FTS5-Index — Performance-kritisch, lokaler Lookup
+
+#### Konflikt-Strategie
+- Last-Write-Wins auf Feldebene (nicht auf Kontaktebene)
+- vCard-Felder: Nextcloud gewinnt bei Pull (Endgeräte sind aktueller)
+- Saleria-Felder: nie überschrieben (existieren nur lokal)
+- Gelöschte Kontakte: nur wenn auf beiden Seiten gelöscht (Tombstone-Check)
+
+#### Neue Methoden auf ContactStore
+- `sync_push(contact_id)` — einzelnen Kontakt nach Nextcloud pushen
+- `sync_pull()` — alle Nextcloud-Kontakte pullen und SQLite aktualisieren
+- `sync_full()` — Push + Pull (für `kontakte sync` Command)
+
+#### Neue Commands
+- `kontakte sync` — manueller Full-Sync
+- `kontakte sync status` — letzter Sync-Zeitpunkt, Anzahl Änderungen
 
 #### Dependency
-- `vdirsyncer` oder direkte CardDAV-Calls via `httpx`
+- `httpx` (bereits vorhanden) für direkte CardDAV-Calls (PROPFIND, PUT, DELETE)
+- vCard-Parsing: `vobject` oder manuelles XML/vCard-Parsing
 
 ## Was NICHT migriert wird
 
@@ -127,15 +155,15 @@ Nextcloud läuft auf demselben Server wie Matrix-Synapse.
 ## Reihenfolge und Abhängigkeiten
 
 ```text
-36.1 (Files/WebDAV) ──→ 36.2 (CalDAV) ──→ 36.3 (CardDAV, optional)
-      │                       │
-      └── Nextcloud muss      └── caldav-Library
-          laufen                   als Dependency
+36.1 (Files/WebDAV) ──→ 36.2 (CalDAV) ──→ 36.3 (CardDAV)
+      │                       │                    │
+      └── Nextcloud muss      └── caldav-Library   └── vCard-Parsing
+          laufen                   als Dependency       (vobject oder httpx)
 ```
 
 - 36.1 ist Voraussetzung: Nextcloud muss installiert und erreichbar sein
 - 36.2 kann unabhängig von 36.1 implementiert werden (nur gleicher Server)
-- 36.3 ist optional und kann auch später nachgezogen werden
+- 36.3 setzt 36.1 voraus (Nextcloud-Credentials), ist aber unabhängig von 36.2
 
 ## Aufwand-Schätzung
 
@@ -143,7 +171,7 @@ Nextcloud läuft auf demselben Server wie Matrix-Synapse.
 |---|---|---|---|
 | 36.1 Files | Klein–Mittel | NextcloudFilesClient | ~20 |
 | 36.2 CalDAV | Mittel | CalDAVCalendarClient | ~25 |
-| 36.3 CardDAV | Klein | ContactStore-Erweiterung | ~15 |
+| 36.3 CardDAV | Mittel | ContactStore-Erweiterung + Sync-Logik | ~20 |
 
 ## Kosten
 

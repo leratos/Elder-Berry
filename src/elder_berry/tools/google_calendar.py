@@ -269,37 +269,53 @@ class GoogleCalendarClient:
         duration_minutes: int = 60,
         location: str | None = None,
         description: str | None = None,
+        all_day: bool = False,
+        recurrence: list[str] | None = None,
     ) -> CalendarEvent:
         """Erstellt einen neuen Termin.
 
         Args:
             summary: Titel.
             start: Startzeit (naive datetime = lokale Zeit).
-            duration_minutes: Dauer in Minuten.
+            duration_minutes: Dauer in Minuten (ignoriert bei all_day=True).
             location: Ort (optional).
             description: Beschreibung (optional).
+            all_day: Ganztags-Event (nur Datum, keine Uhrzeit).
+            recurrence: Liste von RRULE-Strings (z.B. ["RRULE:FREQ=YEARLY"]).
 
         Returns:
             Der erstellte CalendarEvent.
         """
-        end = start + timedelta(minutes=duration_minutes)
         tz_name = self._get_local_timezone()
 
-        body: dict = {
-            "summary": summary,
-            "start": {
-                "dateTime": start.isoformat(),
-                "timeZone": tz_name,
-            },
-            "end": {
-                "dateTime": end.isoformat(),
-                "timeZone": tz_name,
-            },
-        }
+        if all_day:
+            start_date = start.strftime("%Y-%m-%d")
+            end_date = (start + timedelta(days=1)).strftime("%Y-%m-%d")
+            body: dict = {
+                "summary": summary,
+                "start": {"date": start_date},
+                "end": {"date": end_date},
+            }
+        else:
+            end = start + timedelta(minutes=duration_minutes)
+            body = {
+                "summary": summary,
+                "start": {
+                    "dateTime": start.isoformat(),
+                    "timeZone": tz_name,
+                },
+                "end": {
+                    "dateTime": end.isoformat(),
+                    "timeZone": tz_name,
+                },
+            }
+
         if location:
             body["location"] = location
         if description:
             body["description"] = description
+        if recurrence:
+            body["recurrence"] = recurrence
 
         def _op():
             service = self._get_service()

@@ -551,8 +551,10 @@ Ersetzt Google-Calendar-Abhängigkeit, ergänzt bestehende Stores um Sync.
   → Dateien hoch-/runterladen, Verzeichnisse listen, Share-Links
 - **36.2** CalDAV Kalender (CalDAVCalendarClient → GoogleCalendarClient ersetzen)
   → Gleiche Methoden, DI-Austausch, CalendarWatcher/Briefing bleiben unverändert
-- **36.3** CardDAV Kontakte (optional, Hybrid: SQLite bleibt primär + Sync)
-  → Kontakte per DAVx5 auf dem Handy verfügbar
+- **36.3** CardDAV Kontakte (bidirektionaler Sync)
+  → Saleria legt Kontakt an → CardDAV-Push → Nextcloud → Endgeräte (DAVx5)
+  → Endgeräte-Kontakt → Nextcloud → periodischer Sync → lokaler SQLite
+  → Saleria-spezifische Felder (formality, notes) bleiben lokal im SQLite
 
 ### Nicht migriert
 

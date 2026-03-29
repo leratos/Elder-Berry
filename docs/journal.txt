@@ -2822,3 +2822,30 @@ User: "Lies meine Mails und trag den Zahnarzttermin ein"
 
 ### Nächster Schritt
 - Phase 36.2: CalDAV Kalender (Google Calendar ersetzen) → eigener Chat
+
+## Abgeschlossen: Bugfix – Calendar-Recurrence + FTS5-Sanitize + Retry-Pipeline (2026-03-29)
+- Branch: bugfix/calendar-recurrence-fts-sanitize
+
+### Bug 1: FTS5-Query-Sanitize in NoteStore
+- NoteStore._sanitize_fts_query(): Entfernt FTS5-Sonderzeichen und Operatoren vor MATCH
+- Nur alphanumerische Wörter (inkl. Umlaute) werden behalten
+- Leerer Query nach Sanitize → leere Liste statt Crash
+- 13 neue Tests (Unit + Integration)
+
+### Bug 2: Calendar-Wiederholung + Ganztags-Events
+- GoogleCalendarClient.create_event(): Neue Parameter all_day + recurrence
+- Ganztags: date statt dateTime, end = start + 1 Tag
+- Wiederholung: recurrence als RRULE-Strings an Google API
+- TERMIN_CREATE_PATTERN: Uhrzeit optional, Wiederholungsgruppe am Ende
+- _parse_recurrence(): jährlich/monatlich/wöchentlich/täglich → RRULE
+- 20 neue Tests (Pattern + Execution + API-Body)
+
+### Bug 3: Retry-Pipeline bypass
+- Assistant.generate_raw(): Nur LLM aufrufen, kein SmartContext/Memory/TTS/Emotion
+- _retry_llm_remote_command(): Nutzt generate_raw() statt process()
+- Verhindert FTS5-Crash durch HELP_TEXT + unnötige Seiteneffekte
+- 8 neue Tests (generate_raw + retry bypass)
+
+### Tests
+- 2893 Tests gesamt, 0 Fehler
+- Bestehende Retry-Tests in test_intent_routing.py auf generate_raw migriert
