@@ -113,16 +113,12 @@ def main() -> None:
         logger.warning("Drehteller-Init fehlgeschlagen: %s", e)
 
     # -- Harmony Hub (optional) ------------------------------------------------
+    # Nur instanziieren, connect() passiert im uvicorn Event-Loop (startup)
     harmony = None
     try:
-        import asyncio as _aio
         from elder_berry.robot.harmony_adapter import HarmonyAdapter
         harmony = HarmonyAdapter(hub_ip="192.168.50.133")
-        _connected = _aio.new_event_loop().run_until_complete(harmony.connect())
-        if _connected:
-            logger.info("HarmonyAdapter verbunden (IP: 192.168.50.133)")
-        else:
-            logger.warning("Harmony Hub nicht erreichbar – Backup-Config aktiv")
+        logger.info("HarmonyAdapter initialisiert (IP: 192.168.50.133)")
     except ImportError:
         logger.info("Harmony: aioharmony nicht installiert – deaktiviert")
     except Exception as e:
@@ -180,12 +176,6 @@ def main() -> None:
         avatar.stop()
         if turntable:
             turntable.close()
-        if harmony:
-            import asyncio
-            try:
-                asyncio.new_event_loop().run_until_complete(harmony.disconnect())
-            except Exception:
-                pass
         logger.info("RPi5 beendet")
 
 

@@ -177,8 +177,27 @@ class RobotServer:
             allow_headers=["*"],
         )
         self._register_routes()
+        self._register_lifecycle()
 
         logger.info("RobotServer initialisiert: %s", hostname)
+
+    def _register_lifecycle(self) -> None:
+        """Registriert Startup/Shutdown Events."""
+
+        @self.app.on_event("startup")
+        async def startup() -> None:
+            if self._harmony is not None:
+                connected = await self._harmony.connect()
+                if connected:
+                    logger.info("HarmonyAdapter verbunden beim Startup")
+                else:
+                    logger.warning("Harmony Hub nicht erreichbar beim Startup")
+
+        @self.app.on_event("shutdown")
+        async def shutdown() -> None:
+            if self._harmony is not None:
+                await self._harmony.disconnect()
+                logger.info("HarmonyAdapter getrennt beim Shutdown")
 
     def _register_routes(self) -> None:
         """Registriert alle API-Endpoints."""
