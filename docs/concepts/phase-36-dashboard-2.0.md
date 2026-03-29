@@ -1,9 +1,15 @@
-# Phase 36 – Dashboard 2.0 (Modulare Smart Home PWA)
+# Dashboard 2.0 (Modulare Smart Home PWA)
+
+> **Status (2026-03-29):** Noch nicht als eigene Phase eingeplant.
+> Phase 37.1 (Harmony Hub) erstellt eine Standalone-PWA (harmony_remote/index.html).
+> Dashboard 2.0 würde diese in eine modulare Architektur überführen.
+> Phasennummer wird vergeben wenn Phase 37 (Smart Home) abgeschlossen ist.
+> Dateiname phase-36-dashboard-2.0.md ist veraltet (Phase 36 = Nextcloud).
 
 ## Übersicht
 
 Dashboard 2.0 ist eine Progressive Web App (PWA) auf dem Rootserver.
-Sie dient als modularer Container für alle Phase-36-Steuerungsfunktionen
+Sie dient als modularer Container für alle Smart-Home-Steuerungsfunktionen
 und ist auf Handy installierbar.
 
 **Abgrenzung zum bestehenden AudioDashboard:**
@@ -26,10 +32,10 @@ Jedes Modul ist eine eigenständige Einheit:
 
 ```
 Dashboard 2.0
-├── Modul: Harmony Remote   → RPi5 :8001/harmony/*
-├── Modul: HA Control       → RPi5 :8001/ha/*       (Phase 36.3)
+├── Modul: Harmony Remote   → RPi5 :8000/harmony/*
+├── Modul: HA Control       → RPi5 :8000/ha/*       (Phase 37.3)
 ├── Modul: Saleria Status   → Tower :8000/status     (wenn Tower an)
-├── Modul: System           → RPi5 :8001/health      (immer)
+├── Modul: System           → RPi5 :8000/health      (immer)
 └── Modul: [erweiterbar]
 ```
 
@@ -58,8 +64,8 @@ src/elder_berry/webapp/dashboard/
 ├── sw.js               ← Service Worker (Offline-Cache)
 ├── style.css           ← Shared Design Tokens
 └── modules/
-    ├── harmony.js      ← HarmonyModule (Phase 36.1)
-    ├── ha.js           ← HomeAssistantModule (Phase 36.3)
+    ├── harmony.js      ← HarmonyModule (Phase 37.1)
+    ├── ha.js           ← HomeAssistantModule (Phase 37.3)
     ├── saleria.js      ← SaleriaStatusModule
     └── system.js       ← SystemModule
 ```
@@ -131,10 +137,10 @@ rendert nur Module die konfiguriert sind.
   <!-- Konfiguration (aus elder_berry.json via /dashboard/config Endpoint) -->
   <script>
     const DASHBOARD_CONFIG = {
-      rpi5_url:  "http://192.168.50.220:8001",
+      rpi5_url:  "http://192.168.50.220:8000",
       tower_url: "http://192.168.50.X:8000",
       modules:   ["harmony", "system", "saleria"]
-      // "ha" wird ergänzt wenn Phase 36.3 deployed
+      // "ha" wird ergänzt wenn Phase 37.3 deployed
     };
   </script>
   <script type="module" src="modules/loader.js"></script>
@@ -219,7 +225,7 @@ loadModules();
 
 ## Modul 1: Harmony Remote (harmony.js)
 
-Erste Implementierung. Direkt gegen RPi5 :8001/harmony/*.
+Erste Implementierung. Direkt gegen RPi5 :8000/harmony/*.
 
 ```javascript
 // modules/harmony.js
@@ -410,7 +416,7 @@ export default class SaleriaModule extends DashboardModule {
 
 ---
 
-## Modul 4: Home Assistant (ha.js) — Platzhalter für Phase 36.3
+## Modul 4: Home Assistant (ha.js) — Platzhalter für Phase 37.3
 
 ```javascript
 // modules/ha.js
@@ -430,10 +436,10 @@ export default class HomeAssistantModule extends DashboardModule {
       </div>`;
   }
 
-  // Implementierung in Phase 36.3 wenn HomeAssistantAdapter deployed
+  // Implementierung in Phase 37.3 wenn HomeAssistantAdapter deployed
   get pollInterval() { return 15000; }
   async init() { await this.poll(); }
-  async poll() { /* TODO: Phase 36.3 */ }
+  async poll() { /* TODO: Phase 37.3 */ }
 }
 ```
 
@@ -485,7 +491,7 @@ self.addEventListener("install", e => {
 
 self.addEventListener("fetch", e => {
   // API-Calls nie cachen (immer live oder Fehler)
-  if (e.request.url.includes(":8001") ||
+  if (e.request.url.includes(":8000") ||
       e.request.url.includes(":8000")) return;
   e.respondWith(
     caches.match(e.request).then(r => r || fetch(e.request))
@@ -531,21 +537,21 @@ rsync -avz src/elder_berry/webapp/dashboard/ \
 ## Implementierungsreihenfolge
 
 ```
-Schritt 1 (mit Phase 36.1):
+Schritt 1 (mit Phase 37.1):
   style.css + index.html Shell + loader.js + base.js
   system.js (immer sichtbar, einfachstes Modul)
-  harmony.js (Kern von 36.1)
+  harmony.js (Kern von 37.1)
   manifest.json + sw.js
   Nginx + Deploy-Skript
 
-Schritt 2 (nach Phase 36.1 stabil):
+Schritt 2 (nach Phase 37.1 stabil):
   saleria.js (braucht Tower /status Endpoint)
 
-Schritt 3 (mit Phase 36.3):
+Schritt 3 (mit Phase 37.3):
   ha.js ausarbeiten
   DASHBOARD_CONFIG.modules += "ha"
 
-Schritt 4 (nach Phase 37.1):
+Schritt 4 (nach Phase 37.4):
   alexa.js — Skill-Status, manuelle Trigger
 ```
 
