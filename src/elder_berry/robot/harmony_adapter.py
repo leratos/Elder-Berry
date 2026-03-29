@@ -192,8 +192,19 @@ class HarmonyAdapter:
             return None
 
         try:
-            current_id = self._client.current_activity
-            if current_id is None or current_id == _POWER_OFF_ACTIVITY_ID:
+            current = self._client.current_activity
+            if current is None:
+                return None
+
+            # aioharmony gibt (id, name) Tuple oder nur id zurueck
+            if isinstance(current, tuple):
+                current_id, current_name = current
+                if current_id == _POWER_OFF_ACTIVITY_ID:
+                    return None
+                return current_name
+
+            current_id = current
+            if current_id == _POWER_OFF_ACTIVITY_ID:
                 return None
 
             # ID zu Name aufloesen

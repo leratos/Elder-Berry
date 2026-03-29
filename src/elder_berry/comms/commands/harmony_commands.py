@@ -24,8 +24,8 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-# Receiver-Name fuer Lautstaerke-Befehle (Denon AVR-X3500H)
-_RECEIVER_DEVICE = "Denon AVR-X3500H"
+# Receiver-Name fuer Lautstaerke-Befehle
+_RECEIVER_DEVICE = "Denon AV-Empfänger"
 
 # -- Patterns -------------------------------------------------------------- #
 

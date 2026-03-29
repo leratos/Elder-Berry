@@ -92,7 +92,7 @@ def mock_harmony_api():
     api.power_off = AsyncMock()
     api.send_command = AsyncMock()
     api.config = SAMPLE_CONFIG
-    api.current_activity = 38979034  # Fernsehen
+    api.current_activity = (38979034, "Fernsehen")
     return api
 
 
@@ -279,6 +279,16 @@ class TestActivities:
         adapter._client = mock_harmony_api
         adapter._connected = True
         adapter._config = SAMPLE_CONFIG
+        mock_harmony_api.current_activity = (38979034, "Fernsehen")
+
+        result = _run(adapter.get_current_activity())
+        assert result == "Fernsehen"
+
+    def test_get_current_activity_plain_id(self, adapter, mock_harmony_api):
+        """Fallback wenn aioharmony nur eine ID liefert (kein Tuple)."""
+        adapter._client = mock_harmony_api
+        adapter._connected = True
+        adapter._config = SAMPLE_CONFIG
         mock_harmony_api.current_activity = 38979034
 
         result = _run(adapter.get_current_activity())
@@ -290,7 +300,7 @@ class TestActivities:
         adapter._client = mock_harmony_api
         adapter._connected = True
         adapter._config = SAMPLE_CONFIG
-        mock_harmony_api.current_activity = _POWER_OFF_ACTIVITY_ID
+        mock_harmony_api.current_activity = (_POWER_OFF_ACTIVITY_ID, "PowerOff")
 
         result = _run(adapter.get_current_activity())
         assert result is None
