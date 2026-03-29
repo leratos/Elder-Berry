@@ -9,6 +9,17 @@ import pytest
 from elder_berry.tools.caldav_calendar import CalDAVCalendarClient
 from elder_berry.tools.google_calendar import CalendarEvent
 
+# icalendar ist optionale Dependency (kommt mit caldav)
+_has_icalendar = True
+try:
+    import icalendar as _ical  # noqa: F401
+except ImportError:
+    _has_icalendar = False
+
+needs_icalendar = pytest.mark.skipif(
+    not _has_icalendar, reason="icalendar nicht installiert",
+)
+
 
 # ── Helpers ──────────────────────────────────────────────────────────
 
@@ -124,6 +135,7 @@ class TestCredentialsAndAvailability:
 # ── Events abrufen ───────────────────────────────────────────────────
 
 class TestGetEvents:
+    @needs_icalendar
     def test_get_events_today(self):
         client, cal = _client_with_calendar()
         ical = _make_ical(summary="Zahnarzt", uid="ev1")
@@ -135,6 +147,7 @@ class TestGetEvents:
         assert events[0].event_id == "ev1"
         cal.search.assert_called_once()
 
+    @needs_icalendar
     def test_get_events_multiple_days(self):
         client, cal = _client_with_calendar()
         ev1 = _make_caldav_event(_make_ical(summary="A", uid="1", dtstart="20260330T100000", dtend="20260330T110000"))
@@ -176,6 +189,7 @@ class TestGetEvents:
         call_kwargs = cal.search.call_args
         assert call_kwargs.kwargs.get("start") == start or call_kwargs[1].get("start") == start
 
+    @needs_icalendar
     def test_get_events_max_results(self):
         client, cal = _client_with_calendar()
         # 5 Events zurückgeben, aber max_results=3
@@ -191,6 +205,7 @@ class TestGetEvents:
         events = client.get_events(days=7, max_results=3)
         assert len(events) == 3
 
+    @needs_icalendar
     def test_get_events_sorted(self):
         client, cal = _client_with_calendar()
         late = _make_caldav_event(_make_ical(summary="Spät", uid="l", dtstart="20260330T180000", dtend="20260330T190000"))
@@ -204,6 +219,7 @@ class TestGetEvents:
 
 # ── Suche ────────────────────────────────────────────────────────────
 
+@needs_icalendar
 class TestSearchEvents:
     def test_search_events_found(self):
         client, cal = _client_with_calendar()
@@ -319,6 +335,7 @@ class TestDeleteEvent:
 
 # ── Parsing ──────────────────────────────────────────────────────────
 
+@needs_icalendar
 class TestParseEvent:
     def test_parse_event_normal(self):
         ical = _make_ical(
