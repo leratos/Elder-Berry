@@ -112,6 +112,17 @@ def main() -> None:
     except Exception as e:
         logger.warning("Drehteller-Init fehlgeschlagen: %s", e)
 
+    # -- Harmony Hub (optional) ------------------------------------------------
+    harmony = None
+    try:
+        from elder_berry.robot.harmony_adapter import HarmonyAdapter
+        harmony = HarmonyAdapter(hub_ip="192.168.50.133")
+        logger.info("HarmonyAdapter initialisiert (IP: 192.168.50.133)")
+    except ImportError:
+        logger.info("Harmony: aioharmony nicht installiert – deaktiviert")
+    except Exception as e:
+        logger.warning("Harmony-Init fehlgeschlagen: %s", e)
+
     # -- RobotServer -----------------------------------------------------------
     # Projekt-Root ermitteln (scripts/ ist ein Unterverzeichnis)
     project_root = Path(__file__).resolve().parent.parent
@@ -122,6 +133,7 @@ def main() -> None:
         sensors=sensors,
         camera=camera,
         turntable=turntable,
+        harmony=harmony,
         hostname="elder-berry-rpi5",
         project_root=project_root,
         service_name="elder-berry",
@@ -163,6 +175,12 @@ def main() -> None:
         avatar.stop()
         if turntable:
             turntable.close()
+        if harmony:
+            import asyncio
+            try:
+                asyncio.new_event_loop().run_until_complete(harmony.disconnect())
+            except Exception:
+                pass
         logger.info("RPi5 beendet")
 
 
