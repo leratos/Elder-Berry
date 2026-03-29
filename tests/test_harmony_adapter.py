@@ -350,7 +350,7 @@ class TestCommands:
         ))
 
         assert result is True
-        mock_harmony_api.send_command.assert_awaited_once()
+        mock_harmony_api.send_commands.assert_awaited_once()
 
     def test_send_command_device_not_found(self, adapter, mock_harmony_api):
         adapter._client = mock_harmony_api
@@ -380,7 +380,7 @@ class TestCommands:
         ))
 
         assert result is True
-        assert mock_harmony_api.send_command.await_count == 3
+        assert mock_harmony_api.send_commands.await_count == 3
 
     def test_send_command_case_insensitive_device(
         self, adapter, mock_harmony_api,
