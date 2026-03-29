@@ -286,7 +286,7 @@ class HarmonyAdapter:
                 device=int(device_id), command=cmd_match, delay=0,
             )
             for _ in range(repeat):
-                await self._client.send_command(send_cmd)
+                await self._client.send_commands(send_cmd)
             logger.info(
                 "Befehl gesendet: %s → %s (x%d)",
                 device, cmd_match, repeat,
