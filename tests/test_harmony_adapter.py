@@ -1,6 +1,7 @@
 """Tests fuer HarmonyAdapter -- aioharmony komplett gemockt."""
 from __future__ import annotations
 
+import asyncio
 import json
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -14,6 +15,11 @@ from elder_berry.robot.harmony_adapter import (
     _DEFAULT_CONFIG_PATH,
     _POWER_OFF_ACTIVITY_ID,
 )
+
+
+def _run(coro):
+    """Hilfsfunktion: async Coroutine synchron ausfuehren."""
+    return asyncio.new_event_loop().run_until_complete(coro)
 
 
 # -- Fixtures -------------------------------------------------------------- #
@@ -135,19 +141,14 @@ class TestBackupConfig:
 # -- Verbindung ------------------------------------------------------------ #
 
 class TestConnect:
-    async def test_connect_success(self, adapter, mock_harmony_api):
-        with patch(
-            "elder_berry.robot.harmony_adapter.HarmonyAdapter.connect",
-            new=self._make_connect(mock_harmony_api),
-        ):
-            pass
+    def test_connect_success(self, adapter, mock_harmony_api):
         # Direkt testen mit Mock-Injection
         adapter._client = mock_harmony_api
         adapter._connected = True
         adapter._config = SAMPLE_CONFIG
         assert adapter.is_connected
 
-    async def test_connect_uses_backup_on_failure(self, adapter):
+    def test_connect_uses_backup_on_failure(self, adapter):
         """Wenn Hub nicht erreichbar, wird Backup-Config geladen."""
         mock_api = AsyncMock()
         mock_api.connect = AsyncMock(return_value=False)
@@ -159,18 +160,18 @@ class TestConnect:
             "sys.modules",
             {"aioharmony": MagicMock(), "aioharmony.harmonyapi": mock_module},
         ):
-            result = await adapter.connect()
+            result = _run(adapter.connect())
 
         assert result is True  # Backup geladen
         assert adapter.is_connected
         assert len(adapter._config.get("activity", [])) == 3
 
-    async def test_connect_already_connected(self, adapter):
+    def test_connect_already_connected(self, adapter):
         adapter._connected = True
-        result = await adapter.connect()
+        result = _run(adapter.connect())
         assert result is True
 
-    async def test_connect_no_backup_no_hub(self, tmp_path):
+    def test_connect_no_backup_no_hub(self, tmp_path):
         """Wenn Hub nicht erreichbar und kein Backup, gibt connect False zurueck."""
         a = HarmonyAdapter(
             hub_ip="1.2.3.4",
@@ -186,25 +187,25 @@ class TestConnect:
             "sys.modules",
             {"aioharmony": MagicMock(), "aioharmony.harmonyapi": mock_module},
         ):
-            result = await a.connect()
+            result = _run(a.connect())
 
         assert result is False
         assert not a.is_connected
 
-    async def test_disconnect_clean(self, adapter, mock_harmony_api):
+    def test_disconnect_clean(self, adapter, mock_harmony_api):
         adapter._client = mock_harmony_api
         adapter._connected = True
 
-        await adapter.disconnect()
+        _run(adapter.disconnect())
 
         mock_harmony_api.close.assert_awaited_once()
         assert not adapter.is_connected
         assert adapter._client is None
 
-    async def test_disconnect_without_client(self, adapter):
+    def test_disconnect_without_client(self, adapter):
         adapter._connected = True
         adapter._client = None
-        await adapter.disconnect()
+        _run(adapter.disconnect())
         assert not adapter.is_connected
 
     def test_is_connected_property(self, adapter):
@@ -212,87 +213,78 @@ class TestConnect:
         adapter._connected = True
         assert adapter.is_connected
 
-    @staticmethod
-    def _make_connect(mock_api):
-        async def connect(self):
-            self._client = mock_api
-            self._connected = True
-            self._config = SAMPLE_CONFIG
-            return True
-        return connect
-
 
 # -- Aktivitaeten ---------------------------------------------------------- #
 
 class TestActivities:
-    async def test_start_activity_by_name(self, adapter, mock_harmony_api):
+    def test_start_activity_by_name(self, adapter, mock_harmony_api):
         adapter._client = mock_harmony_api
         adapter._connected = True
         adapter._config = SAMPLE_CONFIG
 
-        result = await adapter.start_activity("Fernsehen")
+        result = _run(adapter.start_activity("Fernsehen"))
         assert result is True
         mock_harmony_api.start_activity.assert_awaited_once_with(38979034)
 
-    async def test_start_activity_case_insensitive(self, adapter, mock_harmony_api):
+    def test_start_activity_case_insensitive(self, adapter, mock_harmony_api):
         adapter._client = mock_harmony_api
         adapter._connected = True
         adapter._config = SAMPLE_CONFIG
 
-        result = await adapter.start_activity("fernsehen")
+        result = _run(adapter.start_activity("fernsehen"))
         assert result is True
         mock_harmony_api.start_activity.assert_awaited_once_with(38979034)
 
-    async def test_start_activity_not_found(self, adapter, mock_harmony_api):
+    def test_start_activity_not_found(self, adapter, mock_harmony_api):
         adapter._client = mock_harmony_api
         adapter._connected = True
         adapter._config = SAMPLE_CONFIG
 
-        result = await adapter.start_activity("Gaming")
+        result = _run(adapter.start_activity("Gaming"))
         assert result is False
 
-    async def test_start_activity_disconnected(self, adapter):
-        result = await adapter.start_activity("Fernsehen")
+    def test_start_activity_disconnected(self, adapter):
+        result = _run(adapter.start_activity("Fernsehen"))
         assert result is False
 
-    async def test_start_activity_no_client(self, adapter):
+    def test_start_activity_no_client(self, adapter):
         """Nur Backup-Config, kein Hub-Client."""
         adapter._connected = True
         adapter._config = SAMPLE_CONFIG
         adapter._client = None
 
-        result = await adapter.start_activity("Fernsehen")
+        result = _run(adapter.start_activity("Fernsehen"))
         assert result is False
 
-    async def test_power_off(self, adapter, mock_harmony_api):
+    def test_power_off(self, adapter, mock_harmony_api):
         adapter._client = mock_harmony_api
         adapter._connected = True
         adapter._config = SAMPLE_CONFIG
 
-        result = await adapter.power_off()
+        result = _run(adapter.power_off())
         assert result is True
         mock_harmony_api.power_off.assert_awaited_once()
 
-    async def test_power_off_disconnected(self, adapter):
-        result = await adapter.power_off()
+    def test_power_off_disconnected(self, adapter):
+        result = _run(adapter.power_off())
         assert result is False
 
-    async def test_power_off_no_client(self, adapter):
+    def test_power_off_no_client(self, adapter):
         adapter._connected = True
         adapter._client = None
-        result = await adapter.power_off()
+        result = _run(adapter.power_off())
         assert result is False
 
-    async def test_get_current_activity_name(self, adapter, mock_harmony_api):
+    def test_get_current_activity_name(self, adapter, mock_harmony_api):
         adapter._client = mock_harmony_api
         adapter._connected = True
         adapter._config = SAMPLE_CONFIG
         mock_harmony_api.current_activity = 38979034
 
-        result = await adapter.get_current_activity()
+        result = _run(adapter.get_current_activity())
         assert result == "Fernsehen"
 
-    async def test_get_current_activity_none_on_poweroff(
+    def test_get_current_activity_none_on_poweroff(
         self, adapter, mock_harmony_api,
     ):
         adapter._client = mock_harmony_api
@@ -300,23 +292,23 @@ class TestActivities:
         adapter._config = SAMPLE_CONFIG
         mock_harmony_api.current_activity = _POWER_OFF_ACTIVITY_ID
 
-        result = await adapter.get_current_activity()
+        result = _run(adapter.get_current_activity())
         assert result is None
 
-    async def test_get_current_activity_disconnected(self, adapter):
-        result = await adapter.get_current_activity()
+    def test_get_current_activity_disconnected(self, adapter):
+        result = _run(adapter.get_current_activity())
         assert result is None
 
-    async def test_list_activities(self, adapter):
+    def test_list_activities(self, adapter):
         adapter._connected = True
         adapter._config = SAMPLE_CONFIG
 
-        result = await adapter.list_activities()
+        result = _run(adapter.list_activities())
         assert "Fernsehen" in result
         assert "Musik" in result
         assert "PowerOff" not in result
 
-    async def test_list_activities_sync(self, adapter):
+    def test_list_activities_sync(self, adapter):
         adapter._config = SAMPLE_CONFIG
         result = adapter.list_activities_sync()
         assert len(result) == 2
@@ -338,101 +330,101 @@ class TestCommands:
         ):
             yield mock_scd
 
-    async def test_send_command_success(self, adapter, mock_harmony_api):
+    def test_send_command_success(self, adapter, mock_harmony_api):
         adapter._client = mock_harmony_api
         adapter._connected = True
         adapter._config = SAMPLE_CONFIG
 
-        result = await adapter.send_command(
+        result = _run(adapter.send_command(
             "Denon AVR-X3500H", "VolumeUp",
-        )
+        ))
 
         assert result is True
         mock_harmony_api.send_command.assert_awaited_once()
 
-    async def test_send_command_device_not_found(self, adapter, mock_harmony_api):
+    def test_send_command_device_not_found(self, adapter, mock_harmony_api):
         adapter._client = mock_harmony_api
         adapter._connected = True
         adapter._config = SAMPLE_CONFIG
 
-        result = await adapter.send_command("Xbox", "PowerOn")
+        result = _run(adapter.send_command("Xbox", "PowerOn"))
         assert result is False
 
-    async def test_send_command_unknown_command(self, adapter, mock_harmony_api):
+    def test_send_command_unknown_command(self, adapter, mock_harmony_api):
         adapter._client = mock_harmony_api
         adapter._connected = True
         adapter._config = SAMPLE_CONFIG
 
-        result = await adapter.send_command(
+        result = _run(adapter.send_command(
             "Denon AVR-X3500H", "FlyToMoon",
-        )
+        ))
         assert result is False
 
-    async def test_send_command_repeat(self, adapter, mock_harmony_api):
+    def test_send_command_repeat(self, adapter, mock_harmony_api):
         adapter._client = mock_harmony_api
         adapter._connected = True
         adapter._config = SAMPLE_CONFIG
 
-        result = await adapter.send_command(
+        result = _run(adapter.send_command(
             "Denon AVR-X3500H", "VolumeUp", repeat=3,
-        )
+        ))
 
         assert result is True
         assert mock_harmony_api.send_command.await_count == 3
 
-    async def test_send_command_case_insensitive_device(
+    def test_send_command_case_insensitive_device(
         self, adapter, mock_harmony_api,
     ):
         adapter._client = mock_harmony_api
         adapter._connected = True
         adapter._config = SAMPLE_CONFIG
 
-        result = await adapter.send_command(
+        result = _run(adapter.send_command(
             "denon avr-x3500h", "VolumeUp",
-        )
+        ))
 
         assert result is True
 
-    async def test_send_command_case_insensitive_command(
+    def test_send_command_case_insensitive_command(
         self, adapter, mock_harmony_api,
     ):
         adapter._client = mock_harmony_api
         adapter._connected = True
         adapter._config = SAMPLE_CONFIG
 
-        result = await adapter.send_command(
+        result = _run(adapter.send_command(
             "Denon AVR-X3500H", "volumeup",
-        )
+        ))
 
         assert result is True
 
-    async def test_send_command_disconnected(self, adapter):
-        result = await adapter.send_command("Receiver", "VolumeUp")
+    def test_send_command_disconnected(self, adapter):
+        result = _run(adapter.send_command("Receiver", "VolumeUp"))
         assert result is False
 
-    async def test_list_commands(self, adapter):
+    def test_list_commands(self, adapter):
         adapter._connected = True
         adapter._config = SAMPLE_CONFIG
 
-        result = await adapter.list_commands("Denon AVR-X3500H")
+        result = _run(adapter.list_commands("Denon AVR-X3500H"))
         assert "VolumeUp" in result
         assert "VolumeDown" in result
         assert "Mute" in result
         assert "PowerOn" in result
         assert len(result) == 5
 
-    async def test_list_commands_not_found(self, adapter):
+    def test_list_commands_not_found(self, adapter):
         adapter._connected = True
         adapter._config = SAMPLE_CONFIG
 
-        result = await adapter.list_commands("Unknown Device")
+        result = _run(adapter.list_commands("Unknown Device"))
         assert result == []
 
-    async def test_list_devices(self, adapter):
+    def test_list_devices(self, adapter):
         adapter._connected = True
         adapter._config = SAMPLE_CONFIG
 
-        result = await adapter.list_devices()
+        result = _run(adapter.list_devices())
         assert "Denon AVR-X3500H" in result
         assert "Samsung TV" in result
         assert len(result) == 2
