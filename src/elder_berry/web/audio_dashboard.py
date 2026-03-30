@@ -8,6 +8,7 @@ Stellt eine FastAPI-App bereit mit:
 - POST /api/monitor → Monitor für Computer Use setzen (JSON)
 - GET /api/allowed-senders  → Status (configured, count) – keine Klartext-IDs
 - POST /api/allowed-senders → Sender setzen oder entfernen (JSON)
+- GET /health               → Tower Health-Check (für Dashboard PWA)
 - GET /avatar/editor        → Avatar-Editor Web-UI
 - GET/PUT /api/avatar/*     → Avatar-Config CRUD + Asset-Serving
 """
@@ -87,6 +88,13 @@ class AudioDashboard:
         self._host = host
         self._port = port
         self._app = FastAPI(title="Elder-Berry Settings Dashboard")
+        from fastapi.middleware.cors import CORSMiddleware
+        self._app.add_middleware(
+            CORSMiddleware,
+            allow_origins=["*"],
+            allow_methods=["*"],
+            allow_headers=["*"],
+        )
         self._thread = None
         self._register_routes()
 
@@ -314,6 +322,16 @@ class AudioDashboard:
             return JSONResponse({
                 "timezone": tz_name,
                 "available": sorted(self.AVAILABLE_TIMEZONES),
+            })
+
+        @self._app.get("/health")
+        async def health():
+            import time
+            import platform
+            return JSONResponse({
+                "status": "ok",
+                "hostname": platform.node(),
+                "saleria_running": True,
             })
 
     def get_timezone(self) -> str:
