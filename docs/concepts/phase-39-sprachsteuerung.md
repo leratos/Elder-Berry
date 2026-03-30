@@ -1,4 +1,4 @@
-# Phase 37 – Sprachsteuerung / Alexa-Ablösung
+# Phase 39 – Sprachsteuerung / Alexa-Ablösung
 
 ## Übersicht
 
@@ -8,7 +8,7 @@ parallel, der Nutzer entscheidet welchen er gerade verwendet.
 
 ### Warum zwei Modi
 
-| | Alexa Proxy (37.1) | Natives Wake Word (37.2) |
+| | Alexa Proxy (39.1) | Natives Wake Word (39.2) |
 |---|---|---|
 | Hardware | Echo (vorhanden) | ReSpeaker ~60€ |
 | Neue Hardware | keine | ja |
@@ -18,12 +18,12 @@ parallel, der Nutzer entscheidet welchen er gerade verwendet.
 | Reichweite | Echo-Array (exzellent) | ReSpeaker-Array (sehr gut) |
 | Offline | nein | ja |
 
-**Empfohlene Reihenfolge**: 37.1 zuerst (sofort nutzbar, keine Kosten),
-37.2 wenn Datenschutz wichtiger wird oder Echo defekt ist.
+**Empfohlene Reihenfolge**: 39.1 zuerst (sofort nutzbar, keine Kosten),
+39.2 wenn Datenschutz wichtiger wird oder Echo defekt ist.
 
 ---
 
-# Phase 37.1 – Alexa Skill "Saleria" (Proxy-Modus)
+# Phase 39.1 – Alexa Skill "Saleria" (Proxy-Modus)
 
 ## Wie es funktioniert
 
@@ -173,7 +173,7 @@ test_alexa_skill_handler.py:
 
 ---
 
-# Phase 37.2 – Natives Wake Word + Mic Array
+# Phase 39.2 – Natives Wake Word + Mic Array
 
 ## Übersicht
 
@@ -237,23 +237,23 @@ der Unterschied weniger ins Gewicht.
 }
 ```
 
-Im `both`-Modus laufen 37.1 und 37.2 parallel:
+Im `both`-Modus laufen 39.1 und 39.2 parallel:
 - Alexa-Skill antwortet wenn via Echo gesprochen
 - OpenWakeWord antwortet wenn "Hey Saleria" erkannt
 
-## Neue Dateien Phase 37
+## Neue Dateien Phase 39
 
 ```
 Rootserver:
-  src/elder_berry/server/alexa_skill_handler.py    (37.1)
+  src/elder_berry/server/alexa_skill_handler.py    (39.1)
 
 RPi5:
-  src/elder_berry/robot/wake_word_listener.py      (37.2)
-  src/elder_berry/robot/audio_streamer.py          (37.2)
+  src/elder_berry/robot/wake_word_listener.py      (39.2)
+  src/elder_berry/robot/audio_streamer.py          (39.2)
 
 Tower:
-  src/elder_berry/stt/faster_whisper_client.py     (37.2, falls nicht vorhanden)
-  src/elder_berry/comms/voice_gateway.py           (37.2, Routing Audio→Text→Pipeline)
+  src/elder_berry/stt/faster_whisper_client.py     (39.2, falls nicht vorhanden)
+  src/elder_berry/comms/voice_gateway.py           (39.2, Routing Audio→Text→Pipeline)
 
 Konfiguration:
   elder_berry.json: voice_mode, wake_word, alexa_skill_active
@@ -263,13 +263,13 @@ Konfiguration:
 
 | Punkt | Optionen | Klärung wann |
 |-------|---------|--------------|
-| Hardware 37.2 | ReSpeaker vs. USB-Kondensator | Bei Hardware-Kauf |
-| Latenz 37.2 akzeptabel? | Testen mit faster-whisper | Nach 37.1-Deployment |
+| Hardware 39.2 | ReSpeaker vs. USB-Kondensator | Bei Hardware-Kauf |
+| Latenz 39.2 akzeptabel? | Testen mit faster-whisper | Nach 39.1-Deployment |
 | voice_mode Default | alexa_proxy / native / both | Persönliche Präferenz |
-| Alexa komplett abschalten | Nach 37.2 stabil | Eigene Entscheidung |
+| Alexa komplett abschalten | Nach 39.2 stabil | Eigene Entscheidung |
 
 ## Hinweis
 
-Phase 37.2 wird in einem eigenen Chat vollständig ausgearbeitet
-wenn 37.1 deployed und getestet ist. Hardware-Entscheidung
+Phase 39.2 wird in einem eigenen Chat vollständig ausgearbeitet
+wenn 39.1 deployed und getestet ist. Hardware-Entscheidung
 hängt von Latenz-Tests ab.
