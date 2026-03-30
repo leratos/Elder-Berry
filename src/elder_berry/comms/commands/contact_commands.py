@@ -329,7 +329,7 @@ class ContactCommandHandler(CommandHandler):
                              text="\n".join(lines))
 
     def _cmd_list(self, _raw_text: str) -> CommandResult:
-        contacts = self._store.list_all(self._default_user_id)
+        contacts = self._store.list_all(self._default_user_id, limit=200)
         if not contacts:
             return CommandResult(command="kontakte", success=True,
                                  text="Keine Kontakte gespeichert.")
