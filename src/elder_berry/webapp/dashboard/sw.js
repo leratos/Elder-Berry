@@ -1,4 +1,4 @@
-const CACHE = "saleria-dashboard-v6";
+const CACHE = "saleria-dashboard-v7";
 const STATIC = [
     "/",
     "/index.html",

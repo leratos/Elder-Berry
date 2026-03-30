@@ -208,10 +208,9 @@ export default class HarmonyModule extends DashboardModule {
                 overflow-x: auto; padding: 2px 0 8px;
                 -webkit-overflow-scrolling: touch;
                 scrollbar-width: none;
-                margin-left: -16px; margin-right: -16px;
-                padding-left: 16px; padding-right: 16px;
             }
             .device-bar::-webkit-scrollbar { display: none; }
+            #harmony-card { overflow: visible; }
             .device-chip {
                 flex-shrink: 0; padding: 8px 14px;
                 background: var(--bg-card-hover);
