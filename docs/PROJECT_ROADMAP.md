@@ -565,38 +565,53 @@ Ersetzt Google-Calendar-Abhängigkeit, ergänzt bestehende Stores um Sync.
 - **Infrastruktur**: Rootserver (Xeon E-2276G, 32 GB RAM, Plesk, Ubuntu 24.04)
 - **Abhängigkeit**: 36.1 zuerst (Nextcloud muss laufen), 36.2+36.3 danach
 
-## Phase 37 – Dashboard 2.0 (Modulare Smart Home PWA) 📱 GEPLANT
+## Phase 37 – Smart Home Integration 🏠 TEILWEISE ABGESCHLOSSEN
 
-Mobile-first PWA auf dem Rootserver als modulare UI-Grundlage für Phase 38+.
+Lokale Smart-Home-Steuerung über erweiterbare Adapter-Architektur.
+Logitech-Cloud wurde abgelöst. Dashboard als modulare Kommandozentrale.
+
+### Unterphasen
+
+| Phase | Titel | Status |
+|-------|-------|--------|
+| 37.1 | Harmony Hub – vollständige Ablösung | ✅ abgeschlossen |
+| 37.2 | Harmony Remote – Erweiterte Steuerung & Szenen | ✅ abgeschlossen |
+| 37.3 | Dashboard 2.0 – Modulare Smart Home PWA | 📱 als nächstes |
+| 37.4 | SmartHomeInterface + Plugin-Registry | offen |
+| 37.5 | Home Assistant Adapter | offen (nach Umzug) |
+| 37.6 | Alexa-Integration (Emulated Hue) | offen (nach Umzug + HA) |
+
+### 37.1 ✅ Harmony Hub – Vollständige Logitech-Ablösung
+- HarmonyAdapter auf RPi5 (WebSocket :8088, Backup-Config)
+- Config-Mock-Server auf Rootserver (POST-Endpoints, SSL, DNS-Override)
+- PWA Harmony Remote (Standalone, mobile-first)
+- 5 Server-Endpoints, Matrix-Commands (fernsehen an, lauter, leiser etc.)
+
+### 37.2 ✅ Harmony Remote – Erweiterte Steuerung & Szenen
+- Layout-System (HarmonyLayoutManager, auto-generiert + kuratiert)
+- PWA-Rewrite: Aktivitäts-Modus + Geräte-Modus + Szenen-Tab
+- Szenen-Engine (HarmonySceneManager, CRUD + sequenzielle Ausführung)
+- Saleria-Anbindung: "starte szene Gaming" → RPi5 → Szenen-Engine
+
+### 37.3 📱 Dashboard 2.0 – Modulare Smart Home PWA
+Mobile-first PWA auf dem Rootserver als modulare Kommandozentrale.
 Ersetzt keine bestehenden Tools — das AudioDashboard (Tower :8090) bleibt als Dev-Settings.
 
 - **PWA**: installierbar auf Handy, HTTPS, Rootserver
 - **Modul-Architektur**: jedes Modul eigenständige JS-Klasse, ein-/ausblendbar
-- **Modul 1**: Harmony Remote (Phase 38.1 — RPi5 :8001/harmony/*)
+- **Modul 1**: Harmony Remote (bestehende PWA integrieren)
 - **Modul 2**: System-Status (RPi5 + Tower Health, immer sichtbar)
 - **Modul 3**: Saleria-Status (Tower-abhängig, graceful offline)
-- **Modul 4**: Home Assistant (Platzhalter, Phase 38.3)
+- **Modul 4**: Home Assistant (Platzhalter, Phase 37.5)
 - **Service Worker**: Offline-Cache für statische Assets
 - **Design**: Weiterführung der bestehenden Ästhetik (#1a1a2e, Saleria-Lila)
 - **Konzept**: `docs/concepts/phase-36-dashboard-2.0.md`
-- **Abhängigkeit**: wird parallel zu Phase 38.1 implementiert
 
-## Phase 38 – Smart Home Integration 🏠 GEPLANT
+- **Konzept (Smart Home gesamt)**: `docs/concepts/phase-37-smart-home-integration.md`
+- **Konzept (Harmony erweitert)**: `docs/concepts/harmony-remote-erweitert.md`
+- **Abhängigkeit**: 37.5/37.6 nach Umzug; 37.1–37.4 sofort
 
-Vollständige lokale Smart-Home-Steuerung über eine erweiterbare Adapter-Architektur.
-Logitech-Cloud wird sofort abgelöst (nicht erst bei Server-Shutdown).
-
-### Unterphasen
-
-- **38.1** Harmony Hub vollständige Ablösung (HarmonyAdapter auf RPi5, Config-Mock-Server, PWA)
-- **38.2** SmartHomeInterface ABC + SmartHomeRegistry (Plugin-Architektur, Tower)
-- **38.3** Home Assistant Adapter (REST API, lokal, nach Umzug)
-- **38.4** Alexa-Integration via Emulated Hue (RPi5, nach Umzug + HA stabil)
-
-- **Konzept**: `docs/concepts/phase-37-smart-home-integration.md`
-- **Abhängigkeit**: 38.3/38.4 nach Umzug; 38.1+38.2 sofort
-
-## Phase 39 – Sprachsteuerung / Alexa-Ablösung 🎙️ GEPLANT
+## Phase 38 – Sprachsteuerung / Alexa-Ablösung 🎙️ GEPLANT
 
 Saleria erhält eine eigene Sprachschnittstelle — unabhängig von Amazon.
 Zwei Modi werden parallel unterstützt, sodass zwischen Alexa und Saleria
@@ -604,11 +619,25 @@ gewechselt werden kann (Flexibilität, kein harter Cut).
 
 ### Unterphasen
 
-- **39.1** Alexa Skill "Saleria" (Proxy-Modus, keine neue Hardware)
+- **38.1** Alexa Skill "Saleria" (Proxy-Modus, keine neue Hardware)
   → Echo macht Wake Word + STT, Text geht an Salerias API
-- **39.2** Natives Wake Word + Mic Array (vollständige Unabhängigkeit)
+- **38.2** Natives Wake Word + Mic Array (vollständige Unabhängigkeit)
   → OpenWakeWord auf RPi5, faster-whisper auf Tower-GPU
   → Hardware: ReSpeaker USB Array (~60€) oder Umbau vorhandener Hardware
 
 - **Konzept**: `docs/concepts/phase-38-sprachsteuerung.md`
-- **Abhängigkeit**: 39.1 nach 38.4; 39.2 nach 39.1 (Hardware-Entscheidung)
+- **Abhängigkeit**: 38.1 nach 37.6; 38.2 nach 38.1 (Hardware-Entscheidung)
+
+## Phase 40 – IR-Learning & Geräteverwaltung 📡 GEPLANT
+
+Neue Geräte über die PWA anlernen, IR-Codes speichern, Geräte verwalten.
+Setzt Phase 37.2 (Szenen-Engine) voraus und physischen Zugang zum Hub.
+
+- **IR-Learning**: aioharmony learn_command(), Hub-Lernmodus via PWA
+- **Lern-UI**: PWA-Wizard (Gerät → Name → Lernen → Fertig)
+- **Geräteverwaltung**: Gerät anlegen/löschen, einzelne Commands entfernen
+- **API**: POST /harmony/learn, GET /harmony/learn/status, POST /harmony/device/create, DELETE /harmony/device/{id}
+- **Fallback**: IR-Codes aus LIRC/irdb manuell importieren
+- **Einschränkung**: Physischer Zugang zum Hub nötig (IR-Signal muss Hub erreichen)
+- **Konzept**: `docs/concepts/harmony-remote-erweitert.md` (Teil 2)
+- **Abhängigkeit**: 37.2 ✅
