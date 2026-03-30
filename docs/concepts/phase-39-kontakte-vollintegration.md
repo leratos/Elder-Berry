@@ -1,6 +1,6 @@
-# Phase 39 – Kontakte: Vollintegration Nextcloud + Saleria
+# Phase 38 – Kontakte: Vollintegration Nextcloud + Saleria
 
-> **Status:** Konzept
+> **Status:** Konzept (Roadmap-Phase 38, Dateiname historisch phase-39)
 > **Erstellt:** 2026-03-30
 > **Abhängigkeit:** ContactStore (Phase 29), CardDAV-Sync (Phase 36.3),
 >   SmartContextProvider (Phase 21), BriefingScheduler (Phase 8.3),

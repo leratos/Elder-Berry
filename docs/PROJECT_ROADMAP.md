@@ -611,7 +611,25 @@ Ersetzt keine bestehenden Tools — das AudioDashboard (Tower :8090) bleibt als 
 - **Konzept (Harmony erweitert)**: `docs/concepts/harmony-remote-erweitert.md`
 - **Abhängigkeit**: 37.5/37.6 nach Umzug; 37.1–37.4 sofort
 
-## Phase 38 – Sprachsteuerung / Alexa-Ablösung 🎙️ GEPLANT
+## Phase 38 – Kontakte: Vollintegration Nextcloud + Saleria 📇 GEPLANT
+
+Saleria kennt alle Informationen aus den Nextcloud-Kontakten und kann
+natürliche Fragen über Personen beantworten ("Wann hat Lisa Geburtstag?",
+"Adresse von Herrn Müller?", "Kontakte in Gruppe Familie?").
+
+### Teilschritte
+
+- **38.1** Contact-Datenmodell erweitern (address, organization, title, categories, phones JSON, emails JSON)
+- **38.2** CardDAV-Sync erweitern (alle vCard-Properties parsen + schreiben)
+- **38.3** SmartContextProvider erweitern (Keywords + format_for_llm)
+- **38.4** Natürliche Feld-Abfragen (CONTACT_FIELD_QUERY_PATTERN)
+- **38.5** Briefing erweitern (Geburtstage morgen/Woche, Jahrestage, Auto-Sync vor Briefing)
+- **38.6** Gruppen-basierte Features (Filter, Auflistung, Default-Anrede)
+
+- **Konzept**: `docs/concepts/phase-39-kontakte-vollintegration.md`
+- **Abhängigkeit**: ContactStore (Phase 29 ✅), CardDAV-Sync (Phase 36.3 ✅), SmartContext (Phase 21 ✅)
+
+## Phase 39 – Sprachsteuerung / Alexa-Ablösung 🎙️ GEPLANT
 
 Saleria erhält eine eigene Sprachschnittstelle — unabhängig von Amazon.
 Zwei Modi werden parallel unterstützt, sodass zwischen Alexa und Saleria
@@ -619,14 +637,14 @@ gewechselt werden kann (Flexibilität, kein harter Cut).
 
 ### Unterphasen
 
-- **38.1** Alexa Skill "Saleria" (Proxy-Modus, keine neue Hardware)
+- **39.1** Alexa Skill "Saleria" (Proxy-Modus, keine neue Hardware)
   → Echo macht Wake Word + STT, Text geht an Salerias API
-- **38.2** Natives Wake Word + Mic Array (vollständige Unabhängigkeit)
+- **39.2** Natives Wake Word + Mic Array (vollständige Unabhängigkeit)
   → OpenWakeWord auf RPi5, faster-whisper auf Tower-GPU
   → Hardware: ReSpeaker USB Array (~60€) oder Umbau vorhandener Hardware
 
 - **Konzept**: `docs/concepts/phase-38-sprachsteuerung.md`
-- **Abhängigkeit**: 38.1 nach 37.6; 38.2 nach 38.1 (Hardware-Entscheidung)
+- **Abhängigkeit**: 39.1 nach 37.6; 39.2 nach 39.1 (Hardware-Entscheidung)
 
 ## Phase 40 – IR-Learning & Geräteverwaltung 📡 GEPLANT
 
