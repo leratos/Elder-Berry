@@ -16,6 +16,8 @@ import subprocess
 import sys
 import time
 from abc import ABC, abstractmethod
+from collections.abc import AsyncGenerator
+from contextlib import asynccontextmanager
 from dataclasses import asdict
 from pathlib import Path
 
@@ -184,23 +186,9 @@ class RobotServer:
         self._service_name = service_name
         self._start_time = time.monotonic()
 
-        self.app = FastAPI(title="Elder-Berry Robot API", version="0.1.0")
-        self.app.add_middleware(
-            CORSMiddleware,
-            allow_origins=["*"],
-            allow_methods=["*"],
-            allow_headers=["*"],
-        )
-        self._register_routes()
-        self._register_lifecycle()
-
-        logger.info("RobotServer initialisiert: %s", hostname)
-
-    def _register_lifecycle(self) -> None:
-        """Registriert Startup/Shutdown Events."""
-
-        @self.app.on_event("startup")
-        async def startup() -> None:
+        @asynccontextmanager
+        async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
+            # Startup
             if self._harmony is not None:
                 connected = await self._harmony.connect()
                 if connected:
@@ -210,12 +198,25 @@ class RobotServer:
                         self._harmony_layouts.ensure_defaults(config)
                 else:
                     logger.warning("Harmony Hub nicht erreichbar beim Startup")
-
-        @self.app.on_event("shutdown")
-        async def shutdown() -> None:
+            yield
+            # Shutdown
             if self._harmony is not None:
                 await self._harmony.disconnect()
                 logger.info("HarmonyAdapter getrennt beim Shutdown")
+
+        self.app = FastAPI(
+            title="Elder-Berry Robot API", version="0.1.0",
+            lifespan=lifespan,
+        )
+        self.app.add_middleware(
+            CORSMiddleware,
+            allow_origins=["*"],
+            allow_methods=["*"],
+            allow_headers=["*"],
+        )
+        self._register_routes()
+
+        logger.info("RobotServer initialisiert: %s", hostname)
 
     def _register_routes(self) -> None:
         """Registriert alle API-Endpoints."""
