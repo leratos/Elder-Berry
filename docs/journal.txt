@@ -3039,3 +3039,10 @@ User: "Lies meine Mails und trag den Zahnarzttermin ein"
 - Mehrzeilige Detail-Ausgabe: Rolle, Email, Anrede, Geburtstag, Notizen
 - _cmd_who() und _cmd_lookup() nutzen format_detail() statt format_short()
 - Birthday: Jahr 0000 wird ausgeblendet
+
+### Verbesserung: Natürliche Sprache + Fuzzy-Lookup
+- CONTACT_ADD_NATURAL_PATTERN: "füge X in meine Kontakte hinzu", "speicher X als Kontakt",
+  "nimm X in Kontakte auf", "trag X ein", "erstell Kontakt für X", "merk dir X als Kontakt"
+- _find_contact_fuzzy(): Exakt → FTS-Suche; 1 Treffer → direkt, 2+ → "welchen meinst du?"
+- _cmd_who() und _cmd_lookup() nutzen jetzt Fuzzy statt exaktem Match
+- 19 neue Tests (9 Pattern + 3 Execution + 7 Fuzzy), 112 gesamt grün

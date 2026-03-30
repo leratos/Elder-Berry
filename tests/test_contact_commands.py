@@ -6,7 +6,8 @@ from pathlib import Path
 import pytest
 
 from elder_berry.comms.commands.contact_commands import (
-    CONTACT_ADD_PATTERN, CONTACT_DELETE_PATTERN, CONTACT_LOOKUP_PATTERN,
+    CONTACT_ADD_NATURAL_PATTERN, CONTACT_ADD_PATTERN,
+    CONTACT_DELETE_PATTERN, CONTACT_LOOKUP_PATTERN,
     CONTACT_SEARCH_PATTERN, CONTACT_UPDATE_PATTERN, CONTACT_WHO_PATTERN,
     ContactCommandHandler,
 )
@@ -473,3 +474,136 @@ class TestDetailOutput:
         assert "Rolle: Vermieter" in r.text
         assert "Email: m@x.de" in r.text
         assert "Anrede: förmlich" in r.text
+
+
+# ── Natürliche Sprache: Add ──
+
+class TestContactAddNaturalPattern:
+    def test_fuege_hinzu(self) -> None:
+        m = CONTACT_ADD_NATURAL_PATTERN.match("füge Marie in meine Kontakte hinzu")
+        assert m is not None
+        assert m.group(1) == "Marie"
+
+    def test_nimm_auf(self) -> None:
+        m = CONTACT_ADD_NATURAL_PATTERN.match("nimm Lisa in meine Kontakte auf")
+        assert m is not None
+        assert m.group(1) == "Lisa"
+
+    def test_trag_ein(self) -> None:
+        m = CONTACT_ADD_NATURAL_PATTERN.match("trag Max in Kontakte ein")
+        assert m is not None
+        assert m.group(1) == "Max"
+
+    def test_speicher_als_kontakt(self) -> None:
+        m = CONTACT_ADD_NATURAL_PATTERN.match("speicher Lisa als Kontakt")
+        assert m is not None
+        assert m.group(2) == "Lisa"
+
+    def test_merk_dir_als_kontakt(self) -> None:
+        m = CONTACT_ADD_NATURAL_PATTERN.match("merk dir Marie als Kontakt")
+        assert m is not None
+        assert m.group(2) == "Marie"
+
+    def test_erstell_kontakt_fuer(self) -> None:
+        m = CONTACT_ADD_NATURAL_PATTERN.match("erstell einen Kontakt für Dr. Weber")
+        assert m is not None
+        assert m.group(3) == "Dr. Weber"
+
+    def test_leg_neuen_kontakt_an(self) -> None:
+        m = CONTACT_ADD_NATURAL_PATTERN.match("leg einen neuen Kontakt von Lisa an")
+        assert m is not None
+
+    def test_no_match_kontakt_aendern(self) -> None:
+        assert CONTACT_ADD_NATURAL_PATTERN.match("kontakt ändern #3: name=X") is None
+
+    def test_fuege_als_kontakt(self) -> None:
+        m = CONTACT_ADD_NATURAL_PATTERN.match("füge Marie als Kontakt hinzu")
+        assert m is not None
+        assert m.group(1) == "Marie"
+
+
+class TestCmdAddNatural:
+    def test_fuege_hinzu_execution(self, handler: ContactCommandHandler,
+                                   store: ContactStore) -> None:
+        r = handler.execute("contact_add_natural",
+                            "füge Marie in meine Kontakte hinzu")
+        assert r.success
+        assert "Marie" in r.text
+        assert store.find_by_name(USER, "Marie") is not None
+
+    def test_speicher_als_kontakt_execution(self, handler: ContactCommandHandler,
+                                            store: ContactStore) -> None:
+        r = handler.execute("contact_add_natural",
+                            "speicher Dr. Weber als Kontakt")
+        assert r.success
+        assert store.find_by_name(USER, "Dr. Weber") is not None
+
+    def test_with_comma_fields(self, handler: ContactCommandHandler,
+                                store: ContactStore) -> None:
+        r = handler.execute("contact_add_natural",
+                            "füge Lisa, Freundin, locker in meine Kontakte hinzu")
+        assert r.success
+        c = store.find_by_name(USER, "Lisa")
+        assert c is not None
+        assert c.role == "Freundin"
+        assert c.formality == "locker"
+
+
+# ── Fuzzy-Lookup ──
+
+class TestFuzzyLookup:
+    def test_who_exact_match(self, handler: ContactCommandHandler,
+                             store: ContactStore) -> None:
+        store.add(USER, "Lisa", role="Freundin")
+        r = handler.execute("contact_who", "wer ist Lisa?")
+        assert r.success
+        assert "Lisa" in r.text
+        assert "Rolle: Freundin" in r.text
+
+    def test_who_fuzzy_single_match(self, handler: ContactCommandHandler,
+                                     store: ContactStore) -> None:
+        """Partial-Name 'Müller' findet genau 1 Kontakt → direkte Ausgabe."""
+        store.add(USER, "Herr Müller", role="Vermieter")
+        r = handler.execute("contact_who", "wer ist Müller?")
+        assert r.success
+        assert "Herr Müller" in r.text
+        assert "Rolle: Vermieter" in r.text
+
+    def test_who_fuzzy_multiple_matches(self, handler: ContactCommandHandler,
+                                         store: ContactStore) -> None:
+        """Mehrere Treffer → Rückfrage 'welchen meinst du?'."""
+        store.add(USER, "Lisa Müller", role="Freundin")
+        store.add(USER, "Max Müller", role="Kollege")
+        r = handler.execute("contact_who", "wer ist Müller?")
+        assert r.success
+        assert "welchen meinst du" in r.text
+        assert "Lisa Müller" in r.text
+        assert "Max Müller" in r.text
+
+    def test_who_no_match_fallthrough(self, handler: ContactCommandHandler) -> None:
+        r = handler.execute("contact_who", "wer ist Gandalf?")
+        assert not r.success
+        assert r.fallthrough is True
+
+    def test_lookup_fuzzy_single(self, handler: ContactCommandHandler,
+                                  store: ContactStore) -> None:
+        store.add(USER, "Dr. Weber", role="Zahnarzt")
+        r = handler.execute("contact_lookup", "was weisst du zu Weber")
+        assert r.success
+        assert "Dr. Weber" in r.text
+
+    def test_lookup_fuzzy_multiple(self, handler: ContactCommandHandler,
+                                    store: ContactStore) -> None:
+        store.add(USER, "Lisa Weber", role="Freundin")
+        store.add(USER, "Dr. Weber", role="Zahnarzt")
+        r = handler.execute("contact_lookup", "was weisst du zu Weber")
+        assert r.success
+        assert "welchen meinst du" in r.text
+
+    def test_lookup_by_id_still_exact(self, handler: ContactCommandHandler,
+                                       store: ContactStore) -> None:
+        """ID-Lookup bleibt exakt, kein Fuzzy."""
+        c = store.add(USER, "Lisa", role="Freundin")
+        r = handler.execute("contact_lookup", f"kontakt #{c.id}")
+        assert r.success
+        assert "Lisa" in r.text

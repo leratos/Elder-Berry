@@ -33,6 +33,13 @@ CONTACT_ADD_PATTERN = re.compile(
     re.IGNORECASE,
 )
 
+CONTACT_ADD_NATURAL_PATTERN = re.compile(
+    r"^(?:(?:füge|nimm|trag)\s+(.+?)\s+(?:in\s+(?:meine?\s+)?kontakte|als\s+kontakt)\s*(?:auf|hinzu|ein)?"
+    r"|(?:speicher|merke?|notier)\s+(?:dir\s+)?(.+?)\s+als\s+kontakt"
+    r"|(?:erstell|leg|mach)\s+(?:einen?\s+)?(?:neuen?\s+)?kontakt\s+(?:für\s+|von\s+)?(.+?))\s*$",
+    re.IGNORECASE,
+)
+
 CONTACT_UPDATE_PATTERN = re.compile(
     r"kontakt\s+(?:ändern|bearbeiten|update)\s+#?(\d+)[:\s]+(.+)",
     re.IGNORECASE,
@@ -99,6 +106,7 @@ class ContactCommandHandler(CommandHandler):
             (CONTACT_WHO_PATTERN, "contact_who", False, False),
             (CONTACT_LOOKUP_PATTERN, "contact_lookup", False, False),
             (CONTACT_SEARCH_PATTERN, "contact_search", False, False),
+            (CONTACT_ADD_NATURAL_PATTERN, "contact_add_natural", False, False),
             (CONTACT_ADD_PATTERN, "contact_add", False, False),
         ]
 
@@ -138,6 +146,7 @@ class ContactCommandHandler(CommandHandler):
         dispatch = {
             "kontakte": self._cmd_list,
             "contact_add": self._cmd_add,
+            "contact_add_natural": self._cmd_add_natural,
             "contact_update": self._cmd_update,
             "contact_who": self._cmd_who,
             "contact_lookup": self._cmd_lookup,
@@ -173,6 +182,28 @@ class ContactCommandHandler(CommandHandler):
         )
         return CommandResult(
             command="contact_add", success=True,
+            text=f"📇 Kontakt gespeichert: {contact.format_short()}",
+        )
+
+    def _cmd_add_natural(self, raw_text: str) -> CommandResult:
+        match = CONTACT_ADD_NATURAL_PATTERN.match(raw_text.strip())
+        if not match:
+            return CommandResult(command="contact_add_natural", success=False,
+                                 text="Format: kontakt: Name, Rolle, Email, Anrede")
+        name = (match.group(1) or match.group(2) or match.group(3) or "").strip()
+        if not name:
+            return CommandResult(command="contact_add_natural", success=False,
+                                 text="Mindestens ein Name ist nötig.")
+        fields = self._parse_contact_fields(name)
+        user_id = self._default_user_id
+        contact = self._store.add(
+            user_id, name=fields["name"], email=fields.get("email", ""),
+            role=fields.get("role", ""),
+            formality=fields.get("formality", "förmlich"),
+            notes=fields.get("notes", ""),
+        )
+        return CommandResult(
+            command="contact_add_natural", success=True,
             text=f"📇 Kontakt gespeichert: {contact.format_short()}",
         )
 
@@ -226,19 +257,34 @@ class ContactCommandHandler(CommandHandler):
                 return _FIELD_ALIASES[alias]
         return None
 
+    def _find_contact_fuzzy(self, name: str, command: str) -> CommandResult:
+        """Sucht Kontakt: exakt → 1 Treffer direkt, mehrere → Rückfrage."""
+        user_id = self._default_user_id
+        # 1. Exakter Match (schnell)
+        exact = self._store.find_by_name(user_id, name)
+        if exact:
+            return CommandResult(command=command, success=True,
+                                 text=exact.format_detail())
+        # 2. Fuzzy-Suche über FTS
+        results = self._store.search(user_id, name, limit=5)
+        if len(results) == 1:
+            return CommandResult(command=command, success=True,
+                                 text=results[0].format_detail())
+        if len(results) > 1:
+            lines = [f"📇 {len(results)} Kontakte gefunden – welchen meinst du?"]
+            for c in results:
+                lines.append(f"  {c.format_short()}")
+            return CommandResult(command=command, success=True, text="\n".join(lines))
+        # 3. Nichts gefunden → fallthrough an LLM
+        return CommandResult(command=command, success=False,
+                             text=None, fallthrough=True)
+
     def _cmd_who(self, raw_text: str) -> CommandResult:
         match = CONTACT_WHO_PATTERN.match(raw_text.strip())
         if not match:
             return CommandResult(command="contact_who", success=False,
                                  text=None, fallthrough=True)
-        name = match.group(1).strip()
-        contact = self._store.find_by_name(self._default_user_id, name)
-        if contact:
-            return CommandResult(command="contact_who", success=True,
-                                 text=contact.format_detail())
-        # Kein Kontakt → fallthrough an LLM
-        return CommandResult(command="contact_who", success=False,
-                             text=None, fallthrough=True)
+        return self._find_contact_fuzzy(match.group(1).strip(), "contact_who")
 
     def _cmd_lookup(self, raw_text: str) -> CommandResult:
         match = CONTACT_LOOKUP_PATTERN.match(raw_text.strip())
@@ -248,15 +294,15 @@ class ContactCommandHandler(CommandHandler):
         # Gruppen: (1) was weisst du, (2) zeig/info, (3) kontakt #ID, (4) kontakt Name
         name_str = match.group(1) or match.group(2) or match.group(4)
         id_str = match.group(3)
-        contact = None
         if id_str:
             contact = self._store.get_by_id(int(id_str))
-        elif name_str:
-            contact = self._store.find_by_name(
-                self._default_user_id, name_str.strip())
-        if contact:
-            return CommandResult(command="contact_lookup", success=True,
-                                 text=contact.format_detail())
+            if contact:
+                return CommandResult(command="contact_lookup", success=True,
+                                     text=contact.format_detail())
+            return CommandResult(command="contact_lookup", success=False,
+                                 text=None, fallthrough=True)
+        if name_str:
+            return self._find_contact_fuzzy(name_str.strip(), "contact_lookup")
         return CommandResult(command="contact_lookup", success=False,
                              text=None, fallthrough=True)
 
