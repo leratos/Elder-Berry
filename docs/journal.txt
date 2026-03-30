@@ -2979,4 +2979,26 @@ User: "Lies meine Mails und trag den Zahnarzttermin ein"
 - Branch: feature/phase-37-2-harmony-remote-erweitert
 - Konzept: docs/concepts/harmony-remote-erweitert.md (aktualisiert)
 - Entscheidung: PWA-Szenen auf RPi5 (Option B), Saleria nutzt dieselbe Szenen-Engine
-- nächster Schritt: Schritt 1 – /harmony/config/detailed Endpoint
+
+### Schritt 1: /harmony/config/detailed Endpoint ✓
+- HarmonyAdapter.get_detailed_config() – Devices mit ControlGroups + Commands
+- GET /harmony/config/detailed in Server + Client
+- 14 neue Tests
+
+### Schritt 2: Layout-System + PWA-Rewrite ✓
+- HarmonyLayoutManager: Laden/Speichern/Auto-Generierung von Layouts
+- GET/POST /harmony/layouts Endpoints + Client-Methoden
+- PWA komplett umgebaut: Aktivitäts-Modus + Geräte-Modus (Dropdown)
+- Layout-Rendering: dpad, grid, numpad, transport, colors, inputs
+- Default "Fernsehen"-Layout mit Samsung TV + Denon Receiver
+- 27 neue Tests, 3123 gesamt grün
+
+### Schritt 3: Szenen-Engine + PWA-Szenen-UI ✓
+- HarmonySceneManager: CRUD + sequenzielle Ausführung mit Delay
+- Server: GET/POST /harmony/scenes, POST /harmony/scene/start, DELETE /harmony/scene/{name}
+- Client: harmony_scenes(), harmony_save_scene(), harmony_start_scene(), harmony_delete_scene()
+- PWA: Szenen-Tab mit Liste (Start/Delete) + Editor (Steps mit Device/Cmd/Delay)
+- 44 neue Tests, 3167 gesamt grün
+
+### Nächster Schritt
+- Schritt 4: Saleria-Anbindung (Matrix-Command "starte {szene}" → Szenen-Engine)
