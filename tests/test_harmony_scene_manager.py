@@ -1,6 +1,7 @@
 """Tests fuer HarmonySceneManager."""
 from __future__ import annotations
 
+import asyncio
 import json
 from pathlib import Path
 from unittest.mock import AsyncMock
@@ -164,55 +165,60 @@ class TestCRUD:
 
 # -- Ausfuehrung ---------------------------------------------------------- #
 
+def _run(coro):
+    """Hilfsfunktion: async Coroutine synchron ausfuehren."""
+    return asyncio.new_event_loop().run_until_complete(coro)
+
+
 class TestExecution:
-    async def test_start_scene_all_ok(self, manager_with_adapter, mock_adapter):
+    def test_start_scene_all_ok(self, manager_with_adapter, mock_adapter):
         manager_with_adapter.save_scene(SAMPLE_SCENE)
-        result = await manager_with_adapter.start_scene("Gaming")
+        result = _run(manager_with_adapter.start_scene("Gaming"))
         assert result["steps_total"] == 3
         assert result["steps_ok"] == 3
         assert result["steps_failed"] == 0
         assert result["errors"] == []
         assert mock_adapter.send_command.await_count == 3
 
-    async def test_start_scene_with_failure(
+    def test_start_scene_with_failure(
         self, manager_with_adapter, mock_adapter,
     ):
         mock_adapter.send_command = AsyncMock(
             side_effect=[True, False, True],
         )
         manager_with_adapter.save_scene(SAMPLE_SCENE)
-        result = await manager_with_adapter.start_scene("Gaming")
+        result = _run(manager_with_adapter.start_scene("Gaming"))
         assert result["steps_ok"] == 2
         assert result["steps_failed"] == 1
         assert len(result["errors"]) == 1
 
-    async def test_start_scene_not_found(self, manager_with_adapter):
+    def test_start_scene_not_found(self, manager_with_adapter):
         with pytest.raises(SceneNotFoundError):
-            await manager_with_adapter.start_scene("Nonexistent")
+            _run(manager_with_adapter.start_scene("Nonexistent"))
 
-    async def test_start_scene_no_adapter(self, manager):
+    def test_start_scene_no_adapter(self, manager):
         manager.save_scene(SAMPLE_SCENE)
         with pytest.raises(SceneExecutionError):
-            await manager.start_scene("Gaming")
+            _run(manager.start_scene("Gaming"))
 
-    async def test_start_scene_sends_correct_commands(
+    def test_start_scene_sends_correct_commands(
         self, manager_with_adapter, mock_adapter,
     ):
         manager_with_adapter.save_scene(SAMPLE_SCENE)
-        await manager_with_adapter.start_scene("Gaming")
+        _run(manager_with_adapter.start_scene("Gaming"))
         calls = mock_adapter.send_command.call_args_list
         assert calls[0].kwargs == {"device": "Denon AV-Empfänger", "command": "PowerOn"}
         assert calls[1].kwargs == {"device": "Denon AV-Empfänger", "command": "InputGame"}
         assert calls[2].kwargs == {"device": "Samsung TV", "command": "PowerOn"}
 
-    async def test_start_scene_case_insensitive(
+    def test_start_scene_case_insensitive(
         self, manager_with_adapter, mock_adapter,
     ):
         manager_with_adapter.save_scene(SAMPLE_SCENE)
-        result = await manager_with_adapter.start_scene("gaming")
+        result = _run(manager_with_adapter.start_scene("gaming"))
         assert result["steps_ok"] == 3
 
-    async def test_start_scene_skips_invalid_steps(
+    def test_start_scene_skips_invalid_steps(
         self, manager_with_adapter, mock_adapter,
     ):
         scene = {
@@ -224,15 +230,15 @@ class TestExecution:
             ],
         }
         manager_with_adapter.save_scene(scene)
-        result = await manager_with_adapter.start_scene("Broken")
+        result = _run(manager_with_adapter.start_scene("Broken"))
         assert result["steps_ok"] == 1
         assert result["steps_failed"] == 2
 
-    async def test_start_scene_empty_steps(
+    def test_start_scene_empty_steps(
         self, manager_with_adapter, mock_adapter,
     ):
         scene = {"name": "Empty", "steps": []}
         manager_with_adapter.save_scene(scene)
-        result = await manager_with_adapter.start_scene("Empty")
+        result = _run(manager_with_adapter.start_scene("Empty"))
         assert result["steps_total"] == 0
         assert result["steps_ok"] == 0
