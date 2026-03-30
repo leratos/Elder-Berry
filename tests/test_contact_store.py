@@ -150,6 +150,36 @@ class TestMultiUser:
         assert store.find_by_name(USER, "Bob") is None
 
 
+class TestFormatDetail:
+    def test_format_detail_full(self, store: ContactStore) -> None:
+        c = store.add(USER, "Lisa", email="lisa@x.de", role="Freundin",
+                      formality="locker", notes="wichtige Person",
+                      birthday="1990-06-15")
+        detail = c.format_detail()
+        assert "📇 #" in detail
+        assert "Lisa" in detail
+        assert "Rolle: Freundin" in detail
+        assert "Email: lisa@x.de" in detail
+        assert "Anrede: locker" in detail
+        assert "Geburtstag: 1990-06-15" in detail
+        assert "📝 wichtige Person" in detail
+
+    def test_format_detail_minimal(self, store: ContactStore) -> None:
+        c = store.add(USER, "Max")
+        detail = c.format_detail()
+        assert "Max" in detail
+        assert "Anrede: förmlich" in detail
+        assert "Rolle:" not in detail
+        assert "Email:" not in detail
+        assert "📝" not in detail
+
+    def test_format_detail_birthday_unknown_year(self, store: ContactStore) -> None:
+        c = store.add(USER, "Anna", birthday="0000-06-15")
+        detail = c.format_detail()
+        assert "Geburtstag: 06-15" in detail
+        assert "0000" not in detail
+
+
 class TestClose:
     def test_close(self, tmp_path: Path) -> None:
         s = ContactStore(db_path=tmp_path / "c.db")

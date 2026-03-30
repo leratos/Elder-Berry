@@ -6,8 +6,9 @@ from pathlib import Path
 import pytest
 
 from elder_berry.comms.commands.contact_commands import (
-    CONTACT_ADD_PATTERN, CONTACT_DELETE_PATTERN, CONTACT_SEARCH_PATTERN,
-    CONTACT_UPDATE_PATTERN, CONTACT_WHO_PATTERN, ContactCommandHandler,
+    CONTACT_ADD_PATTERN, CONTACT_DELETE_PATTERN, CONTACT_LOOKUP_PATTERN,
+    CONTACT_SEARCH_PATTERN, CONTACT_UPDATE_PATTERN, CONTACT_WHO_PATTERN,
+    ContactCommandHandler,
 )
 from elder_berry.tools.contact_store import ContactStore
 
@@ -88,6 +89,18 @@ class TestContactUpdatePattern:
     def test_update_by_id(self) -> None:
         m = CONTACT_UPDATE_PATTERN.search("kontakt ändern #3: email=neu@x.de")
         assert m and m.group(1) == "3"
+
+    def test_update_without_hash(self) -> None:
+        m = CONTACT_UPDATE_PATTERN.search("kontakt ändern 20: rolle=Freundin")
+        assert m and m.group(1) == "20"
+
+    def test_update_with_bearbeiten(self) -> None:
+        m = CONTACT_UPDATE_PATTERN.search("kontakt bearbeiten #20: name=Lisa")
+        assert m and m.group(1) == "20"
+
+    def test_update_with_update(self) -> None:
+        m = CONTACT_UPDATE_PATTERN.search("kontakt update #5: email=a@b.de")
+        assert m and m.group(1) == "5"
 
 # ── Parsing Tests ──
 
@@ -270,3 +283,193 @@ class TestContactSyncCommand:
         assert r.success
         assert "2 gepusht" in r.text
         assert "1 gepullt" in r.text
+
+
+# ── Bug 1: Pattern-Priorität ──
+
+class TestPatternPriority:
+    def test_update_not_matched_as_add(self) -> None:
+        """'kontakt ändern #20: rolle=Freundin' darf NICHT als ADD matchen."""
+        text = "kontakt ändern #20: rolle=Freundin"
+        assert CONTACT_ADD_PATTERN.match(text) is None
+        assert CONTACT_UPDATE_PATTERN.search(text) is not None
+
+    def test_add_still_works(self) -> None:
+        """Regression: 'kontakt: Lisa, Freundin' muss weiterhin als ADD matchen."""
+        m = CONTACT_ADD_PATTERN.match("kontakt: Lisa, Freundin")
+        assert m and m.group(1) == "Lisa, Freundin"
+
+    def test_pattern_priority_update_before_add(self) -> None:
+        """Update-Pattern muss VOR Add-Pattern in der Liste stehen."""
+        h = ContactCommandHandler()
+        names = [name for _, name, _, _ in h.patterns]
+        assert names.index("contact_update") < names.index("contact_add")
+
+    def test_update_command_executed(self, handler: ContactCommandHandler,
+                                    store: ContactStore) -> None:
+        """'kontakt ändern #ID: rolle=X' muss als Update ausgeführt werden."""
+        c = store.add(USER, "Lisa", role="Schwester")
+        r = handler.execute("contact_update",
+                            f"kontakt ändern #{c.id}: rolle=Freundin")
+        assert r.success
+        assert "Aktualisiert" in r.text
+        updated = store.get_by_id(c.id)
+        assert updated.role == "Freundin"
+
+
+# ── Bug 2: Formality ──
+
+class TestFormalityExtended:
+    def test_formality_persoenlich(self) -> None:
+        h = ContactCommandHandler()
+        r = h._parse_contact_fields("Lisa, persönlich")
+        assert r["formality"] == "locker"
+
+    def test_formality_freundschaftlich(self) -> None:
+        h = ContactCommandHandler()
+        r = h._parse_contact_fields("Max, freundschaftlich")
+        assert r["formality"] == "locker"
+
+    def test_formality_hoeflich(self) -> None:
+        h = ContactCommandHandler()
+        r = h._parse_contact_fields("Herr Dr. Müller, höflich")
+        assert r["formality"] == "förmlich"
+
+    def test_formality_casual(self) -> None:
+        h = ContactCommandHandler()
+        r = h._parse_contact_fields("Tom, casual")
+        assert r["formality"] == "locker"
+
+
+# ── Bug 3: Feld-Aliase ──
+
+class TestFieldAliases:
+    def test_resolve_vermerk(self) -> None:
+        assert ContactCommandHandler._resolve_field_key("vermerk") == "notes"
+
+    def test_resolve_mail(self) -> None:
+        assert ContactCommandHandler._resolve_field_key("mail") == "email"
+
+    def test_resolve_startswith(self) -> None:
+        assert ContactCommandHandler._resolve_field_key("noti") == "notes"
+
+    def test_resolve_unknown(self) -> None:
+        assert ContactCommandHandler._resolve_field_key("xyz") is None
+
+    def test_update_field_alias_vermerk(self, handler: ContactCommandHandler,
+                                        store: ContactStore) -> None:
+        c = store.add(USER, "Lisa")
+        r = handler.execute("contact_update",
+                            f"kontakt ändern #{c.id}: vermerk=Lieblingsfarbe rot")
+        assert r.success
+        updated = store.get_by_id(c.id)
+        assert updated.notes == "Lieblingsfarbe rot"
+
+    def test_update_field_alias_mail(self, handler: ContactCommandHandler,
+                                     store: ContactStore) -> None:
+        c = store.add(USER, "Lisa")
+        r = handler.execute("contact_update",
+                            f"kontakt ändern #{c.id}: mail=lisa@x.de")
+        assert r.success
+        updated = store.get_by_id(c.id)
+        assert updated.email == "lisa@x.de"
+
+    def test_update_unknown_field_warning(self, handler: ContactCommandHandler,
+                                          store: ContactStore) -> None:
+        c = store.add(USER, "Lisa")
+        r = handler.execute("contact_update",
+                            f"kontakt ändern #{c.id}: noitzen=xyz")
+        assert r.success
+        assert "Unbekanntes Feld" in r.text
+        assert "noitzen" in r.text
+
+
+# ── Bug 4: Update ohne # ──
+
+class TestUpdateWithoutHash:
+    def test_update_without_hash_execution(self, handler: ContactCommandHandler,
+                                           store: ContactStore) -> None:
+        c = store.add(USER, "Lisa", role="Schwester")
+        r = handler.execute("contact_update",
+                            f"kontakt ändern {c.id}: rolle=Freundin")
+        assert r.success
+        updated = store.get_by_id(c.id)
+        assert updated.role == "Freundin"
+
+
+# ── Bug 5: Lookup-Pattern ──
+
+class TestContactLookupPattern:
+    def test_lookup_by_id(self) -> None:
+        m = CONTACT_LOOKUP_PATTERN.match("kontakt #20")
+        assert m is not None
+        assert m.group(3) == "20"
+
+    def test_lookup_was_weisst_du(self) -> None:
+        m = CONTACT_LOOKUP_PATTERN.match("was weisst du zu Lisa")
+        assert m is not None
+        assert m.group(1) == "Lisa"
+
+    def test_lookup_was_weisst_du_ueber(self) -> None:
+        m = CONTACT_LOOKUP_PATTERN.match("was weisst du über meinen Kontakt Lisa")
+        assert m is not None
+        assert m.group(1) == "Lisa"
+
+    def test_lookup_zeig_mir(self) -> None:
+        m = CONTACT_LOOKUP_PATTERN.match("zeig mir kontakt #20")
+        assert m is not None
+
+    def test_lookup_info_zu(self) -> None:
+        m = CONTACT_LOOKUP_PATTERN.match("info zu kontakt Lisa")
+        assert m is not None
+
+    def test_lookup_not_collide_with_add(self) -> None:
+        """'kontakt: Lisa, Freundin' darf NICHT als Lookup matchen."""
+        assert CONTACT_LOOKUP_PATTERN.match("kontakt: Lisa, Freundin") is None
+
+
+class TestCmdContactLookup:
+    def test_lookup_by_id(self, handler: ContactCommandHandler,
+                          store: ContactStore) -> None:
+        c = store.add(USER, "Lisa", role="Freundin", email="lisa@x.de")
+        r = handler.execute("contact_lookup", f"kontakt #{c.id}")
+        assert r.success
+        assert "Lisa" in r.text
+        assert "Rolle: Freundin" in r.text
+
+    def test_lookup_by_name(self, handler: ContactCommandHandler,
+                            store: ContactStore) -> None:
+        store.add(USER, "Lisa", role="Freundin")
+        r = handler.execute("contact_lookup", "was weisst du zu Lisa")
+        assert r.success
+        assert "Lisa" in r.text
+
+    def test_lookup_not_found(self, handler: ContactCommandHandler) -> None:
+        r = handler.execute("contact_lookup", "kontakt #999")
+        assert not r.success
+        assert r.fallthrough is True
+
+
+# ── Bug 6: Detail-Ausgabe ──
+
+class TestDetailOutput:
+    def test_who_shows_detail(self, handler: ContactCommandHandler,
+                              store: ContactStore) -> None:
+        store.add(USER, "Lisa", role="Freundin", email="lisa@x.de",
+                  formality="locker", notes="wichtig")
+        r = handler.execute("contact_who", "wer ist Lisa?")
+        assert r.success
+        assert "Rolle: Freundin" in r.text
+        assert "Email: lisa@x.de" in r.text
+        assert "Anrede: locker" in r.text
+        assert "📝 wichtig" in r.text
+
+    def test_lookup_shows_detail(self, handler: ContactCommandHandler,
+                                 store: ContactStore) -> None:
+        c = store.add(USER, "Herr Müller", role="Vermieter",
+                      email="m@x.de", formality="förmlich")
+        r = handler.execute("contact_lookup", f"kontakt #{c.id}")
+        assert r.success
+        assert "Rolle: Vermieter" in r.text
+        assert "Email: m@x.de" in r.text
+        assert "Anrede: förmlich" in r.text

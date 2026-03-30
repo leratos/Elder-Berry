@@ -3009,3 +3009,33 @@ User: "Lies meine Mails und trag den Zahnarzttermin ein"
 
 ### Nächster Schritt
 - Phase 37.2 Teil 1+2 komplett, IR-Learning (Teil 2 Schritte 11-13) als eigene Phase
+
+## Abgeschlossen: Bugfix – Contact Commands Pattern-Priorität + Verbesserungen (2026-03-30)
+- Branch: bugfix/contact-commands-pattern-priority
+- Tests: 93 grün (27 neu) in test_contact_commands.py + test_contact_store.py
+
+### Bug 1 (KRITISCH): Pattern-Reihenfolge — Update vor Add
+- CONTACT_UPDATE_PATTERN + CONTACT_DELETE_PATTERN jetzt VOR CONTACT_ADD_PATTERN
+- CONTACT_ADD_PATTERN mit Negative Lookahead für ändern/bearbeiten/update/löschen/suche/sync
+
+### Bug 2: Formality-Sets erweitert
+- förmlich: +höflich, +distanziert
+- locker: +persönlich, +freundschaftlich, +casual, +vertraut, +familiär
+
+### Bug 3: Feld-Aliase für Update
+- _FIELD_ALIASES dict: mail→email, vermerk/anmerkung→notes, beziehung→role etc.
+- _resolve_field_key() mit startswith-Fuzzy-Match
+- Warnung bei unbekanntem Feld im CommandResult
+
+### Bug 4: CONTACT_UPDATE_PATTERN erweitert
+- # optional (kontakt ändern 20: ... funktioniert jetzt)
+- "bearbeiten" und "update" als Aliase für "ändern"
+
+### Bug 5: CONTACT_LOOKUP_PATTERN + _cmd_lookup()
+- "was weisst du zu/über Lisa", "zeig mir kontakt #20", "info zu Lisa", "kontakt #20"
+- ID- und Name-Lookup, format_detail() Ausgabe
+
+### Bug 6: Contact.format_detail()
+- Mehrzeilige Detail-Ausgabe: Rolle, Email, Anrede, Geburtstag, Notizen
+- _cmd_who() und _cmd_lookup() nutzen format_detail() statt format_short()
+- Birthday: Jahr 0000 wird ausgeblendet

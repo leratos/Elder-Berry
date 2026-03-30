@@ -29,15 +29,24 @@ CONTACT_SYNC_PATTERN = re.compile(
 )
 
 CONTACT_ADD_PATTERN = re.compile(
-    r"^(?:neuer?\s+)?kontakt[:\s]+(.+)$", re.IGNORECASE,
+    r"^(?:neuer?\s+)?kontakt[:\s]+(?!ändern\b|bearbeiten\b|update\b|löschen\b|lösche\b|suche?\b|sync\b)(.+)$",
+    re.IGNORECASE,
 )
 
 CONTACT_UPDATE_PATTERN = re.compile(
-    r"kontakt\s+(?:ändern\s+)?#?(\d+)[:\s]+(.+)", re.IGNORECASE,
+    r"kontakt\s+(?:ändern|bearbeiten|update)\s+#?(\d+)[:\s]+(.+)",
+    re.IGNORECASE,
 )
 
 CONTACT_WHO_PATTERN = re.compile(
     r"^wer\s+ist\s+(.+?)\??\s*$", re.IGNORECASE,
+)
+
+CONTACT_LOOKUP_PATTERN = re.compile(
+    r"^(?:was\s+wei(?:ss|ß)t\s+du\s+(?:zu|über)\s+(?:(?:meinen?|den|dem)\s+)?(?:kontakt\s+)?(.+?)"
+    r"|(?:zeig|info|details)\s+(?:mir\s+)?(?:zu\s+|von\s+)?(?:kontakt\s+)?(.+?)"
+    r"|kontakt\s+(?:info\s+)?(?:#(\d+)|(\S+.+?)))\??\s*$",
+    re.IGNORECASE,
 )
 
 CONTACT_SEARCH_PATTERN = re.compile(
@@ -49,8 +58,22 @@ CONTACT_DELETE_PATTERN = re.compile(
     re.IGNORECASE,
 )
 
-_FORMALITY_FOERMLICH = {"förmlich", "formell", "sie"}
-_FORMALITY_LOCKER = {"locker", "informell", "du"}
+_FORMALITY_FOERMLICH = {"förmlich", "formell", "sie", "höflich", "distanziert"}
+_FORMALITY_LOCKER = {"locker", "informell", "du", "persönlich", "freundschaftlich",
+                      "casual", "vertraut", "familiär"}
+
+
+_FIELD_ALIASES: dict[str, str] = {
+    "name": "name",
+    "email": "email", "mail": "email", "e-mail": "email",
+    "rolle": "role", "role": "role", "beziehung": "role",
+    "anrede": "formality", "formality": "formality",
+    "notizen": "notes", "notes": "notes", "notiz": "notes",
+    "vermerk": "notes", "anmerkung": "notes",
+    "geburtstag": "birthday", "birthday": "birthday",
+}
+
+_ALLOWED_FIELDS_DISPLAY = "name, email, rolle, anrede, notizen, geburtstag"
 
 
 class ContactCommandHandler(CommandHandler):
@@ -71,11 +94,12 @@ class ContactCommandHandler(CommandHandler):
     def patterns(self) -> list[tuple[re.Pattern, str, bool, bool]]:
         return [
             (CONTACT_SYNC_PATTERN, "contact_sync", False, False),
-            (CONTACT_ADD_PATTERN, "contact_add", False, False),
             (CONTACT_UPDATE_PATTERN, "contact_update", False, True),
-            (CONTACT_WHO_PATTERN, "contact_who", False, False),
-            (CONTACT_SEARCH_PATTERN, "contact_search", False, False),
             (CONTACT_DELETE_PATTERN, "contact_delete", False, False),
+            (CONTACT_WHO_PATTERN, "contact_who", False, False),
+            (CONTACT_LOOKUP_PATTERN, "contact_lookup", False, False),
+            (CONTACT_SEARCH_PATTERN, "contact_search", False, False),
+            (CONTACT_ADD_PATTERN, "contact_add", False, False),
         ]
 
     @property
@@ -116,6 +140,7 @@ class ContactCommandHandler(CommandHandler):
             "contact_add": self._cmd_add,
             "contact_update": self._cmd_update,
             "contact_who": self._cmd_who,
+            "contact_lookup": self._cmd_lookup,
             "contact_search": self._cmd_search,
             "contact_delete": self._cmd_delete,
             "contact_sync": self._cmd_sync,
@@ -159,25 +184,47 @@ class ContactCommandHandler(CommandHandler):
         contact_id = int(match.group(1))
         fields_raw = match.group(2).strip()
         updates: dict[str, str] = {}
+        warnings: list[str] = []
         for part in fields_raw.split(","):
             if "=" in part:
-                key, val = part.split("=", 1)
-                updates[key.strip().lower()] = val.strip()
+                raw_key, val = part.split("=", 1)
+                resolved = self._resolve_field_key(raw_key.strip())
+                if resolved:
+                    updates[resolved] = val.strip()
+                else:
+                    warnings.append(
+                        f"⚠️ Unbekanntes Feld '{raw_key.strip()}' ignoriert. "
+                        f"Erlaubt: {_ALLOWED_FIELDS_DISPLAY}"
+                    )
         contact = self._store.update(
             contact_id,
             name=updates.get("name", ""),
             email=updates.get("email", ""),
-            role=updates.get("rolle", updates.get("role", "")),
-            formality=updates.get("anrede", updates.get("formality", "")),
-            notes=updates.get("notizen", updates.get("notes", "")),
+            role=updates.get("role", ""),
+            formality=updates.get("formality", ""),
+            notes=updates.get("notes", ""),
+            birthday=updates.get("birthday", ""),
         )
         if not contact:
             return CommandResult(command="contact_update", success=False,
                                  text=f"Kontakt #{contact_id} nicht gefunden.")
+        text = f"📇 Aktualisiert: {contact.format_short()}"
+        if warnings:
+            text += "\n" + "\n".join(warnings)
         return CommandResult(
-            command="contact_update", success=True,
-            text=f"📇 Aktualisiert: {contact.format_short()}",
+            command="contact_update", success=True, text=text,
         )
+
+    @staticmethod
+    def _resolve_field_key(raw_key: str) -> str | None:
+        """Löst Feld-Aliase auf. Bei Tippfehler: bester startswith-Match oder None."""
+        lower = raw_key.lower().strip()
+        if lower in _FIELD_ALIASES:
+            return _FIELD_ALIASES[lower]
+        for alias in _FIELD_ALIASES:
+            if alias.startswith(lower) or lower.startswith(alias):
+                return _FIELD_ALIASES[alias]
+        return None
 
     def _cmd_who(self, raw_text: str) -> CommandResult:
         match = CONTACT_WHO_PATTERN.match(raw_text.strip())
@@ -187,13 +234,30 @@ class ContactCommandHandler(CommandHandler):
         name = match.group(1).strip()
         contact = self._store.find_by_name(self._default_user_id, name)
         if contact:
-            text = f"📇 {contact.format_short()}"
-            if contact.notes:
-                text += f"\n📝 {contact.notes}"
             return CommandResult(command="contact_who", success=True,
-                                 text=text)
+                                 text=contact.format_detail())
         # Kein Kontakt → fallthrough an LLM
         return CommandResult(command="contact_who", success=False,
+                             text=None, fallthrough=True)
+
+    def _cmd_lookup(self, raw_text: str) -> CommandResult:
+        match = CONTACT_LOOKUP_PATTERN.match(raw_text.strip())
+        if not match:
+            return CommandResult(command="contact_lookup", success=False,
+                                 text=None, fallthrough=True)
+        # Gruppen: (1) was weisst du, (2) zeig/info, (3) kontakt #ID, (4) kontakt Name
+        name_str = match.group(1) or match.group(2) or match.group(4)
+        id_str = match.group(3)
+        contact = None
+        if id_str:
+            contact = self._store.get_by_id(int(id_str))
+        elif name_str:
+            contact = self._store.find_by_name(
+                self._default_user_id, name_str.strip())
+        if contact:
+            return CommandResult(command="contact_lookup", success=True,
+                                 text=contact.format_detail())
+        return CommandResult(command="contact_lookup", success=False,
                              text=None, fallthrough=True)
 
     def _cmd_search(self, raw_text: str) -> CommandResult:
