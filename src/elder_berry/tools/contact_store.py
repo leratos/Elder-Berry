@@ -56,6 +56,23 @@ class Contact:
             parts.append(f"– {self.email}")
         return " ".join(parts)
 
+    def format_detail(self) -> str:
+        """Mehrzeilige Detail-Darstellung."""
+        lines = [f"📇 #{self.id} {self.name}"]
+        if self.role:
+            lines.append(f"  Rolle: {self.role}")
+        if self.email:
+            lines.append(f"  Email: {self.email}")
+        lines.append(f"  Anrede: {self.formality}")
+        if self.birthday:
+            if self.birthday.startswith("0000-"):
+                lines.append(f"  Geburtstag: {self.birthday[5:]}")
+            else:
+                lines.append(f"  Geburtstag: {self.birthday}")
+        if self.notes:
+            lines.append(f"  📝 {self.notes}")
+        return "\n".join(lines)
+
     def format_for_llm(self) -> str:
         """Kontext-String für LLM System-Prompts (Email-Draft etc.)."""
         lines = [f"Kontakt: {self.name}"]
