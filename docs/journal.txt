@@ -3000,5 +3000,12 @@ User: "Lies meine Mails und trag den Zahnarzttermin ein"
 - PWA: Szenen-Tab mit Liste (Start/Delete) + Editor (Steps mit Device/Cmd/Delay)
 - 44 neue Tests, 3167 gesamt grün
 
+### Schritt 4: Saleria-Anbindung (Matrix → Szenen) ✓
+- HarmonyCommandHandler erweitert: "starte szene {name}" + "szenen liste"
+- Patterns: SCENE_START_PATTERN, SCENE_LIST_PATTERN
+- RobotClient.harmony_start_scene() + harmony_scenes() angebunden
+- HELP_TEXT in remote_commands.py aktualisiert
+- 15 neue Tests (8 Pattern + 7 Commands), 3182 gesamt grün
+
 ### Nächster Schritt
-- Schritt 4: Saleria-Anbindung (Matrix-Command "starte {szene}" → Szenen-Engine)
+- Phase 37.2 Teil 1+2 komplett, IR-Learning (Teil 2 Schritte 11-13) als eigene Phase

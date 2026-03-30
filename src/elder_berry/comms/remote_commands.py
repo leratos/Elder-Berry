@@ -245,6 +245,8 @@ Harmony Hub (Smart Home):
   harmony aktivitäten – Alle Aktivitäten auflisten
   harmony geräte – Alle Geräte auflisten
   harmony befehle <gerät> – Verfügbare Befehle für ein Gerät
+  starte szene <name> / szene <name> – Harmony-Szene starten
+  szenen / szenen liste – Alle Szenen auflisten
 
 Drehteller:
   drehteller home – Home-Position anfahren
