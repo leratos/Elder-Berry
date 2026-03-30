@@ -120,6 +120,17 @@ class TestParseContactFields:
         assert r["email"] == "lisa@gmail.com"
         assert r["role"] == "Schwester"
 
+    def test_phone_detection(self) -> None:
+        h = ContactCommandHandler()
+        r = h._parse_contact_fields("Lisa, Schwester, +49 170 1234567")
+        assert r["phone"] == "+49 170 1234567"
+        assert r["role"] == "Schwester"
+
+    def test_phone_without_plus(self) -> None:
+        h = ContactCommandHandler()
+        r = h._parse_contact_fields("Max, 030 12345678")
+        assert r["phone"] == "030 12345678"
+
     def test_formality_locker(self) -> None:
         h = ContactCommandHandler()
         r = h._parse_contact_fields("Lisa, Schwester, locker")
@@ -354,6 +365,12 @@ class TestFieldAliases:
     def test_resolve_startswith(self) -> None:
         assert ContactCommandHandler._resolve_field_key("noti") == "notes"
 
+    def test_resolve_telefon(self) -> None:
+        assert ContactCommandHandler._resolve_field_key("telefon") == "phone"
+
+    def test_resolve_handy(self) -> None:
+        assert ContactCommandHandler._resolve_field_key("handy") == "phone"
+
     def test_resolve_unknown(self) -> None:
         assert ContactCommandHandler._resolve_field_key("xyz") is None
 
@@ -374,6 +391,15 @@ class TestFieldAliases:
         assert r.success
         updated = store.get_by_id(c.id)
         assert updated.email == "lisa@x.de"
+
+    def test_update_field_alias_telefon(self, handler: ContactCommandHandler,
+                                        store: ContactStore) -> None:
+        c = store.add(USER, "Lisa")
+        r = handler.execute("contact_update",
+                            f"kontakt ändern #{c.id}: telefon=+49 170 1234567")
+        assert r.success
+        updated = store.get_by_id(c.id)
+        assert updated.phone == "+49 170 1234567"
 
     def test_update_unknown_field_warning(self, handler: ContactCommandHandler,
                                           store: ContactStore) -> None:

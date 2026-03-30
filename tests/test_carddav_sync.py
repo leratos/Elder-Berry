@@ -39,6 +39,7 @@ def _make_contact(
     formality: str = "förmlich",
     notes: str = "Hat Hund namens Rex",
     birthday: str = "1970-05-15",
+    phone: str = "",
     user_id: str = "@user:matrix.org",
 ) -> Contact:
     now = datetime(2026, 3, 29, 12, 0, 0, tzinfo=timezone.utc)
@@ -49,6 +50,7 @@ def _make_contact(
         email=email,
         role=role,
         formality=formality,
+        phone=phone,
         notes=notes,
         birthday=birthday,
         created_at=now,
@@ -136,6 +138,17 @@ class TestContactToVCard:
         assert "X-ELDERBERRY-FORMALITY" in upper
         assert "locker" in vcard
 
+    def test_phone_in_vcard(self, client):
+        contact = _make_contact(phone="+49 170 1234567")
+        vcard = client._contact_to_vcard(contact)
+        assert "TEL" in vcard
+        assert "+49 170 1234567" in vcard
+
+    def test_no_phone_no_tel(self, client):
+        contact = _make_contact(phone="")
+        vcard = client._contact_to_vcard(contact)
+        assert "TEL" not in vcard
+
 
 class TestVCardToContact:
 
@@ -147,6 +160,7 @@ class TestVCardToContact:
         note: str = "Rolle: Vermieter\nHat Hund namens Rex",
         formality: str = "förmlich",
         uid: str = "elderberry-contact-1",
+        phone: str = "",
     ) -> str:
         """Baut einen gültigen vCard-String via vobject (korrektes Escaping)."""
         import vobject
@@ -156,6 +170,10 @@ class TestVCardToContact:
         card.add("uid").value = uid
         if email:
             card.add("email").value = email
+        if phone:
+            tel = card.add("tel")
+            tel.value = phone
+            tel.type_param = "CELL"
         if bday:
             card.add("bday").value = bday
         if note:
@@ -218,6 +236,18 @@ class TestVCardToContact:
         contact = client._vcard_to_contact(vcard, "@user:matrix.org")
         assert contact is not None
         assert contact.formality == "förmlich"
+
+    def test_phone_from_vcard(self, client):
+        vcard = self._make_vcard(phone="+49 170 1234567")
+        contact = client._vcard_to_contact(vcard, "@user:matrix.org")
+        assert contact is not None
+        assert contact.phone == "+49 170 1234567"
+
+    def test_no_phone_in_vcard(self, client):
+        vcard = self._make_vcard(phone="")
+        contact = client._vcard_to_contact(vcard, "@user:matrix.org")
+        assert contact is not None
+        assert contact.phone == ""
 
 
 # ── Push ───────────────────────────────────────────────────────────────

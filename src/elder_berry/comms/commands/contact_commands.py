@@ -78,9 +78,12 @@ _FIELD_ALIASES: dict[str, str] = {
     "notizen": "notes", "notes": "notes", "notiz": "notes",
     "vermerk": "notes", "anmerkung": "notes",
     "geburtstag": "birthday", "birthday": "birthday",
+    "telefon": "phone", "phone": "phone", "tel": "phone",
+    "nummer": "phone", "handy": "phone", "mobil": "phone",
+    "telefonnummer": "phone", "handynummer": "phone",
 }
 
-_ALLOWED_FIELDS_DISPLAY = "name, email, rolle, anrede, notizen, geburtstag"
+_ALLOWED_FIELDS_DISPLAY = "name, email, telefon, rolle, anrede, notizen, geburtstag"
 
 
 class ContactCommandHandler(CommandHandler):
@@ -179,6 +182,7 @@ class ContactCommandHandler(CommandHandler):
             role=fields.get("role", ""),
             formality=fields.get("formality", "förmlich"),
             notes=fields.get("notes", ""),
+            phone=fields.get("phone", ""),
         )
         return CommandResult(
             command="contact_add", success=True,
@@ -201,6 +205,7 @@ class ContactCommandHandler(CommandHandler):
             role=fields.get("role", ""),
             formality=fields.get("formality", "förmlich"),
             notes=fields.get("notes", ""),
+            phone=fields.get("phone", ""),
         )
         return CommandResult(
             command="contact_add_natural", success=True,
@@ -235,6 +240,7 @@ class ContactCommandHandler(CommandHandler):
             formality=updates.get("formality", ""),
             notes=updates.get("notes", ""),
             birthday=updates.get("birthday", ""),
+            phone=updates.get("phone", ""),
         )
         if not contact:
             return CommandResult(command="contact_update", success=False,
@@ -375,6 +381,7 @@ class ContactCommandHandler(CommandHandler):
                         user_id, name=rc.name, email=rc.email,
                         role=rc.role, formality=rc.formality,
                         notes=rc.notes, birthday=rc.birthday,
+                        phone=rc.phone,
                     )
                     pulled += 1
                 from elder_berry.tools.carddav_sync import SyncResult
@@ -399,12 +406,17 @@ class ContactCommandHandler(CommandHandler):
     # Parsing
     # ------------------------------------------------------------------
 
-    @staticmethod
-    def _parse_contact_fields(raw: str) -> dict[str, str]:
+    _PHONE_PATTERN = re.compile(
+        r"^[\+]?[\d\s\-/().]{6,}$",
+    )
+
+    @classmethod
+    def _parse_contact_fields(cls, raw: str) -> dict[str, str]:
         """Parst komma-separierte Kontakt-Felder.
 
         Erkennt automatisch:
         - Email: enthält "@"
+        - Telefon: Ziffern-Pattern (mind. 6 Zeichen)
         - Anrede: "förmlich"/"locker" etc.
         - Erstes Feld: Name
         - Rest: Rolle, ggf. Notizen
@@ -414,12 +426,14 @@ class ContactCommandHandler(CommandHandler):
             return {}
         result: dict[str, str] = {
             "name": parts[0], "email": "", "role": "",
-            "formality": "förmlich", "notes": "",
+            "formality": "förmlich", "notes": "", "phone": "",
         }
         for part in parts[1:]:
             lower = part.lower()
             if "@" in part:
                 result["email"] = part
+            elif cls._PHONE_PATTERN.match(part):
+                result["phone"] = part
             elif lower in _FORMALITY_FOERMLICH:
                 result["formality"] = "förmlich"
             elif lower in _FORMALITY_LOCKER:

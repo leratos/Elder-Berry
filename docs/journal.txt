@@ -3046,3 +3046,13 @@ User: "Lies meine Mails und trag den Zahnarzttermin ein"
 - _find_contact_fuzzy(): Exakt → FTS-Suche; 1 Treffer → direkt, 2+ → "welchen meinst du?"
 - _cmd_who() und _cmd_lookup() nutzen jetzt Fuzzy statt exaktem Match
 - 19 neue Tests (9 Pattern + 3 Execution + 7 Fuzzy), 112 gesamt grün
+
+### Verbesserung: Telefonnummer-Feld (phone)
+- Contact Dataclass: neues `phone`-Feld (str, Default leer)
+- DB: phone-Spalte in CREATE TABLE + _migrate_phone_column() für bestehende DBs
+- CRUD: add(), update(), _upsert_existing() unterstützen phone
+- format_detail() + format_for_llm(): Telefon angezeigt wenn vorhanden
+- _parse_contact_fields(): automatische Erkennung von Nummern-Pattern (6+ Ziffern)
+- _FIELD_ALIASES: telefon, tel, phone, nummer, handy, mobil, telefonnummer, handynummer → phone
+- CardDAV-Sync: TEL Property in push/pull, phone in _contacts_differ()
+- 16 neue Tests (5 store + 5 commands + 6 carddav), 150 gesamt grün

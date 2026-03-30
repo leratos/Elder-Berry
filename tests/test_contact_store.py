@@ -150,6 +150,33 @@ class TestMultiUser:
         assert store.find_by_name(USER, "Bob") is None
 
 
+class TestPhone:
+    def test_add_with_phone(self, store: ContactStore) -> None:
+        c = store.add(USER, "Lisa", phone="+49 170 1234567")
+        assert c.phone == "+49 170 1234567"
+
+    def test_update_phone(self, store: ContactStore) -> None:
+        c = store.add(USER, "Lisa")
+        assert c.phone == ""
+        updated = store.update(c.id, phone="+49 30 9876543")
+        assert updated.phone == "+49 30 9876543"
+
+    def test_phone_in_format_detail(self, store: ContactStore) -> None:
+        c = store.add(USER, "Lisa", phone="+49 170 1234567")
+        detail = c.format_detail()
+        assert "Telefon: +49 170 1234567" in detail
+
+    def test_no_phone_not_in_detail(self, store: ContactStore) -> None:
+        c = store.add(USER, "Lisa")
+        detail = c.format_detail()
+        assert "Telefon:" not in detail
+
+    def test_phone_in_format_for_llm(self, store: ContactStore) -> None:
+        c = store.add(USER, "Lisa", phone="+49 170 1234567")
+        llm = c.format_for_llm()
+        assert "Telefon: +49 170 1234567" in llm
+
+
 class TestFormatDetail:
     def test_format_detail_full(self, store: ContactStore) -> None:
         c = store.add(USER, "Lisa", email="lisa@x.de", role="Freundin",

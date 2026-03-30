@@ -254,7 +254,7 @@ def _make_contact(name: str, birthday: str = "") -> Contact:
     now = datetime.now(timezone.utc)
     return Contact(
         id=1, user_id="@test:matrix.org", name=name,
-        email="", role="", formality="locker", notes="",
+        email="", role="", formality="locker", phone="", notes="",
         birthday=birthday, created_at=now, updated_at=now,
     )
 

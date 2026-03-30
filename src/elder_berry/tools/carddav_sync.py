@@ -221,6 +221,7 @@ class CardDAVSyncClient:
                     formality=remote_c.formality,
                     notes=remote_c.notes,
                     birthday=remote_c.birthday,
+                    phone=remote_c.phone,
                 )
                 result.pulled += 1
 
@@ -260,6 +261,11 @@ class CardDAVSyncClient:
 
         if contact.email:
             card.add("email").value = contact.email
+
+        if contact.phone:
+            tel = card.add("tel")
+            tel.value = contact.phone
+            tel.type_param = "CELL"
 
         if contact.birthday:
             bday = card.add("bday")
@@ -301,6 +307,10 @@ class CardDAVSyncClient:
         if hasattr(card, "email"):
             email = str(card.email.value)
 
+        phone = ""
+        if hasattr(card, "tel"):
+            phone = str(card.tel.value)
+
         birthday = ""
         if hasattr(card, "bday"):
             bday_val = str(card.bday.value)
@@ -337,6 +347,7 @@ class CardDAVSyncClient:
             email=email,
             role=role,
             formality=formality,
+            phone=phone,
             notes=notes,
             birthday=birthday,
             created_at=now,
@@ -391,6 +402,7 @@ class CardDAVSyncClient:
         """Prüft ob sich zwei Kontakte in den sync-relevanten Feldern unterscheiden."""
         return (
             local.email != remote.email
+            or local.phone != remote.phone
             or local.role != remote.role
             or local.notes != remote.notes
             or local.birthday != remote.birthday
