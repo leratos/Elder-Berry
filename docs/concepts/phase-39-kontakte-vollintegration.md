@@ -279,8 +279,7 @@ Handler gibt gezielt nur das gefragte Feld aus:
 - **Kontakt-Foto als Avatar:** Anzeigelogik für Pepper's Ghost (eigene Phase)
 - **Pronomen-Auflösung:** "Ruf sie an" → bezieht sich auf letzte Lisa-Erwähnung
   (braucht Konversations-State, siehe Phase 20)
-- **Automatischer Sync-Timer:** Sync bleibt manuell per "kontakte sync"
-  (automatisch wäre ein Daemon mit Polling, zu viel Scope)
+- **Mehrstündiger Sync-Timer:** Kein Polling alle X Stunden nötig
 - **Kontakt-Erstellung in Nextcloud:** Aktuell nur Push bestehender Kontakte.
   "Neuer Kontakt" erstellt lokal, Push erzeugt vCard in NC.
 - **Mehrere Adressbücher:** Nur Standard-Adressbuch wird gesynct
@@ -309,7 +308,7 @@ Handler gibt gezielt nur das gefragte Feld aus:
 2. CardDAV-Sync erweitern (carddav_sync.py)
 3. SmartContextProvider erweitern (smart_context.py)
 4. Feld-Abfrage-Pattern + Handler (contact_commands.py)
-5. Briefing erweitern (briefing_scheduler.py)
+5. Briefing erweitern (briefing_scheduler.py) — inkl. Auto-Sync Pull vor Briefing
 6. Gruppen-Features (contact_commands.py)
 
 ---
@@ -320,8 +319,9 @@ Handler gibt gezielt nur das gefragte Feld aus:
    aber FTS5 kann nicht einzelne Nummern matchen. Reicht `LIKE '%+49 170%'`?
    Oder brauchen wir eine contact_phones-Tabelle?
 
-2. **Sync-Frequenz:** Manuell (`kontakte sync`) oder periodisch (z.B. alle
-   6 Stunden)? Manuell ist einfacher, periodisch bequemer.
+2. **Sync-Frequenz:** ✅ Entschieden: **1x täglich automatisch vor dem Briefing**
+   (Pull im BriefingScheduler vor `build_briefing()`). Zusätzlich weiterhin
+   manuell per `kontakte sync`. Kein Polling-Daemon nötig.
 
 3. **Archivierung gelöschter Kontakte:** Soft-Delete mit `archived_at`-Feld?
    Oder komplett löschen und nur die NC-Daten als Quelle akzeptieren?
