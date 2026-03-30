@@ -3061,3 +3061,39 @@ User: "Lies meine Mails und trag den Zahnarzttermin ein"
 - docs/concepts/phase-39-kontakte-vollintegration.md angelegt
 - Scope: alle Nextcloud-vCard-Felder synchen (ADR, ORG, CATEGORIES, mehrere TEL/EMAIL etc.)
 - SmartContextProvider + Briefing erweitern, natürliche Feld-Abfragen, Gruppen-Features
+
+## Abgeschlossen: Phase 37.3 – Dashboard 2.0: Modulare Smart Home PWA (2026-03-30)
+- Branch: feature/phase-37-3-dashboard-pwa
+- Konzept: docs/concepts/phase-36-dashboard-2.0.md
+- Domain: fern.last-strawberry.com
+
+### Neue Dateien
+- src/elder_berry/webapp/dashboard/index.html – PWA-Shell mit Module-Loader
+- src/elder_berry/webapp/dashboard/style.css – Design Tokens (Saleria-Lila, #1a1a2e)
+- src/elder_berry/webapp/dashboard/manifest.json – PWA-Manifest (installierbar)
+- src/elder_berry/webapp/dashboard/sw.js – Service Worker (Offline-Cache für statische Assets)
+- src/elder_berry/webapp/dashboard/modules/base.js – DashboardModule Basisklasse (apiFetch mit Timeout)
+- src/elder_berry/webapp/dashboard/modules/loader.js – Dynamischer Module-Loader
+- src/elder_berry/webapp/dashboard/modules/system.js – System-Status (RPi5/Tower/Saleria Health, 30s Polling)
+- src/elder_berry/webapp/dashboard/modules/harmony.js – Harmony Remote komplett (Aktivitäten, Geräte, Szenen, Layouts, D-Pad, Numpad, Transport, Colors)
+- src/elder_berry/webapp/dashboard/modules/saleria.js – Saleria-Status (Tower-abhängig, graceful offline)
+- scripts/deploy_dashboard.sh – rsync-Deploy zum Rootserver
+- docs/deploy/nginx-fern.conf – Nginx vhost mit Reverse Proxy (RPi5 /api/, Tower /tower/)
+
+### Gelöschte Dateien
+- src/elder_berry/webapp/harmony_remote/ – Standalone-PWA entfernt (integriert in Dashboard)
+
+### Architektur-Entscheidungen
+- Modul-Architektur: DashboardModule ABC mit render(), init(), poll(), apiFetch()
+- Harmony Remote als ES-Modul statt Inline-Script (29KB Monolith → modulare Klasse)
+- Nginx Reverse Proxy löst Mixed-Content + CORS (HTTPS Dashboard → HTTP RPi5/Tower)
+- DASHBOARD_CONFIG mit rpi5_url/tower_url über Proxy-Pfade (/api/, /tower/)
+- Service Worker cached nur statische Assets, nie API-Calls
+- Kein HA-Modul (Platzhalter im Konzept, implementiert wenn HA deployed)
+
+### Deployment-Schritte (manuell auf Rootserver)
+1. DNS: fern.last-strawberry.com → Rootserver-IP
+2. SSL: Wildcard-Zertifikat vorhanden (*.last-strawberry.com)
+3. Nginx: docs/deploy/nginx-fern.conf nach /etc/nginx/sites-available/ + symlink
+4. Deploy: scripts/deploy_dashboard.sh ausführen
+5. Icons: icon-192.png + icon-512.png manuell erstellen und in dashboard/ ablegen
