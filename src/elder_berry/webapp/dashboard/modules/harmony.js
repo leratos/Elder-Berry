@@ -10,7 +10,7 @@ import { DashboardModule } from "./base.js";
 const DEVICE_LAYOUTS = {
     "Samsung TV": {
         icon: "\ud83d\udcfa",
-        power: { cmd: "PowerToggle", label: "\u23fb TV" },
+        power: { cmd: "PowerToggle", label: "ON/OFF TV" },
         volume: { device: "Denon AV-Empf\u00e4nger", up: "VolumeUp", down: "VolumeDown" },
         channel: { up: "ChannelUp", down: "ChannelDown" },
         dpad: { center: "Select" },
@@ -30,7 +30,7 @@ const DEVICE_LAYOUTS = {
     },
     "Denon AV-Empf\u00e4nger": {
         icon: "\ud83d\udd0a",
-        power: { cmd: "PowerToggle", label: "\u23fb Receiver" },
+        power: { cmd: "PowerToggle", label: "ON/OFF Receiver" },
         volume: { device: "Denon AV-Empf\u00e4nger", up: "VolumeUp", down: "VolumeDown" },
         channel: null,
         dpad: null,
@@ -52,7 +52,7 @@ const DEVICE_LAYOUTS = {
     },
     "Sony PS4": {
         icon: "\ud83c\udfae",
-        power: { cmd: "PowerToggle", label: "\u23fb PS4" },
+        power: { cmd: "PowerToggle", label: "ON/OFF PS4" },
         volume: { device: "Denon AV-Empf\u00e4nger", up: "VolumeUp", down: "VolumeDown" },
         channel: null,
         dpad: { center: "Cross" },
@@ -72,7 +72,7 @@ const DEVICE_LAYOUTS = {
     },
     "Amazon Fire TV": {
         icon: "\ud83d\udd25",
-        power: { cmd: "PowerToggle", label: "\u23fb Fire TV" },
+        power: { cmd: "PowerToggle", label: "ON/OFF Fire TV" },
         volume: { device: "Denon AV-Empf\u00e4nger", up: "VolumeUp", down: "VolumeDown" },
         channel: null,
         dpad: { center: "Select" },
@@ -114,7 +114,7 @@ const DEVICE_LAYOUTS = {
 // Fallback für unbekannte Geräte
 const GENERIC_LAYOUT = {
     icon: "\u2699\ufe0f",
-    power: { cmd: "PowerToggle", label: "\u23fb Power" },
+    power: { cmd: "PowerToggle", label: "ON/OFF Power" },
     volume: null, channel: null,
     dpad: { center: "Select" },
     actions: [],
@@ -733,7 +733,7 @@ export default class HarmonyModule extends DashboardModule {
         const offBtn = document.createElement("button");
         offBtn.className = "rbtn rbtn-activity";
         offBtn.style.cssText = "border-color:var(--status-error);color:var(--status-error);";
-        offBtn.textContent = "\u23fb Alles Aus";
+        offBtn.textContent = "Alles Aus";
         offBtn.addEventListener("click", () => { this._haptic(); this._powerOff(); });
         list.appendChild(offBtn);
     }

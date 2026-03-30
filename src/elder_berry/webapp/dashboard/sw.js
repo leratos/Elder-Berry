@@ -1,4 +1,4 @@
-const CACHE = "saleria-dashboard-v8";
+const CACHE = "saleria-dashboard-v10";
 const STATIC = [
     "/",
     "/index.html",
@@ -30,7 +30,7 @@ self.addEventListener("activate", e => {
 
 self.addEventListener("fetch", e => {
     // API-Calls nie cachen – immer live oder Fehler
-    if (e.request.url.includes(":8000")) {
+    if (e.request.url.includes("192.168.")) {
         return;
     }
     e.respondWith(
