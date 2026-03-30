@@ -3056,3 +3056,8 @@ User: "Lies meine Mails und trag den Zahnarzttermin ein"
 - _FIELD_ALIASES: telefon, tel, phone, nummer, handy, mobil, telefonnummer, handynummer → phone
 - CardDAV-Sync: TEL Property in push/pull, phone in _contacts_differ()
 - 16 neue Tests (5 store + 5 commands + 6 carddav), 150 gesamt grün
+
+### Konzept: Phase 39 – Kontakte Vollintegration
+- docs/concepts/phase-39-kontakte-vollintegration.md angelegt
+- Scope: alle Nextcloud-vCard-Felder synchen (ADR, ORG, CATEGORIES, mehrere TEL/EMAIL etc.)
+- SmartContextProvider + Briefing erweitern, natürliche Feld-Abfragen, Gruppen-Features
