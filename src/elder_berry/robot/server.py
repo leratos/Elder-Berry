@@ -26,6 +26,12 @@ from pydantic import BaseModel
 
 from elder_berry.robot.camera_controller import CameraController
 from elder_berry.robot.harmony_adapter import HarmonyAdapter
+from elder_berry.robot.harmony_layout_manager import HarmonyLayoutManager
+from elder_berry.robot.harmony_scene_manager import (
+    HarmonySceneManager,
+    SceneExecutionError,
+    SceneNotFoundError,
+)
 from elder_berry.robot.turntable_controller import TurntableController
 from elder_berry.robot.protocol import (
     ApiResponse,
@@ -75,6 +81,11 @@ class HarmonyCommandRequest(BaseModel):
     device: str    # z.B. "Receiver"
     command: str   # z.B. "VolumeUp"
     repeat: int = 1
+
+
+class HarmonySceneStartRequest(BaseModel):
+    """Request: Szene starten."""
+    name: str  # z.B. "Gaming"
 
 
 # ---------------------------------------------------------------------------
@@ -154,6 +165,8 @@ class RobotServer:
         camera: CameraController | None = None,
         turntable: TurntableController | None = None,
         harmony: HarmonyAdapter | None = None,
+        harmony_layouts: HarmonyLayoutManager | None = None,
+        harmony_scenes: HarmonySceneManager | None = None,
         hostname: str = "elder-berry-rpi",
         project_root: Path | None = None,
         service_name: str = "elder-berry-rpi",
@@ -164,6 +177,8 @@ class RobotServer:
         self._camera = camera
         self._turntable = turntable
         self._harmony = harmony
+        self._harmony_layouts = harmony_layouts
+        self._harmony_scenes = harmony_scenes
         self._hostname = hostname
         self._project_root = project_root
         self._service_name = service_name
@@ -190,6 +205,9 @@ class RobotServer:
                 connected = await self._harmony.connect()
                 if connected:
                     logger.info("HarmonyAdapter verbunden beim Startup")
+                    if self._harmony_layouts is not None:
+                        config = self._harmony.get_detailed_config()
+                        self._harmony_layouts.ensure_defaults(config)
                 else:
                     logger.warning("Harmony Hub nicht erreichbar beim Startup")
 
@@ -536,6 +554,105 @@ class RobotServer:
                 repeat=request.repeat,
             )
             return {"success": success}
+
+        @self.app.get("/harmony/config/detailed")
+        async def harmony_config_detailed() -> dict:
+            """Vollstaendige Device-Config mit ControlGroups und Commands."""
+            if not self._harmony:
+                return JSONResponse(
+                    {"error": "Harmony nicht konfiguriert"},
+                    status_code=503,
+                )
+            return self._harmony.get_detailed_config()
+
+        @self.app.get("/harmony/layouts")
+        async def harmony_layouts() -> dict:
+            """Aktuelle Fernbedienungs-Layouts."""
+            if not self._harmony_layouts:
+                return JSONResponse(
+                    {"error": "Layouts nicht konfiguriert"},
+                    status_code=503,
+                )
+            return self._harmony_layouts.get_layouts()
+
+        @self.app.post("/harmony/layouts")
+        async def harmony_save_layouts(request: dict) -> dict:
+            """Layouts speichern (ueberschreibt komplett)."""
+            if not self._harmony_layouts:
+                return JSONResponse(
+                    {"error": "Layouts nicht konfiguriert"},
+                    status_code=503,
+                )
+            self._harmony_layouts.save_layouts(request)
+            return {"success": True}
+
+        # --- Harmony Szenen ---
+
+        @self.app.get("/harmony/scenes")
+        async def harmony_scenes() -> dict:
+            """Alle Szenen auflisten."""
+            if not self._harmony_scenes:
+                return JSONResponse(
+                    {"error": "Szenen nicht konfiguriert"},
+                    status_code=503,
+                )
+            return {"scenes": self._harmony_scenes.list_scenes()}
+
+        @self.app.post("/harmony/scenes")
+        async def harmony_save_scene(request: dict) -> dict:
+            """Szene erstellen oder aktualisieren."""
+            if not self._harmony_scenes:
+                return JSONResponse(
+                    {"error": "Szenen nicht konfiguriert"},
+                    status_code=503,
+                )
+            try:
+                self._harmony_scenes.save_scene(request)
+                return {"success": True}
+            except ValueError as e:
+                return JSONResponse(
+                    {"error": str(e)}, status_code=400,
+                )
+
+        @self.app.post("/harmony/scene/start")
+        async def harmony_start_scene(
+            request: HarmonySceneStartRequest,
+        ) -> dict:
+            """Szene starten (sequenzielle Ausfuehrung)."""
+            if not self._harmony_scenes:
+                return JSONResponse(
+                    {"error": "Szenen nicht konfiguriert"},
+                    status_code=503,
+                )
+            try:
+                result = await self._harmony_scenes.start_scene(request.name)
+                return {"success": True, **result}
+            except SceneNotFoundError:
+                return JSONResponse(
+                    {"error": f"Szene '{request.name}' nicht gefunden"},
+                    status_code=404,
+                )
+            except SceneExecutionError as e:
+                return JSONResponse(
+                    {"error": str(e)}, status_code=503,
+                )
+
+        @self.app.delete("/harmony/scene/{name}")
+        async def harmony_delete_scene(name: str) -> dict:
+            """Szene loeschen."""
+            if not self._harmony_scenes:
+                return JSONResponse(
+                    {"error": "Szenen nicht konfiguriert"},
+                    status_code=503,
+                )
+            try:
+                self._harmony_scenes.delete_scene(name)
+                return {"success": True}
+            except SceneNotFoundError:
+                return JSONResponse(
+                    {"error": f"Szene '{name}' nicht gefunden"},
+                    status_code=404,
+                )
 
         @self.app.post("/harmony/off")
         async def harmony_off() -> dict:

@@ -54,6 +54,12 @@ LIST_DEVICES_PATTERN = re.compile(
 LIST_COMMANDS_PATTERN = re.compile(
     r"^harmony\s+befehle\s+(?P<device>.+)$", re.IGNORECASE,
 )
+SCENE_START_PATTERN = re.compile(
+    r"^(?:starte?\s+)?szene\s+(?P<scene>.+)$", re.IGNORECASE,
+)
+SCENE_LIST_PATTERN = re.compile(
+    r"^szenen(?:\s+liste)?$", re.IGNORECASE,
+)
 
 
 class HarmonyCommandHandler(CommandHandler):
@@ -78,6 +84,8 @@ class HarmonyCommandHandler(CommandHandler):
             (LIST_ACTIVITIES_PATTERN, "harmony_list_activities", False, False),
             (LIST_DEVICES_PATTERN, "harmony_list_devices", False, False),
             (LIST_COMMANDS_PATTERN, "harmony_list_commands", False, False),
+            (SCENE_START_PATTERN, "harmony_scene_start", False, False),
+            (SCENE_LIST_PATTERN, "harmony_scene_list", False, False),
         ]
 
     @property
@@ -99,6 +107,10 @@ class HarmonyCommandHandler(CommandHandler):
             "harmony_list_activities": ["harmony aktivitäten"],
             "harmony_list_devices": ["harmony geräte"],
             "harmony_list_commands": ["harmony befehle"],
+            "harmony_scene_start": [
+                "starte szene", "szene starten",
+            ],
+            "harmony_scene_list": ["szenen", "szenen liste"],
         }
 
     @property
@@ -113,6 +125,8 @@ class HarmonyCommandHandler(CommandHandler):
             "harmony aktivitäten: Alle Aktivitäten auflisten",
             "harmony geräte: Alle Geräte auflisten",
             "harmony befehle <gerät>: Verfügbare Befehle für ein Gerät",
+            "starte szene <name> / szene <name>: Harmony-Szene starten",
+            "szenen / szenen liste: Alle Szenen auflisten",
         ]
 
     def execute(self, command: str, raw_text: str) -> CommandResult:
@@ -140,6 +154,10 @@ class HarmonyCommandHandler(CommandHandler):
             return self._cmd_list_devices()
         if command == "harmony_list_commands":
             return self._cmd_list_commands(raw_text)
+        if command == "harmony_scene_start":
+            return self._cmd_scene_start(raw_text)
+        if command == "harmony_scene_list":
+            return self._cmd_scene_list()
 
         return CommandResult(
             command=command, success=False,
@@ -329,3 +347,56 @@ class HarmonyCommandHandler(CommandHandler):
             text=f"Befehle für '{found}' – nutze die PWA oder die API direkt "
                  f"(GET /harmony/config für Details).",
         )
+
+    def _cmd_scene_start(self, raw_text: str) -> CommandResult:
+        # Originaltext fuer Szenennamen (case-sensitiv), Pattern auf lowercase
+        match = SCENE_START_PATTERN.match(raw_text.strip())
+        if not match:
+            return CommandResult(
+                command="harmony_scene_start", success=False,
+                text="Szenenname nicht erkannt. Syntax: starte szene <name>",
+            )
+
+        scene_name = match.group("scene").strip()
+
+        try:
+            result = self._robot.harmony_start_scene(scene_name)
+            if result.get("success"):
+                ok = result.get("steps_ok", 0)
+                total = result.get("steps_total", 0)
+                return CommandResult(
+                    command="harmony_scene_start", success=True,
+                    text=f"Szene '{scene_name}' gestartet ({ok}/{total} OK).",
+                )
+            error = result.get("error", "Unbekannter Fehler")
+            return CommandResult(
+                command="harmony_scene_start", success=False,
+                text=f"Szene '{scene_name}': {error}",
+            )
+        except Exception as e:
+            return CommandResult(
+                command="harmony_scene_start", success=False,
+                text=f"Fehler: {e}",
+            )
+
+    def _cmd_scene_list(self) -> CommandResult:
+        try:
+            scenes = self._robot.harmony_scenes()
+            if not scenes:
+                return CommandResult(
+                    command="harmony_scene_list", success=True,
+                    text="Keine Szenen konfiguriert.",
+                )
+            names = [s.get("name", "?") for s in scenes]
+            text = "Harmony-Szenen:\n" + "\n".join(
+                f"  • {n}" for n in names
+            )
+            return CommandResult(
+                command="harmony_scene_list", success=True,
+                text=text,
+            )
+        except Exception as e:
+            return CommandResult(
+                command="harmony_scene_list", success=False,
+                text=f"Fehler: {e}",
+            )

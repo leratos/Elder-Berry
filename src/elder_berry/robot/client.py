@@ -222,6 +222,36 @@ class RobotClient:
             logger.error("harmony_config fehlgeschlagen: %s", e)
             return {"activities": [], "devices": []}
 
+    def harmony_config_detailed(self) -> dict:
+        """GET /harmony/config/detailed → Devices mit ControlGroups + Commands."""
+        try:
+            r = self._client.get("/harmony/config/detailed")
+            r.raise_for_status()
+            return r.json()
+        except (httpx.HTTPError, Exception) as e:
+            logger.error("harmony_config_detailed fehlgeschlagen: %s", e)
+            return {"activities": [], "devices": []}
+
+    def harmony_layouts(self) -> dict:
+        """GET /harmony/layouts → Fernbedienungs-Layouts."""
+        try:
+            r = self._client.get("/harmony/layouts")
+            r.raise_for_status()
+            return r.json()
+        except (httpx.HTTPError, Exception) as e:
+            logger.error("harmony_layouts fehlgeschlagen: %s", e)
+            return {"activities": {}, "devices": {}}
+
+    def harmony_save_layouts(self, layouts: dict) -> bool:
+        """POST /harmony/layouts → Layouts speichern."""
+        try:
+            r = self._client.post("/harmony/layouts", json=layouts)
+            r.raise_for_status()
+            return r.json().get("success", False)
+        except (httpx.HTTPError, Exception) as e:
+            logger.error("harmony_save_layouts fehlgeschlagen: %s", e)
+            return False
+
     def harmony_start_activity(self, activity: str) -> bool:
         """POST /harmony/activity"""
         try:
@@ -247,6 +277,50 @@ class RobotClient:
             return r.json().get("success", False)
         except (httpx.HTTPError, Exception) as e:
             logger.error("harmony_send_command fehlgeschlagen: %s", e)
+            return False
+
+    # --- Harmony Szenen ---
+
+    def harmony_scenes(self) -> list[dict]:
+        """GET /harmony/scenes → Liste aller Szenen."""
+        try:
+            r = self._client.get("/harmony/scenes")
+            r.raise_for_status()
+            return r.json().get("scenes", [])
+        except (httpx.HTTPError, Exception) as e:
+            logger.error("harmony_scenes fehlgeschlagen: %s", e)
+            return []
+
+    def harmony_save_scene(self, scene: dict) -> bool:
+        """POST /harmony/scenes → Szene erstellen/aktualisieren."""
+        try:
+            r = self._client.post("/harmony/scenes", json=scene)
+            r.raise_for_status()
+            return r.json().get("success", False)
+        except (httpx.HTTPError, Exception) as e:
+            logger.error("harmony_save_scene fehlgeschlagen: %s", e)
+            return False
+
+    def harmony_start_scene(self, name: str) -> dict:
+        """POST /harmony/scene/start → Szene starten."""
+        try:
+            r = self._client.post(
+                "/harmony/scene/start", json={"name": name},
+            )
+            r.raise_for_status()
+            return r.json()
+        except (httpx.HTTPError, Exception) as e:
+            logger.error("harmony_start_scene fehlgeschlagen: %s", e)
+            return {"success": False, "error": str(e)}
+
+    def harmony_delete_scene(self, name: str) -> bool:
+        """DELETE /harmony/scene/{name} → Szene löschen."""
+        try:
+            r = self._client.delete(f"/harmony/scene/{name}")
+            r.raise_for_status()
+            return r.json().get("success", False)
+        except (httpx.HTTPError, Exception) as e:
+            logger.error("harmony_delete_scene fehlgeschlagen: %s", e)
             return False
 
     def harmony_power_off(self) -> bool:

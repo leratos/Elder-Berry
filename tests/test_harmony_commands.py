@@ -13,6 +13,8 @@ from elder_berry.comms.commands.harmony_commands import (
     LIST_COMMANDS_PATTERN,
     LIST_DEVICES_PATTERN,
     MUTE_PATTERN,
+    SCENE_LIST_PATTERN,
+    SCENE_START_PATTERN,
     VOLUME_DOWN_PATTERN,
     VOLUME_UP_PATTERN,
     HarmonyCommandHandler,
@@ -34,6 +36,13 @@ def mock_robot():
         "activities": ["Fernsehen", "Musik"],
         "devices": ["Samsung TV", "Samsung TV"],
     })
+    robot.harmony_start_scene = MagicMock(return_value={
+        "success": True, "steps_ok": 3, "steps_total": 3,
+    })
+    robot.harmony_scenes = MagicMock(return_value=[
+        {"name": "Gaming", "steps": []},
+        {"name": "Musik", "steps": []},
+    ])
     return robot
 
 
@@ -236,3 +245,85 @@ class TestCollisions:
         # "erinnere mich" darf nicht als Aktivitaet erkannt werden
         assert not ACTIVITY_ON_PATTERN.match("erinnere mich an etwas")
         assert not ACTIVITY_ON_PATTERN.match("erinnere mich um 18:00")
+
+
+# -- Szenen-Pattern-Tests -------------------------------------------------- #
+
+class TestScenePatterns:
+    def test_scene_start_basic(self):
+        m = SCENE_START_PATTERN.match("szene Gaming")
+        assert m
+        assert m.group("scene") == "Gaming"
+
+    def test_scene_start_with_starte(self):
+        m = SCENE_START_PATTERN.match("starte szene Gaming")
+        assert m
+        assert m.group("scene") == "Gaming"
+
+    def test_scene_start_case_insensitive(self):
+        assert SCENE_START_PATTERN.match("Szene gaming")
+
+    def test_scene_start_multi_word(self):
+        m = SCENE_START_PATTERN.match("szene Musik hören")
+        assert m
+        assert m.group("scene") == "Musik hören"
+
+    def test_scene_list_bare(self):
+        assert SCENE_LIST_PATTERN.match("szenen")
+
+    def test_scene_list_with_liste(self):
+        assert SCENE_LIST_PATTERN.match("szenen liste")
+
+    def test_scene_list_case_insensitive(self):
+        assert SCENE_LIST_PATTERN.match("Szenen Liste")
+
+    def test_scene_no_collision_with_activity(self):
+        assert not ACTIVITY_ON_PATTERN.match("szene Gaming")
+        assert not SCENE_START_PATTERN.match("fernsehen an")
+
+
+# -- Szenen-Command-Tests ------------------------------------------------- #
+
+class TestSceneCommands:
+    def test_scene_start_success(self, handler, mock_robot):
+        result = handler.execute("harmony_scene_start", "szene Gaming")
+        assert result.success
+        assert "Gaming" in result.text
+        assert "3/3" in result.text
+        mock_robot.harmony_start_scene.assert_called_once_with("Gaming")
+
+    def test_scene_start_with_starte(self, handler, mock_robot):
+        result = handler.execute("harmony_scene_start", "starte szene Gaming")
+        assert result.success
+        mock_robot.harmony_start_scene.assert_called_once_with("Gaming")
+
+    def test_scene_start_failure(self, handler, mock_robot):
+        mock_robot.harmony_start_scene.return_value = {
+            "success": False, "error": "Szene 'Nope' nicht gefunden",
+        }
+        result = handler.execute("harmony_scene_start", "szene Nope")
+        assert not result.success
+        assert "nicht gefunden" in result.text
+
+    def test_scene_start_no_match(self, handler):
+        result = handler.execute("harmony_scene_start", "random text")
+        assert not result.success
+
+    def test_scene_list(self, handler, mock_robot):
+        result = handler.execute("harmony_scene_list", "szenen")
+        assert result.success
+        assert "Gaming" in result.text
+        assert "Musik" in result.text
+
+    def test_scene_list_empty(self, handler, mock_robot):
+        mock_robot.harmony_scenes.return_value = []
+        result = handler.execute("harmony_scene_list", "szenen")
+        assert result.success
+        assert "Keine Szenen" in result.text
+
+    def test_scene_commands_no_robot(self, handler_no_robot):
+        result = handler_no_robot.execute(
+            "harmony_scene_start", "szene Gaming",
+        )
+        assert not result.success
+        assert "RobotClient" in result.text

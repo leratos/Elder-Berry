@@ -26,7 +26,12 @@ def _run(coro):
 
 SAMPLE_CONFIG = {
     "activity": [
-        {"id": 38979034, "label": "Fernsehen"},
+        {
+            "id": 38979034,
+            "label": "Fernsehen",
+            "VolumeActivityRole": "74828509",
+            "ChannelChangingActivityRole": "74828510",
+        },
         {"id": 38979035, "label": "Musik"},
         {"id": _POWER_OFF_ACTIVITY_ID, "label": "PowerOff"},
     ],
@@ -485,3 +490,88 @@ class TestInternal:
     def test_get_devices_empty_config(self, adapter):
         adapter._config = {}
         assert adapter._get_devices() == []
+
+    def test_device_id_to_label_found(self, adapter):
+        adapter._config = SAMPLE_CONFIG
+        assert adapter._device_id_to_label("74828509") == "Denon AVR-X3500H"
+
+    def test_device_id_to_label_not_found(self, adapter):
+        adapter._config = SAMPLE_CONFIG
+        assert adapter._device_id_to_label("99999") == "99999"
+
+
+# -- Detaillierte Config --------------------------------------------------- #
+
+class TestDetailedConfig:
+    def test_returns_activities_without_poweroff(self, adapter):
+        adapter._config = SAMPLE_CONFIG
+        result = adapter.get_detailed_config()
+        labels = [a["label"] for a in result["activities"]]
+        assert "Fernsehen" in labels
+        assert "Musik" in labels
+        assert "PowerOff" not in labels
+
+    def test_activity_volume_device_resolved(self, adapter):
+        adapter._config = SAMPLE_CONFIG
+        result = adapter.get_detailed_config()
+        fernsehen = next(
+            a for a in result["activities"] if a["label"] == "Fernsehen"
+        )
+        assert fernsehen["volume_device"] == "Denon AVR-X3500H"
+        assert fernsehen["channel_device"] == "Samsung TV"
+
+    def test_activity_without_volume_role(self, adapter):
+        adapter._config = SAMPLE_CONFIG
+        result = adapter.get_detailed_config()
+        musik = next(
+            a for a in result["activities"] if a["label"] == "Musik"
+        )
+        assert "volume_device" not in musik
+        assert "channel_device" not in musik
+
+    def test_devices_have_control_groups(self, adapter):
+        adapter._config = SAMPLE_CONFIG
+        result = adapter.get_detailed_config()
+        denon = next(
+            d for d in result["devices"] if d["label"] == "Denon AVR-X3500H"
+        )
+        assert denon["id"] == "74828509"
+        group_names = [g["name"] for g in denon["control_groups"]]
+        assert "Volume" in group_names
+        assert "Power" in group_names
+
+    def test_control_group_commands(self, adapter):
+        adapter._config = SAMPLE_CONFIG
+        result = adapter.get_detailed_config()
+        denon = next(
+            d for d in result["devices"] if d["label"] == "Denon AVR-X3500H"
+        )
+        vol_group = next(
+            g for g in denon["control_groups"] if g["name"] == "Volume"
+        )
+        assert "VolumeUp" in vol_group["commands"]
+        assert "VolumeDown" in vol_group["commands"]
+        assert "Mute" in vol_group["commands"]
+
+    def test_empty_config(self, adapter):
+        adapter._config = {}
+        result = adapter.get_detailed_config()
+        assert result == {"activities": [], "devices": []}
+
+    def test_device_with_empty_control_group(self, adapter):
+        adapter._config = {
+            "activity": [],
+            "device": [{
+                "id": "123",
+                "label": "TestDevice",
+                "controlGroup": [
+                    {"name": "Empty", "function": []},
+                    {"name": "HasCmds", "function": [{"name": "DoSomething"}]},
+                ],
+            }],
+        }
+        result = adapter.get_detailed_config()
+        dev = result["devices"][0]
+        group_names = [g["name"] for g in dev["control_groups"]]
+        assert "Empty" not in group_names
+        assert "HasCmds" in group_names

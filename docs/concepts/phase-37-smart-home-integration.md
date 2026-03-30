@@ -25,12 +25,13 @@ SmartHomeCommandHandler
 
 ### Unterphasen
 
-| Phase | Titel | Abhängigkeit | Priorität |
-|-------|-------|-------------|-----------|
-| 37.1 | Harmony Hub – vollständige Ablösung | keine | sofort |
-| 37.2 | SmartHomeInterface + Plugin-Registry | 37.1 als Referenzimplementierung | nach 37.1 |
-| 37.3 | Home Assistant Adapter | 37.2 | parallel möglich |
-| 37.4 | Alexa-Integration (Emulated Hue) | 37.1 + 37.3 | nach Umzug |
+| Phase | Titel | Abhängigkeit | Status |
+|-------|-------|-------------|--------|
+| 37.1 | Harmony Hub – vollständige Ablösung | keine | ✓ abgeschlossen |
+| 37.2 | Harmony Remote – Erweiterte Steuerung & Szenen | 37.1 | in Arbeit |
+| 37.3 | SmartHomeInterface + Plugin-Registry | 37.1 als Referenzimplementierung | offen |
+| 37.4 | Home Assistant Adapter | 37.3 | offen |
+| 37.5 | Alexa-Integration (Emulated Hue) | 37.1 + 37.4 | nach Umzug |
 
 **Begründung für sofortige Logitech-Ablösung (36.1):**
 - Letztes Logitech-Server-Update: September 2024

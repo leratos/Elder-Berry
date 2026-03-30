@@ -2932,7 +2932,7 @@ User: "Lies meine Mails und trag den Zahnarzttermin ein"
 - Kein Echtzeit-Sync, kein automatischer Timer, kein Löschen über Sync
 
 ### Nächster Schritt
-- Phase 37 oder nächste Feature-Phase → eigener Chat
+- Phase 37.2 → eigener Chat
 
 ## Abgeschlossen: Phase 37.1 – Harmony Hub: Lokale Steuerung via RPi5 (2026-03-29)
 - Branch: feature/phase-37-1-harmony-hub
@@ -2973,3 +2973,39 @@ User: "Lies meine Mails und trag den Zahnarzttermin ein"
 - Config-Mock-Server Deployment auf Rootserver nötig (Nginx + SSL + DNS-Override)
 - PWA Deployment auf Rootserver nötig (Nginx vhost)
 - Phase 37.2: SmartHomeInterface + Registry (Harmony als Referenzimplementierung)
+
+
+## In Arbeit: Phase 37.2 – Harmony Remote: Erweiterte Steuerung (2026-03-29)
+- Branch: feature/phase-37-2-harmony-remote-erweitert
+- Konzept: docs/concepts/harmony-remote-erweitert.md (aktualisiert)
+- Entscheidung: PWA-Szenen auf RPi5 (Option B), Saleria nutzt dieselbe Szenen-Engine
+
+### Schritt 1: /harmony/config/detailed Endpoint ✓
+- HarmonyAdapter.get_detailed_config() – Devices mit ControlGroups + Commands
+- GET /harmony/config/detailed in Server + Client
+- 14 neue Tests
+
+### Schritt 2: Layout-System + PWA-Rewrite ✓
+- HarmonyLayoutManager: Laden/Speichern/Auto-Generierung von Layouts
+- GET/POST /harmony/layouts Endpoints + Client-Methoden
+- PWA komplett umgebaut: Aktivitäts-Modus + Geräte-Modus (Dropdown)
+- Layout-Rendering: dpad, grid, numpad, transport, colors, inputs
+- Default "Fernsehen"-Layout mit Samsung TV + Denon Receiver
+- 27 neue Tests, 3123 gesamt grün
+
+### Schritt 3: Szenen-Engine + PWA-Szenen-UI ✓
+- HarmonySceneManager: CRUD + sequenzielle Ausführung mit Delay
+- Server: GET/POST /harmony/scenes, POST /harmony/scene/start, DELETE /harmony/scene/{name}
+- Client: harmony_scenes(), harmony_save_scene(), harmony_start_scene(), harmony_delete_scene()
+- PWA: Szenen-Tab mit Liste (Start/Delete) + Editor (Steps mit Device/Cmd/Delay)
+- 44 neue Tests, 3167 gesamt grün
+
+### Schritt 4: Saleria-Anbindung (Matrix → Szenen) ✓
+- HarmonyCommandHandler erweitert: "starte szene {name}" + "szenen liste"
+- Patterns: SCENE_START_PATTERN, SCENE_LIST_PATTERN
+- RobotClient.harmony_start_scene() + harmony_scenes() angebunden
+- HELP_TEXT in remote_commands.py aktualisiert
+- 15 neue Tests (8 Pattern + 7 Commands), 3182 gesamt grün
+
+### Nächster Schritt
+- Phase 37.2 Teil 1+2 komplett, IR-Learning (Teil 2 Schritte 11-13) als eigene Phase

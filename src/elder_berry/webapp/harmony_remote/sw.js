@@ -1,4 +1,4 @@
-const CACHE_NAME = 'harmony-remote-v1';
+const CACHE_NAME = 'harmony-remote-v2';
 const URLS_TO_CACHE = ['/'];
 
 self.addEventListener('install', event => {
