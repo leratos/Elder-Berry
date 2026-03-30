@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="theme-color" content="#7c3aed">
+    <title>Saleria Dashboard</title>
+    <link rel="manifest" href="manifest.json">
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <header class="dashboard-header">
+        <span class="header-title">Saleria</span>
+        <span id="connection-status" class="status-dot"></span>
+    </header>
+
+    <main id="module-container"></main>
+
+    <script>
+        const DASHBOARD_CONFIG = {
+            rpi5_url:  "http://192.168.50.220:8000",
+            tower_url: "http://192.168.50.100:8000",
+            modules:   ["system", "harmony", "saleria"]
+        };
+    </script>
+    <script type="module" src="modules/loader.js"></script>
+
+    <script>
+        if ("serviceWorker" in navigator) {
+            navigator.serviceWorker.register("sw.js")
+                .catch(err => console.warn("SW registration failed:", err));
+        }
+    </script>
+</body>
+</html>
