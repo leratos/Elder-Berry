@@ -26,6 +26,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
+from elder_berry.robot.alexa_skill_handler import AlexaResult, AlexaSkillHandler
 from elder_berry.robot.camera_controller import CameraController
 from elder_berry.robot.harmony_adapter import HarmonyAdapter
 from elder_berry.robot.harmony_layout_manager import HarmonyLayoutManager
@@ -184,6 +185,10 @@ class RobotServer:
         self._hostname = hostname
         self._project_root = project_root
         self._service_name = service_name
+        self._alexa = AlexaSkillHandler(
+            harmony=harmony,
+            harmony_scenes=harmony_scenes,
+        )
         self._start_time = time.monotonic()
 
         @asynccontextmanager
@@ -665,3 +670,20 @@ class RobotServer:
                 )
             success = await self._harmony.power_off()
             return {"success": success}
+
+        # --- Alexa Skill Endpoint ---
+
+        @self.app.post("/saleria")
+        async def alexa_saleria(request: Request) -> dict:
+            """Alexa Custom Skill Endpoint.
+
+            Empfaengt Alexa-JSON, extrahiert Befehlstext,
+            dispatcht an HarmonyAdapter, gibt Alexa-Response zurueck.
+            """
+            try:
+                body = await request.json()
+            except Exception:
+                return self._alexa.build_alexa_response(
+                    AlexaResult(text="Ungültige Anfrage.", success=False),
+                )
+            return await self._alexa.handle_request(body)
