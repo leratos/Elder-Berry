@@ -72,6 +72,8 @@ class BridgeMessageHandler:
         # Mutable State (gesetzt von Bridge)
         self.restart_cooldown_until: float = 0.0
         self._scheduler_mgr: SchedulerManager | None = None
+        # Guard gegen Endlosrekursion: LLM → remote_command → fallthrough → LLM → ...
+        self._in_llm_command: set[str] = set()
 
     # ------------------------------------------------------------------
     # Remote Commands
@@ -99,7 +101,15 @@ class BridgeMessageHandler:
             )
 
             # Fallthrough: Command erkannt aber nichts gefunden → LLM
+            # ABER: nicht wenn wir bereits aus einem LLM-initiierten Command
+            # kommen (verhindert Endlosrekursion LLM→Command→fallthrough→LLM)
             if result.fallthrough:
+                if msg.sender in self._in_llm_command:
+                    logger.warning(
+                        "Fallthrough '%s' blockiert (LLM-initiiert, "
+                        "Rekursions-Guard)", command,
+                    )
+                    return
                 logger.debug("Command '%s' fallthrough → LLM", command)
                 await self.handle_assistant_message(msg)
                 return
@@ -770,7 +780,12 @@ class BridgeMessageHandler:
                 body=command_text,
                 timestamp=msg.timestamp,
             )
-            await self.handle_remote_command(cmd_msg, cmd)
+            # Rekursions-Guard setzen: verhindert fallthrough → LLM → Endlosschleife
+            self._in_llm_command.add(msg.sender)
+            try:
+                await self.handle_remote_command(cmd_msg, cmd)
+            finally:
+                self._in_llm_command.discard(msg.sender)
             return
 
         # Parse fehlgeschlagen → Retry mit Feedback
