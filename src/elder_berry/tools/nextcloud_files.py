@@ -13,6 +13,7 @@ import xml.etree.ElementTree as ET
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING
+from urllib.parse import unquote
 
 import httpx
 
@@ -285,12 +286,12 @@ class NextcloudFilesClient:
                 and restype.find(f"{_DAV}collection") is not None
             )
 
-            # Display name
+            # Display name (href ist URL-encoded, displayname nicht)
             displayname_el = prop.find(f"{_DAV}displayname")
             name = (
                 displayname_el.text
                 if displayname_el is not None and displayname_el.text
-                else href_el.text.rstrip("/").split("/")[-1]
+                else unquote(href_el.text.rstrip("/").split("/")[-1])
             )
 
             # Size
@@ -301,8 +302,8 @@ class NextcloudFilesClient:
             mod_el = prop.find(f"{_DAV}getlastmodified")
             modified = mod_el.text if mod_el is not None and mod_el.text else ""
 
-            # Path: extract relative path from href
-            href = href_el.text
+            # Path: extract relative path from href (URL-decode!)
+            href = unquote(href_el.text)
             # href looks like /remote.php/dav/files/user/some/path
             dav_prefix = f"/remote.php/dav/files/{self._user}/"
             if dav_prefix in href:
