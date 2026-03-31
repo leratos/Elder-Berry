@@ -50,7 +50,7 @@ def handler_no_harmony():
     return AlexaSkillHandler(harmony=None, harmony_scenes=None)
 
 
-def _intent_request(command_text: str) -> dict:
+def _intent_request(intent_name: str) -> dict:
     """Baut ein minimales Alexa IntentRequest."""
     return {
         "version": "1.0",
@@ -58,10 +58,8 @@ def _intent_request(command_text: str) -> dict:
         "request": {
             "type": "IntentRequest",
             "intent": {
-                "name": "SaleriaCommand",
-                "slots": {
-                    "CommandText": {"value": command_text},
-                },
+                "name": intent_name,
+                "slots": {},
             },
         },
     }
@@ -90,51 +88,36 @@ def _session_ended_request() -> dict:
 class TestAlexaRequestParsing:
     """Tests fuer parse_alexa_request()."""
 
-    def test_intent_request_extracts_text(self, handler):
-        req = _intent_request("fernsehen an")
-        rtype, text = handler.parse_alexa_request(req)
+    def test_intent_request_extracts_intent(self, handler):
+        req = _intent_request("TVAnIntent")
+        rtype, intent = handler.parse_alexa_request(req)
         assert rtype == "IntentRequest"
-        assert text == "fernsehen an"
+        assert intent == "TVAnIntent"
 
     def test_launch_request(self, handler):
         req = _launch_request()
-        rtype, text = handler.parse_alexa_request(req)
+        rtype, intent = handler.parse_alexa_request(req)
         assert rtype == "LaunchRequest"
-        assert text == ""
+        assert intent == ""
 
     def test_session_ended_request(self, handler):
         req = _session_ended_request()
-        rtype, text = handler.parse_alexa_request(req)
+        rtype, intent = handler.parse_alexa_request(req)
         assert rtype == "SessionEndedRequest"
-        assert text == ""
+        assert intent == ""
 
-    def test_missing_slot_returns_empty(self, handler):
+    def test_missing_intent_returns_empty(self, handler):
         req = {
             "version": "1.0",
             "session": {},
             "request": {
                 "type": "IntentRequest",
-                "intent": {"name": "SaleriaCommand", "slots": {}},
+                "intent": {},
             },
         }
-        rtype, text = handler.parse_alexa_request(req)
+        rtype, intent = handler.parse_alexa_request(req)
         assert rtype == "IntentRequest"
-        assert text == ""
-
-    def test_empty_slot_value(self, handler):
-        req = {
-            "version": "1.0",
-            "session": {},
-            "request": {
-                "type": "IntentRequest",
-                "intent": {
-                    "name": "SaleriaCommand",
-                    "slots": {"CommandText": {"value": "  "}},
-                },
-            },
-        }
-        rtype, text = handler.parse_alexa_request(req)
-        assert text == ""
+        assert intent == ""
 
 
 # -- Response Building ----------------------------------------------------- #
@@ -167,144 +150,127 @@ class TestLaunchRequest:
         assert resp["response"]["shouldEndSession"] is False
 
 
-# -- Activity Commands ----------------------------------------------------- #
+# -- Activity Intents ------------------------------------------------------ #
 
-class TestActivityCommands:
+class TestActivityIntents:
 
-    def test_fernsehen_an(self, handler, harmony):
-        resp = _run(handler.handle_request(_intent_request("fernsehen an")))
+    def test_tv_an_intent(self, handler, harmony):
+        resp = _run(handler.handle_request(_intent_request("TVAnIntent")))
         text = resp["response"]["outputSpeech"]["text"]
         assert "eingeschaltet" in text.lower() or "fernsehen" in text.lower()
         harmony.start_activity.assert_called_once_with("Fernsehen")
 
-    def test_tv_an(self, handler, harmony):
-        _run(handler.handle_request(_intent_request("tv an")))
-        harmony.start_activity.assert_called_once_with("Fernsehen")
-
-    def test_musik_an(self, handler, harmony):
-        _run(handler.handle_request(_intent_request("musik an")))
+    def test_musik_an_intent(self, handler, harmony):
+        _run(handler.handle_request(_intent_request("MusikAnIntent")))
         harmony.start_activity.assert_called_once_with("Musik")
 
-    def test_gaming_an(self, handler, harmony):
-        _run(handler.handle_request(_intent_request("gaming an")))
+    def test_gaming_an_intent(self, handler, harmony):
+        _run(handler.handle_request(_intent_request("GamingAnIntent")))
         harmony.start_activity.assert_called_once_with("Gaming")
-
-    def test_fernseher_an(self, handler, harmony):
-        _run(handler.handle_request(_intent_request("fernseher an")))
-        harmony.start_activity.assert_called_once_with("Fernsehen")
 
     def test_activity_failure(self, handler, harmony):
         harmony.start_activity = AsyncMock(return_value=False)
-        resp = _run(handler.handle_request(_intent_request("fernsehen an")))
+        resp = _run(handler.handle_request(_intent_request("TVAnIntent")))
         text = resp["response"]["outputSpeech"]["text"]
         assert "nicht" in text.lower() or "fehl" in text.lower()
 
     def test_activity_exception(self, handler, harmony):
         harmony.start_activity = AsyncMock(side_effect=RuntimeError("Hub offline"))
-        resp = _run(handler.handle_request(_intent_request("fernsehen an")))
+        resp = _run(handler.handle_request(_intent_request("TVAnIntent")))
         text = resp["response"]["outputSpeech"]["text"]
         assert "fehler" in text.lower()
 
 
-# -- All Off --------------------------------------------------------------- #
+# -- AllesAusIntent -------------------------------------------------------- #
 
-class TestAllOff:
+class TestAllesAusIntent:
 
     def test_alles_aus(self, handler, harmony):
-        resp = _run(handler.handle_request(_intent_request("alles aus")))
+        resp = _run(handler.handle_request(_intent_request("AllesAusIntent")))
         text = resp["response"]["outputSpeech"]["text"]
         assert "ausgeschaltet" in text.lower() or "aus" in text.lower()
         harmony.power_off.assert_called_once()
 
-    def test_harmony_aus(self, handler, harmony):
-        _run(handler.handle_request(_intent_request("harmony aus")))
-        harmony.power_off.assert_called_once()
-
-    def test_aus(self, handler, harmony):
-        _run(handler.handle_request(_intent_request("aus")))
-        harmony.power_off.assert_called_once()
-
     def test_all_off_failure(self, handler, harmony):
         harmony.power_off = AsyncMock(return_value=False)
-        resp = _run(handler.handle_request(_intent_request("alles aus")))
+        resp = _run(handler.handle_request(_intent_request("AllesAusIntent")))
         text = resp["response"]["outputSpeech"]["text"]
         assert "fehlgeschlagen" in text.lower()
 
 
-# -- Volume ---------------------------------------------------------------- #
+# -- Volume Intents -------------------------------------------------------- #
 
-class TestVolume:
+class TestVolumeIntents:
 
     def test_lauter(self, handler, harmony):
-        resp = _run(handler.handle_request(_intent_request("lauter")))
+        resp = _run(handler.handle_request(_intent_request("LauterIntent")))
         text = resp["response"]["outputSpeech"]["text"]
         assert "lauter" in text.lower()
         harmony.send_command.assert_called_once_with(
             device="Samsung TV", command="VolumeUp",
         )
 
-    def test_mach_lauter(self, handler, harmony):
-        _run(handler.handle_request(_intent_request("mach lauter")))
-        harmony.send_command.assert_called_once_with(
-            device="Samsung TV", command="VolumeUp",
-        )
-
     def test_leiser(self, handler, harmony):
-        _run(handler.handle_request(_intent_request("leiser")))
+        _run(handler.handle_request(_intent_request("LeiserIntent")))
         harmony.send_command.assert_called_once_with(
             device="Samsung TV", command="VolumeDown",
         )
 
     def test_stumm(self, handler, harmony):
-        _run(handler.handle_request(_intent_request("stumm")))
+        _run(handler.handle_request(_intent_request("StummIntent")))
         harmony.send_command.assert_called_once_with(
             device="Samsung TV", command="Mute",
         )
 
     def test_volume_failure(self, handler, harmony):
         harmony.send_command = AsyncMock(return_value=False)
-        resp = _run(handler.handle_request(_intent_request("lauter")))
+        resp = _run(handler.handle_request(_intent_request("LauterIntent")))
         text = resp["response"]["outputSpeech"]["text"]
         assert "fehlgeschlagen" in text.lower()
 
 
-# -- Status ---------------------------------------------------------------- #
+# -- StatusIntent ---------------------------------------------------------- #
 
-class TestStatus:
+class TestStatusIntent:
 
     def test_was_laeuft(self, handler, harmony):
-        resp = _run(handler.handle_request(_intent_request("was läuft")))
+        resp = _run(handler.handle_request(_intent_request("StatusIntent")))
         text = resp["response"]["outputSpeech"]["text"]
         assert "fernsehen" in text.lower()
 
-    def test_was_ist_an(self, handler, harmony):
-        _run(handler.handle_request(_intent_request("was ist an")))
-        harmony.get_current_activity.assert_called_once()
-
     def test_nothing_active(self, handler, harmony):
         harmony.get_current_activity = AsyncMock(return_value=None)
-        resp = _run(handler.handle_request(_intent_request("was läuft")))
+        resp = _run(handler.handle_request(_intent_request("StatusIntent")))
         text = resp["response"]["outputSpeech"]["text"]
         assert "aus" in text.lower() or "nichts" in text.lower()
 
 
-# -- Scenes ---------------------------------------------------------------- #
+# -- Amazon Built-in Intents ----------------------------------------------- #
 
-class TestScenes:
+class TestBuiltinIntents:
 
-    def test_scene_start(self, handler, harmony_scenes):
-        resp = _run(handler.handle_request(_intent_request("starte szene Gaming")))
+    def test_cancel_intent(self, handler):
+        resp = _run(handler.handle_request(_intent_request("AMAZON.CancelIntent")))
         text = resp["response"]["outputSpeech"]["text"]
-        assert "gaming" in text.lower()
-        harmony_scenes.start_scene.assert_called_once_with("Gaming")
+        assert "tschüss" in text.lower()
+        assert resp["response"]["shouldEndSession"] is True
 
-    def test_scene_failure(self, handler, harmony_scenes):
-        harmony_scenes.start_scene = AsyncMock(
-            side_effect=RuntimeError("not found"),
-        )
-        resp = _run(handler.handle_request(_intent_request("szene Test")))
+    def test_stop_intent(self, handler):
+        resp = _run(handler.handle_request(_intent_request("AMAZON.StopIntent")))
         text = resp["response"]["outputSpeech"]["text"]
-        assert "nicht" in text.lower()
+        assert "tschüss" in text.lower()
+
+    def test_help_intent(self, handler):
+        resp = _run(handler.handle_request(_intent_request("AMAZON.HelpIntent")))
+        text = resp["response"]["outputSpeech"]["text"]
+        assert "fernsehen" in text.lower()
+        assert resp["response"]["shouldEndSession"] is False
+
+    def test_fallback_intent(self, handler):
+        resp = _run(handler.handle_request(_intent_request("AMAZON.FallbackIntent")))
+        text = resp["response"]["outputSpeech"]["text"]
+        assert "nicht verstanden" in text.lower()
+        assert resp["response"]["shouldEndSession"] is False
 
 
 # -- No Harmony ------------------------------------------------------------ #
@@ -313,41 +279,36 @@ class TestNoHarmony:
 
     def test_activity_without_harmony(self, handler_no_harmony):
         resp = _run(handler_no_harmony.handle_request(
-            _intent_request("fernsehen an"),
+            _intent_request("TVAnIntent"),
         ))
         text = resp["response"]["outputSpeech"]["text"]
         assert "nicht verfügbar" in text.lower()
 
     def test_off_without_harmony(self, handler_no_harmony):
         resp = _run(handler_no_harmony.handle_request(
-            _intent_request("alles aus"),
+            _intent_request("AllesAusIntent"),
         ))
         text = resp["response"]["outputSpeech"]["text"]
         assert "nicht verfügbar" in text.lower()
 
     def test_volume_without_harmony(self, handler_no_harmony):
         resp = _run(handler_no_harmony.handle_request(
-            _intent_request("lauter"),
+            _intent_request("LauterIntent"),
         ))
         text = resp["response"]["outputSpeech"]["text"]
         assert "nicht verfügbar" in text.lower()
 
 
-# -- Unknown Command ------------------------------------------------------- #
+# -- Unknown Intent -------------------------------------------------------- #
 
-class TestUnknownCommand:
+class TestUnknownIntent:
 
-    def test_unknown_command(self, handler):
+    def test_unknown_intent(self, handler):
         resp = _run(handler.handle_request(
-            _intent_request("bestell mir eine Pizza"),
+            _intent_request("PizzaBestellenIntent"),
         ))
         text = resp["response"]["outputSpeech"]["text"]
-        assert "nicht erkannt" in text.lower()
-
-    def test_empty_command(self, handler):
-        resp = _run(handler.handle_request(_intent_request("")))
-        text = resp["response"]["outputSpeech"]["text"]
-        assert "nicht verstanden" in text.lower() or "beispiel" in text.lower()
+        assert "kenne ich" in text.lower() or "nicht" in text.lower()
 
 
 # -- Session End ----------------------------------------------------------- #
@@ -360,5 +321,5 @@ class TestSessionEnd:
 
     def test_all_responses_end_session(self, handler):
         """Befehle beenden die Session (kein Follow-up noetig)."""
-        resp = _run(handler.handle_request(_intent_request("fernsehen an")))
+        resp = _run(handler.handle_request(_intent_request("TVAnIntent")))
         assert resp["response"]["shouldEndSession"] is True

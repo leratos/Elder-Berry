@@ -1,75 +1,34 @@
 """AlexaSkillHandler -- Alexa Custom Skill Endpoint fuer RPi5.
 
-Empfaengt Intents von Amazon Alexa, extrahiert den Befehlstext,
-dispatcht an HarmonyAdapter und gibt Alexa-Response zurueck.
+Empfaengt Intents von Amazon Alexa, dispatcht an HarmonyAdapter
+und gibt Alexa-Response zurueck.
 
 Flow:
   Echo -> Amazon STT -> Rootserver (HTTPS) -> SSH-Tunnel -> RPi5:8000
   -> AlexaSkillHandler -> HarmonyAdapter -> Harmony Hub -> IR -> Geraet
 
-Sicherheit:
-  Alexa-Signatur-Validierung ist fuer Dev-Skills nicht zwingend.
-  Kann spaeter per ask-sdk-core ergaenzt werden.
+Routing: Alexa sendet Intent-Namen (TVAnIntent, AllesAusIntent, etc.),
+kein Freitext-Slot. Dadurch keine Carrier-Phrase noetig.
 """
 from __future__ import annotations
 
 import logging
-import re
 from dataclasses import dataclass
 from typing import Any
 
 logger = logging.getLogger(__name__)
 
-# -- Activity-Mapping (Kurzformen -> Harmony-Aktivitaetsnamen) ------------- #
-
-_ACTIVITY_MAP: dict[str, str] = {
-    "fernsehen": "Fernsehen",
-    "tv": "Fernsehen",
-    "fernseher": "Fernsehen",
-    "musik": "Musik",
-    "radio": "Musik",
-    "gaming": "Gaming",
-    "film": "Fernsehen",
-    "kino": "Fernsehen",
-}
-
 # -- Geraet fuer Lautstaerke (Samsung TV steuert Denon via ARC/CEC) ------- #
 
 _VOLUME_DEVICE = "Samsung TV"
 
-# -- Patterns -------------------------------------------------------------- #
+# -- Intent -> Activity Mapping -------------------------------------------- #
 
-ACTIVITY_ON_PATTERN = re.compile(
-    r"^(?:starte?\s+|mach\s+)?(?P<activity>fernsehen|fernseher|tv|musik|"
-    r"radio|gaming|film|kino)\s+an$",
-    re.IGNORECASE,
-)
-ALL_OFF_PATTERN = re.compile(
-    r"^(?:alles?\s+aus|harmony\s+aus|schalte?\s+alles?\s+aus|aus)$",
-    re.IGNORECASE,
-)
-VOLUME_UP_PATTERN = re.compile(
-    r"^(?:mach\s+)?lauter$", re.IGNORECASE,
-)
-VOLUME_DOWN_PATTERN = re.compile(
-    r"^(?:mach\s+)?leiser$", re.IGNORECASE,
-)
-MUTE_PATTERN = re.compile(
-    r"^(?:stummschalten|stumm)$", re.IGNORECASE,
-)
-CURRENT_PATTERN = re.compile(
-    r"^(?:was\s+(?:l[äa]uft|ist\s+an)|status)$",
-    re.IGNORECASE,
-)
-SCENE_START_PATTERN = re.compile(
-    r"^(?:starte?\s+)?szene\s+(?P<scene>.+)$", re.IGNORECASE,
-)
-LIGHT_ON_PATTERN = re.compile(
-    r"^(?:licht|lampe)\s+an$", re.IGNORECASE,
-)
-LIGHT_OFF_PATTERN = re.compile(
-    r"^(?:licht|lampe)\s+aus$", re.IGNORECASE,
-)
+_INTENT_ACTIVITY_MAP: dict[str, str] = {
+    "TVAnIntent": "Fernsehen",
+    "MusikAnIntent": "Musik",
+    "GamingAnIntent": "Gaming",
+}
 
 
 @dataclass
@@ -103,14 +62,14 @@ class AlexaSkillHandler:
     # -- Alexa Request Parsing --------------------------------------------- #
 
     def parse_alexa_request(self, body: dict) -> tuple[str, str]:
-        """Extrahiert Request-Typ und Command-Text aus Alexa-JSON.
+        """Extrahiert Request-Typ und Intent-Name aus Alexa-JSON.
 
         Returns
         -------
         tuple[str, str]
-            (request_type, command_text)
+            (request_type, intent_name)
             request_type: "LaunchRequest", "IntentRequest", "SessionEndedRequest"
-            command_text: extrahierter Slot-Text oder leerer String
+            intent_name: z.B. "TVAnIntent" oder leerer String
         """
         request = body.get("request", {})
         request_type = request.get("type", "")
@@ -119,11 +78,9 @@ class AlexaSkillHandler:
             return request_type, ""
 
         intent = request.get("intent", {})
-        slots = intent.get("slots", {})
-        command_slot = slots.get("CommandText", {})
-        command_text = command_slot.get("value", "").strip()
+        intent_name = intent.get("name", "")
 
-        return request_type, command_text
+        return request_type, intent_name
 
     # -- Alexa Response Building ------------------------------------------- #
 
@@ -150,7 +107,7 @@ class AlexaSkillHandler:
         dict
             Alexa-Response-JSON.
         """
-        request_type, command_text = self.parse_alexa_request(body)
+        request_type, intent_name = self.parse_alexa_request(body)
 
         if request_type == "LaunchRequest":
             result = AlexaResult(
@@ -169,64 +126,68 @@ class AlexaSkillHandler:
             )
             return self.build_alexa_response(result)
 
-        if not command_text:
+        # Amazon Built-in Intents
+        if intent_name in ("AMAZON.CancelIntent", "AMAZON.StopIntent"):
+            return self.build_alexa_response(AlexaResult(text="Tschüss."))
+
+        if intent_name == "AMAZON.HelpIntent":
             result = AlexaResult(
-                text="Ich habe keinen Befehl verstanden. "
+                text="Du kannst sagen: Fernsehen an, Musik an, "
+                     "alles aus, lauter, leiser, stumm, oder was läuft.",
+                end_session=False,
+            )
+            return self.build_alexa_response(result)
+
+        if intent_name == "AMAZON.FallbackIntent":
+            result = AlexaResult(
+                text="Das habe ich nicht verstanden. "
                      "Sag zum Beispiel: Fernsehen an.",
                 success=False,
                 end_session=False,
             )
             return self.build_alexa_response(result)
 
-        logger.info("Alexa-Befehl: '%s'", command_text)
-        result = await self._dispatch_command(command_text)
+        logger.info("Alexa-Intent: '%s'", intent_name)
+        result = await self._dispatch_intent(intent_name)
         return self.build_alexa_response(result)
 
-    async def _dispatch_command(self, text: str) -> AlexaResult:
-        """Matcht Text gegen Patterns und fuehrt Command aus."""
-        normalized = text.strip().lower()
+    async def _dispatch_intent(self, intent_name: str) -> AlexaResult:
+        """Dispatcht Intent an passenden Handler."""
 
-        # Activity on
-        match = ACTIVITY_ON_PATTERN.match(normalized)
-        if match:
-            return await self._cmd_activity_on(match.group("activity"))
+        # Activity on (TV, Musik, Gaming)
+        if intent_name in _INTENT_ACTIVITY_MAP:
+            activity = _INTENT_ACTIVITY_MAP[intent_name]
+            return await self._cmd_activity_on(activity)
 
         # All off
-        if ALL_OFF_PATTERN.match(normalized):
+        if intent_name == "AllesAusIntent":
             return await self._cmd_all_off()
 
         # Volume
-        if VOLUME_UP_PATTERN.match(normalized):
+        if intent_name == "LauterIntent":
             return await self._cmd_volume("VolumeUp", "Lauter")
 
-        if VOLUME_DOWN_PATTERN.match(normalized):
+        if intent_name == "LeiserIntent":
             return await self._cmd_volume("VolumeDown", "Leiser")
 
-        if MUTE_PATTERN.match(normalized):
+        if intent_name == "StummIntent":
             return await self._cmd_volume("Mute", "Stummgeschaltet")
 
         # Status
-        if CURRENT_PATTERN.match(normalized):
+        if intent_name == "StatusIntent":
             return await self._cmd_current()
 
-        # Scene
-        match = SCENE_START_PATTERN.match(text.strip())
-        if match:
-            return await self._cmd_scene_start(match.group("scene").strip())
-
         return AlexaResult(
-            text=f"Befehl '{text}' nicht erkannt. "
-                 "Versuch zum Beispiel: Fernsehen an, alles aus, oder lauter.",
+            text="Diesen Befehl kenne ich noch nicht.",
             success=False,
         )
 
     # -- Harmony Commands -------------------------------------------------- #
 
-    async def _cmd_activity_on(self, activity_key: str) -> AlexaResult:
+    async def _cmd_activity_on(self, activity_name: str) -> AlexaResult:
         if not self._harmony:
             return AlexaResult(text="Harmony Hub nicht verfügbar.", success=False)
 
-        activity_name = _ACTIVITY_MAP.get(activity_key.lower(), activity_key.title())
         try:
             success = await self._harmony.start_activity(activity_name)
             if success:
@@ -279,21 +240,3 @@ class AlexaSkillHandler:
         except Exception as e:
             logger.error("Alexa current Fehler: %s", e)
             return AlexaResult(text="Status konnte nicht abgefragt werden.", success=False)
-
-    async def _cmd_scene_start(self, scene_name: str) -> AlexaResult:
-        if not self._harmony_scenes:
-            return AlexaResult(text="Szenen nicht verfügbar.", success=False)
-
-        try:
-            result = await self._harmony_scenes.start_scene(scene_name)
-            ok = result.get("steps_ok", 0)
-            total = result.get("steps_total", 0)
-            return AlexaResult(
-                text=f"Szene {scene_name} gestartet. {ok} von {total} Schritten erfolgreich.",
-            )
-        except Exception as e:
-            logger.error("Alexa scene_start Fehler: %s", e)
-            return AlexaResult(
-                text=f"Szene {scene_name} konnte nicht gestartet werden.",
-                success=False,
-            )
