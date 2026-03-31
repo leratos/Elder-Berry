@@ -56,7 +56,7 @@ CONTACT_WHO_PATTERN = re.compile(
 )
 
 CONTACT_LOOKUP_PATTERN = re.compile(
-    r"^(?:was\s+wei(?:ss|ß)t\s+du\s+(?:zu|über)\s+(?:(?:meinen?|den|dem)\s+)?(?:kontakt\s+)?(.+?)"
+    r"^(?:was\s+wei(?:ss|ß)t?\s+du\s+(?:zu|über)\s+(?:(?:meinen?|den|dem)\s+)?(?:kontakt\s+)?(.+?)"
     r"|(?:zeig|info|details)\s+(?:mir\s+)?(?:zu\s+|von\s+)?(?:kontakt\s+)?(.+?)"
     r"|kontakt\s+(?:info\s+)?(?:#(\d+)|(\S+.+?)))\??\s*$",
     re.IGNORECASE,
