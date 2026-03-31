@@ -245,6 +245,8 @@ class BridgeMessageHandler:
         """Führt eine bestätigte PendingAction aus."""
         if action.action_type in ("mail_reply", "mail_reply_modify"):
             await self._execute_mail_send(msg, action)
+        elif action.action_type == "nextcloud_setup":
+            await self._execute_nextcloud_setup(msg, action)
         else:
             logger.warning("Unbekannter PendingAction-Typ: %s", action.action_type)
             await self._channel.send_text(
@@ -310,6 +312,92 @@ class BridgeMessageHandler:
             await self._channel.send_text(
                 msg.room_id,
                 f"\u274c Fehler beim Senden: {type(e).__name__}",
+            )
+            self._pending.clear(msg.sender)
+
+    async def _execute_nextcloud_setup(
+        self, msg: IncomingMessage, action: PendingAction,
+    ) -> None:
+        """Führt das bestätigte Nextcloud-Setup aus (löschen + Ordner anlegen)."""
+        if not self._nc_files:
+            await self._channel.send_text(
+                msg.room_id, "Nextcloud nicht konfiguriert.",
+            )
+            self._pending.clear(msg.sender)
+            return
+
+        to_delete: list[str] = action.data.get("to_delete", [])
+        to_create: list[str] = action.data.get("to_create", [])
+
+        await self._channel.send_text(
+            msg.room_id, "Nextcloud-Setup wird ausgeführt …",
+        )
+
+        try:
+            from elder_berry.tools.nextcloud_files import NextcloudError
+
+            loop = asyncio.get_running_loop()
+            deleted: list[str] = []
+            created: list[str] = []
+            errors: list[str] = []
+
+            # 1. Löschen
+            for name in to_delete:
+                try:
+                    await asyncio.wait_for(
+                        loop.run_in_executor(
+                            None, self._nc_files.delete, name,
+                        ),
+                        timeout=15.0,
+                    )
+                    deleted.append(name)
+                except NextcloudError as e:
+                    errors.append(f"Löschen '{name}': {e}")
+                except asyncio.TimeoutError:
+                    errors.append(f"Löschen '{name}': Timeout")
+
+            # 2. Ordner anlegen (Parent-first Reihenfolge)
+            for path in to_create:
+                try:
+                    is_new = await asyncio.wait_for(
+                        loop.run_in_executor(
+                            None, self._nc_files.mkdir, path,
+                        ),
+                        timeout=10.0,
+                    )
+                    if is_new:
+                        created.append(path)
+                except NextcloudError as e:
+                    errors.append(f"mkdir '{path}': {e}")
+                except asyncio.TimeoutError:
+                    errors.append(f"mkdir '{path}': Timeout")
+
+            # Ergebnis
+            lines = ["\u2705 Nextcloud-Setup abgeschlossen.\n"]
+            if deleted:
+                lines.append(f"Gelöscht: {', '.join(deleted)}")
+            if created:
+                lines.append(f"Erstellt: {len(created)} Ordner")
+            if errors:
+                lines.append(f"\n\u26a0\ufe0f Fehler ({len(errors)}):")
+                for err in errors:
+                    lines.append(f"  • {err}")
+
+            self._pending.clear(msg.sender)
+            await self._channel.send_text(msg.room_id, "\n".join(lines))
+
+            self._chat_history.add(msg.sender, "user", "ja")
+            self._chat_history.add(
+                msg.sender, "assistant",
+                f"Nextcloud-Setup: {len(deleted)} gelöscht, "
+                f"{len(created)} Ordner erstellt",
+            )
+
+        except Exception as e:
+            logger.error("Nextcloud-Setup fehlgeschlagen: %s", e)
+            await self._channel.send_text(
+                msg.room_id,
+                f"\u274c Nextcloud-Setup fehlgeschlagen: {type(e).__name__}",
             )
             self._pending.clear(msg.sender)
 

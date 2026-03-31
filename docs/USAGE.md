@@ -204,6 +204,11 @@ Dateien werden automatisch auf Nextcloud hochgeladen und als Share-Link geteilt
 | `cloud suche <query>` | Dateien suchen (Dateiname) |
 | `cloud inhalt <query>` | Dateiinhalte durchsuchen (Volltextsuche) |
 | `cloud link <pfad>` | Öffentlichen Share-Link erstellen |
+| `richte nextcloud ein` | Standard-Dateien löschen + Ordnerstruktur anlegen |
+
+Varianten für Setup: "nextcloud setup", "nextcloud-setup", "cloud einrichten".
+Der Befehl zeigt erst eine Vorschau (was gelöscht/erstellt wird) und wartet auf
+Bestätigung ("ja"/"nein") bevor Änderungen vorgenommen werden.
 
 ## Prozesse & System
 

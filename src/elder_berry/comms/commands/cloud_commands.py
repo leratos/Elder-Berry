@@ -24,6 +24,11 @@ logger = logging.getLogger(__name__)
 
 # ── Patterns ────────────────────────────────────────────────────────────
 
+NEXTCLOUD_SETUP_PATTERN = re.compile(
+    r"(?:richte?\s+nextcloud\s+ein|nextcloud[\s-]*setup|cloud\s+einrichten)",
+    re.IGNORECASE,
+)
+
 CLOUD_UPLOAD_PATTERN = re.compile(
     r"^cloud\s+upload\s+([a-zA-Z]:\\[^\s]+|/[^\s]+)(?:\s+(.+))?$",
     re.IGNORECASE,
@@ -64,6 +69,36 @@ def _format_size(size_bytes: int) -> str:
     return f"{size_bytes} B"
 
 
+# Standard-Nextcloud-Dateien und -Ordner die beim Setup gelöscht werden
+_NC_DEFAULT_ITEMS = [
+    "Nextcloud intro.mp4",
+    "Nextcloud.png",
+    "Documents",
+    "Photos",
+    "Talk",
+]
+
+# Ziel-Ordnerstruktur (Reihenfolge: Parent vor Child — wichtig für MKCOL)
+_NC_TARGET_DIRS = [
+    "Manuale",
+    "Manuale/Elektronik",
+    "Manuale/3D-Druck",
+    "Manuale/Netzwerk",
+    "Manuale/Smart-Home",
+    "Manuale/Sonstiges",
+    "Projekte",
+    "Projekte/Elder-Berry",
+    "Dokumente",
+    "Dokumente/Rechnungen",
+    "Dokumente/Vertraege",
+    "Dokumente/Behoerden",
+    "Saleria",
+    "Saleria/Notizen",
+    "Saleria/Berichte",
+    "Archiv",
+]
+
+
 class CloudCommandHandler(CommandHandler):
     """Handler for Nextcloud cloud file commands."""
 
@@ -78,6 +113,7 @@ class CloudCommandHandler(CommandHandler):
     @property
     def patterns(self) -> list[tuple[re.Pattern, str, bool, bool]]:
         return [
+            (NEXTCLOUD_SETUP_PATTERN, "nextcloud_setup", False, True),
             (CLOUD_UPLOAD_PATTERN, "cloud_upload", True, False),
             (CLOUD_DOWNLOAD_PATTERN, "cloud_download", False, False),
             (CLOUD_LIST_PATTERN, "cloud_list", False, False),
@@ -95,6 +131,7 @@ class CloudCommandHandler(CommandHandler):
             "cloud suche <query>: Dateien in Nextcloud suchen (Dateiname)",
             "cloud inhalt <query>: Dateiinhalte durchsuchen (Volltextsuche)",
             "cloud link <pfad>: Öffentlichen Share-Link erstellen",
+            "richte nextcloud ein: Standard-Dateien löschen + Ordnerstruktur anlegen",
         ]
 
     @property
@@ -106,6 +143,10 @@ class CloudCommandHandler(CommandHandler):
                 "cloud inhalt", "cloud durchsuche", "cloud volltext",
                 "nextcloud inhalt", "nextcloud durchsuche",
             ],
+            "nextcloud_setup": [
+                "nextcloud einrichten", "richte nextcloud ein",
+                "cloud einrichten", "nextcloud setup",
+            ],
         }
 
     def execute(self, command: str, raw_text: str) -> CommandResult:
@@ -116,6 +157,8 @@ class CloudCommandHandler(CommandHandler):
                 text="Nextcloud nicht konfiguriert.",
             )
 
+        if command == "nextcloud_setup":
+            return self._cmd_nextcloud_setup()
         if command == "cloud_upload":
             return self._cmd_upload(raw_text)
         if command == "cloud_download":
@@ -391,3 +434,45 @@ class CloudCommandHandler(CommandHandler):
                 success=False,
                 text=f"Share-Link fehlgeschlagen: {e}",
             )
+
+    # ── Nextcloud Setup ────────────────────────────────────────────────
+
+    def _cmd_nextcloud_setup(self) -> CommandResult:
+        """Phase 1: Root scannen, Vorschau zeigen, Bestätigung anfordern."""
+        try:
+            root_entries = self._nc.list_dir("/")
+        except Exception as e:
+            logger.error("Nextcloud setup scan failed: %s", e)
+            return CommandResult(
+                command="nextcloud_setup",
+                success=False,
+                text=f"Nextcloud-Root konnte nicht gelesen werden: {e}",
+            )
+
+        existing_names = {e.name for e in root_entries}
+        to_delete = [name for name in _NC_DEFAULT_ITEMS if name in existing_names]
+
+        lines = ["Ich werde folgende Änderungen an deiner Nextcloud vornehmen:\n"]
+        if to_delete:
+            lines.append("**Löschen:**")
+            for name in to_delete:
+                lines.append(f"  • {name}")
+        else:
+            lines.append("*(Keine Standard-Dateien gefunden — nichts zu löschen)*")
+
+        lines.append("\n**Ordnerstruktur anlegen:**")
+        for d in _NC_TARGET_DIRS:
+            lines.append(f"  • {d}/")
+
+        lines.append("\nBestätigen? (ja/nein)")
+
+        return CommandResult(
+            command="nextcloud_setup",
+            success=True,
+            text="\n".join(lines),
+            pending_confirmation=True,
+            pending_data={
+                "to_delete": to_delete,
+                "to_create": list(_NC_TARGET_DIRS),
+            },
+        )

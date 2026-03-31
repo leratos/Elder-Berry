@@ -12,7 +12,10 @@ from elder_berry.comms.commands.cloud_commands import (
     CLOUD_LIST_PATTERN,
     CLOUD_SEARCH_PATTERN,
     CLOUD_UPLOAD_PATTERN,
+    NEXTCLOUD_SETUP_PATTERN,
     CloudCommandHandler,
+    _NC_DEFAULT_ITEMS,
+    _NC_TARGET_DIRS,
 )
 from elder_berry.tools.nextcloud_files import NextcloudFile
 
@@ -271,10 +274,114 @@ def test_share_link_success(handler, nc_client):
 
 def test_cloud_commands_in_help(handler):
     descs = handler.command_descriptions
-    assert len(descs) == 6
+    assert len(descs) == 7
     assert any("upload" in d for d in descs)
     assert any("download" in d for d in descs)
     assert any("dateien" in d for d in descs)
     assert any("suche" in d for d in descs)
     assert any("inhalt" in d for d in descs)
     assert any("link" in d for d in descs)
+    assert any("nextcloud ein" in d for d in descs)
+
+
+# ── Pattern: Nextcloud Setup ───────────────────────────────────────────
+
+
+def test_setup_pattern_richte_nextcloud_ein():
+    assert NEXTCLOUD_SETUP_PATTERN.search("richte nextcloud ein") is not None
+
+
+def test_setup_pattern_nextcloud_setup():
+    assert NEXTCLOUD_SETUP_PATTERN.search("nextcloud setup") is not None
+
+
+def test_setup_pattern_nextcloud_dash_setup():
+    assert NEXTCLOUD_SETUP_PATTERN.search("nextcloud-setup") is not None
+
+
+def test_setup_pattern_cloud_einrichten():
+    assert NEXTCLOUD_SETUP_PATTERN.search("cloud einrichten") is not None
+
+
+def test_setup_pattern_case_insensitive():
+    assert NEXTCLOUD_SETUP_PATTERN.search("Richte Nextcloud Ein") is not None
+
+
+def test_setup_pattern_no_false_positive():
+    assert NEXTCLOUD_SETUP_PATTERN.search("cloud suche nextcloud") is None
+
+
+# ── Execution: Nextcloud Setup ─────────────────────────────────────────
+
+
+def test_setup_no_nextcloud(handler_no_nc):
+    result = handler_no_nc.execute("nextcloud_setup", "richte nextcloud ein")
+    assert result.success is False
+    assert "nicht konfiguriert" in result.text
+
+
+def test_setup_returns_confirmation_request(handler, nc_client):
+    nc_client.list_dir.return_value = [
+        NextcloudFile("Documents", "Documents", True, 0, ""),
+        NextcloudFile("Photos", "Photos", True, 0, ""),
+        NextcloudFile("Nextcloud.png", "Nextcloud.png", False, 1000, ""),
+        NextcloudFile("MyStuff", "MyStuff", True, 0, ""),
+    ]
+
+    result = handler.execute("nextcloud_setup", "richte nextcloud ein")
+
+    assert result.success is True
+    assert result.pending_confirmation is True
+    assert result.pending_data is not None
+    assert "Bestätigen?" in result.text
+
+
+def test_setup_lists_only_existing_defaults(handler, nc_client):
+    nc_client.list_dir.return_value = [
+        NextcloudFile("Documents", "Documents", True, 0, ""),
+        NextcloudFile("MyStuff", "MyStuff", True, 0, ""),
+    ]
+
+    result = handler.execute("nextcloud_setup", "richte nextcloud ein")
+
+    assert result.pending_data["to_delete"] == ["Documents"]
+    # Non-default "MyStuff" should not be in delete list
+    assert "MyStuff" not in result.pending_data["to_delete"]
+
+
+def test_setup_empty_root_skips_delete(handler, nc_client):
+    nc_client.list_dir.return_value = []
+
+    result = handler.execute("nextcloud_setup", "richte nextcloud ein")
+
+    assert result.pending_data["to_delete"] == []
+    assert "nichts zu löschen" in result.text
+
+
+def test_setup_pending_data_contains_target_dirs(handler, nc_client):
+    nc_client.list_dir.return_value = []
+
+    result = handler.execute("nextcloud_setup", "richte nextcloud ein")
+
+    assert result.pending_data["to_create"] == list(_NC_TARGET_DIRS)
+
+
+def test_setup_parent_before_child_order():
+    """Verify _NC_TARGET_DIRS has parents before children."""
+    seen = set()
+    for d in _NC_TARGET_DIRS:
+        if "/" in d:
+            parent = d.rsplit("/", 1)[0]
+            assert parent in seen, (
+                f"Parent '{parent}' must appear before child '{d}'"
+            )
+        seen.add(d)
+
+
+def test_setup_list_dir_error(handler, nc_client):
+    nc_client.list_dir.side_effect = Exception("server down")
+
+    result = handler.execute("nextcloud_setup", "richte nextcloud ein")
+
+    assert result.success is False
+    assert "nicht gelesen werden" in result.text

@@ -116,6 +116,7 @@ Cloud (Nextcloud):
   cloud dateien [ordner] – Verzeichnis auflisten
   cloud suche <query> – Dateien suchen
   cloud link <pfad> – Öffentlichen Share-Link erstellen
+  richte nextcloud ein – Standard-Dateien löschen + Ordnerstruktur anlegen
 
 Prozesse:
   starte <programm> – Programm starten (Whitelist)
