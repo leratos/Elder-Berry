@@ -1,19 +1,29 @@
-"""Tests für ContactCommandHandler (Phase 29)."""
+"""Tests für ContactCommandHandler (Phase 29 + Phase 38 Vollintegration)."""
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import pytest
 
 from elder_berry.comms.commands.contact_commands import (
     CONTACT_ADD_NATURAL_PATTERN, CONTACT_ADD_PATTERN,
-    CONTACT_DELETE_PATTERN, CONTACT_LOOKUP_PATTERN,
+    CONTACT_DELETE_PATTERN, CONTACT_FIELD_QUERY_PATTERN,
+    CONTACT_GROUP_PATTERN, CONTACT_LOOKUP_PATTERN,
     CONTACT_SEARCH_PATTERN, CONTACT_UPDATE_PATTERN, CONTACT_WHO_PATTERN,
     ContactCommandHandler,
 )
 from elder_berry.tools.contact_store import ContactStore
 
 USER = "@test:matrix.org"
+
+
+def _emails_json(*pairs: tuple[str, str]) -> str:
+    return json.dumps([{"type": t, "email": e} for t, e in pairs])
+
+
+def _phones_json(*pairs: tuple[str, str]) -> str:
+    return json.dumps([{"type": t, "number": n} for t, n in pairs])
 
 
 @pytest.fixture()
@@ -103,6 +113,7 @@ class TestContactUpdatePattern:
         m = CONTACT_UPDATE_PATTERN.search("kontakt update #5: email=a@b.de")
         assert m and m.group(1) == "5"
 
+
 # ── Parsing Tests ──
 
 class TestParseContactFields:
@@ -111,25 +122,29 @@ class TestParseContactFields:
         r = h._parse_contact_fields("Herr Müller, Vermieter, x@y.de, förmlich")
         assert r["name"] == "Herr Müller"
         assert r["role"] == "Vermieter"
-        assert r["email"] == "x@y.de"
+        parsed_emails = json.loads(r["emails"])
+        assert parsed_emails[0]["email"] == "x@y.de"
         assert r["formality"] == "förmlich"
 
     def test_email_detection(self) -> None:
         h = ContactCommandHandler()
         r = h._parse_contact_fields("Lisa, lisa@gmail.com, Schwester")
-        assert r["email"] == "lisa@gmail.com"
+        parsed_emails = json.loads(r["emails"])
+        assert parsed_emails[0]["email"] == "lisa@gmail.com"
         assert r["role"] == "Schwester"
 
     def test_phone_detection(self) -> None:
         h = ContactCommandHandler()
         r = h._parse_contact_fields("Lisa, Schwester, +49 170 1234567")
-        assert r["phone"] == "+49 170 1234567"
+        parsed_phones = json.loads(r["phones"])
+        assert parsed_phones[0]["number"] == "+49 170 1234567"
         assert r["role"] == "Schwester"
 
     def test_phone_without_plus(self) -> None:
         h = ContactCommandHandler()
         r = h._parse_contact_fields("Max, 030 12345678")
-        assert r["phone"] == "030 12345678"
+        parsed_phones = json.loads(r["phones"])
+        assert parsed_phones[0]["number"] == "030 12345678"
 
     def test_formality_locker(self) -> None:
         h = ContactCommandHandler()
@@ -262,6 +277,12 @@ class TestContactSyncPattern:
         assert m is not None
         assert m.group(1) == "pull"
 
+    def test_sync_reset(self) -> None:
+        from elder_berry.comms.commands.contact_commands import CONTACT_SYNC_PATTERN
+        m = CONTACT_SYNC_PATTERN.match("kontakte sync reset")
+        assert m is not None
+        assert m.group(1) == "reset"
+
     def test_sync_singular(self) -> None:
         from elder_berry.comms.commands.contact_commands import CONTACT_SYNC_PATTERN
         m = CONTACT_SYNC_PATTERN.match("kontakt sync")
@@ -272,7 +293,6 @@ class TestContactSyncPattern:
 
 class TestContactSyncCommand:
     def test_sync_no_carddav(self, store: ContactStore) -> None:
-        """Kein CardDAV-Client → Fehlermeldung."""
         h = ContactCommandHandler(
             contact_store=store, default_user_id=USER,
         )
@@ -281,7 +301,6 @@ class TestContactSyncCommand:
         assert "nicht konfiguriert" in r.text
 
     def test_sync_success(self, store: ContactStore) -> None:
-        """Erfolgreicher Sync mit gemocktem Client."""
         from unittest.mock import MagicMock
         from elder_berry.tools.carddav_sync import SyncResult
 
@@ -296,30 +315,43 @@ class TestContactSyncCommand:
         assert "2 gepusht" in r.text
         assert "1 gepullt" in r.text
 
+    def test_sync_reset(self, store: ContactStore) -> None:
+        from unittest.mock import MagicMock
+        from elder_berry.tools.carddav_sync import SyncResult
 
-# ── Bug 1: Pattern-Priorität ──
+        mock_sync = MagicMock()
+        mock_sync.reset_and_pull.return_value = SyncResult(
+            deleted=5, pulled=10,
+        )
+        h = ContactCommandHandler(
+            contact_store=store, default_user_id=USER,
+            carddav_sync=mock_sync,
+        )
+        r = h.execute("contact_sync", "kontakte sync reset")
+        assert r.success
+        assert "5 gelöscht" in r.text
+        assert "10 gepullt" in r.text
+
+
+# ── Pattern-Priorität ──
 
 class TestPatternPriority:
     def test_update_not_matched_as_add(self) -> None:
-        """'kontakt ändern #20: rolle=Freundin' darf NICHT als ADD matchen."""
         text = "kontakt ändern #20: rolle=Freundin"
         assert CONTACT_ADD_PATTERN.match(text) is None
         assert CONTACT_UPDATE_PATTERN.search(text) is not None
 
     def test_add_still_works(self) -> None:
-        """Regression: 'kontakt: Lisa, Freundin' muss weiterhin als ADD matchen."""
         m = CONTACT_ADD_PATTERN.match("kontakt: Lisa, Freundin")
         assert m and m.group(1) == "Lisa, Freundin"
 
     def test_pattern_priority_update_before_add(self) -> None:
-        """Update-Pattern muss VOR Add-Pattern in der Liste stehen."""
         h = ContactCommandHandler()
         names = [name for _, name, _, _ in h.patterns]
         assert names.index("contact_update") < names.index("contact_add")
 
     def test_update_command_executed(self, handler: ContactCommandHandler,
                                     store: ContactStore) -> None:
-        """'kontakt ändern #ID: rolle=X' muss als Update ausgeführt werden."""
         c = store.add(USER, "Lisa", role="Schwester")
         r = handler.execute("contact_update",
                             f"kontakt ändern #{c.id}: rolle=Freundin")
@@ -329,7 +361,7 @@ class TestPatternPriority:
         assert updated.role == "Freundin"
 
 
-# ── Bug 2: Formality ──
+# ── Formality ──
 
 class TestFormalityExtended:
     def test_formality_persoenlich(self) -> None:
@@ -353,26 +385,38 @@ class TestFormalityExtended:
         assert r["formality"] == "locker"
 
 
-# ── Bug 3: Feld-Aliase ──
+# ── Feld-Aliase ──
 
 class TestFieldAliases:
     def test_resolve_vermerk(self) -> None:
         assert ContactCommandHandler._resolve_field_key("vermerk") == "notes"
 
     def test_resolve_mail(self) -> None:
-        assert ContactCommandHandler._resolve_field_key("mail") == "email"
+        assert ContactCommandHandler._resolve_field_key("mail") == "emails"
 
     def test_resolve_startswith(self) -> None:
         assert ContactCommandHandler._resolve_field_key("noti") == "notes"
 
     def test_resolve_telefon(self) -> None:
-        assert ContactCommandHandler._resolve_field_key("telefon") == "phone"
+        assert ContactCommandHandler._resolve_field_key("telefon") == "phones"
 
     def test_resolve_handy(self) -> None:
-        assert ContactCommandHandler._resolve_field_key("handy") == "phone"
+        assert ContactCommandHandler._resolve_field_key("handy") == "phones"
 
     def test_resolve_unknown(self) -> None:
         assert ContactCommandHandler._resolve_field_key("xyz") is None
+
+    def test_resolve_adresse(self) -> None:
+        assert ContactCommandHandler._resolve_field_key("adresse") == "address"
+
+    def test_resolve_firma(self) -> None:
+        assert ContactCommandHandler._resolve_field_key("firma") == "organization"
+
+    def test_resolve_gruppe(self) -> None:
+        assert ContactCommandHandler._resolve_field_key("gruppe") == "categories"
+
+    def test_resolve_spitzname(self) -> None:
+        assert ContactCommandHandler._resolve_field_key("spitzname") == "nickname"
 
     def test_update_field_alias_vermerk(self, handler: ContactCommandHandler,
                                         store: ContactStore) -> None:
@@ -390,7 +434,8 @@ class TestFieldAliases:
                             f"kontakt ändern #{c.id}: mail=lisa@x.de")
         assert r.success
         updated = store.get_by_id(c.id)
-        assert updated.email == "lisa@x.de"
+        # mail → emails, der Wert wird direkt als JSON gespeichert
+        assert "lisa@x.de" in updated.emails
 
     def test_update_field_alias_telefon(self, handler: ContactCommandHandler,
                                         store: ContactStore) -> None:
@@ -399,7 +444,7 @@ class TestFieldAliases:
                             f"kontakt ändern #{c.id}: telefon=+49 170 1234567")
         assert r.success
         updated = store.get_by_id(c.id)
-        assert updated.phone == "+49 170 1234567"
+        assert "+49 170 1234567" in updated.phones
 
     def test_update_unknown_field_warning(self, handler: ContactCommandHandler,
                                           store: ContactStore) -> None:
@@ -411,7 +456,7 @@ class TestFieldAliases:
         assert "noitzen" in r.text
 
 
-# ── Bug 4: Update ohne # ──
+# ── Update ohne # ──
 
 class TestUpdateWithoutHash:
     def test_update_without_hash_execution(self, handler: ContactCommandHandler,
@@ -424,7 +469,7 @@ class TestUpdateWithoutHash:
         assert updated.role == "Freundin"
 
 
-# ── Bug 5: Lookup-Pattern ──
+# ── Lookup-Pattern ──
 
 class TestContactLookupPattern:
     def test_lookup_by_id(self) -> None:
@@ -451,14 +496,14 @@ class TestContactLookupPattern:
         assert m is not None
 
     def test_lookup_not_collide_with_add(self) -> None:
-        """'kontakt: Lisa, Freundin' darf NICHT als Lookup matchen."""
         assert CONTACT_LOOKUP_PATTERN.match("kontakt: Lisa, Freundin") is None
 
 
 class TestCmdContactLookup:
     def test_lookup_by_id(self, handler: ContactCommandHandler,
                           store: ContactStore) -> None:
-        c = store.add(USER, "Lisa", role="Freundin", email="lisa@x.de")
+        emails = _emails_json(("home", "lisa@x.de"))
+        c = store.add(USER, "Lisa", role="Freundin", emails=emails)
         r = handler.execute("contact_lookup", f"kontakt #{c.id}")
         assert r.success
         assert "Lisa" in r.text
@@ -477,12 +522,13 @@ class TestCmdContactLookup:
         assert r.fallthrough is True
 
 
-# ── Bug 6: Detail-Ausgabe ──
+# ── Detail-Ausgabe ──
 
 class TestDetailOutput:
     def test_who_shows_detail(self, handler: ContactCommandHandler,
                               store: ContactStore) -> None:
-        store.add(USER, "Lisa", role="Freundin", email="lisa@x.de",
+        emails = _emails_json(("home", "lisa@x.de"))
+        store.add(USER, "Lisa", role="Freundin", emails=emails,
                   formality="locker", notes="wichtig")
         r = handler.execute("contact_who", "wer ist Lisa?")
         assert r.success
@@ -493,8 +539,9 @@ class TestDetailOutput:
 
     def test_lookup_shows_detail(self, handler: ContactCommandHandler,
                                  store: ContactStore) -> None:
+        emails = _emails_json(("work", "m@x.de"))
         c = store.add(USER, "Herr Müller", role="Vermieter",
-                      email="m@x.de", formality="förmlich")
+                      emails=emails, formality="förmlich")
         r = handler.execute("contact_lookup", f"kontakt #{c.id}")
         assert r.success
         assert "Rolle: Vermieter" in r.text
@@ -588,7 +635,6 @@ class TestFuzzyLookup:
 
     def test_who_fuzzy_single_match(self, handler: ContactCommandHandler,
                                      store: ContactStore) -> None:
-        """Partial-Name 'Müller' findet genau 1 Kontakt → direkte Ausgabe."""
         store.add(USER, "Herr Müller", role="Vermieter")
         r = handler.execute("contact_who", "wer ist Müller?")
         assert r.success
@@ -597,7 +643,6 @@ class TestFuzzyLookup:
 
     def test_who_fuzzy_multiple_matches(self, handler: ContactCommandHandler,
                                          store: ContactStore) -> None:
-        """Mehrere Treffer → Rückfrage 'welchen meinst du?'."""
         store.add(USER, "Lisa Müller", role="Freundin")
         store.add(USER, "Max Müller", role="Kollege")
         r = handler.execute("contact_who", "wer ist Müller?")
@@ -628,8 +673,164 @@ class TestFuzzyLookup:
 
     def test_lookup_by_id_still_exact(self, handler: ContactCommandHandler,
                                        store: ContactStore) -> None:
-        """ID-Lookup bleibt exakt, kein Fuzzy."""
         c = store.add(USER, "Lisa", role="Freundin")
         r = handler.execute("contact_lookup", f"kontakt #{c.id}")
         assert r.success
         assert "Lisa" in r.text
+
+
+# ── Phase 38: Feld-Abfrage-Pattern ──
+
+class TestFieldQueryPattern:
+    def test_wann_hat_geburtstag(self) -> None:
+        m = CONTACT_FIELD_QUERY_PATTERN.match("wann hat Lisa Geburtstag?")
+        assert m is not None
+        assert m.group(1) == "Lisa"
+
+    def test_was_ist_adresse(self) -> None:
+        m = CONTACT_FIELD_QUERY_PATTERN.match("was ist die Adresse von Herr Müller?")
+        assert m is not None
+
+    def test_wie_ist_telefonnummer(self) -> None:
+        m = CONTACT_FIELD_QUERY_PATTERN.match("wie ist die Telefonnummer von Lisa?")
+        assert m is not None
+
+    def test_wie_ist_email(self) -> None:
+        m = CONTACT_FIELD_QUERY_PATTERN.match("wie ist die Email von Max?")
+        assert m is not None
+
+    def test_in_welcher_gruppe(self) -> None:
+        m = CONTACT_FIELD_QUERY_PATTERN.match("in welcher Gruppe ist Lisa?")
+        assert m is not None
+
+    def test_wo_arbeitet(self) -> None:
+        m = CONTACT_FIELD_QUERY_PATTERN.match("wo arbeitet Max?")
+        assert m is not None
+
+    def test_wo_wohnt(self) -> None:
+        m = CONTACT_FIELD_QUERY_PATTERN.match("wo wohnt Lisa?")
+        assert m is not None
+
+    def test_no_match_random(self) -> None:
+        assert CONTACT_FIELD_QUERY_PATTERN.match("wie wird das Wetter?") is None
+
+
+class TestFieldQueryExecution:
+    def test_birthday_query(self, handler: ContactCommandHandler,
+                            store: ContactStore) -> None:
+        store.add(USER, "Lisa", birthday="1990-06-15")
+        r = handler.execute("contact_field_query",
+                            "wann hat Lisa Geburtstag?")
+        assert r.success
+        assert "Lisa" in r.text
+        assert "1990-06-15" in r.text
+
+    def test_birthday_query_unknown_year(self, handler: ContactCommandHandler,
+                                         store: ContactStore) -> None:
+        store.add(USER, "Max", birthday="0000-12-24")
+        r = handler.execute("contact_field_query",
+                            "wann hat Max Geburtstag?")
+        assert r.success
+        assert "12-24" in r.text
+
+    def test_birthday_query_not_set(self, handler: ContactCommandHandler,
+                                     store: ContactStore) -> None:
+        store.add(USER, "Lisa")
+        r = handler.execute("contact_field_query",
+                            "wann hat Lisa Geburtstag?")
+        assert r.success
+        assert "keinen Geburtstag" in r.text
+
+    def test_address_query(self, handler: ContactCommandHandler,
+                           store: ContactStore) -> None:
+        store.add(USER, "Herr Müller", address="Musterstr. 42, 10115 Berlin")
+        r = handler.execute("contact_field_query",
+                            "was ist die Adresse von Herr Müller?")
+        assert r.success
+        assert "Musterstr. 42" in r.text
+
+    def test_phone_query_single(self, handler: ContactCommandHandler,
+                                store: ContactStore) -> None:
+        phones = _phones_json(("cell", "+49 170 1234567"))
+        store.add(USER, "Lisa", phones=phones)
+        r = handler.execute("contact_field_query",
+                            "wie ist die Telefonnummer von Lisa?")
+        assert r.success
+        assert "+49 170 1234567" in r.text
+
+    def test_phone_query_multiple(self, handler: ContactCommandHandler,
+                                  store: ContactStore) -> None:
+        phones = json.dumps([
+            {"type": "cell", "number": "+49 170 111"},
+            {"type": "home", "number": "+49 30 222"},
+        ])
+        store.add(USER, "Lisa", phones=phones)
+        r = handler.execute("contact_field_query",
+                            "wie ist die Telefonnummer von Lisa?")
+        assert r.success
+        assert "2 Nummern" in r.text
+        assert "Mobil" in r.text
+
+    def test_organization_query(self, handler: ContactCommandHandler,
+                                store: ContactStore) -> None:
+        store.add(USER, "Max", organization="Acme Corp", title="CTO")
+        r = handler.execute("contact_field_query", "wo arbeitet Max?")
+        assert r.success
+        assert "Acme Corp" in r.text
+        assert "CTO" in r.text
+
+    def test_categories_query(self, handler: ContactCommandHandler,
+                              store: ContactStore) -> None:
+        store.add(USER, "Lisa", categories="Familie, Freunde")
+        r = handler.execute("contact_field_query",
+                            "in welcher Gruppe ist Lisa?")
+        assert r.success
+        assert "Familie" in r.text
+        assert "Freunde" in r.text
+
+    def test_contact_not_found(self, handler: ContactCommandHandler) -> None:
+        r = handler.execute("contact_field_query",
+                            "wann hat Gandalf Geburtstag?")
+        assert not r.success
+        assert "nicht gefunden" in r.text
+
+
+# ── Phase 38: Gruppen-Pattern ──
+
+class TestGroupPattern:
+    def test_kontakte_gruppe(self) -> None:
+        m = CONTACT_GROUP_PATTERN.match("kontakte gruppe Familie")
+        assert m is not None
+        assert m.group(1) == "Familie"
+
+    def test_kontakt_kategorie(self) -> None:
+        m = CONTACT_GROUP_PATTERN.match("kontakt kategorie Arbeit")
+        assert m is not None
+        assert m.group(1) == "Arbeit"
+
+
+class TestGroupExecution:
+    def test_group_list(self, handler: ContactCommandHandler,
+                        store: ContactStore) -> None:
+        store.add(USER, "Lisa", categories="Familie, Freunde")
+        store.add(USER, "Max", categories="Arbeit")
+        store.add(USER, "Anna", categories="Familie")
+        r = handler.execute("contact_group", "kontakte gruppe Familie")
+        assert r.success
+        assert "Lisa" in r.text
+        assert "Anna" in r.text
+        assert "Max" not in r.text
+        assert "2 Kontakte" in r.text
+
+    def test_group_empty(self, handler: ContactCommandHandler) -> None:
+        r = handler.execute("contact_group", "kontakte gruppe Aliens")
+        assert r.success
+        assert "Keine Kontakte" in r.text
+
+    def test_group_shows_phone(self, handler: ContactCommandHandler,
+                               store: ContactStore) -> None:
+        phones = _phones_json(("cell", "+49 170 111"))
+        store.add(USER, "Dr. Weber", categories="Ärzte", phones=phones)
+        r = handler.execute("contact_group", "kontakte gruppe Ärzte")
+        assert r.success
+        assert "📞" in r.text

@@ -1,52 +1,129 @@
 """ContactStore – Persistenter Kontaktspeicher (SQLite + FTS5).
 
-Speichert Kontakte mit Name, Email(s), Rolle/Beziehung, Anrede-Präferenz
-und freien Notizen. Automatischer Lookup per Email-Adresse für
-Email-Reply-Kontext (Phase 28 Integration).
+Speichert Kontakte mit allen Nextcloud-vCard-Feldern plus Elder-Berry-eigenen
+Metadaten (role, formality, notes). Unterstützt mehrere Telefonnummern und
+Email-Adressen als JSON-Arrays.
 
 Verwendung:
     store = ContactStore()
     store.add("@user:matrix.org", name="Herr Müller",
-              email="info@mueller-immo.de", role="Vermieter",
-              formality="förmlich")
+              emails='[{"type":"work","email":"info@mueller-immo.de"}]',
+              role="Vermieter", formality="förmlich")
     contact = store.find_by_email("@user:matrix.org", "info@mueller-immo.de")
     results = store.search("@user:matrix.org", "Müller")
 """
 from __future__ import annotations
 
+import json
 import logging
 import sqlite3
 from dataclasses import dataclass
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
 _DEFAULT_DB_PATH = Path.home() / ".elder-berry" / "contacts.db"
 
+# Mapping: vCard TEL TYPE → deutscher Label
+_PHONE_TYPE_LABELS: dict[str, str] = {
+    "cell": "Mobil", "mobile": "Mobil",
+    "home": "Privat", "work": "Arbeit",
+    "voice": "Telefon", "fax": "Fax",
+    "pager": "Pager",
+}
+
+# Mapping: vCard EMAIL TYPE → deutscher Label
+_EMAIL_TYPE_LABELS: dict[str, str] = {
+    "home": "Privat", "work": "Arbeit",
+    "internet": "Email",
+}
+
 
 @dataclass(frozen=True)
 class Contact:
-    """Ein Kontakt."""
+    """Ein Kontakt mit allen Nextcloud- und Elder-Berry-Feldern."""
 
     id: int
     user_id: str
     name: str
     """Anzeigename (z.B. 'Herr Müller', 'Lisa', 'Dr. Weber')."""
-    email: str
-    """Primäre Email-Adresse (für automatischen Lookup). Leer wenn unbekannt."""
+    emails: str
+    """JSON-Array: [{"type":"work","email":"x@y.de"}, ...]. Leer = '[]'."""
+    phones: str
+    """JSON-Array: [{"type":"cell","number":"+49..."}, ...]. Leer = '[]'."""
     role: str
     """Beziehung/Rolle (z.B. 'Vermieter', 'Schwester', 'Zahnarzt')."""
     formality: str
     """Anrede-Stil: 'förmlich' (Sie) oder 'locker' (Du). Default: 'förmlich'."""
-    phone: str
-    """Telefonnummer (z.B. '+49 170 1234567'). Leer wenn unbekannt."""
     notes: str
     """Freie Notizen (z.B. 'hat Hund namens Rex')."""
     birthday: str
     """Geburtstag im Format 'YYYY-MM-DD' oder leer. Jahr=0000 wenn unbekannt."""
+    address: str
+    """Freitext-Adresse (aus ADR zusammengesetzt)."""
+    organization: str
+    """Firma / Organisation."""
+    title: str
+    """Jobtitel."""
+    categories: str
+    """Komma-separierte Gruppen ('Familie, Arbeit')."""
+    nickname: str
+    """Spitzname."""
+    anniversary: str
+    """Jahrestag im Format 'YYYY-MM-DD' oder leer."""
+    url: str
+    """Website."""
+    vcard_uid: str
+    """Original-UID aus der Nextcloud-vCard (für Sync-Matching)."""
     created_at: datetime
     updated_at: datetime
+
+    # -- Convenience Properties für Rückwärtskompatibilität --
+
+    @property
+    def email(self) -> str:
+        """Primäre Email-Adresse (erste aus emails-JSON)."""
+        try:
+            items = json.loads(self.emails) if self.emails else []
+            if items and isinstance(items, list):
+                return items[0].get("email", "")
+        except (json.JSONDecodeError, AttributeError, IndexError):
+            pass
+        return ""
+
+    @property
+    def phone(self) -> str:
+        """Primäre Telefonnummer (erste aus phones-JSON)."""
+        try:
+            items = json.loads(self.phones) if self.phones else []
+            if items and isinstance(items, list):
+                return items[0].get("number", "")
+        except (json.JSONDecodeError, AttributeError, IndexError):
+            pass
+        return ""
+
+    def get_phones_list(self) -> list[dict[str, str]]:
+        """Parsed phones-JSON als Liste von Dicts."""
+        try:
+            items = json.loads(self.phones) if self.phones else []
+            return items if isinstance(items, list) else []
+        except (json.JSONDecodeError, AttributeError):
+            return []
+
+    def get_emails_list(self) -> list[dict[str, str]]:
+        """Parsed emails-JSON als Liste von Dicts."""
+        try:
+            items = json.loads(self.emails) if self.emails else []
+            return items if isinstance(items, list) else []
+        except (json.JSONDecodeError, AttributeError):
+            return []
+
+    def get_categories_list(self) -> list[str]:
+        """Parsed categories als Liste von Strings."""
+        if not self.categories:
+            return []
+        return [c.strip() for c in self.categories.split(",") if c.strip()]
 
     def format_short(self) -> str:
         """Einzeilige Darstellung."""
@@ -54,25 +131,58 @@ class Contact:
         if self.role:
             parts.append(f"– {self.role}")
         parts.append(f"({self.formality})")
-        if self.email:
-            parts.append(f"– {self.email}")
+        email = self.email
+        if email:
+            parts.append(f"– {email}")
         return " ".join(parts)
 
     def format_detail(self) -> str:
         """Mehrzeilige Detail-Darstellung."""
         lines = [f"📇 #{self.id} {self.name}"]
+        if self.nickname:
+            lines.append(f"  Spitzname: {self.nickname}")
         if self.role:
             lines.append(f"  Rolle: {self.role}")
-        if self.email:
-            lines.append(f"  Email: {self.email}")
-        if self.phone:
-            lines.append(f"  Telefon: {self.phone}")
+        # Emails
+        email_items = self.get_emails_list()
+        if email_items:
+            if len(email_items) == 1:
+                lines.append(f"  Email: {email_items[0].get('email', '')}")
+            else:
+                for ei in email_items:
+                    label = _EMAIL_TYPE_LABELS.get(
+                        ei.get("type", ""), ei.get("type", ""),
+                    )
+                    lines.append(f"  Email ({label}): {ei.get('email', '')}")
+        # Phones
+        phone_items = self.get_phones_list()
+        if phone_items:
+            if len(phone_items) == 1:
+                lines.append(f"  Telefon: {phone_items[0].get('number', '')}")
+            else:
+                for pi in phone_items:
+                    label = _PHONE_TYPE_LABELS.get(
+                        pi.get("type", ""), pi.get("type", ""),
+                    )
+                    lines.append(f"  Telefon ({label}): {pi.get('number', '')}")
         lines.append(f"  Anrede: {self.formality}")
+        if self.address:
+            lines.append(f"  Adresse: {self.address}")
+        if self.organization:
+            lines.append(f"  Organisation: {self.organization}")
+        if self.title:
+            lines.append(f"  Titel: {self.title}")
         if self.birthday:
             if self.birthday.startswith("0000-"):
                 lines.append(f"  Geburtstag: {self.birthday[5:]}")
             else:
                 lines.append(f"  Geburtstag: {self.birthday}")
+        if self.anniversary:
+            lines.append(f"  Jahrestag: {self.anniversary}")
+        if self.categories:
+            lines.append(f"  Gruppen: {self.categories}")
+        if self.url:
+            lines.append(f"  Website: {self.url}")
         if self.notes:
             lines.append(f"  📝 {self.notes}")
         return "\n".join(lines)
@@ -80,12 +190,52 @@ class Contact:
     def format_for_llm(self) -> str:
         """Kontext-String für LLM System-Prompts (Email-Draft etc.)."""
         lines = [f"Kontakt: {self.name}"]
+        if self.nickname:
+            lines.append(f"Spitzname: {self.nickname}")
         if self.role:
             lines.append(f"Beziehung: {self.role}")
         hint = "Sie" if self.formality == "förmlich" else "Du"
         lines.append(f"Anrede: {self.formality} ({hint})")
-        if self.phone:
-            lines.append(f"Telefon: {self.phone}")
+        # Phones
+        phone_items = self.get_phones_list()
+        if phone_items:
+            if len(phone_items) == 1:
+                lines.append(f"Telefon: {phone_items[0].get('number', '')}")
+            else:
+                parts = []
+                for pi in phone_items:
+                    label = _PHONE_TYPE_LABELS.get(
+                        pi.get("type", ""), pi.get("type", ""),
+                    )
+                    parts.append(f"{pi.get('number', '')} ({label})")
+                lines.append(f"Telefon: {', '.join(parts)}")
+        # Emails
+        email_items = self.get_emails_list()
+        if email_items:
+            if len(email_items) == 1:
+                lines.append(f"Email: {email_items[0].get('email', '')}")
+            else:
+                parts = []
+                for ei in email_items:
+                    label = _EMAIL_TYPE_LABELS.get(
+                        ei.get("type", ""), ei.get("type", ""),
+                    )
+                    parts.append(f"{ei.get('email', '')} ({label})")
+                lines.append(f"Email: {', '.join(parts)}")
+        if self.address:
+            lines.append(f"Adresse: {self.address}")
+        if self.organization:
+            lines.append(f"Firma: {self.organization}")
+        if self.title:
+            lines.append(f"Position: {self.title}")
+        if self.birthday:
+            lines.append(f"Geburtstag: {self.birthday}")
+        if self.anniversary:
+            lines.append(f"Jahrestag: {self.anniversary}")
+        if self.categories:
+            lines.append(f"Gruppen: {self.categories}")
+        if self.url:
+            lines.append(f"Website: {self.url}")
         if self.notes:
             lines.append(f"Notizen: {self.notes}")
         return "\n".join(lines)
@@ -110,181 +260,299 @@ class ContactStore:
     def _create_tables(self) -> None:
         self._conn.executescript("""
             CREATE TABLE IF NOT EXISTS contacts (
-                id          INTEGER PRIMARY KEY AUTOINCREMENT,
-                user_id     TEXT NOT NULL,
-                name        TEXT NOT NULL,
-                email       TEXT NOT NULL DEFAULT '',
-                role        TEXT NOT NULL DEFAULT '',
-                formality   TEXT NOT NULL DEFAULT 'förmlich',
-                phone       TEXT NOT NULL DEFAULT '',
-                notes       TEXT NOT NULL DEFAULT '',
-                birthday    TEXT NOT NULL DEFAULT '',
-                created_at  TEXT NOT NULL,
-                updated_at  TEXT NOT NULL
+                id           INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id      TEXT NOT NULL,
+                name         TEXT NOT NULL,
+                emails       TEXT NOT NULL DEFAULT '[]',
+                phones       TEXT NOT NULL DEFAULT '[]',
+                role         TEXT NOT NULL DEFAULT '',
+                formality    TEXT NOT NULL DEFAULT 'förmlich',
+                notes        TEXT NOT NULL DEFAULT '',
+                birthday     TEXT NOT NULL DEFAULT '',
+                address      TEXT NOT NULL DEFAULT '',
+                organization TEXT NOT NULL DEFAULT '',
+                title        TEXT NOT NULL DEFAULT '',
+                categories   TEXT NOT NULL DEFAULT '',
+                nickname     TEXT NOT NULL DEFAULT '',
+                anniversary  TEXT NOT NULL DEFAULT '',
+                url          TEXT NOT NULL DEFAULT '',
+                vcard_uid    TEXT NOT NULL DEFAULT '',
+                created_at   TEXT NOT NULL,
+                updated_at   TEXT NOT NULL
             );
-            CREATE INDEX IF NOT EXISTS idx_contacts_user_email
-                ON contacts(user_id, email) WHERE email != '';
+            CREATE INDEX IF NOT EXISTS idx_contacts_user
+                ON contacts(user_id);
             CREATE UNIQUE INDEX IF NOT EXISTS idx_contacts_user_name
                 ON contacts(user_id, name COLLATE NOCASE);
+            CREATE INDEX IF NOT EXISTS idx_contacts_vcard_uid
+                ON contacts(vcard_uid) WHERE vcard_uid != '';
             CREATE VIRTUAL TABLE IF NOT EXISTS contacts_fts USING fts5(
-                name, role, notes, email,
+                name, role, notes, emails, phones, categories,
+                organization, nickname, address,
                 content=contacts, content_rowid=id
             );
             CREATE TRIGGER IF NOT EXISTS contacts_ai AFTER INSERT ON contacts
             BEGIN
-                INSERT INTO contacts_fts(rowid, name, role, notes, email)
-                VALUES (new.id, new.name, new.role, new.notes, new.email);
+                INSERT INTO contacts_fts(rowid, name, role, notes, emails,
+                    phones, categories, organization, nickname, address)
+                VALUES (new.id, new.name, new.role, new.notes, new.emails,
+                    new.phones, new.categories, new.organization,
+                    new.nickname, new.address);
             END;
             CREATE TRIGGER IF NOT EXISTS contacts_au AFTER UPDATE ON contacts
             BEGIN
                 INSERT INTO contacts_fts(contacts_fts, rowid, name, role,
-                                         notes, email)
+                    notes, emails, phones, categories, organization,
+                    nickname, address)
                 VALUES('delete', old.id, old.name, old.role, old.notes,
-                       old.email);
-                INSERT INTO contacts_fts(rowid, name, role, notes, email)
-                VALUES (new.id, new.name, new.role, new.notes, new.email);
+                    old.emails, old.phones, old.categories,
+                    old.organization, old.nickname, old.address);
+                INSERT INTO contacts_fts(rowid, name, role, notes, emails,
+                    phones, categories, organization, nickname, address)
+                VALUES (new.id, new.name, new.role, new.notes, new.emails,
+                    new.phones, new.categories, new.organization,
+                    new.nickname, new.address);
             END;
             CREATE TRIGGER IF NOT EXISTS contacts_ad AFTER DELETE ON contacts
             BEGIN
                 INSERT INTO contacts_fts(contacts_fts, rowid, name, role,
-                                         notes, email)
+                    notes, emails, phones, categories, organization,
+                    nickname, address)
                 VALUES('delete', old.id, old.name, old.role, old.notes,
-                       old.email);
+                    old.emails, old.phones, old.categories,
+                    old.organization, old.nickname, old.address);
             END;
         """)
         self._conn.commit()
-        self._migrate_birthday_column()
-        self._migrate_phone_column()
+        self._migrate_from_v1()
 
-    def _migrate_birthday_column(self) -> None:
-        """Fügt birthday-Spalte hinzu wenn sie noch nicht existiert."""
+    def _migrate_from_v1(self) -> None:
+        """Migriert alte Datenbank (v1: email/phone Spalten) zum neuen Schema.
+
+        Erkennt v1 am Vorhandensein einer 'email'-Spalte (statt 'emails').
+        Bei v1-DB: Daten konvertieren, alte Spalten durch neue ersetzen.
+        """
         try:
-            self._conn.execute("SELECT birthday FROM contacts LIMIT 1")
+            cursor = self._conn.execute("PRAGMA table_info(contacts)")
+            columns = {row[1] for row in cursor.fetchall()}
         except sqlite3.OperationalError:
+            return
+
+        # Neue Spalten einzeln hinzufügen wenn sie fehlen
+        new_columns = {
+            "address": "TEXT NOT NULL DEFAULT ''",
+            "organization": "TEXT NOT NULL DEFAULT ''",
+            "title": "TEXT NOT NULL DEFAULT ''",
+            "categories": "TEXT NOT NULL DEFAULT ''",
+            "nickname": "TEXT NOT NULL DEFAULT ''",
+            "anniversary": "TEXT NOT NULL DEFAULT ''",
+            "url": "TEXT NOT NULL DEFAULT ''",
+            "vcard_uid": "TEXT NOT NULL DEFAULT ''",
+        }
+        for col, col_type in new_columns.items():
+            if col not in columns:
+                try:
+                    self._conn.execute(
+                        f"ALTER TABLE contacts ADD COLUMN {col} {col_type}",
+                    )
+                    logger.info("Migration: %s-Spalte hinzugefügt", col)
+                except sqlite3.OperationalError as e:
+                    logger.warning("Migration %s fehlgeschlagen: %s", col, e)
+
+        # v1→v2: email→emails, phone→phones Konvertierung
+        if "email" in columns and "emails" not in columns:
+            logger.info("Migration v1→v2: email→emails, phone→phones")
             try:
                 self._conn.execute(
-                    "ALTER TABLE contacts ADD COLUMN birthday TEXT NOT NULL DEFAULT ''",
+                    "ALTER TABLE contacts ADD COLUMN emails TEXT NOT NULL DEFAULT '[]'",
                 )
-                self._conn.commit()
-                logger.info("Migration: birthday-Spalte zu contacts hinzugefügt")
-            except sqlite3.OperationalError as e:
-                logger.warning("Migration birthday-Spalte fehlgeschlagen: %s", e)
-
-    def _migrate_phone_column(self) -> None:
-        """Fügt phone-Spalte hinzu wenn sie noch nicht existiert."""
-        try:
-            self._conn.execute("SELECT phone FROM contacts LIMIT 1")
-        except sqlite3.OperationalError:
-            try:
                 self._conn.execute(
-                    "ALTER TABLE contacts ADD COLUMN phone TEXT NOT NULL DEFAULT ''",
+                    "ALTER TABLE contacts ADD COLUMN phones TEXT NOT NULL DEFAULT '[]'",
                 )
+                # Bestehende Einzelwerte in JSON konvertieren
+                rows = self._conn.execute(
+                    "SELECT id, email, phone FROM contacts",
+                ).fetchall()
+                for row_id, old_email, old_phone in rows:
+                    emails_json = "[]"
+                    if old_email:
+                        emails_json = json.dumps(
+                            [{"type": "home", "email": old_email}],
+                        )
+                    phones_json = "[]"
+                    if old_phone:
+                        phones_json = json.dumps(
+                            [{"type": "cell", "number": old_phone}],
+                        )
+                    self._conn.execute(
+                        "UPDATE contacts SET emails=?, phones=? WHERE id=?",
+                        (emails_json, phones_json, row_id),
+                    )
                 self._conn.commit()
-                logger.info("Migration: phone-Spalte zu contacts hinzugefügt")
+                logger.info(
+                    "Migration v1→v2 abgeschlossen: %d Kontakte konvertiert",
+                    len(rows),
+                )
             except sqlite3.OperationalError as e:
-                logger.warning("Migration phone-Spalte fehlgeschlagen: %s", e)
+                logger.warning("Migration v1→v2 fehlgeschlagen: %s", e)
 
     # ------------------------------------------------------------------
     # Schreiben
     # ------------------------------------------------------------------
 
-    def add(self, user_id: str, name: str, email: str = "",
-            role: str = "", formality: str = "",
-            notes: str = "", birthday: str = "",
-            phone: str = "") -> Contact:
+    _ALL_FIELDS = (
+        "name", "emails", "phones", "role", "formality", "notes",
+        "birthday", "address", "organization", "title", "categories",
+        "nickname", "anniversary", "url", "vcard_uid",
+    )
+
+    def add(self, user_id: str, name: str, **kwargs: str) -> Contact:
         """Kontakt hinzufügen oder aktualisieren (Upsert per Name).
 
         Wenn ein Kontakt mit gleichem Namen (case-insensitive) existiert,
         werden nur non-empty Felder aktualisiert.
         Bei neuem Kontakt wird formality auf 'förmlich' gesetzt wenn leer.
+
+        Akzeptiert alle Contact-Felder als kwargs:
+            emails, phones, role, formality, notes, birthday,
+            address, organization, title, categories, nickname,
+            anniversary, url, vcard_uid
         """
         now = datetime.now(timezone.utc).isoformat()
         existing = self.find_by_name(user_id, name)
         if existing:
-            return self._upsert_existing(
-                existing, email=email, role=role,
-                formality=formality, notes=notes,
-                birthday=birthday, phone=phone,
-            )
-        # Neuer Kontakt: Default-Formalität wenn nicht angegeben
-        insert_formality = formality if formality else "förmlich"
+            return self._upsert_existing(existing, **kwargs)
+
+        formality = kwargs.get("formality", "") or "förmlich"
+        values = {f: kwargs.get(f, "") for f in self._ALL_FIELDS}
+        values["formality"] = formality
+        values["name"] = name
+        # Default für JSON-Felder
+        if not values["emails"]:
+            values["emails"] = "[]"
+        if not values["phones"]:
+            values["phones"] = "[]"
+
+        cols = ["user_id"] + list(values.keys()) + ["created_at", "updated_at"]
+        placeholders = ", ".join(["?"] * len(cols))
+        col_str = ", ".join(cols)
+        vals = [user_id] + [values[k] for k in values] + [now, now]
+
         cursor = self._conn.execute(
-            "INSERT INTO contacts "
-            "(user_id, name, email, role, formality, notes, birthday, "
-            "phone, created_at, updated_at) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-            (user_id, name, email, role, insert_formality, notes,
-             birthday, phone, now, now),
+            f"INSERT INTO contacts ({col_str}) VALUES ({placeholders})",
+            vals,
         )
         self._conn.commit()
         return self._get_by_rowid(cursor.lastrowid)
 
-    def _upsert_existing(self, existing: Contact, email: str,
-                         role: str, formality: str,
-                         notes: str, birthday: str = "",
-                         phone: str = "") -> Contact:
+    def _upsert_existing(self, existing: Contact, **kwargs: str) -> Contact:
         """Aktualisiert bestehenden Kontakt – nur non-empty Felder."""
         now = datetime.now(timezone.utc).isoformat()
-        new_email = email if email else existing.email
-        new_role = role if role else existing.role
-        new_formality = formality if formality else existing.formality
-        new_notes = notes if notes else existing.notes
-        new_birthday = birthday if birthday else existing.birthday
-        new_phone = phone if phone else existing.phone
+        updates: dict[str, str] = {}
+        for field in self._ALL_FIELDS:
+            if field == "name":
+                continue
+            new_val = kwargs.get(field, "")
+            old_val = getattr(existing, field, "")
+            if new_val and new_val != old_val:
+                updates[field] = new_val
+
+        if not updates:
+            return existing
+
+        set_parts = [f"{k} = ?" for k in updates]
+        set_parts.append("updated_at = ?")
+        vals = list(updates.values()) + [now, existing.id]
         self._conn.execute(
-            "UPDATE contacts SET email = ?, role = ?, formality = ?, "
-            "notes = ?, birthday = ?, phone = ?, updated_at = ? WHERE id = ?",
-            (new_email, new_role, new_formality, new_notes, new_birthday,
-             new_phone, now, existing.id),
+            f"UPDATE contacts SET {', '.join(set_parts)} WHERE id = ?",
+            vals,
         )
         self._conn.commit()
         return self._get_by_rowid(existing.id)
 
-    def update(self, contact_id: int, name: str = "", email: str = "",
-               role: str = "", formality: str = "",
-               notes: str = "", birthday: str = "",
-               phone: str = "") -> Contact | None:
+    def update(self, contact_id: int, **kwargs: str) -> Contact | None:
         """Kontakt per ID aktualisieren. Nur non-empty Felder überschreiben."""
         existing = self.get_by_id(contact_id)
         if not existing:
             return None
         now = datetime.now(timezone.utc).isoformat()
-        n = name if name else existing.name
-        e = email if email else existing.email
-        r = role if role else existing.role
-        f = formality if formality else existing.formality
-        no = notes if notes else existing.notes
-        bd = birthday if birthday else existing.birthday
-        ph = phone if phone else existing.phone
+        updates: dict[str, str] = {}
+        for field in self._ALL_FIELDS:
+            new_val = kwargs.get(field, "")
+            if new_val:
+                updates[field] = new_val
+
+        if not updates:
+            return existing
+
+        set_parts = [f"{k} = ?" for k in updates]
+        set_parts.append("updated_at = ?")
+        vals = list(updates.values()) + [now, contact_id]
         self._conn.execute(
-            "UPDATE contacts SET name=?, email=?, role=?, formality=?, "
-            "notes=?, birthday=?, phone=?, updated_at=? WHERE id=?",
-            (n, e, r, f, no, bd, ph, now, contact_id),
+            f"UPDATE contacts SET {', '.join(set_parts)} WHERE id = ?",
+            vals,
         )
         self._conn.commit()
         return self._get_by_rowid(contact_id)
+
+    def add_or_update_by_vcard_uid(
+        self, user_id: str, vcard_uid: str, **kwargs: str,
+    ) -> Contact:
+        """Kontakt per vCard-UID finden und aktualisieren, oder neu anlegen.
+
+        Verwendet für CardDAV-Sync: Matching per NC-UID statt per Name.
+        """
+        existing = self.find_by_vcard_uid(user_id, vcard_uid)
+        if existing:
+            return self._upsert_existing(existing, **kwargs)
+        # Fallback: per Name suchen (falls UID sich geändert hat)
+        name = kwargs.pop("name", "")
+        if name:
+            by_name = self.find_by_name(user_id, name)
+            if by_name:
+                # vcard_uid nachträglich setzen
+                kwargs["vcard_uid"] = vcard_uid
+                return self._upsert_existing(by_name, **kwargs)
+        # Neu anlegen
+        kwargs["vcard_uid"] = vcard_uid
+        return self.add(user_id, name=name, **kwargs)
 
     # ------------------------------------------------------------------
     # Lesen
     # ------------------------------------------------------------------
 
     def find_by_email(self, user_id: str, email: str) -> Contact | None:
-        """Kontakt per Email-Adresse finden (case-insensitive)."""
-        row = self._conn.execute(
-            "SELECT id, user_id, name, email, role, formality, phone, notes, birthday, "
-            "created_at, updated_at "
-            "FROM contacts WHERE user_id=? AND email=? COLLATE NOCASE",
-            (user_id, email.strip()),
-        ).fetchone()
-        return self._row_to_contact(row) if row else None
+        """Kontakt per Email-Adresse finden (sucht im JSON-Array)."""
+        # emails enthält JSON wie [{"type":"work","email":"x@y.de"}]
+        # Wir suchen case-insensitive mit LIKE
+        needle = email.strip().lower()
+        rows = self._conn.execute(
+            "SELECT * FROM contacts WHERE user_id=? AND LOWER(emails) LIKE ?",
+            (user_id, f"%{needle}%"),
+        ).fetchall()
+        for row in rows:
+            contact = self._row_to_contact(row)
+            for ei in contact.get_emails_list():
+                if ei.get("email", "").lower() == needle:
+                    return contact
+        return None
 
     def find_by_name(self, user_id: str, name: str) -> Contact | None:
         """Kontakt per Name finden (case-insensitive)."""
         row = self._conn.execute(
-            "SELECT id, user_id, name, email, role, formality, phone, notes, birthday, "
-            "created_at, updated_at "
-            "FROM contacts WHERE user_id=? AND name=? COLLATE NOCASE",
+            "SELECT * FROM contacts "
+            "WHERE user_id=? AND name=? COLLATE NOCASE",
             (user_id, name.strip()),
+        ).fetchone()
+        return self._row_to_contact(row) if row else None
+
+    def find_by_vcard_uid(self, user_id: str, vcard_uid: str) -> Contact | None:
+        """Kontakt per vCard-UID finden."""
+        if not vcard_uid:
+            return None
+        row = self._conn.execute(
+            "SELECT * FROM contacts WHERE user_id=? AND vcard_uid=?",
+            (user_id, vcard_uid),
         ).fetchone()
         return self._row_to_contact(row) if row else None
 
@@ -294,9 +562,8 @@ class ContactStore:
         try:
             fts_query = query.strip() + "*"
             rows = self._conn.execute(
-                "SELECT c.id, c.user_id, c.name, c.email, c.role, "
-                "c.formality, c.phone, c.notes, c.birthday, c.created_at, c.updated_at "
-                "FROM contacts c JOIN contacts_fts f ON c.id = f.rowid "
+                "SELECT c.* FROM contacts c "
+                "JOIN contacts_fts f ON c.id = f.rowid "
                 "WHERE f.contacts_fts MATCH ? AND c.user_id=? LIMIT ?",
                 (fts_query, user_id, limit),
             ).fetchall()
@@ -307,8 +574,7 @@ class ContactStore:
     def list_all(self, user_id: str, limit: int = 20) -> list[Contact]:
         """Alle Kontakte eines Users (alphabetisch nach Name)."""
         rows = self._conn.execute(
-            "SELECT id, user_id, name, email, role, formality, phone, notes, birthday, "
-            "created_at, updated_at FROM contacts WHERE user_id=? "
+            "SELECT * FROM contacts WHERE user_id=? "
             "ORDER BY name COLLATE NOCASE LIMIT ?",
             (user_id, limit),
         ).fetchall()
@@ -317,35 +583,82 @@ class ContactStore:
     def get_by_id(self, contact_id: int) -> Contact | None:
         """Kontakt per ID abrufen."""
         row = self._conn.execute(
-            "SELECT id, user_id, name, email, role, formality, phone, notes, birthday, "
-            "created_at, updated_at FROM contacts WHERE id=?",
+            "SELECT * FROM contacts WHERE id=?",
             (contact_id,),
         ).fetchone()
         return self._row_to_contact(row) if row else None
 
     def get_birthdays_today(self, user_id: str,
                             today: date | None = None) -> list[Contact]:
-        """Kontakte deren Geburtstag heute ist.
-
-        Vergleicht Monat+Tag des birthday-Felds (Format: YYYY-MM-DD).
-
-        Args:
-            user_id: Matrix-User-ID.
-            today: Optionales Datum (für Tests). Default: date.today().
-
-        Returns:
-            Liste von Contacts mit heutigem Geburtstag.
-        """
+        """Kontakte deren Geburtstag heute ist."""
         if today is None:
             today = date.today()
         mm_dd = today.strftime("%m-%d")
         rows = self._conn.execute(
-            "SELECT id, user_id, name, email, role, formality, phone, notes, birthday, "
-            "created_at, updated_at "
-            "FROM contacts WHERE user_id=? AND birthday LIKE ?",
+            "SELECT * FROM contacts "
+            "WHERE user_id=? AND birthday LIKE ?",
             (user_id, f"%-{mm_dd}"),
         ).fetchall()
         return [self._row_to_contact(r) for r in rows]
+
+    def get_upcoming_birthdays(self, user_id: str, days: int = 7,
+                               today: date | None = None) -> list[Contact]:
+        """Kontakte deren Geburtstag in den nächsten N Tagen ist."""
+        if today is None:
+            today = date.today()
+        results: list[Contact] = []
+        for offset in range(days):
+            check_date = today + timedelta(days=offset)
+            mm_dd = check_date.strftime("%m-%d")
+            rows = self._conn.execute(
+                "SELECT * FROM contacts "
+                "WHERE user_id=? AND birthday LIKE ? AND birthday != ''",
+                (user_id, f"%-{mm_dd}"),
+            ).fetchall()
+            results.extend(self._row_to_contact(r) for r in rows)
+        return results
+
+    def get_upcoming_anniversaries(self, user_id: str, days: int = 7,
+                                   today: date | None = None) -> list[Contact]:
+        """Kontakte deren Jahrestag in den nächsten N Tagen ist."""
+        if today is None:
+            today = date.today()
+        results: list[Contact] = []
+        for offset in range(days):
+            check_date = today + timedelta(days=offset)
+            mm_dd = check_date.strftime("%m-%d")
+            rows = self._conn.execute(
+                "SELECT * FROM contacts "
+                "WHERE user_id=? AND anniversary LIKE ? AND anniversary != ''",
+                (user_id, f"%-{mm_dd}"),
+            ).fetchall()
+            results.extend(self._row_to_contact(r) for r in rows)
+        return results
+
+    def find_by_category(self, user_id: str,
+                         category: str) -> list[Contact]:
+        """Kontakte die eine bestimmte Kategorie/Gruppe haben."""
+        # categories ist komma-separiert, z.B. "Familie, Arbeit"
+        rows = self._conn.execute(
+            "SELECT * FROM contacts WHERE user_id=? AND categories != ''",
+            (user_id,),
+        ).fetchall()
+        needle = category.strip().lower()
+        results = []
+        for row in rows:
+            contact = self._row_to_contact(row)
+            cats = [c.strip().lower() for c in contact.categories.split(",")]
+            if needle in cats:
+                results.append(contact)
+        return results
+
+    def delete_all(self, user_id: str) -> int:
+        """Löscht alle Kontakte eines Users. Gibt Anzahl zurück."""
+        cursor = self._conn.execute(
+            "DELETE FROM contacts WHERE user_id=?", (user_id,),
+        )
+        self._conn.commit()
+        return cursor.rowcount
 
     # ------------------------------------------------------------------
     # Löschen
@@ -383,8 +696,7 @@ class ContactStore:
     def _get_by_rowid(self, rowid: int) -> Contact:
         """Holt Contact per rowid (nach INSERT/UPDATE)."""
         row = self._conn.execute(
-            "SELECT id, user_id, name, email, role, formality, phone, notes, birthday, "
-            "created_at, updated_at FROM contacts WHERE id=?",
+            "SELECT * FROM contacts WHERE id=?",
             (rowid,),
         ).fetchone()
         return self._row_to_contact(row)
@@ -392,12 +704,19 @@ class ContactStore:
     @staticmethod
     def _row_to_contact(row: tuple) -> Contact:
         """Konvertiert DB-Row in Contact-DTO."""
-        (id_, user_id, name, email, role, formality, phone, notes,
-         birthday, created_at, updated_at) = row
+        (id_, user_id, name, emails, phones, role, formality,
+         notes, birthday, address, organization, title, categories,
+         nickname, anniversary, url, vcard_uid,
+         created_at, updated_at) = row
         return Contact(
-            id=id_, user_id=user_id, name=name, email=email,
-            role=role, formality=formality, phone=phone or "",
-            notes=notes, birthday=birthday or "",
+            id=id_, user_id=user_id, name=name,
+            emails=emails or "[]", phones=phones or "[]",
+            role=role or "", formality=formality or "förmlich",
+            notes=notes or "", birthday=birthday or "",
+            address=address or "", organization=organization or "",
+            title=title or "", categories=categories or "",
+            nickname=nickname or "", anniversary=anniversary or "",
+            url=url or "", vcard_uid=vcard_uid or "",
             created_at=datetime.fromisoformat(created_at),
             updated_at=datetime.fromisoformat(updated_at),
         )

@@ -254,8 +254,10 @@ def _make_contact(name: str, birthday: str = "") -> Contact:
     now = datetime.now(timezone.utc)
     return Contact(
         id=1, user_id="@test:matrix.org", name=name,
-        email="", role="", formality="locker", phone="", notes="",
-        birthday=birthday, created_at=now, updated_at=now,
+        emails="[]", phones="[]", role="", formality="locker",
+        notes="", birthday=birthday, address="", organization="",
+        title="", categories="", nickname="", anniversary="",
+        url="", vcard_uid="", created_at=now, updated_at=now,
     )
 
 
@@ -263,9 +265,10 @@ class TestBirthdaySection:
     def test_birthday_with_age(self):
         """Geburtstag mit bekanntem Jahr → zeigt Alter."""
         contact_store = MagicMock()
-        contact_store.get_birthdays_today.return_value = [
+        contact_store.get_upcoming_birthdays.return_value = [
             _make_contact("Max Mustermann", "1984-03-28"),
         ]
+        contact_store.get_upcoming_anniversaries.return_value = []
         scheduler = BriefingScheduler(
             send_briefing=MagicMock(),
             contact_store=contact_store,
@@ -281,9 +284,10 @@ class TestBirthdaySection:
     def test_birthday_unknown_year(self):
         """Geburtstag mit Jahr 0000 → kein Alter."""
         contact_store = MagicMock()
-        contact_store.get_birthdays_today.return_value = [
+        contact_store.get_upcoming_birthdays.return_value = [
             _make_contact("Lisa", "0000-03-28"),
         ]
+        contact_store.get_upcoming_anniversaries.return_value = []
         scheduler = BriefingScheduler(
             send_briefing=MagicMock(),
             contact_store=contact_store,
@@ -298,7 +302,8 @@ class TestBirthdaySection:
     def test_no_birthdays(self):
         """Keine Geburtstage → Sektion fehlt."""
         contact_store = MagicMock()
-        contact_store.get_birthdays_today.return_value = []
+        contact_store.get_upcoming_birthdays.return_value = []
+        contact_store.get_upcoming_anniversaries.return_value = []
         scheduler = BriefingScheduler(
             send_briefing=MagicMock(),
             contact_store=contact_store,

@@ -80,6 +80,10 @@ _SOURCE_KEYWORDS: dict[ContextSource, set[str]] = {
     ContextSource.CONTACTS: {
         "kontakt", "kontakte", "contact", "contacts", "telefon",
         "nummer", "email", "adresse", "anrufen", "telefonnummer",
+        "geburtstag", "birthday", "wohnt", "arbeitet",
+        "gruppe", "gruppen", "kategorie", "kategorien",
+        "firma", "organisation", "jahrestag", "spitzname",
+        "website", "kollege", "kollegin", "freund", "freundin",
     },
     ContextSource.WEATHER: {
         "wetter", "weather", "regen", "regnet", "temperatur",
@@ -332,13 +336,8 @@ class SmartContextProvider:
             return ""
         lines = ["👤 Gefundene Kontakte:"]
         for c in results:
-            parts = [c.name]
-            if getattr(c, "email", None):
-                parts.append(c.email)
-            if getattr(c, "role", None):
-                parts.append(c.role)
-            lines.append(f"  {' – '.join(parts)}")
-        return "\n".join(lines)
+            lines.append(c.format_for_llm())
+        return "\n\n".join(lines)
 
     def _query_weather(self) -> str:
         """Holt aktuelle Wetterdaten."""
