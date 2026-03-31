@@ -3146,3 +3146,24 @@ User: "Lies meine Mails und trag den Zahnarzttermin ein"
 ### Tests
 - 205 kontakt-spezifische Tests (55 neue + bestehende angepasst)
 - 3248 Tests gesamt grün (1 vorbestehender Fehler test_computer_use, 20 agent_protocol Errors)
+
+## In Arbeit: Phase 39 – Nextcloud als Datei-Hub (2026-03-31)
+- Branch: feature/phase-39-nextcloud-file-hub
+- nächster Schritt: message_handlers.py / File-Output über NC + Share-Link
+
+### Schritt 1: File-Output über Nextcloud (message_handlers.py, bridge.py)
+- _send_file_via_nc_or_matrix(): Upload nach /Saleria/YYYY-MM/ + Share-Link per Text
+- _upload_to_nc_and_share(): NC-Upload + OCS Share-Link (async via Executor)
+- Fallback: bei NC-Fehler oder fehlendem Client → direkter Matrix-Upload wie bisher
+- Screenshots weiterhin direkt per Matrix (Inline-Preview wichtiger als NC-Link)
+- nextcloud_files als neuer Parameter durch Bridge → MessageHandler durchgereicht
+
+### Schritt 2: Inhaltssuche (nextcloud_files.py, cloud_commands.py)
+- search_content(): NC Unified Search API (/ocs/v2.php/search/providers/fulltextsearch/search)
+- Nutzt NC Full text search + Files Plugin (serverseitig, inkl. Workflow OCR)
+- Neuer Command: "cloud inhalt <query>" — durchsucht Dateiinhalte (PDF, Office, TXT)
+- Ausgabe: Dateiname + Pfad + Textauszug mit Match
+
+### Tests
+- 14 neue Tests (test_nc_file_hub.py): File-Hub, Content-Search, Fallback, Cleanup
+- 3263 Tests gesamt grün

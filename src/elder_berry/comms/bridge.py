@@ -53,6 +53,7 @@ if TYPE_CHECKING:
     from elder_berry.stt.base import STTEngine
     from elder_berry.tools.document_reader import DocumentReader
     from elder_berry.tools.email_sender import EmailSender
+    from elder_berry.tools.nextcloud_files import NextcloudFilesClient
 
 logger = logging.getLogger(__name__)
 
@@ -88,6 +89,7 @@ class MatrixBridge:
         summarizer: Summarizer | None = None,
         email_sender: EmailSender | None = None,
         pending_store: PendingConfirmationStore | None = None,
+        nextcloud_files: NextcloudFilesClient | None = None,
     ) -> None:
         self._channel = channel
         self._assistant = assistant
@@ -134,6 +136,7 @@ class MatrixBridge:
             claude_agent=claude_agent,
             task_chain=task_chain,
             email_sender=email_sender,
+            nextcloud_files=nextcloud_files,
         )
 
     @staticmethod
