@@ -32,6 +32,7 @@ if TYPE_CHECKING:
     from elder_berry.core.task_chain import TaskChainRunner
     from elder_berry.comms.claude_agent import ClaudeAgent
     from elder_berry.tools.email_sender import EmailSender
+    from elder_berry.tools.nextcloud_files import NextcloudFilesClient
 
 logger = logging.getLogger(__name__)
 
@@ -56,6 +57,7 @@ class BridgeMessageHandler:
         claude_agent: ClaudeAgent | None = None,
         task_chain: TaskChainRunner | None = None,
         email_sender: EmailSender | None = None,
+        nextcloud_files: NextcloudFilesClient | None = None,
     ) -> None:
         self._channel = channel
         self._assistant = assistant
@@ -66,6 +68,7 @@ class BridgeMessageHandler:
         self._claude_agent = claude_agent
         self._task_chain = task_chain
         self._email_sender = email_sender
+        self._nc_files = nextcloud_files
         # Mutable State (gesetzt von Bridge)
         self.restart_cooldown_until: float = 0.0
         self._scheduler_mgr: SchedulerManager | None = None
@@ -153,7 +156,7 @@ class BridgeMessageHandler:
                     extra={"sender": msg.sender, "handler": f"command:{command}"},
                 )
 
-            # Bild senden (z.B. Screenshot)
+            # Bild senden (Screenshot): direkt per Matrix (Inline-Preview)
             if result.image_path and result.image_path.exists():
                 try:
                     await self._channel.send_image(
@@ -167,30 +170,18 @@ class BridgeMessageHandler:
                 finally:
                     result.image_path.unlink(missing_ok=True)
 
-            # Datei senden
+            # Datei senden: über Nextcloud (Upload + Share-Link) oder Matrix-Fallback
             if result.file_path and result.file_path.exists():
-                try:
-                    await self._channel.send_file(
-                        msg.room_id, result.file_path,
-                    )
-                except NotImplementedError:
-                    await self._channel.send_text(
-                        msg.room_id,
-                        "Datei-Upload nicht unterstützt.",
-                    )
+                await self._send_file_via_nc_or_matrix(
+                    msg.room_id, result.file_path,
+                )
 
             # Mehrere Dateien senden (z.B. Mail-Anhänge)
             for fpath in (result.file_paths or []):
                 if fpath.exists():
-                    try:
-                        await self._channel.send_file(msg.room_id, fpath)
-                    except NotImplementedError:
-                        await self._channel.send_text(
-                            msg.room_id,
-                            "Datei-Upload nicht unterstützt.",
-                        )
-                    finally:
-                        fpath.unlink(missing_ok=True)
+                    await self._send_file_via_nc_or_matrix(
+                        msg.room_id, fpath, cleanup=True,
+                    )
 
             # Restart
             if result.restart:
@@ -494,6 +485,73 @@ class BridgeMessageHandler:
                 )
             except Exception:
                 logger.error("Konnte Fehlermeldung nicht senden")
+
+    # ------------------------------------------------------------------
+    # Nextcloud File-Hub
+    # ------------------------------------------------------------------
+
+    async def _send_file_via_nc_or_matrix(
+        self, room_id: str, file_path: Path, cleanup: bool = False,
+    ) -> None:
+        """Sendet eine Datei: bevorzugt über Nextcloud (Upload + Share-Link),
+        Fallback auf direkten Matrix-Upload.
+
+        Args:
+            room_id: Matrix-Room-ID.
+            file_path: Lokaler Pfad zur Datei.
+            cleanup: Datei nach dem Senden löschen.
+        """
+        # Versuch: Nextcloud Upload + Share-Link
+        if self._nc_files is not None:
+            link = await self._upload_to_nc_and_share(file_path)
+            if link:
+                filename = file_path.name
+                await self._channel.send_text(
+                    room_id, f"📎 {filename}: {link}",
+                )
+                if cleanup:
+                    file_path.unlink(missing_ok=True)
+                return
+
+        # Fallback: direkter Matrix-Upload
+        try:
+            await self._channel.send_file(room_id, file_path)
+        except NotImplementedError:
+            await self._channel.send_text(
+                room_id, "Datei-Upload nicht unterstützt.",
+            )
+        finally:
+            if cleanup:
+                file_path.unlink(missing_ok=True)
+
+    async def _upload_to_nc_and_share(self, file_path: Path) -> str | None:
+        """Upload zu Nextcloud + Share-Link erstellen.
+
+        Zielordner: /Saleria/YYYY-MM/<dateiname>
+
+        Returns:
+            Share-Link URL oder None bei Fehler.
+        """
+        from datetime import datetime
+
+        month_folder = datetime.now().strftime("%Y-%m")
+        remote_path = f"Saleria/{month_folder}/{file_path.name}"
+
+        loop = asyncio.get_running_loop()
+        try:
+            # Upload (blockierend → in Executor)
+            await loop.run_in_executor(
+                None, self._nc_files.upload, file_path, remote_path,
+            )
+            # Share-Link erstellen
+            link = await loop.run_in_executor(
+                None, self._nc_files.share_link, remote_path,
+            )
+            logger.info("NC File-Hub: %s → %s", file_path.name, link)
+            return link
+        except Exception as exc:
+            logger.warning("NC Upload/Share fehlgeschlagen, Fallback auf Matrix: %s", exc)
+            return None
 
     async def _handle_document_summary(self, msg: IncomingMessage, result) -> None:
         await self._handle_llm_enrichment(

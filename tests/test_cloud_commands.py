@@ -269,9 +269,10 @@ def test_share_link_success(handler, nc_client):
 
 def test_cloud_commands_in_help(handler):
     descs = handler.command_descriptions
-    assert len(descs) == 5
+    assert len(descs) == 6
     assert any("upload" in d for d in descs)
     assert any("download" in d for d in descs)
     assert any("dateien" in d for d in descs)
     assert any("suche" in d for d in descs)
+    assert any("inhalt" in d for d in descs)
     assert any("link" in d for d in descs)

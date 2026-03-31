@@ -5,6 +5,7 @@ Commands:
     cloud download <pfad>       – Download file from Nextcloud
     cloud dateien [ordner]      – List directory contents
     cloud suche <query>         – Search files by name
+    cloud inhalt <query>        – Search inside file contents (Full text search)
     cloud link <pfad>           – Create public share link
 """
 from __future__ import annotations
@@ -43,6 +44,11 @@ CLOUD_SEARCH_PATTERN = re.compile(
     re.IGNORECASE,
 )
 
+CLOUD_CONTENT_SEARCH_PATTERN = re.compile(
+    r"^cloud\s+(?:inhalt|content|volltext|durchsuche)\s+(.+)$",
+    re.IGNORECASE,
+)
+
 CLOUD_LINK_PATTERN = re.compile(
     r"^cloud\s+(?:link|share|teile)\s+(.+)$",
     re.IGNORECASE,
@@ -75,6 +81,7 @@ class CloudCommandHandler(CommandHandler):
             (CLOUD_UPLOAD_PATTERN, "cloud_upload", True, False),
             (CLOUD_DOWNLOAD_PATTERN, "cloud_download", False, False),
             (CLOUD_LIST_PATTERN, "cloud_list", False, False),
+            (CLOUD_CONTENT_SEARCH_PATTERN, "cloud_content_search", False, False),
             (CLOUD_SEARCH_PATTERN, "cloud_search", False, False),
             (CLOUD_LINK_PATTERN, "cloud_link", False, False),
         ]
@@ -85,7 +92,8 @@ class CloudCommandHandler(CommandHandler):
             "cloud upload <pfad> [ziel]: Datei zu Nextcloud hochladen",
             "cloud download <pfad>: Datei aus Nextcloud herunterladen",
             "cloud dateien [ordner]: Nextcloud-Verzeichnis auflisten",
-            "cloud suche <query>: Dateien in Nextcloud suchen",
+            "cloud suche <query>: Dateien in Nextcloud suchen (Dateiname)",
+            "cloud inhalt <query>: Dateiinhalte durchsuchen (Volltextsuche)",
             "cloud link <pfad>: Öffentlichen Share-Link erstellen",
         ]
 
@@ -94,6 +102,10 @@ class CloudCommandHandler(CommandHandler):
         return {
             "cloud_list": ["nextcloud dateien", "cloud dateien", "nextcloud ordner"],
             "cloud_search": ["nextcloud suche", "cloud suche"],
+            "cloud_content_search": [
+                "cloud inhalt", "cloud durchsuche", "cloud volltext",
+                "nextcloud inhalt", "nextcloud durchsuche",
+            ],
         }
 
     def execute(self, command: str, raw_text: str) -> CommandResult:
@@ -110,6 +122,8 @@ class CloudCommandHandler(CommandHandler):
             return self._cmd_download(raw_text)
         if command == "cloud_list":
             return self._cmd_list(raw_text)
+        if command == "cloud_content_search":
+            return self._cmd_content_search(raw_text)
         if command == "cloud_search":
             return self._cmd_search(raw_text)
         if command == "cloud_link":
@@ -288,6 +302,58 @@ class CloudCommandHandler(CommandHandler):
 
         return CommandResult(
             command="cloud_search",
+            success=True,
+            text="\n".join(lines),
+        )
+
+    # ── Content Search ─────────────────────────────────────────────────
+
+    def _cmd_content_search(self, raw_text: str) -> CommandResult:
+        match = CLOUD_CONTENT_SEARCH_PATTERN.match(raw_text.strip())
+        if not match:
+            return CommandResult(
+                command="cloud_content_search",
+                success=False,
+                text="Ungültiges Format. Beispiel: cloud inhalt Mietvertrag",
+            )
+
+        query = match.group(1).strip()
+        try:
+            results = self._nc.search_content(query)
+        except Exception as e:
+            logger.error("Cloud content search failed: %s", e)
+            return CommandResult(
+                command="cloud_content_search",
+                success=False,
+                text=f"Inhaltssuche fehlgeschlagen: {e}",
+            )
+
+        if not results:
+            return CommandResult(
+                command="cloud_content_search",
+                success=True,
+                text=f"Keine Dateien mit Inhalt '{query}' gefunden.",
+            )
+
+        max_show = 10
+        lines = [f"🔍 {len(results)} Treffer für '{query}':"]
+        for entry in results[:max_show]:
+            name = entry.get("name", "?")
+            path = entry.get("path", "")
+            excerpt = entry.get("excerpt", "")
+            lines.append(f"  📄 {name}")
+            if path and path != name:
+                lines.append(f"     📁 {path}")
+            if excerpt:
+                # Excerpt kürzen auf 150 Zeichen
+                short = excerpt[:150] + ("…" if len(excerpt) > 150 else "")
+                lines.append(f"     ➜ {short}")
+
+        if len(results) > max_show:
+            lines.append(f"(und {len(results) - max_show} weitere)")
+
+        return CommandResult(
+            command="cloud_content_search",
             success=True,
             text="\n".join(lines),
         )

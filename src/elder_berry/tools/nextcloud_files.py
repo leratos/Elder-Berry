@@ -475,3 +475,68 @@ class NextcloudFilesClient:
         raise NextcloudError(
             "Share-Link konnte nicht aus der Antwort extrahiert werden"
         )
+
+    def search_content(self, query: str, limit: int = 10) -> list[dict]:
+        """Volltextsuche in Dateiinhalten via Nextcloud Unified Search API.
+
+        Nutzt das Full text search - Files Plugin (serverseitig).
+        Durchsucht PDF-Text, Office-Dokumente, Textdateien etc.
+
+        Args:
+            query: Suchbegriff (wird im Dateiinhalt gesucht).
+            limit: Maximale Anzahl Ergebnisse.
+
+        Returns:
+            Liste von Dicts mit: name, path, excerpt (Textauszug mit Match).
+
+        Raises:
+            NextcloudError: Suche fehlgeschlagen.
+        """
+        if not self._has_credentials:
+            raise NextcloudError("Nextcloud-Credentials nicht konfiguriert")
+
+        base_url = (self._url or "").rstrip("/")
+        # Unified Search API (NC 20+)
+        url = f"{base_url}/ocs/v2.php/search/providers/fulltextsearch/search"
+
+        try:
+            resp = httpx.get(
+                url,
+                auth=self._auth,
+                headers={"OCS-APIRequest": "true"},
+                params={"term": query, "limit": limit},
+                timeout=30.0,
+            )
+        except (httpx.ConnectError, httpx.TimeoutException) as exc:
+            raise NextcloudConnectionError(
+                f"Server nicht erreichbar: {exc}",
+            ) from exc
+
+        self._check_auth_error(resp)
+
+        if resp.status_code not in (200,):
+            raise NextcloudError(
+                f"Inhaltssuche fehlgeschlagen: HTTP {resp.status_code}",
+            )
+
+        # OCS JSON response parsen
+        results: list[dict] = []
+        try:
+            data = resp.json()
+            entries = (
+                data.get("ocs", {}).get("data", {}).get("entries", [])
+            )
+            for entry in entries[:limit]:
+                title = entry.get("title", "")
+                subline = entry.get("subline", "")
+                # resourceUrl enthält den NC-Dateipfad
+                resource_url = entry.get("resourceUrl", "")
+                results.append({
+                    "name": title,
+                    "path": subline or resource_url,
+                    "excerpt": entry.get("excerpt", subline),
+                })
+        except (ValueError, KeyError, AttributeError) as exc:
+            logger.warning("Inhaltssuche: Antwort-Parsing fehlgeschlagen: %s", exc)
+
+        return results
