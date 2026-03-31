@@ -3175,3 +3175,26 @@ User: "Lies meine Mails und trag den Zahnarzttermin ein"
 - remote_commands.py: HELP_TEXT ergänzt
 - docs/USAGE.md: Nextcloud-Setup-Befehl dokumentiert
 - Tests: 75 passing (13 neue mkdir/delete Tests + 13 neue Setup-Command Tests)
+
+## In Arbeit: Phase 40.1 – Alexa Skill "Saleria" Proxy-Modus (2026-03-31)
+- Branch: feature/phase-40-alexa-proxy
+- Konzept: docs/concepts/phase-40-sprachsteuerung.md
+- Infrastruktur: SSH-Tunnel RPi5→Rootserver steht, Nginx /alexa/ → RPi5:8000 ✓
+- nächster Schritt: alexa_skill_handler.py / Alexa-Endpoint auf RPi5
+
+### Schritt 1: Infrastruktur (SSH-Tunnel + Nginx)
+- Rootserver: User rpi5-tunnel (nur Tunnel, kein Shell-Zugang)
+- RPi5: SSH-Key + systemd-Service ssh-tunnel.service (autoreconnect)
+- Nginx: location /alexa/ → proxy_pass localhost:8765 → SSH-Tunnel → RPi5:8000
+- Getestet: curl https://fern.last-strawberry.com/alexa/health → OK ✓
+
+### Schritt 2: AlexaSkillHandler (alexa_skill_handler.py)
+- AlexaSkillHandler: Alexa-Request parsen, Command-Text extrahieren, Harmony dispatchen
+- Patterns: activity_on, all_off, volume_up/down, mute, current, scene_start
+- Activity-Map: fernsehen/tv/fernseher→Fernsehen, musik/radio→Musik, gaming→Gaming
+- AlexaResult Dataclass + build_alexa_response() für Alexa-JSON-Format
+- server.py: POST /saleria Endpoint eingebunden, AlexaSkillHandler per DI
+
+### Tests
+- 36 Tests grün (test_alexa_skill_handler.py)
+- Request-Parsing, Response-Format, alle Commands, Fehlerfall, kein Harmony
