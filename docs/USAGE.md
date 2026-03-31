@@ -30,7 +30,7 @@ Tipp: `hilfe` zeigt alle verfügbaren Commands direkt in Element an.
 | `selfie` / `avatar` | Bild von Saleria senden |
 | `selfie <emotion>` | Mit Emotion (angry, cheerful, sad, ...) |
 
-## Kalender (Google Calendar)
+## Kalender (Nextcloud CalDAV / Google Calendar Fallback)
 
 | Command | Beschreibung |
 |---|---|
@@ -65,7 +65,7 @@ Tipp: `hilfe` zeigt alle verfügbaren Commands direkt in Element an.
 Wenn ein Kontakt zum Absender existiert (Phase 29), wird dessen Kontext
 (Name, Rolle, bevorzugte Anrede) automatisch im Entwurf berücksichtigt.
 
-## Kontaktbuch (Phase 29)
+## Kontaktbuch (Phase 29 + 38)
 
 | Command | Beschreibung |
 |---|---|
@@ -73,12 +73,25 @@ Wenn ein Kontakt zum Absender existiert (Phase 29), wird dessen Kontext
 | `wer ist <Name>?` | Kontakt abrufen (kein Treffer → LLM beantwortet) |
 | `kontakte` | Alle Kontakte anzeigen |
 | `kontakte suche <Begriff>` | Volltextsuche |
+| `kontakt ändern #<ID>: feld=wert` | Kontakt bearbeiten |
 | `kontakt löschen #<ID>` | Kontakt löschen |
+| `kontakte sync` | Nextcloud CardDAV Sync (bidirektional) |
+| `kontakte sync pull` | Nur Nextcloud → lokal |
+| `kontakte sync reset` | Alles löschen + frischer Pull |
+| `wann hat <Name> Geburtstag?` | Geburtstag abfragen |
+| `was ist die Adresse von <Name>?` | Adresse abfragen |
+| `wie ist die Nummer von <Name>?` | Telefonnummer abfragen |
+| `wo arbeitet <Name>?` | Arbeitgeber abfragen |
+| `kontakte gruppe <Name>` | Kontakte einer Gruppe anzeigen |
 
 Beispiel: `kontakt: Herr Müller, Vermieter, info@mueller.de, förmlich`
 
-Felder werden automatisch erkannt: `@` → E-Mail, "förmlich"/"locker" → Anrede,
-erstes unbekanntes Feld → Rolle, weitere → Notizen.
+Felder werden automatisch erkannt: `@` → E-Mail, Ziffern → Telefon,
+"förmlich"/"locker" → Anrede, erstes unbekanntes Feld → Rolle, weitere → Notizen.
+
+Alle Nextcloud-vCard-Felder werden gesynct: Name, mehrere Emails/Telefonnummern,
+Adresse, Organisation, Titel, Gruppen (CATEGORIES), Spitzname, Geburtstag, Jahrestag, Website.
+Geburtstage und Jahrestage erscheinen automatisch im täglichen Briefing.
 
 ## Aufgabenliste (Phase 30)
 
@@ -147,6 +160,10 @@ Offene Todos erscheinen automatisch im täglichen Briefing.
 
 Wird auch automatisch um 07:30 gesendet. Keywords wie "guten morgen" lösen es ebenfalls aus.
 
+Enthält: Wetter, Termine, Geburtstage (heute/morgen/diese Woche), Jahrestage,
+Erinnerungen, offene Todos, ungelesene E-Mails, "Vor einem Jahr"-Notizen.
+Kontakte werden vor jedem Briefing automatisch von Nextcloud gesynct.
+
 ## Fitness (Berry-Gym)
 
 | Command | Beschreibung |
@@ -173,6 +190,20 @@ Wird auch automatisch um 07:30 gesendet. Keywords wie "guten morgen" lösen es e
 | `schick mir <pfad>` | Datei senden (max 50 MB) |
 | `download <url>` | Datei herunterladen |
 | `zusammenfassung <pfad>` | PDF/TXT via LLM zusammenfassen |
+
+Dateien werden automatisch auf Nextcloud hochgeladen und als Share-Link geteilt
+(Fallback: direkter Matrix-Upload wenn NC nicht verfügbar).
+
+## Nextcloud Cloud (Phase 36 + 39)
+
+| Command | Beschreibung |
+|---|---|
+| `cloud upload <pfad> [ziel]` | Datei zu Nextcloud hochladen |
+| `cloud download <pfad>` | Datei aus Nextcloud herunterladen |
+| `cloud dateien [ordner]` | Nextcloud-Verzeichnis auflisten |
+| `cloud suche <query>` | Dateien suchen (Dateiname) |
+| `cloud inhalt <query>` | Dateiinhalte durchsuchen (Volltextsuche) |
+| `cloud link <pfad>` | Öffentlichen Share-Link erstellen |
 
 ## Prozesse & System
 

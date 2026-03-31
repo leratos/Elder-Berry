@@ -541,29 +541,24 @@ DocumentReader (Phase 16) auf Web-Inhalte.
 - **Aufwand**: 1–2 Tage
 - **Konzept**: `docs/concepts/phase-35-web-zusammenfassung.md`
 
-## Phase 36 – Nextcloud-Integration ☁️ GEPLANT
+## Phase 36 – Nextcloud-Integration ☁️ ✅ ABGESCHLOSSEN
 
 Self-Hosted Nextcloud als Backend für Dateien, Kalender und Kontakte.
-Ersetzt Google-Calendar-Abhängigkeit, ergänzt bestehende Stores um Sync.
 
 ### Unterphasen
-- **36.1** Nextcloud Setup + WebDAV Files (NextcloudFilesClient)
+- **36.1** ✅ Nextcloud Setup + WebDAV Files (NextcloudFilesClient)
   → Dateien hoch-/runterladen, Verzeichnisse listen, Share-Links
-- **36.2** CalDAV Kalender (CalDAVCalendarClient → GoogleCalendarClient ersetzen)
-  → Gleiche Methoden, DI-Austausch, CalendarWatcher/Briefing bleiben unverändert
-- **36.3** CardDAV Kontakte (bidirektionaler Sync)
-  → Saleria legt Kontakt an → CardDAV-Push → Nextcloud → Endgeräte (DAVx5)
-  → Endgeräte-Kontakt → Nextcloud → periodischer Sync → lokaler SQLite
-  → Saleria-spezifische Felder (formality, notes) bleiben lokal im SQLite
+- **36.2** ✅ CalDAV Kalender (CalDAVCalendarClient → GoogleCalendarClient ersetzen)
+  → Gleiche Methoden, DI-Austausch, Google Calendar nur noch Fallback
+- **36.3** ✅ CardDAV Kontakte (bidirektionaler Sync)
+  → Alle vCard-Felder gesynct, vcard_uid-Tracking gegen Duplikate
 
-### Nicht migriert
+### Nicht migriert (by Design)
 
 - NoteStore, TodoStore (SQLite + FTS5 ist schneller und offline-fähig)
 - E-Mail (direktes IMAP ist besser als Nextcloud Mail)
 
 - **Konzept**: `docs/concepts/phase-36-nextcloud-integration.md`
-- **Infrastruktur**: Rootserver (Xeon E-2276G, 32 GB RAM, Plesk, Ubuntu 24.04)
-- **Abhängigkeit**: 36.1 zuerst (Nextcloud muss laufen), 36.2+36.3 danach
 
 ## Phase 37 – Smart Home Integration 🏠 TEILWEISE ABGESCHLOSSEN
 
@@ -576,7 +571,7 @@ Logitech-Cloud wurde abgelöst. Dashboard als modulare Kommandozentrale.
 |-------|-------|--------|
 | 37.1 | Harmony Hub – vollständige Ablösung | ✅ abgeschlossen |
 | 37.2 | Harmony Remote – Erweiterte Steuerung & Szenen | ✅ abgeschlossen |
-| 37.3 | Dashboard 2.0 – Modulare Smart Home PWA | 📱 als nächstes |
+| 37.3 | Dashboard 2.0 – Modulare Smart Home PWA | ✅ abgeschlossen |
 | 37.4 | SmartHomeInterface + Plugin-Registry | offen |
 | 37.5 | Home Assistant Adapter | offen (nach Umzug) |
 | 37.6 | Alexa-Integration (Emulated Hue) | offen (nach Umzug + HA) |
@@ -593,43 +588,43 @@ Logitech-Cloud wurde abgelöst. Dashboard als modulare Kommandozentrale.
 - Szenen-Engine (HarmonySceneManager, CRUD + sequenzielle Ausführung)
 - Saleria-Anbindung: "starte szene Gaming" → RPi5 → Szenen-Engine
 
-### 37.3 📱 Dashboard 2.0 – Modulare Smart Home PWA
-Mobile-first PWA auf dem Rootserver als modulare Kommandozentrale.
-Ersetzt keine bestehenden Tools — das AudioDashboard (Tower :8090) bleibt als Dev-Settings.
+### 37.3 ✅ Dashboard 2.0 – Modulare Smart Home PWA
+Mobile-first PWA auf dem Rootserver als modulare Kommandozentrale (fern.last-strawberry.com).
 
-- **PWA**: installierbar auf Handy, HTTPS, Rootserver
-- **Modul-Architektur**: jedes Modul eigenständige JS-Klasse, ein-/ausblendbar
-- **Modul 1**: Harmony Remote (bestehende PWA integrieren)
-- **Modul 2**: System-Status (RPi5 + Tower Health, immer sichtbar)
-- **Modul 3**: Saleria-Status (Tower-abhängig, graceful offline)
-- **Modul 4**: Home Assistant (Platzhalter, Phase 37.5)
-- **Service Worker**: Offline-Cache für statische Assets
-- **Design**: Weiterführung der bestehenden Ästhetik (#1a1a2e, Saleria-Lila)
+- ✅ PWA: installierbar, HTTPS, Service Worker, Offline-Cache
+- ✅ Modul-Architektur: DashboardModule ABC, dynamischer Module-Loader
+- ✅ System-Status, Harmony Remote, Saleria-Status als Module
+- ✅ Nginx Reverse Proxy (HTTPS → HTTP RPi5/Tower)
 - **Konzept**: `docs/concepts/phase-36-dashboard-2.0.md`
 
 - **Konzept (Smart Home gesamt)**: `docs/concepts/phase-37-smart-home-integration.md`
 - **Konzept (Harmony erweitert)**: `docs/concepts/harmony-remote-erweitert.md`
 - **Abhängigkeit**: 37.5/37.6 nach Umzug; 37.1–37.4 sofort
 
-## Phase 38 – Kontakte: Vollintegration Nextcloud + Saleria 📇 GEPLANT
+## Phase 38 – Kontakte: Vollintegration Nextcloud + Saleria 📇 ✅ ABGESCHLOSSEN
 
 Saleria kennt alle Informationen aus den Nextcloud-Kontakten und kann
-natürliche Fragen über Personen beantworten ("Wann hat Lisa Geburtstag?",
-"Adresse von Herrn Müller?", "Kontakte in Gruppe Familie?").
+natürliche Fragen über Personen beantworten.
 
-### Teilschritte
+- ✅ Contact-Datenmodell: 7 neue Felder, emails/phones als JSON-Arrays
+- ✅ CardDAV-Sync: alle vCard-Properties, vcard_uid-Tracking, Push-Duplikat-Bug fix
+- ✅ SmartContextProvider: 15+ Keywords, format_for_llm() Kontext-Injection
+- ✅ Natürliche Feld-Abfragen: Geburtstag, Adresse, Telefon, Firma, Gruppen
+- ✅ Briefing: Geburtstage morgen/Woche, Jahrestage, Auto-Sync vor Briefing
+- ✅ Gruppen-Features: Listing, Filterung per CATEGORIES
+- **Konzept**: `docs/concepts/phase-38-kontakte-vollintegration.md`
 
-- **38.1** Contact-Datenmodell erweitern (address, organization, title, categories, phones JSON, emails JSON)
-- **38.2** CardDAV-Sync erweitern (alle vCard-Properties parsen + schreiben)
-- **38.3** SmartContextProvider erweitern (Keywords + format_for_llm)
-- **38.4** Natürliche Feld-Abfragen (CONTACT_FIELD_QUERY_PATTERN)
-- **38.5** Briefing erweitern (Geburtstage morgen/Woche, Jahrestage, Auto-Sync vor Briefing)
-- **38.6** Gruppen-basierte Features (Filter, Auflistung, Default-Anrede)
+## Phase 39 – Nextcloud als Datei-Hub + Inhaltssuche ☁️ ✅ ABGESCHLOSSEN
 
-- **Konzept**: `docs/concepts/phase-39-kontakte-vollintegration.md`
-- **Abhängigkeit**: ContactStore (Phase 29 ✅), CardDAV-Sync (Phase 36.3 ✅), SmartContext (Phase 21 ✅)
+Dateien werden über Nextcloud geteilt statt direkt per Matrix. Volltextsuche
+in Dateiinhalten via NC Full text search Plugin.
 
-## Phase 39 – Sprachsteuerung / Alexa-Ablösung 🎙️ GEPLANT
+- ✅ File-Output: Upload nach /Saleria/YYYY-MM/ + Share-Link statt Matrix-Upload
+- ✅ Fallback: direkter Matrix-Upload wenn NC nicht verfügbar
+- ✅ Inhaltssuche: `cloud inhalt <query>` via NC Unified Search API
+- ✅ NC Full text search + Workflow OCR serverseitig konfiguriert
+
+## Phase 40 – Sprachsteuerung / Alexa-Ablösung 🎙️ GEPLANT
 
 Saleria erhält eine eigene Sprachschnittstelle — unabhängig von Amazon.
 Zwei Modi werden parallel unterstützt, sodass zwischen Alexa und Saleria
@@ -637,16 +632,16 @@ gewechselt werden kann (Flexibilität, kein harter Cut).
 
 ### Unterphasen
 
-- **39.1** Alexa Skill "Saleria" (Proxy-Modus, keine neue Hardware)
+- **40.1** Alexa Skill "Saleria" (Proxy-Modus, keine neue Hardware)
   → Echo macht Wake Word + STT, Text geht an Salerias API
-- **39.2** Natives Wake Word + Mic Array (vollständige Unabhängigkeit)
+- **40.2** Natives Wake Word + Mic Array (vollständige Unabhängigkeit)
   → OpenWakeWord auf RPi5, faster-whisper auf Tower-GPU
   → Hardware: ReSpeaker USB Array (~60€) oder Umbau vorhandener Hardware
 
 - **Konzept**: `docs/concepts/phase-38-sprachsteuerung.md`
-- **Abhängigkeit**: 39.1 nach 37.6; 39.2 nach 39.1 (Hardware-Entscheidung)
+- **Abhängigkeit**: 40.1 nach 37.6; 40.2 nach 40.1 (Hardware-Entscheidung)
 
-## Phase 40 – IR-Learning & Geräteverwaltung 📡 GEPLANT
+## Phase 41 – IR-Learning & Geräteverwaltung 📡 GEPLANT
 
 Neue Geräte über die PWA anlernen, IR-Codes speichern, Geräte verwalten.
 Setzt Phase 37.2 (Szenen-Engine) voraus und physischen Zugang zum Hub.
