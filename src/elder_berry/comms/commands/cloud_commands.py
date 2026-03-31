@@ -289,13 +289,20 @@ class CloudCommandHandler(CommandHandler):
                 text=f"Keine Ergebnisse für '{query}'.",
             )
 
-        max_show = 20
+        # Dateien direkt mit Share-Links ausgeben
+        max_show = 10
         lines: list[str] = []
         for entry in results[:max_show]:
             if entry.is_dir:
                 lines.append(f"\U0001f4c1 {entry.path}/")
             else:
-                lines.append(f"\U0001f4c4 {entry.path}  ({_format_size(entry.size)})")
+                line = f"\U0001f4c4 {entry.name}  ({_format_size(entry.size)})"
+                try:
+                    link = self._nc.share_link(entry.path)
+                    line += f"\n     🔗 {link}"
+                except Exception:
+                    line += f"\n     📁 {entry.path}"
+                lines.append(line)
 
         if len(results) > max_show:
             lines.append(f"(und {len(results) - max_show} weitere)")

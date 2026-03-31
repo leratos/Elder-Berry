@@ -236,11 +236,13 @@ def test_search_success(handler, nc_client):
     nc_client.search.return_value = [
         NextcloudFile("report.pdf", "Dokumente/report.pdf", False, 5000, ""),
     ]
+    nc_client.share_link.return_value = "https://cloud.example.com/s/abc123"
 
     result = handler.execute("cloud_search", "cloud suche report")
 
     assert result.success is True
-    assert "Dokumente/report.pdf" in result.text
+    assert "report.pdf" in result.text
+    assert "https://cloud.example.com/s/abc123" in result.text
 
 
 def test_search_no_results(handler, nc_client):
