@@ -3195,6 +3195,15 @@ User: "Lies meine Mails und trag den Zahnarzttermin ein"
 - AlexaResult Dataclass + build_alexa_response() für Alexa-JSON-Format
 - server.py: POST /saleria Endpoint eingebunden, AlexaSkillHandler per DI
 
+### Schritt 3: Alexa Skill Konfiguration (Amazon Developer Console)
+- Invocation Name: "meine saleria"
+- Intent-basiertes Routing statt AMAZON.SearchQuery (keine Carrier-Phrase nötig)
+- Intents: TVAnIntent, MusikAnIntent, GamingAnIntent, AllesAusIntent, LauterIntent, LeiserIntent, StummIntent, StatusIntent
+- Endpoint: https://fern.last-strawberry.com/alexa/saleria (HTTPS, Wildcard-Cert)
+- Live-Test erfolgreich: "Alexa, frag Saleria fernsehen an" → TV geht an ✓
+
 ### Tests
-- 36 Tests grün (test_alexa_skill_handler.py)
-- Request-Parsing, Response-Format, alle Commands, Fehlerfall, kein Harmony
+- 30 Tests grün (test_alexa_skill_handler.py)
+- Intent-basiertes Routing, Built-in-Intents, Fehlerfall, kein Harmony
+
+## Abgeschlossen: Phase 40.1 – Alexa Skill "Saleria" Proxy-Modus (2026-03-31)
