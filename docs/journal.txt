@@ -3167,3 +3167,11 @@ User: "Lies meine Mails und trag den Zahnarzttermin ein"
 ### Tests
 - 14 neue Tests (test_nc_file_hub.py): File-Hub, Content-Search, Fallback, Cleanup
 - 3263 Tests gesamt grün
+
+## Abgeschlossen: Nextcloud Setup Command (2026-03-31)
+- nextcloud_files.py: mkdir() + delete() hinzugefügt (öffentliche WebDAV-Methoden)
+- cloud_commands.py: NEXTCLOUD_SETUP_PATTERN + _cmd_nextcloud_setup() (Phase 1: Vorschau + Bestätigung)
+- message_handlers.py: _execute_nextcloud_setup() (Phase 2: löschen + Ordner anlegen nach Bestätigung)
+- remote_commands.py: HELP_TEXT ergänzt
+- docs/USAGE.md: Nextcloud-Setup-Befehl dokumentiert
+- Tests: 75 passing (13 neue mkdir/delete Tests + 13 neue Setup-Command Tests)

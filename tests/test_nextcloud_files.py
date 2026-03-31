@@ -363,3 +363,113 @@ def test_share_link_auth_error(mock_request, client):
 
     with pytest.raises(NextcloudAuthError):
         client.share_link("file.txt")
+
+
+# ── mkdir ──────────────────────────────────────────────────────────────
+
+
+@patch("elder_berry.tools.nextcloud_files.httpx.request")
+def test_mkdir_creates_new_directory(mock_req, client):
+    mock_req.return_value = MagicMock(status_code=201)
+
+    result = client.mkdir("Manuale/Elektronik")
+
+    assert result is True
+    mock_req.assert_called_once()
+    assert mock_req.call_args[0][0] == "MKCOL"
+
+
+@patch("elder_berry.tools.nextcloud_files.httpx.request")
+def test_mkdir_existing_directory(mock_req, client):
+    mock_req.return_value = MagicMock(status_code=405)
+
+    result = client.mkdir("Dokumente")
+
+    assert result is False
+
+
+@patch("elder_berry.tools.nextcloud_files.httpx.request")
+def test_mkdir_conflict_raises(mock_req, client):
+    mock_req.return_value = MagicMock(status_code=409)
+
+    with pytest.raises(NextcloudError, match="MKCOL fehlgeschlagen"):
+        client.mkdir("Manuale/Elektronik")
+
+
+def test_mkdir_no_credentials_raises(no_creds_store):
+    c = NextcloudFilesClient(secret_store=no_creds_store)
+    with pytest.raises(NextcloudError, match="Credentials"):
+        c.mkdir("test")
+
+
+@patch("elder_berry.tools.nextcloud_files.httpx.request")
+def test_mkdir_auth_error_raises(mock_req, client):
+    mock_req.return_value = MagicMock(status_code=401)
+
+    with pytest.raises(NextcloudAuthError):
+        client.mkdir("test")
+
+
+@patch("elder_berry.tools.nextcloud_files.httpx.request")
+def test_mkdir_connection_error(mock_req, client):
+    mock_req.side_effect = httpx.ConnectError("refused")
+
+    with pytest.raises(NextcloudConnectionError, match="nicht erreichbar"):
+        client.mkdir("test")
+
+
+# ── delete ─────────────────────────────────────────────────────────────
+
+
+@patch("elder_berry.tools.nextcloud_files.httpx.request")
+def test_delete_file(mock_req, client):
+    mock_req.return_value = MagicMock(status_code=204)
+
+    client.delete("report.pdf")  # should not raise
+
+    mock_req.assert_called_once()
+    assert mock_req.call_args[0][0] == "DELETE"
+
+
+@patch("elder_berry.tools.nextcloud_files.httpx.request")
+def test_delete_directory(mock_req, client):
+    mock_req.return_value = MagicMock(status_code=204)
+
+    client.delete("Documents")
+
+
+@patch("elder_berry.tools.nextcloud_files.httpx.request")
+def test_delete_not_found_is_idempotent(mock_req, client):
+    mock_req.return_value = MagicMock(status_code=404)
+
+    client.delete("already-gone.txt")  # should not raise
+
+
+def test_delete_no_credentials_raises(no_creds_store):
+    c = NextcloudFilesClient(secret_store=no_creds_store)
+    with pytest.raises(NextcloudError, match="Credentials"):
+        c.delete("test")
+
+
+@patch("elder_berry.tools.nextcloud_files.httpx.request")
+def test_delete_auth_error_raises(mock_req, client):
+    mock_req.return_value = MagicMock(status_code=401)
+
+    with pytest.raises(NextcloudAuthError):
+        client.delete("test")
+
+
+@patch("elder_berry.tools.nextcloud_files.httpx.request")
+def test_delete_server_error_raises(mock_req, client):
+    mock_req.return_value = MagicMock(status_code=500)
+
+    with pytest.raises(NextcloudError, match="DELETE fehlgeschlagen"):
+        client.delete("test")
+
+
+@patch("elder_berry.tools.nextcloud_files.httpx.request")
+def test_delete_connection_error(mock_req, client):
+    mock_req.side_effect = httpx.TimeoutException("timeout")
+
+    with pytest.raises(NextcloudConnectionError, match="nicht erreichbar"):
+        client.delete("test")

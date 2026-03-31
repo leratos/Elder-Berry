@@ -154,6 +154,75 @@ class NextcloudFilesClient:
                 f"Authentifizierung fehlgeschlagen (HTTP {resp.status_code})"
             )
 
+    def mkdir(self, remote_path: str) -> bool:
+        """Erstellt ein Verzeichnis via WebDAV MKCOL.
+
+        Args:
+            remote_path: Pfad relativ zum User-Root (z.B. "Manuale/Elektronik").
+
+        Returns:
+            True wenn neu erstellt (201), False wenn bereits vorhanden (405).
+
+        Raises:
+            NextcloudConnectionError: Server nicht erreichbar.
+            NextcloudAuthError: Authentifizierung fehlgeschlagen.
+            NextcloudError: Anderer Fehler (z.B. 409 Conflict wenn Parent fehlt).
+        """
+        if not self._has_credentials:
+            raise NextcloudError("Nextcloud-Credentials nicht konfiguriert")
+
+        url = self._webdav_url(remote_path.strip("/")) + "/"
+        try:
+            resp = httpx.request("MKCOL", url, auth=self._auth, timeout=10.0)
+        except (httpx.ConnectError, httpx.TimeoutException) as exc:
+            raise NextcloudConnectionError(
+                f"Server nicht erreichbar: {exc}"
+            ) from exc
+
+        self._check_auth_error(resp)
+        if resp.status_code == 201:
+            logger.info("Verzeichnis erstellt: %s", remote_path)
+            return True
+        if resp.status_code == 405:
+            logger.debug("Verzeichnis bereits vorhanden: %s", remote_path)
+            return False
+        raise NextcloudError(
+            f"MKCOL fehlgeschlagen für '{remote_path}': HTTP {resp.status_code}"
+        )
+
+    def delete(self, remote_path: str) -> None:
+        """Löscht eine Datei oder ein Verzeichnis (inkl. Inhalt) via WebDAV DELETE.
+
+        Args:
+            remote_path: Pfad relativ zum User-Root.
+
+        Raises:
+            NextcloudConnectionError: Server nicht erreichbar.
+            NextcloudAuthError: Authentifizierung fehlgeschlagen.
+            NextcloudError: Anderer Fehler.
+        """
+        if not self._has_credentials:
+            raise NextcloudError("Nextcloud-Credentials nicht konfiguriert")
+
+        url = self._webdav_url(remote_path.strip("/"))
+        try:
+            resp = httpx.request("DELETE", url, auth=self._auth, timeout=15.0)
+        except (httpx.ConnectError, httpx.TimeoutException) as exc:
+            raise NextcloudConnectionError(
+                f"Server nicht erreichbar: {exc}"
+            ) from exc
+
+        self._check_auth_error(resp)
+        if resp.status_code == 404:
+            # Bereits weg — kein Fehler, idempotent
+            logger.debug("DELETE: Nicht gefunden (bereits gelöscht?): %s", remote_path)
+            return
+        if resp.status_code not in (200, 204):
+            raise NextcloudError(
+                f"DELETE fehlgeschlagen für '{remote_path}': HTTP {resp.status_code}"
+            )
+        logger.info("Gelöscht: %s", remote_path)
+
     def upload(self, local_path: Path, remote_path: str = "/") -> str:
         """Upload a local file to Nextcloud via WebDAV PUT.
 
