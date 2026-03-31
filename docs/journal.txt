@@ -3097,3 +3097,52 @@ User: "Lies meine Mails und trag den Zahnarzttermin ein"
 3. Nginx: docs/deploy/nginx-fern.conf nach /etc/nginx/sites-available/ + symlink
 4. Deploy: scripts/deploy_dashboard.sh ausführen
 5. Icons: icon-192.png + icon-512.png manuell erstellen und in dashboard/ ablegen
+
+
+## In Arbeit: Phase 38 – Kontakte Vollintegration Nextcloud + Saleria (2026-03-31)
+- Branch: feature/phase-38-kontakte-vollintegration
+- Konzept: docs/concepts/phase-38-kontakte-vollintegration.md
+- nächster Schritt: contact_store.py / Datenmodell erweitern (7 neue Felder, email→emails, phone→phones)
+
+### Schritt 1: Contact-Datenmodell (contact_store.py)
+- Contact-Dataclass: 7 neue Felder (address, organization, title, categories, nickname, anniversary, url)
+- email→emails (JSON-Array), phone→phones (JSON-Array) – sauberer Schnitt
+- Convenience-Properties email/phone für Rückwärtskompatibilität (erster Eintrag)
+- vcard_uid-Feld für NC-Sync-Tracking (kein Duplikat-Push mehr)
+- _migrate_from_v1(): automatische Migration alter DBs (email→emails, phone→phones)
+- get_upcoming_birthdays(days=7), get_upcoming_anniversaries(days=7)
+- find_by_category(), find_by_vcard_uid(), add_or_update_by_vcard_uid()
+- delete_all() für Clean-Slate-Migration
+- FTS5 erweitert: categories, organization, nickname, address indexiert
+
+### Schritt 2: CardDAV-Sync (carddav_sync.py)
+- _vcard_to_dict(): alle vCard-Properties parsen (ADR, ORG, TITLE, CATEGORIES, NICKNAME, ANNIVERSARY, URL, mehrere TEL/EMAIL)
+- _contact_to_vcard(): alle Felder in vCard schreiben
+- Push-Duplikat-Bug behoben: vcard_uid-Tracking, _update_existing_vcard() lädt bestehende NC-vCard und injiziert nur EB-Felder
+- _inject_eb_fields(): NOTE (Rolle+Notes) + X-ELDERBERRY-FORMALITY in bestehende vCard
+- reset_and_pull(): Clean-Slate-Migration (alle lokal löschen + frischer Pull)
+- Sync-Strategie: NC=Quelle für NC-Felder, EB=Quelle für role/formality/notes
+- "kontakte sync reset" als neuer Command
+
+### Schritt 3: SmartContextProvider (smart_context.py)
+- Keywords erweitert: +geburtstag, birthday, wohnt, arbeitet, gruppe, firma, jahrestag, spitzname etc.
+- _query_contacts() nutzt jetzt format_for_llm() statt handformatiertem String
+
+### Schritt 4: Contact-Commands (contact_commands.py)
+- CONTACT_FIELD_QUERY_PATTERN: "wann hat Lisa Geburtstag?", "was ist die Adresse von X?", "wo arbeitet X?"
+- CONTACT_GROUP_PATTERN: "kontakte gruppe Familie"
+- _cmd_field_query(): gezielte Antwort mit Tage-bis-Geburtstag, mehrere Nummern etc.
+- _cmd_group(): listet Kontakte einer Kategorie mit Telefonnummer
+- Field-Aliases erweitert: adresse, firma, titel, gruppe, spitzname, jahrestag, website
+- _parse_contact_fields() gibt emails/phones als JSON zurück
+- "kontakte sync reset" im Sync-Command
+
+### Schritt 5: Briefing (briefing_scheduler.py)
+- _build_birthday_section(): heute + morgen + diese Woche, Gruppe angezeigt, Tage-bis
+- _build_anniversary_section(): Jahrestage diese Woche mit Jubiläumsjahr
+- _auto_sync_contacts(): Pull von NC vor jedem Briefing (silent, graceful)
+- carddav_sync als neuer __init__ Parameter
+
+### Tests
+- 205 kontakt-spezifische Tests (55 neue + bestehende angepasst)
+- 3248 Tests gesamt grün (1 vorbestehender Fehler test_computer_use, 20 agent_protocol Errors)

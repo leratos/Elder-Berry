@@ -50,6 +50,12 @@ def mock_contact_store():
     contact.name = "Max Mustermann"
     contact.email = "max@example.com"
     contact.role = "Handwerker"
+    contact.format_for_llm.return_value = (
+        "Kontakt: Max Mustermann\n"
+        "Beziehung: Handwerker\n"
+        "Anrede: förmlich (Sie)\n"
+        "Email: max@example.com"
+    )
     store.search.return_value = [contact]
     return store
 
@@ -337,14 +343,14 @@ class TestQueryContacts:
         result = provider_all._query_contacts("Max")
         assert "👤 Gefundene Kontakte:" in result
         assert "Max Mustermann" in result
-        assert "max@example.com" in result
         assert "Handwerker" in result
 
     def test_contact_without_email(self, provider_all, mock_contact_store):
         contact = MagicMock()
         contact.name = "Lisa"
-        contact.email = ""
-        contact.role = "Freundin"
+        contact.format_for_llm.return_value = (
+            "Kontakt: Lisa\nBeziehung: Freundin\nAnrede: locker (Du)"
+        )
         mock_contact_store.search.return_value = [contact]
         result = provider_all._query_contacts("Lisa")
         assert "Lisa" in result

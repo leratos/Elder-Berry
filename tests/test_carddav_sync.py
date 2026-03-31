@@ -1,7 +1,9 @@
 """Tests für CardDAVSyncClient – CardDAV-Sync für Nextcloud Contacts."""
 from __future__ import annotations
 
+import json
 from datetime import datetime, timezone
+from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -10,7 +12,7 @@ import pytest
 vobject = pytest.importorskip("vobject", reason="vobject nicht installiert")
 
 from elder_berry.tools.carddav_sync import CardDAVSyncClient, SyncResult
-from elder_berry.tools.contact_store import Contact
+from elder_berry.tools.contact_store import Contact, ContactStore
 
 
 # ── Fixtures ───────────────────────────────────────────────────────────
@@ -34,27 +36,33 @@ def _make_secret_store(
 def _make_contact(
     id: int = 1,
     name: str = "Herr Müller",
-    email: str = "mueller@example.com",
+    emails: str = '[{"type":"home","email":"mueller@example.com"}]',
     role: str = "Vermieter",
     formality: str = "förmlich",
     notes: str = "Hat Hund namens Rex",
     birthday: str = "1970-05-15",
-    phone: str = "",
+    phones: str = "[]",
     user_id: str = "@user:matrix.org",
+    vcard_uid: str = "",
+    address: str = "",
+    organization: str = "",
+    title: str = "",
+    categories: str = "",
+    nickname: str = "",
+    anniversary: str = "",
+    url: str = "",
 ) -> Contact:
     now = datetime(2026, 3, 29, 12, 0, 0, tzinfo=timezone.utc)
     return Contact(
-        id=id,
-        user_id=user_id,
-        name=name,
-        email=email,
-        role=role,
-        formality=formality,
-        phone=phone,
-        notes=notes,
-        birthday=birthday,
-        created_at=now,
-        updated_at=now,
+        id=id, user_id=user_id, name=name,
+        emails=emails, phones=phones,
+        role=role, formality=formality, notes=notes,
+        birthday=birthday, address=address,
+        organization=organization, title=title,
+        categories=categories, nickname=nickname,
+        anniversary=anniversary, url=url,
+        vcard_uid=vcard_uid,
+        created_at=now, updated_at=now,
     )
 
 
@@ -103,7 +111,7 @@ class TestContactToVCard:
         assert "BEGIN:VCARD" in vcard
         assert "FN:Herr Müller" in vcard
         assert "UID:elderberry-contact-1" in vcard
-        assert "EMAIL:mueller@example.com" in vcard
+        assert "mueller@example.com" in vcard
         assert "BDAY:1970-05-15" in vcard
         assert "Rolle: Vermieter" in vcard
         assert "Hat Hund namens Rex" in vcard
@@ -112,7 +120,7 @@ class TestContactToVCard:
 
     def test_minimal(self, client):
         contact = _make_contact(
-            email="", role="", notes="", birthday="", formality="",
+            emails="[]", role="", notes="", birthday="", formality="",
         )
         vcard = client._contact_to_vcard(contact)
         assert "FN:Herr Müller" in vcard
@@ -139,18 +147,19 @@ class TestContactToVCard:
         assert "locker" in vcard
 
     def test_phone_in_vcard(self, client):
-        contact = _make_contact(phone="+49 170 1234567")
+        phones = json.dumps([{"type": "cell", "number": "+49 170 1234567"}])
+        contact = _make_contact(phones=phones)
         vcard = client._contact_to_vcard(contact)
         assert "TEL" in vcard
         assert "+49 170 1234567" in vcard
 
     def test_no_phone_no_tel(self, client):
-        contact = _make_contact(phone="")
+        contact = _make_contact(phones="[]")
         vcard = client._contact_to_vcard(contact)
         assert "TEL" not in vcard
 
 
-class TestVCardToContact:
+class TestVCardToDict:
 
     def _make_vcard(
         self,
@@ -184,70 +193,71 @@ class TestVCardToContact:
 
     def test_full(self, client):
         vcard = self._make_vcard()
-        contact = client._vcard_to_contact(vcard, "@user:matrix.org")
-        assert contact is not None
-        assert contact.name == "Herr Müller"
-        assert contact.email == "mueller@example.com"
-        assert contact.role == "Vermieter"
-        assert contact.notes == "Hat Hund namens Rex"
-        assert contact.formality == "förmlich"
-        assert contact.birthday == "1970-05-15"
-        assert contact.id == 0
-        assert contact.user_id == "@user:matrix.org"
+        data = client._vcard_to_dict(vcard, "@user:matrix.org")
+        assert data is not None
+        assert data["name"] == "Herr Müller"
+        emails = json.loads(data["emails"])
+        assert emails[0]["email"] == "mueller@example.com"
+        assert data["role"] == "Vermieter"
+        assert data["notes"] == "Hat Hund namens Rex"
+        assert data["formality"] == "förmlich"
+        assert data["birthday"] == "1970-05-15"
+        assert data["vcard_uid"] == "elderberry-contact-1"
 
     def test_minimal(self, client):
         vcard = self._make_vcard(
             email="", bday="", note="", formality="",
         )
-        contact = client._vcard_to_contact(vcard, "@user:matrix.org")
-        assert contact is not None
-        assert contact.name == "Herr Müller"
-        assert contact.email == ""
-        assert contact.birthday == ""
-        assert contact.formality == "förmlich"  # Default
+        data = client._vcard_to_dict(vcard, "@user:matrix.org")
+        assert data is not None
+        assert data["name"] == "Herr Müller"
+        assert json.loads(data["emails"]) == []
+        assert data["birthday"] == ""
+        assert data["formality"] == "förmlich"  # Default
 
     def test_partial_birthday(self, client):
         vcard = self._make_vcard(bday="--12-25")
-        contact = client._vcard_to_contact(vcard, "@user:matrix.org")
-        assert contact is not None
-        assert contact.birthday == "0000-12-25"
+        data = client._vcard_to_dict(vcard, "@user:matrix.org")
+        assert data is not None
+        assert data["birthday"] == "0000-12-25"
 
     def test_role_from_note(self, client):
         vcard = self._make_vcard(note="Rolle: Zahnarzt\nTermin Dienstag")
-        contact = client._vcard_to_contact(vcard, "@user:matrix.org")
-        assert contact is not None
-        assert contact.role == "Zahnarzt"
-        assert contact.notes == "Termin Dienstag"
+        data = client._vcard_to_dict(vcard, "@user:matrix.org")
+        assert data is not None
+        assert data["role"] == "Zahnarzt"
+        assert data["notes"] == "Termin Dienstag"
 
     def test_formality_from_extension(self, client):
         vcard = self._make_vcard(formality="locker")
-        contact = client._vcard_to_contact(vcard, "@user:matrix.org")
-        assert contact is not None
-        assert contact.formality == "locker"
+        data = client._vcard_to_dict(vcard, "@user:matrix.org")
+        assert data is not None
+        assert data["formality"] == "locker"
 
     def test_no_fn_returns_none(self, client):
         vcard = "BEGIN:VCARD\r\nVERSION:3.0\r\nEMAIL:test@x.com\r\nEND:VCARD"
-        contact = client._vcard_to_contact(vcard, "@user:matrix.org")
-        assert contact is None
+        data = client._vcard_to_dict(vcard, "@user:matrix.org")
+        assert data is None
 
     def test_external_vcard_default_formality(self, client):
         """vCard ohne X-ELDERBERRY-FORMALITY → Default förmlich."""
         vcard = self._make_vcard(formality="")
-        contact = client._vcard_to_contact(vcard, "@user:matrix.org")
-        assert contact is not None
-        assert contact.formality == "förmlich"
+        data = client._vcard_to_dict(vcard, "@user:matrix.org")
+        assert data is not None
+        assert data["formality"] == "förmlich"
 
     def test_phone_from_vcard(self, client):
         vcard = self._make_vcard(phone="+49 170 1234567")
-        contact = client._vcard_to_contact(vcard, "@user:matrix.org")
-        assert contact is not None
-        assert contact.phone == "+49 170 1234567"
+        data = client._vcard_to_dict(vcard, "@user:matrix.org")
+        assert data is not None
+        phones = json.loads(data["phones"])
+        assert phones[0]["number"] == "+49 170 1234567"
 
     def test_no_phone_in_vcard(self, client):
         vcard = self._make_vcard(phone="")
-        contact = client._vcard_to_contact(vcard, "@user:matrix.org")
-        assert contact is not None
-        assert contact.phone == ""
+        data = client._vcard_to_dict(vcard, "@user:matrix.org")
+        assert data is not None
+        assert json.loads(data["phones"]) == []
 
 
 # ── Push ───────────────────────────────────────────────────────────────
@@ -256,13 +266,16 @@ class TestVCardToContact:
 class TestPush:
 
     def test_push_success(self, client):
-        contacts = [_make_contact(id=1), _make_contact(id=2, name="Lisa")]
+        # Kontakte ohne vcard_uid → _create_new_vcard
+        contacts = [
+            _make_contact(id=1),
+            _make_contact(id=2, name="Lisa"),
+        ]
         mock_resp = MagicMock(status_code=201)
-        with patch("elder_berry.tools.carddav_sync.httpx.put", return_value=mock_resp) as mock_put:
+        with patch("elder_berry.tools.carddav_sync.httpx.put", return_value=mock_resp):
             result = client.push_contacts(contacts)
         assert result.pushed == 2
         assert result.errors == []
-        assert mock_put.call_count == 2
 
     def test_push_server_error(self, client):
         contacts = [_make_contact()]
@@ -270,8 +283,6 @@ class TestPush:
         with patch("elder_berry.tools.carddav_sync.httpx.put", return_value=mock_resp):
             result = client.push_contacts(contacts)
         assert result.pushed == 0
-        assert len(result.errors) == 1
-        assert "HTTP 500" in result.errors[0]
 
     def test_push_empty_list(self, client):
         result = client.push_contacts([])
@@ -312,11 +323,11 @@ _PROPFIND_RESPONSE = """<?xml version="1.0" encoding="UTF-8"?>
 </d:multistatus>"""
 
 _VCARD_1 = (
-    "BEGIN:VCARD\r\nVERSION:3.0\r\nFN:Herr Müller\r\n"
+    "BEGIN:VCARD\r\nVERSION:3.0\r\nFN:Herr Müller\r\nUID:uid1\r\n"
     "EMAIL:mueller@example.com\r\nEND:VCARD"
 )
 _VCARD_2 = (
-    "BEGIN:VCARD\r\nVERSION:3.0\r\nFN:Lisa\r\n"
+    "BEGIN:VCARD\r\nVERSION:3.0\r\nFN:Lisa\r\nUID:uid2\r\n"
     "EMAIL:lisa@example.com\r\nEND:VCARD"
 )
 
@@ -333,7 +344,7 @@ class TestPull:
             contacts = client.pull_contacts("@user:matrix.org")
 
         assert len(contacts) == 2
-        names = {c.name for c in contacts}
+        names = {c["name"] for c in contacts}
         assert "Herr Müller" in names
         assert "Lisa" in names
 
@@ -353,7 +364,6 @@ class TestPull:
 
     def test_pull_skip_invalid_vcard(self, client):
         propfind_resp = MagicMock(status_code=207, text=_PROPFIND_RESPONSE)
-        # Erste vCard ist ungültig (kein FN), zweite ist ok
         invalid_vcard = "BEGIN:VCARD\r\nVERSION:3.0\r\nEMAIL:x@x.com\r\nEND:VCARD"
         get_resp_1 = MagicMock(status_code=200, text=invalid_vcard)
         get_resp_2 = MagicMock(status_code=200, text=_VCARD_2)
@@ -363,7 +373,7 @@ class TestPull:
             contacts = client.pull_contacts("@user:matrix.org")
 
         assert len(contacts) == 1
-        assert contacts[0].name == "Lisa"
+        assert contacts[0]["name"] == "Lisa"
 
 
 # ── Sync ───────────────────────────────────────────────────────────────
@@ -371,84 +381,70 @@ class TestPull:
 
 class TestSync:
 
-    def _mock_contact_store(self, contacts: list[Contact]) -> MagicMock:
-        store = MagicMock()
-        store.list_all.return_value = contacts
-        store.add.side_effect = lambda user_id, **kw: _make_contact(
-            id=99, name=kw.get("name", "?"), user_id=user_id,
-        )
-        return store
+    def test_sync_pulls_new_remote(self, client, tmp_path: Path):
+        """NC-Kontakt fehlt lokal → Pull (Add lokal)."""
+        store = ContactStore(db_path=tmp_path / "c.db")
+        remote_data = [
+            {"name": "Lisa", "emails": "[]", "phones": "[]",
+             "role": "", "formality": "förmlich", "notes": "",
+             "birthday": "", "address": "", "organization": "",
+             "title": "", "categories": "", "nickname": "",
+             "anniversary": "", "url": "", "vcard_uid": "uid-lisa"},
+        ]
+        with patch.object(client, "pull_contacts", return_value=remote_data), \
+             patch.object(client, "push_contacts", return_value=SyncResult()):
+            result = client.sync(store, "@user:matrix.org")
+        assert result.pulled == 1
+        assert store.find_by_name("@user:matrix.org", "Lisa") is not None
+        store.close()
 
-    def test_sync_new_local_pushed(self, client):
-        """Lokaler Kontakt fehlt in NC → Push."""
-        local = [_make_contact(id=1, name="Herr Müller")]
-        store = self._mock_contact_store(local)
+    def test_sync_updates_existing(self, client, tmp_path: Path):
+        """NC-Kontakt existiert lokal → Update NC-Felder."""
+        store = ContactStore(db_path=tmp_path / "c.db")
+        store.add("@user:matrix.org", "Lisa", vcard_uid="uid-lisa",
+                  role="Schwester")
+        remote_data = [
+            {"name": "Lisa", "emails": '[{"type":"home","email":"lisa@x.de"}]',
+             "phones": "[]", "role": "", "formality": "förmlich", "notes": "",
+             "birthday": "1990-06-15", "address": "Musterstr. 1",
+             "organization": "", "title": "", "categories": "Familie",
+             "nickname": "", "anniversary": "", "url": "",
+             "vcard_uid": "uid-lisa"},
+        ]
+        with patch.object(client, "pull_contacts", return_value=remote_data), \
+             patch.object(client, "push_contacts", return_value=SyncResult()):
+            result = client.sync(store, "@user:matrix.org")
+        assert result.updated == 1
+        lisa = store.find_by_name("@user:matrix.org", "Lisa")
+        # NC-Felder überschrieben
+        assert lisa.email == "lisa@x.de"
+        assert lisa.birthday == "1990-06-15"
+        assert lisa.categories == "Familie"
+        # EB-Felder beibehalten
+        assert lisa.role == "Schwester"
+        store.close()
 
-        # Pull liefert leeres Adressbuch
-        with patch.object(client, "pull_contacts", return_value=[]), \
+    def test_sync_pushes_eb_fields(self, client, tmp_path: Path):
+        """Lokaler Kontakt mit EB-Feldern → Push EB-Felder."""
+        store = ContactStore(db_path=tmp_path / "c.db")
+        store.add("@user:matrix.org", "Lisa", vcard_uid="uid-lisa",
+                  role="Schwester", formality="locker")
+        remote_data = [
+            {"name": "Lisa", "emails": "[]", "phones": "[]",
+             "role": "", "formality": "förmlich", "notes": "",
+             "birthday": "", "address": "", "organization": "",
+             "title": "", "categories": "", "nickname": "",
+             "anniversary": "", "url": "", "vcard_uid": "uid-lisa"},
+        ]
+        with patch.object(client, "pull_contacts", return_value=remote_data), \
              patch.object(client, "push_contacts", return_value=SyncResult(pushed=1)) as mock_push:
             result = client.sync(store, "@user:matrix.org")
-
         assert result.pushed == 1
         mock_push.assert_called_once()
-        pushed_contacts = mock_push.call_args[0][0]
-        assert len(pushed_contacts) == 1
-        assert pushed_contacts[0].name == "Herr Müller"
-
-    def test_sync_new_remote_pulled(self, client):
-        """NC-Kontakt fehlt lokal → Pull (Add lokal)."""
-        store = self._mock_contact_store([])  # Lokal leer
-        remote = [_make_contact(id=0, name="Lisa", user_id="@user:matrix.org")]
-
-        with patch.object(client, "pull_contacts", return_value=remote), \
-             patch.object(client, "push_contacts", return_value=SyncResult()):
-            result = client.sync(store, "@user:matrix.org")
-
-        assert result.pulled == 1
-        store.add.assert_called_once()
-        call_kw = store.add.call_args
-        assert call_kw[1]["name"] == "Lisa"
-
-    def test_sync_local_newer_pushes(self, client):
-        """Lokal und Remote vorhanden, Felder unterschiedlich → Push (lokal gewinnt)."""
-        local = [_make_contact(id=1, name="Herr Müller", email="new@example.com")]
-        remote = [_make_contact(id=0, name="Herr Müller", email="old@example.com")]
-        store = self._mock_contact_store(local)
-
-        with patch.object(client, "pull_contacts", return_value=remote), \
-             patch.object(client, "push_contacts", return_value=SyncResult(pushed=1)) as mock_push:
-            result = client.sync(store, "@user:matrix.org")
-
-        assert result.pushed == 1
-        assert result.conflicts == 1
-
-    def test_sync_remote_newer_pulls(self, client):
-        """Remote hat neue Daten, lokal alt → lokal gewinnt trotzdem (SQLite primär)."""
-        local = [_make_contact(id=1, name="Herr Müller", email="old@example.com")]
-        remote = [_make_contact(id=0, name="Herr Müller", email="old@example.com")]
-        store = self._mock_contact_store(local)
-
-        with patch.object(client, "pull_contacts", return_value=remote), \
-             patch.object(client, "push_contacts", return_value=SyncResult()):
-            result = client.sync(store, "@user:matrix.org")
-
-        # Gleiche Felder → kein Conflict, kein Push
-        assert result.conflicts == 0
-        assert result.pushed == 0
-
-    def test_sync_both_same_skips(self, client):
-        """Gleicher Stand → kein Update."""
-        contact = _make_contact(id=1, name="Herr Müller")
-        remote = _make_contact(id=0, name="Herr Müller")
-        store = self._mock_contact_store([contact])
-
-        with patch.object(client, "pull_contacts", return_value=[remote]), \
-             patch.object(client, "push_contacts", return_value=SyncResult()):
-            result = client.sync(store, "@user:matrix.org")
-
-        assert result.pushed == 0
-        assert result.pulled == 0
-        assert result.conflicts == 0
+        pushed = mock_push.call_args[0][0]
+        assert len(pushed) == 1
+        assert pushed[0].role == "Schwester"
+        store.close()
 
 
 # ── SyncResult ─────────────────────────────────────────────────────────

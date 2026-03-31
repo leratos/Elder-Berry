@@ -27,7 +27,8 @@ from datetime import date, datetime, timedelta, timezone
 from typing import TYPE_CHECKING, Callable
 
 if TYPE_CHECKING:
-    from elder_berry.tools.contact_store import ContactStore
+    from elder_berry.tools.carddav_sync import CardDAVSyncClient
+    from elder_berry.tools.contact_store import Contact, ContactStore
     from elder_berry.tools.email_client import IMAPEmailClient
     from elder_berry.tools.google_calendar import GoogleCalendarClient
     from elder_berry.tools.note_store import NoteStore
@@ -55,6 +56,7 @@ class BriefingScheduler:
         email_client: IMAPEmailClient | None = None,
         contact_store: ContactStore | None = None,
         note_store: NoteStore | None = None,
+        carddav_sync: CardDAVSyncClient | None = None,
         default_user_id: str = "",
         briefing_hour: int = 7,
         briefing_minute: int = 30,
@@ -69,6 +71,7 @@ class BriefingScheduler:
             email_client: IMAPEmailClient (optional, Phase 34).
             contact_store: ContactStore (optional, Phase 34 – Geburtstage).
             note_store: NoteStore (optional, Phase 34 – Vor einem Jahr).
+            carddav_sync: CardDAVSyncClient (optional, Phase 38 – Auto-Sync).
             default_user_id: Matrix-User-ID für TodoStore-/ContactStore-Abfrage.
             briefing_hour: Stunde des Briefings (0-23, Lokalzeit).
             briefing_minute: Minute des Briefings (0-59).
@@ -81,6 +84,7 @@ class BriefingScheduler:
         self._email_client = email_client
         self._contact_store = contact_store
         self._note_store = note_store
+        self._carddav_sync = carddav_sync
         self._default_user_id = default_user_id
         self._briefing_hour = briefing_hour
         self._briefing_minute = briefing_minute
@@ -135,11 +139,15 @@ class BriefingScheduler:
             now = datetime.now()
         is_weekend = now.weekday() >= 5  # 5=Sa, 6=So
 
+        # Auto-Sync: Kontakte von Nextcloud ziehen vor dem Briefing
+        self._auto_sync_contacts()
+
         sections: list[str] = []
 
         sections.extend(self._build_weather_section())
         sections.extend(self._build_calendar_section(now, is_weekend))
         sections.extend(self._build_birthday_section(now))
+        sections.extend(self._build_anniversary_section(now))
 
         if not is_weekend:
             sections.extend(self._build_reminder_section())
@@ -222,26 +230,146 @@ class BriefingScheduler:
         if not self._contact_store or not self._default_user_id:
             return []
         try:
-            contacts = self._contact_store.get_birthdays_today(
-                self._default_user_id, today=now.date(),
+            upcoming = self._contact_store.get_upcoming_birthdays(
+                self._default_user_id, days=7, today=now.date(),
             )
-            if not contacts:
+            if not upcoming:
                 return []
-            lines = ["🎂 Geburtstage heute:"]
-            for c in contacts:
-                age_text = ""
-                if c.birthday and not c.birthday.startswith("0000"):
-                    try:
-                        birth_year = int(c.birthday[:4])
-                        age = now.year - birth_year
-                        age_text = f" (wird {age})"
-                    except (ValueError, IndexError):
-                        pass
-                lines.append(f"  {c.name}{age_text}")
-            return ["\n".join(lines)]
+
+            today_str = now.date().strftime("%m-%d")
+            tomorrow_str = (now.date() + timedelta(days=1)).strftime("%m-%d")
+
+            today_contacts = []
+            tomorrow_contacts = []
+            week_contacts = []
+
+            for c in upcoming:
+                mm_dd = c.birthday[-5:]  # MM-DD Teil
+                if mm_dd == today_str:
+                    today_contacts.append(c)
+                elif mm_dd == tomorrow_str:
+                    tomorrow_contacts.append(c)
+                else:
+                    week_contacts.append(c)
+
+            lines: list[str] = []
+            if today_contacts:
+                lines.append("🎂 Geburtstage heute:")
+                for c in today_contacts:
+                    lines.append(f"  {self._format_birthday_entry(c, now)}")
+            if tomorrow_contacts:
+                lines.append("🎂 Geburtstage morgen:")
+                for c in tomorrow_contacts:
+                    lines.append(f"  {self._format_birthday_entry(c, now)}")
+            if week_contacts:
+                lines.append("🎂 Geburtstage diese Woche:")
+                for c in week_contacts:
+                    days_until = self._days_until_birthday(c, now.date())
+                    suffix = f" (in {days_until} Tagen)" if days_until else ""
+                    lines.append(
+                        f"  {self._format_birthday_entry(c, now)}{suffix}",
+                    )
+
+            return ["\n".join(lines)] if lines else []
         except Exception as e:
             logger.debug("Briefing: Geburtstage fehlgeschlagen: %s", e)
             return []
+
+    def _build_anniversary_section(self, now: datetime) -> list[str]:
+        """Jahrestage in den nächsten 7 Tagen."""
+        if not self._contact_store or not self._default_user_id:
+            return []
+        try:
+            upcoming = self._contact_store.get_upcoming_anniversaries(
+                self._default_user_id, days=7, today=now.date(),
+            )
+            if not upcoming:
+                return []
+
+            today_str = now.date().strftime("%m-%d")
+            lines = ["💍 Jahrestage:"]
+            for c in upcoming:
+                mm_dd = c.anniversary[-5:]
+                years_text = ""
+                if not c.anniversary.startswith("0000"):
+                    try:
+                        ann_year = int(c.anniversary[:4])
+                        years = now.year - ann_year
+                        years_text = f" ({years}. Jahrestag)"
+                    except (ValueError, IndexError):
+                        pass
+                if mm_dd == today_str:
+                    lines.append(f"  {c.name}{years_text} – heute!")
+                else:
+                    days_diff = self._days_until_date(c.anniversary, now.date())
+                    when = f"in {days_diff} Tagen" if days_diff > 1 else "morgen"
+                    lines.append(f"  {c.name}{years_text} – {when}")
+            return ["\n".join(lines)]
+        except Exception as e:
+            logger.debug("Briefing: Jahrestage fehlgeschlagen: %s", e)
+            return []
+
+    def _auto_sync_contacts(self) -> None:
+        """Zieht Kontakte von Nextcloud vor dem Briefing (silent)."""
+        if not self._carddav_sync or not self._contact_store:
+            return
+        if not self._default_user_id:
+            return
+        try:
+            result = self._carddav_sync.sync(
+                self._contact_store, self._default_user_id,
+            )
+            if result.pulled or result.updated:
+                logger.info(
+                    "Auto-Sync vor Briefing: %s", result,
+                )
+        except Exception as e:
+            logger.debug("Auto-Sync vor Briefing fehlgeschlagen: %s", e)
+
+    @staticmethod
+    def _format_birthday_entry(contact: Contact, now: datetime) -> str:
+        """Formatiert einen Geburtstags-Eintrag mit Alter und Gruppe."""
+        parts = [contact.name]
+        if contact.birthday and not contact.birthday.startswith("0000"):
+            try:
+                birth_year = int(contact.birthday[:4])
+                age = now.year - birth_year
+                parts.append(f"(wird {age})")
+            except (ValueError, IndexError):
+                pass
+        if contact.categories:
+            cats = contact.get_categories_list()
+            if cats:
+                parts.append(f"[{cats[0]}]")
+        return " ".join(parts)
+
+    @staticmethod
+    def _days_until_birthday(contact: Contact, today: date) -> int:
+        """Tage bis zum nächsten Geburtstag."""
+        if not contact.birthday:
+            return 0
+        mm_dd = contact.birthday[-5:]
+        try:
+            bday_this_year = date.fromisoformat(f"{today.year}-{mm_dd}")
+            if bday_this_year < today:
+                bday_this_year = bday_this_year.replace(year=today.year + 1)
+            return (bday_this_year - today).days
+        except ValueError:
+            return 0
+
+    @staticmethod
+    def _days_until_date(date_str: str, today: date) -> int:
+        """Tage bis zu einem Datum (MM-DD Teil)."""
+        if not date_str:
+            return 0
+        mm_dd = date_str[-5:]
+        try:
+            target = date.fromisoformat(f"{today.year}-{mm_dd}")
+            if target < today:
+                target = target.replace(year=today.year + 1)
+            return (target - today).days
+        except ValueError:
+            return 0
 
     def _build_reminder_section(self) -> list[str]:
         if not self._reminder_store:

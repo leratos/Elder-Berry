@@ -1,18 +1,21 @@
 """CardDAVSyncClient – CardDAV-Sync für Nextcloud Contacts.
 
 Synchronisiert Kontakte zwischen dem lokalen ContactStore (SQLite) und
-Nextcloud CardDAV. SQLite bleibt die primäre Datenquelle.
+Nextcloud CardDAV. Nextcloud ist die Datenquelle für alle vCard-Felder,
+Elder-Berry ist die Quelle für eigene Metadaten (role, formality, notes).
 
 Sync-Richtungen:
-    kontakte sync       → Pull (NC→lokal) + Push (lokal→NC)
-    kontakte sync push  → Nur lokal→NC
+    kontakte sync       → Pull (NC→lokal) + Push (lokal→NC, nur EB-Felder)
+    kontakte sync push  → Nur lokal→NC (EB-Felder in bestehende vCards)
     kontakte sync pull  → Nur NC→lokal
+    kontakte sync reset → Alle lokal löschen + frischer Pull
 
 Credentials aus SecretStore (identisch mit Files + CalDAV):
     nextcloud_url, nextcloud_user, nextcloud_app_password
 """
 from __future__ import annotations
 
+import json
 import logging
 import xml.etree.ElementTree as ET
 from dataclasses import dataclass, field
@@ -41,6 +44,9 @@ _PROPFIND_BODY = (
     "</d:propfind>"
 )
 
+# Elder-Berry-eigene Felder (werden aktiv nach NC gepusht)
+_EB_FIELDS = {"role", "formality", "notes"}
+
 
 # ── DTOs ───────────────────────────────────────────────────────────────
 
@@ -51,6 +57,8 @@ class SyncResult:
 
     pushed: int = 0
     pulled: int = 0
+    updated: int = 0
+    deleted: int = 0
     conflicts: int = 0
     errors: list[str] = field(default_factory=list)
 
@@ -60,6 +68,10 @@ class SyncResult:
             parts.append(f"{self.pushed} gepusht")
         if self.pulled:
             parts.append(f"{self.pulled} gepullt")
+        if self.updated:
+            parts.append(f"{self.updated} aktualisiert")
+        if self.deleted:
+            parts.append(f"{self.deleted} gelöscht")
         if self.conflicts:
             parts.append(f"{self.conflicts} Konflikte")
         if self.errors:
@@ -118,7 +130,12 @@ class CardDAVSyncClient:
     # ── Push ───────────────────────────────────────────────────────────
 
     def push_contacts(self, contacts: list[Contact]) -> SyncResult:
-        """Lokale Kontakte → Nextcloud (PUT vCards)."""
+        """Lokale Kontakte → Nextcloud.
+
+        Für Kontakte MIT vcard_uid: bestehende vCard laden, EB-Felder
+        einfügen, zurückschreiben (kein Duplikat!).
+        Für Kontakte OHNE vcard_uid: neue vCard mit elderberry-UID anlegen.
+        """
         result = SyncResult()
         if not contacts:
             return result
@@ -127,39 +144,117 @@ class CardDAVSyncClient:
             return result
 
         for contact in contacts:
-            uid = f"elderberry-contact-{contact.id}"
             try:
-                vcard_str = self._contact_to_vcard(contact)
-                url = f"{self._carddav_base}{uid}.vcf"
-                resp = httpx.put(
-                    url,
-                    auth=self._auth,
-                    headers={"Content-Type": "text/vcard; charset=utf-8"},
-                    content=vcard_str.encode("utf-8"),
-                    timeout=15.0,
-                )
-                if resp.status_code in (201, 204):
-                    result.pushed += 1
+                if contact.vcard_uid:
+                    # Bestehende NC-vCard aktualisieren
+                    ok = self._update_existing_vcard(contact)
                 else:
-                    result.errors.append(
-                        f"PUT {contact.name}: HTTP {resp.status_code}"
-                    )
+                    # Neue vCard anlegen
+                    ok = self._create_new_vcard(contact)
+                if ok:
+                    result.pushed += 1
             except Exception as exc:
                 result.errors.append(f"PUT {contact.name}: {exc}")
 
         return result
 
+    def _create_new_vcard(self, contact: Contact) -> bool:
+        """Erstellt eine neue vCard auf Nextcloud."""
+        uid = f"elderberry-contact-{contact.id}"
+        vcard_str = self._contact_to_vcard(contact, uid=uid)
+        url = f"{self._carddav_base}{uid}.vcf"
+        resp = httpx.put(
+            url,
+            auth=self._auth,
+            headers={"Content-Type": "text/vcard; charset=utf-8"},
+            content=vcard_str.encode("utf-8"),
+            timeout=15.0,
+        )
+        if resp.status_code in (201, 204):
+            return True
+        logger.warning("PUT new vCard %s: HTTP %d", contact.name, resp.status_code)
+        return False
+
+    def _update_existing_vcard(self, contact: Contact) -> bool:
+        """Lädt bestehende vCard, fügt EB-Felder ein, schreibt zurück."""
+        # Finde die richtige vcf-URL anhand der UID
+        href = self._find_vcard_href(contact.vcard_uid)
+        if not href:
+            logger.warning(
+                "vCard für UID %s nicht gefunden, erstelle neue",
+                contact.vcard_uid,
+            )
+            return self._create_new_vcard(contact)
+
+        url = self._href_to_url(href)
+
+        # vCard laden
+        resp = httpx.get(url, auth=self._auth, timeout=15.0)
+        if resp.status_code != 200:
+            logger.warning("GET vCard %s: HTTP %d", href, resp.status_code)
+            return False
+
+        # EB-Felder in bestehende vCard einfügen
+        updated_vcard = self._inject_eb_fields(resp.text, contact)
+
+        # Zurückschreiben
+        resp = httpx.put(
+            url,
+            auth=self._auth,
+            headers={"Content-Type": "text/vcard; charset=utf-8"},
+            content=updated_vcard.encode("utf-8"),
+            timeout=15.0,
+        )
+        if resp.status_code in (200, 201, 204):
+            return True
+        logger.warning("PUT updated vCard %s: HTTP %d", href, resp.status_code)
+        return False
+
+    def _inject_eb_fields(self, vcard_str: str, contact: Contact) -> str:
+        """Fügt Elder-Berry-Felder (NOTE, X-ELDERBERRY-*) in bestehende vCard ein."""
+        import vobject
+
+        try:
+            card = vobject.readOne(vcard_str)
+        except Exception:
+            return vcard_str
+
+        # NOTE: Rolle + Notizen
+        note_parts = []
+        if contact.role:
+            note_parts.append(f"Rolle: {contact.role}")
+        if contact.notes:
+            note_parts.append(contact.notes)
+        if note_parts:
+            if hasattr(card, "note"):
+                card.note.value = "\n".join(note_parts)
+            else:
+                card.add("note").value = "\n".join(note_parts)
+        elif hasattr(card, "note"):
+            card.remove(card.note)
+
+        # X-ELDERBERRY-FORMALITY
+        for child in list(card.getChildren()):
+            if child.name.upper() == "X-ELDERBERRY-FORMALITY":
+                card.remove(child)
+        if contact.formality:
+            card.add("x-elderberry-formality").value = contact.formality
+
+        return card.serialize()
+
     # ── Pull ───────────────────────────────────────────────────────────
 
-    def pull_contacts(self, user_id: str) -> list[Contact]:
-        """Nextcloud → lokale Contact-Objekte (PROPFIND + GET + Parse)."""
+    def pull_contacts(self, user_id: str) -> list[dict]:
+        """Nextcloud → lokale Contact-Daten (PROPFIND + GET + Parse).
+
+        Returns:
+            Liste von Dicts mit allen Contact-Feldern (kein Contact-Objekt,
+            da die caller add_or_update_by_vcard_uid() verwenden).
+        """
         if not self._has_credentials:
             return []
 
-        # Schritt 1: Alle .vcf-Hrefs auflisten
         hrefs = self._list_vcf_hrefs()
-
-        # Schritt 2: Jede vCard laden und parsen
         contacts = []
         for href in hrefs:
             try:
@@ -169,78 +264,93 @@ class CardDAVSyncClient:
                 )
                 if resp.status_code != 200:
                     continue
-                contact = self._vcard_to_contact(resp.text, user_id)
-                if contact is not None:
-                    contacts.append(contact)
+                data = self._vcard_to_dict(resp.text, user_id)
+                if data is not None:
+                    contacts.append(data)
             except Exception as exc:
                 logger.warning("CardDAV GET %s fehlgeschlagen: %s", href, exc)
 
         return contacts
 
+    def reset_and_pull(
+        self, contact_store: ContactStore, user_id: str,
+    ) -> SyncResult:
+        """Löscht alle lokalen Kontakte und zieht frischen Stand von NC.
+
+        Für Clean-Slate-Migration nach Schema-Änderung.
+        """
+        result = SyncResult()
+        deleted = contact_store.delete_all(user_id)
+        result.deleted = deleted
+        logger.info("Reset: %d lokale Kontakte gelöscht", deleted)
+
+        remote_data = self.pull_contacts(user_id)
+        for data in remote_data:
+            try:
+                contact_store.add_or_update_by_vcard_uid(
+                    user_id, vcard_uid=data.pop("vcard_uid", ""),
+                    **data,
+                )
+                result.pulled += 1
+            except Exception as exc:
+                result.errors.append(f"Pull {data.get('name', '?')}: {exc}")
+
+        return result
+
     # ── Sync (bidirektional) ───────────────────────────────────────────
 
     def sync(self, contact_store: ContactStore, user_id: str) -> SyncResult:
-        """Bidirektionaler Sync: Pull + Merge + Push."""
+        """Bidirektionaler Sync: Pull NC→lokal, Push EB-Felder→NC.
+
+        Sync-Strategie:
+        - NC ist Quelle der Wahrheit für vCard-Felder
+        - EB ist Quelle der Wahrheit für role, formality, notes
+        - Pull: alle NC-Felder überschreiben lokale NC-Felder
+        - Push: nur EB-Felder werden in bestehende NC-vCards eingefügt
+        """
         result = SyncResult()
 
-        # Lokale und Remote-Kontakte laden
-        local_contacts = contact_store.list_all(user_id, limit=1000)
-        remote_contacts = self.pull_contacts(user_id)
+        # Phase 1: Pull (NC → lokal)
+        remote_data = self.pull_contacts(user_id)
+        remote_uids: set[str] = set()
+        for data in remote_data:
+            vcard_uid = data.pop("vcard_uid", "")
+            if vcard_uid:
+                remote_uids.add(vcard_uid)
+            try:
+                name = data.get("name", "")
+                # Prüfe ob lokal vorhanden (per UID oder Name)
+                existing = None
+                if vcard_uid:
+                    existing = contact_store.find_by_vcard_uid(
+                        user_id, vcard_uid,
+                    )
+                if not existing and name:
+                    existing = contact_store.find_by_name(user_id, name)
 
-        # Index aufbauen: Name (lowercase) → Contact
-        local_by_name: dict[str, Contact] = {
-            c.name.lower(): c for c in local_contacts
-        }
-        # UID-basiertes Matching: elderberry-contact-{id}
-        local_by_uid: dict[str, Contact] = {
-            f"elderberry-contact-{c.id}": c for c in local_contacts
-        }
-
-        remote_by_name: dict[str, Contact] = {}
-        remote_uids: dict[str, Contact] = {}
-        for rc in remote_contacts:
-            remote_by_name[rc.name.lower()] = rc
-            # UID aus notes extrahieren wenn vorhanden (vom Push gesetzt)
-            # Remote-Kontakte haben id=0, aber ggf. eine UID im Feld
-            remote_uids[rc.name.lower()] = rc
-
-        # Kontakte die nur lokal existieren → Push
-        to_push: list[Contact] = []
-        for name_lower, local_c in local_by_name.items():
-            if name_lower not in remote_by_name:
-                to_push.append(local_c)
-
-        # Kontakte die nur remote existieren → Pull (Add lokal)
-        for name_lower, remote_c in remote_by_name.items():
-            if name_lower not in local_by_name:
-                contact_store.add(
-                    user_id,
-                    name=remote_c.name,
-                    email=remote_c.email,
-                    role=remote_c.role,
-                    formality=remote_c.formality,
-                    notes=remote_c.notes,
-                    birthday=remote_c.birthday,
-                    phone=remote_c.phone,
+                if existing:
+                    # NC-Felder aktualisieren, EB-Felder behalten
+                    update_data = {k: v for k, v in data.items()
+                                   if k not in _EB_FIELDS}
+                    update_data["vcard_uid"] = vcard_uid
+                    contact_store.update(existing.id, **update_data)
+                    result.updated += 1
+                else:
+                    contact_store.add_or_update_by_vcard_uid(
+                        user_id, vcard_uid=vcard_uid, **data,
+                    )
+                    result.pulled += 1
+            except Exception as exc:
+                result.errors.append(
+                    f"Pull {data.get('name', '?')}: {exc}",
                 )
-                result.pulled += 1
 
-        # Kontakte die auf beiden Seiten existieren → Vergleich
-        for name_lower in local_by_name:
-            if name_lower not in remote_by_name:
-                continue
-            local_c = local_by_name[name_lower]
-            remote_c = remote_by_name[name_lower]
-
-            # Vergleich: updated_at (lokal) vs. now (remote hat kein Timestamp)
-            # Bei Gleichstand: lokal gewinnt (SQLite ist primär)
-            # Einfache Heuristik: Wenn Felder sich unterscheiden,
-            # lokal gewinnt (Push), da SQLite primäre Quelle ist
-            if self._contacts_differ(local_c, remote_c):
-                to_push.append(local_c)
-                result.conflicts += 1
-
-        # Push ausführen
+        # Phase 2: Push EB-Felder (lokal → NC)
+        local_contacts = contact_store.list_all(user_id, limit=1000)
+        to_push = [
+            c for c in local_contacts
+            if c.vcard_uid and (c.role or c.notes or c.formality != "förmlich")
+        ]
         if to_push:
             push_result = self.push_contacts(to_push)
             result.pushed = push_result.pushed
@@ -250,31 +360,59 @@ class CardDAVSyncClient:
 
     # ── vCard-Konvertierung ────────────────────────────────────────────
 
-    def _contact_to_vcard(self, contact: Contact) -> str:
-        """Konvertiert Contact → vCard 3.0 String."""
+    @staticmethod
+    def _contact_to_vcard(contact: Contact, uid: str = "") -> str:
+        """Konvertiert Contact → vCard 3.0 String (für neue Kontakte)."""
         import vobject
 
         card = vobject.vCard()
         card.add("fn").value = contact.name
-        card.add("uid").value = f"elderberry-contact-{contact.id}"
+        card.add("uid").value = uid or f"elderberry-contact-{contact.id}"
         card.add("rev").value = contact.updated_at.strftime("%Y%m%dT%H%M%SZ")
 
-        if contact.email:
-            card.add("email").value = contact.email
+        # Mehrere Emails
+        for ei in contact.get_emails_list():
+            em = card.add("email")
+            em.value = ei.get("email", "")
+            em.type_param = ei.get("type", "INTERNET").upper()
 
-        if contact.phone:
+        # Mehrere Telefonnummern
+        for pi in contact.get_phones_list():
             tel = card.add("tel")
-            tel.value = contact.phone
-            tel.type_param = "CELL"
+            tel.value = pi.get("number", "")
+            tel.type_param = pi.get("type", "CELL").upper()
 
         if contact.birthday:
             bday = card.add("bday")
             if contact.birthday.startswith("0000-"):
-                # Jahr unbekannt → --MM-DD (vCard partial date)
                 bday.value = "--" + contact.birthday[5:]
             else:
                 bday.value = contact.birthday
 
+        if contact.address:
+            adr = card.add("adr")
+            adr.value = vobject.vcard.Address(street=contact.address)
+
+        if contact.organization:
+            card.add("org").value = [contact.organization]
+
+        if contact.title:
+            card.add("title").value = contact.title
+
+        if contact.categories:
+            cats = [c.strip() for c in contact.categories.split(",")]
+            card.add("categories").value = cats
+
+        if contact.nickname:
+            card.add("nickname").value = contact.nickname
+
+        if contact.anniversary:
+            card.add("anniversary").value = contact.anniversary
+
+        if contact.url:
+            card.add("url").value = contact.url
+
+        # EB-spezifische Felder
         if contact.notes or contact.role:
             note_parts = []
             if contact.role:
@@ -288,10 +426,10 @@ class CardDAVSyncClient:
 
         return card.serialize()
 
-    def _vcard_to_contact(self, vcard_str: str, user_id: str) -> Contact | None:
-        """Parst vCard-String → Contact (ohne DB-ID)."""
+    @staticmethod
+    def _vcard_to_dict(vcard_str: str, user_id: str) -> dict | None:
+        """Parst vCard-String → Dict mit allen Contact-Feldern."""
         import vobject
-        from elder_berry.tools.contact_store import Contact
 
         try:
             card = vobject.readOne(vcard_str)
@@ -303,23 +441,108 @@ class CardDAVSyncClient:
         if not fn:
             return None
 
-        email = ""
-        if hasattr(card, "email"):
-            email = str(card.email.value)
+        # UID
+        vcard_uid = ""
+        if hasattr(card, "uid"):
+            vcard_uid = str(card.uid.value)
 
-        phone = ""
-        if hasattr(card, "tel"):
-            phone = str(card.tel.value)
+        # Mehrere Emails → JSON
+        emails = []
+        for em in card.contents.get("email", []):
+            email_type = "home"
+            if hasattr(em, "params") and "TYPE" in em.params:
+                email_type = em.params["TYPE"][0].lower()
+            emails.append({"type": email_type, "email": str(em.value)})
 
+        # Mehrere Telefonnummern → JSON
+        phones = []
+        for tel in card.contents.get("tel", []):
+            phone_type = "cell"
+            if hasattr(tel, "params") and "TYPE" in tel.params:
+                # TYPE kann mehrere Werte haben (z.B. CELL,VOICE)
+                types = [t.lower() for t in tel.params["TYPE"]]
+                # Bevorzuge spezifische Typen
+                for preferred in ("cell", "mobile", "home", "work"):
+                    if preferred in types:
+                        phone_type = preferred
+                        break
+                else:
+                    phone_type = types[0] if types else "cell"
+            phones.append({"type": phone_type, "number": str(tel.value)})
+
+        # Birthday
         birthday = ""
         if hasattr(card, "bday"):
             bday_val = str(card.bday.value)
             if bday_val.startswith("--"):
-                # Partial date → 0000-MM-DD
                 birthday = "0000-" + bday_val[2:]
             else:
-                birthday = bday_val[:10]  # YYYY-MM-DD
+                birthday = bday_val[:10]
 
+        # Address (ADR → Freitext)
+        address = ""
+        if hasattr(card, "adr"):
+            adr = card.adr.value
+            parts = []
+            if hasattr(adr, "street") and adr.street:
+                parts.append(adr.street)
+            code_city = []
+            if hasattr(adr, "code") and adr.code:
+                code_city.append(adr.code)
+            if hasattr(adr, "city") and adr.city:
+                code_city.append(adr.city)
+            if code_city:
+                parts.append(" ".join(code_city))
+            if hasattr(adr, "region") and adr.region:
+                parts.append(adr.region)
+            if hasattr(adr, "country") and adr.country:
+                parts.append(adr.country)
+            address = ", ".join(p for p in parts if p)
+
+        # Organization
+        organization = ""
+        if hasattr(card, "org"):
+            org_val = card.org.value
+            if isinstance(org_val, list):
+                organization = " / ".join(str(o) for o in org_val if o)
+            else:
+                organization = str(org_val)
+
+        # Title
+        title = ""
+        if hasattr(card, "title"):
+            title = str(card.title.value)
+
+        # Categories
+        categories = ""
+        if hasattr(card, "categories"):
+            cat_val = card.categories.value
+            if isinstance(cat_val, list):
+                categories = ", ".join(str(c) for c in cat_val)
+            else:
+                categories = str(cat_val)
+
+        # Nickname
+        nickname = ""
+        if hasattr(card, "nickname"):
+            nickname = str(card.nickname.value)
+
+        # Anniversary
+        anniversary = ""
+        for child in card.getChildren():
+            if child.name.upper() == "ANNIVERSARY":
+                anniversary = str(child.value)[:10]
+                break
+            if child.name.upper() == "X-ANNIVERSARY":
+                anniversary = str(child.value)[:10]
+                break
+
+        # URL
+        url = ""
+        if hasattr(card, "url"):
+            url = str(card.url.value)
+
+        # NOTE → role + notes (EB-Felder)
         role = ""
         notes = ""
         if hasattr(card, "note"):
@@ -333,26 +556,30 @@ class CardDAVSyncClient:
                     remaining.append(line)
             notes = "\n".join(remaining).strip()
 
+        # Formality (EB-Feld)
         formality = "förmlich"
         for child in card.getChildren():
             if child.name.upper() == "X-ELDERBERRY-FORMALITY":
                 formality = str(child.value)
                 break
 
-        now = datetime.now(timezone.utc)
-        return Contact(
-            id=0,
-            user_id=user_id,
-            name=fn,
-            email=email,
-            role=role,
-            formality=formality,
-            phone=phone,
-            notes=notes,
-            birthday=birthday,
-            created_at=now,
-            updated_at=now,
-        )
+        return {
+            "name": fn,
+            "emails": json.dumps(emails) if emails else "[]",
+            "phones": json.dumps(phones) if phones else "[]",
+            "role": role,
+            "formality": formality,
+            "notes": notes,
+            "birthday": birthday,
+            "address": address,
+            "organization": organization,
+            "title": title,
+            "categories": categories,
+            "nickname": nickname,
+            "anniversary": anniversary,
+            "url": url,
+            "vcard_uid": vcard_uid,
+        }
 
     # ── Hilfsmethoden ──────────────────────────────────────────────────
 
@@ -390,21 +617,37 @@ class CardDAVSyncClient:
 
         return hrefs
 
+    def _find_vcard_href(self, vcard_uid: str) -> str | None:
+        """Sucht die .vcf-Href anhand der vCard-UID.
+
+        Lädt alle hrefs und vergleicht mit der bekannten UID.
+        Optimierung: UID ist oft der Dateiname.
+        """
+        # Schneller Versuch: UID als Dateiname
+        # Nextcloud nutzt oft {UID}.vcf als Dateinamen
+        hrefs = self._list_vcf_hrefs()
+        for href in hrefs:
+            filename = href.rsplit("/", 1)[-1].replace(".vcf", "")
+            if filename == vcard_uid:
+                return href
+
+        # Langsamer Fallback: Jede vCard laden und UID vergleichen
+        for href in hrefs:
+            try:
+                url = self._href_to_url(href)
+                resp = httpx.get(url, auth=self._auth, timeout=10.0)
+                if resp.status_code != 200:
+                    continue
+                if f"UID:{vcard_uid}" in resp.text:
+                    return href
+            except Exception:
+                continue
+
+        return None
+
     def _href_to_url(self, href: str) -> str:
         """Konvertiert einen relativen href in eine absolute URL."""
         url = (self._url or "").rstrip("/")
         if href.startswith("http"):
             return href
         return f"{url}{href}"
-
-    @staticmethod
-    def _contacts_differ(local: Contact, remote: Contact) -> bool:
-        """Prüft ob sich zwei Kontakte in den sync-relevanten Feldern unterscheiden."""
-        return (
-            local.email != remote.email
-            or local.phone != remote.phone
-            or local.role != remote.role
-            or local.notes != remote.notes
-            or local.birthday != remote.birthday
-            or local.formality != remote.formality
-        )
