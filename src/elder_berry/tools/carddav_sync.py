@@ -219,10 +219,10 @@ class CardDAVSyncClient:
         except Exception:
             return vcard_str
 
-        # NOTE: Rolle + Notizen
+        # NOTE: Rolle + Notizen (Trennzeichen --- für robustes Parsen)
         note_parts = []
         if contact.role:
-            note_parts.append(f"Rolle: {contact.role}")
+            note_parts.append(f"[Rolle: {contact.role}]")
         if contact.notes:
             note_parts.append(contact.notes)
         if note_parts:
@@ -416,7 +416,7 @@ class CardDAVSyncClient:
         if contact.notes or contact.role:
             note_parts = []
             if contact.role:
-                note_parts.append(f"Rolle: {contact.role}")
+                note_parts.append(f"[Rolle: {contact.role}]")
             if contact.notes:
                 note_parts.append(contact.notes)
             card.add("note").value = "\n".join(note_parts)
@@ -547,18 +547,30 @@ class CardDAVSyncClient:
             url = str(card.url.value)
 
         # NOTE → role + notes (EB-Felder)
+        # Format neu: "[Rolle: Freundin]\nNotizen..."
+        # Format alt: "Rolle: Freundin\nNotizen..."
+        # NC kann Zeilenumbrüche verschlucken → beide robust parsen
         role = ""
         notes = ""
         if hasattr(card, "note"):
             note_text = str(card.note.value)
-            lines = note_text.split("\n")
-            remaining = []
-            for line in lines:
-                if line.startswith("Rolle: "):
-                    role = line[7:]
-                else:
-                    remaining.append(line)
-            notes = "\n".join(remaining).strip()
+            # Neues Format: [Rolle: X] extrahieren
+            import re
+            bracket_match = re.search(r"\[Rolle:\s*(.+?)\]", note_text)
+            if bracket_match:
+                role = bracket_match.group(1).strip()
+                notes = note_text[:bracket_match.start()] + note_text[bracket_match.end():]
+                notes = notes.strip().strip("\n").strip()
+            else:
+                # Altes Format: "Rolle: X" am Zeilenanfang
+                lines = note_text.split("\n")
+                remaining = []
+                for line in lines:
+                    if line.startswith("Rolle: ") and not role:
+                        role = line[7:]
+                    else:
+                        remaining.append(line)
+                notes = "\n".join(remaining).strip()
 
         # Formality (EB-Feld)
         formality = "förmlich"

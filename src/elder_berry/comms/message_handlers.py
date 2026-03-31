@@ -74,11 +74,17 @@ class BridgeMessageHandler:
     # Remote Commands
     # ------------------------------------------------------------------
 
+    # Commands die länger brauchen (Netzwerk-Sync, Updates etc.)
+    _LONG_RUNNING_COMMANDS = {
+        "contact_sync", "system_update", "git_pull",
+    }
+
     async def handle_remote_command(
         self, msg: IncomingMessage, command: str,
     ) -> None:
         """Führt einen direkten Remote-Command aus und sendet das Ergebnis."""
         logger.info("Remote-Command erkannt: %s", command)
+        timeout = 300.0 if command in self._LONG_RUNNING_COMMANDS else 60.0
 
         try:
             loop = asyncio.get_running_loop()
@@ -86,7 +92,7 @@ class BridgeMessageHandler:
                 loop.run_in_executor(
                     None, self._remote_commands.execute, command, msg.body,
                 ),
-                timeout=60.0,
+                timeout=timeout,
             )
 
             # Fallthrough: Command erkannt aber nichts gefunden → LLM
@@ -207,7 +213,7 @@ class BridgeMessageHandler:
                 )
 
         except asyncio.TimeoutError:
-            logger.error("Timeout bei Remote-Command '%s' (60s)", command)
+            logger.error("Timeout bei Remote-Command '%s' (%.0fs)", command, timeout)
             try:
                 await self._channel.send_text(
                     msg.room_id,

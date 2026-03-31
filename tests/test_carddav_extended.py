@@ -262,7 +262,7 @@ class TestContactToVcard:
         assert "FN:Lisa" in vcard_str
         assert "lisa@x.de" in vcard_str
         assert "+49 170 111" in vcard_str
-        assert "Rolle: Freundin" in vcard_str
+        assert "[Rolle: Freundin]" in vcard_str
         assert "CATEGORIES:" in vcard_str
 
     def test_roundtrip(self, mock_secret_store: MagicMock) -> None:
@@ -351,7 +351,7 @@ class TestInjectEBFields:
             "END:VCARD\r\n"
         )
         result = client._inject_eb_fields(original_vcard, contact)
-        assert "Rolle: Schwester" in result
+        assert "[Rolle: Schwester]" in result
         assert "mag Katzen" in result
         assert "X-ELDERBERRY-FORMALITY" in result.upper()
         assert "locker" in result

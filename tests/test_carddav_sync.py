@@ -113,7 +113,7 @@ class TestContactToVCard:
         assert "UID:elderberry-contact-1" in vcard
         assert "mueller@example.com" in vcard
         assert "BDAY:1970-05-15" in vcard
-        assert "Rolle: Vermieter" in vcard
+        assert "[Rolle: Vermieter]" in vcard
         assert "Hat Hund namens Rex" in vcard
         assert "X-ELDERBERRY-FORMALITY" in vcard.upper()
         assert "förmlich" in vcard
@@ -136,7 +136,7 @@ class TestContactToVCard:
     def test_with_role_in_note(self, client):
         contact = _make_contact(role="Schwester", notes="Mag Katzen")
         vcard = client._contact_to_vcard(contact)
-        assert "Rolle: Schwester" in vcard
+        assert "[Rolle: Schwester]" in vcard
         assert "Mag Katzen" in vcard
 
     def test_formality_extension(self, client):
