@@ -323,34 +323,43 @@ def test_search_no_results(mock_req, client):
     assert results == []
 
 
-# ── Share Link ──────────────────────────────────────────────────────────
+# ── Share Link (intern, kein öffentlicher Link) ───────────────────────
 
 
-@patch("elder_berry.tools.nextcloud_files.httpx.post")
-def test_share_link_success(mock_post, client):
-    mock_post.return_value = MagicMock(
-        status_code=200, text=SAMPLE_SHARE_RESPONSE
+_FILEID_PROPFIND_RESPONSE = """\
+<?xml version="1.0"?>
+<d:multistatus xmlns:d="DAV:" xmlns:oc="http://owncloud.org/ns">
+  <d:response>
+    <d:href>/remote.php/dav/files/testuser/report.pdf</d:href>
+    <d:propstat>
+      <d:prop><oc:fileid>12345</oc:fileid></d:prop>
+    </d:propstat>
+  </d:response>
+</d:multistatus>"""
+
+
+@patch("elder_berry.tools.nextcloud_files.httpx.request")
+def test_share_link_success(mock_request, client):
+    mock_request.return_value = MagicMock(
+        status_code=207, text=_FILEID_PROPFIND_RESPONSE,
     )
 
     url = client.share_link("report.pdf")
 
-    assert url == "https://cloud.last-strawberry.com/s/abc123XYZ"
-    call_data = mock_post.call_args[1]["data"]
-    assert call_data["shareType"] == "3"
-    assert call_data["path"] == "/report.pdf"
+    assert url == "https://cloud.last-strawberry.com/f/12345"
 
 
-@patch("elder_berry.tools.nextcloud_files.httpx.post")
-def test_share_link_not_found(mock_post, client):
-    mock_post.return_value = MagicMock(status_code=404)
+@patch("elder_berry.tools.nextcloud_files.httpx.request")
+def test_share_link_not_found(mock_request, client):
+    mock_request.return_value = MagicMock(status_code=404)
 
     with pytest.raises(NextcloudError, match="nicht gefunden"):
         client.share_link("missing.pdf")
 
 
-@patch("elder_berry.tools.nextcloud_files.httpx.post")
-def test_share_link_auth_error(mock_post, client):
-    mock_post.return_value = MagicMock(status_code=403)
+@patch("elder_berry.tools.nextcloud_files.httpx.request")
+def test_share_link_auth_error(mock_request, client):
+    mock_request.return_value = MagicMock(status_code=403)
 
     with pytest.raises(NextcloudAuthError):
         client.share_link("file.txt")

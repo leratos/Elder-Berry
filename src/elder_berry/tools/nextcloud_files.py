@@ -413,68 +413,81 @@ class NextcloudFilesClient:
         return [e for e in all_entries if query_lower in e.name.lower()]
 
     def share_link(self, remote_path: str) -> str:
-        """Create a public share link via OCS API.
+        """Erstellt einen internen NC-Link (erfordert Login, kein öffentlicher Zugang).
+
+        Verwendet die Nextcloud File-ID aus WebDAV PROPFIND um einen
+        direkten Link zur NC-WebUI zu generieren (/f/<id>).
 
         Args:
             remote_path: Remote path relative to user root.
 
         Returns:
-            Public share URL.
+            Interner NC-Link (z.B. https://cloud.example.com/f/12345).
 
         Raises:
-            NextcloudError: Share creation failed.
+            NextcloudError: Datei nicht gefunden oder nicht erreichbar.
         """
         if not self._has_credentials:
             raise NextcloudError("Nextcloud-Credentials nicht konfiguriert")
 
+        file_id = self._get_file_id(remote_path)
         base_url = (self._url or "").rstrip("/")
-        url = f"{base_url}/ocs/v2.php/apps/files_sharing/api/v1/shares"
+        link = f"{base_url}/f/{file_id}"
+        logger.info("NC-Link erstellt: %s → %s", remote_path, link)
+        return link
+
+    def _get_file_id(self, remote_path: str) -> str:
+        """Holt die Nextcloud File-ID via WebDAV PROPFIND.
+
+        NC liefert die fileid im OC-Namespace als Property.
+        """
+        url = self._webdav_url(remote_path)
+        propfind_body = (
+            '<?xml version="1.0" encoding="UTF-8"?>'
+            '<d:propfind xmlns:d="DAV:" xmlns:oc="http://owncloud.org/ns">'
+            "<d:prop>"
+            "<oc:fileid/>"
+            "</d:prop>"
+            "</d:propfind>"
+        )
 
         try:
-            resp = httpx.post(
+            resp = httpx.request(
+                "PROPFIND",
                 url,
                 auth=self._auth,
                 headers={
-                    "OCS-APIRequest": "true",
-                    "Content-Type": "application/x-www-form-urlencoded",
+                    "Content-Type": "application/xml",
+                    "Depth": "0",
                 },
-                data={
-                    "path": remote_path if remote_path.startswith("/") else f"/{remote_path}",
-                    "shareType": "3",  # public link
-                },
+                content=propfind_body,
                 timeout=10.0,
             )
         except (httpx.ConnectError, httpx.TimeoutException) as exc:
             raise NextcloudConnectionError(
-                f"Server nicht erreichbar: {exc}"
+                f"Server nicht erreichbar: {exc}",
             ) from exc
 
         self._check_auth_error(resp)
         if resp.status_code == 404:
+            raise NextcloudError(f"Datei nicht gefunden: {remote_path}")
+        if resp.status_code not in (200, 207):
             raise NextcloudError(
-                f"Datei nicht gefunden: {remote_path}"
-            )
-        if resp.status_code not in (200,):
-            raise NextcloudError(
-                f"Share-Link fehlgeschlagen: HTTP {resp.status_code}"
+                f"PROPFIND fehlgeschlagen: HTTP {resp.status_code}",
             )
 
-        # Parse OCS XML response for <url> element
+        # Parse fileid aus XML
         try:
             root = ET.fromstring(resp.text)
-            # OCS response: <ocs><data><url>...</url></data></ocs>
-            url_el = root.find(".//{http://open-collaboration-services.org/ns}url")
-            if url_el is None:
-                # Try without namespace (Nextcloud sometimes omits it)
-                url_el = root.find(".//url")
-            if url_el is not None and url_el.text:
-                logger.info("Share-Link erstellt: %s", url_el.text)
-                return url_el.text
-        except ET.ParseError:
-            pass
+            oc_ns = "http://owncloud.org/ns"
+            fileid_el = root.find(f".//{{{oc_ns}}}fileid")
+            if fileid_el is not None and fileid_el.text:
+                return fileid_el.text
+        except ET.ParseError as exc:
+            raise NextcloudError(f"XML-Parsing fehlgeschlagen: {exc}") from exc
 
         raise NextcloudError(
-            "Share-Link konnte nicht aus der Antwort extrahiert werden"
+            f"File-ID nicht gefunden für: {remote_path}",
         )
 
     def search_content(self, query: str, limit: int = 10) -> list[dict]:
