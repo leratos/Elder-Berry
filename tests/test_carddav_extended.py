@@ -174,6 +174,20 @@ class TestVcardToDict:
         data = client._vcard_to_dict(vcard, USER)
         assert data["birthday"] == "1990-06-15"
 
+    def test_birthday_compact_format(self, mock_secret_store: MagicMock) -> None:
+        """BDAY:19940928 → 1994-09-28 (Nextcloud kompaktes Format)."""
+        client = CardDAVSyncClient(mock_secret_store)
+        vcard = (
+            "BEGIN:VCARD\r\n"
+            "VERSION:3.0\r\n"
+            "FN:Max\r\n"
+            "UID:uid-bday-compact\r\n"
+            "BDAY:19940928\r\n"
+            "END:VCARD\r\n"
+        )
+        data = client._vcard_to_dict(vcard, USER)
+        assert data["birthday"] == "1994-09-28"
+
     def test_birthday_partial(self, mock_secret_store: MagicMock) -> None:
         client = CardDAVSyncClient(mock_secret_store)
         vcard = (

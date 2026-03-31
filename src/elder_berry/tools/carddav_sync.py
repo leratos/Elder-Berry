@@ -473,9 +473,12 @@ class CardDAVSyncClient:
         # Birthday
         birthday = ""
         if hasattr(card, "bday"):
-            bday_val = str(card.bday.value)
+            bday_val = str(card.bday.value).strip()
             if bday_val.startswith("--"):
                 birthday = "0000-" + bday_val[2:]
+            elif len(bday_val) == 8 and bday_val.isdigit():
+                # Kompaktes Format: 19940928 → 1994-09-28
+                birthday = f"{bday_val[:4]}-{bday_val[4:6]}-{bday_val[6:8]}"
             else:
                 birthday = bday_val[:10]
 
@@ -530,11 +533,12 @@ class CardDAVSyncClient:
         # Anniversary
         anniversary = ""
         for child in card.getChildren():
-            if child.name.upper() == "ANNIVERSARY":
-                anniversary = str(child.value)[:10]
-                break
-            if child.name.upper() == "X-ANNIVERSARY":
-                anniversary = str(child.value)[:10]
+            if child.name.upper() in ("ANNIVERSARY", "X-ANNIVERSARY"):
+                ann_val = str(child.value).strip()
+                if len(ann_val) == 8 and ann_val.isdigit():
+                    anniversary = f"{ann_val[:4]}-{ann_val[4:6]}-{ann_val[6:8]}"
+                else:
+                    anniversary = ann_val[:10]
                 break
 
         # URL
