@@ -529,17 +529,14 @@ Personalisiertes Morgenbriefing mit Geburtstagen, offenen E-Mails,
 - ✅ Wochenend-Variante (entspannter Ton, Todos/Erinnerungen ausgeblendet)
 - ✅ Tests: 18 neue Tests, 2772 gesamt grün
 
-## Phase 35 – Web-Zusammenfassung 🌐 GEPLANT
+## Phase 35 – Web-Zusammenfassung 🌐 ✅ ABGESCHLOSSEN
 
-"Fasse https://... zusammen" als neuer Command. Natürliche Erweiterung von
-DocumentReader (Phase 16) auf Web-Inhalte.
+"Fasse https://... zusammen" als Command. Web-Inhalte via LLM zusammenfassen.
 
-- **WebFetcher**: `httpx` (bereits vorhanden) + `trafilatura` für Text-Extraktion
-- **WebSummaryCommandHandler**: Pattern `fasse .* zusammen` / `zusammenfassung von .*`
-- **LLM-Pipeline**: bereits vorhanden (gleiche Logik wie Dokument-Zusammenfassung)
-- **Fallback**: Brave Search Snippet wenn URL nicht abrufbar (robots.txt, Paywall)
-- **Aufwand**: 1–2 Tage
-- **Konzept**: `docs/concepts/phase-35-web-zusammenfassung.md`
+- ✅ **WebFetcher**: `httpx` + `trafilatura` (Primär) + BeautifulSoup (Fallback)
+- ✅ **AdvancedCommandHandler**: Pattern `fasse <url> zusammen` / `zusammenfassung von <url>`
+- ✅ **LLM-Pipeline**: gleiche Logik wie Dokument-Zusammenfassung (history_text → LLM)
+- ✅ **Fallback**: Brave Search Snippet wenn URL nicht abrufbar (robots.txt, Paywall)
 
 ## Phase 36 – Nextcloud-Integration ☁️ ✅ ABGESCHLOSSEN
 
