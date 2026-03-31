@@ -442,6 +442,57 @@ class TestUpcomingAnniversaries:
         assert len(results) == 0
 
 
+class TestV1Migration:
+    """Tests für die Migration von v1 (email/phone) → v2 (emails/phones)."""
+
+    def test_v1_db_migrates_on_open(self, tmp_path: Path) -> None:
+        """Bestehende v1-DB mit email/phone Spalten wird korrekt migriert."""
+        import sqlite3
+
+        db_path = tmp_path / "v1.db"
+        # v1-Schema manuell erstellen
+        conn = sqlite3.connect(str(db_path))
+        conn.executescript("""
+            CREATE TABLE contacts (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id TEXT NOT NULL,
+                name TEXT NOT NULL,
+                email TEXT NOT NULL DEFAULT '',
+                role TEXT NOT NULL DEFAULT '',
+                formality TEXT NOT NULL DEFAULT 'förmlich',
+                phone TEXT NOT NULL DEFAULT '',
+                notes TEXT NOT NULL DEFAULT '',
+                birthday TEXT NOT NULL DEFAULT '',
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            );
+        """)
+        conn.execute(
+            "INSERT INTO contacts (user_id, name, email, phone, role, "
+            "created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+            (USER, "Lisa", "lisa@x.de", "+49 170 111", "Freundin",
+             "2026-01-01T00:00:00+00:00", "2026-01-01T00:00:00+00:00"),
+        )
+        conn.commit()
+        conn.close()
+
+        # ContactStore öffnet v1-DB → Migration muss laufen
+        store = ContactStore(db_path=db_path)
+        lisa = store.find_by_name(USER, "Lisa")
+        assert lisa is not None
+        assert lisa.role == "Freundin"
+        # email/phone müssen als JSON in emails/phones konvertiert sein
+        assert "lisa@x.de" in lisa.emails
+        assert "+49 170 111" in lisa.phones
+        # Convenience-Properties
+        assert lisa.email == "lisa@x.de"
+        assert lisa.phone == "+49 170 111"
+        # FTS muss funktionieren
+        results = store.search(USER, "Lisa")
+        assert len(results) == 1
+        store.close()
+
+
 class TestClose:
     def test_close(self, tmp_path: Path) -> None:
         s = ContactStore(db_path=tmp_path / "c.db")

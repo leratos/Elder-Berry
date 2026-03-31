@@ -258,6 +258,7 @@ class ContactStore:
         self._create_tables()
 
     def _create_tables(self) -> None:
+        # Schritt 1: Tabelle erstellen (nur für neue DBs)
         self._conn.executescript("""
             CREATE TABLE IF NOT EXISTS contacts (
                 id           INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -280,18 +281,46 @@ class ContactStore:
                 created_at   TEXT NOT NULL,
                 updated_at   TEXT NOT NULL
             );
+        """)
+        self._conn.commit()
+
+        # Schritt 2: Migration (v1 email/phone → v2 emails/phones)
+        # MUSS vor Indizes/FTS laufen, da die neuen Spalten referenziert werden
+        self._migrate_from_v1()
+
+        # Schritt 3: Indizes (IF NOT EXISTS = safe für neue + migrierte DBs)
+        self._conn.executescript("""
             CREATE INDEX IF NOT EXISTS idx_contacts_user
                 ON contacts(user_id);
             CREATE UNIQUE INDEX IF NOT EXISTS idx_contacts_user_name
                 ON contacts(user_id, name COLLATE NOCASE);
             CREATE INDEX IF NOT EXISTS idx_contacts_vcard_uid
                 ON contacts(vcard_uid) WHERE vcard_uid != '';
-            CREATE VIRTUAL TABLE IF NOT EXISTS contacts_fts USING fts5(
+        """)
+        self._conn.commit()
+
+        # Schritt 4: FTS + Trigger (immer droppen + neu erstellen,
+        # damit sie zum aktuellen Schema passen)
+        self._rebuild_fts()
+
+    def _rebuild_fts(self) -> None:
+        """Erstellt FTS5-Tabelle und Trigger (immer frisch).
+
+        Wird bei jedem Start aufgerufen, damit Trigger/FTS immer zum
+        aktuellen Schema passen – auch nach Migrationen.
+        """
+        self._conn.executescript("""
+            DROP TRIGGER IF EXISTS contacts_ai;
+            DROP TRIGGER IF EXISTS contacts_au;
+            DROP TRIGGER IF EXISTS contacts_ad;
+            DROP TABLE IF EXISTS contacts_fts;
+
+            CREATE VIRTUAL TABLE contacts_fts USING fts5(
                 name, role, notes, emails, phones, categories,
                 organization, nickname, address,
                 content=contacts, content_rowid=id
             );
-            CREATE TRIGGER IF NOT EXISTS contacts_ai AFTER INSERT ON contacts
+            CREATE TRIGGER contacts_ai AFTER INSERT ON contacts
             BEGIN
                 INSERT INTO contacts_fts(rowid, name, role, notes, emails,
                     phones, categories, organization, nickname, address)
@@ -299,7 +328,7 @@ class ContactStore:
                     new.phones, new.categories, new.organization,
                     new.nickname, new.address);
             END;
-            CREATE TRIGGER IF NOT EXISTS contacts_au AFTER UPDATE ON contacts
+            CREATE TRIGGER contacts_au AFTER UPDATE ON contacts
             BEGIN
                 INSERT INTO contacts_fts(contacts_fts, rowid, name, role,
                     notes, emails, phones, categories, organization,
@@ -313,7 +342,7 @@ class ContactStore:
                     new.phones, new.categories, new.organization,
                     new.nickname, new.address);
             END;
-            CREATE TRIGGER IF NOT EXISTS contacts_ad AFTER DELETE ON contacts
+            CREATE TRIGGER contacts_ad AFTER DELETE ON contacts
             BEGIN
                 INSERT INTO contacts_fts(contacts_fts, rowid, name, role,
                     notes, emails, phones, categories, organization,
@@ -323,14 +352,21 @@ class ContactStore:
                     old.organization, old.nickname, old.address);
             END;
         """)
+        # FTS mit bestehenden Daten befüllen (rebuild)
+        try:
+            self._conn.execute(
+                "INSERT INTO contacts_fts(contacts_fts) VALUES('rebuild')",
+            )
+        except sqlite3.OperationalError:
+            pass
         self._conn.commit()
-        self._migrate_from_v1()
 
     def _migrate_from_v1(self) -> None:
         """Migriert alte Datenbank (v1: email/phone Spalten) zum neuen Schema.
 
         Erkennt v1 am Vorhandensein einer 'email'-Spalte (statt 'emails').
-        Bei v1-DB: Daten konvertieren, alte Spalten durch neue ersetzen.
+        SQLite kann keine Spalten droppen, daher: Tabelle kopieren → neu
+        erstellen → Daten rüber → alte droppen.
         """
         try:
             cursor = self._conn.execute("PRAGMA table_info(contacts)")
@@ -338,63 +374,83 @@ class ContactStore:
         except sqlite3.OperationalError:
             return
 
-        # Neue Spalten einzeln hinzufügen wenn sie fehlen
-        new_columns = {
-            "address": "TEXT NOT NULL DEFAULT ''",
-            "organization": "TEXT NOT NULL DEFAULT ''",
-            "title": "TEXT NOT NULL DEFAULT ''",
-            "categories": "TEXT NOT NULL DEFAULT ''",
-            "nickname": "TEXT NOT NULL DEFAULT ''",
-            "anniversary": "TEXT NOT NULL DEFAULT ''",
-            "url": "TEXT NOT NULL DEFAULT ''",
-            "vcard_uid": "TEXT NOT NULL DEFAULT ''",
-        }
-        for col, col_type in new_columns.items():
-            if col not in columns:
-                try:
-                    self._conn.execute(
-                        f"ALTER TABLE contacts ADD COLUMN {col} {col_type}",
-                    )
-                    logger.info("Migration: %s-Spalte hinzugefügt", col)
-                except sqlite3.OperationalError as e:
-                    logger.warning("Migration %s fehlgeschlagen: %s", col, e)
+        # Kein v1-Schema → nichts zu tun
+        if "email" not in columns or "emails" in columns:
+            return
 
-        # v1→v2: email→emails, phone→phones Konvertierung
-        if "email" in columns and "emails" not in columns:
-            logger.info("Migration v1→v2: email→emails, phone→phones")
-            try:
-                self._conn.execute(
-                    "ALTER TABLE contacts ADD COLUMN emails TEXT NOT NULL DEFAULT '[]'",
-                )
-                self._conn.execute(
-                    "ALTER TABLE contacts ADD COLUMN phones TEXT NOT NULL DEFAULT '[]'",
-                )
-                # Bestehende Einzelwerte in JSON konvertieren
-                rows = self._conn.execute(
-                    "SELECT id, email, phone FROM contacts",
-                ).fetchall()
-                for row_id, old_email, old_phone in rows:
-                    emails_json = "[]"
-                    if old_email:
-                        emails_json = json.dumps(
-                            [{"type": "home", "email": old_email}],
-                        )
-                    phones_json = "[]"
-                    if old_phone:
-                        phones_json = json.dumps(
-                            [{"type": "cell", "number": old_phone}],
-                        )
-                    self._conn.execute(
-                        "UPDATE contacts SET emails=?, phones=? WHERE id=?",
-                        (emails_json, phones_json, row_id),
+        logger.info("Migration v1→v2: Tabelle wird neu aufgebaut")
+        try:
+            # Alte FTS/Trigger droppen (referenzieren alte Spalten)
+            self._conn.executescript("""
+                DROP TRIGGER IF EXISTS contacts_ai;
+                DROP TRIGGER IF EXISTS contacts_au;
+                DROP TRIGGER IF EXISTS contacts_ad;
+                DROP TABLE IF EXISTS contacts_fts;
+            """)
+
+            # Alte Tabelle umbenennen
+            self._conn.execute("ALTER TABLE contacts RENAME TO contacts_v1")
+
+            # Neue Tabelle erstellen (v2 Schema)
+            self._conn.executescript("""
+                CREATE TABLE contacts (
+                    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+                    user_id      TEXT NOT NULL,
+                    name         TEXT NOT NULL,
+                    emails       TEXT NOT NULL DEFAULT '[]',
+                    phones       TEXT NOT NULL DEFAULT '[]',
+                    role         TEXT NOT NULL DEFAULT '',
+                    formality    TEXT NOT NULL DEFAULT 'förmlich',
+                    notes        TEXT NOT NULL DEFAULT '',
+                    birthday     TEXT NOT NULL DEFAULT '',
+                    address      TEXT NOT NULL DEFAULT '',
+                    organization TEXT NOT NULL DEFAULT '',
+                    title        TEXT NOT NULL DEFAULT '',
+                    categories   TEXT NOT NULL DEFAULT '',
+                    nickname     TEXT NOT NULL DEFAULT '',
+                    anniversary  TEXT NOT NULL DEFAULT '',
+                    url          TEXT NOT NULL DEFAULT '',
+                    vcard_uid    TEXT NOT NULL DEFAULT '',
+                    created_at   TEXT NOT NULL,
+                    updated_at   TEXT NOT NULL
+                );
+            """)
+
+            # Daten konvertieren und kopieren
+            rows = self._conn.execute(
+                "SELECT id, user_id, name, email, role, formality, phone, "
+                "notes, birthday, created_at, updated_at FROM contacts_v1",
+            ).fetchall()
+            for (id_, user_id, name, old_email, role, formality, old_phone,
+                 notes, birthday, created_at, updated_at) in rows:
+                emails_json = "[]"
+                if old_email:
+                    emails_json = json.dumps(
+                        [{"type": "home", "email": old_email}],
                     )
-                self._conn.commit()
-                logger.info(
-                    "Migration v1→v2 abgeschlossen: %d Kontakte konvertiert",
-                    len(rows),
+                phones_json = "[]"
+                if old_phone:
+                    phones_json = json.dumps(
+                        [{"type": "cell", "number": old_phone}],
+                    )
+                self._conn.execute(
+                    "INSERT INTO contacts (id, user_id, name, emails, phones, "
+                    "role, formality, notes, birthday, created_at, updated_at) "
+                    "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                    (id_, user_id, name, emails_json, phones_json,
+                     role, formality or "förmlich", notes, birthday,
+                     created_at, updated_at),
                 )
-            except sqlite3.OperationalError as e:
-                logger.warning("Migration v1→v2 fehlgeschlagen: %s", e)
+
+            # Alte Tabelle entfernen
+            self._conn.execute("DROP TABLE contacts_v1")
+            self._conn.commit()
+            logger.info(
+                "Migration v1→v2 abgeschlossen: %d Kontakte konvertiert",
+                len(rows),
+            )
+        except sqlite3.OperationalError as e:
+            logger.error("Migration v1→v2 fehlgeschlagen: %s", e)
 
     # ------------------------------------------------------------------
     # Schreiben
