@@ -11,7 +11,7 @@ const DEVICE_LAYOUTS = {
     "Samsung TV": {
         icon: "\ud83d\udcfa",
         power: { cmd: "PowerToggle", label: "ON/OFF TV" },
-        volume: { device: "Denon AV-Empf\u00e4nger", up: "VolumeUp", down: "VolumeDown" },
+        volume: { device: "Samsung TV", up: "VolumeUp", down: "VolumeDown" },
         channel: { up: "ChannelUp", down: "ChannelDown" },
         dpad: { center: "Select" },
         actions: [
@@ -26,7 +26,7 @@ const DEVICE_LAYOUTS = {
             { cmd: "Source", label: "Source" },
         ],
         hasNumpad: true,
-        mute: { device: "Denon AV-Empf\u00e4nger", cmd: "Mute" },
+        mute: { device: "Samsung TV", cmd: "Mute" },
     },
     "Denon AV-Empf\u00e4nger": {
         icon: "\ud83d\udd0a",
