@@ -700,13 +700,6 @@ class RobotServer:
                     AlexaResult(text="Ungültige Anfrage.", success=False),
                 )
 
-            # Debug: Alexa-Header loggen
-            sig_headers = {
-                k: v[:60] for k, v in headers.items()
-                if "sign" in k or "cert" in k
-            }
-            logger.info("Alexa-Header: %s", sig_headers)
-
             # Signatur-Verifikation (wenn Verifier konfiguriert)
             if self._alexa_verifier is not None:
                 try:

@@ -102,7 +102,9 @@ class AlexaRequestVerifier:
             Wenn ein Prüfschritt fehlschlägt.
         """
         cert_url = headers.get("signaturecertchainurl", "")
-        signature_b64 = headers.get("signature", "")
+        # Alexa sendet SHA256-Signatur als "Signature-256" (bevorzugt)
+        # und SHA1-Signatur als "Signature" (legacy)
+        signature_b64 = headers.get("signature-256", "") or headers.get("signature", "")
 
         if not cert_url:
             raise AlexaVerificationError("Header 'SignatureCertChainUrl' fehlt")
