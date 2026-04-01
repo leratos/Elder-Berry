@@ -518,6 +518,39 @@ To-Do-Liste mit Prioritäten, Kategorien und Briefing-Integration.
 - **Konzept**: `docs/concepts/phase-30-todo-liste.md`
 
 
+## Phase 31 – Bridge Refactoring (Technische Schulden) ✅ ABGESCHLOSSEN
+
+Große Dateien aufgeteilt und Verantwortlichkeiten sauber getrennt.
+
+- ✅ **process_commands.py aufgeteilt**: 1142 → 200 Zeilen + 6 neue Handler-Dateien
+  - git_commands.py, docker_commands.py, wol_commands.py, update_commands.py, selfcheck_commands.py, cmd_utils.py
+- ✅ **bridge.py aufgeteilt**: 1589 → 417 Zeilen (74% Reduktion)
+  - message_handlers.py (774 Zeilen), audio_pipeline.py (315 Zeilen), restart_manager.py (152 Zeilen)
+  - Bridge delegiert via Komposition an Handler, AudioPipeline, RestartManager
+- ✅ **start_saleria.py refactored**: run_matrix() in 3 Helper-Funktionen aufgeteilt
+- ✅ **Tests**: 1866/1866 bestehende Tests grün, keine Regressionen
+
+## Phase 32 – Test-Offensive ✅ ABGESCHLOSSEN
+
+Umfassende Testabdeckung für alle bisher ungetesteten Module nachgeholt.
+
+- ✅ **15 neue Testdateien** (410 Tests) für 6 Alt-Handler + 9 neue Module aus Phase 31
+- ✅ **4 weitere Testdateien** (128 Tests): AnthropicClient, OllamaClient, OpenRouterClient, Bridge
+- ✅ Erkenntnisse dokumentiert (RateLimitError toter Code, frozenset-Verhalten)
+- ✅ Gesamt: 538 neue Tests, keine Regressionen
+
+## Phase 33 – Smart Context Layer ✅ ABGESCHLOSSEN
+
+Keyword-basierte Kontext-Injection: relevante Daten aus allen Stores werden
+automatisch in den LLM-Prompt injiziert.
+
+- ✅ **SmartContextProvider**: Keyword-basierte Input-Analyse, 6 Quellen (Calendar, Todos, Notes, Contacts, Reminders, Weather)
+- ✅ 11 Meta-Phrasen ("was muss ich", "briefing", "tagesplan" etc.) → Multi-Source-Abfrage
+- ✅ Parallele Abfrage via ThreadPoolExecutor, 3s Timeout pro Quelle, Graceful Degradation
+- ✅ Assistant-Integration: smart_context Block wird vor memory_context in System-Prompt injiziert
+- ✅ **Tests**: 52 Tests (Keyword-Erkennung, Query-Methoden, Integration, Timeout, Edge Cases)
+- ✅ Gesamt: 2754 Tests grün
+
 ## Phase 34 – Briefing 2.0 ✅ ABGESCHLOSSEN
 
 Personalisiertes Morgenbriefing mit Geburtstagen, offenen E-Mails,
@@ -621,7 +654,7 @@ in Dateiinhalten via NC Full text search Plugin.
 - ✅ Inhaltssuche: `cloud inhalt <query>` via NC Unified Search API
 - ✅ NC Full text search + Workflow OCR serverseitig konfiguriert
 
-## Phase 40 – Sprachsteuerung / Alexa-Ablösung 🎙️ GEPLANT
+## Phase 40 – Sprachsteuerung / Alexa-Ablösung 🎙️ TEILWEISE ABGESCHLOSSEN
 
 Saleria erhält eine eigene Sprachschnittstelle — unabhängig von Amazon.
 Zwei Modi werden parallel unterstützt, sodass zwischen Alexa und Saleria
@@ -629,14 +662,29 @@ gewechselt werden kann (Flexibilität, kein harter Cut).
 
 ### Unterphasen
 
-- **40.1** Alexa Skill "Saleria" (Proxy-Modus, keine neue Hardware)
-  → Echo macht Wake Word + STT, Text geht an Salerias API
-- **40.2** Natives Wake Word + Mic Array (vollständige Unabhängigkeit)
-  → OpenWakeWord auf RPi5, faster-whisper auf Tower-GPU
-  → Hardware: ReSpeaker USB Array (~60€) oder Umbau vorhandener Hardware
+| Phase | Titel                                | Status             |
+|-------|--------------------------------------|--------------------|
+| 40.1  | Alexa Skill "Saleria" (Proxy-Modus)  | ✅ abgeschlossen   |
+| 40.2  | Natives Wake Word + Mic Array        | offen              |
 
-- **Konzept**: `docs/concepts/phase-38-sprachsteuerung.md`
-- **Abhängigkeit**: 40.1 nach 37.6; 40.2 nach 40.1 (Hardware-Entscheidung)
+### 40.1 ✅ Alexa Skill "Saleria" – Proxy-Modus
+
+Echo macht Wake Word + STT, Text geht an Salerias API auf RPi5.
+
+- ✅ **Infrastruktur**: SSH-Tunnel RPi5→Rootserver, Nginx Reverse Proxy (/alexa/)
+- ✅ **AlexaSkillHandler**: Intent-basiertes Routing (TV/Musik/Gaming an, aus, lauter, leiser, stumm, status)
+- ✅ **Alexa Skill**: Invocation "meine saleria", 8 Intents, HTTPS-Endpoint
+- ✅ **Security**: AlexaRequestVerifier (Cert-URL, RSA-SHA256-Signatur, Timestamp ≤150s, ApplicationId)
+- ✅ **Path-Traversal-Fix**: Download-Dateinamen sanitized (Path.name)
+- ✅ **Tests**: 52 Tests (30 Handler + 22 Verifier)
+- Live-Test: "Alexa, frag Saleria fernsehen an" → TV geht an ✓
+
+### 40.2 – Natives Wake Word + Mic Array (offen)
+
+- OpenWakeWord auf RPi5, faster-whisper auf Tower-GPU
+- Hardware: ReSpeaker USB Array (~60€) oder Umbau vorhandener Hardware
+- **Konzept**: `docs/concepts/phase-40-sprachsteuerung.md`
+- **Abhängigkeit**: 40.2 nach 40.1 (Hardware-Entscheidung)
 
 ## Phase 41 – IR-Learning & Geräteverwaltung 📡 GEPLANT
 

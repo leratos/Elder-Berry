@@ -3237,3 +3237,12 @@ User: "Lies meine Mails und trag den Zahnarzttermin ein"
 - nächster Schritt: Fertig
 
 ## Abgeschlossen: Docs – INSTALLATION.md Alexa-Verifikation (2026-04-01)
+
+## In Arbeit: Docs – PROJECT_ROADMAP.md Phasen 31-33 + 40.1 Status (2026-04-01)
+- Phasen 31-33 fehlten in Roadmap (im Journal abgeschlossen)
+- Phase 40.1 Status von GEPLANT auf TEILWEISE ABGESCHLOSSEN aktualisiert
+
+## Abgeschlossen: Docs – PROJECT_ROADMAP.md Phasen 31-33 + 40.1 Status (2026-04-01)
+- Phase 31 (Bridge Refactoring), 32 (Test-Offensive), 33 (Smart Context Layer) ergänzt
+- Phase 40: Status auf TEILWEISE ABGESCHLOSSEN, 40.1 als ✅ mit Security-Fixes
+- Tabellen-Formatierung an bestehenden Stil angepasst
