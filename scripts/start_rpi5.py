@@ -124,6 +124,20 @@ def main() -> None:
     except Exception as e:
         logger.warning("Harmony-Init fehlgeschlagen: %s", e)
 
+    # -- Alexa Request-Verifikation (optional) ---------------------------------
+    alexa_verifier = None
+    try:
+        from elder_berry.robot.alexa_skill_handler import AlexaRequestVerifier
+        from elder_berry.core.secret_store import SecretStore
+        _skill_id = SecretStore().get_or_none("alexa_skill_id")
+        if _skill_id:
+            alexa_verifier = AlexaRequestVerifier(application_id=_skill_id)
+            logger.info("Alexa-Verifikation aktiviert (Skill-ID konfiguriert)")
+        else:
+            logger.info("Alexa-Verifikation deaktiviert (kein alexa_skill_id)")
+    except Exception as e:
+        logger.warning("Alexa-Verifier-Init fehlgeschlagen: %s", e)
+
     # -- RobotServer -----------------------------------------------------------
     # Projekt-Root ermitteln (scripts/ ist ein Unterverzeichnis)
     project_root = Path(__file__).resolve().parent.parent
@@ -138,6 +152,7 @@ def main() -> None:
         hostname="elder-berry-rpi5",
         project_root=project_root,
         service_name="elder-berry",
+        alexa_verifier=alexa_verifier,
     )
 
     # -- Graceful Shutdown -----------------------------------------------------
