@@ -238,6 +238,57 @@ class TestDownload:
             assert result.success is False
             assert "httpx" in result.text.lower()
 
+    def test_download_filename_path_traversal_sanitized(self, handler, tmp_path):
+        """Path-Traversal im URL-Dateinamen wird bereinigt."""
+        import httpx
+        from unittest.mock import MagicMock, patch as _patch
+
+        # URL mit encoded path-traversal im Dateinamen
+        url = "https://example.com/files/..%2F..%2F.bashrc"
+
+        # Wir mocken httpx.stream so dass ein leerer Erfolg zurückkommt
+        mock_response = MagicMock()
+        mock_response.__enter__ = MagicMock(return_value=mock_response)
+        mock_response.__exit__ = MagicMock(return_value=False)
+        mock_response.headers = {}
+        mock_response.raise_for_status = MagicMock()
+        mock_response.iter_bytes = MagicMock(return_value=iter([b"data"]))
+
+        with _patch("httpx.stream", return_value=mock_response):
+            result = handler.execute("download", f"download {url}")
+
+        if result.success:
+            # Dateiname darf keinen Verzeichnistrenner enthalten
+            saved_name = Path(result.text.split("Pfad: ")[-1].strip()).name
+            assert "/" not in saved_name
+            assert "\\" not in saved_name
+            assert ".." not in saved_name
+            # Die Datei muss im Download-Verzeichnis liegen
+            saved_path = Path(result.text.split("Pfad: ")[-1].strip())
+            assert saved_path.parent == handler._download_dir
+
+    def test_download_filename_windows_traversal_sanitized(self, handler):
+        """Backslash-Path-Traversal im Dateinamen wird bereinigt."""
+        # Auf Windows würde %5C einen Backslash erzeugen
+        url = "https://example.com/files/..%5C..%5C.bashrc"
+
+        import httpx
+        from unittest.mock import MagicMock, patch as _patch
+
+        mock_response = MagicMock()
+        mock_response.__enter__ = MagicMock(return_value=mock_response)
+        mock_response.__exit__ = MagicMock(return_value=False)
+        mock_response.headers = {}
+        mock_response.raise_for_status = MagicMock()
+        mock_response.iter_bytes = MagicMock(return_value=iter([b"data"]))
+
+        with _patch("httpx.stream", return_value=mock_response):
+            result = handler.execute("download", f"download {url}")
+
+        if result.success:
+            saved_path = Path(result.text.split("Pfad: ")[-1].strip())
+            assert saved_path.parent == handler._download_dir
+
 
 # ---------------------------------------------------------------------------
 # Unknown Command

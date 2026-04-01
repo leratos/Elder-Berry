@@ -184,6 +184,70 @@ Saleria kann über einen Amazon Echo per Sprache gesteuert werden (Harmony Hub B
 
 Der Skill bleibt im Development-Modus (nur auf eigenem Echo nutzbar, kein Store-Publishing nötig).
 
+### 9.1 Request-Verifikation einrichten (A1 – empfohlen)
+
+Ohne Verifikation akzeptiert der `/saleria`-Endpoint jeden HTTP-POST – also auch Anfragen,
+die nicht von Amazon stammen. Der `AlexaRequestVerifier` schließt diese Lücke:
+Er prüft Zertifikat, RSA-Signatur, Timestamp und Skill-ID jedes eingehenden Requests.
+
+**Schritt 1 – Skill-ID ermitteln**
+
+In der [Amazon Developer Console](https://developer.amazon.com/alexa/console/ask) den Skill öffnen →
+**Build → Endpoint**. Die Skill-ID beginnt mit `amzn1.ask.skill.` und steht direkt über
+dem Endpoint-Feld.
+
+**Schritt 2 – Skill-ID im SecretStore speichern**
+
+```python
+from elder_berry.core.secret_store import SecretStore
+store = SecretStore()
+store.set("alexa_skill_id", "amzn1.ask.skill.xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx")
+```
+
+**Schritt 3 – Verifier in `scripts/start_rpi5.py` aktivieren**
+
+Den Block `# -- RobotServer` in `start_rpi5.py` wie folgt ergänzen:
+
+```python
+from elder_berry.robot.alexa_skill_handler import AlexaRequestVerifier
+from elder_berry.core.secret_store import SecretStore
+
+# Skill-ID aus SecretStore lesen (None = Verifikation deaktiviert)
+_skill_id = SecretStore().get("alexa_skill_id")
+alexa_verifier = AlexaRequestVerifier(application_id=_skill_id) if _skill_id else None
+
+server = RobotServer(
+    motors=motors,
+    avatar=avatar,
+    sensors=sensors,
+    camera=camera,
+    turntable=turntable,
+    harmony=harmony,
+    hostname="elder-berry-rpi5",
+    project_root=project_root,
+    service_name="elder-berry",
+    alexa_verifier=alexa_verifier,   # ← neu
+)
+```
+
+**Schritt 4 – Verifikation testen**
+
+Ein Request ohne gültige Amazon-Signatur muss jetzt mit HTTP 401 abgelehnt werden:
+
+```bash
+curl -s -o /dev/null -w "%{http_code}" \
+  -X POST https://<rootserver>/alexa/saleria \
+  -H "Content-Type: application/json" \
+  -d '{"version":"1.0","session":{},"request":{"type":"LaunchRequest"}}'
+# Erwartete Ausgabe: 401
+```
+
+Ein echter Echo-Request (mit den Amazon-Headern `Signature` und `SignatureCertChainUrl`)
+wird weiterhin durchgelassen.
+
+> **Hinweis**: Ohne `alexa_verifier` (bzw. `application_id=None`) bleibt der Endpoint
+> funktionsfähig, aber offen. Für Produktivbetrieb wird die Verifikation dringend empfohlen.
+
 ## LLM-Strategie
 
 | Modus | Modell | Einsatz |

@@ -9,14 +9,256 @@ Flow:
 
 Routing: Alexa sendet Intent-Namen (TVAnIntent, AllesAusIntent, etc.),
 kein Freitext-Slot. Dadurch keine Carrier-Phrase noetig.
+
+Sicherheit:
+  AlexaRequestVerifier prüft jeden eingehenden Request:
+  - SignatureCertChainUrl: muss HTTPS von s3.amazonaws.com sein, Pfad /echo.api/
+  - Zertifikat: nicht abgelaufen, SAN enthält echo-api.amazon.com
+  - Signatur: RSA-SHA256 des rohen Request-Body mit Amazon-Zertifikat
+  - Timestamp: max. 150 Sekunden alt (verhindert Replay-Angriffe)
+  - ApplicationId: optional, prüft gegen konfigurierten Skill-ID-Wert
 """
 from __future__ import annotations
 
+import base64
 import logging
+import time as _time
 from dataclasses import dataclass
-from typing import Any
+from datetime import datetime as _dt, timezone, timedelta
+from typing import TYPE_CHECKING, Any
+from urllib.parse import urlparse
+
+if TYPE_CHECKING:
+    from cryptography.x509 import Certificate
 
 logger = logging.getLogger(__name__)
+
+# ---------------------------------------------------------------------------
+# Alexa Request Verification
+# ---------------------------------------------------------------------------
+
+# Zertifikat-Cache: URL -> (Certificate, expires_at_monotonic)
+_CERT_CACHE: dict[str, tuple[Certificate, float]] = {}
+_CERT_CACHE_TTL_S = 3600  # 1 Stunde
+
+# Erlaubter Hostname fuer Zertifikat-URLs (Amazon S3)
+_CERT_ALLOWED_HOST = "s3.amazonaws.com"
+# Pflicht-Pfadpräfix fuer Alexa-Zertifikat-URLs
+_CERT_PATH_PREFIX = "/echo.api/"
+# Pflicht-SAN im Alexa-Zertifikat
+_CERT_ALEXA_SAN = "echo-api.amazon.com"
+# Maximales Alter eines Alexa-Request-Timestamps (Amazon-Vorgabe: 150 s)
+_TIMESTAMP_TOLERANCE_S = 150
+
+
+class AlexaVerificationError(Exception):
+    """Wird geworfen wenn ein Alexa-Request die Verifikation nicht besteht."""
+
+
+class AlexaRequestVerifier:
+    """Verifiziert Alexa-Requests gemaess Amazon-Sicherheitsanforderungen.
+
+    Prueft:
+    1. ``SignatureCertChainUrl``-Header: HTTPS, Amazon-S3-Host, /echo.api/-Pfad
+    2. Zertifikat: nicht abgelaufen, SAN enthaelt ``echo-api.amazon.com``
+    3. Signatur: RSA-SHA256 des rohen Request-Bodys (Base64 aus ``Signature``-Header)
+    4. Timestamp: max. 150 Sekunden alt (Replay-Schutz)
+    5. ApplicationId: optional, Vergleich mit konfiguriertem Wert
+
+    Parameters
+    ----------
+    application_id:
+        Erwartete Alexa-Skill-ApplicationId (``amzn1.ask.skill.…``).
+        Wenn ``None``, wird die ApplicationId nicht geprüft.
+    """
+
+    def __init__(self, application_id: str | None = None) -> None:
+        self._application_id = application_id
+
+    # ------------------------------------------------------------------
+    # Öffentliche API
+    # ------------------------------------------------------------------
+
+    async def verify(
+        self,
+        headers: dict[str, str],
+        body_bytes: bytes,
+        body_dict: dict,
+    ) -> None:
+        """Vollständige Verifikation eines Alexa-Requests.
+
+        Parameters
+        ----------
+        headers:
+            HTTP-Header des Requests (Keys lowercase).
+        body_bytes:
+            Roher Request-Body (für Signatur-Check).
+        body_dict:
+            Geparster Request-Body als dict (für Timestamp + ApplicationId).
+
+        Raises
+        ------
+        AlexaVerificationError
+            Wenn ein Prüfschritt fehlschlägt.
+        """
+        cert_url = headers.get("signaturecertchainurl", "")
+        signature_b64 = headers.get("signature", "")
+
+        if not cert_url:
+            raise AlexaVerificationError("Header 'SignatureCertChainUrl' fehlt")
+        if not signature_b64:
+            raise AlexaVerificationError("Header 'Signature' fehlt")
+
+        self._validate_cert_url(cert_url)
+        cert = await self._get_cert(cert_url)
+        self._validate_cert(cert)
+        self._verify_signature(cert, signature_b64, body_bytes)
+        self._verify_timestamp(body_dict)
+        if self._application_id:
+            self._verify_application_id(body_dict)
+
+    # ------------------------------------------------------------------
+    # Interne Prüfschritte
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _validate_cert_url(url: str) -> None:
+        """Prüft ob die Cert-URL dem Amazon-Schema entspricht."""
+        parsed = urlparse(url)
+        if parsed.scheme.lower() != "https":
+            raise AlexaVerificationError(
+                f"Cert-URL muss HTTPS sein, ist: {parsed.scheme!r}"
+            )
+        host = (parsed.hostname or "").lower()
+        if host != _CERT_ALLOWED_HOST:
+            raise AlexaVerificationError(
+                f"Cert-URL Host ungültig: {host!r} (erwartet: {_CERT_ALLOWED_HOST!r})"
+            )
+        if parsed.port not in (None, 443):
+            raise AlexaVerificationError(
+                f"Cert-URL Port ungültig: {parsed.port} (nur 443 erlaubt)"
+            )
+        if not parsed.path.startswith(_CERT_PATH_PREFIX):
+            raise AlexaVerificationError(
+                f"Cert-URL Pfad muss mit {_CERT_PATH_PREFIX!r} beginnen, ist: {parsed.path!r}"
+            )
+
+    @staticmethod
+    async def _get_cert(url: str) -> Certificate:
+        """Lädt das Zertifikat von der URL (mit Cache, 1h TTL)."""
+        cached = _CERT_CACHE.get(url)
+        if cached is not None:
+            cert, expires_at = cached
+            if _time.monotonic() < expires_at:
+                return cert
+
+        try:
+            import httpx
+            async with httpx.AsyncClient() as client:
+                resp = await client.get(url, timeout=5.0)
+                resp.raise_for_status()
+                pem_data = resp.content
+        except Exception as exc:
+            raise AlexaVerificationError(
+                f"Zertifikat-Download fehlgeschlagen: {exc}"
+            ) from exc
+
+        try:
+            from cryptography import x509
+            cert = x509.load_pem_x509_certificate(pem_data)
+        except Exception as exc:
+            raise AlexaVerificationError(
+                f"Zertifikat konnte nicht geparst werden: {exc}"
+            ) from exc
+
+        _CERT_CACHE[url] = (cert, _time.monotonic() + _CERT_CACHE_TTL_S)
+        return cert
+
+    @staticmethod
+    def _validate_cert(cert: Certificate) -> None:
+        """Prüft Gültigkeit und SAN des Zertifikats."""
+        from cryptography import x509 as cx509
+
+        now = _dt.now(tz=timezone.utc)
+        if now < cert.not_valid_before_utc:
+            raise AlexaVerificationError("Zertifikat ist noch nicht gültig")
+        if now > cert.not_valid_after_utc:
+            raise AlexaVerificationError("Zertifikat ist abgelaufen")
+
+        try:
+            san_ext = cert.extensions.get_extension_for_class(
+                cx509.SubjectAlternativeName
+            )
+            dns_names = san_ext.value.get_values_for_type(cx509.DNSName)
+        except cx509.ExtensionNotFound:
+            raise AlexaVerificationError("Zertifikat enthält keine SAN-Extension")
+
+        if _CERT_ALEXA_SAN not in dns_names:
+            raise AlexaVerificationError(
+                f"Zertifikat SAN enthält nicht {_CERT_ALEXA_SAN!r}: {dns_names}"
+            )
+
+    @staticmethod
+    def _verify_signature(
+        cert: Certificate, signature_b64: str, body_bytes: bytes
+    ) -> None:
+        """Prüft die RSA-SHA256-Signatur des Request-Bodys."""
+        from cryptography.hazmat.primitives.asymmetric import padding
+        from cryptography.hazmat.primitives import hashes
+        from cryptography.exceptions import InvalidSignature
+
+        try:
+            signature = base64.b64decode(signature_b64)
+        except Exception as exc:
+            raise AlexaVerificationError(
+                f"Signatur ist kein gültiges Base64: {exc}"
+            ) from exc
+
+        public_key = cert.public_key()
+        try:
+            public_key.verify(
+                signature, body_bytes, padding.PKCS1v15(), hashes.SHA256()
+            )
+        except InvalidSignature as exc:
+            raise AlexaVerificationError("Signatur ist ungültig") from exc
+        except Exception as exc:
+            raise AlexaVerificationError(
+                f"Signatur-Prüfung fehlgeschlagen: {exc}"
+            ) from exc
+
+    @staticmethod
+    def _verify_timestamp(body: dict) -> None:
+        """Prüft ob der Request-Timestamp max. 150 Sekunden alt ist."""
+        ts_str = body.get("request", {}).get("timestamp", "")
+        if not ts_str:
+            raise AlexaVerificationError("Request enthält keinen Timestamp")
+
+        try:
+            ts = _dt.fromisoformat(ts_str.replace("Z", "+00:00"))
+        except ValueError as exc:
+            raise AlexaVerificationError(
+                f"Ungültiges Timestamp-Format: {ts_str!r}"
+            ) from exc
+
+        age_s = abs((_dt.now(tz=timezone.utc) - ts).total_seconds())
+        if age_s > _TIMESTAMP_TOLERANCE_S:
+            raise AlexaVerificationError(
+                f"Request-Timestamp zu alt: {age_s:.0f}s "
+                f"(Limit: {_TIMESTAMP_TOLERANCE_S}s)"
+            )
+
+    def _verify_application_id(self, body: dict) -> None:
+        """Prüft die Skill-ApplicationId gegen den konfigurierten Wert."""
+        app_id = (
+            body.get("session", {})
+            .get("application", {})
+            .get("applicationId", "")
+        )
+        if app_id != self._application_id:
+            raise AlexaVerificationError(
+                f"Unbekannte applicationId: {app_id!r}"
+            )
+
 
 # -- Geraet fuer Lautstaerke (Samsung TV steuert Denon via ARC/CEC) ------- #
 

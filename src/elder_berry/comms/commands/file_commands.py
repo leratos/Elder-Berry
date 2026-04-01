@@ -306,10 +306,13 @@ class FileCommandHandler(CommandHandler):
                 text="httpx nicht installiert.",
             )
 
-        # Dateiname aus URL extrahieren
+        # Dateiname aus URL extrahieren und gegen Path-Traversal sanitisieren.
+        # Path(...).name entfernt alle Verzeichnis-Trennzeichen (z.B. "../../.bashrc"
+        # → ".bashrc"), sodass der Dateiname stets nur ein einfacher Name ist.
         from urllib.parse import urlparse, unquote
         parsed = urlparse(url)
-        filename = unquote(parsed.path.split("/")[-1]) or "download"
+        raw_name = unquote(parsed.path.split("/")[-1])
+        filename = Path(raw_name).name or "download"
 
         # Download-Verzeichnis sicherstellen
         self._download_dir.mkdir(parents=True, exist_ok=True)

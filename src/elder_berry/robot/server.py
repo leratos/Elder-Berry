@@ -26,7 +26,12 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
-from elder_berry.robot.alexa_skill_handler import AlexaResult, AlexaSkillHandler
+from elder_berry.robot.alexa_skill_handler import (
+    AlexaResult,
+    AlexaRequestVerifier,
+    AlexaSkillHandler,
+    AlexaVerificationError,
+)
 from elder_berry.robot.camera_controller import CameraController
 from elder_berry.robot.harmony_adapter import HarmonyAdapter
 from elder_berry.robot.harmony_layout_manager import HarmonyLayoutManager
@@ -173,6 +178,7 @@ class RobotServer:
         hostname: str = "elder-berry-rpi",
         project_root: Path | None = None,
         service_name: str = "elder-berry-rpi",
+        alexa_verifier: AlexaRequestVerifier | None = None,
     ) -> None:
         self._motors = motors
         self._avatar = avatar
@@ -185,6 +191,7 @@ class RobotServer:
         self._hostname = hostname
         self._project_root = project_root
         self._service_name = service_name
+        self._alexa_verifier = alexa_verifier
         self._alexa = AlexaSkillHandler(
             harmony=harmony,
             harmony_scenes=harmony_scenes,
@@ -677,13 +684,31 @@ class RobotServer:
         async def alexa_saleria(request: Request) -> dict:
             """Alexa Custom Skill Endpoint.
 
-            Empfaengt Alexa-JSON, extrahiert Befehlstext,
-            dispatcht an HarmonyAdapter, gibt Alexa-Response zurueck.
+            Verifiziert den Request (Signatur, Timestamp, ApplicationId)
+            wenn ein AlexaRequestVerifier konfiguriert ist, dann dispatcht
+            an AlexaSkillHandler.
             """
+            import json as _json
+
+            body_bytes = await request.body()
+            headers = {k.lower(): v for k, v in request.headers.items()}
+
             try:
-                body = await request.json()
+                body_dict = _json.loads(body_bytes)
             except Exception:
                 return self._alexa.build_alexa_response(
                     AlexaResult(text="Ungültige Anfrage.", success=False),
                 )
-            return await self._alexa.handle_request(body)
+
+            # Signatur-Verifikation (wenn Verifier konfiguriert)
+            if self._alexa_verifier is not None:
+                try:
+                    await self._alexa_verifier.verify(headers, body_bytes, body_dict)
+                except AlexaVerificationError as exc:
+                    logger.warning("Alexa-Verifikation fehlgeschlagen: %s", exc)
+                    return JSONResponse(
+                        {"error": "Unauthorized"},
+                        status_code=401,
+                    )
+
+            return await self._alexa.handle_request(body_dict)
