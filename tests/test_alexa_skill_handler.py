@@ -457,27 +457,25 @@ class TestAlexaRequestVerifierApplicationId:
 class TestAlexaRequestVerifierMissingHeaders:
     """Fehlende Header werden korrekt abgelehnt."""
 
-    @pytest.mark.asyncio
-    async def test_missing_cert_url_header(self):
+    def test_missing_cert_url_header(self):
         verifier = AlexaRequestVerifier()
         body = _intent_body_dict()
         with pytest.raises(AlexaVerificationError, match="SignatureCertChainUrl"):
-            await verifier.verify(
+            _run(verifier.verify(
                 headers={"signature": _VALID_SIGNATURE},
                 body_bytes=json.dumps(body).encode(),
                 body_dict=body,
-            )
+            ))
 
-    @pytest.mark.asyncio
-    async def test_missing_signature_header(self):
+    def test_missing_signature_header(self):
         verifier = AlexaRequestVerifier()
         body = _intent_body_dict()
         with pytest.raises(AlexaVerificationError, match="Signature"):
-            await verifier.verify(
+            _run(verifier.verify(
                 headers={"signaturecertchainurl": _VALID_CERT_URL},
                 body_bytes=json.dumps(body).encode(),
                 body_dict=body,
-            )
+            ))
 
 
 class TestAlexaRequestVerifierSignature:
