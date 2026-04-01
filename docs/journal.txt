@@ -3231,3 +3231,9 @@ User: "Lies meine Mails und trag den Zahnarzttermin ein"
 - Neue Download-Tests: path_traversal_sanitized, windows_traversal_sanitized
 
 ## Abgeschlossen: Security-Fixes A1+A2 (2026-04-01)
+
+## In Arbeit: Docs – INSTALLATION.md Alexa-Verifikation (2026-04-01)
+- Abschnitt 9.1 "Request-Verifikation einrichten (A1)" ergänzt
+- nächster Schritt: Fertig
+
+## Abgeschlossen: Docs – INSTALLATION.md Alexa-Verifikation (2026-04-01)
