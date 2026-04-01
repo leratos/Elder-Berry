@@ -3207,3 +3207,27 @@ User: "Lies meine Mails und trag den Zahnarzttermin ein"
 - Intent-basiertes Routing, Built-in-Intents, Fehlerfall, kein Harmony
 
 ## Abgeschlossen: Phase 40.1 – Alexa Skill "Saleria" Proxy-Modus (2026-03-31)
+
+## In Arbeit: Security-Fixes A1+A2 (2026-04-01)
+- Branch: copilot/analyse-projektstand
+- A1: Alexa-Signatur-Validierung (AlexaRequestVerifier, RSA-SHA256, Timestamp, ApplicationId)
+- A2: Download-Dateiname Path-Traversal-Fix (Path.name sanitization)
+- nächster Schritt: alexa_skill_handler.py / AlexaRequestVerifier + server.py / file_commands.py
+
+### Schritt A1: AlexaRequestVerifier (alexa_skill_handler.py + server.py)
+- AlexaVerificationError: neue Exception-Klasse
+- AlexaRequestVerifier: 5 Prüfschritte (Cert-URL, Cert-Download/Cache, Zertifikat-Validität+SAN, RSA-SHA256-Signatur, Timestamp ≤150s, optional ApplicationId)
+- Cert-Cache: dict mit 1h TTL (kein wiederholter Download pro Request)
+- RobotServer.__init__: neuer Parameter alexa_verifier: AlexaRequestVerifier | None = None
+- /saleria-Endpoint: liest raw body bytes, verificiert wenn Verifier konfiguriert, gibt 401 bei Fehler
+- Ohne Verifier (Tests/lokale Entwicklung): weiterhin funktional
+
+### Schritt A2: Download-Dateiname Path-Traversal-Fix (file_commands.py)
+- Path(raw_name).name statt rohem Dateinamen – eliminiert ../ und ..\ aus URL-Dateinamen
+
+### Tests
+- 82 Tests grün (30 bestehende AlexaSkillHandler + 22 neue Verifier + 30 bestehende FileCommands)
+- Neue Verifier-Tests: CertUrl (6), Timestamp (4), ApplicationId (4), MissingHeaders (2), Signature (3)
+- Neue Download-Tests: path_traversal_sanitized, windows_traversal_sanitized
+
+## Abgeschlossen: Security-Fixes A1+A2 (2026-04-01)
