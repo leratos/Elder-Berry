@@ -163,6 +163,27 @@ python scripts/start_saleria.py --debug             # Debug-Logging
 | `scripts/setup_email.py` | E-Mail (IMAP + SMTP) interaktiv konfigurieren |
 | `scripts/setup_google_oauth.py` | Google Calendar OAuth2 einrichten |
 
+## 9. Alexa Sprachsteuerung (optional)
+
+Saleria kann über einen Amazon Echo per Sprache gesteuert werden (Harmony Hub Befehle).
+
+**Voraussetzungen:**
+
+- Amazon Developer Account (gleicher Account wie auf dem Echo)
+- Öffentlich erreichbarer HTTPS-Endpoint (Rootserver)
+- SSH-Tunnel vom RPi5 zum Rootserver
+
+**Einrichtung:**
+
+1. **SSH-Tunnel**: RPi5 → Rootserver (systemd-Service, Reverse Tunnel auf Port 8765)
+2. **Nginx**: `location /alexa/ { proxy_pass http://127.0.0.1:8765/; }` auf dem Rootserver
+3. **Alexa Skill**: Custom Skill in der [Amazon Developer Console](https://developer.amazon.com/alexa/console/ask) anlegen
+   - Invocation Name: `meine saleria`
+   - Endpoint: `https://<rootserver>/alexa/saleria` (HTTPS)
+   - Intents: TVAnIntent, MusikAnIntent, GamingAnIntent, AllesAusIntent, LauterIntent, LeiserIntent, StummIntent, StatusIntent
+
+Der Skill bleibt im Development-Modus (nur auf eigenem Echo nutzbar, kein Store-Publishing nötig).
+
 ## LLM-Strategie
 
 | Modus | Modell | Einsatz |

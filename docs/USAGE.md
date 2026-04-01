@@ -284,6 +284,28 @@ Neben den direkten Commands versteht Saleria auch natürliche Sprache. Beispiele
 - "Wer ist Herr Müller?" → `kontakt` (oder LLM wenn kein Kontakt)
 - "Wie geht's dir?" → LLM-Antwort mit Saleria-Persönlichkeit
 
+## Sprachsteuerung via Alexa (Phase 40.1)
+
+Saleria kann über einen Amazon Echo per Sprache gesteuert werden.
+
+| Sprachbefehl | Aktion |
+|---|---|
+| "Alexa, frag meine Saleria fernsehen an" | TV einschalten (Harmony Hub) |
+| "Alexa, frag meine Saleria musik an" | Musik-Aktivität starten |
+| "Alexa, frag meine Saleria gaming an" | Gaming-Aktivität starten |
+| "Alexa, frag meine Saleria alles aus" | Alle Geräte ausschalten |
+| "Alexa, frag meine Saleria lauter" | Lautstärke erhöhen |
+| "Alexa, frag meine Saleria leiser" | Lautstärke senken |
+| "Alexa, frag meine Saleria stumm" | Stummschalten |
+| "Alexa, frag meine Saleria was läuft" | Aktuelle Aktivität abfragen |
+
+Alternativ im Zwei-Schritt-Modus:
+
+1. "Alexa, öffne meine Saleria" → "Saleria hört. Was soll ich tun?"
+2. "Fernsehen an" → "Fernsehen wurde eingeschaltet."
+
+Kette: Echo → Amazon Cloud → Rootserver (HTTPS) → SSH-Tunnel → RPi5 → Harmony Hub → IR
+
 ## Web-Dashboard
 
 Unter `http://localhost:8090` läuft ein Web-Interface (FastAPI) mit:

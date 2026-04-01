@@ -41,6 +41,12 @@ Hologramm-Display in einem 3D-gedruckten Holunder-Baumstamm-Gehäuse.
 - Sprachnachrichten: Whisper transkribiert, Saleria antwortet mit Text + Sprache
 - Claude Agent: komplexe Aufgaben via Anthropic API
 
+### Sprachsteuerung (via Alexa)
+- Alexa Custom Skill "Meine Saleria" als Sprach-Proxy
+- "Alexa, frag meine Saleria fernsehen an" → Harmony Hub → TV
+- Befehle: Aktivitäten (TV, Musik, Gaming), Lautstärke, Stumm, Alles aus, Status
+- Kette: Echo → Amazon → Rootserver → SSH-Tunnel → RPi5 → Harmony Hub
+
 ### Hardware
 - **Avatar**: Pepper's Ghost Hologramm (RPi5 + 5" DSI Display)
 - **Drehteller**: 360° Rotation mit Hall-Sensor Homing
@@ -104,10 +110,12 @@ siehe **[docs/INSTALLATION.md](docs/INSTALLATION.md)**.
 ## Architektur (Kurzfassung)
 
 ```text
-[Element / Matrix]              [Web Dashboard :8090]
-       |                               |
-       v                               v
-[MatrixBridge] ── Command-Router    [AudioRouter]
+[Element / Matrix]    [Web Dashboard :8090]    [Alexa Echo]
+       |                      |                      |
+       v                      v                      v
+[MatrixBridge]           [AudioRouter]    [RPi5: /saleria Endpoint]
+       |                                         |
+       ├── Command-Router                        └─> HarmonyAdapter ─> Hub ─> IR
        |
        ├─ Sprachnachricht?  ──> STT (Faster Whisper) ──> Text weiterleiten
        ├─ Direkter Command? ──> RemoteCommandHandler (Orchestrator)
@@ -146,7 +154,7 @@ Detaillierte Architektur mit allen Klassen und Patterns: **[ARCHITECTURE.md](doc
 pytest tests/ -q
 ```
 
-1200+ Tests.
+3200+ Tests.
 
 ## Roadmap (Auszug)
 
@@ -163,6 +171,11 @@ pytest tests/ -q
 | 28 | E-Mail-Antworten via Matrix | ✅ Fertig |
 | 29 | Kontaktbuch (ContactStore) | ✅ Fertig |
 | 30 | Aufgabenliste (TodoStore) | ✅ Fertig |
+| 31–35 | Morgen-Briefing, PWA-Dashboard, Harmony-Szenen, Musik-Streaming, Audio-Router | ✅ Fertig |
+| 36–37 | Dashboard v2, Nextcloud-Integration | ✅ Fertig |
+| 38 | Kontakte Vollintegration (Nextcloud CardDAV) | ✅ Fertig |
+| 39 | Nextcloud als Datei-Hub | ✅ Fertig |
+| 40.1 | Sprachsteuerung via Alexa Custom Skill | ✅ Fertig |
 
 Vollständige Roadmap mit Details: **[PROJECT_ROADMAP.md](docs/PROJECT_ROADMAP.md)**
 
