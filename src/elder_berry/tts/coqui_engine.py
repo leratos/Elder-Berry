@@ -26,6 +26,17 @@ logger = logging.getLogger(__name__)
 
 XTTS_MODEL = "tts_models/multilingual/multi-dataset/xtts_v2"
 
+# Anti-Hallucination Inference-Parameter für XTTS v2.
+# Das multilingual-Modell driftet ohne diese Einschränkungen in andere
+# Sprachen ab (Language Bleed, z.B. japanische Phoneme am Satzende).
+# temperature: Niedrigere Werte → deterministischere Token-Wahl (Default: 0.75)
+# top_p/top_k: Einschränkung des Token-Pools (Defaults: 0.85 / 50)
+# repetition_penalty: Verhindert Token-Wiederholungen/Loops (Default: 10.0)
+XTTS_TEMPERATURE = 0.5
+XTTS_TOP_P = 0.7
+XTTS_TOP_K = 30
+XTTS_REPETITION_PENALTY = 10.0
+
 # Regex: Emojis und andere Non-Text-Zeichen entfernen
 # Umfasst Emoji-Blöcke, Dingbats, Symbole, etc.
 _EMOJI_PATTERN = re.compile(
@@ -52,10 +63,14 @@ def _clean_text_for_tts(text: str) -> str:
 
     XTTS v2 kann mit Emojis nicht umgehen – es versucht sie als Phoneme
     zu interpretieren und driftet in andere Sprachen ab.
+    Trailing Whitespace nach Satzzeichen löst nachweislich
+    Halluzinationen aus (Language Bleed, z.B. japanische Phoneme).
     """
     cleaned = _EMOJI_PATTERN.sub("", text)
     # Mehrfache Leerzeichen und Whitespace bereinigen
     cleaned = re.sub(r"\s+", " ", cleaned).strip()
+    # Trailing Whitespace nach Satzzeichen entfernen (Hallucination-Trigger)
+    cleaned = re.sub(r"([.!?…])\s+$", r"\1", cleaned)
     return cleaned
 
 
@@ -255,6 +270,10 @@ class CoquiTTSEngine(TTSEngine):
                 language=self._language,
                 file_path=str(output_path),
                 split_sentences=False,
+                temperature=XTTS_TEMPERATURE,
+                top_p=XTTS_TOP_P,
+                top_k=XTTS_TOP_K,
+                repetition_penalty=XTTS_REPETITION_PENALTY,
             )
         else:
             # Mehrere Sätze: einzeln generieren + zusammenfügen
@@ -280,6 +299,10 @@ class CoquiTTSEngine(TTSEngine):
                     language=self._language,
                     file_path=str(part_path),
                     split_sentences=False,
+                    temperature=XTTS_TEMPERATURE,
+                    top_p=XTTS_TOP_P,
+                    top_k=XTTS_TOP_K,
+                    repetition_penalty=XTTS_REPETITION_PENALTY,
                 )
                 parts.append(part_path)
 

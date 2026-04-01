@@ -3246,3 +3246,16 @@ User: "Lies meine Mails und trag den Zahnarzttermin ein"
 - Phase 31 (Bridge Refactoring), 32 (Test-Offensive), 33 (Smart Context Layer) ergänzt
 - Phase 40: Status auf TEILWEISE ABGESCHLOSSEN, 40.1 als ✅ mit Security-Fixes
 - Tabellen-Formatierung an bestehenden Stil angepasst
+
+## In Arbeit: Bugfix – XTTS v2 Anti-Hallucination-Parameter (2026-04-01)
+- Problem: XTTS driftet in japanische Phoneme (Language Bleed), STT erkennt Japanisch-Fragmente
+- Ursache: Keine Inference-Parameter (temperature, top_p, top_k, repetition_penalty) gesetzt → Config-Defaults
+- Fix: temperature=0.5, top_p=0.7, top_k=30, repetition_penalty=10.0 an beide tts_to_file()-Aufrufe
+- Fix: _clean_text_for_tts() um Trailing-Whitespace-Strip nach Interpunktion erweitern
+- Datei: src/elder_berry/tts/coqui_engine.py
+
+## Abgeschlossen: Bugfix – XTTS v2 Anti-Hallucination-Parameter (2026-04-01)
+- coqui_engine.py: 4 Modul-Konstanten (XTTS_TEMPERATURE=0.5, TOP_P=0.7, TOP_K=30, REPETITION_PENALTY=10.0)
+- coqui_engine.py: _clean_text_for_tts() um Trailing-Whitespace-Strip nach Satzzeichen erweitert
+- coqui_engine.py: Beide tts_to_file()-Aufrufe um die 4 Parameter ergänzt
+- Status: Deployed, wird beobachtet. Bei weiterem Language Bleed → temperature auf 0.3 senken
