@@ -1,6 +1,7 @@
 """ChromaMemoryStore – RAG-Gedächtnis mit ChromaDB + Ollama-Embeddings."""
 from __future__ import annotations
 
+import logging
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
@@ -8,6 +9,8 @@ from typing import Callable
 
 from .base import MemoryEntry, MemoryStore
 from .embedding import EmbeddingClient
+
+logger = logging.getLogger(__name__)
 
 # ChromaDB: Lazy-Import (optional dependency)
 try:
@@ -75,7 +78,12 @@ class ChromaMemoryStore(MemoryStore):
         self._collection: Collection | None = None
 
     def _get_collection(self) -> Collection:
-        """Lazy-Init: erstellt ChromaDB-Client + Collection bei erster Nutzung."""
+        """Lazy-Init: erstellt ChromaDB-Client + Collection bei erster Nutzung.
+
+        Raises:
+            RuntimeError: Wenn Embedding-Dimension nicht zur bestehenden
+                Collection passt (z.B. Modellwechsel oder fehlendes Ollama).
+        """
         if self._collection is None:
             self._db_path.mkdir(parents=True, exist_ok=True)
             self._client = chromadb.PersistentClient(path=str(self._db_path))
@@ -86,7 +94,47 @@ class ChromaMemoryStore(MemoryStore):
                     self._embedding_client
                 )
             self._collection = self._client.get_or_create_collection(**kwargs)
+
+            # Defensive Prüfung: Embedding-Dimension gegen bestehende Collection
+            self._validate_embedding_dimension()
         return self._collection
+
+    def _validate_embedding_dimension(self) -> None:
+        """Prüft ob die aktuelle Embedding-Dimension zur Collection passt.
+
+        Wenn die Collection bereits Daten enthält, wird ein Probe-Embedding
+        erzeugt und die Dimension mit einem bestehenden Eintrag verglichen.
+        Bei Mismatch wird eine RuntimeError geworfen, damit der Fehler
+        sofort auffällt statt bei jedem add() zu warnen.
+        """
+        if self._collection is None or self._embedding_client is None:
+            return
+        if self._collection.count() == 0:
+            return
+
+        try:
+            probe = self._embedding_client.embed("dimension check")
+            probe_dim = len(probe)
+
+            # Einen bestehenden Eintrag abfragen um die Collection-Dimension zu ermitteln
+            existing = self._collection.peek(limit=1)
+            if existing and existing.get("embeddings") and existing["embeddings"]:
+                stored_dim = len(existing["embeddings"][0])
+                if probe_dim != stored_dim:
+                    raise RuntimeError(
+                        f"Embedding-Dimension Mismatch: Collection hat {stored_dim}D, "
+                        f"aktuelles Modell liefert {probe_dim}D. "
+                        f"Entweder Ollama-Modell gewechselt oder Collection mit "
+                        f"anderem Embedding erstellt. Collection-Pfad: {self._db_path}"
+                    )
+                logger.debug(
+                    "Embedding-Dimension OK: %dD (Collection: %d Einträge)",
+                    probe_dim, self._collection.count(),
+                )
+        except RuntimeError:
+            raise
+        except Exception as e:
+            logger.debug("Embedding-Dimension-Check übersprungen: %s", e)
 
     # ------------------------------------------------------------------
     # MemoryStore Interface

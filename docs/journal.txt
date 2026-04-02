@@ -3278,9 +3278,10 @@ User: "Lies meine Mails und trag den Zahnarzttermin ein"
 - start_saleria.py: AudioPipeline an Dashboard durchgereicht, gespeicherten Timeout beim Start geladen
 - Tests: 88/88 grün (test_audio_pipeline + test_bridge + test_audio_dashboard)
 
-## In Arbeit: Bugfix – Memory Embedding Dimension Mismatch (2026-04-02)
+## Abgeschlossen: Bugfix – Memory Embedding Dimension Mismatch (2026-04-02)
 - Problem: WARNING "Collection expecting embedding with dimension of 768, got 384"
 - Ursache: Wenn Ollama beim Start nicht erreichbar ist, fällt init_memory() auf embed_client=None zurück → ChromaDB nutzt Default-Modell (all-MiniLM-L6-v2, 384 Dim) statt nomic-embed-text (768 Dim)
-- Fix 1: start_saleria.py – init_memory() deaktiviert Memory komplett wenn Ollama nicht erreichbar
-- Fix 2: chroma_memory.py – defensive Dimension-Prüfung in _get_collection()
+- Fix 1: start_saleria.py – init_memory() deaktiviert Memory komplett wenn Ollama nicht erreichbar (return None statt embed_client=None)
+- Fix 2: chroma_memory.py – _validate_embedding_dimension() prüft Probe-Embedding gegen bestehende Collection, wirft RuntimeError bei Mismatch
 - Dateien: scripts/start_saleria.py, src/elder_berry/memory/chroma_memory.py
+- Tests: 4 neue Tests (dimension_match_ok, mismatch_raises, skips_empty, skips_without_client)
