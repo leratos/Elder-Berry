@@ -298,8 +298,10 @@ Sprachnachrichten:
   rollback / update zurücksetzen – Auf Stand vor letztem Update zurücksetzen
 
 🩺 Systemcheck:
-  selfcheck / systemcheck / prüf dich – Gesundheitsprüfung aller Komponenten
-  alles ok? – Kurzform für Systemcheck"""
+  selfcheck / systemcheck / prüf dich – Infrastruktur + Fähigkeiten-Check
+  alles ok? – Kurzform für Systemcheck
+  Prüft: Git, Python, Disk, RAM, Ollama, SecretStore, Imports, Dependencies
+  + Fähigkeiten: LLM, Kalender, Mail, Nextcloud, Wetter, TTS, STT, Memory, ..."""
 
 # Aggregierte Keyword-Map (aus allen Handlern zusammengeführt).
 # Wird von der Bridge für Keyword-Routing genutzt.
@@ -383,6 +385,26 @@ class RemoteCommandHandler:
         self._selfcheck = SelfcheckCommandHandler(
             project_root=project_root,
             secret_store=secret_store,
+            services={
+                "anthropic_client": anthropic_client,
+                "calendar": calendar,
+                "email_client": email_client,
+                "nextcloud_files": nextcloud_files,
+                "stirling_pdf": stirling_pdf,
+                "carddav_sync": carddav_sync,
+                "weather": weather,
+                "search_client": search_client,
+                "robot_client": robot_client,
+                "note_store": note_store,
+                "contact_store": contact_store,
+                "todo_store": todo_store,
+                "reminder_store": reminder_store,
+                "gym_client": gym_client,
+                "computer_use": computer_use,
+                "document_reader": document_reader,
+                "web_fetcher": web_fetcher,
+                "audio_router": audio_router,
+            },
         )
         self._weather = WeatherCommandHandler(
             weather=weather,

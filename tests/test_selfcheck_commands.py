@@ -7,6 +7,7 @@ import pytest
 from elder_berry.comms.commands.selfcheck_commands import (
     SELFCHECK_PATTERN,
     SelfcheckCommandHandler,
+    _get_service_detail,
 )
 
 
@@ -149,3 +150,237 @@ class TestSelfcheckExecute:
         result = handler_minimal.execute("selfcheck", "selfcheck")
         assert "Systemcheck" in result.text
         assert "nicht konfiguriert" in result.text
+
+
+# ---------------------------------------------------------------------------
+# Service-Check Tests (Fähigkeiten)
+# ---------------------------------------------------------------------------
+
+class TestServiceChecks:
+    """Tests für die Fähigkeiten-Prüfung (Service-Connectivity)."""
+
+    def _make_handler(self, tmp_path, services=None):
+        store = MagicMock()
+        store.list_keys.return_value = []
+        return SelfcheckCommandHandler(
+            project_root=tmp_path,
+            secret_store=store,
+            services=services or {},
+        )
+
+    @patch("urllib.request.urlopen")
+    @patch("elder_berry.comms.commands.selfcheck_commands.run_cmd")
+    @patch("shutil.disk_usage")
+    def test_services_section_appears(
+        self, mock_disk, mock_run_cmd, mock_urlopen, tmp_path,
+    ):
+        """Wenn Services vorhanden, erscheint 'Fähigkeiten' im Output."""
+        from elder_berry.comms.commands.cmd_utils import CmdResult
+
+        mock_run_cmd.return_value = CmdResult(success=True, output="main")
+        mock_disk.return_value = MagicMock(
+            total=500 * 1024**3, used=200 * 1024**3, free=300 * 1024**3,
+        )
+        mock_urlopen.side_effect = Exception("no ollama")
+
+        svc = MagicMock()
+        svc.is_available.return_value = True
+        handler = self._make_handler(tmp_path, {"weather": svc})
+
+        result = handler.execute("selfcheck", "selfcheck")
+        assert "Fähigkeiten" in result.text
+        assert "Wetter" in result.text
+
+    def test_service_available(self, tmp_path):
+        """Service mit is_available() == True → ✅."""
+        svc = MagicMock()
+        svc.is_available.return_value = True
+        handler = self._make_handler(tmp_path, {"weather": svc})
+
+        ok, _ = handler._probe_service("weather", svc)
+        assert ok is True
+
+    def test_service_unavailable(self, tmp_path):
+        """Service mit is_available() == False → ❌."""
+        svc = MagicMock()
+        svc.is_available.return_value = False
+        handler = self._make_handler(tmp_path, {"weather": svc})
+
+        ok, detail = handler._probe_service("weather", svc)
+        assert ok is False
+        assert "nicht erreichbar" in detail
+
+    def test_service_is_online(self, tmp_path):
+        """Service mit is_online() == True → ✅."""
+        svc = MagicMock(spec=[])  # no is_available
+        svc.is_online = MagicMock(return_value=True)
+        svc._base_url = "http://rpi5:8000"
+
+        ok, _ = SelfcheckCommandHandler._probe_service("robot_client", svc)
+        assert ok is True
+
+    def test_service_is_online_false(self, tmp_path):
+        """Service mit is_online() == False → ❌."""
+        svc = MagicMock(spec=[])
+        svc.is_online = MagicMock(return_value=False)
+
+        ok, detail = SelfcheckCommandHandler._probe_service("robot_client", svc)
+        assert ok is False
+
+    def test_service_db_store_exists(self, tmp_path):
+        """Store mit existierender _db_path → ✅."""
+        db_file = tmp_path / "notes.db"
+        db_file.touch()
+        svc = MagicMock(spec=[])  # no is_available, no is_online
+        svc._db_path = db_file
+
+        ok, detail = SelfcheckCommandHandler._probe_service("note_store", svc)
+        assert ok is True
+        assert "notes.db" in detail
+
+    def test_service_db_store_missing(self, tmp_path):
+        """Store mit fehlender _db_path → ❌."""
+        svc = MagicMock(spec=[])
+        svc._db_path = tmp_path / "missing.db"
+
+        ok, detail = SelfcheckCommandHandler._probe_service("note_store", svc)
+        assert ok is False
+        assert "nicht gefunden" in detail
+
+    def test_service_exception(self, tmp_path):
+        """Service der Exception wirft → ❌ mit Fehlermeldung."""
+        svc = MagicMock()
+        svc.is_available.side_effect = ConnectionError("timeout")
+
+        ok, detail = SelfcheckCommandHandler._probe_service("weather", svc)
+        assert ok is False
+        assert "timeout" in detail
+
+    def test_service_no_probe_method(self, tmp_path):
+        """Service ohne is_available/is_online/_db_path → OK (vorhanden = gut)."""
+        svc = MagicMock(spec=[])  # no relevant methods
+
+        ok, _ = SelfcheckCommandHandler._probe_service("audio_router", svc)
+        assert ok is True
+
+    def test_not_configured_shows_dash(self, tmp_path):
+        """Nicht übergebener Service → ➖ nicht konfiguriert."""
+        handler = self._make_handler(tmp_path, {"weather": None})
+        # weather=None wird beim dict-Aufbau rausgefiltert? Nein, None ist erlaubt.
+        # Tatsächlich: im _check_services wird svc is None → ➖
+        checks: list[str] = []
+        handler._services["weather"] = None
+        handler._check_services(checks)
+        text = "\n".join(checks)
+        assert "➖" in text
+        assert "nicht konfiguriert" in text
+
+    def test_register_service(self, tmp_path):
+        """register_service() fügt Services nachträglich hinzu."""
+        handler = self._make_handler(tmp_path, {})
+        assert "tts" not in handler._services
+
+        svc = MagicMock()
+        handler.register_service("tts", svc)
+        assert handler._services["tts"] is svc
+
+    def test_register_service_none_ignored(self, tmp_path):
+        """register_service(key, None) ignoriert den Aufruf."""
+        handler = self._make_handler(tmp_path, {})
+        handler.register_service("tts", None)
+        assert "tts" not in handler._services
+
+    @patch("urllib.request.urlopen")
+    @patch("elder_berry.comms.commands.selfcheck_commands.run_cmd")
+    @patch("shutil.disk_usage")
+    def test_full_selfcheck_with_mixed_services(
+        self, mock_disk, mock_run_cmd, mock_urlopen, tmp_path,
+    ):
+        """Voller Selfcheck mit Mix aus verfügbaren und kaputten Services."""
+        from elder_berry.comms.commands.cmd_utils import CmdResult
+
+        mock_run_cmd.return_value = CmdResult(success=True, output="main")
+        mock_disk.return_value = MagicMock(
+            total=500 * 1024**3, used=200 * 1024**3, free=300 * 1024**3,
+        )
+        mock_urlopen.side_effect = Exception("no ollama")
+
+        # Zwei Services: einer OK, einer kaputt
+        ok_svc = MagicMock()
+        ok_svc.is_available.return_value = True
+
+        bad_svc = MagicMock()
+        bad_svc.is_available.return_value = False
+
+        handler = self._make_handler(tmp_path, {
+            "calendar": ok_svc,
+            "email_client": bad_svc,
+        })
+
+        result = handler.execute("selfcheck", "selfcheck")
+        assert "Kalender" in result.text
+        assert "IMAP" in result.text
+        assert "✅" in result.text  # calendar OK
+        assert "❌" in result.text  # email broken + ollama
+
+    @patch("urllib.request.urlopen")
+    @patch("elder_berry.comms.commands.selfcheck_commands.run_cmd")
+    @patch("shutil.disk_usage")
+    def test_service_errors_count(
+        self, mock_disk, mock_run_cmd, mock_urlopen, tmp_path,
+    ):
+        """Kaputte Services erhöhen den Error-Count im Header."""
+        from elder_berry.comms.commands.cmd_utils import CmdResult
+
+        mock_run_cmd.return_value = CmdResult(success=True, output="main")
+        mock_disk.return_value = MagicMock(
+            total=500 * 1024**3, used=200 * 1024**3, free=300 * 1024**3,
+        )
+        # Ollama OK
+        import json
+        ollama_resp = MagicMock()
+        ollama_resp.__enter__ = MagicMock(return_value=ollama_resp)
+        ollama_resp.__exit__ = MagicMock(return_value=False)
+        ollama_resp.read.return_value = json.dumps(
+            {"models": [{"name": "test"}]},
+        ).encode()
+        mock_urlopen.return_value = ollama_resp
+
+        bad_svc = MagicMock()
+        bad_svc.is_available.return_value = False
+
+        handler = self._make_handler(tmp_path, {"email_client": bad_svc})
+        result = handler.execute("selfcheck", "selfcheck")
+        # Should show error count in header
+        assert "Fehler" in result.text
+        assert result.success is False
+
+
+# ---------------------------------------------------------------------------
+# _get_service_detail Tests
+# ---------------------------------------------------------------------------
+
+class TestGetServiceDetail:
+    def test_calendar_caldav(self):
+        svc = MagicMock()
+        type(svc).__name__ = "CalDAVCalendarClient"
+        assert "CalDAV" in _get_service_detail("calendar", svc)
+
+    def test_calendar_google(self):
+        svc = MagicMock()
+        type(svc).__name__ = "GoogleCalendarClient"
+        assert "Google" in _get_service_detail("calendar", svc)
+
+    def test_email_host(self):
+        svc = MagicMock()
+        svc._host = "imap.example.com"
+        assert _get_service_detail("email_client", svc) == "imap.example.com"
+
+    def test_tts_engine_name(self):
+        svc = MagicMock()
+        type(svc).__name__ = "CoquiTTSEngine"
+        assert "CoquiTTSEngine" in _get_service_detail("tts", svc)
+
+    def test_unknown_key(self):
+        svc = MagicMock()
+        assert _get_service_detail("something_new", svc) == ""

@@ -3360,3 +3360,34 @@ User: "Lies meine Mails und trag den Zahnarzttermin ein"
 - Bugfix: "ändern: ..." wird jetzt als Korrektur-Hint für Filing geroutet
 - Tests: 3537/3537 grün (11 neue Tests)
 - 6 Schritte: move() → Vision → Classifier → FilingHandler → Integration → Test+Commit
+
+## Abgeschlossen: Healthcheck – Fähigkeiten-Prüfung im SelfcheckCommandHandler (2026-04-02)
+- selfcheck_commands.py: 24 Service-Connectivity-Checks für alle Fähigkeiten ergänzt
+- Bestehende 8 Infra-Checks (Git, Python, Disk, RAM, Ollama, SecretStore, Imports, pip) bleiben
+- Neuer Abschnitt "Fähigkeiten" mit ✅/❌/➖ pro Service:
+  Anthropic API, Kalender, IMAP, SMTP, Nextcloud, Stirling-PDF, CardDAV, Wetter,
+  Brave Search, WebFetcher, RPi5 Robot, TTS, STT, Avatar, Audio-Router, Memory,
+  Computer Use, Document-Reader, NoteStore, ContactStore, TodoStore, ReminderStore, Berry-Gym
+- Unterscheidet "nicht konfiguriert" (➖) vs "konfiguriert aber kaputt" (❌)
+- Probe-Logik: is_available() → is_online() → _db_path.exists() → Fallback OK
+- register_service() für nachträgliche Registrierung (TTS, STT, Memory, Avatar, EmailSender)
+- remote_commands.py: Services-Dict an SelfcheckCommandHandler übergeben
+- start_saleria.py: 5 zusätzliche Services nachregistriert (tts, stt, memory, avatar, email_sender)
+- HELP_TEXT aktualisiert
+- Tests: 38/38 grün (19 neue Tests), remote_commands: 298/298 grün
+
+## Abgeschlossen: Nextcloud Wartung + Fail2Ban + Backup-Vorbereitung (2026-04-02)
+- DAVx5: Login-Fehler "saleria" kam vom Handy (falscher Benutzername), korrigiert auf "Leratos" + neues App-Passwort
+- Nextcloud: Update 33.0.1 → 33.0.2 erfolgreich, maintenance:repair + mimetype:update-js ausgeführt
+- Bruteforce: Reset für eigene IP, Bypass kurzzeitig aktiviert dann wieder deaktiviert (sauberer)
+- Fail2Ban: Nextcloud-Jail manuell eingerichtet (Plesk zeigt Custom-Filter nicht in UI)
+  - Filter: /etc/fail2ban/filter.d/nextcloud.conf
+  - Jail: /etc/fail2ban/jail.d/nextcloud.local (iptables-multiport, 3 retries, 1h ban)
+  - 68 Matches im bestehenden Log validiert
+- Security: Login-Versuche "saleria" von Microsoft Azure-IP (52.159.228.213) entdeckt
+  - Quelle: Benutzername über Matrix-Federation öffentlich sichtbar (@saleria:last-strawberry.com)
+  - Fail2Ban-Jail greift, Account existiert nicht in Nextcloud
+- Backup: Prompt für BorgBackup → Hetzner Storage Box erstellt (docs/prompts/setup-borgbackup-hetzner.md)
+  - Hetzner Storage Box BX11 bestellt, SSH-Support + Äußere Erreichbarkeit aktiviert
+  - SSH-Key auf Server generiert (/root/.ssh/hetzner_storage_box)
+  - Setup erfolgt im nächsten Chat

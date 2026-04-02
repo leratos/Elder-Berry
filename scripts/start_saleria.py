@@ -819,6 +819,13 @@ def run_matrix(assistant, stt=None, avatar=None, audio_converter=None, robot=Non
     if tools.get("smart_context_provider"):
         assistant._smart_context = tools["smart_context_provider"]
 
+    # Services für Healthcheck registrieren die nicht im RemoteCommandHandler leben
+    remote._selfcheck.register_service("tts", assistant._tts)
+    remote._selfcheck.register_service("stt", stt)
+    remote._selfcheck.register_service("memory", assistant._memory)
+    remote._selfcheck.register_service("avatar", avatar)
+    remote._selfcheck.register_service("email_sender", svc.get("email_sender"))
+
     # --- 5. ClaudeAgent ---
     claude_agent = None
     anthropic_key = secrets.get_or_none("anthropic_api_key") or os.environ.get("ANTHROPIC_API_KEY")
