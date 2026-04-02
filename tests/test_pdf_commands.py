@@ -342,3 +342,571 @@ class TestExecution:
             )
 
         assert result.success is True
+
+
+# ── Additional coverage: helper functions, error paths, all commands ───
+
+class TestHelperFunctions:
+    def test_is_local_path_unix(self) -> None:
+        from elder_berry.comms.commands.pdf_commands import _is_local_path
+        assert _is_local_path("/home/user/test.pdf") is True
+
+    def test_is_local_path_windows(self) -> None:
+        from elder_berry.comms.commands.pdf_commands import _is_local_path
+        assert _is_local_path("C:/Users/test.pdf") is True
+
+    def test_is_local_path_nc_name(self) -> None:
+        from elder_berry.comms.commands.pdf_commands import _is_local_path
+        assert _is_local_path("report.pdf") is False
+
+    def test_split_filenames_simple(self) -> None:
+        from elder_berry.comms.commands.pdf_commands import _split_filenames
+        assert _split_filenames("a.pdf b.pdf") == ["a.pdf", "b.pdf"]
+
+    def test_split_filenames_quoted(self) -> None:
+        from elder_berry.comms.commands.pdf_commands import _split_filenames
+        assert _split_filenames('"my file.pdf" other.pdf') == ["my file.pdf", "other.pdf"]
+
+    def test_split_filenames_single(self) -> None:
+        from elder_berry.comms.commands.pdf_commands import _split_filenames
+        assert _split_filenames("only.pdf") == ["only.pdf"]
+
+
+class TestResolveNcFile:
+    """Tests für _resolve_nc_file Hilfsmethode."""
+
+    def test_nc_none_returns_error(self, tmp_path: Path) -> None:
+        h = PDFCommandHandler(stirling_pdf=MagicMock(), nextcloud_files=None)
+        local, remote, err = h._resolve_nc_file("test.pdf", tmp_path)
+        assert local is None
+        assert "nicht konfiguriert" in err
+
+    def test_nc_search_exception(
+        self, handler: PDFCommandHandler, mock_nc: MagicMock, tmp_path: Path
+    ) -> None:
+        mock_nc.search.side_effect = RuntimeError("Verbindung fehlgeschlagen")
+        local, remote, err = handler._resolve_nc_file("test.pdf", tmp_path)
+        assert local is None
+        assert "fehlgeschlagen" in err
+
+    def test_nc_download_exception(
+        self, handler: PDFCommandHandler, mock_nc: MagicMock, tmp_path: Path
+    ) -> None:
+        mock_nc.search.return_value = [_NCFile("test.pdf", "Docs/test.pdf")]
+        mock_nc.download.side_effect = RuntimeError("Download-Fehler")
+        local, remote, err = handler._resolve_nc_file("test.pdf", tmp_path)
+        assert local is None
+        assert "Download fehlgeschlagen" in err
+
+
+class TestUploadNcResult:
+    """Tests für _upload_nc_result."""
+
+    def test_nc_none_returns_local_path(
+        self, handler_no_nc: PDFCommandHandler, tmp_path: Path
+    ) -> None:
+        f = tmp_path / "result.pdf"
+        f.write_bytes(b"content")
+        result = handler_no_nc._upload_nc_result(f, "Docs")
+        assert str(f) in result
+
+    def test_upload_exception(
+        self, handler: PDFCommandHandler, mock_nc: MagicMock, tmp_path: Path
+    ) -> None:
+        mock_nc.upload.side_effect = RuntimeError("Upload-Fehler")
+        f = tmp_path / "result.pdf"
+        f.write_bytes(b"content")
+        msg = handler._upload_nc_result(f, "Docs")
+        assert "fehlgeschlagen" in msg
+
+
+class TestUnknownCommand:
+    def test_unknown_command_returns_failure(
+        self, handler: PDFCommandHandler
+    ) -> None:
+        result = handler.execute("pdf_nonexistent", "pdf nonexistent test")
+        assert result.success is False
+        assert "Unbekannter" in result.text
+
+
+class TestLocalPathNotFound:
+    def test_local_path_missing(
+        self, handler_no_nc: PDFCommandHandler, mock_spdf: MagicMock, tmp_path: Path
+    ) -> None:
+        with patch("tempfile.mkdtemp", return_value=str(tmp_path)):
+            result = handler_no_nc.execute(
+                "pdf_compress", "pdf komprimieren /nonexistent/path/file.pdf"
+            )
+        assert result.success is False
+        assert "nicht gefunden" in result.text
+
+
+# ── Merge error paths ──────────────────────────────────────────────────
+
+class TestMergeErrors:
+    def test_merge_bad_pattern(self, handler: PDFCommandHandler) -> None:
+        result = handler.execute("pdf_merge", "pdf zusammenfügen")
+        assert result.success is False
+        assert "Format" in result.text
+
+    def test_merge_only_one_file(
+        self, handler: PDFCommandHandler, tmp_path: Path
+    ) -> None:
+        with patch("tempfile.mkdtemp", return_value=str(tmp_path)):
+            result = handler.execute("pdf_merge", "pdf zusammenfügen single.pdf")
+        assert result.success is False
+        assert "Mindestens" in result.text
+
+    def test_merge_first_file_not_found(
+        self, handler: PDFCommandHandler, mock_nc: MagicMock, tmp_path: Path
+    ) -> None:
+        mock_nc.search.return_value = []
+        with patch("tempfile.mkdtemp", return_value=str(tmp_path)):
+            result = handler.execute(
+                "pdf_merge", "pdf zusammenfügen missing_a.pdf missing_b.pdf"
+            )
+        assert result.success is False
+
+    def test_merge_spdf_failure(
+        self, handler: PDFCommandHandler, mock_spdf: MagicMock,
+        mock_nc: MagicMock, tmp_path: Path
+    ) -> None:
+        dl_a = tmp_path / "A.pdf"
+        dl_b = tmp_path / "B.pdf"
+        dl_a.write_bytes(b"%PDF")
+        dl_b.write_bytes(b"%PDF")
+
+        def search_side(name):
+            if "A.pdf" in name:
+                return [_NCFile("A.pdf", "Docs/A.pdf")]
+            return [_NCFile("B.pdf", "Docs/B.pdf")]
+
+        def dl_side(path, local_dir=None):
+            if "A.pdf" in path:
+                return dl_a
+            return dl_b
+
+        mock_nc.search.side_effect = search_side
+        mock_nc.download.side_effect = dl_side
+        mock_spdf.merge.return_value = PDFResult(
+            success=False, message="Stirling fehlgeschlagen."
+        )
+
+        with patch("tempfile.mkdtemp", return_value=str(tmp_path)):
+            result = handler.execute(
+                "pdf_merge", "pdf zusammenfügen A.pdf B.pdf"
+            )
+        assert result.success is False
+        assert "Stirling" in result.text
+
+    def test_merge_local_files_no_nc_upload(
+        self, handler_no_nc: PDFCommandHandler, mock_spdf: MagicMock, tmp_path: Path
+    ) -> None:
+        local_a = tmp_path / "A.pdf"
+        local_b = tmp_path / "B.pdf"
+        local_a.write_bytes(b"%PDF A")
+        local_b.write_bytes(b"%PDF B")
+
+        mock_spdf.merge.return_value = PDFResult(
+            success=True,
+            output_path=tmp_path / "merged.pdf",
+            message="Zusammengefügt.",
+        )
+
+        with patch("tempfile.mkdtemp", return_value=str(tmp_path)):
+            result = handler_no_nc.execute(
+                "pdf_merge", f"pdf zusammenfügen {local_a} {local_b}"
+            )
+        assert result.success is True
+        assert "Ergebnis" in result.text
+
+
+# ── Split command ───────────────────────────────────────────────────────
+
+class TestSplitCommand:
+    def test_split_bad_pattern(self, handler: PDFCommandHandler) -> None:
+        result = handler.execute("pdf_split", "pdf aufteilen")
+        assert result.success is False
+        assert "Format" in result.text
+
+    def test_split_nc_workflow(
+        self, handler: PDFCommandHandler, mock_spdf: MagicMock,
+        mock_nc: MagicMock, tmp_path: Path
+    ) -> None:
+        mock_nc.search.return_value = [_NCFile("Doc.pdf", "Docs/Doc.pdf")]
+        dl_file = tmp_path / "Doc.pdf"
+        dl_file.write_bytes(b"%PDF")
+        mock_nc.download.return_value = dl_file
+        mock_nc.upload.return_value = "Docs/Doc_p1.pdf"
+
+        split_out = tmp_path / "split" / "Doc_p1.pdf"
+        split_out.parent.mkdir(exist_ok=True)
+        split_out.write_bytes(b"%PDF")
+
+        mock_spdf.split.return_value = PDFResult(
+            success=True,
+            output_paths=[split_out],
+            message="Aufgeteilt.",
+        )
+
+        with patch("tempfile.mkdtemp", return_value=str(tmp_path)):
+            result = handler.execute("pdf_split", "pdf aufteilen Doc.pdf seiten 1")
+        assert result.success is True
+        assert "Hochgeladen" in result.text
+
+    def test_split_failure(
+        self, handler: PDFCommandHandler, mock_spdf: MagicMock,
+        mock_nc: MagicMock, tmp_path: Path
+    ) -> None:
+        mock_nc.search.return_value = [_NCFile("Doc.pdf", "Docs/Doc.pdf")]
+        dl_file = tmp_path / "Doc.pdf"
+        dl_file.write_bytes(b"%PDF")
+        mock_nc.download.return_value = dl_file
+        mock_spdf.split.return_value = PDFResult(
+            success=False, message="Seiten ungültig."
+        )
+
+        with patch("tempfile.mkdtemp", return_value=str(tmp_path)):
+            result = handler.execute("pdf_split", "pdf aufteilen Doc.pdf seiten 99")
+        assert result.success is False
+        assert "Seiten" in result.text
+
+    def test_split_local_no_nc_upload(
+        self, handler_no_nc: PDFCommandHandler, mock_spdf: MagicMock, tmp_path: Path
+    ) -> None:
+        local_pdf = tmp_path / "local.pdf"
+        local_pdf.write_bytes(b"%PDF")
+        split_out = tmp_path / "local_p1.pdf"
+        split_out.write_bytes(b"%PDF")
+
+        mock_spdf.split.return_value = PDFResult(
+            success=True,
+            output_paths=[split_out],
+            message="Aufgeteilt.",
+        )
+
+        with patch("tempfile.mkdtemp", return_value=str(tmp_path)):
+            result = handler_no_nc.execute(
+                "pdf_split", f"pdf aufteilen {local_pdf} seiten 1"
+            )
+        assert result.success is True
+        assert result.file_paths is not None
+
+    def test_split_file_not_found(
+        self, handler: PDFCommandHandler, mock_nc: MagicMock, tmp_path: Path
+    ) -> None:
+        mock_nc.search.return_value = []
+        with patch("tempfile.mkdtemp", return_value=str(tmp_path)):
+            result = handler.execute("pdf_split", "pdf aufteilen missing.pdf seiten 1")
+        assert result.success is False
+
+
+# ── Compress error paths ────────────────────────────────────────────────
+
+class TestCompressErrors:
+    def test_compress_bad_pattern(self, handler: PDFCommandHandler) -> None:
+        result = handler.execute("pdf_compress", "pdf komprimieren")
+        assert result.success is False
+        assert "Format" in result.text
+
+    def test_compress_spdf_failure(
+        self, handler: PDFCommandHandler, mock_spdf: MagicMock,
+        mock_nc: MagicMock, tmp_path: Path
+    ) -> None:
+        mock_nc.search.return_value = [_NCFile("Big.pdf", "Docs/Big.pdf")]
+        dl_file = tmp_path / "Big.pdf"
+        dl_file.write_bytes(b"%PDF")
+        mock_nc.download.return_value = dl_file
+        mock_spdf.compress.return_value = PDFResult(
+            success=False, message="Komprimierung fehlgeschlagen."
+        )
+
+        with patch("tempfile.mkdtemp", return_value=str(tmp_path)):
+            result = handler.execute("pdf_compress", "pdf komprimieren Big.pdf")
+        assert result.success is False
+
+
+# ── OCR error paths ─────────────────────────────────────────────────────
+
+class TestOcrErrors:
+    def test_ocr_bad_pattern(self, handler: PDFCommandHandler) -> None:
+        result = handler.execute("pdf_ocr", "pdf ocr")
+        assert result.success is False
+        assert "Format" in result.text
+
+    def test_ocr_spdf_failure(
+        self, handler: PDFCommandHandler, mock_spdf: MagicMock,
+        mock_nc: MagicMock, tmp_path: Path
+    ) -> None:
+        mock_nc.search.return_value = [_NCFile("Scan.pdf", "Scans/Scan.pdf")]
+        dl_file = tmp_path / "Scan.pdf"
+        dl_file.write_bytes(b"%PDF")
+        mock_nc.download.return_value = dl_file
+        mock_spdf.ocr.return_value = PDFResult(
+            success=False, message="OCR fehlgeschlagen."
+        )
+
+        with patch("tempfile.mkdtemp", return_value=str(tmp_path)):
+            result = handler.execute("pdf_ocr", "pdf ocr Scan.pdf")
+        assert result.success is False
+
+    def test_ocr_local_no_nc(
+        self, handler_no_nc: PDFCommandHandler, mock_spdf: MagicMock, tmp_path: Path
+    ) -> None:
+        local_pdf = tmp_path / "scan.pdf"
+        local_pdf.write_bytes(b"%PDF")
+        output = tmp_path / "scan_ocr.pdf"
+        output.write_bytes(b"%PDF")
+
+        mock_spdf.ocr.return_value = PDFResult(
+            success=True,
+            output_path=output,
+            message="OCR abgeschlossen.",
+        )
+
+        with patch("tempfile.mkdtemp", return_value=str(tmp_path)):
+            result = handler_no_nc.execute("pdf_ocr", f"pdf ocr {local_pdf}")
+        assert result.success is True
+        assert result.file_path is not None
+
+
+# ── ToWord command ──────────────────────────────────────────────────────
+
+class TestToWordCommand:
+    def test_to_word_bad_pattern(self, handler: PDFCommandHandler) -> None:
+        result = handler.execute("pdf_to_word", "pdf zu word")
+        assert result.success is False
+        assert "Format" in result.text
+
+    def test_to_word_nc_workflow(
+        self, handler: PDFCommandHandler, mock_spdf: MagicMock,
+        mock_nc: MagicMock, tmp_path: Path
+    ) -> None:
+        mock_nc.search.return_value = [_NCFile("Bericht.pdf", "Docs/Bericht.pdf")]
+        dl_file = tmp_path / "Bericht.pdf"
+        dl_file.write_bytes(b"%PDF")
+        mock_nc.download.return_value = dl_file
+        mock_nc.upload.return_value = "Docs/Bericht.docx"
+
+        mock_spdf.to_word.return_value = PDFResult(
+            success=True,
+            output_path=tmp_path / "Bericht.docx",
+            message="Konvertiert: Bericht.docx",
+        )
+
+        with patch("tempfile.mkdtemp", return_value=str(tmp_path)):
+            result = handler.execute("pdf_to_word", "pdf zu word Bericht.pdf")
+        assert result.success is True
+        assert "Hochgeladen" in result.text
+
+    def test_to_word_failure(
+        self, handler: PDFCommandHandler, mock_spdf: MagicMock,
+        mock_nc: MagicMock, tmp_path: Path
+    ) -> None:
+        mock_nc.search.return_value = [_NCFile("Doc.pdf", "Docs/Doc.pdf")]
+        dl_file = tmp_path / "Doc.pdf"
+        dl_file.write_bytes(b"%PDF")
+        mock_nc.download.return_value = dl_file
+        mock_spdf.to_word.return_value = PDFResult(
+            success=False, message="Konvertierung fehlgeschlagen."
+        )
+
+        with patch("tempfile.mkdtemp", return_value=str(tmp_path)):
+            result = handler.execute("pdf_to_word", "pdf zu word Doc.pdf")
+        assert result.success is False
+
+    def test_to_word_local_no_nc(
+        self, handler_no_nc: PDFCommandHandler, mock_spdf: MagicMock, tmp_path: Path
+    ) -> None:
+        local_pdf = tmp_path / "report.pdf"
+        local_pdf.write_bytes(b"%PDF")
+
+        mock_spdf.to_word.return_value = PDFResult(
+            success=True,
+            output_path=tmp_path / "report.docx",
+            message="Konvertiert.",
+        )
+
+        with patch("tempfile.mkdtemp", return_value=str(tmp_path)):
+            result = handler_no_nc.execute("pdf_to_word", f"pdf zu word {local_pdf}")
+        assert result.success is True
+        assert result.file_path is not None
+
+    def test_to_word_file_not_found(
+        self, handler: PDFCommandHandler, mock_nc: MagicMock, tmp_path: Path
+    ) -> None:
+        mock_nc.search.return_value = []
+        with patch("tempfile.mkdtemp", return_value=str(tmp_path)):
+            result = handler.execute("pdf_to_word", "pdf zu word missing.pdf")
+        assert result.success is False
+
+
+# ── FromFile command ────────────────────────────────────────────────────
+
+class TestFromFileCommand:
+    def test_from_file_bad_pattern(self, handler: PDFCommandHandler) -> None:
+        result = handler.execute("pdf_from_file", "zu pdf")
+        assert result.success is False
+        assert "Format" in result.text
+
+    def test_from_file_nc_workflow(
+        self, handler: PDFCommandHandler, mock_spdf: MagicMock,
+        mock_nc: MagicMock, tmp_path: Path
+    ) -> None:
+        mock_nc.search.return_value = [_NCFile("Brief.docx", "Docs/Brief.docx")]
+        dl_file = tmp_path / "Brief.docx"
+        dl_file.write_bytes(b"PK word content")
+        mock_nc.download.return_value = dl_file
+        mock_nc.upload.return_value = "Docs/Brief.pdf"
+
+        mock_spdf.to_pdf.return_value = PDFResult(
+            success=True,
+            output_path=tmp_path / "Brief.pdf",
+            message="Konvertiert: Brief.pdf",
+        )
+
+        with patch("tempfile.mkdtemp", return_value=str(tmp_path)):
+            result = handler.execute("pdf_from_file", "zu pdf Brief.docx")
+        assert result.success is True
+        assert "Hochgeladen" in result.text
+
+    def test_from_file_failure(
+        self, handler: PDFCommandHandler, mock_spdf: MagicMock,
+        mock_nc: MagicMock, tmp_path: Path
+    ) -> None:
+        mock_nc.search.return_value = [_NCFile("Brief.docx", "Docs/Brief.docx")]
+        dl_file = tmp_path / "Brief.docx"
+        dl_file.write_bytes(b"content")
+        mock_nc.download.return_value = dl_file
+        mock_spdf.to_pdf.return_value = PDFResult(
+            success=False, message="Konvertierung fehlgeschlagen."
+        )
+
+        with patch("tempfile.mkdtemp", return_value=str(tmp_path)):
+            result = handler.execute("pdf_from_file", "zu pdf Brief.docx")
+        assert result.success is False
+
+    def test_from_file_local_no_nc(
+        self, handler_no_nc: PDFCommandHandler, mock_spdf: MagicMock, tmp_path: Path
+    ) -> None:
+        local_docx = tmp_path / "letter.docx"
+        local_docx.write_bytes(b"content")
+
+        mock_spdf.to_pdf.return_value = PDFResult(
+            success=True,
+            output_path=tmp_path / "letter.pdf",
+            message="Konvertiert.",
+        )
+
+        with patch("tempfile.mkdtemp", return_value=str(tmp_path)):
+            result = handler_no_nc.execute("pdf_from_file", f"zu pdf {local_docx}")
+        assert result.success is True
+        assert result.file_path is not None
+
+    def test_from_file_not_found(
+        self, handler: PDFCommandHandler, mock_nc: MagicMock, tmp_path: Path
+    ) -> None:
+        mock_nc.search.return_value = []
+        with patch("tempfile.mkdtemp", return_value=str(tmp_path)):
+            result = handler.execute("pdf_from_file", "zu pdf missing.docx")
+        assert result.success is False
+
+
+# ── ExtractImages command ───────────────────────────────────────────────
+
+class TestExtractImagesCommand:
+    def test_extract_images_bad_pattern(self, handler: PDFCommandHandler) -> None:
+        result = handler.execute("pdf_extract_images", "pdf bilder")
+        assert result.success is False
+        assert "Format" in result.text
+
+    def test_extract_images_nc_workflow(
+        self, handler: PDFCommandHandler, mock_spdf: MagicMock,
+        mock_nc: MagicMock, tmp_path: Path
+    ) -> None:
+        mock_nc.search.return_value = [_NCFile("Katalog.pdf", "Docs/Katalog.pdf")]
+        dl_file = tmp_path / "Katalog.pdf"
+        dl_file.write_bytes(b"%PDF")
+        mock_nc.download.return_value = dl_file
+        mock_nc.upload.return_value = "Docs/img1.png"
+
+        img1 = tmp_path / "images" / "img1.png"
+        img1.parent.mkdir(exist_ok=True)
+        img1.write_bytes(b"PNG data")
+
+        mock_spdf.extract_images.return_value = PDFResult(
+            success=True,
+            output_paths=[img1],
+            message="3 Bilder extrahiert.",
+        )
+
+        with patch("tempfile.mkdtemp", return_value=str(tmp_path)):
+            result = handler.execute("pdf_extract_images", "pdf bilder Katalog.pdf")
+        assert result.success is True
+        assert "Hochgeladen" in result.text
+
+    def test_extract_images_failure(
+        self, handler: PDFCommandHandler, mock_spdf: MagicMock,
+        mock_nc: MagicMock, tmp_path: Path
+    ) -> None:
+        mock_nc.search.return_value = [_NCFile("Doc.pdf", "Docs/Doc.pdf")]
+        dl_file = tmp_path / "Doc.pdf"
+        dl_file.write_bytes(b"%PDF")
+        mock_nc.download.return_value = dl_file
+        mock_spdf.extract_images.return_value = PDFResult(
+            success=False, message="Keine Bilder gefunden."
+        )
+
+        with patch("tempfile.mkdtemp", return_value=str(tmp_path)):
+            result = handler.execute("pdf_extract_images", "pdf bilder Doc.pdf")
+        assert result.success is False
+
+    def test_extract_images_local_no_nc(
+        self, handler_no_nc: PDFCommandHandler, mock_spdf: MagicMock, tmp_path: Path
+    ) -> None:
+        local_pdf = tmp_path / "catalog.pdf"
+        local_pdf.write_bytes(b"%PDF")
+
+        img1 = tmp_path / "img1.png"
+        img1.write_bytes(b"PNG")
+
+        mock_spdf.extract_images.return_value = PDFResult(
+            success=True,
+            output_paths=[img1],
+            message="1 Bild extrahiert.",
+        )
+
+        with patch("tempfile.mkdtemp", return_value=str(tmp_path)):
+            result = handler_no_nc.execute(
+                "pdf_extract_images", f"pdf bilder {local_pdf}"
+            )
+        assert result.success is True
+        assert result.file_paths is not None
+
+    def test_extract_images_file_not_found(
+        self, handler: PDFCommandHandler, mock_nc: MagicMock, tmp_path: Path
+    ) -> None:
+        mock_nc.search.return_value = []
+        with patch("tempfile.mkdtemp", return_value=str(tmp_path)):
+            result = handler.execute("pdf_extract_images", "pdf bilder missing.pdf")
+        assert result.success is False
+
+    def test_extract_images_nc_no_output_paths(
+        self, handler: PDFCommandHandler, mock_spdf: MagicMock,
+        mock_nc: MagicMock, tmp_path: Path
+    ) -> None:
+        """Wenn keine output_paths → kein Upload, aber success=True."""
+        mock_nc.search.return_value = [_NCFile("Doc.pdf", "Docs/Doc.pdf")]
+        dl_file = tmp_path / "Doc.pdf"
+        dl_file.write_bytes(b"%PDF")
+        mock_nc.download.return_value = dl_file
+
+        mock_spdf.extract_images.return_value = PDFResult(
+            success=True,
+            output_paths=[],
+            message="0 Bilder.",
+        )
+
+        with patch("tempfile.mkdtemp", return_value=str(tmp_path)):
+            result = handler.execute("pdf_extract_images", "pdf bilder Doc.pdf")
+        assert result.success is True

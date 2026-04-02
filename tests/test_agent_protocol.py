@@ -390,3 +390,159 @@ class TestSupportedActions:
         r = client.get("/status")
         actions = r.json()["available_actions"]
         assert len(actions) == len(SUPPORTED_ACTIONS)
+
+
+# ---------------------------------------------------------------------------
+# AgentClient – Tests mit gemocktem httpx
+# ---------------------------------------------------------------------------
+
+class TestAgentClient:
+    """Tests fuer AgentClient mit gemocktem httpx.Client."""
+
+    def _make_client(self, mock_http):
+        from elder_berry.agent.client import AgentClient
+        with patch("elder_berry.agent.client.httpx.Client", return_value=mock_http):
+            return AgentClient(base_url="http://localhost:8001", timeout=5.0)
+
+    def test_init_sets_base_url(self):
+        mock_http = MagicMock()
+        from elder_berry.agent.client import AgentClient
+        with patch("elder_berry.agent.client.httpx.Client", return_value=mock_http) as mock_cls:
+            c = AgentClient(base_url="http://test:9000", timeout=3.0)
+        mock_cls.assert_called_once()
+        assert c._base_url == "http://test:9000"
+
+    def test_init_strips_trailing_slash(self):
+        from elder_berry.agent.client import AgentClient
+        with patch("elder_berry.agent.client.httpx.Client"):
+            c = AgentClient(base_url="http://test:9000/")
+        assert c._base_url == "http://test:9000"
+
+    def test_close_calls_http_close(self):
+        mock_http = MagicMock()
+        c = self._make_client(mock_http)
+        c.close()
+        mock_http.close.assert_called_once()
+
+    def test_health_success(self):
+        from elder_berry.agent.client import AgentClient
+        mock_http = MagicMock()
+        mock_resp = MagicMock()
+        mock_resp.json.return_value = {
+            "status": "ok", "hostname": "laptop", "uptime": 42.0, "version": "0.1.0"
+        }
+        mock_http.get.return_value = mock_resp
+
+        c = self._make_client(mock_http)
+        result = c.health()
+
+        assert result.status == "ok"
+        assert result.hostname == "laptop"
+        mock_http.get.assert_called_once_with("/health")
+
+    def test_is_online_true(self):
+        mock_http = MagicMock()
+        mock_resp = MagicMock()
+        mock_resp.json.return_value = {
+            "status": "ok", "hostname": "", "uptime": 0.0, "version": "0.1.0"
+        }
+        mock_http.get.return_value = mock_resp
+
+        c = self._make_client(mock_http)
+        assert c.is_online() is True
+
+    def test_is_online_false_on_http_error(self):
+        import httpx
+        mock_http = MagicMock()
+        mock_http.get.side_effect = httpx.ConnectError("unreachable")
+
+        c = self._make_client(mock_http)
+        assert c.is_online() is False
+
+    def test_is_online_false_on_generic_exception(self):
+        mock_http = MagicMock()
+        mock_http.get.side_effect = RuntimeError("unexpected")
+
+        c = self._make_client(mock_http)
+        assert c.is_online() is False
+
+    def test_get_status(self):
+        mock_http = MagicMock()
+        mock_resp = MagicMock()
+        mock_resp.json.return_value = {
+            "online": True, "hostname": "laptop",
+            "uptime": 5.0, "available_actions": ["press_key"]
+        }
+        mock_http.get.return_value = mock_resp
+
+        c = self._make_client(mock_http)
+        result = c.get_status()
+
+        assert result.online is True
+        assert result.hostname == "laptop"
+        assert "press_key" in result.available_actions
+
+    def test_execute_action(self):
+        mock_http = MagicMock()
+        mock_resp = MagicMock()
+        mock_resp.json.return_value = {
+            "success": True, "action_type": "press_key", "message": "ok"
+        }
+        mock_http.post.return_value = mock_resp
+
+        c = self._make_client(mock_http)
+        result = c.execute_action("press_key", {"key": "F5"})
+
+        assert result.success is True
+        assert result.action_type == "press_key"
+        mock_http.post.assert_called_once_with(
+            "/action/execute",
+            json={"action_type": "press_key", "params": {"key": "F5"}},
+        )
+
+    def test_execute_action_no_params(self):
+        mock_http = MagicMock()
+        mock_resp = MagicMock()
+        mock_resp.json.return_value = {
+            "success": True, "action_type": "mute", "message": "ok"
+        }
+        mock_http.post.return_value = mock_resp
+
+        c = self._make_client(mock_http)
+        result = c.execute_action("mute")
+
+        call_args = mock_http.post.call_args
+        assert call_args[1]["json"]["params"] == {}
+
+    def test_play_audio(self):
+        mock_http = MagicMock()
+        mock_resp = MagicMock()
+        mock_resp.json.return_value = {"success": True, "message": "played"}
+        mock_http.post.return_value = mock_resp
+
+        c = self._make_client(mock_http)
+        result = c.play_audio(b"RIFF...", emotion="happy")
+
+        assert result.success is True
+        call_args = mock_http.post.call_args
+        assert call_args[0][0] == "/audio/play"
+        assert call_args[1]["data"]["emotion"] == "happy"
+
+    def test_play_audio_file(self, tmp_path):
+        wav_file = tmp_path / "speech.wav"
+        wav_file.write_bytes(b"RIFF audio data")
+
+        mock_http = MagicMock()
+        mock_resp = MagicMock()
+        mock_resp.json.return_value = {"success": True, "message": "played"}
+        mock_http.post.return_value = mock_resp
+
+        c = self._make_client(mock_http)
+        result = c.play_audio_file(wav_file, emotion="neutral")
+
+        assert result.success is True
+        call_args = mock_http.post.call_args
+        assert call_args[1]["data"]["emotion"] == "neutral"
+        # filename should be the file name
+        files_arg = call_args[1]["files"]
+        assert files_arg["file"][0] == "speech.wav"

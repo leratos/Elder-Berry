@@ -2,7 +2,7 @@
 import struct
 import wave
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -191,3 +191,116 @@ class TestGetDuration:
 
         with pytest.raises(FileNotFoundError):
             converter.get_duration_ms(Path("/nonexistent.wav"))
+
+
+# ---------------------------------------------------------------------------
+# Mock pydub – test conversion and duration logic without ffmpeg
+# ---------------------------------------------------------------------------
+
+class TestToOggOpusMocked:
+    """Tests fuer to_ogg_opus mit gemocktem pydub (kein ffmpeg nötig)."""
+
+    def test_convert_success_mocked(self, tmp_path: Path) -> None:
+        """Konvertierung erfolgreich: mock pydub.AudioSegment."""
+        input_wav = tmp_path / "input.wav"
+        input_wav.write_bytes(b"RIFF data")
+        output_ogg = tmp_path / "input.ogg"
+
+        mock_audio = MagicMock()
+        mock_audio.__len__ = MagicMock(return_value=1234)  # duration_ms
+
+        mock_pydub = MagicMock()
+        mock_pydub.AudioSegment.from_file.return_value = mock_audio
+
+        with patch("elder_berry.comms.audio_converter.shutil.which", return_value="/usr/bin/ffmpeg"):
+            conv = AudioConverter()
+
+        with patch.dict("sys.modules", {"pydub": mock_pydub}):
+            result_path, duration_ms = conv.to_ogg_opus(input_wav)
+
+        assert result_path == input_wav.with_suffix(".ogg")
+        assert duration_ms == 1234
+        mock_audio.export.assert_called_once()
+
+    def test_convert_custom_output_path_mocked(self, tmp_path: Path) -> None:
+        input_wav = tmp_path / "audio.wav"
+        input_wav.write_bytes(b"RIFF")
+        custom_out = tmp_path / "custom.ogg"
+
+        mock_audio = MagicMock()
+        mock_audio.__len__ = MagicMock(return_value=500)
+        mock_pydub = MagicMock()
+        mock_pydub.AudioSegment.from_file.return_value = mock_audio
+
+        with patch("elder_berry.comms.audio_converter.shutil.which", return_value="/usr/bin/ffmpeg"):
+            conv = AudioConverter()
+
+        with patch.dict("sys.modules", {"pydub": mock_pydub}):
+            result_path, duration_ms = conv.to_ogg_opus(input_wav, output_path=custom_out, bitrate="32k")
+
+        assert result_path == custom_out
+        assert duration_ms == 500
+        export_call = mock_audio.export.call_args
+        assert export_call[1]["bitrate"] == "32k"
+
+    def test_convert_pydub_exception_raises_converter_error(self, tmp_path: Path) -> None:
+        input_wav = tmp_path / "broken.wav"
+        input_wav.write_bytes(b"RIFF")
+
+        mock_pydub = MagicMock()
+        mock_pydub.AudioSegment.from_file.side_effect = Exception("corrupt audio")
+
+        with patch("elder_berry.comms.audio_converter.shutil.which", return_value="/usr/bin/ffmpeg"):
+            conv = AudioConverter()
+
+        with patch.dict("sys.modules", {"pydub": mock_pydub}):
+            with pytest.raises(AudioConverterError, match="Konvertierung fehlgeschlagen"):
+                conv.to_ogg_opus(input_wav)
+
+    def test_convert_file_not_found_before_pydub(self, tmp_path: Path) -> None:
+        """FileNotFoundError kommt vor pydub-Import."""
+        with patch("elder_berry.comms.audio_converter.shutil.which", return_value="/usr/bin/ffmpeg"):
+            conv = AudioConverter()
+        with pytest.raises(FileNotFoundError):
+            conv.to_ogg_opus(Path("/nonexistent/audio.wav"))
+
+
+class TestGetDurationMocked:
+    """Tests fuer get_duration_ms mit gemocktem pydub."""
+
+    def test_get_duration_success_mocked(self, tmp_path: Path) -> None:
+        audio_file = tmp_path / "speech.wav"
+        audio_file.write_bytes(b"RIFF")
+
+        mock_audio = MagicMock()
+        mock_audio.__len__ = MagicMock(return_value=3000)
+        mock_pydub = MagicMock()
+        mock_pydub.AudioSegment.from_file.return_value = mock_audio
+
+        with patch("elder_berry.comms.audio_converter.shutil.which", return_value="/usr/bin/ffmpeg"):
+            conv = AudioConverter()
+
+        with patch.dict("sys.modules", {"pydub": mock_pydub}):
+            duration = conv.get_duration_ms(audio_file)
+
+        assert duration == 3000
+
+    def test_get_duration_pydub_exception(self, tmp_path: Path) -> None:
+        audio_file = tmp_path / "broken.wav"
+        audio_file.write_bytes(b"RIFF")
+
+        mock_pydub = MagicMock()
+        mock_pydub.AudioSegment.from_file.side_effect = Exception("decode error")
+
+        with patch("elder_berry.comms.audio_converter.shutil.which", return_value="/usr/bin/ffmpeg"):
+            conv = AudioConverter()
+
+        with patch.dict("sys.modules", {"pydub": mock_pydub}):
+            with pytest.raises(AudioConverterError, match="Duration"):
+                conv.get_duration_ms(audio_file)
+
+    def test_get_duration_file_not_found(self) -> None:
+        with patch("elder_berry.comms.audio_converter.shutil.which", return_value="/usr/bin/ffmpeg"):
+            conv = AudioConverter()
+        with pytest.raises(FileNotFoundError):
+            conv.get_duration_ms(Path("/nonexistent.wav"))
