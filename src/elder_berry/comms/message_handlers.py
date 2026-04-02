@@ -134,8 +134,11 @@ class BridgeMessageHandler:
 
             # Pending Confirmation (Phase 28: Email-Reply Draft)
             if result.pending_confirmation and result.pending_data:
+                # action_type aus pending_data übernehmen wenn vorhanden
+                # (z.B. "filing" statt "cloud_aufräumen")
+                action_type = result.pending_data.pop("action_type", None) or result.command
                 pending_action = PendingAction(
-                    action_type=result.command,
+                    action_type=action_type,
                     description=result.text or "",
                     data=result.pending_data,
                 )
@@ -417,12 +420,24 @@ class BridgeMessageHandler:
             return
 
         # Alles andere = Korrektur-Hint
+        await self._execute_filing_correction(msg, action, msg.body.strip())
+
+    async def _execute_filing_correction(
+        self, msg: IncomingMessage, action: PendingAction, hint: str,
+    ) -> None:
+        """Führt eine Filing-Korrektur aus (User gibt Hint/neuen Namen)."""
+        filing_handler = self._get_filing_handler()
+        if not filing_handler:
+            await self._channel.send_text(msg.room_id, "Filing-Handler nicht verfügbar.")
+            self._pending.clear(msg.sender)
+            return
+
         try:
             loop = asyncio.get_running_loop()
             result = await asyncio.wait_for(
                 loop.run_in_executor(
                     None,
-                    filing_handler.handle_correction, action, msg.body.strip(), msg.sender,
+                    filing_handler.handle_correction, action, hint, msg.sender,
                 ),
                 timeout=120.0,
             )
@@ -566,6 +581,17 @@ class BridgeMessageHandler:
         self, msg: IncomingMessage, action: PendingAction,
     ) -> None:
         """Generiert einen neuen Draft basierend auf der Änderungsanweisung."""
+        # Filing: "ändern: ..." als Korrektur-Hint behandeln
+        if action.action_type == "filing":
+            hint = action.data.get("modify_instruction", "") or msg.body.strip()
+            # "ändern:" Prefix entfernen wenn vorhanden
+            for prefix in ("ändern:", "Ändern:", "andern:", "ändern :", "Ändern :"):
+                if hint.lower().startswith(prefix.lower()):
+                    hint = hint[len(prefix):].strip()
+                    break
+            await self._execute_filing_correction(msg, action, hint)
+            return
+
         if action.action_type not in ("mail_reply", "mail_reply_modify"):
             await self._channel.send_text(
                 msg.room_id,
