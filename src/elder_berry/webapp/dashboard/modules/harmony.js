@@ -20,6 +20,10 @@ const DEVICE_LAYOUTS = {
             { cmd: "Menu", label: "\u2630 Men\u00fc" },
         ],
         extras: [
+            { cmd: "Play", label: "\u25b6" },
+            { cmd: "Pause", label: "\u23f8" },
+            { cmd: "Rewind", label: "\u25c4\u25c4" },
+            { cmd: "FastForward", label: "\u25b6\u25b6" },
             { cmd: "Guide", label: "Guide" },
             { cmd: "Info", label: "Info" },
             { cmd: "Exit", label: "Exit" },
