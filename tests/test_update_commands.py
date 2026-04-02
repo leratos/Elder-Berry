@@ -142,7 +142,7 @@ class TestUpdateTower:
         assert "nicht konfiguriert" in result.text
 
     @patch("elder_berry.comms.commands.update_commands.run_cmd")
-    def test_already_up_to_date(self, mock_run_cmd, handler):
+    def test_already_up_to_date_asks_restart(self, mock_run_cmd, handler):
         from elder_berry.comms.commands.cmd_utils import CmdResult
         mock_run_cmd.side_effect = [
             CmdResult(success=True, output=""),    # fetch
@@ -152,6 +152,8 @@ class TestUpdateTower:
         assert result.success is True
         assert "aktuell" in result.text.lower()
         assert result.restart is False
+        assert result.pending_confirmation is True
+        assert result.pending_data == {"action": "restart"}
 
     @patch("elder_berry.comms.commands.update_commands.run_cmd")
     def test_fetch_fails(self, mock_run_cmd, handler):
@@ -244,6 +246,25 @@ class TestBackup:
         path.write_text("not json", encoding="utf-8")
         data = handler._read_backup()
         assert data is None
+
+
+# ---------------------------------------------------------------------------
+# Update All: pending_confirmation durchreichen
+# ---------------------------------------------------------------------------
+
+class TestUpdateAllExecution:
+    @patch("elder_berry.comms.commands.update_commands.run_cmd")
+    def test_update_all_up_to_date_asks_restart(self, mock_run_cmd, handler):
+        from elder_berry.comms.commands.cmd_utils import CmdResult
+        mock_run_cmd.side_effect = [
+            CmdResult(success=True, output=""),    # fetch
+            CmdResult(success=True, output="0"),   # behind
+        ]
+        result = handler.execute("update_all", "update alles")
+        assert result.success is True
+        assert result.pending_confirmation is True
+        assert result.pending_data == {"action": "restart"}
+        assert "aktuell" in result.text.lower()
 
 
 # ---------------------------------------------------------------------------

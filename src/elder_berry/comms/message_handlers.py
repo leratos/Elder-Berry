@@ -247,6 +247,8 @@ class BridgeMessageHandler:
             await self._execute_mail_send(msg, action)
         elif action.action_type == "nextcloud_setup":
             await self._execute_nextcloud_setup(msg, action)
+        elif action.action_type in ("update", "update_all"):
+            await self._execute_restart_confirm(msg, action)
         else:
             logger.warning("Unbekannter PendingAction-Typ: %s", action.action_type)
             await self._channel.send_text(
@@ -314,6 +316,29 @@ class BridgeMessageHandler:
                 f"\u274c Fehler beim Senden: {type(e).__name__}",
             )
             self._pending.clear(msg.sender)
+
+    async def _execute_restart_confirm(
+        self, msg: IncomingMessage, action: PendingAction,
+    ) -> None:
+        """Führt einen bestätigten Neustart aus (nach 'update' ohne neue Commits)."""
+        self._pending.clear(msg.sender)
+        self._chat_history.add(msg.sender, "user", "ja")
+        self._chat_history.add(msg.sender, "assistant", "🔄 Neustart bestätigt.")
+
+        if time.monotonic() < self.restart_cooldown_until:
+            await self._channel.send_text(
+                msg.room_id,
+                "Restart-Cooldown aktiv – ich wurde gerade erst "
+                "neu gestartet. Bitte warte noch etwas.",
+            )
+            return
+
+        await self._channel.send_text(msg.room_id, "🔄 Starte neu …")
+        from elder_berry.comms.restart_manager import perform_restart
+        await perform_restart(
+            self._channel, self._scheduler_mgr,
+            msg.room_id, msg_server_ts=msg.timestamp,
+        )
 
     async def _execute_nextcloud_setup(
         self, msg: IncomingMessage, action: PendingAction,

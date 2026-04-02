@@ -256,6 +256,39 @@ class TestHandlePendingConfirm:
             pending.clear.assert_called_once()
         run_async(_test())
 
+    def test_restart_confirm_triggers_restart(self, handler, channel, pending):
+        async def _test():
+            action = PendingAction(
+                action_type="update",
+                description="Alles aktuell",
+                data={"action": "restart"},
+            )
+            msg = _make_msg("ja")
+            with patch(
+                "elder_berry.comms.restart_manager.perform_restart",
+                new_callable=AsyncMock,
+            ) as mock_restart:
+                await handler.handle_pending_confirm(msg, action)
+                mock_restart.assert_called_once()
+            pending.clear.assert_called_once()
+        from unittest.mock import AsyncMock
+        run_async(_test())
+
+    def test_restart_confirm_cooldown(self, handler, channel, pending):
+        async def _test():
+            handler.restart_cooldown_until = time.monotonic() + 60
+            action = PendingAction(
+                action_type="update",
+                description="Alles aktuell",
+                data={"action": "restart"},
+            )
+            msg = _make_msg("ja")
+            await handler.handle_pending_confirm(msg, action)
+            pending.clear.assert_called_once()
+            calls = [c[0][1] for c in channel.send_text.call_args_list]
+            assert any("Cooldown" in c for c in calls)
+        run_async(_test())
+
     def test_mail_send_no_smtp(self, handler, channel, pending):
         async def _test():
             handler._email_sender = None

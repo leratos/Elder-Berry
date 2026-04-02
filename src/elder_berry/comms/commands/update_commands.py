@@ -172,7 +172,10 @@ class UpdateCommandHandler(CommandHandler):
             return CommandResult(
                 command="update",
                 success=True,
-                text="✅ Alles aktuell – kein Update nötig.",
+                text="✅ Alles aktuell – kein neuer Code.\n"
+                     "Soll ich trotzdem neustarten? (ja/nein, 5 Min Timeout)",
+                pending_confirmation=True,
+                pending_data={"action": "restart"},
             )
 
         steps.append(f"📥 {commits_behind} neue(r) Commit(s) verfügbar")
@@ -326,6 +329,8 @@ class UpdateCommandHandler(CommandHandler):
             success=tower_result.success,
             text="\n\n".join(steps),
             restart=tower_result.restart,
+            pending_confirmation=tower_result.pending_confirmation,
+            pending_data=tower_result.pending_data,
         )
 
     # ------------------------------------------------------------------

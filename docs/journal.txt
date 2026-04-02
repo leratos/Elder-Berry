@@ -3316,3 +3316,12 @@ User: "Lies meine Mails und trag den Zahnarzttermin ein"
 - start_saleria.py: StirlingPDFClient Init in _init_productivity_services(), DI an RemoteCommandHandler
 - Tests: 21 (Client) + 19 (Commands) = 40 neue Tests, 3466 gesamt grün
 - Prompt vorbereitet: docs/prompts/stirling-pdf-integration.md (Saleria-Anbindung)
+
+## Abgeschlossen: Enhancement – Update-Command Neustart-Rückfrage (2026-04-02)
+- Problem: Bei "update" wenn lokal aktuell → kein Neustart, obwohl Änderungen erst nach Restart greifen
+- Lösung: pending_confirmation mit 5-Min-Timeout → "Soll ich trotzdem neustarten?"
+- update_commands.py: _cmd_update() gibt pending_confirmation statt hartem Return bei commits_behind==0
+- update_commands.py: _cmd_update_all() reicht pending_confirmation vom Tower-Result durch
+- message_handlers.py: _execute_restart_confirm() für action_type "update"/"update_all" (mit Cooldown-Check)
+- Tests: 3 neue Tests (ask_restart, update_all_ask_restart, restart_confirm_triggers, restart_cooldown)
+- 3469 Tests gesamt grün
