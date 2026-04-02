@@ -32,9 +32,9 @@ XTTS_MODEL = "tts_models/multilingual/multi-dataset/xtts_v2"
 # temperature: Niedrigere Werte → deterministischere Token-Wahl (Default: 0.75)
 # top_p/top_k: Einschränkung des Token-Pools (Defaults: 0.85 / 50)
 # repetition_penalty: Verhindert Token-Wiederholungen/Loops (Default: 10.0)
-XTTS_TEMPERATURE = 0.5
+XTTS_TEMPERATURE = 0.7
 XTTS_TOP_P = 0.7
-XTTS_TOP_K = 30
+XTTS_TOP_K = 40
 XTTS_REPETITION_PENALTY = 10.0
 
 # Regex: Emojis und andere Non-Text-Zeichen entfernen
