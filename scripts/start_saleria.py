@@ -685,6 +685,23 @@ def _init_context_and_tools(secrets, assistant, svc):
     from elder_berry.tools.document_reader import DocumentReader
     tools["document_reader"] = DocumentReader()
 
+    # DocumentClassifier (benötigt Ollama + DocumentReader + optional Stirling-PDF)
+    try:
+        from elder_berry.llm.ollama_client import OllamaClient
+        from elder_berry.tools.document_classifier import DocumentClassifier
+        ollama_client = OllamaClient()
+        if ollama_client.is_available():
+            tools["document_classifier"] = DocumentClassifier(
+                ollama=ollama_client,
+                document_reader=tools["document_reader"],
+                stirling_pdf=svc.get("stirling_pdf"),
+            )
+            logger.info("DocumentClassifier: aktiv (Ollama + DocumentReader)")
+        else:
+            logger.warning("DocumentClassifier: nicht verfügbar (Ollama nicht erreichbar)")
+    except Exception as e:
+        logger.warning("DocumentClassifier nicht verfügbar: %s", e)
+
     # AudioRouter
     from elder_berry.core.audio_router import AudioRouter
     local_audio_available = _check_local_audio(assistant)
@@ -794,6 +811,7 @@ def run_matrix(assistant, stt=None, avatar=None, audio_converter=None, robot=Non
         anthropic_client=tools.get("vision_client"),
         nextcloud_files=svc.get("nextcloud_files"),
         stirling_pdf=svc.get("stirling_pdf"),
+        document_classifier=tools.get("document_classifier"),
         carddav_sync=svc.get("carddav_sync"),
         default_user_id=default_user_id,
     )

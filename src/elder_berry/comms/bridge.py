@@ -359,6 +359,10 @@ class MatrixBridge:
             await self._handler.handle_pending_modify(msg, action)
             return
         if response_type == "pending":
+            # Filing: jeder Text ist entweder Skip oder Korrektur-Hint
+            if action.action_type == "filing":
+                await self._handler.handle_filing_response(msg, action)
+                return
             await self._channel.send_text(
                 msg.room_id,
                 f"\u23f3 Du hast noch eine offene Aktion ({action.action_type}).\n"

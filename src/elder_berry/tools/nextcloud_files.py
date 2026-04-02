@@ -223,6 +223,59 @@ class NextcloudFilesClient:
             )
         logger.info("Gelöscht: %s", remote_path)
 
+    def move(self, source_path: str, dest_path: str) -> str:
+        """Verschiebt/benennt eine Datei auf Nextcloud via WebDAV MOVE.
+
+        Args:
+            source_path: Quell-Pfad relativ zum User-Root.
+            dest_path: Ziel-Pfad relativ zum User-Root.
+
+        Returns:
+            Ziel-Pfad nach dem Verschieben.
+
+        Raises:
+            NextcloudConnectionError: Server nicht erreichbar.
+            NextcloudAuthError: Authentifizierung fehlgeschlagen.
+            NextcloudError: Verschieben fehlgeschlagen (404, 412 etc.).
+        """
+        if not self._has_credentials:
+            raise NextcloudError("Nextcloud-Credentials nicht konfiguriert")
+
+        source_url = self._webdav_url(source_path)
+        dest_url = self._webdav_url(dest_path)
+
+        # Ziel-Ordner sicherstellen
+        self._ensure_directories(dest_path)
+
+        try:
+            resp = httpx.request(
+                "MOVE",
+                source_url,
+                auth=self._auth,
+                headers={
+                    "Destination": dest_url,
+                    "Overwrite": "F",
+                },
+                timeout=15.0,
+            )
+        except (httpx.ConnectError, httpx.TimeoutException) as exc:
+            raise NextcloudConnectionError(
+                f"Server nicht erreichbar: {exc}"
+            ) from exc
+
+        self._check_auth_error(resp)
+        if resp.status_code == 404:
+            raise NextcloudError("Quelldatei nicht gefunden")
+        if resp.status_code == 412:
+            raise NextcloudError("Zieldatei existiert bereits")
+        if resp.status_code not in (201, 204):
+            raise NextcloudError(
+                f"MOVE fehlgeschlagen: HTTP {resp.status_code}"
+            )
+
+        logger.info("Verschoben: %s → %s", source_path, dest_path)
+        return dest_path
+
     def upload(self, local_path: Path, remote_path: str = "/") -> str:
         """Upload a local file to Nextcloud via WebDAV PUT.
 
