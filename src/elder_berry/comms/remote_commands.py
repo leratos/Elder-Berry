@@ -6,6 +6,7 @@ Delegiert an domänenspezifische Handler in comms/commands/:
 - MailCommandHandler: Mails, Suche, Anhänge, per ID
 - FileCommandHandler: Clipboard, Send-File, Download
 - CloudCommandHandler: Nextcloud Upload/Download/List/Search/Share
+- PDFCommandHandler: PDF-Verarbeitung via Stirling-PDF
 - ProcessCommandHandler: Prozess Start/Kill
 - GitCommandHandler: Git-Befehle (status, pull, log, diff)
 - DockerCommandHandler: Docker-Befehle (ps, restart, logs)
@@ -52,6 +53,7 @@ from elder_berry.comms.commands.note_commands import NoteCommandHandler
 from elder_berry.comms.commands.contact_commands import ContactCommandHandler
 from elder_berry.comms.commands.todo_commands import TodoCommandHandler
 from elder_berry.comms.commands.cloud_commands import CloudCommandHandler
+from elder_berry.comms.commands.pdf_commands import PDFCommandHandler
 from elder_berry.comms.commands.harmony_commands import HarmonyCommandHandler
 
 if TYPE_CHECKING:
@@ -76,6 +78,7 @@ if TYPE_CHECKING:
     from elder_berry.tools.weather_client import WeatherClient
     from elder_berry.tools.carddav_sync import CardDAVSyncClient
     from elder_berry.tools.nextcloud_files import NextcloudFilesClient
+    from elder_berry.tools.stirling_pdf import StirlingPDFClient
     from elder_berry.tools.web_fetcher import WebFetcher
 
 logger = logging.getLogger(__name__)
@@ -117,6 +120,15 @@ Cloud (Nextcloud):
   cloud suche <query> – Dateien suchen
   cloud link <pfad> – Öffentlichen Share-Link erstellen
   richte nextcloud ein – Standard-Dateien löschen + Ordnerstruktur anlegen
+
+PDF-Verarbeitung (Stirling-PDF):
+  pdf zusammenfügen <a.pdf> <b.pdf> – PDFs zusammenfügen
+  pdf aufteilen <datei> seiten 1-3 – Seiten extrahieren
+  pdf komprimieren <datei> [stufe 1-9] – Dateigröße reduzieren
+  pdf ocr <datei> – Text erkennen (Deutsch+Englisch)
+  pdf zu word <datei> – PDF → Word konvertieren
+  zu pdf <datei> – Word/Bild → PDF konvertieren
+  pdf bilder <datei> – Bilder aus PDF extrahieren
 
 Prozesse:
   starte <programm> – Programm starten (Whitelist)
@@ -329,6 +341,7 @@ class RemoteCommandHandler:
         robot_client: RobotClient | None = None,
         anthropic_client: AnthropicClient | None = None,
         nextcloud_files: NextcloudFilesClient | None = None,
+        stirling_pdf: StirlingPDFClient | None = None,
         carddav_sync: CardDAVSyncClient | None = None,
         default_user_id: str = "",
     ) -> None:
@@ -375,6 +388,10 @@ class RemoteCommandHandler:
             anthropic_client=anthropic_client,
         )
         self._cloud = CloudCommandHandler(
+            nextcloud_files=nextcloud_files,
+        )
+        self._pdf = PDFCommandHandler(
+            stirling_pdf=stirling_pdf,
             nextcloud_files=nextcloud_files,
         )
         self._harmony = HarmonyCommandHandler(
@@ -425,6 +442,7 @@ class RemoteCommandHandler:
             self._calendar,
             self._file,
             self._cloud,
+            self._pdf,
             self._process,
             self._git,
             self._docker,

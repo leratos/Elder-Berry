@@ -565,6 +565,19 @@ def _init_productivity_services(secrets, default_user_id):
         except Exception as e:
             logger.warning("Nextcloud Files nicht verfügbar: %s", e)
 
+    # Stirling-PDF
+    if secrets.get_or_none("stirling_pdf_url"):
+        try:
+            from elder_berry.tools.stirling_pdf import StirlingPDFClient
+            spdf = StirlingPDFClient(secret_store=secrets)
+            if spdf.is_available():
+                svc["stirling_pdf"] = spdf
+                logger.info("Stirling-PDF: aktiv (%s)", secrets.get("stirling_pdf_url"))
+            else:
+                logger.warning("Stirling-PDF: nicht erreichbar")
+        except Exception as e:
+            logger.warning("Stirling-PDF nicht verfügbar: %s", e)
+
     # Nextcloud CardDAV Sync
     if secrets.get_or_none("nextcloud_url"):
         try:
@@ -780,6 +793,7 @@ def run_matrix(assistant, stt=None, avatar=None, audio_converter=None, robot=Non
         robot_client=robot,
         anthropic_client=tools.get("vision_client"),
         nextcloud_files=svc.get("nextcloud_files"),
+        stirling_pdf=svc.get("stirling_pdf"),
         carddav_sync=svc.get("carddav_sync"),
         default_user_id=default_user_id,
     )

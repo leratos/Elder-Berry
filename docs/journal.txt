@@ -3302,4 +3302,17 @@ User: "Lies meine Mails und trag den Zahnarzttermin ein"
 - Auth: Login + API-Key konfiguriert
 - ModSecurity: Regeln 340162 + 340163 für cloud.last-strawberry.com deaktiviert (Nextcloud false positives)
 - Fail2Ban: Nextcloud-Jail eingerichtet (3 Versuche/1h → 24h Ban)
+
+## Abgeschlossen: Feature – Stirling-PDF Integration (2026-04-02)
+- StirlingPDFClient (tools/stirling_pdf.py) – REST-Client für Stirling-PDF API
+  - merge, split, compress, ocr, to_word, to_pdf, extract_images
+  - ZIP-Handling für split + extract_images Responses
+  - Timeout 120s, Auth via X-API-Key Header
+- PDFCommandHandler (comms/commands/pdf_commands.py) – Matrix-Commands für PDF-Verarbeitung
+  - 7 Commands: zusammenfügen, aufteilen, komprimieren, ocr, zu word, zu pdf, bilder
+  - Nextcloud-Workflow: Suche → Download → Verarbeitung → Upload
+  - Lokaler Pfad-Fallback wenn Nextcloud nicht konfiguriert
+- remote_commands.py: PDFCommandHandler registriert (nach _cloud, vor _process), HELP_TEXT ergänzt
+- start_saleria.py: StirlingPDFClient Init in _init_productivity_services(), DI an RemoteCommandHandler
+- Tests: 21 (Client) + 19 (Commands) = 40 neue Tests, 3466 gesamt grün
 - Prompt vorbereitet: docs/prompts/stirling-pdf-integration.md (Saleria-Anbindung)
