@@ -2,16 +2,17 @@
 
 Unterstützt CalDAV (Nextcloud) und Google Calendar als Backend.
 Commands:
-- termine / termine morgen / termine woche / termine N → Termine abfragen
+- termine / termine morgen / termine woche / termine monat / termine N → Termine abfragen
 - termin: Titel Datum Uhrzeit → Termin erstellen
 - termin suche <Begriff> → Termine durchsuchen
 - termin löschen <ID|Index|alle|Titel> → Termin(e) löschen
 """
 from __future__ import annotations
 
+import calendar
 import logging
 import re
-from datetime import datetime
+from datetime import date, datetime
 from typing import TYPE_CHECKING
 
 from elder_berry.comms.commands.base import CommandHandler, CommandResult
@@ -26,7 +27,9 @@ logger = logging.getLogger(__name__)
 # ------------------------------------------------------------------
 
 TERMINE_PATTERN = re.compile(
-    r"^termine?\s+(morgen|woche|nächste\s+woche|diese\s+woche|(\d{1,2}))$",
+    r"^termine?\s+(morgen|woche|nächste\s+woche|diese\s+woche"
+    r"|monat|dieser\s+monat|diesen\s+monat|restlicher\s+monat"
+    r"|(\d{1,2}))$",
     re.IGNORECASE,
 )
 
@@ -176,6 +179,7 @@ class CalendarCommandHandler(CommandHandler):
             "termine: Termine heute anzeigen",
             "termine morgen: Termine morgen",
             "termine woche: Termine der nächsten 7 Tage",
+            "termine monat: Termine bis Monatsende",
             "termin suche <begriff>: Termine durchsuchen",
             "termin: <Titel> <Datum> <Uhrzeit>: Termin erstellen (morgen, übermorgen, DD.MM, YYYY-MM-DD)",
             "lösche termin <Titel/ID>: Termin löschen",
@@ -185,6 +189,11 @@ class CalendarCommandHandler(CommandHandler):
     @property
     def keywords(self) -> dict[str, list[str]]:
         return {
+            "termine_monat": [
+                "diesen monat", "dieser monat", "restlicher monat",
+                "monat termine", "monatsübersicht", "monatsplan",
+                "was steht diesen monat an", "termine im monat",
+            ],
             "termine_woche": [
                 "nächste woche", "diese woche", "woche termine",
                 "wochenplan", "wochenübersicht",
@@ -205,6 +214,8 @@ class CalendarCommandHandler(CommandHandler):
         """Führt einen erkannten Calendar-Command aus."""
         if command in ("termine", "kalender"):
             return self._cmd_termine(raw_text, variant="termine")
+        if command == "termine_monat":
+            return self._cmd_termine(raw_text, variant="termine_monat")
         if command == "termine_woche":
             return self._cmd_termine(raw_text, variant="termine_woche")
         if command == "termine_morgen":
@@ -237,7 +248,11 @@ class CalendarCommandHandler(CommandHandler):
 
         try:
             # Keyword-Variante hat Vorrang (z.B. "nächste woche" → termine_woche)
-            if variant == "termine_woche":
+            if variant == "termine_monat":
+                days = self._days_remaining_in_month()
+                events = self._calendar.get_events(days=days)
+                label = f"Termine (restlicher Monat, {days} Tage)"
+            elif variant == "termine_woche":
                 events = self._calendar.get_events(days=7)
                 label = "Termine (nächste 7 Tage)"
             elif variant == "termine_morgen":
@@ -251,6 +266,11 @@ class CalendarCommandHandler(CommandHandler):
                 elif param in ("woche", "nächste woche", "diese woche"):
                     events = self._calendar.get_events(days=7)
                     label = "Termine (nächste 7 Tage)"
+                elif param in ("monat", "dieser monat", "diesen monat",
+                               "restlicher monat"):
+                    days = self._days_remaining_in_month()
+                    events = self._calendar.get_events(days=days)
+                    label = f"Termine (restlicher Monat, {days} Tage)"
                 elif match.group(2):
                     days = int(match.group(2))
                     events = self._calendar.get_events(days=days)
@@ -275,6 +295,13 @@ class CalendarCommandHandler(CommandHandler):
                 success=False,
                 text=f"Kalender-Fehler: {e}",
             )
+
+    @staticmethod
+    def _days_remaining_in_month() -> int:
+        """Berechnet die verbleibenden Tage bis Monatsende (inkl. heute)."""
+        today = date.today()
+        last_day = calendar.monthrange(today.year, today.month)[1]
+        return last_day - today.day + 1  # +1: heute mitzählen
 
     def _cmd_termin_create(self, raw_text: str) -> CommandResult:
         """Neuen Termin erstellen."""

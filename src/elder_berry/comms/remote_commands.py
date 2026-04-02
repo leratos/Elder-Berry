@@ -132,6 +132,7 @@ Kalender:
   termine – Termine heute
   termine morgen – Termine morgen
   termine woche – Termine nächste 7 Tage
+  termine monat – Termine bis Monatsende
   termin suche <Begriff> – Termin suchen (nächste 90 Tage)
   termin: Titel morgen 14:00 – Termin erstellen (morgen/übermorgen/DD.MM/YYYY-MM-DD)
   erstelle termin Titel 30.03 10:00 – Termin erstellen (natürliche Sprache)

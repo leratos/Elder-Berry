@@ -3285,3 +3285,12 @@ User: "Lies meine Mails und trag den Zahnarzttermin ein"
 - Fix 2: chroma_memory.py – _validate_embedding_dimension() prüft Probe-Embedding gegen bestehende Collection, wirft RuntimeError bei Mismatch
 - Dateien: scripts/start_saleria.py, src/elder_berry/memory/chroma_memory.py
 - Tests: 4 neue Tests (dimension_match_ok, mismatch_raises, skips_empty, skips_without_client)
+
+## Abgeschlossen: Feature – "termine monat" Command (2026-04-02)
+- Problem: "Was für Termine habe ich diesen Monat?" wurde als "termine woche" dispatcht (7 Tage statt Monatsende)
+- calendar_commands.py: TERMINE_PATTERN um monat/dieser monat/diesen monat/restlicher monat erweitert
+- calendar_commands.py: termine_monat Keyword-Variante (diesen monat, monatsübersicht, monatsplan, etc.)
+- calendar_commands.py: _days_remaining_in_month() berechnet Tage bis Monatsende inkl. heute
+- calendar_commands.py: execute() + _cmd_termine() um Monat-Pfad erweitert
+- remote_commands.py: HELP_TEXT um "termine monat" ergänzt
+- Tests: 128/128 grün
