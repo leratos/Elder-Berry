@@ -311,6 +311,55 @@ class TestChromaMemoryStore:
         store.clear()
         mock_col.delete.assert_not_called()
 
+    def test_validate_dimension_match_ok(self, tmp_path):
+        """Kein Fehler wenn Probe-Dimension mit Collection übereinstimmt."""
+        from elder_berry.memory.chroma_memory import ChromaMemoryStore
+        mock_embed = MagicMock()
+        mock_embed.embed.return_value = [0.1] * 768
+        store = ChromaMemoryStore(db_path=tmp_path, embedding_client=mock_embed)
+        mock_col = MagicMock()
+        mock_col.count.return_value = 5
+        mock_col.peek.return_value = {"embeddings": [[0.2] * 768]}
+        store._collection = mock_col
+        # Sollte keinen Fehler werfen
+        store._validate_embedding_dimension()
+
+    def test_validate_dimension_mismatch_raises(self, tmp_path):
+        """RuntimeError wenn Probe-Dimension nicht zur Collection passt."""
+        from elder_berry.memory.chroma_memory import ChromaMemoryStore
+        mock_embed = MagicMock()
+        mock_embed.embed.return_value = [0.1] * 384  # falsches Modell
+        store = ChromaMemoryStore(db_path=tmp_path, embedding_client=mock_embed)
+        mock_col = MagicMock()
+        mock_col.count.return_value = 5
+        mock_col.peek.return_value = {"embeddings": [[0.2] * 768]}
+        store._collection = mock_col
+        with pytest.raises(RuntimeError, match="Embedding-Dimension Mismatch"):
+            store._validate_embedding_dimension()
+
+    def test_validate_dimension_skips_empty_collection(self, tmp_path):
+        """Kein Check wenn Collection leer ist."""
+        from elder_berry.memory.chroma_memory import ChromaMemoryStore
+        mock_embed = MagicMock()
+        store = ChromaMemoryStore(db_path=tmp_path, embedding_client=mock_embed)
+        mock_col = MagicMock()
+        mock_col.count.return_value = 0
+        store._collection = mock_col
+        # Sollte keinen Fehler werfen und embed() nicht aufrufen
+        store._validate_embedding_dimension()
+        mock_embed.embed.assert_not_called()
+
+    def test_validate_dimension_skips_without_client(self, tmp_path):
+        """Kein Check wenn kein EmbeddingClient gesetzt."""
+        from elder_berry.memory.chroma_memory import ChromaMemoryStore
+        store = ChromaMemoryStore(db_path=tmp_path, embedding_client=None)
+        mock_col = MagicMock()
+        mock_col.count.return_value = 5
+        store._collection = mock_col
+        # Sollte keinen Fehler werfen
+        store._validate_embedding_dimension()
+        mock_col.peek.assert_not_called()
+
 
 # ---------------------------------------------------------------------------
 # Assistant + Memory Integration

@@ -243,9 +243,10 @@ def init_memory(no_memory: bool):
         embed_client = OllamaEmbeddingClient(model=embedding_model)
         if not embed_client.is_available():
             logger.warning(
-                "Ollama für Embeddings nicht erreichbar – Memory ohne semantische Suche"
+                "Ollama nicht erreichbar – Memory deaktiviert "
+                "(ohne Ollama-Embeddings droht Dimension-Mismatch mit bestehender Collection)"
             )
-            embed_client = None
+            return None
         store = ChromaMemoryStore(db_path=db_path, embedding_client=embed_client)
         logger.info("Memory: ChromaMemoryStore → %s", db_path)
         return store
