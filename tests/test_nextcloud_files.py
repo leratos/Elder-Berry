@@ -473,3 +473,87 @@ def test_delete_connection_error(mock_req, client):
 
     with pytest.raises(NextcloudConnectionError, match="nicht erreichbar"):
         client.delete("test")
+
+
+# ── Move ───────────────────────────────────────────────────────────────
+
+
+@patch("elder_berry.tools.nextcloud_files.httpx.request")
+def test_move_success_201(mock_req, client):
+    mock_req.return_value = MagicMock(status_code=201)
+
+    result = client.move("Eingang/Scan.pdf", "Dokumente/Haus/2026-04-02_Haus_Angebot.pdf")
+
+    assert result == "Dokumente/Haus/2026-04-02_Haus_Angebot.pdf"
+    # Finde den MOVE-Aufruf (nach ggf. MKCOL-Aufrufen für Zielordner)
+    move_calls = [c for c in mock_req.call_args_list if c[0][0] == "MOVE"]
+    assert len(move_calls) == 1
+    call_kwargs = move_calls[0]
+    assert call_kwargs.kwargs["headers"]["Overwrite"] == "F"
+    assert "Dokumente/Haus/2026-04-02_Haus_Angebot.pdf" in call_kwargs.kwargs["headers"]["Destination"]
+
+
+@patch("elder_berry.tools.nextcloud_files.httpx.request")
+def test_move_success_204(mock_req, client):
+    mock_req.return_value = MagicMock(status_code=204)
+
+    result = client.move("Eingang/Scan.pdf", "Dokumente/Haus/Angebot.pdf")
+
+    assert result == "Dokumente/Haus/Angebot.pdf"
+
+
+@patch("elder_berry.tools.nextcloud_files.httpx.request")
+def test_move_creates_target_dir(mock_req, client):
+    """MKCOL wird für Ziel-Ordner aufgerufen bevor MOVE."""
+    # MKCOL für "Dokumente" → 405 (existiert), MKCOL für "Dokumente/Haus" → 201,
+    # MOVE → 201
+    mock_req.side_effect = [
+        MagicMock(status_code=405),  # MKCOL Dokumente
+        MagicMock(status_code=201),  # MKCOL Dokumente/Haus
+        MagicMock(status_code=201),  # MOVE
+    ]
+
+    client.move("Eingang/Scan.pdf", "Dokumente/Haus/Angebot.pdf")
+
+    methods = [c[0][0] for c in mock_req.call_args_list]
+    assert methods.count("MKCOL") == 2
+    assert methods[-1] == "MOVE"
+
+
+@patch("elder_berry.tools.nextcloud_files.httpx.request")
+def test_move_file_exists_412(mock_req, client):
+    mock_req.return_value = MagicMock(status_code=412)
+
+    with pytest.raises(NextcloudError, match="existiert bereits"):
+        client.move("Eingang/Scan.pdf", "Dokumente/Haus/Angebot.pdf")
+
+
+@patch("elder_berry.tools.nextcloud_files.httpx.request")
+def test_move_source_not_found_404(mock_req, client):
+    mock_req.return_value = MagicMock(status_code=404)
+
+    with pytest.raises(NextcloudError, match="nicht gefunden"):
+        client.move("Eingang/Scan.pdf", "Dokumente/Haus/Angebot.pdf")
+
+
+@patch("elder_berry.tools.nextcloud_files.httpx.request")
+def test_move_auth_error(mock_req, client):
+    mock_req.return_value = MagicMock(status_code=401)
+
+    with pytest.raises(NextcloudAuthError, match="Authentifizierung"):
+        client.move("Eingang/Scan.pdf", "Dokumente/Haus/Angebot.pdf")
+
+
+@patch("elder_berry.tools.nextcloud_files.httpx.request")
+def test_move_connection_error(mock_req, client):
+    mock_req.side_effect = httpx.TimeoutException("timeout")
+
+    with pytest.raises(NextcloudConnectionError, match="nicht erreichbar"):
+        client.move("Eingang/Scan.pdf", "Dokumente/Haus/Angebot.pdf")
+
+
+def test_move_no_credentials(no_creds_store):
+    c = NextcloudFilesClient(secret_store=no_creds_store)
+
+    with pytest.raises(NextcloudError, match="Credentials"):
+        c.move("Eingang/Scan.pdf", "Dokumente/Haus/Angebot.pdf")

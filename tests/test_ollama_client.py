@@ -4,7 +4,7 @@ from unittest.mock import MagicMock, patch
 import httpx
 import pytest
 
-from elder_berry.llm.ollama_client import OllamaClient, DEFAULT_MODEL, OLLAMA_BASE_URL, TIMEOUT
+from elder_berry.llm.ollama_client import OllamaClient, DEFAULT_MODEL, OLLAMA_BASE_URL, TIMEOUT, VISION_MODEL
 
 
 # ---------------------------------------------------------------------------
@@ -146,3 +146,56 @@ class TestOllamaGenerate:
         with patch("httpx.post", side_effect=httpx.TimeoutException("timeout")):
             with pytest.raises(RuntimeError, match="Ollama nicht erreichbar"):
                 client.generate("test")
+
+
+# ---------------------------------------------------------------------------
+# generate_with_image()
+# ---------------------------------------------------------------------------
+
+class TestOllamaGenerateWithImage:
+    def _mock_post(self, content: str = "Beschreibung") -> MagicMock:
+        resp = MagicMock()
+        resp.status_code = 200
+        resp.json.return_value = {"message": {"content": content}}
+        return resp
+
+    def test_success(self):
+        client = OllamaClient()
+        with patch("httpx.post", return_value=self._mock_post("Ein Dokument")) as mock_post:
+            result = client.generate_with_image("Beschreibe das Bild", "base64data")
+        assert result == "Ein Dokument"
+        payload = mock_post.call_args.kwargs["json"]
+        assert payload["model"] == VISION_MODEL
+        assert payload["messages"][-1]["images"] == ["base64data"]
+
+    def test_with_system_prompt(self):
+        client = OllamaClient()
+        with patch("httpx.post", return_value=self._mock_post()) as mock_post:
+            client.generate_with_image("Prompt", "img", system="System")
+        payload = mock_post.call_args.kwargs["json"]
+        assert len(payload["messages"]) == 2
+        assert payload["messages"][0] == {"role": "system", "content": "System"}
+
+    def test_custom_model(self):
+        client = OllamaClient()
+        with patch("httpx.post", return_value=self._mock_post()) as mock_post:
+            client.generate_with_image("Prompt", "img", model="llava:13b")
+        payload = mock_post.call_args.kwargs["json"]
+        assert payload["model"] == "llava:13b"
+
+    def test_connection_error(self):
+        client = OllamaClient()
+        with patch("httpx.post", side_effect=httpx.ConnectError("refused")):
+            with pytest.raises(RuntimeError, match="Ollama nicht erreichbar"):
+                client.generate_with_image("Prompt", "img")
+
+    def test_http_error(self):
+        client = OllamaClient()
+        resp = MagicMock()
+        resp.status_code = 500
+        resp.raise_for_status.side_effect = httpx.HTTPStatusError(
+            "Server Error", request=MagicMock(), response=resp,
+        )
+        with patch("httpx.post", return_value=resp):
+            with pytest.raises(RuntimeError, match="Ollama HTTP-Fehler"):
+                client.generate_with_image("Prompt", "img")

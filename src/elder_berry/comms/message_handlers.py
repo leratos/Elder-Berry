@@ -249,6 +249,8 @@ class BridgeMessageHandler:
             await self._execute_nextcloud_setup(msg, action)
         elif action.action_type in ("update", "update_all"):
             await self._execute_restart_confirm(msg, action)
+        elif action.action_type == "filing":
+            await self._execute_filing_confirm(msg, action)
         else:
             logger.warning("Unbekannter PendingAction-Typ: %s", action.action_type)
             await self._channel.send_text(
@@ -316,6 +318,140 @@ class BridgeMessageHandler:
                 f"\u274c Fehler beim Senden: {type(e).__name__}",
             )
             self._pending.clear(msg.sender)
+
+    async def _execute_filing_confirm(
+        self, msg: IncomingMessage, action: PendingAction,
+    ) -> None:
+        """Führt eine bestätigte Filing-Aktion aus (Datei verschieben)."""
+        filing_handler = self._get_filing_handler()
+        if not filing_handler:
+            await self._channel.send_text(msg.room_id, "Filing-Handler nicht verfügbar.")
+            self._pending.clear(msg.sender)
+            return
+
+        try:
+            loop = asyncio.get_running_loop()
+            result = await asyncio.wait_for(
+                loop.run_in_executor(
+                    None, filing_handler.handle_confirm, action, msg.sender,
+                ),
+                timeout=60.0,
+            )
+            self._pending.clear(msg.sender)
+            if result.text:
+                await self._channel.send_text(msg.room_id, result.text)
+            if result.pending_confirmation and result.pending_data:
+                # Nächste Datei → neue PendingAction setzen
+                new_action = PendingAction(
+                    action_type="filing",
+                    description=result.text or "",
+                    data=result.pending_data,
+                )
+                self._pending.set(msg.sender, new_action)
+            self._chat_history.add(msg.sender, "user", msg.body)
+            self._chat_history.add(
+                msg.sender, "assistant", result.text or "",
+            )
+        except asyncio.TimeoutError:
+            logger.error("Timeout bei Filing-Confirm (60s)")
+            await self._channel.send_text(msg.room_id, "Zeitüberschreitung beim Ablegen.")
+        except Exception as e:
+            logger.error("Filing-Confirm fehlgeschlagen: %s", e)
+            await self._channel.send_text(
+                msg.room_id, f"❌ Ablegen fehlgeschlagen: {type(e).__name__}",
+            )
+            self._pending.clear(msg.sender)
+
+    async def handle_filing_response(
+        self, msg: IncomingMessage, action: PendingAction,
+    ) -> None:
+        """Verarbeitet Filing-Antworten die kein Standard-Confirm/Cancel sind.
+
+        Routing: Skip-Wörter → überspringen, alles andere → Korrektur-Hint.
+        """
+        from elder_berry.comms.commands.filing_commands import FILING_CONFIRM, FILING_SKIP
+
+        filing_handler = self._get_filing_handler()
+        if not filing_handler:
+            await self._channel.send_text(msg.room_id, "Filing-Handler nicht verfügbar.")
+            self._pending.clear(msg.sender)
+            return
+
+        lower = msg.body.strip().lower()
+
+        # Zusätzliche Bestätigungs-Wörter (z.B. "ablegen")
+        if lower in FILING_CONFIRM:
+            await self._execute_filing_confirm(msg, action)
+            return
+
+        # Skip-Wörter
+        if lower in FILING_SKIP:
+            try:
+                loop = asyncio.get_running_loop()
+                result = await asyncio.wait_for(
+                    loop.run_in_executor(
+                        None, filing_handler.handle_skip, action, msg.sender,
+                    ),
+                    timeout=60.0,
+                )
+                self._pending.clear(msg.sender)
+                if result.text:
+                    await self._channel.send_text(msg.room_id, result.text)
+                if result.pending_confirmation and result.pending_data:
+                    new_action = PendingAction(
+                        action_type="filing",
+                        description=result.text or "",
+                        data=result.pending_data,
+                    )
+                    self._pending.set(msg.sender, new_action)
+                self._chat_history.add(msg.sender, "user", msg.body)
+                self._chat_history.add(
+                    msg.sender, "assistant", result.text or "",
+                )
+            except Exception as e:
+                logger.error("Filing-Skip fehlgeschlagen: %s", e)
+                await self._channel.send_text(
+                    msg.room_id, f"❌ Fehler: {type(e).__name__}",
+                )
+                self._pending.clear(msg.sender)
+            return
+
+        # Alles andere = Korrektur-Hint
+        try:
+            loop = asyncio.get_running_loop()
+            result = await asyncio.wait_for(
+                loop.run_in_executor(
+                    None,
+                    filing_handler.handle_correction, action, msg.body.strip(), msg.sender,
+                ),
+                timeout=120.0,
+            )
+            self._pending.clear(msg.sender)
+            if result.text:
+                await self._channel.send_text(msg.room_id, result.text)
+            if result.pending_confirmation and result.pending_data:
+                new_action = PendingAction(
+                    action_type="filing",
+                    description=result.text or "",
+                    data=result.pending_data,
+                )
+                self._pending.set(msg.sender, new_action)
+            self._chat_history.add(msg.sender, "user", msg.body)
+            self._chat_history.add(
+                msg.sender, "assistant", result.text or "",
+            )
+        except Exception as e:
+            logger.error("Filing-Correction fehlgeschlagen: %s", e)
+            await self._channel.send_text(
+                msg.room_id, f"❌ Korrektur fehlgeschlagen: {type(e).__name__}",
+            )
+            self._pending.clear(msg.sender)
+
+    def _get_filing_handler(self):
+        """Holt den FilingCommandHandler über den RemoteCommandHandler."""
+        if self._remote_commands and hasattr(self._remote_commands, "_filing"):
+            return self._remote_commands._filing
+        return None
 
     async def _execute_restart_confirm(
         self, msg: IncomingMessage, action: PendingAction,

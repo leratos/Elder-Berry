@@ -7,6 +7,7 @@ Delegiert an domänenspezifische Handler in comms/commands/:
 - FileCommandHandler: Clipboard, Send-File, Download
 - CloudCommandHandler: Nextcloud Upload/Download/List/Search/Share
 - PDFCommandHandler: PDF-Verarbeitung via Stirling-PDF
+- FilingCommandHandler: Dokument-Ablage (Eingang aufräumen)
 - ProcessCommandHandler: Prozess Start/Kill
 - GitCommandHandler: Git-Befehle (status, pull, log, diff)
 - DockerCommandHandler: Docker-Befehle (ps, restart, logs)
@@ -54,6 +55,7 @@ from elder_berry.comms.commands.contact_commands import ContactCommandHandler
 from elder_berry.comms.commands.todo_commands import TodoCommandHandler
 from elder_berry.comms.commands.cloud_commands import CloudCommandHandler
 from elder_berry.comms.commands.pdf_commands import PDFCommandHandler
+from elder_berry.comms.commands.filing_commands import FilingCommandHandler
 from elder_berry.comms.commands.harmony_commands import HarmonyCommandHandler
 
 if TYPE_CHECKING:
@@ -78,6 +80,8 @@ if TYPE_CHECKING:
     from elder_berry.tools.weather_client import WeatherClient
     from elder_berry.tools.carddav_sync import CardDAVSyncClient
     from elder_berry.tools.nextcloud_files import NextcloudFilesClient
+    from elder_berry.comms.pending_confirmation import PendingConfirmationStore
+    from elder_berry.tools.document_classifier import DocumentClassifier
     from elder_berry.tools.stirling_pdf import StirlingPDFClient
     from elder_berry.tools.web_fetcher import WebFetcher
 
@@ -120,6 +124,9 @@ Cloud (Nextcloud):
   cloud suche <query> – Dateien suchen
   cloud link <pfad> – Öffentlichen Share-Link erstellen
   richte nextcloud ein – Standard-Dateien löschen + Ordnerstruktur anlegen
+
+Dokument-Ablage:
+  cloud aufräumen – Dateien im Eingang klassifizieren und ablegen
 
 PDF-Verarbeitung (Stirling-PDF):
   pdf zusammenfügen <a.pdf> <b.pdf> – PDFs zusammenfügen
@@ -342,7 +349,9 @@ class RemoteCommandHandler:
         anthropic_client: AnthropicClient | None = None,
         nextcloud_files: NextcloudFilesClient | None = None,
         stirling_pdf: StirlingPDFClient | None = None,
+        document_classifier: DocumentClassifier | None = None,
         carddav_sync: CardDAVSyncClient | None = None,
+        pending_store: PendingConfirmationStore | None = None,
         default_user_id: str = "",
     ) -> None:
         # Domain-Handler erstellen
@@ -394,6 +403,11 @@ class RemoteCommandHandler:
             stirling_pdf=stirling_pdf,
             nextcloud_files=nextcloud_files,
         )
+        self._filing = FilingCommandHandler(
+            nextcloud_files=nextcloud_files,
+            document_classifier=document_classifier,
+            pending_store=pending_store,
+        )
         self._harmony = HarmonyCommandHandler(
             robot_client=robot_client,
         )
@@ -443,6 +457,7 @@ class RemoteCommandHandler:
             self._file,
             self._cloud,
             self._pdf,
+            self._filing,
             self._process,
             self._git,
             self._docker,

@@ -3325,3 +3325,29 @@ User: "Lies meine Mails und trag den Zahnarzttermin ein"
 - message_handlers.py: _execute_restart_confirm() für action_type "update"/"update_all" (mit Cooldown-Check)
 - Tests: 3 neue Tests (ask_restart, update_all_ask_restart, restart_confirm_triggers, restart_cooldown)
 - 3469 Tests gesamt grün
+
+
+## In Arbeit: Phase 42 – Dokument-Ablage Konzept (2026-04-02)
+- Konzeptdokument: docs/concepts/phase-42-dokument-ablage.md
+- nächster Schritt: Konzept schreiben
+
+
+## Abgeschlossen: Phase 42 – Dokument-Ablage Konzept (2026-04-02)
+- Konzeptdokument: docs/concepts/phase-42-dokument-ablage.md
+- Neue Klassen: DocumentClassifier, FilingCommandHandler
+- Erweiterungen: NextcloudFilesClient.move(), OllamaClient.generate_with_image()
+- Kategorie→Ordner Mapping aus bestehender Nextcloud-Struktur
+- ~48 neue Tests geplant (Classifier, Filing, Move)
+- Datenschutz: Analyse komplett lokal (Ollama phi4:14b + llava:7b)
+- Nächster Schritt: Implementierung in neuem Chat
+
+- Implementierungs-Prompt: docs/prompts/phase-42-dokument-ablage.md (623 Zeilen)
+
+## Abgeschlossen: Phase 42 – Dokument-Ablage Implementierung (2026-04-02)
+- DocumentClassifier: Textextraktion (pymupdf → OCR → Vision) + Ollama-Analyse
+- FilingCommandHandler: "cloud aufräumen" mit Einzelbestätigung (ja/korrigieren/überspringen)
+- NextcloudFilesClient.move(): WebDAV MOVE (Overwrite:F, Zielordner auto-erstellt)
+- OllamaClient.generate_with_image(): Ollama Vision (llava:7b) für Bilder
+- Integration: remote_commands, message_handlers (Filing-Routing), bridge, start_saleria
+- Tests: 3526/3526 grün (57 neue Tests: 23 Classifier + 21 Filing + 8 Move + 5 Vision)
+- 6 Schritte: move() → Vision → Classifier → FilingHandler → Integration → Test+Commit
