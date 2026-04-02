@@ -1,9 +1,7 @@
 """Tests fuer TurntableController ABC + SimulatedTurntable + Hilfsfunktionen."""
 import math
-import sys
 import threading
 import time
-from types import ModuleType
 from unittest.mock import MagicMock, patch, call
 
 import pytest
