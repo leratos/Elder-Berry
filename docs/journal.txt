@@ -3294,3 +3294,12 @@ User: "Lies meine Mails und trag den Zahnarzttermin ein"
 - calendar_commands.py: execute() + _cmd_termine() um Monat-Pfad erweitert
 - remote_commands.py: HELP_TEXT um "termine monat" ergänzt
 - Tests: 128/128 grün
+
+
+## Abgeschlossen: Stirling-PDF Server-Setup (2026-04-02)
+- Docker-Container: frooodle/s-pdf:latest auf 127.0.0.1:8080
+- Subdomain: pdf.last-strawberry.com (SSL via Wildcard, Nginx Reverse-Proxy)
+- Auth: Login + API-Key konfiguriert
+- ModSecurity: Regeln 340162 + 340163 für cloud.last-strawberry.com deaktiviert (Nextcloud false positives)
+- Fail2Ban: Nextcloud-Jail eingerichtet (3 Versuche/1h → 24h Ban)
+- Prompt vorbereitet: docs/prompts/stirling-pdf-integration.md (Saleria-Anbindung)
