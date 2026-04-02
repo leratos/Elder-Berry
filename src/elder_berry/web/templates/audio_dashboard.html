@@ -222,6 +222,23 @@
             <p class="monitor-info" id="timezoneInfo"></p>
         </div>
 
+        <!-- STT Timeout Card -->
+        <div class="card" id="sttTimeoutCard">
+            <h2>STT-Timeout</h2>
+            <p class="subtitle">Maximale Wartezeit für Spracherkennung</p>
+
+            <div style="display: flex; align-items: center; gap: 0.8rem;">
+                <input type="range" id="sttTimeoutSlider"
+                       min="5" max="600" step="5" value="120"
+                       oninput="sttTimeoutValue.textContent = this.value + 's'"
+                       onchange="setSttTimeout(this.value)"
+                       style="flex: 1; accent-color: #533483;">
+                <span id="sttTimeoutValue" style="min-width: 3.5rem; text-align: right; font-weight: 600;">120s</span>
+            </div>
+
+            <p class="monitor-info" id="sttTimeoutInfo"></p>
+        </div>
+
         <!-- Avatar Editor Card -->
         <div class="card">
             <h2>Avatar-Editor</h2>
@@ -469,11 +486,50 @@
             }
         }
 
+        // --- STT Timeout ---
+        const sttTimeoutSlider = document.getElementById("sttTimeoutSlider");
+        const sttTimeoutValue = document.getElementById("sttTimeoutValue");
+        const sttTimeoutInfo = document.getElementById("sttTimeoutInfo");
+
+        async function fetchSttTimeout() {
+            try {
+                const r = await fetch("/api/stt-timeout");
+                const data = await r.json();
+                sttTimeoutSlider.value = data.timeout;
+                sttTimeoutValue.textContent = data.timeout + "s";
+                sttTimeoutInfo.textContent = "Aktiv: " + data.timeout + "s";
+                if (!data.available) {
+                    sttTimeoutInfo.textContent += " (nur gespeichert, Pipeline nicht verbunden)";
+                }
+            } catch (e) {
+                sttTimeoutInfo.textContent = "Verbindungsfehler";
+            }
+        }
+
+        async function setSttTimeout(value) {
+            try {
+                const r = await fetch("/api/stt-timeout", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ timeout: parseFloat(value) }),
+                });
+                const data = await r.json();
+                if (data.error) {
+                    sttTimeoutInfo.textContent = data.error;
+                } else {
+                    sttTimeoutInfo.textContent = "Aktiv: " + data.timeout + "s";
+                }
+            } catch (e) {
+                sttTimeoutInfo.textContent = "Fehler beim Setzen";
+            }
+        }
+
         // Init
         fetchAudioStatus();
         fetchMonitors();
         fetchSenders();
         fetchTimezone();
+        fetchSttTimeout();
     </script>
 </body>
 </html>

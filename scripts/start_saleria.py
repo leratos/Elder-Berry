@@ -863,8 +863,12 @@ def run_matrix(assistant, stt=None, avatar=None, audio_converter=None, robot=Non
             audio_router=tools.get("audio_router"),
             computer_use=tools.get("computer_use"),
             secret_store=secrets,
+            audio_pipeline=bridge.audio_pipeline,
             port=8090,
         )
+        # Gespeicherten STT-Timeout laden und auf Pipeline anwenden
+        saved_timeout = dashboard._get_stt_timeout()
+        bridge.audio_pipeline.stt_timeout = saved_timeout
         dashboard.start()
     except Exception as e:
         logger.warning("Settings-Dashboard nicht gestartet: %s", e)

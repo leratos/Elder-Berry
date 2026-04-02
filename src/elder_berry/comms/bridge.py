@@ -80,6 +80,7 @@ class MatrixBridge:
         alert_room_id: str | None = None,
         allowed_senders: frozenset[str] | None = None,
         stt: STTEngine | None = None,
+        stt_timeout: float = 120.0,
         reminder_scheduler: ReminderScheduler | None = None,
         briefing_scheduler: BriefingScheduler | None = None,
         calendar_watcher: CalendarWatcher | None = None,
@@ -98,6 +99,7 @@ class MatrixBridge:
         self._alert_monitor = alert_monitor
         self._alert_room_id = alert_room_id
         self._allowed_senders = allowed_senders
+        self._stt = stt
         self._reminder_scheduler = reminder_scheduler
         self._briefing_scheduler = briefing_scheduler
         self._calendar_watcher = calendar_watcher
@@ -123,6 +125,7 @@ class MatrixBridge:
             audio_converter=audio_converter,
             audio_router=audio_router,
             document_reader=document_reader,
+            stt_timeout=stt_timeout,
         )
 
         # MessageHandler (Commands, LLM, Claude Agent, Pending)
@@ -155,6 +158,11 @@ class MatrixBridge:
         if not match:
             return None
         return match.group(1)
+
+    @property
+    def audio_pipeline(self) -> AudioPipeline:
+        """Die AudioPipeline-Instanz (für Dashboard-Anbindung)."""
+        return self._audio
 
     @property
     def _audio_to_matrix(self) -> bool:
@@ -248,6 +256,12 @@ class MatrixBridge:
 
         self._channel.on_message(self._handle_message)
         self._audio.set_message_callback(self._handle_message)
+
+        # STT-Modell im Hintergrund vorladen (verhindert Timeout bei erster Audio-Nachricht)
+        if self._stt is not None:
+            loop = asyncio.get_running_loop()
+            loop.run_in_executor(None, self._stt.load)
+
         logger.info("Bridge verbunden, warte auf Nachrichten...")
 
         # Error-Alerting verdrahten

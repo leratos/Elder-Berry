@@ -42,6 +42,7 @@ class AudioPipeline:
         audio_converter: AudioConverter | None = None,
         audio_router: AudioRouter | None = None,
         document_reader: DocumentReader | None = None,
+        stt_timeout: float = 120.0,
     ) -> None:
         self._channel = channel
         self._assistant = assistant
@@ -50,8 +51,18 @@ class AudioPipeline:
         self._audio_converter = audio_converter
         self._audio_router = audio_router
         self._document_reader = document_reader
+        self._stt_timeout = stt_timeout
         # Callback für Re-Dispatch nach STT (wird von Bridge gesetzt)
         self._on_message_callback = None
+
+    @property
+    def stt_timeout(self) -> float:
+        """Aktueller STT-Timeout in Sekunden."""
+        return self._stt_timeout
+
+    @stt_timeout.setter
+    def stt_timeout(self, value: float) -> None:
+        self._stt_timeout = value
 
     @property
     def audio_to_matrix(self) -> bool:
@@ -103,7 +114,7 @@ class AudioPipeline:
                 loop.run_in_executor(
                     None, self._stt.transcribe, tmp_path,
                 ),
-                timeout=30.0,
+                timeout=self._stt_timeout,
             )
 
             if result.is_empty():

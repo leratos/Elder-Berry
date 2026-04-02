@@ -25,6 +25,7 @@ from fastapi.responses import HTMLResponse, JSONResponse
 if TYPE_CHECKING:
     from elder_berry.actions.computer_use import ComputerUseController
     from elder_berry.avatar.layered_renderer import LayeredSpriteRenderer
+    from elder_berry.comms.audio_pipeline import AudioPipeline
     from elder_berry.core.audio_router import AudioRouter
     from elder_berry.core.secret_store import SecretStore
 
@@ -50,6 +51,8 @@ class AudioDashboard:
 
     ALLOWED_SENDERS_KEY = "matrix_allowed_senders"
     TIMEZONE_KEY = "user_timezone"
+    STT_TIMEOUT_KEY = "stt_timeout"
+    DEFAULT_STT_TIMEOUT = 120.0
     DEFAULT_TIMEZONE = "Europe/Berlin"
 
     # Gängige Zeitzonen für das Dashboard-Dropdown
@@ -79,12 +82,14 @@ class AudioDashboard:
         computer_use: ComputerUseController | None = None,
         secret_store: SecretStore | None = None,
         avatar_renderer: LayeredSpriteRenderer | None = None,
+        audio_pipeline: AudioPipeline | None = None,
         host: str = "0.0.0.0",
         port: int = 8090,
     ) -> None:
         self._router = audio_router
         self._computer_use = computer_use
         self._secret_store = secret_store
+        self._audio_pipeline = audio_pipeline
         self._host = host
         self._port = port
         self._app = FastAPI(title="Elder-Berry Settings Dashboard")
@@ -324,6 +329,50 @@ class AudioDashboard:
                 "available": sorted(self.AVAILABLE_TIMEZONES),
             })
 
+        # ----------------------------------------------------------
+        # STT-Timeout
+        # ----------------------------------------------------------
+
+        @self._app.get("/api/stt-timeout")
+        async def get_stt_timeout():
+            timeout = self._get_stt_timeout()
+            return JSONResponse({
+                "timeout": timeout,
+                "available": self._audio_pipeline is not None,
+            })
+
+        @self._app.post("/api/stt-timeout")
+        async def set_stt_timeout(body: dict | None = None):
+            if not body or "timeout" not in body:
+                return JSONResponse(
+                    {"error": "Parameter 'timeout' fehlt."},
+                    status_code=400,
+                )
+            try:
+                timeout = float(body["timeout"])
+                if not (5.0 <= timeout <= 600.0):
+                    raise ValueError("Out of range")
+            except (ValueError, TypeError):
+                return JSONResponse(
+                    {"error": f"Ungültiger Timeout: {body['timeout']}. "
+                              "Erlaubt: 5–600 Sekunden."},
+                    status_code=400,
+                )
+
+            # Live-Update auf AudioPipeline
+            if self._audio_pipeline is not None:
+                self._audio_pipeline.stt_timeout = timeout
+
+            # Persistent speichern
+            if self._secret_store:
+                self._secret_store.set(self.STT_TIMEOUT_KEY, str(timeout))
+
+            logger.info("STT-Timeout geändert: %.0fs", timeout)
+            return JSONResponse({
+                "timeout": timeout,
+                "available": self._audio_pipeline is not None,
+            })
+
         @self._app.get("/health")
         async def health():
             import time
@@ -333,6 +382,19 @@ class AudioDashboard:
                 "hostname": platform.node(),
                 "saleria_running": True,
             })
+
+    def _get_stt_timeout(self) -> float:
+        """Gibt den konfigurierten STT-Timeout zurück."""
+        if self._secret_store:
+            raw = self._secret_store.get_or_none(self.STT_TIMEOUT_KEY)
+            if raw:
+                try:
+                    return float(raw)
+                except ValueError:
+                    pass
+        if self._audio_pipeline is not None:
+            return self._audio_pipeline.stt_timeout
+        return self.DEFAULT_STT_TIMEOUT
 
     def get_timezone(self) -> str:
         """Gibt die konfigurierte Zeitzone zurück (für externe Nutzung)."""

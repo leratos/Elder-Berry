@@ -3259,3 +3259,28 @@ User: "Lies meine Mails und trag den Zahnarzttermin ein"
 - coqui_engine.py: _clean_text_for_tts() um Trailing-Whitespace-Strip nach Satzzeichen erweitert
 - coqui_engine.py: Beide tts_to_file()-Aufrufe um die 4 Parameter ergänzt
 - Status: Deployed, wird beobachtet. Bei weiterem Language Bleed → temperature auf 0.3 senken
+
+## In Arbeit: Bugfix – STT Race Condition bei Erststart (2026-04-02)
+- Problem: Erste Audio-Nachricht schlägt fehl weil Whisper-Modell lazy-loaded wird (1.5GB Download ~60s)
+- audio_pipeline.py hat 30s Timeout → TimeoutError während Modell noch herunterlädt
+- Fix 1: STT-Modell in bridge._async_main() pre-loaden nach Connect
+- Fix 2: stt_timeout als konfigurierbarer Parameter in AudioPipeline (statt hardcoded 30s)
+- Dateien: src/elder_berry/comms/audio_pipeline.py, src/elder_berry/comms/bridge.py
+
+## Abgeschlossen: Bugfix – STT Race Condition bei Erststart (2026-04-02)
+- audio_pipeline.py: stt_timeout Parameter (Default 120s statt 30s hardcoded) + Property
+- bridge.py: stt_timeout durchgereicht an AudioPipeline, self._stt gespeichert
+- bridge.py: _async_main() lädt STT-Modell im Hintergrund-Executor nach Connect
+- bridge.py: audio_pipeline Property für Dashboard-Anbindung
+- audio_dashboard.py: AudioPipeline als optionale Dependency, STT_TIMEOUT_KEY persistent
+- audio_dashboard.py: GET/POST /api/stt-timeout (5–600s, live + persistent via SecretStore)
+- audio_dashboard.html: STT-Timeout Card mit Slider (5–600s)
+- start_saleria.py: AudioPipeline an Dashboard durchgereicht, gespeicherten Timeout beim Start geladen
+- Tests: 88/88 grün (test_audio_pipeline + test_bridge + test_audio_dashboard)
+
+## In Arbeit: Bugfix – Memory Embedding Dimension Mismatch (2026-04-02)
+- Problem: WARNING "Collection expecting embedding with dimension of 768, got 384"
+- Ursache: Wenn Ollama beim Start nicht erreichbar ist, fällt init_memory() auf embed_client=None zurück → ChromaDB nutzt Default-Modell (all-MiniLM-L6-v2, 384 Dim) statt nomic-embed-text (768 Dim)
+- Fix 1: start_saleria.py – init_memory() deaktiviert Memory komplett wenn Ollama nicht erreichbar
+- Fix 2: chroma_memory.py – defensive Dimension-Prüfung in _get_collection()
+- Dateien: scripts/start_saleria.py, src/elder_berry/memory/chroma_memory.py
