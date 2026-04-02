@@ -699,3 +699,19 @@ Setzt Phase 37.2 (Szenen-Engine) voraus und physischen Zugang zum Hub.
 - **Einschränkung**: Physischer Zugang zum Hub nötig (IR-Signal muss Hub erreichen)
 - **Konzept**: `docs/concepts/harmony-remote-erweitert.md` (Teil 2)
 - **Abhängigkeit**: 37.2 ✅
+
+
+## Phase 42 – Dokument-Ablage (Cloud Aufräumen) 📂 GEPLANT
+
+Saleria analysiert Dokumente im `/Eingang/`-Ordner auf Nextcloud, schlägt
+nach der Dateinamenskonvention (`YYYY-MM-DD_Kategorie_Beschreibung.ext`)
+einen Namen und Zielordner vor, und verschiebt nach Bestätigung.
+
+- **Analyse**: Lokal via Ollama phi4:14b (Text) + llava:7b (Bilder) — keine externen APIs
+- **Textextraktion**: pymupdf (lokal) → Stirling-PDF OCR (Fallback) → Ollama Vision (Bilder)
+- **Flow**: Einzelbestätigung pro Datei via Matrix (ja / korrigieren / überspringen)
+- **Neue Klassen**: DocumentClassifier, FilingCommandHandler
+- **Erweiterungen**: NextcloudFilesClient.move(), OllamaClient.generate_with_image()
+- **Tests**: ~48 geplant
+- **Konzept**: `docs/concepts/phase-42-dokument-ablage.md`
+- **Abhängigkeit**: Phase 36 ✅, Stirling-PDF ✅, Ollama ✅
