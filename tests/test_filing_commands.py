@@ -7,6 +7,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from elder_berry.comms.commands.filing_commands import (
+    FILING_ATTACHMENT_PATTERN,
     FILING_CONFIRM,
     FILING_PATTERN,
     FILING_SKIP,
@@ -376,3 +377,134 @@ def test_help_text():
     descriptions = h.command_descriptions
 
     assert any("aufräumen" in d for d in descriptions)
+    assert any("anhang" in d.lower() for d in descriptions)
+
+
+# ── Mail-Anhang Pattern ──────────────────────────────────────────────────
+
+
+def test_anhang_ablegen_pattern():
+    assert FILING_ATTACHMENT_PATTERN.search("anhang #4523 ablegen")
+
+
+def test_anhang_ablegen_pattern_leg_ab():
+    assert FILING_ATTACHMENT_PATTERN.search("leg anhang von #4523 ab")
+
+
+def test_anhang_ablegen_pattern_mail():
+    assert FILING_ATTACHMENT_PATTERN.search("anhang von mail 4523 ablegen")
+
+
+def test_anhang_ablegen_pattern_mail_prefix():
+    assert FILING_ATTACHMENT_PATTERN.search("mail #4523 anhang ablegen")
+
+
+def test_anhang_ablegen_no_collision():
+    """'mail anhang 4523' (normaler Anhang-Download) matcht nicht."""
+    assert not FILING_ATTACHMENT_PATTERN.search("mail anhang 4523")
+
+
+# ── Mail-Anhang Execute ─────────────────────────────────────────────────
+
+
+@pytest.fixture()
+def email():
+    return MagicMock()
+
+
+@pytest.fixture()
+def filing_handler(nc, classifier, pending, email):
+    return FilingCommandHandler(
+        nextcloud_files=nc,
+        document_classifier=classifier,
+        pending_store=pending,
+        email_client=email,
+    )
+
+
+def test_anhang_ablegen_one_pdf(filing_handler, email, classifier):
+    email.get_attachments.return_value = [
+        ("Rechnung.pdf", b"fake-pdf-data"),
+    ]
+
+    result = filing_handler.execute("anhang_ablegen", "anhang #4523 ablegen")
+
+    assert result.success
+    assert "Rechnung.pdf" in result.text
+    assert result.pending_confirmation
+    assert result.pending_data["source_type"] == "mail_attachment"
+    classifier.classify.assert_called_once()
+
+
+def test_anhang_ablegen_rejects_non_pdf(filing_handler, email):
+    email.get_attachments.return_value = [
+        ("malware.exe", b"bad"),
+        ("tabelle.xlsx", b"data"),
+    ]
+
+    result = filing_handler.execute("anhang_ablegen", "anhang #4523 ablegen")
+
+    assert not result.success
+    assert "nur PDF" in result.text
+    assert "malware.exe" in result.text
+
+
+def test_anhang_ablegen_mixed_keeps_only_pdf(filing_handler, email, classifier):
+    email.get_attachments.return_value = [
+        ("Rechnung.pdf", b"pdf-data"),
+        ("tabelle.xlsx", b"excel"),
+    ]
+
+    result = filing_handler.execute("anhang_ablegen", "anhang #4523 ablegen")
+
+    assert result.success
+    assert "Rechnung.pdf" in result.text
+    assert "tabelle.xlsx" in result.text  # in der Warnung
+
+
+def test_anhang_ablegen_no_attachments(filing_handler, email):
+    email.get_attachments.return_value = []
+
+    result = filing_handler.execute("anhang_ablegen", "anhang #4523 ablegen")
+
+    assert result.success
+    assert "Keine Anhänge" in result.text
+
+
+def test_anhang_ablegen_no_email():
+    h = FilingCommandHandler(
+        nextcloud_files=MagicMock(),
+        document_classifier=MagicMock(),
+        email_client=None,
+    )
+    result = h.execute("anhang_ablegen", "anhang #4523 ablegen")
+
+    assert not result.success
+    assert "E-Mail" in result.text
+
+
+def test_anhang_confirm_uploads(filing_handler, nc):
+    """Confirm bei Mail-Anhang nutzt upload statt move."""
+    action = PendingAction(
+        action_type="filing",
+        description="test",
+        data={
+            "source_type": "mail_attachment",
+            "source_path": "_mail_anhang/Rechnung.pdf",
+            "local_temp": "C:/tmp/filing_mail_abc/Rechnung.pdf",
+            "suggestion": {
+                "filename": "2026-04-02_Rechnung_Firma.pdf",
+                "target_folder": "Dokumente/Rechnungen",
+            },
+            "remaining_files": [],
+            "remaining_attachments": [],
+            "confidence": "high",
+        },
+    )
+
+    with patch("pathlib.Path.exists", return_value=False):
+        result = filing_handler.handle_confirm(action, "@user:matrix")
+
+    nc.upload.assert_called_once()
+    nc.move.assert_not_called()
+    assert result.success

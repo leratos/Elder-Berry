@@ -3350,4 +3350,13 @@ User: "Lies meine Mails und trag den Zahnarzttermin ein"
 - OllamaClient.generate_with_image(): Ollama Vision (llava:7b) für Bilder
 - Integration: remote_commands, message_handlers (Filing-Routing), bridge, start_saleria
 - Tests: 3526/3526 grün (57 neue Tests: 23 Classifier + 21 Filing + 8 Move + 5 Vision)
+
+## Abgeschlossen: Phase 42 – Erweiterung Mail-Anhang-Ablage (2026-04-02)
+- "anhang ablegen #<ID>" – PDF-Anhänge aus Mails direkt klassifizieren und ablegen
+- Nur PDF erlaubt (exe, docx, xlsx etc. werden abgelehnt – Sicherheit)
+- Sicherheitskette: Bitdefender auf Tower + nur PDF-Parsing
+- Flow: Mail-Anhang → Download → Classify → Bestätigung → Upload auf Nextcloud
+- Bugfix: PendingAction action_type war "cloud_aufräumen" statt "filing"
+- Bugfix: "ändern: ..." wird jetzt als Korrektur-Hint für Filing geroutet
+- Tests: 3537/3537 grün (11 neue Tests)
 - 6 Schritte: move() → Vision → Classifier → FilingHandler → Integration → Test+Commit

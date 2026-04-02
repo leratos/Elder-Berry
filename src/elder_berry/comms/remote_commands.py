@@ -127,6 +127,7 @@ Cloud (Nextcloud):
 
 Dokument-Ablage:
   cloud aufräumen – Dateien im Eingang klassifizieren und ablegen
+  anhang ablegen #<ID> – PDF-Anhänge aus Mail klassifizieren und ablegen
 
 PDF-Verarbeitung (Stirling-PDF):
   pdf zusammenfügen <a.pdf> <b.pdf> – PDFs zusammenfügen
@@ -407,6 +408,7 @@ class RemoteCommandHandler:
             nextcloud_files=nextcloud_files,
             document_classifier=document_classifier,
             pending_store=pending_store,
+            email_client=email_client,
         )
         self._harmony = HarmonyCommandHandler(
             robot_client=robot_client,

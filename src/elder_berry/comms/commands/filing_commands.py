@@ -18,6 +18,7 @@ from elder_berry.tools.document_classifier import VALID_CATEGORIES
 if TYPE_CHECKING:
     from elder_berry.comms.pending_confirmation import PendingConfirmationStore
     from elder_berry.tools.document_classifier import DocumentClassifier
+    from elder_berry.tools.email_client import IMAPEmailClient
     from elder_berry.tools.nextcloud_files import NextcloudFilesClient
 
 logger = logging.getLogger(__name__)
@@ -28,6 +29,18 @@ FILING_PATTERN = re.compile(
     r"^(?:cloud\s+aufr[aä]umen|r[aä]um\s+cloud\s+auf|eingang\s+aufr[aä]umen)$",
     re.IGNORECASE,
 )
+
+# "anhang ablegen #4523", "leg anhang von #4523 ab", "anhang von mail 4523 ablegen"
+FILING_ATTACHMENT_PATTERN = re.compile(
+    r"(?:anh(?:ang|änge?)\s+(?:von\s+)?(?:mail\s*)?#?(\d+)\s+ablegen"
+    r"|(?:leg|lege)\s+(?:den\s+)?anh(?:ang|änge?)\s+(?:von\s+)?(?:mail\s*)?#?(\d+)\s+ab"
+    r"|anh(?:ang|änge?)\s+ablegen\s+(?:von\s+)?(?:mail\s*)?#?(\d+)"
+    r"|mail\s*#?(\d+)\s+anh(?:ang|änge?)\s+ablegen)",
+    re.IGNORECASE,
+)
+
+# Erlaubte Dateitypen für Mail-Anhänge
+_ALLOWED_ATTACHMENT_EXTENSIONS = frozenset({".pdf"})
 
 # Bestätigungs- und Skip-Wörter
 FILING_CONFIRM = frozenset({"ja", "yes", "passt", "ok", "ablegen"})
@@ -42,10 +55,12 @@ class FilingCommandHandler(CommandHandler):
         nextcloud_files: NextcloudFilesClient | None = None,
         document_classifier: DocumentClassifier | None = None,
         pending_store: PendingConfirmationStore | None = None,
+        email_client: IMAPEmailClient | None = None,
     ) -> None:
         self._nc = nextcloud_files
         self._classifier = document_classifier
         self._pending = pending_store
+        self._email = email_client
 
     # ── CommandHandler Interface ──────────────────────────────────────────
 
@@ -53,6 +68,7 @@ class FilingCommandHandler(CommandHandler):
     def patterns(self) -> list[tuple[re.Pattern, str, bool, bool]]:
         return [
             (FILING_PATTERN, "cloud_aufräumen", False, False),
+            (FILING_ATTACHMENT_PATTERN, "anhang_ablegen", False, True),
         ]
 
     @property
@@ -62,15 +78,22 @@ class FilingCommandHandler(CommandHandler):
                 "aufräumen", "eingang aufräumen", "räum cloud auf",
                 "cloud aufräumen", "ablegen",
             ],
+            "anhang_ablegen": [
+                "anhang ablegen", "leg anhang ab", "anhänge ablegen",
+            ],
         }
 
     @property
     def command_descriptions(self) -> list[str]:
         return [
             "cloud aufräumen: Dateien im Eingang klassifizieren und ablegen",
+            "anhang ablegen #<ID>: PDF-Anhänge aus Mail klassifizieren und ablegen",
         ]
 
     def execute(self, command: str, raw_text: str) -> CommandResult:
+        if command == "anhang_ablegen":
+            return self._cmd_anhang_ablegen(raw_text)
+
         if command != "cloud_aufräumen":
             return CommandResult(
                 command=command, success=False,
@@ -173,35 +196,194 @@ class FilingCommandHandler(CommandHandler):
             },
         )
 
+    # ── Mail-Anhang ablegen ────────────────────────────────────────────
+
+    def _cmd_anhang_ablegen(self, raw_text: str) -> CommandResult:
+        """PDF-Anhänge aus einer Mail klassifizieren und ablegen."""
+        if self._nc is None:
+            return CommandResult(
+                command="anhang_ablegen", success=False,
+                text="Nextcloud nicht konfiguriert.",
+            )
+        if self._classifier is None:
+            return CommandResult(
+                command="anhang_ablegen", success=False,
+                text="Dokument-Analyse nicht verfügbar (Ollama fehlt).",
+            )
+        if self._email is None:
+            return CommandResult(
+                command="anhang_ablegen", success=False,
+                text="E-Mail nicht konfiguriert.",
+            )
+
+        match = FILING_ATTACHMENT_PATTERN.search(raw_text.strip())
+        if not match:
+            return CommandResult(
+                command="anhang_ablegen", success=False,
+                text="Format: anhang ablegen #<Mail-ID>",
+            )
+
+        msg_id = (
+            match.group(1) or match.group(2)
+            or match.group(3) or match.group(4) or ""
+        ).strip()
+        if not msg_id:
+            return CommandResult(
+                command="anhang_ablegen", success=False,
+                text="Keine Mail-ID angegeben.",
+            )
+
+        # Anhänge abrufen
+        try:
+            attachments = self._email.get_attachments(msg_id)
+        except Exception as exc:
+            logger.error("Mail-Anhänge abrufen fehlgeschlagen (UID %s): %s", msg_id, exc)
+            return CommandResult(
+                command="anhang_ablegen", success=False,
+                text=f"Anhänge abrufen fehlgeschlagen: {exc}",
+            )
+
+        if not attachments:
+            return CommandResult(
+                command="anhang_ablegen", success=True,
+                text=f"Keine Anhänge in Mail #{msg_id}.",
+            )
+
+        # Nur PDFs filtern
+        pdf_attachments = [
+            (name, data) for name, data in attachments
+            if Path(name).suffix.lower() in _ALLOWED_ATTACHMENT_EXTENSIONS
+        ]
+        rejected = [
+            name for name, _ in attachments
+            if Path(name).suffix.lower() not in _ALLOWED_ATTACHMENT_EXTENSIONS
+        ]
+
+        if not pdf_attachments:
+            rejected_list = ", ".join(rejected)
+            return CommandResult(
+                command="anhang_ablegen", success=False,
+                text=f"Keine PDF-Anhänge in Mail #{msg_id}.\n"
+                     f"Abgelehnt (nur PDF erlaubt): {rejected_list}",
+            )
+
+        # PDFs als Temp-Dateien speichern und erste klassifizieren
+        import tempfile
+        temp_files: list[tuple[str, Path]] = []
+        for filename, data in pdf_attachments:
+            tmp_dir = Path(tempfile.mkdtemp(prefix="filing_mail_"))
+            local_path = tmp_dir / filename
+            local_path.write_bytes(data)
+            temp_files.append((filename, local_path))
+
+        # Info über abgelehnte Dateien
+        rejected_info = ""
+        if rejected:
+            rejected_info = (
+                f"\n⚠️ Übersprungen (nur PDF erlaubt): {', '.join(rejected)}"
+            )
+
+        # Erste PDF klassifizieren
+        first_name, first_path = temp_files[0]
+        suggestion = self._classifier.classify(first_path)
+
+        remaining_temp = [
+            (name, str(path)) for name, path in temp_files[1:]
+        ]
+
+        confidence_hint = ""
+        if suggestion.confidence != "high":
+            confidence_hint = "\n⚠️ Unsicher – bitte prüfen."
+
+        count_info = ""
+        if len(temp_files) > 1:
+            count_info = f" (1/{len(temp_files)})"
+
+        text = (
+            f"📎 Mail #{msg_id} – {first_name}{count_info}\n"
+            f"→ {suggestion.filename}\n"
+            f"→ Ziel: /{suggestion.target_folder}/"
+            f"{confidence_hint}"
+            f"{rejected_info}\n"
+            f"Passt das? (ja / korrigieren / überspringen)"
+        )
+
+        return CommandResult(
+            command="anhang_ablegen",
+            success=True,
+            text=text,
+            pending_confirmation=True,
+            pending_data={
+                "action_type": "filing",
+                "source_type": "mail_attachment",
+                "source_path": f"_mail_anhang/{first_name}",
+                "local_temp": str(first_path),
+                "suggestion": {
+                    "filename": suggestion.filename,
+                    "target_folder": suggestion.target_folder,
+                },
+                "remaining_files": [],
+                "remaining_attachments": remaining_temp,
+                "confidence": suggestion.confidence,
+            },
+        )
+
     # ── Bestätigungs-Handling ────────────────────────────────────────────
 
     def handle_confirm(self, action: PendingAction, user_id: str) -> CommandResult:
-        """User hat 'ja' gesagt → Datei verschieben."""
-        source = action.data["source_path"]
+        """User hat 'ja' gesagt → Datei verschieben/hochladen."""
         target = action.data["suggestion"]["target_folder"]
         filename = action.data["suggestion"]["filename"]
         dest = f"{target}/{filename}"
+        is_mail = action.data.get("source_type") == "mail_attachment"
 
-        try:
-            self._nc.move(source, dest)
-        except Exception as exc:
-            logger.error("MOVE fehlgeschlagen: %s → %s: %s", source, dest, exc)
-            return CommandResult(
-                command="cloud_aufräumen", success=False,
-                text=f"Verschieben fehlgeschlagen: {exc}\n"
-                     f"Datei bleibt im Eingang.",
-            )
+        if is_mail:
+            # Mail-Anhang: lokale Datei direkt auf Nextcloud hochladen
+            local_path = Path(action.data["local_temp"])
+            try:
+                self._nc.upload(local_path, dest)
+            except Exception as exc:
+                logger.error("Upload fehlgeschlagen: %s → %s: %s", local_path, dest, exc)
+                return CommandResult(
+                    command="anhang_ablegen", success=False,
+                    text=f"Upload fehlgeschlagen: {exc}",
+                )
+        else:
+            # Eingang: WebDAV MOVE
+            source = action.data["source_path"]
+            try:
+                self._nc.move(source, dest)
+            except Exception as exc:
+                logger.error("MOVE fehlgeschlagen: %s → %s: %s", source, dest, exc)
+                return CommandResult(
+                    command="cloud_aufräumen", success=False,
+                    text=f"Verschieben fehlgeschlagen: {exc}\n"
+                         f"Datei bleibt im Eingang.",
+                )
 
         # Temp-Datei aufräumen
         self._cleanup_temp(action)
 
-        # Nächste Datei?
+        command = "anhang_ablegen" if is_mail else "cloud_aufräumen"
+
+        # Nächste Mail-Anhänge?
+        remaining_attachments = action.data.get("remaining_attachments", [])
+        if remaining_attachments:
+            return self._process_next_attachment(remaining_attachments, filename)
+
+        # Nächste Eingangs-Datei?
         remaining = action.data.get("remaining_files", [])
         if remaining:
             return self._process_remaining(remaining, dest)
 
+        if is_mail:
+            return CommandResult(
+                command=command, success=True,
+                text=f"✅ Abgelegt: {filename}",
+            )
+
         return CommandResult(
-            command="cloud_aufräumen", success=True,
+            command=command, success=True,
             text=f"✅ Abgelegt: {filename}\n\n"
                  f"📂 Eingang ist leer. Alle Dateien abgelegt.",
         )
@@ -245,14 +427,25 @@ class FilingCommandHandler(CommandHandler):
     def handle_skip(self, action: PendingAction, user_id: str) -> CommandResult:
         """User hat 'überspringen' gesagt → nächste Datei."""
         self._cleanup_temp(action)
+        is_mail = action.data.get("source_type") == "mail_attachment"
 
+        # Nächste Mail-Anhänge?
+        remaining_attachments = action.data.get("remaining_attachments", [])
+        if remaining_attachments:
+            return self._process_next_attachment(
+                remaining_attachments, "(übersprungen)",
+            )
+
+        # Nächste Eingangs-Datei?
         remaining = action.data.get("remaining_files", [])
         if remaining:
             return self._process_remaining(remaining)
 
+        command = "anhang_ablegen" if is_mail else "cloud_aufräumen"
+        done_text = "Alle Anhänge abgearbeitet." if is_mail else "Eingang abgearbeitet."
         return CommandResult(
-            command="cloud_aufräumen", success=True,
-            text="✅ Eingang abgearbeitet.",
+            command=command, success=True,
+            text=f"✅ {done_text}",
         )
 
     # ── Helpers ──────────────────────────────────────────────────────────
@@ -291,6 +484,59 @@ class FilingCommandHandler(CommandHandler):
             )
 
         return result
+
+    def _process_next_attachment(
+        self, remaining: list[tuple[str, str]], last_filename: str,
+    ) -> CommandResult:
+        """Klassifiziert den nächsten Mail-Anhang."""
+        name, path_str = remaining[0]
+        rest = remaining[1:]
+        local_path = Path(path_str)
+
+        if not local_path.exists():
+            logger.warning("Temp-Datei nicht gefunden: %s", path_str)
+            if rest:
+                return self._process_next_attachment(rest, last_filename)
+            return CommandResult(
+                command="anhang_ablegen", success=True,
+                text=f"✅ Abgelegt: {last_filename}\n\n"
+                     f"Alle Anhänge abgearbeitet.",
+            )
+
+        suggestion = self._classifier.classify(local_path)
+
+        confidence_hint = ""
+        if suggestion.confidence != "high":
+            confidence_hint = "\n⚠️ Unsicher – bitte prüfen."
+
+        text = (
+            f"✅ Abgelegt: {last_filename}\n\n"
+            f"📎 {name}\n"
+            f"→ {suggestion.filename}\n"
+            f"→ Ziel: /{suggestion.target_folder}/"
+            f"{confidence_hint}\n"
+            f"Passt das? (ja / korrigieren / überspringen)"
+        )
+
+        return CommandResult(
+            command="anhang_ablegen",
+            success=True,
+            text=text,
+            pending_confirmation=True,
+            pending_data={
+                "action_type": "filing",
+                "source_type": "mail_attachment",
+                "source_path": f"_mail_anhang/{name}",
+                "local_temp": path_str,
+                "suggestion": {
+                    "filename": suggestion.filename,
+                    "target_folder": suggestion.target_folder,
+                },
+                "remaining_files": [],
+                "remaining_attachments": rest,
+                "confidence": suggestion.confidence,
+            },
+        )
 
     @staticmethod
     def _cleanup_temp(action: PendingAction) -> None:
