@@ -3449,3 +3449,25 @@ User: "Lies meine Mails und trag den Zahnarzttermin ein"
 - Verkehrsprognose via departure_time + traffic_model
 - ~35 Tests geplant (18 RoutePlanner + 17 RouteCommandHandler)
 - PROJECT_ROADMAP.md um Phase 43 ergänzt
+
+## Abgeschlossen: Bugfix – Adresse nicht in Nextcloud sichtbar nach Sync (2026-04-03)
+- Problem: _contact_to_vcard packte gesamte Adresse in ADR.street
+  → Nextcloud zeigt PLZ/Ort-Felder leer an
+- Fix: _parse_address_to_vcard() zerlegt Freitext in vCard-ADR-Felder:
+  → "Straße Nr, PLZ Ort" → street + code + city
+  → "Straße Nr, PLZ Ort, Land" → street + code + city + country
+  → Fallback: alles in street wenn Format nicht erkannt
+- Roundtrip-sicher: Push→Pull ergibt identischen Freitext
+- Dateien: src/elder_berry/tools/carddav_sync.py
+- Tests: 171/171 grün (8 neue Sync-Tests + 12 Contact-Tests)
+
+## Abgeschlossen: Performance – CardDAV Sync doppelter PROPFIND + Fallback eliminiert (2026-04-03)
+- Problem: sync() machte 2x PROPFIND + 2x alle vCards laden (Pull + Push separat)
+  Bei UID≠Dateiname (Lisa: UID=ab52b098... Datei=412616F4...) zusätzlich
+  Fallback-Scan aller vCards → 3x GET pro betroffener vCard
+- Fix: uid_href_map wird beim Pull aufgebaut (vcard_uid→href Zuordnung)
+  und beim Push wiederverwendet → kein zweiter PROPFIND, kein Fallback-Scan
+- Durchgereicht: pull_contacts → sync → push_contacts → _update_existing_vcard
+- Bei 49 Kontakten: ~49 HTTP-Requests gespart (1 PROPFIND + 48 GETs)
+- Dateien: src/elder_berry/tools/carddav_sync.py
+- Tests: 39/39 grün (1 neuer Test für Map-Durchreichung)

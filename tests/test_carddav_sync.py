@@ -446,6 +446,102 @@ class TestSync:
         assert pushed[0].role == "Schwester"
         store.close()
 
+    def test_sync_passes_uid_href_map_to_push(self, client, tmp_path: Path):
+        """sync() baut uid→href Map beim Pull auf und reicht sie an Push."""
+        store = ContactStore(db_path=tmp_path / "c.db")
+        store.add("@user:matrix.org", "Lisa", vcard_uid="uid-lisa",
+                  role="Schwester")
+
+        def fake_pull(user_id, uid_href_map=None):
+            """Simuliert Pull und befüllt die Map."""
+            if uid_href_map is not None:
+                uid_href_map["uid-lisa"] = "/dav/contacts/ABCD.vcf"
+            return [
+                {"name": "Lisa", "emails": "[]", "phones": "[]",
+                 "role": "", "formality": "förmlich", "notes": "",
+                 "birthday": "", "address": "", "organization": "",
+                 "title": "", "categories": "", "nickname": "",
+                 "anniversary": "", "url": "", "vcard_uid": "uid-lisa"},
+            ]
+
+        with patch.object(client, "pull_contacts", side_effect=fake_pull), \
+             patch.object(client, "push_contacts",
+                          return_value=SyncResult(pushed=1)) as mock_push:
+            client.sync(store, "@user:matrix.org")
+
+        # Prüfe dass uid_href_map an push_contacts übergeben wurde
+        _, kwargs = mock_push.call_args
+        uid_map = kwargs.get("uid_href_map", {})
+        assert "uid-lisa" in uid_map
+        assert uid_map["uid-lisa"] == "/dav/contacts/ABCD.vcf"
+        store.close()
+
+
+# ── Address Parsing (Push) ──────────────────────────────────────────────
+
+
+class TestParseAddressToVcard:
+
+    def test_street_plz_city(self):
+        adr = CardDAVSyncClient._parse_address_to_vcard(
+            "Untere Eichstädtstraße 1g, 04299 Leipzig")
+        assert adr.street == "Untere Eichstädtstraße 1g"
+        assert adr.code == "04299"
+        assert adr.city == "Leipzig"
+        assert adr.country == ""
+
+    def test_street_plz_city_country(self):
+        adr = CardDAVSyncClient._parse_address_to_vcard(
+            "Musterstr. 1, 10115 Berlin, Deutschland")
+        assert adr.street == "Musterstr. 1"
+        assert adr.code == "10115"
+        assert adr.city == "Berlin"
+        assert adr.country == "Deutschland"
+
+    def test_street_city_without_plz(self):
+        adr = CardDAVSyncClient._parse_address_to_vcard(
+            "Main Street 5, New York")
+        assert adr.street == "Main Street 5"
+        assert adr.code == ""
+        assert adr.city == "New York"
+
+    def test_street_only(self):
+        adr = CardDAVSyncClient._parse_address_to_vcard("Musterstraße 42")
+        assert adr.street == "Musterstraße 42"
+        assert adr.code == ""
+        assert adr.city == ""
+
+    def test_five_digit_plz(self):
+        adr = CardDAVSyncClient._parse_address_to_vcard(
+            "Hauptstr. 10, 80331 München")
+        assert adr.code == "80331"
+        assert adr.city == "München"
+
+    def test_four_digit_plz(self):
+        """Schweizer/AT PLZ mit 4 Stellen."""
+        adr = CardDAVSyncClient._parse_address_to_vcard(
+            "Bahnhofstrasse 1, 8001 Zürich")
+        assert adr.code == "8001"
+        assert adr.city == "Zürich"
+
+    def test_roundtrip_preserves_data(self):
+        """Push → Pull roundtrip: Adresse bleibt identisch."""
+        original = "Untere Eichstädtstraße 1g, 04299 Leipzig"
+        adr = CardDAVSyncClient._parse_address_to_vcard(original)
+        # Simuliere Pull-Logik
+        parts = []
+        if adr.street:
+            parts.append(adr.street)
+        code_city = []
+        if adr.code:
+            code_city.append(adr.code)
+        if adr.city:
+            code_city.append(adr.city)
+        if code_city:
+            parts.append(" ".join(code_city))
+        result = ", ".join(parts)
+        assert result == original
+
 
 # ── SyncResult ─────────────────────────────────────────────────────────
 

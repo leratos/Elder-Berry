@@ -22,6 +22,8 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING
 
+import re
+
 import httpx
 
 if TYPE_CHECKING:
@@ -129,12 +131,21 @@ class CardDAVSyncClient:
 
     # ── Push ───────────────────────────────────────────────────────────
 
-    def push_contacts(self, contacts: list[Contact]) -> SyncResult:
+    def push_contacts(
+        self,
+        contacts: list[Contact],
+        uid_href_map: dict[str, str] | None = None,
+    ) -> SyncResult:
         """Lokale Kontakte → Nextcloud.
 
         Für Kontakte MIT vcard_uid: bestehende vCard laden, EB-Felder
         einfügen, zurückschreiben (kein Duplikat!).
         Für Kontakte OHNE vcard_uid: neue vCard mit elderberry-UID anlegen.
+
+        Args:
+            contacts: Liste der zu pushenden Kontakte.
+            uid_href_map: Optionale UID→href-Map vom Pull (vermeidet
+                erneuten PROPFIND + Fallback-Scan).
         """
         result = SyncResult()
         if not contacts:
@@ -147,7 +158,9 @@ class CardDAVSyncClient:
             try:
                 if contact.vcard_uid:
                     # Bestehende NC-vCard aktualisieren
-                    ok = self._update_existing_vcard(contact)
+                    ok = self._update_existing_vcard(
+                        contact, uid_href_map=uid_href_map,
+                    )
                 else:
                     # Neue vCard anlegen
                     ok = self._create_new_vcard(contact)
@@ -175,10 +188,18 @@ class CardDAVSyncClient:
         logger.warning("PUT new vCard %s: HTTP %d", contact.name, resp.status_code)
         return False
 
-    def _update_existing_vcard(self, contact: Contact) -> bool:
+    def _update_existing_vcard(
+        self,
+        contact: Contact,
+        uid_href_map: dict[str, str] | None = None,
+    ) -> bool:
         """Lädt bestehende vCard, fügt EB-Felder ein, schreibt zurück."""
-        # Finde die richtige vcf-URL anhand der UID
-        href = self._find_vcard_href(contact.vcard_uid)
+        # Finde die richtige vcf-URL anhand der UID (Cache first)
+        href = None
+        if uid_href_map and contact.vcard_uid in uid_href_map:
+            href = uid_href_map[contact.vcard_uid]
+        else:
+            href = self._find_vcard_href(contact.vcard_uid)
         if not href:
             logger.warning(
                 "vCard für UID %s nicht gefunden, erstelle neue",
@@ -244,8 +265,16 @@ class CardDAVSyncClient:
 
     # ── Pull ───────────────────────────────────────────────────────────
 
-    def pull_contacts(self, user_id: str) -> list[dict]:
+    def pull_contacts(
+        self, user_id: str,
+        uid_href_map: dict[str, str] | None = None,
+    ) -> list[dict]:
         """Nextcloud → lokale Contact-Daten (PROPFIND + GET + Parse).
+
+        Args:
+            user_id: Matrix-User-ID für den ContactStore.
+            uid_href_map: Optionales Dict, wird mit vcard_uid→href befüllt
+                (Seiteneffekt, vermeidet doppelten PROPFIND beim sync).
 
         Returns:
             Liste von Dicts mit allen Contact-Feldern (kein Contact-Objekt,
@@ -266,6 +295,9 @@ class CardDAVSyncClient:
                     continue
                 data = self._vcard_to_dict(resp.text, user_id)
                 if data is not None:
+                    # UID→href Zuordnung merken für Push-Phase
+                    if uid_href_map is not None and data.get("vcard_uid"):
+                        uid_href_map[data["vcard_uid"]] = href
                     contacts.append(data)
             except Exception as exc:
                 logger.warning("CardDAV GET %s fehlgeschlagen: %s", href, exc)
@@ -310,8 +342,12 @@ class CardDAVSyncClient:
         """
         result = SyncResult()
 
+        # UID→href Map: wird beim Pull befüllt, beim Push wiederverwendet
+        # → vermeidet doppelten PROPFIND und Fallback-Scan
+        uid_href_map: dict[str, str] = {}
+
         # Phase 1: Pull (NC → lokal)
-        remote_data = self.pull_contacts(user_id)
+        remote_data = self.pull_contacts(user_id, uid_href_map=uid_href_map)
         remote_uids: set[str] = set()
         for data in remote_data:
             vcard_uid = data.pop("vcard_uid", "")
@@ -352,7 +388,7 @@ class CardDAVSyncClient:
             if c.vcard_uid and (c.role or c.notes or c.formality != "förmlich")
         ]
         if to_push:
-            push_result = self.push_contacts(to_push)
+            push_result = self.push_contacts(to_push, uid_href_map=uid_href_map)
             result.pushed = push_result.pushed
             result.errors.extend(push_result.errors)
 
@@ -391,7 +427,7 @@ class CardDAVSyncClient:
 
         if contact.address:
             adr = card.add("adr")
-            adr.value = vobject.vcard.Address(street=contact.address)
+            adr.value = self._parse_address_to_vcard(contact.address)
 
         if contact.organization:
             card.add("org").value = [contact.organization]
@@ -425,6 +461,42 @@ class CardDAVSyncClient:
             card.add("x-elderberry-formality").value = contact.formality
 
         return card.serialize()
+
+    @staticmethod
+    def _parse_address_to_vcard(address: str) -> "vobject.vcard.Address":
+        """Parst Freitext-Adresse in strukturierte vCard-ADR-Felder.
+
+        Erkennt deutsche Formate:
+        - "Straße Nr, PLZ Ort"
+        - "Straße Nr, PLZ Ort, Land"
+        - Fallback: alles in street
+        """
+        import vobject
+
+        # Trenne an Kommas in maximal 3 Teile: Straße, PLZ+Ort, Land
+        parts = [p.strip() for p in address.split(",")]
+
+        street = parts[0] if parts else address
+        code = ""
+        city = ""
+        country = ""
+
+        if len(parts) >= 2:
+            # Zweiter Teil: "04299 Leipzig" oder "Leipzig"
+            plz_ort = parts[1].strip()
+            plz_match = re.match(r"^(\d{4,5})\s+(.+)$", plz_ort)
+            if plz_match:
+                code = plz_match.group(1)
+                city = plz_match.group(2)
+            else:
+                city = plz_ort
+
+        if len(parts) >= 3:
+            country = parts[2].strip()
+
+        return vobject.vcard.Address(
+            street=street, city=city, code=code, country=country,
+        )
 
     @staticmethod
     def _vcard_to_dict(vcard_str: str, user_id: str) -> dict | None:
