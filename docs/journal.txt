@@ -3482,3 +3482,31 @@ User: "Lies meine Mails und trag den Zahnarzttermin ein"
 - Fix 3 (to_push-Filter): Kontakte mit lokaler Adresse werden jetzt auch gepusht
 - Dateien: src/elder_berry/tools/carddav_sync.py, tests/test_carddav_extended.py
 - Tests: 196/196 grün (5 neue Tests: Pull-Merge, Push-Adresse, Inject-Adresse)
+
+## Abgeschlossen: Phase 43 – Routenplanung Implementierung (2026-04-03)
+- RoutePlanner: src/elder_berry/tools/route_planner.py (synchron, httpx.Client)
+  → get_route(), calculate_departure(), generate_maps_link(), _parse_response()
+  → RouteResult Dataclass, RouteError Exception
+- RouteCommandHandler: src/elder_berry/comms/commands/route_commands.py
+  → Pattern: "plane fahrt zu Lisa", "fahrt von Mama zu Lisa", "wie komme ich zu"
+  → parse_arrival_time(): "morgen um 16 uhr", "übermorgen", Wochentage
+  → Kontakt-Lookup via ContactStore.search(), Home via find_by_group("home")
+  → Abfahrtszeit-Berechnung mit konfigurierbarem Puffer (default 15 Min)
+  → Google Maps Deep-Link in Antwort
+- ContactStore: find_by_group() als Alias für find_by_category()
+- Integration: RemoteCommandHandler + start_saleria.py (optional, braucht google_maps_api_key)
+- Abweichungen vom Konzept: synchron statt async (passt zum CommandHandler-Pattern),
+  CommandResult.text statt .response, Pattern-Match auf Originaltext (Groß/Kleinschreibung)
+- Branch: feature/phase-43-routenplanung
+- Tests: 415/415 grün (19 RoutePlanner + 43 RouteCommandHandler = 62 neue Tests)
+
+## Abgeschlossen: Bugfix – Rein lokale Kontakte werden jetzt nach NC gepusht (2026-04-03)
+- Problem: sync() filterte to_push mit `if c.vcard_uid and (...)` → Kontakte ohne
+  vcard_uid (rein lokal erstellt, z.B. "Zuhause") wurden nie an Nextcloud gesendet
+- Fix 1 (sync-Filter): `or (not c.vcard_uid and c.name)` ergänzt → lokale Kontakte
+  werden jetzt ebenfalls gepusht
+- Fix 2 (_create_new_vcard): Nach erfolgreichem PUT wird vcard_uid lokal nachgetragen
+  → beim nächsten Sync kein Duplikat
+- Fix 3 (push_contacts): contact_store Parameter durchgereicht für UID-Nachtrag
+- Dateien: src/elder_berry/tools/carddav_sync.py, tests/test_carddav_sync.py
+- Tests: 65/65 CardDAV-Tests grün (2 neue)

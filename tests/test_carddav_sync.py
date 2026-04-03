@@ -538,6 +538,47 @@ class TestSync:
         assert uid_map["uid-lisa"] == "/dav/contacts/ABCD.vcf"
         store.close()
 
+    def test_sync_pushes_local_only_contact(self, client, tmp_path: Path):
+        """Rein lokaler Kontakt (ohne vcard_uid) wird nach NC gepusht."""
+        store = ContactStore(db_path=tmp_path / "c.db")
+        # Kontakt ohne vcard_uid (rein lokal erstellt)
+        store.add("@user:matrix.org", "Zuhause",
+                  address="Schumannstr 4, 14772 Brandenburg",
+                  categories="home")
+
+        with patch.object(client, "pull_contacts", return_value=[]), \
+             patch.object(client, "push_contacts",
+                          return_value=SyncResult(pushed=1)) as mock_push:
+            result = client.sync(store, "@user:matrix.org")
+
+        mock_push.assert_called_once()
+        pushed = mock_push.call_args[0][0]
+        assert len(pushed) == 1
+        assert pushed[0].name == "Zuhause"
+        assert pushed[0].vcard_uid == ""
+        assert result.pushed == 1
+        store.close()
+
+    def test_create_new_vcard_sets_uid_locally(self, client, tmp_path: Path):
+        """_create_new_vcard setzt vcard_uid im lokalen ContactStore."""
+        store = ContactStore(db_path=tmp_path / "c.db")
+        contact = store.add("@user:matrix.org", "Zuhause",
+                            address="Musterstr. 5, 12345 Berlin")
+        assert contact.vcard_uid == ""
+
+        mock_resp = MagicMock()
+        mock_resp.status_code = 201
+
+        with patch("elder_berry.tools.carddav_sync.httpx.put",
+                   return_value=mock_resp):
+            ok = client._create_new_vcard(contact, contact_store=store)
+
+        assert ok is True
+        # Lokaler Kontakt hat jetzt eine vcard_uid
+        updated = store.get_by_id(contact.id)
+        assert updated.vcard_uid == f"elderberry-contact-{contact.id}"
+        store.close()
+
 
 # ── Inject Local Fields ────────────────────────────────────────────────
 

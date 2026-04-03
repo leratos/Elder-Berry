@@ -708,6 +708,10 @@ class ContactStore:
                 results.append(contact)
         return results
 
+    def find_by_group(self, user_id: str, group: str) -> list[Contact]:
+        """Alias für find_by_category – Kontakte mit bestimmter Gruppe."""
+        return self.find_by_category(user_id, group)
+
     def delete_all(self, user_id: str) -> int:
         """Löscht alle Kontakte eines Users. Gibt Anzahl zurück."""
         cursor = self._conn.execute(

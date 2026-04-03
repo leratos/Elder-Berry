@@ -16,6 +16,7 @@ Delegiert an domänenspezifische Handler in comms/commands/:
 - SelfcheckCommandHandler: Systemgesundheitsprüfung
 - WeatherCommandHandler: Wetter, Timer, Erinnerungen, Briefing, Training
 - NoteCommandHandler: Notizen & Wissensdatenbank (optional, benötigt NoteStore)
+- RouteCommandHandler: Routenplanung via Google Maps Directions API
 - AdvancedCommandHandler: Computer Use, Web-Suche, Dokumente, Audio
 
 Verwendung:
@@ -57,6 +58,7 @@ from elder_berry.comms.commands.cloud_commands import CloudCommandHandler
 from elder_berry.comms.commands.pdf_commands import PDFCommandHandler
 from elder_berry.comms.commands.filing_commands import FilingCommandHandler
 from elder_berry.comms.commands.harmony_commands import HarmonyCommandHandler
+from elder_berry.comms.commands.route_commands import RouteCommandHandler
 
 if TYPE_CHECKING:
     from elder_berry.actions.base import ActionController
@@ -83,6 +85,7 @@ if TYPE_CHECKING:
     from elder_berry.comms.pending_confirmation import PendingConfirmationStore
     from elder_berry.tools.document_classifier import DocumentClassifier
     from elder_berry.tools.stirling_pdf import StirlingPDFClient
+    from elder_berry.tools.route_planner import RoutePlanner
     from elder_berry.tools.web_fetcher import WebFetcher
 
 logger = logging.getLogger(__name__)
@@ -291,6 +294,12 @@ Claude-Agent:
 Sprachnachrichten:
   🎤 OGG/Opus Sprachnachricht → Whisper STT → Saleria antwortet (Text + Sprache)
 
+🗺️ Routenplanung:
+  plane fahrt zu <Name> – Route von Zuhause zu Kontakt
+  fahrt von <Name> zu <Name> – Route zwischen zwei Kontakten
+  wie komme ich zu <Name> – Route von Zuhause
+  Optional: "morgen um 16 uhr", "übermorgen 10 uhr" → Abfahrtszeit
+
 🔄 Self-Update:
   update / update dich – Git Pull + Dependencies + Neustart (Tower)
   update rpi – RPi5 aktualisieren (git pull + pip + systemctl restart)
@@ -354,6 +363,7 @@ class RemoteCommandHandler:
         stirling_pdf: StirlingPDFClient | None = None,
         document_classifier: DocumentClassifier | None = None,
         carddav_sync: CardDAVSyncClient | None = None,
+        route_planner: RoutePlanner | None = None,
         pending_store: PendingConfirmationStore | None = None,
         default_user_id: str = "",
     ) -> None:
@@ -467,6 +477,15 @@ class RemoteCommandHandler:
                 default_user_id=default_user_id,
             )
 
+        # RouteCommandHandler: nur wenn RoutePlanner + ContactStore vorhanden
+        self._route: RouteCommandHandler | None = None
+        if route_planner is not None and contact_store is not None:
+            self._route = RouteCommandHandler(
+                route_planner=route_planner,
+                contact_store=contact_store,
+                default_user_id=default_user_id,
+            )
+
         # Handler-Liste (Reihenfolge bestimmt Priorität bei Pattern/Keyword-Match)
         # WICHTIG: _weather VOR _calendar, weil REMINDER_DELETE vor TERMIN_DELETE
         # matchen muss ("lösche erinnerung" vs "lösche termin")
@@ -498,6 +517,8 @@ class RemoteCommandHandler:
             self._handlers.append(self._contacts)
         if self._todos is not None:
             self._handlers.append(self._todos)
+        if self._route is not None:
+            self._handlers.append(self._route)
         self._handlers.append(self._advanced)
 
         # Aggregierte Simple-Commands und Command→Handler Lookup
