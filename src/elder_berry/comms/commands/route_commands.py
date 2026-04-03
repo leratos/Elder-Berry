@@ -205,8 +205,11 @@ class RouteCommandHandler(CommandHandler):
         dest_addr = self._resolve_address(dest_name)
 
         if not origin_addr:
-            label = origin_name or "Zuhause"
-            if origin_name is None:
+            is_home = (
+                origin_name is None
+                or origin_name.lower() in self._HOME_SYNONYMS
+            )
+            if is_home:
                 return CommandResult(
                     command=command, success=True,
                     text="Bitte lege einen Kontakt mit Gruppe 'home' an, "
@@ -214,7 +217,7 @@ class RouteCommandHandler(CommandHandler):
                 )
             return CommandResult(
                 command=command, success=True,
-                text=f"Ich konnte keine Adresse für '{label}' finden. "
+                text=f"Ich konnte keine Adresse für '{origin_name}' finden. "
                      f"Ist eine Adresse im Kontakt hinterlegt?",
             )
 
@@ -272,13 +275,16 @@ class RouteCommandHandler(CommandHandler):
     # Hilfsmethoden
     # ------------------------------------------------------------------
 
+    # Synonyme für "von mir" / "von zuhause" → Home-Lookup
+    _HOME_SYNONYMS = {"mir", "zuhause", "daheim", "home", "zu hause", "meiner"}
+
     def _resolve_address(self, name: str | None) -> str | None:
         """Kontaktname → Adresse auflösen.
 
-        None → Home-Kontakt (Gruppe 'home')
+        None oder Home-Synonym → Home-Kontakt (Gruppe 'home')
         'Lisa' → ContactStore fuzzy search → address-Feld
         """
-        if name is None:
+        if name is None or name.lower() in self._HOME_SYNONYMS:
             homes = self._contacts.find_by_group(
                 self._default_user_id, "home",
             )
@@ -304,7 +310,7 @@ class RouteCommandHandler(CommandHandler):
         if "," in name:
             name = name.split(",")[0].strip()
         # Zeitangabe ohne Komma: "lisa morgen um 16 uhr"
-        for keyword in ("morgen", "übermorgen", "um ", "heute"):
+        for keyword in ("ankunft", "morgen", "übermorgen", "um ", "heute"):
             idx = name.lower().find(keyword)
             if idx > 0:
                 name = name[:idx].strip()

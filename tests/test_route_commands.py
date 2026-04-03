@@ -273,6 +273,28 @@ class TestExecute:
         assert result.success
         assert "google.com/maps" in result.text
 
+    def test_plan_route_von_mir(
+        self, handler: RouteCommandHandler,
+    ) -> None:
+        """'von mir zu Lisa' → 'mir' wird als Home aufgelöst."""
+        result = handler.execute(
+            "route_from_to", "plane fahrt von mir zu Lisa",
+        )
+        assert result.success
+        assert "Lisa" in result.text
+
+    def test_plan_route_ankunft_time(
+        self, handler: RouteCommandHandler,
+        route_planner: MagicMock,
+    ) -> None:
+        """'ankunft 13 uhr heute' → Abfahrtszeit berechnet."""
+        result = handler.execute(
+            "route_plan", "plane fahrt zu Lisa ankunft 13 uhr heute",
+        )
+        assert result.success
+        assert "losfahren" in result.text
+        route_planner.calculate_departure.assert_called_once()
+
     def test_unknown_command_fallthrough(
         self, handler: RouteCommandHandler,
     ) -> None:
@@ -292,6 +314,19 @@ class TestResolveAddress:
     ) -> None:
         """None → Home-Kontakt Adresse."""
         addr = handler._resolve_address(None)
+        assert addr == "Musterstr. 5, 12345 Berlin"
+        contact_store.find_by_group.assert_called_with(USER_ID, "home")
+
+    @pytest.mark.parametrize("synonym", [
+        "mir", "zuhause", "daheim", "home", "zu hause", "meiner",
+    ])
+    def test_home_synonyms(
+        self, handler: RouteCommandHandler,
+        contact_store: MagicMock,
+        synonym: str,
+    ) -> None:
+        """Home-Synonyme → Home-Kontakt Adresse."""
+        addr = handler._resolve_address(synonym)
         assert addr == "Musterstr. 5, 12345 Berlin"
         contact_store.find_by_group.assert_called_with(USER_ID, "home")
 
@@ -326,6 +361,8 @@ class TestStripTimeSuffix:
         ("lisa um 14:30", "lisa"),
         ("lisa heute 15 uhr", "lisa"),
         ("lisa freitag um 9", "lisa"),
+        ("lisa ankunft 13 uhr heute", "lisa"),
+        ("lisa ankunft 13 uhr", "lisa"),
         ("lisa", "lisa"),
     ])
     def test_strip(self, input_text: str, expected: str) -> None:
