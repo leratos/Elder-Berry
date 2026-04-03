@@ -593,6 +593,17 @@ def _init_productivity_services(secrets, default_user_id):
         except Exception as e:
             logger.warning("CardDAV Sync nicht verfügbar: %s", e)
 
+    # RoutePlanner (Google Maps Directions API)
+    if secrets.get_or_none("google_maps_api_key"):
+        try:
+            from elder_berry.tools.route_planner import RoutePlanner
+            svc["route_planner"] = RoutePlanner(
+                api_key=secrets.get("google_maps_api_key"),
+            )
+            logger.info("RoutePlanner: aktiv (Google Maps Directions)")
+        except Exception as e:
+            logger.warning("RoutePlanner nicht verfügbar: %s", e)
+
     # Daily Briefing
     try:
         from elder_berry.comms.briefing_scheduler import BriefingScheduler
@@ -813,6 +824,7 @@ def run_matrix(assistant, stt=None, avatar=None, audio_converter=None, robot=Non
         stirling_pdf=svc.get("stirling_pdf"),
         document_classifier=tools.get("document_classifier"),
         carddav_sync=svc.get("carddav_sync"),
+        route_planner=svc.get("route_planner"),
         default_user_id=default_user_id,
     )
     assistant._remote_commands = remote

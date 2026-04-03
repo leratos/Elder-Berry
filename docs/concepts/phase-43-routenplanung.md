@@ -351,8 +351,8 @@ Route/Navigation:
 1. Google Cloud Console → APIs & Services → Library
 2. "Directions API" suchen → aktivieren
 3. API Key erstellen (oder bestehenden verwenden) → Restrictions:
-   - Application: IP-Adressen (Tower-IP + ggf. RPi5)
-   - API: nur "Directions API"
+   - Application restriction: **keine** (Home-IP ist dynamisch → IP-Restriction unpraktisch)
+   - API-Einschränkung: nur **"Directions API"** (begrenzt Schaden bei Key-Leak)
 4. Key in SecretStore: `python -c "from elder_berry.core.secret_store import SecretStore; s = SecretStore(); s.store('google_maps_api_key', 'AIza...')"`
 
 ### Home-Kontakt anlegen
