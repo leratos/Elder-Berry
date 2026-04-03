@@ -3434,3 +3434,18 @@ User: "Lies meine Mails und trag den Zahnarzttermin ein"
 - Fix 4: command_descriptions um Update-Syntax ergänzt (LLM lernt korrektes Format)
 - Dateien: src/elder_berry/comms/commands/contact_commands.py
 - Tests: 133/133 grün (12 neu)
+
+
+## In Arbeit: Phase 43 – Routenplanung (Google Maps Directions) (2026-04-03)
+- Konzeptdokument: docs/concepts/phase-43-routenplanung.md
+- nächster Schritt: Konzept schreiben, Roadmap ergänzen
+
+## Abgeschlossen: Phase 43 – Konzeptdokument Routenplanung (2026-04-03)
+- Konzept: docs/concepts/phase-43-routenplanung.md
+- RoutePlanner (tools/route_planner.py): Google Maps Directions API, Fahrtdauer, Link
+- RouteCommandHandler (comms/commands/route_commands.py): Intent-Parsing, Kontakt-Lookup
+- Home-Adresse als Kontakt mit Gruppe "home" (Option A)
+- ContactStore: find_by_group() ergänzen
+- Verkehrsprognose via departure_time + traffic_model
+- ~35 Tests geplant (18 RoutePlanner + 17 RouteCommandHandler)
+- PROJECT_ROADMAP.md um Phase 43 ergänzt

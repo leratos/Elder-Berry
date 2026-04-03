@@ -715,3 +715,19 @@ einen Namen und Zielordner vor, und verschiebt nach Bestätigung.
 - **Tests**: ~48 geplant
 - **Konzept**: `docs/concepts/phase-42-dokument-ablage.md`
 - **Abhängigkeit**: Phase 36 ✅, Stirling-PDF ✅, Ollama ✅
+
+
+## Phase 43 – Routenplanung (Google Maps Directions) 🗺️ GEPLANT
+
+"Plane meine Fahrt zu Lisa, muss morgen um 16 Uhr da sein" → Adresse aus
+Kontakten, Fahrtdauer via Google Maps API, Abfahrtszeit, klickbarer Link.
+
+- **RoutePlanner**: Google Maps Directions API, Fahrtdauer, Rückwärtsrechnung, Link-Generierung
+- **RouteCommandHandler**: Intent-Parsing ("plane fahrt zu ...", "von X zu Y"), Kontakt-Lookup
+- **Home-Adresse**: Kontakt mit Gruppe "home" (Option A – flexibel, kein Sonderfall)
+- **ContactStore**: `find_by_group()` Methode ergänzen
+- **Verkehrsprognose**: `departure_time` + `traffic_model=best_guess` wenn Abfahrt in der Zukunft
+- **Google Maps Link**: Deep-Link öffnet App auf Android (kompatibel mit Android Auto)
+- **Tests**: ~35 geplant
+- **Konzept**: `docs/concepts/phase-43-routenplanung.md`
+- **Abhängigkeit**: Phase 38 ✅ (Kontakte mit Adressen), Google Cloud ✅
