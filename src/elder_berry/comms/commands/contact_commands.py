@@ -3,6 +3,7 @@
 Commands:
 - kontakt: Name, Rolle, Email, Anrede       → Kontakt anlegen/aktualisieren
 - kontakt ändern #ID: Feld=Wert             → Kontakt bearbeiten
+- kontakt #ID Feld: Wert                    → Kontakt bearbeiten (LLM-Variante)
 - wer ist <Name>?                           → Kontakt abrufen
 - kontakte                                   → Alle Kontakte auflisten
 - kontakte suche <Begriff>                   → Volltextsuche
@@ -47,7 +48,7 @@ CONTACT_ADD_NATURAL_PATTERN = re.compile(
 )
 
 CONTACT_UPDATE_PATTERN = re.compile(
-    r"kontakt\s+(?:ändern|bearbeiten|update)\s+#?(\d+)[:\s]+(.+)",
+    r"kontakt\s+(?:(?:ändern|bearbeiten|update)\s+)?#?(\d+)[:\s]+(.+)",
     re.IGNORECASE,
 )
 
@@ -183,6 +184,7 @@ class ContactCommandHandler(CommandHandler):
     def command_descriptions(self) -> list[str]:
         return [
             "kontakt: Name, Rolle, Email, Anrede – Kontakt anlegen",
+            "kontakt ändern #<ID>: feld=wert – Kontakt bearbeiten (z.B. kontakt ändern #118: adresse=Musterstr. 1)",
             "wer ist <Name>? – Kontakt abrufen",
             "wann hat <Name> geburtstag? – Geburtstag abfragen",
             "was ist die adresse von <Name>? – Adresse abfragen",
@@ -272,17 +274,21 @@ class ContactCommandHandler(CommandHandler):
         fields_raw = match.group(2).strip()
         updates: dict[str, str] = {}
         warnings: list[str] = []
-        for part in fields_raw.split(","):
-            if "=" in part:
-                raw_key, val = part.split("=", 1)
-                resolved = self._resolve_field_key(raw_key.strip())
-                if resolved:
-                    updates[resolved] = val.strip()
-                else:
-                    warnings.append(
-                        f"⚠️ Unbekanntes Feld '{raw_key.strip()}' ignoriert. "
-                        f"Erlaubt: {_ALLOWED_FIELDS_DISPLAY}"
-                    )
+        parsed = self._parse_field_assignments(fields_raw)
+        for raw_key, val in parsed:
+            resolved = self._resolve_field_key(raw_key.strip())
+            if resolved:
+                updates[resolved] = val.strip()
+            else:
+                warnings.append(
+                    f"⚠️ Unbekanntes Feld '{raw_key.strip()}' ignoriert. "
+                    f"Erlaubt: {_ALLOWED_FIELDS_DISPLAY}"
+                )
+        if not updates and not warnings:
+            return CommandResult(
+                command="contact_update", success=False,
+                text=None, fallthrough=True,
+            )
         contact = self._store.update(contact_id, **updates)
         if not contact:
             return CommandResult(command="contact_update", success=False,
@@ -293,6 +299,28 @@ class ContactCommandHandler(CommandHandler):
         return CommandResult(
             command="contact_update", success=True, text=text,
         )
+
+    @staticmethod
+    def _parse_field_assignments(fields_raw: str) -> list[tuple[str, str]]:
+        """Parst Feld-Zuweisungen aus verschiedenen Formaten.
+
+        Unterstützt:
+        - feld=wert, feld2=wert2   (klassisch)
+        - feld: wert               (LLM-Variante, Wert darf Kommas enthalten)
+        """
+        results: list[tuple[str, str]] = []
+        # Versuche zuerst feld=wert Format (kommagetrennt)
+        if "=" in fields_raw:
+            for part in fields_raw.split(","):
+                if "=" in part:
+                    raw_key, val = part.split("=", 1)
+                    results.append((raw_key, val))
+            return results
+        # Fallback: feld: wert (einzelnes Feld, Wert darf Kommas enthalten)
+        colon_match = re.match(r"(\w+)\s*:\s*(.+)", fields_raw, re.DOTALL)
+        if colon_match:
+            results.append((colon_match.group(1), colon_match.group(2)))
+        return results
 
     @staticmethod
     def _resolve_field_key(raw_key: str) -> str | None:

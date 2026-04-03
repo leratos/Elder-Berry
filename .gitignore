@@ -213,3 +213,4 @@ docs/personal/
 .saleria.lock
 .claude/settings.json
 config/harmony_config_backup.json
+server/borg-backup.sh

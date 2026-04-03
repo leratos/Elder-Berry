@@ -469,6 +469,72 @@ class TestUpdateWithoutHash:
         assert updated.role == "Freundin"
 
 
+# ── Update mit Kolon-Format (LLM-Variante) ──
+
+class TestUpdateColonFormat:
+    def test_pattern_matches_colon_format(self) -> None:
+        m = CONTACT_UPDATE_PATTERN.search(
+            "kontakt #118 adresse: Untere Eichstädtstraße 1g, 04299 Leipzig")
+        assert m is not None
+        assert m.group(1) == "118"
+
+    def test_pattern_matches_colon_without_keyword(self) -> None:
+        m = CONTACT_UPDATE_PATTERN.search("kontakt #5 email: lisa@x.de")
+        assert m is not None
+        assert m.group(1) == "5"
+
+    def test_update_colon_address(self, handler: ContactCommandHandler,
+                                  store: ContactStore) -> None:
+        c = store.add(USER, "Lisa")
+        r = handler.execute(
+            "contact_update",
+            f"kontakt #{c.id} adresse: Untere Eichstädtstraße 1g, 04299 Leipzig",
+        )
+        assert r.success
+        updated = store.get_by_id(c.id)
+        assert updated.address == "Untere Eichstädtstraße 1g, 04299 Leipzig"
+
+    def test_update_colon_email(self, handler: ContactCommandHandler,
+                                store: ContactStore) -> None:
+        c = store.add(USER, "Lisa")
+        r = handler.execute("contact_update",
+                            f"kontakt #{c.id} email: lisa@example.com")
+        assert r.success
+        updated = store.get_by_id(c.id)
+        assert "lisa@example.com" in updated.emails
+
+    def test_update_colon_preserves_commas_in_value(
+            self, handler: ContactCommandHandler,
+            store: ContactStore) -> None:
+        """Kolon-Format: Kommas im Wert werden nicht als Trennzeichen interpretiert."""
+        c = store.add(USER, "Lisa")
+        r = handler.execute(
+            "contact_update",
+            f"kontakt #{c.id} notizen: Mag Katzen, Hunde, und Vögel",
+        )
+        assert r.success
+        updated = store.get_by_id(c.id)
+        assert updated.notes == "Mag Katzen, Hunde, und Vögel"
+
+    def test_update_no_fields_fallthrough(self, handler: ContactCommandHandler,
+                                          store: ContactStore) -> None:
+        """Wenn keine Felder erkannt werden, soll fallthrough statt leeres Update."""
+        c = store.add(USER, "Lisa")
+        r = handler.execute("contact_update",
+                            f"kontakt #{c.id} irgendwas ohne zuordnung")
+        assert r.fallthrough
+
+    def test_classic_equals_still_works(self, handler: ContactCommandHandler,
+                                        store: ContactStore) -> None:
+        """Bestehende feld=wert Syntax bleibt funktional."""
+        c = store.add(USER, "Lisa")
+        r = handler.execute("contact_update",
+                            f"kontakt ändern #{c.id}: rolle=Freundin")
+        assert r.success
+        updated = store.get_by_id(c.id)
+        assert updated.role == "Freundin"
+
+
 # ── Lookup-Pattern ──
 
 class TestContactLookupPattern:

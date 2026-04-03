@@ -3391,3 +3391,46 @@ User: "Lies meine Mails und trag den Zahnarzttermin ein"
   - Hetzner Storage Box BX11 bestellt, SSH-Support + Äußere Erreichbarkeit aktiviert
   - SSH-Key auf Server generiert (/root/.ssh/hetzner_storage_box)
   - Setup erfolgt im nächsten Chat
+
+
+## In Arbeit: Server-Backup mit BorgBackup → Hetzner Storage Box (2026-04-02)
+- Prompt: docs/prompts/setup-borgbackup-hetzner.md
+- Hetzner Storage Box BX11, Username: u570858, SSH-Key gesetzt
+- nächster Schritt: SSH-Verbindung testen, Borg-Status prüfen, DB-Namen ermitteln
+
+## Abgeschlossen: Server-Backup mit BorgBackup → Hetzner Storage Box (2026-04-02)
+- Hetzner Storage Box BX11 (u570858), SSH-Key Auth, Borg repokey-blake2 Verschlüsselung
+- Passphrase + Borg Key in NordPass gesichert
+- Backup-Script: /usr/local/bin/borg-backup.sh (chmod 700, root-only)
+- Lokale Kopie: C:\Dev\Elder-Berry\server\borg-backup.sh (.gitignore)
+- Cronjob: /etc/cron.d/borg-backup (täglich 03:00)
+- Erstes Backup: 5,75 GB → 2,38 GB dedupliziert, 3:43 min
+- Gesicherte Daten:
+  - /var/www/vhosts/ (Nextcloud, Webroot, alle Subdomains)
+  - /opt/matrix/synapse-data/ (Synapse Config + Media Store)
+  - /var/backups/db-dumps/ (MariaDB cloud + PostgreSQL synapse)
+  - /opt/matrix/docker-compose.yml
+  - /etc/fail2ban/ (Nextcloud Filter + Jail)
+  - systemd Services (homegym, harmony-mock, ki_editor_api, last-strawberry)
+  - /root/.ssh/
+- DB-Dumps: MariaDB via root-Socket-Auth, PostgreSQL via docker exec synapse-postgres
+- Nextcloud Maintenance Mode nur um MariaDB-Dump (nicht Synapse)
+- Retention: 7 daily, 4 weekly, 6 monthly, 1 yearly
+- Sonntags: borg check (Integritätsprüfung)
+- Fehler-Mail an marcus.kohtz@signz-vision.com via sendmail
+- Lock-File mit Stale-Detection (6h), Trap-Cleanup für Maintenance Mode
+- Nicht existierende Pfade entfernt: pc-remote.service, /etc/letsencrypt/
+- SSL-Zertifikate: Let's Encrypt via Plesk, regenerierbar, kein Backup nötig
+- TODO: Altes Dropbox-Backup in Plesk deaktivieren
+
+## Abgeschlossen: Bugfix – Kontakt-Update über LLM-Command fehlgeschlagen (2026-04-03)
+- Problem: LLM generierte `kontakt #118 adresse: Wert` statt `kontakt ändern #118: adresse=Wert`
+  → CONTACT_LOOKUP_PATTERN matchte fälschlich → fallthrough → Rekursions-Guard blockierte
+- Fix 1: CONTACT_UPDATE_PATTERN erweitert – `ändern/bearbeiten/update` Keyword jetzt optional
+  → `kontakt #ID feld: wert` wird als Update erkannt (Pattern-Priorität: update VOR lookup)
+- Fix 2: _cmd_update parst jetzt auch `feld: wert` Format (nicht nur `feld=wert`)
+  → Kommas im Wert bleiben erhalten (wichtig für Adressen)
+- Fix 3: _cmd_update gibt fallthrough zurück wenn keine Felder erkannt (statt leeres Update)
+- Fix 4: command_descriptions um Update-Syntax ergänzt (LLM lernt korrektes Format)
+- Dateien: src/elder_berry/comms/commands/contact_commands.py
+- Tests: 128/128 grün (7 neu)
