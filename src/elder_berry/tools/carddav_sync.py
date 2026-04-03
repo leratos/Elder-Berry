@@ -135,17 +135,21 @@ class CardDAVSyncClient:
         self,
         contacts: list[Contact],
         uid_href_map: dict[str, str] | None = None,
+        contact_store: ContactStore | None = None,
     ) -> SyncResult:
         """Lokale Kontakte → Nextcloud.
 
         Für Kontakte MIT vcard_uid: bestehende vCard laden, EB-Felder
         einfügen, zurückschreiben (kein Duplikat!).
-        Für Kontakte OHNE vcard_uid: neue vCard mit elderberry-UID anlegen.
+        Für Kontakte OHNE vcard_uid: neue vCard mit elderberry-UID anlegen
+        und vcard_uid lokal nachtragen.
 
         Args:
             contacts: Liste der zu pushenden Kontakte.
             uid_href_map: Optionale UID→href-Map vom Pull (vermeidet
                 erneuten PROPFIND + Fallback-Scan).
+            contact_store: Optionaler ContactStore zum Nachtragen der
+                vcard_uid nach erfolgreichem Push neuer Kontakte.
         """
         result = SyncResult()
         if not contacts:
@@ -163,7 +167,9 @@ class CardDAVSyncClient:
                     )
                 else:
                     # Neue vCard anlegen
-                    ok = self._create_new_vcard(contact)
+                    ok = self._create_new_vcard(
+                        contact, contact_store=contact_store,
+                    )
                 if ok:
                     result.pushed += 1
             except Exception as exc:
@@ -171,8 +177,16 @@ class CardDAVSyncClient:
 
         return result
 
-    def _create_new_vcard(self, contact: Contact) -> bool:
-        """Erstellt eine neue vCard auf Nextcloud."""
+    def _create_new_vcard(
+        self,
+        contact: Contact,
+        contact_store: ContactStore | None = None,
+    ) -> bool:
+        """Erstellt eine neue vCard auf Nextcloud.
+
+        Nach erfolgreichem Push wird die vcard_uid lokal nachgetragen,
+        damit beim nächsten Sync kein Duplikat entsteht.
+        """
         uid = f"elderberry-contact-{contact.id}"
         vcard_str = self._contact_to_vcard(contact, uid=uid)
         url = f"{self._carddav_base}{uid}.vcf"
@@ -184,6 +198,10 @@ class CardDAVSyncClient:
             timeout=15.0,
         )
         if resp.status_code in (201, 204):
+            # vcard_uid lokal nachtragen → beim nächsten Sync kein Duplikat
+            if contact_store:
+                contact_store.update(contact.id, vcard_uid=uid)
+                logger.info("Neuer NC-Kontakt: %s (UID: %s)", contact.name, uid)
             return True
         logger.warning("PUT new vCard %s: HTTP %d", contact.name, resp.status_code)
         return False
@@ -411,9 +429,14 @@ class CardDAVSyncClient:
                 c.role or c.notes or c.formality != "förmlich"
                 or c.address
             )
+            # Rein lokale Kontakte (ohne vcard_uid) → neu auf NC anlegen
+            or (not c.vcard_uid and c.name)
         ]
         if to_push:
-            push_result = self.push_contacts(to_push, uid_href_map=uid_href_map)
+            push_result = self.push_contacts(
+                to_push, uid_href_map=uid_href_map,
+                contact_store=contact_store,
+            )
             result.pushed = push_result.pushed
             result.errors.extend(push_result.errors)
 
