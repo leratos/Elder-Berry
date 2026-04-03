@@ -682,23 +682,75 @@ class ContactCommandHandler(CommandHandler):
     def _parse_contact_fields(cls, raw: str) -> dict[str, str]:
         """Parst komma-separierte Kontakt-Felder.
 
-        Erkennt automatisch:
-        - Email: enthält "@"
-        - Telefon: Ziffern-Pattern (mind. 6 Zeichen)
-        - Anrede: "förmlich"/"locker" etc.
-        - Erstes Feld: Name
-        - Rest: Rolle, ggf. Notizen
+        Erkennt:
+        - Explizite Zuweisungen: adresse=Wert, gruppe: Wert, rolle=Wert
+        - Auto-Detection: Email (@), Telefon (Ziffern), Anrede
+        - Erstes Feld ohne Zuweisung: Name
+        - Rest ohne Zuweisung: Rolle, ggf. Notizen
+
+        Zuweisungen (= oder :) werden über _FIELD_ALIASES aufgelöst und
+        haben Vorrang vor Auto-Detection.
         """
-        parts = [p.strip() for p in raw.split(",") if p.strip()]
-        if not parts:
+        # Sonderfall: Adressen können Kommas enthalten. Wenn ein Teil
+        # eine Zuweisung mit key= oder key: ist, kann der Wert bis zur
+        # nächsten Zuweisung reichen. Daher: erst alle Zuweisungen
+        # extrahieren, dann den Rest per Auto-Detection verarbeiten.
+        _ASSIGN_RE = re.compile(
+            r"(?:^|,)\s*"
+            r"(?:–\s*)?"  # optionaler Dash-Prefix (LLM-Artefakt)
+            r"(\w+)\s*[=:]\s*",
+        )
+
+        # Schritt 1: Zuweisungen finden und extrahieren
+        assignments: dict[str, str] = {}
+        remaining_parts: list[str] = []
+
+        # Finde alle Zuweisung-Positionen
+        matches = list(_ASSIGN_RE.finditer(raw))
+        if matches:
+            # Text vor der ersten Zuweisung → normal per Komma splitten
+            prefix = raw[:matches[0].start()].strip().rstrip(",").strip()
+            if prefix:
+                remaining_parts = [
+                    p.strip() for p in prefix.split(",") if p.strip()
+                ]
+
+            # Jede Zuweisung: Wert geht bis zur nächsten Zuweisung oder Ende
+            for i, m in enumerate(matches):
+                raw_key = m.group(1)
+                val_start = m.end()
+                val_end = matches[i + 1].start() if i + 1 < len(matches) else len(raw)
+                val = raw[val_start:val_end].strip().rstrip(",").strip()
+                field = cls._resolve_field_key(raw_key)
+                if field and val:
+                    if field == "emails":
+                        assignments[field] = json.dumps(
+                            [{"type": "home", "email": val}],
+                        )
+                    elif field == "phones":
+                        assignments[field] = json.dumps(
+                            [{"type": "cell", "number": val}],
+                        )
+                    else:
+                        assignments[field] = val
+        else:
+            remaining_parts = [p.strip() for p in raw.split(",") if p.strip()]
+
+        # Schritt 2: Nicht-zugewiesene Teile per Auto-Detection
+        parts = remaining_parts
+        if not parts and not assignments:
             return {}
+
         result: dict[str, str] = {
-            "name": parts[0], "emails": "[]", "role": "",
+            "name": "", "emails": "[]", "role": "",
             "formality": "förmlich", "notes": "", "phones": "[]",
         }
-        for part in parts[1:]:
+
+        for part in parts:
             lower = part.lower()
-            if "@" in part:
+            if not result["name"]:
+                result["name"] = part
+            elif "@" in part:
                 result["emails"] = json.dumps(
                     [{"type": "home", "email": part}],
                 )
@@ -715,4 +767,8 @@ class ContactCommandHandler(CommandHandler):
             else:
                 notes = result.get("notes", "")
                 result["notes"] = (notes + " " + part).strip()
+
+        # Schritt 3: Zuweisungen überschreiben Auto-Detection
+        result.update(assignments)
+
         return result

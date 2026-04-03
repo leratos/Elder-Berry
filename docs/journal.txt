@@ -3510,3 +3510,14 @@ User: "Lies meine Mails und trag den Zahnarzttermin ein"
 - Fix 3 (push_contacts): contact_store Parameter durchgereicht für UID-Nachtrag
 - Dateien: src/elder_berry/tools/carddav_sync.py, tests/test_carddav_sync.py
 - Tests: 65/65 CardDAV-Tests grün (2 neue)
+
+## Abgeschlossen: Bugfix – _parse_contact_fields erkennt key=value und key: value (2026-04-03)
+- Problem: `kontakt: Zuhause, Adresse: Schumannstr..., Gruppe: Home` → Adresse und Gruppe
+  gingen verloren, weil _parse_contact_fields nur Auto-Detection (Email/@, Telefon, Anrede)
+  konnte, aber keine expliziten Feld-Zuweisungen (key=value, key: value)
+- Fix: _parse_contact_fields erkennt jetzt Zuweisungen per = und : Format
+  → Nutzt vorhandene _FIELD_ALIASES + _resolve_field_key()
+  → Zuweisungen werden zuerst extrahiert, Rest per Auto-Detection verarbeitet
+  → Dash-Prefix (LLM-Artefakt "– Adresse:") wird toleriert
+- Dateien: src/elder_berry/comms/commands/contact_commands.py, tests/test_contact_commands.py
+- Tests: 142/142 grün (10 neue Tests für Zuweisungs-Parsing)

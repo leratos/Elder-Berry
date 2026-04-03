@@ -384,6 +384,78 @@ class TestFormalityExtended:
         r = h._parse_contact_fields("Tom, casual")
         assert r["formality"] == "locker"
 
+    def test_address_equals(self) -> None:
+        h = ContactCommandHandler()
+        r = h._parse_contact_fields(
+            "Zuhause, adresse=Schumannstr 4 14772 Brandenburg",
+        )
+        assert r["name"] == "Zuhause"
+        assert r["address"] == "Schumannstr 4 14772 Brandenburg"
+
+    def test_address_colon(self) -> None:
+        h = ContactCommandHandler()
+        r = h._parse_contact_fields(
+            "Zuhause, Adresse: Schumannstr 4 14772 Brandenburg",
+        )
+        assert r["name"] == "Zuhause"
+        assert r["address"] == "Schumannstr 4 14772 Brandenburg"
+
+    def test_gruppe_equals(self) -> None:
+        h = ContactCommandHandler()
+        r = h._parse_contact_fields("Zuhause, gruppe=Home")
+        assert r["name"] == "Zuhause"
+        assert r["categories"] == "Home"
+
+    def test_gruppe_colon(self) -> None:
+        h = ContactCommandHandler()
+        r = h._parse_contact_fields("Zuhause, Gruppe: Home")
+        assert r["name"] == "Zuhause"
+        assert r["categories"] == "Home"
+
+    def test_address_and_gruppe_combined(self) -> None:
+        h = ContactCommandHandler()
+        r = h._parse_contact_fields(
+            "Zuhause, adresse=Schumannstr 4 14772 Brandenburg, gruppe=Home",
+        )
+        assert r["name"] == "Zuhause"
+        assert r["address"] == "Schumannstr 4 14772 Brandenburg"
+        assert r["categories"] == "Home"
+
+    def test_llm_format_dash_prefix(self) -> None:
+        """LLM-generiertes Format mit Dash-Prefix."""
+        h = ContactCommandHandler()
+        r = h._parse_contact_fields(
+            "Zuhause, , , , – Adresse: Schumannstr 4 14772 Brandenburg"
+            ", Gruppe: Home",
+        )
+        assert r["name"] == "Zuhause"
+        assert r["address"] == "Schumannstr 4 14772 Brandenburg"
+        assert r["categories"] == "Home"
+
+    def test_rolle_equals(self) -> None:
+        h = ContactCommandHandler()
+        r = h._parse_contact_fields("Lisa, rolle=Schwester, anrede=locker")
+        assert r["name"] == "Lisa"
+        assert r["role"] == "Schwester"
+        assert r["formality"] == "locker"
+
+    def test_email_equals(self) -> None:
+        h = ContactCommandHandler()
+        r = h._parse_contact_fields("Max, email=max@example.com")
+        assert r["name"] == "Max"
+        parsed = json.loads(r["emails"])
+        assert parsed[0]["email"] == "max@example.com"
+
+    def test_mixed_assignment_and_auto(self) -> None:
+        """Name + Rolle per Auto-Detection, Adresse per Zuweisung."""
+        h = ContactCommandHandler()
+        r = h._parse_contact_fields(
+            "Lisa, Schwester, adresse=Hauptstr. 1, 10115 Berlin",
+        )
+        assert r["name"] == "Lisa"
+        assert r["role"] == "Schwester"
+        assert "Hauptstr" in r["address"]
+
 
 # ── Feld-Aliase ──
 
