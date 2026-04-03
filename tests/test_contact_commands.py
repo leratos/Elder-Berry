@@ -535,6 +535,50 @@ class TestUpdateColonFormat:
         assert updated.role == "Freundin"
 
 
+# ── Update per Name (LLM schreibt #name statt #ID) ──
+
+class TestUpdateByName:
+    def test_pattern_matches_hash_name(self) -> None:
+        m = CONTACT_UPDATE_PATTERN.search(
+            "kontakt ändern #lisa: adresse=Musterstr. 1")
+        assert m is not None
+        assert m.group(1) is None   # keine numerische ID
+        assert m.group(2) == "lisa"  # Name
+        assert "adresse" in m.group(3)
+
+    def test_pattern_hash_name_without_keyword(self) -> None:
+        """kontakt #name: feld=wert (ohne ändern/bearbeiten)."""
+        m = CONTACT_UPDATE_PATTERN.search(
+            "kontakt #lisa: adresse=Musterstr. 1")
+        assert m is not None
+        assert m.group(2) == "lisa"
+
+    def test_update_by_name_address(self, handler: ContactCommandHandler,
+                                    store: ContactStore) -> None:
+        store.add(USER, "Lisa")
+        r = handler.execute(
+            "contact_update",
+            "kontakt ändern #lisa: adresse=Untere Eichstädtstraße 1g, 04299 Leipzig",
+        )
+        assert r.success
+        updated = store.find_by_name(USER, "Lisa")
+        assert updated.address == "Untere Eichstädtstraße 1g, 04299 Leipzig"
+
+    def test_update_by_name_not_found(self, handler: ContactCommandHandler,
+                                      store: ContactStore) -> None:
+        r = handler.execute(
+            "contact_update",
+            "kontakt ändern #niemand: rolle=Freund",
+        )
+        assert not r.success
+        assert "nicht gefunden" in r.text
+
+    def test_lookup_plain_name_not_matched_as_update(self) -> None:
+        """kontakt #Lisa (ohne Feldzuweisung) darf NICHT als Update matchen."""
+        m = CONTACT_UPDATE_PATTERN.search("kontakt #Lisa")
+        assert m is None
+
+
 # ── Lookup-Pattern ──
 
 class TestContactLookupPattern:

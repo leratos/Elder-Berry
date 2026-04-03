@@ -48,7 +48,10 @@ CONTACT_ADD_NATURAL_PATTERN = re.compile(
 )
 
 CONTACT_UPDATE_PATTERN = re.compile(
-    r"kontakt\s+(?:(?:ändern|bearbeiten|update)\s+)?#?(\d+)[:\s]+(.+)",
+    r"kontakt\s+(?:(?:ändern|bearbeiten|update)\s+)?(?:"
+    r"#?(\d+)[:\s]+"              # Branch 1: numerische ID (#118 oder 118)
+    r"|#([\w]+)\s*:\s*"           # Branch 2: #Name gefolgt von : (#lisa:)
+    r")(.+)",
     re.IGNORECASE,
 )
 
@@ -270,8 +273,20 @@ class ContactCommandHandler(CommandHandler):
         if not match:
             return CommandResult(command="contact_update", success=False,
                                  text="Format: kontakt ändern #ID: feld=wert")
-        contact_id = int(match.group(1))
-        fields_raw = match.group(2).strip()
+        id_str = match.group(1)   # Branch 1: numerische ID
+        name_str = match.group(2)  # Branch 2: Name nach #
+        fields_raw = match.group(3).strip()
+
+        # Kontakt auflösen: per ID oder per Name
+        if id_str:
+            contact = self._store.get_by_id(int(id_str))
+        else:
+            contact = self._find_contact_for_query(name_str)
+        if not contact:
+            label = f"#{id_str}" if id_str else f"'{name_str}'"
+            return CommandResult(command="contact_update", success=False,
+                                 text=f"Kontakt {label} nicht gefunden.")
+
         updates: dict[str, str] = {}
         warnings: list[str] = []
         parsed = self._parse_field_assignments(fields_raw)
@@ -289,6 +304,7 @@ class ContactCommandHandler(CommandHandler):
                 command="contact_update", success=False,
                 text=None, fallthrough=True,
             )
+        contact_id = contact.id
         contact = self._store.update(contact_id, **updates)
         if not contact:
             return CommandResult(command="contact_update", success=False,
@@ -309,12 +325,18 @@ class ContactCommandHandler(CommandHandler):
         - feld: wert               (LLM-Variante, Wert darf Kommas enthalten)
         """
         results: list[tuple[str, str]] = []
-        # Versuche zuerst feld=wert Format (kommagetrennt)
         if "=" in fields_raw:
-            for part in fields_raw.split(","):
-                if "=" in part:
-                    raw_key, val = part.split("=", 1)
-                    results.append((raw_key, val))
+            # Mehrere Felder: feld1=wert1, feld2=wert2
+            # Einzelnes Feld: feld=wert (Kommas im Wert erhalten)
+            eq_count = fields_raw.count("=")
+            if eq_count == 1:
+                raw_key, val = fields_raw.split("=", 1)
+                results.append((raw_key, val))
+            else:
+                for part in fields_raw.split(","):
+                    if "=" in part:
+                        raw_key, val = part.split("=", 1)
+                        results.append((raw_key, val))
             return results
         # Fallback: feld: wert (einzelnes Feld, Wert darf Kommas enthalten)
         colon_match = re.match(r"(\w+)\s*:\s*(.+)", fields_raw, re.DOTALL)

@@ -3424,13 +3424,13 @@ User: "Lies meine Mails und trag den Zahnarzttermin ein"
 - TODO: Altes Dropbox-Backup in Plesk deaktivieren
 
 ## Abgeschlossen: Bugfix – Kontakt-Update über LLM-Command fehlgeschlagen (2026-04-03)
-- Problem: LLM generierte `kontakt #118 adresse: Wert` statt `kontakt ändern #118: adresse=Wert`
-  → CONTACT_LOOKUP_PATTERN matchte fälschlich → fallthrough → Rekursions-Guard blockierte
-- Fix 1: CONTACT_UPDATE_PATTERN erweitert – `ändern/bearbeiten/update` Keyword jetzt optional
-  → `kontakt #ID feld: wert` wird als Update erkannt (Pattern-Priorität: update VOR lookup)
-- Fix 2: _cmd_update parst jetzt auch `feld: wert` Format (nicht nur `feld=wert`)
-  → Kommas im Wert bleiben erhalten (wichtig für Adressen)
+- Problem: LLM generierte verschiedene Formate (`kontakt #118 adresse: Wert`, `kontakt ändern #lisa: adresse=Wert`)
+  die nicht als Update erkannt wurden → CONTACT_LOOKUP_PATTERN matchte fälschlich → Rekursions-Guard blockierte
+- Fix 1: CONTACT_UPDATE_PATTERN mit zwei Branches: numerische ID (#118/118) ODER #Name (#lisa)
+  → `ändern/bearbeiten/update` Keyword optional, Name-Auflösung per fuzzy lookup
+- Fix 2: _parse_field_assignments() – neue Methode für robustes Feld-Parsing:
+  → `feld=wert` (klassisch), `feld: wert` (LLM-Variante), einzelnes Feld mit Kommas im Wert
 - Fix 3: _cmd_update gibt fallthrough zurück wenn keine Felder erkannt (statt leeres Update)
 - Fix 4: command_descriptions um Update-Syntax ergänzt (LLM lernt korrektes Format)
 - Dateien: src/elder_berry/comms/commands/contact_commands.py
-- Tests: 128/128 grün (7 neu)
+- Tests: 133/133 grün (12 neu)
