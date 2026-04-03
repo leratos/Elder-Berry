@@ -3471,3 +3471,14 @@ User: "Lies meine Mails und trag den Zahnarzttermin ein"
 - Bei 49 Kontakten: ~49 HTTP-Requests gespart (1 PROPFIND + 48 GETs)
 - Dateien: src/elder_berry/tools/carddav_sync.py
 - Tests: 39/39 grün (1 neuer Test für Map-Durchreichung)
+
+## Abgeschlossen: Bugfix – Lokal gesetzte Adresse wird jetzt nach NC gepusht (2026-04-03)
+- Problem: Adresse lokal gesetzt → sync() → Pull überschrieb mit leerem NC-Wert
+  und Push schrieb nur EB-Felder (role/notes/formality), nicht die Adresse
+- Fix 1 (Pull-Merge): Leere NC-Werte überschreiben nicht-leere lokale Werte nicht mehr
+  → "NC ist Quelle" gilt nur wenn NC tatsächlich einen Wert hat
+- Fix 2 (_inject_eb_fields → _inject_local_fields): Schreibt jetzt auch ADR in vCard
+  → Bestehende ADR wird ersetzt, neue ADR wird hinzugefügt
+- Fix 3 (to_push-Filter): Kontakte mit lokaler Adresse werden jetzt auch gepusht
+- Dateien: src/elder_berry/tools/carddav_sync.py, tests/test_carddav_extended.py
+- Tests: 196/196 grün (5 neue Tests: Pull-Merge, Push-Adresse, Inject-Adresse)

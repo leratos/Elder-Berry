@@ -446,6 +446,68 @@ class TestSync:
         assert pushed[0].role == "Schwester"
         store.close()
 
+    def test_sync_pull_preserves_local_address(self, client, tmp_path: Path):
+        """Pull überschreibt lokale Adresse nicht mit leerem NC-Wert."""
+        store = ContactStore(db_path=tmp_path / "c.db")
+        store.add("@user:matrix.org", "Lisa", vcard_uid="uid-lisa",
+                  address="Musterstr. 1, 04299 Leipzig")
+        remote_data = [
+            {"name": "Lisa", "emails": "[]", "phones": "[]",
+             "role": "", "formality": "förmlich", "notes": "",
+             "birthday": "", "address": "", "organization": "",
+             "title": "", "categories": "", "nickname": "",
+             "anniversary": "", "url": "", "vcard_uid": "uid-lisa"},
+        ]
+        with patch.object(client, "pull_contacts", return_value=remote_data), \
+             patch.object(client, "push_contacts", return_value=SyncResult()):
+            client.sync(store, "@user:matrix.org")
+        lisa = store.find_by_name("@user:matrix.org", "Lisa")
+        assert lisa.address == "Musterstr. 1, 04299 Leipzig"
+        store.close()
+
+    def test_sync_pull_overwrites_with_nonempty_nc_value(
+            self, client, tmp_path: Path):
+        """Pull überschreibt lokalen Wert wenn NC einen nicht-leeren hat."""
+        store = ContactStore(db_path=tmp_path / "c.db")
+        store.add("@user:matrix.org", "Lisa", vcard_uid="uid-lisa",
+                  address="Alt")
+        remote_data = [
+            {"name": "Lisa", "emails": "[]", "phones": "[]",
+             "role": "", "formality": "förmlich", "notes": "",
+             "birthday": "", "address": "Neustr. 5, 10115 Berlin",
+             "organization": "", "title": "", "categories": "",
+             "nickname": "", "anniversary": "", "url": "",
+             "vcard_uid": "uid-lisa"},
+        ]
+        with patch.object(client, "pull_contacts", return_value=remote_data), \
+             patch.object(client, "push_contacts", return_value=SyncResult()):
+            client.sync(store, "@user:matrix.org")
+        lisa = store.find_by_name("@user:matrix.org", "Lisa")
+        assert lisa.address == "Neustr. 5, 10115 Berlin"
+        store.close()
+
+    def test_sync_pushes_contact_with_address(self, client, tmp_path: Path):
+        """Kontakt mit lokaler Adresse wird gepusht."""
+        store = ContactStore(db_path=tmp_path / "c.db")
+        store.add("@user:matrix.org", "Lisa", vcard_uid="uid-lisa",
+                  address="Musterstr. 1, 04299 Leipzig")
+        remote_data = [
+            {"name": "Lisa", "emails": "[]", "phones": "[]",
+             "role": "", "formality": "förmlich", "notes": "",
+             "birthday": "", "address": "", "organization": "",
+             "title": "", "categories": "", "nickname": "",
+             "anniversary": "", "url": "", "vcard_uid": "uid-lisa"},
+        ]
+        with patch.object(client, "pull_contacts", return_value=remote_data), \
+             patch.object(client, "push_contacts",
+                          return_value=SyncResult(pushed=1)) as mock_push:
+            client.sync(store, "@user:matrix.org")
+        mock_push.assert_called_once()
+        pushed = mock_push.call_args[0][0]
+        assert len(pushed) == 1
+        assert pushed[0].address == "Musterstr. 1, 04299 Leipzig"
+        store.close()
+
     def test_sync_passes_uid_href_map_to_push(self, client, tmp_path: Path):
         """sync() baut uid→href Map beim Pull auf und reicht sie an Push."""
         store = ContactStore(db_path=tmp_path / "c.db")
@@ -475,6 +537,64 @@ class TestSync:
         assert "uid-lisa" in uid_map
         assert uid_map["uid-lisa"] == "/dav/contacts/ABCD.vcf"
         store.close()
+
+
+# ── Inject Local Fields ────────────────────────────────────────────────
+
+
+class TestInjectLocalFields:
+
+    def test_inject_address_into_vcard(self, client):
+        """Lokale Adresse wird als ADR in vCard geschrieben."""
+        from datetime import datetime, timezone
+        now = datetime.now(tz=timezone.utc)
+        contact = Contact(
+            id=1, user_id="@u:m", name="Lisa",
+            emails="[]", phones="[]",
+            role="", formality="", notes="",
+            birthday="", address="Musterstr. 1, 04299 Leipzig",
+            organization="", title="",
+            categories="", nickname="", anniversary="", url="",
+            vcard_uid="", created_at=now, updated_at=now,
+        )
+        vcard = (
+            "BEGIN:VCARD\r\n"
+            "VERSION:3.0\r\n"
+            "FN:Lisa\r\n"
+            "UID:test-123\r\n"
+            "END:VCARD\r\n"
+        )
+        result = client._inject_local_fields(vcard, contact)
+        assert "ADR" in result
+        assert "Musterstr. 1" in result
+        assert "04299" in result
+        assert "Leipzig" in result
+
+    def test_inject_address_replaces_existing(self, client):
+        """Bestehende ADR wird durch lokale ersetzt."""
+        from datetime import datetime, timezone
+        now = datetime.now(tz=timezone.utc)
+        contact = Contact(
+            id=1, user_id="@u:m", name="Lisa",
+            emails="[]", phones="[]",
+            role="", formality="", notes="",
+            birthday="", address="Neustr. 5, 10115 Berlin",
+            organization="", title="",
+            categories="", nickname="", anniversary="", url="",
+            vcard_uid="", created_at=now, updated_at=now,
+        )
+        vcard = (
+            "BEGIN:VCARD\r\n"
+            "VERSION:3.0\r\n"
+            "FN:Lisa\r\n"
+            "UID:test-123\r\n"
+            "ADR:;;Altstr. 99;;;;;\r\n"
+            "END:VCARD\r\n"
+        )
+        result = client._inject_local_fields(vcard, contact)
+        assert "Altstr. 99" not in result
+        assert "Neustr. 5" in result
+        assert "Berlin" in result
 
 
 # ── Address Parsing (Push) ──────────────────────────────────────────────

@@ -350,7 +350,7 @@ class TestInjectEBFields:
             "UID:test-123\r\n"
             "END:VCARD\r\n"
         )
-        result = client._inject_eb_fields(original_vcard, contact)
+        result = client._inject_local_fields(original_vcard, contact)
         assert "[Rolle: Schwester]" in result
         assert "mag Katzen" in result
         assert "X-ELDERBERRY-FORMALITY" in result.upper()

@@ -215,8 +215,8 @@ class CardDAVSyncClient:
             logger.warning("GET vCard %s: HTTP %d", href, resp.status_code)
             return False
 
-        # EB-Felder in bestehende vCard einfügen
-        updated_vcard = self._inject_eb_fields(resp.text, contact)
+        # Lokal gesetzte Felder in bestehende vCard einfügen
+        updated_vcard = self._inject_local_fields(resp.text, contact)
 
         # Zurückschreiben
         resp = httpx.put(
@@ -231,8 +231,14 @@ class CardDAVSyncClient:
         logger.warning("PUT updated vCard %s: HTTP %d", href, resp.status_code)
         return False
 
-    def _inject_eb_fields(self, vcard_str: str, contact: Contact) -> str:
-        """Fügt Elder-Berry-Felder (NOTE, X-ELDERBERRY-*) in bestehende vCard ein."""
+    def _inject_local_fields(self, vcard_str: str, contact: Contact) -> str:
+        """Fügt lokal gesetzte Felder in bestehende NC-vCard ein.
+
+        Schreibt:
+        - NOTE (Rolle + Notizen)
+        - X-ELDERBERRY-FORMALITY
+        - ADR (Adresse, nur wenn lokal gesetzt und NC leer)
+        """
         import vobject
 
         try:
@@ -240,7 +246,7 @@ class CardDAVSyncClient:
         except Exception:
             return vcard_str
 
-        # NOTE: Rolle + Notizen (Trennzeichen --- für robustes Parsen)
+        # NOTE: Rolle + Notizen
         note_parts = []
         if contact.role:
             note_parts.append(f"[Rolle: {contact.role}]")
@@ -260,6 +266,15 @@ class CardDAVSyncClient:
                 card.remove(child)
         if contact.formality:
             card.add("x-elderberry-formality").value = contact.formality
+
+        # ADR: Adresse lokal gesetzt → in vCard schreiben
+        if contact.address:
+            # Bestehende ADR entfernen
+            for child in list(card.getChildren()):
+                if child.name.upper() == "ADR":
+                    card.remove(child)
+            adr = card.add("adr")
+            adr.value = self._parse_address_to_vcard(contact.address)
 
         return card.serialize()
 
@@ -366,8 +381,15 @@ class CardDAVSyncClient:
 
                 if existing:
                     # NC-Felder aktualisieren, EB-Felder behalten
-                    update_data = {k: v for k, v in data.items()
-                                   if k not in _EB_FIELDS}
+                    # Leere NC-Werte nicht über lokale Werte schreiben
+                    # (z.B. Adresse lokal gesetzt, NC hat keine)
+                    update_data = {}
+                    for k, v in data.items():
+                        if k in _EB_FIELDS:
+                            continue
+                        if not v and getattr(existing, k, None):
+                            continue
+                        update_data[k] = v
                     update_data["vcard_uid"] = vcard_uid
                     contact_store.update(existing.id, **update_data)
                     result.updated += 1
@@ -381,11 +403,14 @@ class CardDAVSyncClient:
                     f"Pull {data.get('name', '?')}: {exc}",
                 )
 
-        # Phase 2: Push EB-Felder (lokal → NC)
+        # Phase 2: Push lokal gesetzte Felder (lokal → NC)
         local_contacts = contact_store.list_all(user_id, limit=1000)
         to_push = [
             c for c in local_contacts
-            if c.vcard_uid and (c.role or c.notes or c.formality != "förmlich")
+            if c.vcard_uid and (
+                c.role or c.notes or c.formality != "förmlich"
+                or c.address
+            )
         ]
         if to_push:
             push_result = self.push_contacts(to_push, uid_href_map=uid_href_map)
@@ -427,7 +452,9 @@ class CardDAVSyncClient:
 
         if contact.address:
             adr = card.add("adr")
-            adr.value = self._parse_address_to_vcard(contact.address)
+            adr.value = CardDAVSyncClient._parse_address_to_vcard(
+                contact.address,
+            )
 
         if contact.organization:
             card.add("org").value = [contact.organization]
