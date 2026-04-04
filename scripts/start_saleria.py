@@ -187,7 +187,7 @@ def init_tts(no_tts: bool, character=None, event_loop=None):
     """TTS-Engine – TTSRouter (ElevenLabs) wenn Keys vorhanden, sonst lokal.
 
     Reihenfolge:
-    1. ElevenLabs vorhanden → TTSRouter (Cloud-TTS, Tower als Fallback)
+    1. ElevenLabs vorhanden → TTSRouter (Cloud-TTS, Tower + lokal als Fallback)
     2. CoquiTTS verfügbar → CoquiTTSEngine (lokales XTTS v2)
     3. Windows → WindowsTTSEngine (SAPI5)
     """
@@ -195,17 +195,33 @@ def init_tts(no_tts: bool, character=None, event_loop=None):
         logger.info("TTS: deaktiviert")
         return None
 
-    # Option 1: TTSRouter (ElevenLabs + Tower-Fallback)
-    tts_router = _init_tts_router(event_loop)
+    # Lokale TTS-Engine versuchen (für Standalone oder als Fallback)
+    local_tts = _init_local_tts(character)
+
+    # Option 1: TTSRouter (ElevenLabs + Tower + lokaler Fallback)
+    tts_router = _init_tts_router(event_loop, local_tts=local_tts)
     if tts_router:
         return tts_router
 
-    # Option 2: Lokales CoquiTTS (XTTS v2)
+    # Option 2: Nur lokale Engine (kein ElevenLabs konfiguriert)
+    if local_tts:
+        return local_tts
+
+    logger.warning("TTS: kein Engine verfügbar")
+    return None
+
+
+def _init_local_tts(character=None):
+    """Versucht lokale TTS-Engine zu erstellen (CoquiTTS → WindowsTTS).
+
+    Returns:
+        TTSEngine oder None.
+    """
+    # CoquiTTS (XTTS v2)
     try:
         from elder_berry.tts.coqui_engine import CoquiTTSEngine
         from elder_berry.character.base import Emotion
 
-        # Voice-Map aus Character aufbauen
         voice_map = {}
         default_wav = None
         if character:
@@ -222,27 +238,28 @@ def init_tts(no_tts: bool, character=None, event_loop=None):
             language="de",
         )
         tts.load()
-        logger.info("TTS: CoquiTTSEngine (XTTS v2)")
+        logger.info("TTS lokal: CoquiTTSEngine (XTTS v2)")
         return tts
     except (ImportError, Exception) as e:
         logger.debug("CoquiTTS nicht verfügbar: %s", e)
 
-    # Option 3: Windows SAPI5
+    # Windows SAPI5
     if platform.system() == "Windows":
         try:
             from elder_berry.tts.windows_engine import WindowsTTSEngine
             tts = WindowsTTSEngine()
-            logger.info("TTS: WindowsTTSEngine (SAPI5)")
+            logger.info("TTS lokal: WindowsTTSEngine (SAPI5)")
             return tts
         except (ImportError, Exception) as e:
-            logger.warning("WindowsTTS nicht verfügbar: %s", e)
+            logger.debug("WindowsTTS nicht verfügbar: %s", e)
 
-    logger.warning("TTS: kein Engine verfügbar")
     return None
 
 
-def _init_tts_router(event_loop=None):
-    """Versucht TTSRouter mit ElevenLabs + optionalem Tower-Fallback zu erstellen.
+def _init_tts_router(event_loop=None, local_tts=None):
+    """Versucht TTSRouter mit ElevenLabs + Fallback-Kette zu erstellen.
+
+    Fallback: Tower (XTTS v2) → lokale TTSEngine (CoquiTTS/WindowsTTS).
 
     Returns:
         TTSRouter oder None wenn ElevenLabs-Keys nicht konfiguriert sind.
@@ -268,11 +285,18 @@ def _init_tts_router(event_loop=None):
         router = TTSRouter(
             elevenlabs=elevenlabs,
             tower=tower,
+            local_tts=local_tts,
             event_loop=event_loop,
         )
+        fallbacks = []
+        if tower:
+            fallbacks.append("Tower")
+        if local_tts:
+            fallbacks.append(type(local_tts).__name__)
+        fb_str = " + ".join(fallbacks)
         logger.info(
             "TTS: TTSRouter (ElevenLabs%s)",
-            " + Tower-Fallback" if tower else "",
+            " → " + fb_str if fb_str else "",
         )
         return router
     except Exception as e:

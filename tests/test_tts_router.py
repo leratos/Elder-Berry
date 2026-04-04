@@ -7,6 +7,7 @@ import httpx
 import pytest
 
 from elder_berry.core.tts_router import TTSRouter, TTSUnavailableError
+from elder_berry.tts.base import TTSEngine, VoiceInfo
 from elder_berry.tools.elevenlabs_client import ElevenLabsError
 
 
@@ -181,6 +182,41 @@ class TestGenerateAudio:
 
         assert result.suffix == ".mp3"
         assert result.stem == "out"
+
+    def test_local_fallback_on_cloud_and_tower_failure(self, tmp_path):
+        """ElevenLabs + Tower down → lokaler Fallback."""
+        local_tts = MagicMock(spec=TTSEngine)
+        expected_path = tmp_path / "speech.wav"
+        local_tts.generate_audio.return_value = expected_path
+
+        router = _make_router(elevenlabs=_make_elevenlabs(fail=True))
+        router._local_tts = local_tts
+        router._run_async = MagicMock(side_effect=TTSUnavailableError("down"))
+
+        result = router.generate_audio("Test", expected_path, emotion="neutral")
+
+        assert result == expected_path
+        local_tts.generate_audio.assert_called_once_with(
+            "Test", expected_path, emotion="neutral",
+        )
+
+    def test_no_local_fallback_raises(self, tmp_path):
+        """Ohne lokalen Fallback → Error propagiert."""
+        router = _make_router(elevenlabs=_make_elevenlabs(fail=True))
+        router._run_async = MagicMock(side_effect=TTSUnavailableError("down"))
+
+        with pytest.raises(TTSUnavailableError):
+            router.generate_audio("Test", tmp_path / "speech.wav")
+
+    def test_speak_delegates_to_local(self):
+        """speak() delegiert an lokale Engine."""
+        local_tts = MagicMock(spec=TTSEngine)
+        router = _make_router()
+        router._local_tts = local_tts
+
+        router.speak("Hallo", emotion="cheerful")
+
+        local_tts.speak.assert_called_once_with("Hallo", emotion="cheerful")
 
 
 # ---------------------------------------------------------------------------
