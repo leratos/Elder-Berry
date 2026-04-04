@@ -756,3 +756,37 @@ lokales Whisper Fallback. Tower wird optionaler Agent für PC-Steuerung.
 - **Tests**: ~80 geplant
 - **Konzept**: `docs/concepts/phase-44-server-migration.md`
 - **Abhängigkeit**: Alle bisherigen Phasen ✅, Hetzner Backup ✅
+
+
+## Phase 45 – Settings Dashboard Erweiterung ⚙️ GEPLANT
+
+Bestehendes Dashboard (localhost:8090) um drei Sektionen erweitern:
+API-Verwaltung, LLM-Umschalter, Grundeinstellungen.
+
+- **API-Status**: Alle 30 SecretStore-Keys gruppiert anzeigen (✅/❌), Keys setzen/löschen
+- **LLM-Umschalter**: Toggle "API bevorzugt" / "Nur lokal (Ollama)", Live-Status beider Backends
+- **Grundeinstellungen**: Wetter-Standort, Briefing-Uhrzeit, Routen-Puffer, Host-IPs
+- **Rename**: AudioDashboard → SettingsDashboard (Klasse + Dateien)
+- **LLMRouter**: `mode` Property + Setter (api_preferred / local_only)
+- **Tier 2 (nicht in Phase 45)**: Memory-Browser, Service-Health, Log-Viewer
+- **Sicherheit**: IP-Whitelist (NordVPN dedicated IP) + Basic Auth auf Nginx-Ebene
+- **Deployment**: Pfad unter fern.last-strawberry.com/settings/ + Fail2Ban-Jail
+- **Tests**: ~30 geplant (20 API + 10 LLMRouter)
+- **Konzept**: `docs/concepts/phase-45-settings-dashboard.md`
+- **Abhängigkeit**: Keine – alle nötigen Komponenten existieren
+
+
+## Phase 46 – Setup-Wizard (Installationsassistent) 🧙 GEPLANT
+
+Neuer Nutzer kann Elder-Berry von Null aufsetzen: Bootstrap-Script +
+Web-Wizard der Schritt für Schritt alle Dienste konfiguriert und testet.
+
+- **Bootstrap**: `install.ps1` / `install.sh` (Git clone, venv, pip install)
+- **Web-Wizard**: 8-Schritt-Wizard auf localhost:8090/setup
+  - Voraussetzungen, LLM, Matrix, Nextcloud, E-Mail, Standort, Optionale Dienste, Zusammenfassung
+- **SetupTests**: Verbindungstest-Klasse (Anthropic, Matrix, Nextcloud, IMAP/SMTP, Ollama, Brave)
+- **First-Run-Detection**: start_saleria.py erkennt fehlende Matrix-Keys → Wizard starten
+- **Hilfe-Links**: Offizielle Doku verlinken (Nextcloud, Matrix, Anthropic etc.) – keine eigenen Docs
+- **Tests**: ~38 geplant (20 SetupTests + 13 API + 5 Scripts)
+- **Konzept**: `docs/concepts/phase-46-setup-wizard.md`
+- **Abhängigkeit**: Phase 45 (SettingsDashboard Rename)

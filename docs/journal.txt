@@ -3627,3 +3627,13 @@ User: "Lies meine Mails und trag den Zahnarzttermin ein"
 ## In Arbeit: Phase 46 – Setup-Wizard (Installationsassistent) (2026-04-04)
 - Konzeptdokument: docs/concepts/phase-46-setup-wizard.md
 - nächster Schritt: Konzept schreiben, Roadmap ergänzen
+
+## Abgeschlossen: Phase 46 – Konzeptdokument Setup-Wizard (2026-04-04)
+- Konzept: docs/concepts/phase-46-setup-wizard.md
+- 8-Schritt Web-Wizard (Voraussetzungen → LLM → Matrix → NC → Mail → Standort → Optional → Summary)
+- SetupTests: 6 Verbindungstest-Methoden (Anthropic, Matrix, NC, Email, Ollama, Brave)
+- Bootstrap-Scripts: install.ps1 (Windows) + install.sh (Linux)
+- First-Run-Detection in start_saleria.py
+- Hilfe-Links: nur offizielle Doku verlinken, keine eigenen Hilfeseiten
+- ~38 Tests geplant
+- PROJECT_ROADMAP.md um Phase 46 ergänzt
