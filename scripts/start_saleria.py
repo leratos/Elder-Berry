@@ -183,12 +183,24 @@ def init_character():
     return engine
 
 
-def init_tts(no_tts: bool, character=None):
-    """TTS-Engine – bevorzugt CoquiTTS mit Voice-Map, Fallback pyttsx3."""
+def init_tts(no_tts: bool, character=None, event_loop=None):
+    """TTS-Engine – TTSRouter (ElevenLabs) wenn Keys vorhanden, sonst lokal.
+
+    Reihenfolge:
+    1. ElevenLabs vorhanden → TTSRouter (Cloud-TTS, Tower als Fallback)
+    2. CoquiTTS verfügbar → CoquiTTSEngine (lokales XTTS v2)
+    3. Windows → WindowsTTSEngine (SAPI5)
+    """
     if no_tts:
         logger.info("TTS: deaktiviert")
         return None
 
+    # Option 1: TTSRouter (ElevenLabs + Tower-Fallback)
+    tts_router = _init_tts_router(event_loop)
+    if tts_router:
+        return tts_router
+
+    # Option 2: Lokales CoquiTTS (XTTS v2)
     try:
         from elder_berry.tts.coqui_engine import CoquiTTSEngine
         from elder_berry.character.base import Emotion
@@ -215,6 +227,7 @@ def init_tts(no_tts: bool, character=None):
     except (ImportError, Exception) as e:
         logger.debug("CoquiTTS nicht verfügbar: %s", e)
 
+    # Option 3: Windows SAPI5
     if platform.system() == "Windows":
         try:
             from elder_berry.tts.windows_engine import WindowsTTSEngine
@@ -226,6 +239,70 @@ def init_tts(no_tts: bool, character=None):
 
     logger.warning("TTS: kein Engine verfügbar")
     return None
+
+
+def _init_tts_router(event_loop=None):
+    """Versucht TTSRouter mit ElevenLabs + optionalem Tower-Fallback zu erstellen.
+
+    Returns:
+        TTSRouter oder None wenn ElevenLabs-Keys nicht konfiguriert sind.
+    """
+    try:
+        from elder_berry.core.secret_store import SecretStore
+        from elder_berry.core.tts_router import TTSRouter
+        from elder_berry.tools.elevenlabs_client import ElevenLabsClient
+
+        store = SecretStore()
+        api_key = store.get_or_none("elevenlabs_api_key")
+        voice_id = store.get_or_none("elevenlabs_voice_id")
+
+        if not api_key or not voice_id:
+            logger.debug("ElevenLabs nicht konfiguriert (Keys fehlen)")
+            return None
+
+        elevenlabs = ElevenLabsClient(api_key=api_key, voice_id=voice_id)
+
+        # Tower-Fallback (optional)
+        tower = _init_tower_agent(store)
+
+        router = TTSRouter(
+            elevenlabs=elevenlabs,
+            tower=tower,
+            event_loop=event_loop,
+        )
+        logger.info(
+            "TTS: TTSRouter (ElevenLabs%s)",
+            " + Tower-Fallback" if tower else "",
+        )
+        return router
+    except Exception as e:
+        logger.debug("TTSRouter nicht initialisierbar: %s", e)
+        return None
+
+
+def _init_tower_agent(store=None):
+    """Erstellt TowerAgent wenn tower_host konfiguriert ist.
+
+    Returns:
+        TowerAgent oder None.
+    """
+    try:
+        from elder_berry.core.tower_agent import TowerAgent
+
+        if store is None:
+            from elder_berry.core.secret_store import SecretStore
+            store = SecretStore()
+
+        tower_host = store.get_or_none("tower_host")
+        if not tower_host:
+            return None
+
+        agent = TowerAgent(tower_host=tower_host)
+        logger.info("TowerAgent: konfiguriert für %s", tower_host)
+        return agent
+    except Exception as e:
+        logger.debug("TowerAgent nicht verfügbar: %s", e)
+        return None
 
 
 def init_memory(no_memory: bool):
