@@ -3522,6 +3522,20 @@ User: "Lies meine Mails und trag den Zahnarzttermin ein"
 - Dateien: src/elder_berry/comms/commands/contact_commands.py, tests/test_contact_commands.py
 - Tests: 142/142 grün (10 neue Tests für Zuweisungs-Parsing)
 
+## Abgeschlossen: Phase 44.5 – Server-Deploy Vorbereitung (2026-04-04)
+- pyproject.toml: neue [server] Dependency-Gruppe (matrix, memory, tools, documents, web, nextcloud)
+  → Alles was der Server braucht, ohne Tower-spezifisches (torch, coqui, pyautogui)
+- start_saleria.py:
+  → ELDER_BERRY_HOME Umgebungsvariable als Basis-Pfad (Default: scripts/../)
+  → --mode agent: startet nur TowerServer (uvicorn), kein LLM/Bot/Assistant
+  → Home-Pfad wird beim Start angezeigt
+- server/elder-berry.service: systemd Unit für Bot auf Rootserver
+  → User lera, WorkingDirectory /opt/elder-berry, --mode matrix
+  → Security-Hardening: ProtectSystem=strict, NoNewPrivileges, PrivateTmp
+- server/elder-berry-tower.service: systemd Unit für TowerServer (--mode agent)
+- Branch: feature/phase-44-5-server-deploy
+- Tests: 25/25 grün (tests/test_start_saleria.py)
+
 ## Abgeschlossen: Phase 44.4 – TowerServer (2026-04-04)
 - TowerServer: tower/tower_server.py (~270 Zeilen)
   → FastAPI-Service für Tower-PC, Gegenstück zu TowerAgent

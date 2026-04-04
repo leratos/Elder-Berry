@@ -27,8 +27,10 @@ import signal
 import sys
 from pathlib import Path
 
-# Projektpfad sicherstellen
-_PROJECT_ROOT = Path(__file__).parent.parent
+# Projektpfad sicherstellen – ELDER_BERRY_HOME überschreibt den Default
+_PROJECT_ROOT = Path(
+    os.environ.get("ELDER_BERRY_HOME", Path(__file__).parent.parent)
+).resolve()
 sys.path.insert(0, str(_PROJECT_ROOT / "src"))
 
 from dotenv import load_dotenv
@@ -91,9 +93,9 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--mode",
-        choices=["terminal", "matrix", "voice"],
+        choices=["terminal", "matrix", "voice", "agent"],
         default="matrix",
-        help="Eingabe-Modus (Standard: matrix)",
+        help="Eingabe-Modus (Standard: matrix). 'agent' startet nur den TowerServer.",
     )
     parser.add_argument("--no-memory", action="store_true", help="RAG-Gedächtnis deaktivieren")
     parser.add_argument("--no-tts", action="store_true", help="Sprachausgabe deaktivieren")
@@ -486,6 +488,44 @@ def _init_stt_router(event_loop=None):
 # ---------------------------------------------------------------------------
 # Lauf-Modi
 # ---------------------------------------------------------------------------
+
+def run_agent(port: int = 8090):
+    """Agent-Modus: Startet nur den TowerServer (FastAPI) ohne Bot/LLM.
+
+    Dieser Modus ist für den Tower-PC gedacht, wenn der Bot auf dem
+    Server läuft. Der Tower stellt TTS, STT, PC-Steuerung und
+    Screenshots über HTTP bereit.
+    """
+    try:
+        import uvicorn
+    except ImportError:
+        logger.error(
+            "uvicorn nicht installiert. "
+            "Installiere mit: pip install -e '.[tower]'"
+        )
+        sys.exit(1)
+
+    # tower/ Package muss importierbar sein
+    sys.path.insert(0, str(_PROJECT_ROOT))
+
+    try:
+        from tower.tower_server import app  # noqa: F401
+    except ImportError as e:
+        logger.error("TowerServer nicht importierbar: %s", e)
+        sys.exit(1)
+
+    print("\n─── Saleria Agent-Modus (TowerServer) ───")
+    print(f"  Endpunkte: /status, /tts, /stt, /action, /screenshot")
+    print(f"  Port: {port}")
+    print("  Ctrl+C zum Beenden\n")
+
+    uvicorn.run(
+        "tower.tower_server:app",
+        host="0.0.0.0",
+        port=port,
+        log_level="info",
+    )
+
 
 def run_terminal(assistant):
     """Einfacher Terminal-Loop: Text eingeben, Antwort erhalten."""
@@ -1106,7 +1146,13 @@ def main():
     print("═" * 50)
     print("  Saleria Berry – Elder-Berry Assistent")
     print(f"  Modus: {args.mode.upper()}")
+    print(f"  Home:  {_PROJECT_ROOT}")
     print("═" * 50)
+
+    # Agent-Modus: nur TowerServer starten, kein LLM/Bot nötig
+    if args.mode == "agent":
+        run_agent()
+        return
 
     # Secrets aus SecretStore in Env laden (für LLMRouter etc.)
     load_secrets_to_env()

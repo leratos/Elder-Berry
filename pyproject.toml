@@ -97,6 +97,20 @@ tower = [
     "comtypes>=1.2",
     "mss>=9.0",
 ]
+server = [
+    "matrix-nio>=0.24",
+    "aiofiles>=23.0",
+    "pydub>=0.25",
+    "chromadb>=0.5",
+    "google-api-python-client>=2.0",
+    "google-auth-oauthlib>=1.0",
+    "google-auth-httplib2>=0.2",
+    "pymupdf>=1.23",
+    "trafilatura>=1.6",
+    "beautifulsoup4>=4.12",
+    "caldav>=1.0",
+    "vobject>=0.9",
+]
 
 [tool.setuptools.packages.find]
 where = ["src"]
