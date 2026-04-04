@@ -1,0 +1,18 @@
+[Unit]
+Description=Elder-Berry Tower Agent (TTS/STT/Actions)
+After=network.target
+
+[Service]
+Type=simple
+User=lera
+WorkingDirectory=/opt/elder-berry
+Environment="PATH=/opt/elder-berry/.venv/bin:/usr/local/bin:/usr/bin"
+Environment="ELDER_BERRY_HOME=/opt/elder-berry"
+ExecStart=/opt/elder-berry/.venv/bin/python scripts/start_saleria.py --mode agent
+Restart=always
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
