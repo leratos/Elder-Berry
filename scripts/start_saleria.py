@@ -847,20 +847,20 @@ def _init_context_and_tools(secrets, assistant, svc):
     from elder_berry.tools.document_reader import DocumentReader
     tools["document_reader"] = DocumentReader()
 
-    # DocumentClassifier (benötigt Ollama + DocumentReader + optional Stirling-PDF)
+    # DocumentClassifier (benötigt AnthropicClient + DocumentReader + optional Stirling-PDF)
     try:
-        from elder_berry.llm.ollama_client import OllamaClient
+        from elder_berry.llm.anthropic_client import AnthropicClient
         from elder_berry.tools.document_classifier import DocumentClassifier
-        ollama_client = OllamaClient()
-        if ollama_client.is_available():
+        anthropic_client = AnthropicClient()
+        if anthropic_client.is_available():
             tools["document_classifier"] = DocumentClassifier(
-                ollama=ollama_client,
+                llm=anthropic_client,
                 document_reader=tools["document_reader"],
                 stirling_pdf=svc.get("stirling_pdf"),
             )
-            logger.info("DocumentClassifier: aktiv (Ollama + DocumentReader)")
+            logger.info("DocumentClassifier: aktiv (Anthropic + DocumentReader)")
         else:
-            logger.warning("DocumentClassifier: nicht verfügbar (Ollama nicht erreichbar)")
+            logger.warning("DocumentClassifier: nicht verfügbar (Anthropic API Key fehlt)")
     except Exception as e:
         logger.warning("DocumentClassifier nicht verfügbar: %s", e)
 
