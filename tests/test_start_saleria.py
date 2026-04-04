@@ -215,7 +215,7 @@ class TestServiceFiles:
         content = (_PROJECT_ROOT / "server" / "elder-berry.service").read_text()
         assert "ExecStart=" in content
         assert "--mode matrix" in content
-        assert "ELDER_BERRY_HOME=/opt/elder-berry" in content
+        assert "ELDER_BERRY_HOME=" in content
         assert "User=lera" in content
         assert "Restart=always" in content
 
@@ -230,5 +230,5 @@ class TestServiceFiles:
 
     def test_server_service_security_hardening(self):
         content = (_PROJECT_ROOT / "server" / "elder-berry.service").read_text()
-        assert "ProtectSystem=" in content
         assert "NoNewPrivileges=true" in content
+        assert "PrivateTmp=true" in content

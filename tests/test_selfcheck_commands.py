@@ -396,14 +396,17 @@ class TestTowerAgentSelfcheck:
         import asyncio
         from elder_berry.comms.commands.selfcheck_commands import SelfcheckCommandHandler
 
+        loop = asyncio.new_event_loop()
         tower = MagicMock()
         tower.host = "127.0.0.1:12769"
-        future = asyncio.Future()
+        future = loop.create_future()
         future.set_result(True)
         tower.heartbeat.return_value = future
         tower.is_online = True
 
-        ok, detail = SelfcheckCommandHandler._probe_service("tower_agent", tower)
+        with patch("asyncio.get_event_loop", return_value=loop):
+            ok, detail = SelfcheckCommandHandler._probe_service("tower_agent", tower)
+        loop.close()
         assert ok is True
         assert "127.0.0.1:12769" in detail
 
@@ -412,14 +415,17 @@ class TestTowerAgentSelfcheck:
         import asyncio
         from elder_berry.comms.commands.selfcheck_commands import SelfcheckCommandHandler
 
+        loop = asyncio.new_event_loop()
         tower = MagicMock()
         tower.host = "127.0.0.1:12769"
-        future = asyncio.Future()
+        future = loop.create_future()
         future.set_result(False)
         tower.heartbeat.return_value = future
         tower.is_online = False
 
-        ok, detail = SelfcheckCommandHandler._probe_service("tower_agent", tower)
+        with patch("asyncio.get_event_loop", return_value=loop):
+            ok, detail = SelfcheckCommandHandler._probe_service("tower_agent", tower)
+        loop.close()
         assert ok is False
 
     def test_tower_agent_in_check_order(self):

@@ -1159,7 +1159,8 @@ class TestRestartNotification:
         from unittest.mock import patch as _patch
         with _patch("elder_berry.comms.restart_manager.os.execv"), \
              _patch("elder_berry.comms.restart_manager.os._exit"), \
-             _patch("elder_berry.comms.restart_manager.subprocess.Popen", create=True):
+             _patch("elder_berry.comms.restart_manager.subprocess.Popen", create=True), \
+             _patch("elder_berry.comms.restart_manager.sys.exit"):
             run_async(perform_restart(channel, None, "!test:room"))
 
         assert RESTART_FLAG_FILE.exists()

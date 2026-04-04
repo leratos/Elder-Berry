@@ -219,16 +219,18 @@ class TestScreenshotCommand:
         """Screenshot-Fallback über TowerAgent wenn kein lokales mss."""
         import asyncio
 
+        loop = asyncio.new_event_loop()
         tower = MagicMock()
         # Mock async screenshot
-        future = asyncio.Future()
+        future = loop.create_future()
         future.set_result(b"\x89PNG\r\n\x1a\nfake_png_data")
         tower.screenshot.return_value = future
 
         handler = SystemCommandHandler(tower_agent=tower)
 
         # Lokales mss blockieren
-        with patch.object(handler, "_screenshot_local", return_value=None):
+        with patch.object(handler, "_screenshot_local", return_value=None), \
+             patch("asyncio.get_event_loop", return_value=loop):
             result = handler.execute("screenshot", "screenshot")
             assert result.success is True
             assert "Tower" in result.text
@@ -236,6 +238,7 @@ class TestScreenshotCommand:
             # Cleanup
             if result.image_path and result.image_path.exists():
                 result.image_path.unlink()
+        loop.close()
 
     def test_screenshot_local_preferred_over_tower(self, handler):
         """Lokaler Screenshot hat Vorrang vor TowerAgent."""
