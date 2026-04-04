@@ -3522,6 +3522,21 @@ User: "Lies meine Mails und trag den Zahnarzttermin ein"
 - Dateien: src/elder_berry/comms/commands/contact_commands.py, tests/test_contact_commands.py
 - Tests: 142/142 grün (10 neue Tests für Zuweisungs-Parsing)
 
+## Abgeschlossen: Phase 44.4 – TowerServer (2026-04-04)
+- TowerServer: tower/tower_server.py (~270 Zeilen)
+  → FastAPI-Service für Tower-PC, Gegenstück zu TowerAgent
+  → 5 Endpoints: GET /status, POST /tts, POST /stt, POST /action, GET /screenshot
+  → Lifespan: Engines (CoquiTTS, FasterWhisper, WindowsActionController) bei Startup laden
+  → Action-Dispatcher: mappt 12 Aktionen auf WindowsActionController-Methoden
+  → Screenshot via mss (primärer Monitor, PNG)
+  → Error Handling: 503 wenn Engine nicht verfügbar, 422 bei ungültigem Input
+- tower/__init__.py: Package-Init
+- pyproject.toml: neue optionale Gruppe [tower] mit allen Tower-Dependencies
+  → pythonpath um "." ergänzt (tower/ Package für Tests erreichbar)
+- Starten: uvicorn tower.tower_server:app --host 0.0.0.0 --port 8090
+- Branch: feature/phase-44-4-tower-server
+- Tests: 32/32 grün (tests/test_tower_server.py)
+
 ## Abgeschlossen: Phase 44.3 – DocumentClassifier Umbau (2026-04-04)
 - DocumentClassifier: OllamaClient → AnthropicClient (LLM-Parameter)
   → classify()/classify_with_hint(): self._llm.generate() statt self._ollama.generate()
@@ -3584,3 +3599,41 @@ User: "Lies meine Mails und trag den Zahnarzttermin ein"
 - RPi5-Konnektivität: bestehender SSH-Tunnel (Port 12768) wiederverwendbar
 - Mehrkosten: ~€20-25/Monat (hauptsächlich ElevenLabs)
 - Nächster Schritt: Implementierung in separaten Chats pro Unterphase
+
+
+## In Arbeit: Phase 45 – Settings Dashboard Erweiterung (2026-04-04)
+- Konzeptdokument: docs/concepts/phase-45-settings-dashboard.md
+- nächster Schritt: Konzept schreiben, Roadmap ergänzen
+
+## Abgeschlossen: Phase 45 – Konzeptdokument Settings Dashboard (2026-04-04)
+- Konzept: docs/concepts/phase-45-settings-dashboard.md
+- 3 neue Sektionen: API-Status (30 Keys, gruppiert), LLM-Umschalter, Grundeinstellungen
+- LLMRouter: mode Property (api_preferred / local_only)
+- Rename: AudioDashboard → SettingsDashboard
+- SECRET_REGISTRY: statische Key-Definition mit Label + Kategorie
+- Memory-Browser als Tier 2 dokumentiert (nicht in Phase 45)
+- ~30 Tests geplant (20 API + 10 LLMRouter)
+- PROJECT_ROADMAP.md um Phase 45 ergänzt
+
+## Ergänzung: Phase 45 – Sicherheitskonzept (2026-04-04)
+- Konzept um Sicherheitssektion erweitert: IP-Whitelist + Basic Auth auf Nginx-Ebene
+- Feste NordVPN-IP als Whitelist, lokales Netz (192.168.50.0/24) erlaubt
+- Basic Auth via htpasswd als zweite Schicht
+- Fail2Ban-Jail für Brute-Force-Schutz dokumentiert
+- Deployment-Empfehlung: Pfad unter fern.last-strawberry.com/settings/ (Option B)
+- Kein Auth-Code im Python – alles Nginx
+
+
+## In Arbeit: Phase 46 – Setup-Wizard (Installationsassistent) (2026-04-04)
+- Konzeptdokument: docs/concepts/phase-46-setup-wizard.md
+- nächster Schritt: Konzept schreiben, Roadmap ergänzen
+
+## Abgeschlossen: Phase 46 – Konzeptdokument Setup-Wizard (2026-04-04)
+- Konzept: docs/concepts/phase-46-setup-wizard.md
+- 8-Schritt Web-Wizard (Voraussetzungen → LLM → Matrix → NC → Mail → Standort → Optional → Summary)
+- SetupTests: 6 Verbindungstest-Methoden (Anthropic, Matrix, NC, Email, Ollama, Brave)
+- Bootstrap-Scripts: install.ps1 (Windows) + install.sh (Linux)
+- First-Run-Detection in start_saleria.py
+- Hilfe-Links: nur offizielle Doku verlinken, keine eigenen Hilfeseiten
+- ~38 Tests geplant
+- PROJECT_ROADMAP.md um Phase 46 ergänzt
