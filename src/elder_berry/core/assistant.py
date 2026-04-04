@@ -247,11 +247,16 @@ class Assistant:
             Pfad zur generierten Datei oder None bei Fehler.
         """
         try:
-            self._tts.generate_audio(text, output_path, emotion=emotion)
-            if output_path.exists() and output_path.stat().st_size > 0:
-                logger.debug("TTS-Audio generiert: %s", output_path)
-                return output_path
-            logger.warning("TTS-Audio leer oder nicht erstellt: %s", output_path)
+            actual_path = self._tts.generate_audio(
+                text, output_path, emotion=emotion,
+            )
+            # generate_audio() kann einen anderen Pfad zurückgeben
+            # (z.B. .mp3 statt .wav bei ElevenLabs/TTSRouter)
+            check_path = actual_path if actual_path else output_path
+            if check_path.exists() and check_path.stat().st_size > 0:
+                logger.debug("TTS-Audio generiert: %s", check_path)
+                return check_path
+            logger.warning("TTS-Audio leer oder nicht erstellt: %s", check_path)
             return None
         except NotImplementedError:
             logger.debug("TTS generate_audio nicht verfügbar")

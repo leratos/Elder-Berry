@@ -183,17 +183,45 @@ def init_character():
     return engine
 
 
-def init_tts(no_tts: bool, character=None):
-    """TTS-Engine – bevorzugt CoquiTTS mit Voice-Map, Fallback pyttsx3."""
+def init_tts(no_tts: bool, character=None, event_loop=None):
+    """TTS-Engine – TTSRouter (ElevenLabs) wenn Keys vorhanden, sonst lokal.
+
+    Reihenfolge:
+    1. ElevenLabs vorhanden → TTSRouter (Cloud-TTS, Tower + lokal als Fallback)
+    2. CoquiTTS verfügbar → CoquiTTSEngine (lokales XTTS v2)
+    3. Windows → WindowsTTSEngine (SAPI5)
+    """
     if no_tts:
         logger.info("TTS: deaktiviert")
         return None
 
+    # Lokale TTS-Engine versuchen (für Standalone oder als Fallback)
+    local_tts = _init_local_tts(character)
+
+    # Option 1: TTSRouter (ElevenLabs + Tower + lokaler Fallback)
+    tts_router = _init_tts_router(event_loop, local_tts=local_tts)
+    if tts_router:
+        return tts_router
+
+    # Option 2: Nur lokale Engine (kein ElevenLabs konfiguriert)
+    if local_tts:
+        return local_tts
+
+    logger.warning("TTS: kein Engine verfügbar")
+    return None
+
+
+def _init_local_tts(character=None):
+    """Versucht lokale TTS-Engine zu erstellen (CoquiTTS → WindowsTTS).
+
+    Returns:
+        TTSEngine oder None.
+    """
+    # CoquiTTS (XTTS v2)
     try:
         from elder_berry.tts.coqui_engine import CoquiTTSEngine
         from elder_berry.character.base import Emotion
 
-        # Voice-Map aus Character aufbauen
         voice_map = {}
         default_wav = None
         if character:
@@ -210,22 +238,95 @@ def init_tts(no_tts: bool, character=None):
             language="de",
         )
         tts.load()
-        logger.info("TTS: CoquiTTSEngine (XTTS v2)")
+        logger.info("TTS lokal: CoquiTTSEngine (XTTS v2)")
         return tts
     except (ImportError, Exception) as e:
         logger.debug("CoquiTTS nicht verfügbar: %s", e)
 
+    # Windows SAPI5
     if platform.system() == "Windows":
         try:
             from elder_berry.tts.windows_engine import WindowsTTSEngine
             tts = WindowsTTSEngine()
-            logger.info("TTS: WindowsTTSEngine (SAPI5)")
+            logger.info("TTS lokal: WindowsTTSEngine (SAPI5)")
             return tts
         except (ImportError, Exception) as e:
-            logger.warning("WindowsTTS nicht verfügbar: %s", e)
+            logger.debug("WindowsTTS nicht verfügbar: %s", e)
 
-    logger.warning("TTS: kein Engine verfügbar")
     return None
+
+
+def _init_tts_router(event_loop=None, local_tts=None):
+    """Versucht TTSRouter mit ElevenLabs + Fallback-Kette zu erstellen.
+
+    Fallback: Tower (XTTS v2) → lokale TTSEngine (CoquiTTS/WindowsTTS).
+
+    Returns:
+        TTSRouter oder None wenn ElevenLabs-Keys nicht konfiguriert sind.
+    """
+    try:
+        from elder_berry.core.secret_store import SecretStore
+        from elder_berry.core.tts_router import TTSRouter
+        from elder_berry.tools.elevenlabs_client import ElevenLabsClient
+
+        store = SecretStore()
+        api_key = store.get_or_none("elevenlabs_api_key")
+        voice_id = store.get_or_none("elevenlabs_voice_id")
+
+        if not api_key or not voice_id:
+            logger.debug("ElevenLabs nicht konfiguriert (Keys fehlen)")
+            return None
+
+        elevenlabs = ElevenLabsClient(api_key=api_key, voice_id=voice_id)
+
+        # Tower-Fallback (optional)
+        tower = _init_tower_agent(store)
+
+        router = TTSRouter(
+            elevenlabs=elevenlabs,
+            tower=tower,
+            local_tts=local_tts,
+            event_loop=event_loop,
+        )
+        fallbacks = []
+        if tower:
+            fallbacks.append("Tower")
+        if local_tts:
+            fallbacks.append(type(local_tts).__name__)
+        fb_str = " + ".join(fallbacks)
+        logger.info(
+            "TTS: TTSRouter (ElevenLabs%s)",
+            " → " + fb_str if fb_str else "",
+        )
+        return router
+    except Exception as e:
+        logger.debug("TTSRouter nicht initialisierbar: %s", e)
+        return None
+
+
+def _init_tower_agent(store=None):
+    """Erstellt TowerAgent wenn tower_host konfiguriert ist.
+
+    Returns:
+        TowerAgent oder None.
+    """
+    try:
+        from elder_berry.core.tower_agent import TowerAgent
+
+        if store is None:
+            from elder_berry.core.secret_store import SecretStore
+            store = SecretStore()
+
+        tower_host = store.get_or_none("tower_host")
+        if not tower_host:
+            return None
+
+        agent = TowerAgent(tower_host=tower_host)
+        logger.info("TowerAgent: konfiguriert für %s", tower_host)
+        return agent
+    except Exception as e:
+        logger.debug("TowerAgent nicht verfügbar: %s", e)
+        return None
 
 
 def init_memory(no_memory: bool):
@@ -312,10 +413,22 @@ def init_audio_converter():
         return None
 
 
-def init_stt(mode: str, whisper_model: str):
-    """STT-Engine: Pflicht für voice-Modus, optional für matrix-Modus."""
+def init_stt(mode: str, whisper_model: str, event_loop=None):
+    """STT-Engine – STTRouter (Cloud) wenn Keys vorhanden, sonst lokal.
+
+    Reihenfolge:
+    1. Groq API Key vorhanden → STTRouter (Cloud-STT, Tower als Fallback)
+    2. FasterWhisper verfügbar → FasterWhisperEngine (lokales Whisper)
+    """
     if mode not in ("voice", "matrix"):
         return None
+
+    # Option 1: STTRouter (Cloud-STT + Tower-Fallback)
+    stt_router = _init_stt_router(event_loop)
+    if stt_router:
+        return stt_router
+
+    # Option 2: Lokales FasterWhisper
     try:
         from elder_berry.stt.faster_whisper_engine import FasterWhisperEngine
         stt = FasterWhisperEngine(model_size=whisper_model)
@@ -330,6 +443,44 @@ def init_stt(mode: str, whisper_model: str):
                 "STT: faster-whisper nicht installiert – Sprachnachrichten via Matrix nicht verfügbar"
             )
             return None
+
+
+def _init_stt_router(event_loop=None):
+    """Versucht STTRouter mit Cloud-STT + optionalem Tower-Fallback zu erstellen.
+
+    Returns:
+        STTRouter oder None wenn Groq-Key nicht konfiguriert ist.
+    """
+    try:
+        from elder_berry.core.secret_store import SecretStore
+        from elder_berry.core.stt_router import STTRouter
+        from elder_berry.tools.cloud_stt_client import CloudSTTClient
+
+        store = SecretStore()
+        api_key = store.get_or_none("groq_api_key")
+
+        if not api_key:
+            logger.debug("Cloud-STT nicht konfiguriert (groq_api_key fehlt)")
+            return None
+
+        cloud_stt = CloudSTTClient(api_key=api_key)
+
+        # Tower-Fallback (optional, wiederverwendet bestehenden TowerAgent)
+        tower = _init_tower_agent(store)
+
+        router = STTRouter(
+            cloud_stt=cloud_stt,
+            tower=tower,
+            event_loop=event_loop,
+        )
+        logger.info(
+            "STT: STTRouter (Groq Cloud%s)",
+            " + Tower-Fallback" if tower else "",
+        )
+        return router
+    except Exception as e:
+        logger.debug("STTRouter nicht initialisierbar: %s", e)
+        return None
 
 
 # ---------------------------------------------------------------------------
