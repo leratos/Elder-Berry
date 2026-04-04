@@ -1,10 +1,10 @@
 """DocumentClassifier – Dokumente analysieren und Dateinamen vorschlagen.
 
-Extrahiert Text aus Dokumenten (PDF, Bilder) und nutzt das lokale LLM
-(Ollama) um Kategorie, Datum und Beschreibung zu bestimmen.
+Extrahiert Text aus Dokumenten (PDF, Bilder) und nutzt ein LLM
+(AnthropicClient) um Kategorie, Datum und Beschreibung zu bestimmen.
+Bilder werden via Claude Vision analysiert (describe_image).
 
-Datenschutz: Alle Analyse-Schritte laufen lokal auf dem Tower.
-Einzige Ausnahme: OCR-Fallback über Stirling-PDF auf dem eigenen Server.
+OCR-Fallback: Stirling-PDF auf dem eigenen Server.
 """
 from __future__ import annotations
 
@@ -18,7 +18,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from elder_berry.llm.ollama_client import OllamaClient
+    from elder_berry.llm.anthropic_client import AnthropicClient
     from elder_berry.tools.document_reader import DocumentReader
     from elder_berry.tools.stirling_pdf import StirlingPDFClient
 
@@ -27,7 +27,7 @@ logger = logging.getLogger(__name__)
 # Max Zeichen die an Ollama geschickt werden (Text-Extrakt)
 MAX_CLASSIFY_CHARS = 3000
 
-# Bild-Formate die Ollama Vision verarbeiten kann
+# Bild-Formate die Claude Vision verarbeiten kann
 IMAGE_EXTENSIONS = frozenset({".jpg", ".jpeg", ".png", ".webp"})
 
 # Kategorie → Zielordner Mapping
@@ -121,11 +121,11 @@ class DocumentClassifier:
 
     def __init__(
         self,
-        ollama: OllamaClient,
+        llm: AnthropicClient,
         document_reader: DocumentReader,
         stirling_pdf: StirlingPDFClient | None = None,
     ) -> None:
-        self._ollama = ollama
+        self._llm = llm
         self._reader = document_reader
         self._stirling = stirling_pdf
 
@@ -142,11 +142,11 @@ class DocumentClassifier:
         system_prompt, user_prompt = self._build_prompt(text, file_path.name)
 
         try:
-            response = self._ollama.generate(
+            response = self._llm.generate(
                 prompt=user_prompt, system=system_prompt,
             )
         except RuntimeError:
-            logger.warning("Ollama nicht erreichbar für Klassifizierung von %s", file_path.name)
+            logger.warning("LLM nicht erreichbar für Klassifizierung von %s", file_path.name)
             return self._fallback_suggestion(file_path)
 
         return self._parse_response(response, file_path)
@@ -180,11 +180,11 @@ class DocumentClassifier:
         user_prompt += f"\n\nDer Nutzer hat korrigiert: {hint}. Passe deinen Vorschlag an."
 
         try:
-            response = self._ollama.generate(
+            response = self._llm.generate(
                 prompt=user_prompt, system=system_prompt,
             )
         except RuntimeError:
-            logger.warning("Ollama nicht erreichbar für Korrektur von %s", file_path.name)
+            logger.warning("LLM nicht erreichbar für Korrektur von %s", file_path.name)
             return self._fallback_suggestion(file_path)
 
         return self._parse_response(response, file_path)
@@ -239,15 +239,21 @@ class DocumentClassifier:
             return ""
 
     def _extract_image(self, file_path: Path) -> str:
-        """Beschreibt ein Bild via Ollama Vision."""
+        """Beschreibt ein Bild via Claude Vision (describe_image)."""
         try:
             image_bytes = file_path.read_bytes()
             image_b64 = base64.b64encode(image_bytes).decode("ascii")
-            return self._ollama.generate_with_image(
+            ext = file_path.suffix.lower()
+            media_type = {
+                ".jpg": "image/jpeg", ".jpeg": "image/jpeg",
+                ".png": "image/png", ".webp": "image/webp",
+            }.get(ext, "image/jpeg")
+            return self._llm.describe_image(
+                image_base64=image_b64,
                 prompt="Beschreibe dieses Dokument/Bild kurz auf Deutsch. "
                        "Was ist der Inhalt? Welche Firma/Organisation? "
                        "Gibt es ein Datum?",
-                image_base64=image_b64,
+                media_type=media_type,
             )
         except (RuntimeError, OSError) as exc:
             logger.warning("Bild-Analyse fehlgeschlagen: %s", exc)
