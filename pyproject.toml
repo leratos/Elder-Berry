@@ -83,11 +83,25 @@ nextcloud = [
 harmony = [
     "aioharmony>=0.5.0",
 ]
+tower = [
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.32",
+    "python-multipart>=0.0.18",
+    "coqui-tts>=0.27",
+    "sounddevice>=0.4",
+    "numpy>=1.26",
+    "faster-whisper>=1.0",
+    "pyautogui>=0.9",
+    "PyGetWindow>=0.0.9",
+    "pycaw>=20230407",
+    "comtypes>=1.2",
+    "mss>=9.0",
+]
 
 [tool.setuptools.packages.find]
 where = ["src"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-pythonpath = ["src"]
+pythonpath = ["src", "."]
 asyncio_mode = "auto"
