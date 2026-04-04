@@ -392,40 +392,30 @@ class TestGetServiceDetail:
 
 class TestTowerAgentSelfcheck:
     def test_tower_agent_online(self):
-        """TowerAgent online → Heartbeat wird gerufen, ✅ im Check."""
-        import asyncio
+        """TowerAgent online → synchroner HTTP-Check, ✅ im Check."""
+        import httpx as _httpx
         from elder_berry.comms.commands.selfcheck_commands import SelfcheckCommandHandler
 
-        loop = asyncio.new_event_loop()
-        tower = MagicMock()
+        tower = MagicMock(spec=[])  # spec=[] verhindert auto-Attribute
         tower.host = "127.0.0.1:12769"
-        future = loop.create_future()
-        future.set_result(True)
-        tower.heartbeat.return_value = future
-        tower.is_online = True
 
-        with patch("asyncio.get_event_loop", return_value=loop):
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        with patch.object(_httpx, "get", return_value=mock_response):
             ok, detail = SelfcheckCommandHandler._probe_service("tower_agent", tower)
-        loop.close()
         assert ok is True
         assert "127.0.0.1:12769" in detail
 
     def test_tower_agent_offline(self):
-        """TowerAgent offline → ❌ im Check."""
-        import asyncio
+        """TowerAgent offline → ⚠️ im Check (optional)."""
+        import httpx as _httpx
         from elder_berry.comms.commands.selfcheck_commands import SelfcheckCommandHandler
 
-        loop = asyncio.new_event_loop()
-        tower = MagicMock()
+        tower = MagicMock(spec=[])
         tower.host = "127.0.0.1:12769"
-        future = loop.create_future()
-        future.set_result(False)
-        tower.heartbeat.return_value = future
-        tower.is_online = False
 
-        with patch("asyncio.get_event_loop", return_value=loop):
+        with patch.object(_httpx, "get", side_effect=Exception("Connection refused")):
             ok, detail = SelfcheckCommandHandler._probe_service("tower_agent", tower)
-        loop.close()
         assert ok is False
 
     def test_tower_agent_in_check_order(self):

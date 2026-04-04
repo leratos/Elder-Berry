@@ -12,6 +12,8 @@ import sys
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
+import httpx
+
 from elder_berry.comms.commands.base import CommandHandler, CommandResult
 from elder_berry.comms.commands.cmd_utils import run_cmd
 from elder_berry.comms.commands.update_commands import BACKUP_FILENAME, DEFAULT_BACKUP_DIR
@@ -435,6 +437,9 @@ class SelfcheckCommandHandler(CommandHandler):
             "gym_client",
         ]
 
+        # Services die optional sind – offline ist Warning, nicht Error
+        optional_services = {"tower_agent", "robot_client", "avatar"}
+
         for key in check_order:
             label = _SERVICE_LABELS.get(key, key)
             svc = self._services.get(key)
@@ -447,6 +452,10 @@ class SelfcheckCommandHandler(CommandHandler):
             if ok:
                 suffix = f" ({detail})" if detail else ""
                 checks.append(f"✅ {label}{suffix}")
+            elif key in optional_services:
+                suffix = f": {detail}" if detail else ""
+                checks.append(f"⚠️ {label}{suffix} (optional)")
+                warnings += 1
             else:
                 suffix = f": {detail}" if detail else ""
                 checks.append(f"❌ {label}{suffix}")
@@ -462,17 +471,20 @@ class SelfcheckCommandHandler(CommandHandler):
             (ok, detail) – ok=True wenn erreichbar, detail für Zusatzinfo.
         """
         try:
-            # TowerAgent: Heartbeat auslösen (async → sync)
-            if key == "tower_agent" and hasattr(svc, "heartbeat"):
-                import asyncio
+            # TowerAgent: synchroner HTTP-Check (async heartbeat geht nicht
+            # wenn der Event-Loop bereits läuft, z.B. unter Matrix Bridge)
+            if key == "tower_agent" and hasattr(svc, "host"):
                 try:
-                    loop = asyncio.get_event_loop()
-                    online = loop.run_until_complete(svc.heartbeat())
-                except RuntimeError:
-                    online = svc.is_online
-                if online:
-                    return True, getattr(svc, "host", "")
-                return False, "nicht erreichbar"
+                    host = getattr(svc, "host", "")
+                    r = httpx.get(
+                        f"http://{host}/status",
+                        timeout=3.0,
+                    )
+                    if r.status_code == 200:
+                        return True, host
+                    return False, "nicht erreichbar"
+                except Exception:
+                    return False, "nicht erreichbar"
 
             # Services mit is_available()
             if hasattr(svc, "is_available"):
