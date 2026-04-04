@@ -3521,3 +3521,18 @@ User: "Lies meine Mails und trag den Zahnarzttermin ein"
   → Dash-Prefix (LLM-Artefakt "– Adresse:") wird toleriert
 - Dateien: src/elder_berry/comms/commands/contact_commands.py, tests/test_contact_commands.py
 - Tests: 142/142 grün (10 neue Tests für Zuweisungs-Parsing)
+
+## Abgeschlossen: Phase 44 – Server-Migration Konzept (2026-04-04)
+- Konzeptdokument: docs/concepts/phase-44-server-migration.md
+- Roadmap ergänzt: Phase 44 mit 6 Unterphasen
+- Architektur: Bot → Rootserver (24/7), Tower → optionaler Agent, RPi5 → I/O Hub
+- TTS: ElevenLabs Creator ($22/Monat) primär, XTTS v2 via Tower als Fallback
+- STT: Groq Whisper API (kostenlos) primär, lokales Whisper via Tower als Fallback
+- DocumentClassifier: Ollama → Anthropic Vision (Klassifikation + Bildanalyse)
+- OCR bleibt Stirling-PDF (bereits auf Server)
+- ChromaDB: Ollama auf Server für Embeddings (CPU, kein Modellwechsel nötig)
+- Deploy: Git Clone → /opt/elder-berry/, systemd Service, SecretStore neu
+- Tower-Konnektivität: SSH Reverse Tunnel (Port 12769), Heartbeat
+- RPi5-Konnektivität: bestehender SSH-Tunnel (Port 12768) wiederverwendbar
+- Mehrkosten: ~€20-25/Monat (hauptsächlich ElevenLabs)
+- Nächster Schritt: Implementierung in separaten Chats pro Unterphase

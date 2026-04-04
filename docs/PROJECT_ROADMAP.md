@@ -731,3 +731,28 @@ Kontakten, Fahrtdauer via Google Maps API, Abfahrtszeit, klickbarer Link.
 - **Tests**: ~35 geplant
 - **Konzept**: `docs/concepts/phase-43-routenplanung.md`
 - **Abhängigkeit**: Phase 38 ✅ (Kontakte mit Adressen), Google Cloud ✅
+
+
+## Phase 44 – Server-Migration & Audio-Router 🚀 GEPLANT
+
+Saleria zieht vom Tower auf den Rootserver. Bot läuft 24/7 unabhängig
+vom Tower. ElevenLabs TTS primär, XTTS v2 Fallback. Cloud-STT primär,
+lokales Whisper Fallback. Tower wird optionaler Agent für PC-Steuerung.
+
+### Unterphasen
+
+| Phase | Titel | Status |
+|-------|-------|--------|
+| 44.1 | ElevenLabsClient + TTSRouter | offen |
+| 44.2 | CloudSTTClient + STTRouter | offen |
+| 44.3 | DocumentClassifier Umbau (Ollama → Anthropic Vision) | offen |
+| 44.4 | TowerAgent + TowerServer | offen |
+| 44.5 | Server-Deploy + Daten-Migration | offen |
+| 44.6 | Integration + Cutover | offen |
+
+- **Neue Klassen**: ElevenLabsClient, CloudSTTClient, TTSRouter, STTRouter, TowerAgent, TowerServer
+- **Geänderte Klassen**: DocumentClassifier, AudioPipeline, MessageHandlers, Assistant, start_saleria
+- **Kosten**: ~€20-25/Monat Mehrkosten (ElevenLabs Creator $22)
+- **Tests**: ~80 geplant
+- **Konzept**: `docs/concepts/phase-44-server-migration.md`
+- **Abhängigkeit**: Alle bisherigen Phasen ✅, Hetzner Backup ✅
