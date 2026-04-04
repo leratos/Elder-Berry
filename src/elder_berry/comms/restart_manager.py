@@ -146,9 +146,10 @@ async def perform_restart(
             logger.info("Neuer Prozess gestartet, beende aktuellen...")
             os._exit(0)
         elif _is_systemd_managed():
-            # Unter systemd: sauber beenden, Restart=always startet neu
+            # Unter systemd: hart beenden, Restart=always startet neu
+            # os._exit statt sys.exit – asyncio fängt SystemExit ab
             logger.info("systemd erkannt – beende Prozess (systemd startet neu)")
-            sys.exit(0)
+            os._exit(0)
         else:
             os.execv(python, [python, *args])
     except Exception as e:
