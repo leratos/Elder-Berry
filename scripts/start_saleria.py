@@ -1017,6 +1017,7 @@ def run_matrix(assistant, stt=None, avatar=None, audio_converter=None, robot=Non
         carddav_sync=svc.get("carddav_sync"),
         route_planner=svc.get("route_planner"),
         default_user_id=default_user_id,
+        tower_agent=_init_tower_agent(secrets),
     )
     assistant._remote_commands = remote
     if tools.get("smart_context_provider"):

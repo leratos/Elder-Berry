@@ -12,6 +12,7 @@ from elder_berry.comms.commands.update_commands import (
     UPDATE_RPI_PATTERN,
     UpdateCommandHandler,
     _is_valid_git_hash,
+    _pip_install_groups,
 )
 
 
@@ -275,3 +276,24 @@ class TestUnknownCommand:
     def test_unknown(self, handler):
         result = handler.execute("unknown", "unknown")
         assert result.success is False
+
+
+# ---------------------------------------------------------------------------
+# Pip Install Groups
+# ---------------------------------------------------------------------------
+
+class TestPipInstallGroups:
+    def test_windows_groups(self):
+        with patch("elder_berry.comms.commands.update_commands.platform") as mock_plat:
+            mock_plat.system.return_value = "Windows"
+            groups = _pip_install_groups()
+            assert "windows" in groups
+            assert "tts-neural" in groups
+            assert "server" not in groups
+
+    def test_linux_groups(self):
+        with patch("elder_berry.comms.commands.update_commands.platform") as mock_plat:
+            mock_plat.system.return_value = "Linux"
+            groups = _pip_install_groups()
+            assert groups == ".[server]"
+            assert "windows" not in groups

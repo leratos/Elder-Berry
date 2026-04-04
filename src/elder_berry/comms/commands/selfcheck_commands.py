@@ -59,6 +59,7 @@ _SERVICE_LABELS: dict[str, str] = {
     "computer_use": "Computer Use (Vision)",
     "web_fetcher": "Web-Fetcher",
     "audio_router": "Audio-Router",
+    "tower_agent": "Tower-Agent",
 }
 
 
@@ -414,6 +415,7 @@ class SelfcheckCommandHandler(CommandHandler):
             "search_client",
             "web_fetcher",
             # Hardware
+            "tower_agent",
             "robot_client",
             # Ausgabe
             "tts",
@@ -460,15 +462,28 @@ class SelfcheckCommandHandler(CommandHandler):
             (ok, detail) – ok=True wenn erreichbar, detail für Zusatzinfo.
         """
         try:
+            # TowerAgent: Heartbeat auslösen (async → sync)
+            if key == "tower_agent" and hasattr(svc, "heartbeat"):
+                import asyncio
+                try:
+                    loop = asyncio.get_event_loop()
+                    online = loop.run_until_complete(svc.heartbeat())
+                except RuntimeError:
+                    online = svc.is_online
+                if online:
+                    return True, getattr(svc, "host", "")
+                return False, "nicht erreichbar"
+
             # Services mit is_available()
             if hasattr(svc, "is_available"):
                 if svc.is_available():
                     return True, _get_service_detail(key, svc)
                 return False, "nicht erreichbar"
 
-            # Services mit is_online() (RobotClient, AgentClient)
+            # Services mit is_online() oder is_online Property
             if hasattr(svc, "is_online"):
-                if svc.is_online():
+                online = svc.is_online() if callable(svc.is_online) else svc.is_online
+                if online:
                     return True, _get_service_detail(key, svc)
                 return False, "nicht erreichbar"
 

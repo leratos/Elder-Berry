@@ -15,6 +15,7 @@ from elder_berry.comms.commands.base import CommandHandler, CommandResult
 if TYPE_CHECKING:
     from elder_berry.actions.base import ActionController
     from elder_berry.avatar.base import AvatarRenderer
+    from elder_berry.core.tower_agent import TowerAgent
     from elder_berry.system.info import SystemMonitor
 
 logger = logging.getLogger(__name__)
@@ -56,10 +57,12 @@ class SystemCommandHandler(CommandHandler):
         system_monitor: SystemMonitor | None = None,
         controller: ActionController | None = None,
         avatar_renderer: AvatarRenderer | None = None,
+        tower_agent: TowerAgent | None = None,
     ) -> None:
         self._monitor = system_monitor
         self._controller = controller
         self._avatar_renderer = avatar_renderer
+        self._tower_agent = tower_agent
 
     @property
     def simple_commands(self) -> set[str]:
@@ -245,33 +248,49 @@ class SystemCommandHandler(CommandHandler):
             logger.debug("Monitor-Aufwecken fehlgeschlagen (ignoriert): %s", e)
 
     def _cmd_screenshot(self) -> CommandResult:
-        """Screenshot aufnehmen und als PNG speichern. Weckt Monitor bei Bedarf."""
+        """Screenshot aufnehmen und als PNG speichern.
+
+        Strategie:
+        1. Lokales mss (Windows/Tower) – weckt Monitor bei Bedarf
+        2. TowerAgent (Server → Tower via SSH-Tunnel)
+        """
+        # Versuch 1: Lokales mss
+        result = self._screenshot_local()
+        if result:
+            return result
+
+        # Versuch 2: TowerAgent (Remote-Screenshot vom Tower)
+        result = self._screenshot_tower()
+        if result:
+            return result
+
+        return CommandResult(
+            command="screenshot",
+            success=False,
+            text="Screenshot nicht möglich: weder mss noch TowerAgent verfügbar.",
+        )
+
+    def _screenshot_local(self) -> CommandResult | None:
+        """Screenshot via lokales mss. Gibt None zurück wenn nicht verfügbar."""
         try:
             import mss
+            import mss.tools
         except ImportError:
-            return CommandResult(
-                command="screenshot",
-                success=False,
-                text="mss nicht installiert (pip install mss).",
-            )
+            return None
 
-        # Monitor aufwecken falls er schlaeft
         self._wake_monitor()
 
         try:
             with mss.mss() as sct:
-                # Gesamter Bildschirm (Monitor 0 = alle, Monitor 1 = primaer)
                 monitor = sct.monitors[1]
                 screenshot = sct.grab(monitor)
 
-                # In temp-Datei speichern (wird vom Aufrufer aufgeraeumt)
                 tmp = tempfile.NamedTemporaryFile(
                     suffix=".png", prefix="screenshot_", delete=False,
                 )
                 tmp_path = Path(tmp.name)
                 tmp.close()
 
-                # mss speichert direkt als PNG
                 mss.tools.to_png(screenshot.rgb, screenshot.size, output=str(tmp_path))
 
             return CommandResult(
@@ -281,12 +300,36 @@ class SystemCommandHandler(CommandHandler):
                 image_path=tmp_path,
             )
         except Exception as e:
-            logger.error("Screenshot fehlgeschlagen: %s", e)
+            logger.error("Lokaler Screenshot fehlgeschlagen: %s", e)
+            return None
+
+    def _screenshot_tower(self) -> CommandResult | None:
+        """Screenshot via TowerAgent. Gibt None zurück wenn nicht verfügbar."""
+        if not self._tower_agent:
+            return None
+
+        try:
+            import asyncio
+            loop = asyncio.get_event_loop()
+            png_bytes = loop.run_until_complete(self._tower_agent.screenshot())
+
+            tmp = tempfile.NamedTemporaryFile(
+                suffix=".png", prefix="screenshot_tower_", delete=False,
+            )
+            tmp_path = Path(tmp.name)
+            tmp.write(png_bytes)
+            tmp.close()
+
+            logger.info("Screenshot via TowerAgent: %d bytes", len(png_bytes))
             return CommandResult(
                 command="screenshot",
-                success=False,
-                text=f"Screenshot fehlgeschlagen: {e}",
+                success=True,
+                text="Screenshot aufgenommen (via Tower).",
+                image_path=tmp_path,
             )
+        except Exception as e:
+            logger.error("Tower-Screenshot fehlgeschlagen: %s", e)
+            return None
 
     def _cmd_media(self, command: str) -> CommandResult:
         """Media-Key senden (play/pause/skip/next/prev)."""

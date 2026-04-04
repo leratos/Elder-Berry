@@ -145,8 +145,18 @@ async def perform_restart(
             subprocess.Popen([python, *args])
             logger.info("Neuer Prozess gestartet, beende aktuellen...")
             os._exit(0)
+        elif _is_systemd_managed():
+            # Unter systemd: sauber beenden, Restart=always startet neu
+            logger.info("systemd erkannt – beende Prozess (systemd startet neu)")
+            sys.exit(0)
         else:
             os.execv(python, [python, *args])
     except Exception as e:
         logger.error("Restart fehlgeschlagen: %s", e)
         RESTART_FLAG_FILE.unlink(missing_ok=True)
+
+
+def _is_systemd_managed() -> bool:
+    """Prüft ob der aktuelle Prozess von systemd verwaltet wird."""
+    # INVOCATION_ID wird von systemd für jeden Service-Start gesetzt
+    return bool(os.environ.get("INVOCATION_ID"))

@@ -7,6 +7,7 @@ import pytest
 
 from elder_berry.comms.restart_manager import (
     RESTART_FLAG_FILE,
+    _is_systemd_managed,
     read_restart_timestamp,
     release_instance_lock,
     send_restart_notification,
@@ -182,3 +183,24 @@ class TestPerformRestart:
 
             assert flag.exists()
         run_async(_test())
+
+
+# ---------------------------------------------------------------------------
+# systemd Detection
+# ---------------------------------------------------------------------------
+
+class TestIsSystemdManaged:
+    def test_with_invocation_id(self):
+        with patch.dict("os.environ", {"INVOCATION_ID": "abc123"}):
+            assert _is_systemd_managed() is True
+
+    def test_without_invocation_id(self):
+        import os
+        env = os.environ.copy()
+        env.pop("INVOCATION_ID", None)
+        with patch.dict("os.environ", env, clear=True):
+            assert _is_systemd_managed() is False
+
+    def test_empty_invocation_id(self):
+        with patch.dict("os.environ", {"INVOCATION_ID": ""}):
+            assert _is_systemd_managed() is False

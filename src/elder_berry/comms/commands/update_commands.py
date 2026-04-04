@@ -1,15 +1,16 @@
 """UpdateCommandHandler – Self-Update, Rollback und Backup via Matrix.
 
 Verwaltet:
-- update → Tower: git pull + pip install + restart
+- update → git pull + pip install + restart (Server oder Tower)
 - update rpi → RPi5: git pull + pip + systemctl restart
-- update alles → Tower + RPi5 nacheinander
+- update alles → Server/Tower + RPi5 nacheinander
 - rollback → Auf Stand vor letztem Update zurücksetzen
 """
 from __future__ import annotations
 
 import json
 import logging
+import platform
 import re
 import sys
 from datetime import datetime, timezone
@@ -62,6 +63,17 @@ _GIT_HASH_PATTERN = re.compile(r"^[0-9a-f]{4,40}$", re.IGNORECASE)
 def _is_valid_git_hash(value: str) -> bool:
     """Prüft ob ein String ein valider git-Hash (short oder full) ist."""
     return bool(_GIT_HASH_PATTERN.match(value))
+
+
+def _pip_install_groups() -> str:
+    """Gibt den pip install Extra-String passend zur Plattform zurück.
+
+    Windows (Tower): .[windows,tts-neural,avatar,matrix,remote,memory,stt]
+    Linux (Server):  .[server]
+    """
+    if platform.system() == "Windows":
+        return ".[windows,tts-neural,avatar,matrix,remote,memory,stt]"
+    return ".[server]"
 
 
 class UpdateCommandHandler(CommandHandler):
@@ -264,8 +276,7 @@ class UpdateCommandHandler(CommandHandler):
             steps.append("📦 Dependencies geändert – installiere...")
             pip = run_cmd(
                 [sys.executable, "-m", "pip", "install", "-e",
-                 ".[windows,tts-neural,avatar,matrix,remote,memory,stt]",
-                 "--quiet"],
+                 _pip_install_groups(), "--quiet"],
                 cwd=cwd, timeout=300,
             )
             if pip.success:
@@ -429,8 +440,7 @@ class UpdateCommandHandler(CommandHandler):
         steps.append("📦 Installiere Dependencies...")
         pip = run_cmd(
             [sys.executable, "-m", "pip", "install", "-e",
-             ".[windows,tts-neural,avatar,matrix,remote,memory,stt]",
-             "--quiet"],
+             _pip_install_groups(), "--quiet"],
             cwd=cwd, timeout=300,
         )
         if pip.success:
