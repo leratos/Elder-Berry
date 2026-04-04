@@ -389,10 +389,22 @@ def init_audio_converter():
         return None
 
 
-def init_stt(mode: str, whisper_model: str):
-    """STT-Engine: Pflicht für voice-Modus, optional für matrix-Modus."""
+def init_stt(mode: str, whisper_model: str, event_loop=None):
+    """STT-Engine – STTRouter (Cloud) wenn Keys vorhanden, sonst lokal.
+
+    Reihenfolge:
+    1. Groq API Key vorhanden → STTRouter (Cloud-STT, Tower als Fallback)
+    2. FasterWhisper verfügbar → FasterWhisperEngine (lokales Whisper)
+    """
     if mode not in ("voice", "matrix"):
         return None
+
+    # Option 1: STTRouter (Cloud-STT + Tower-Fallback)
+    stt_router = _init_stt_router(event_loop)
+    if stt_router:
+        return stt_router
+
+    # Option 2: Lokales FasterWhisper
     try:
         from elder_berry.stt.faster_whisper_engine import FasterWhisperEngine
         stt = FasterWhisperEngine(model_size=whisper_model)
@@ -407,6 +419,44 @@ def init_stt(mode: str, whisper_model: str):
                 "STT: faster-whisper nicht installiert – Sprachnachrichten via Matrix nicht verfügbar"
             )
             return None
+
+
+def _init_stt_router(event_loop=None):
+    """Versucht STTRouter mit Cloud-STT + optionalem Tower-Fallback zu erstellen.
+
+    Returns:
+        STTRouter oder None wenn Groq-Key nicht konfiguriert ist.
+    """
+    try:
+        from elder_berry.core.secret_store import SecretStore
+        from elder_berry.core.stt_router import STTRouter
+        from elder_berry.tools.cloud_stt_client import CloudSTTClient
+
+        store = SecretStore()
+        api_key = store.get_or_none("groq_api_key")
+
+        if not api_key:
+            logger.debug("Cloud-STT nicht konfiguriert (groq_api_key fehlt)")
+            return None
+
+        cloud_stt = CloudSTTClient(api_key=api_key)
+
+        # Tower-Fallback (optional, wiederverwendet bestehenden TowerAgent)
+        tower = _init_tower_agent(store)
+
+        router = STTRouter(
+            cloud_stt=cloud_stt,
+            tower=tower,
+            event_loop=event_loop,
+        )
+        logger.info(
+            "STT: STTRouter (Groq Cloud%s)",
+            " + Tower-Fallback" if tower else "",
+        )
+        return router
+    except Exception as e:
+        logger.debug("STTRouter nicht initialisierbar: %s", e)
+        return None
 
 
 # ---------------------------------------------------------------------------

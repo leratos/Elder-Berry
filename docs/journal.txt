@@ -3522,6 +3522,21 @@ User: "Lies meine Mails und trag den Zahnarzttermin ein"
 - Dateien: src/elder_berry/comms/commands/contact_commands.py, tests/test_contact_commands.py
 - Tests: 142/142 grün (10 neue Tests für Zuweisungs-Parsing)
 
+## Abgeschlossen: Phase 44.2 – CloudSTTClient + STTRouter (2026-04-04)
+- CloudSTTClient: src/elder_berry/tools/cloud_stt_client.py
+  → Groq Whisper API (POST /openai/v1/audio/transcriptions)
+  → whisper-large-v3, Sprach-Hint (default: de), MIME-Type-Erkennung
+  → SecretStore Key: groq_api_key
+- STTRouter: src/elder_berry/core/stt_router.py
+  → Implementiert STTEngine ABC (Drop-in für AudioPipeline)
+  → Cloud-STT (Groq) primär, Tower FasterWhisper als Fallback
+  → transcribe(audio_path) liest Datei → sendet Bytes an Cloud
+  → transcribe_bytes(pcm) erstellt WAV-Container → Cloud
+- start_saleria.py: init_stt() prüft zuerst groq_api_key → STTRouter,
+  dann FasterWhisper. Neue Hilfsfunktion: _init_stt_router()
+- Branch: feature/phase-44-1-tts-router
+- Tests: 36 neue (23 CloudSTTClient + 13 STTRouter), alle grün
+
 ## Abgeschlossen: Phase 44.1 – ElevenLabsClient + TTSRouter (2026-04-04)
 - ElevenLabsClient: src/elder_berry/tools/elevenlabs_client.py
   → REST API (POST /v1/text-to-speech/{voice_id}), MP3-Rückgabe
