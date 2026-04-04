@@ -304,14 +304,21 @@ class SystemCommandHandler(CommandHandler):
             return None
 
     def _screenshot_tower(self) -> CommandResult | None:
-        """Screenshot via TowerAgent. Gibt None zurück wenn nicht verfügbar."""
+        """Screenshot via TowerAgent (synchroner HTTP-Call).
+
+        Gibt None zurück wenn nicht verfügbar.
+        """
         if not self._tower_agent:
             return None
 
         try:
-            import asyncio
-            loop = asyncio.get_event_loop()
-            png_bytes = loop.run_until_complete(self._tower_agent.screenshot())
+            import httpx
+            r = httpx.get(
+                f"http://{self._tower_agent.host}/screenshot",
+                timeout=10.0,
+            )
+            r.raise_for_status()
+            png_bytes = r.content
 
             tmp = tempfile.NamedTemporaryFile(
                 suffix=".png", prefix="screenshot_tower_", delete=False,
