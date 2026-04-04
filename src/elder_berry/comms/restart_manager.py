@@ -23,8 +23,10 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-# Restart-Flag: wird vor os.execv geschrieben, beim Start geprüft
-RESTART_FLAG_FILE = Path(tempfile.gettempdir()) / "elder_berry_restart.flag"
+# Restart-Flag: wird vor Restart geschrieben, beim Start geprüft.
+# Unter ~/.elder-berry/ statt /tmp/, weil systemd PrivateTmp=true
+# jeder Prozess-Instanz ein eigenes /tmp gibt.
+RESTART_FLAG_FILE = Path.home() / ".elder-berry" / "restart.flag"
 
 
 def read_restart_timestamp() -> float:

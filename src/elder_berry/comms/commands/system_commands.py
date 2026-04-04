@@ -167,12 +167,75 @@ class SystemCommandHandler(CommandHandler):
     # ------------------------------------------------------------------
 
     def _cmd_status(self) -> CommandResult:
-        """Systemstatus abfragen."""
+        """Systemstatus abfragen – Tower bevorzugt, Server als Fallback."""
+        # Versuch 1: Tower-Status (zeigt GPU, PC-Auslastung)
+        tower_result = self._status_tower()
+        if tower_result:
+            return tower_result
+
+        # Versuch 2: Lokaler Status
+        return self._status_local()
+
+    def _status_tower(self) -> CommandResult | None:
+        """Systemstatus vom Tower via HTTP. None wenn nicht verfügbar."""
+        if not self._tower_agent:
+            return None
+
+        try:
+            import httpx
+            r = httpx.get(
+                f"http://{self._tower_agent.host}/system",
+                timeout=5.0,
+            )
+            r.raise_for_status()
+            data = r.json()
+
+            cpu = data.get("cpu", {})
+            ram = data.get("ram", {})
+            lines = [
+                f"🖥️ Tower ({data.get('platform', '?')})",
+                f"CPU: {cpu.get('usage_percent', '?')}% "
+                f"({cpu.get('core_count', '?')} Kerne, "
+                f"{cpu.get('thread_count', '?')} Threads"
+                + (f", {cpu['freq_mhz']:.0f} MHz" if cpu.get("freq_mhz") else "")
+                + ")",
+                f"RAM: {ram.get('used_mb', 0):.0f} / "
+                f"{ram.get('total_mb', 0):.0f} MB "
+                f"({ram.get('usage_percent', '?')}% belegt)",
+            ]
+
+            for gpu in data.get("gpus", []):
+                lines.append(
+                    f"GPU: {gpu['name']} – {gpu['gpu_util_percent']}% Auslastung, "
+                    f"VRAM {gpu['vram_used_mb']:.0f}/{gpu['vram_total_mb']:.0f} MB, "
+                    f"{gpu['temperature_c']}°C"
+                )
+
+            procs = data.get("top_processes", [])
+            if procs:
+                lines.append("Top-Prozesse (CPU):")
+                for p in procs:
+                    lines.append(
+                        f"  {p['name']}: CPU {p['cpu_percent']}%, "
+                        f"RAM {p['memory_percent']}%"
+                    )
+
+            return CommandResult(
+                command="status",
+                success=True,
+                text="\n".join(lines),
+            )
+        except Exception as e:
+            logger.debug("Tower-Status nicht verfügbar: %s", e)
+            return None
+
+    def _status_local(self) -> CommandResult:
+        """Lokaler Systemstatus (Server oder Tower wenn lokal)."""
         if not self._monitor:
             return CommandResult(
                 command="status",
                 success=False,
-                text="SystemMonitor nicht verf\u00fcgbar.",
+                text="SystemMonitor nicht verfügbar.",
             )
 
         try:
@@ -188,9 +251,9 @@ class SystemCommandHandler(CommandHandler):
 
             for gpu in info.gpus:
                 lines.append(
-                    f"GPU: {gpu.name} \u2013 {gpu.gpu_util_percent}% Auslastung, "
+                    f"GPU: {gpu.name} – {gpu.gpu_util_percent}% Auslastung, "
                     f"VRAM {gpu.vram_used_mb:.0f}/{gpu.vram_total_mb:.0f} MB, "
-                    f"{gpu.temperature_c}\u00b0C"
+                    f"{gpu.temperature_c}°C"
                 )
 
             # Disk-Info (psutil)

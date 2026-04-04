@@ -234,6 +234,43 @@ async def status():
     }
 
 
+@app.get("/system")
+async def system_info():
+    """Systeminfo vom Tower (CPU, RAM, GPU, Top-Prozesse)."""
+    try:
+        from elder_berry.system.info import SystemMonitor
+        monitor = SystemMonitor()
+        info = monitor.get_info(top_processes=5)
+        return {
+            "platform": info.platform,
+            "cpu": {
+                "usage_percent": info.cpu.usage_percent,
+                "core_count": info.cpu.core_count,
+                "thread_count": info.cpu.thread_count,
+                "freq_mhz": info.cpu.freq_mhz,
+            },
+            "ram": {
+                "total_mb": info.ram.total_mb,
+                "used_mb": info.ram.used_mb,
+                "usage_percent": info.ram.usage_percent,
+            },
+            "gpus": [
+                {
+                    "name": g.name,
+                    "vram_total_mb": g.vram_total_mb,
+                    "vram_used_mb": g.vram_used_mb,
+                    "gpu_util_percent": g.gpu_util_percent,
+                    "temperature_c": g.temperature_c,
+                }
+                for g in info.gpus
+            ],
+            "top_processes": info.top_processes,
+        }
+    except Exception as e:
+        logger.error("System-Info Fehler: %s", e)
+        raise HTTPException(status_code=500, detail=f"System-Info Fehler: {e}") from e
+
+
 @app.post("/tts")
 async def tts(request: TTSRequest):
     """Synthetisiert Text zu WAV via CoquiTTSEngine (XTTS v2)."""
