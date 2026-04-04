@@ -85,6 +85,7 @@ if TYPE_CHECKING:
     from elder_berry.comms.pending_confirmation import PendingConfirmationStore
     from elder_berry.tools.document_classifier import DocumentClassifier
     from elder_berry.tools.stirling_pdf import StirlingPDFClient
+    from elder_berry.core.tower_agent import TowerAgent
     from elder_berry.tools.route_planner import RoutePlanner
     from elder_berry.tools.web_fetcher import WebFetcher
 
@@ -366,12 +367,14 @@ class RemoteCommandHandler:
         route_planner: RoutePlanner | None = None,
         pending_store: PendingConfirmationStore | None = None,
         default_user_id: str = "",
+        tower_agent: TowerAgent | None = None,
     ) -> None:
         # Domain-Handler erstellen
         self._system = SystemCommandHandler(
             system_monitor=system_monitor,
             controller=controller,
             avatar_renderer=avatar_renderer,
+            tower_agent=tower_agent,
         )
         self._calendar = CalendarCommandHandler(calendar=calendar)
         self._mail = MailCommandHandler(
@@ -414,6 +417,7 @@ class RemoteCommandHandler:
                 "document_reader": document_reader,
                 "web_fetcher": web_fetcher,
                 "audio_router": audio_router,
+                "tower_agent": tower_agent,
             },
         )
         self._weather = WeatherCommandHandler(

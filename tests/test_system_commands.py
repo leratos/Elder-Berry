@@ -213,7 +213,54 @@ class TestScreenshotCommand:
             with patch("builtins.__import__", side_effect=mock_import):
                 result = handler.execute("screenshot", "screenshot")
                 assert result.success is False
-                assert "mss" in result.text.lower()
+                assert "weder mss noch TowerAgent" in result.text
+
+    def test_screenshot_via_tower_agent(self):
+        """Screenshot-Fallback über TowerAgent wenn kein lokales mss."""
+        import asyncio
+
+        loop = asyncio.new_event_loop()
+        tower = MagicMock()
+        # Mock async screenshot
+        future = loop.create_future()
+        future.set_result(b"\x89PNG\r\n\x1a\nfake_png_data")
+        tower.screenshot.return_value = future
+
+        handler = SystemCommandHandler(tower_agent=tower)
+
+        # Lokales mss blockieren
+        with patch.object(handler, "_screenshot_local", return_value=None), \
+             patch("asyncio.get_event_loop", return_value=loop):
+            result = handler.execute("screenshot", "screenshot")
+            assert result.success is True
+            assert "Tower" in result.text
+            assert result.image_path is not None
+            # Cleanup
+            if result.image_path and result.image_path.exists():
+                result.image_path.unlink()
+        loop.close()
+
+    def test_screenshot_local_preferred_over_tower(self, handler):
+        """Lokaler Screenshot hat Vorrang vor TowerAgent."""
+        from elder_berry.comms.commands.base import CommandResult
+        local_result = CommandResult(
+            command="screenshot",
+            success=True,
+            text="Screenshot aufgenommen.",
+            image_path=Path("/tmp/fake.png"),
+        )
+        with patch.object(handler, "_screenshot_local", return_value=local_result):
+            result = handler.execute("screenshot", "screenshot")
+            assert result.success is True
+            assert "Tower" not in result.text
+
+    def test_screenshot_no_mss_no_tower(self):
+        """Ohne mss und ohne TowerAgent → Fehlermeldung."""
+        handler = SystemCommandHandler()
+        with patch.object(handler, "_screenshot_local", return_value=None):
+            result = handler.execute("screenshot", "screenshot")
+            assert result.success is False
+            assert "weder mss noch TowerAgent" in result.text
 
 
 # ---------------------------------------------------------------------------

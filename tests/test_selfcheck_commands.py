@@ -384,3 +384,68 @@ class TestGetServiceDetail:
     def test_unknown_key(self):
         svc = MagicMock()
         assert _get_service_detail("something_new", svc) == ""
+
+
+# ---------------------------------------------------------------------------
+# TowerAgent im Selfcheck
+# ---------------------------------------------------------------------------
+
+class TestTowerAgentSelfcheck:
+    def test_tower_agent_online(self):
+        """TowerAgent online → Heartbeat wird gerufen, ✅ im Check."""
+        import asyncio
+        from elder_berry.comms.commands.selfcheck_commands import SelfcheckCommandHandler
+
+        loop = asyncio.new_event_loop()
+        tower = MagicMock()
+        tower.host = "127.0.0.1:12769"
+        future = loop.create_future()
+        future.set_result(True)
+        tower.heartbeat.return_value = future
+        tower.is_online = True
+
+        with patch("asyncio.get_event_loop", return_value=loop):
+            ok, detail = SelfcheckCommandHandler._probe_service("tower_agent", tower)
+        loop.close()
+        assert ok is True
+        assert "127.0.0.1:12769" in detail
+
+    def test_tower_agent_offline(self):
+        """TowerAgent offline → ❌ im Check."""
+        import asyncio
+        from elder_berry.comms.commands.selfcheck_commands import SelfcheckCommandHandler
+
+        loop = asyncio.new_event_loop()
+        tower = MagicMock()
+        tower.host = "127.0.0.1:12769"
+        future = loop.create_future()
+        future.set_result(False)
+        tower.heartbeat.return_value = future
+        tower.is_online = False
+
+        with patch("asyncio.get_event_loop", return_value=loop):
+            ok, detail = SelfcheckCommandHandler._probe_service("tower_agent", tower)
+        loop.close()
+        assert ok is False
+
+    def test_tower_agent_in_check_order(self):
+        """TowerAgent erscheint im Selfcheck-Output."""
+        from elder_berry.comms.commands.selfcheck_commands import SelfcheckCommandHandler
+
+        handler = SelfcheckCommandHandler(services={"tower_agent": None})
+        checks = []
+        handler._check_services(checks)
+        tower_line = [c for c in checks if "Tower" in c]
+        assert len(tower_line) == 1
+        assert "➖" in tower_line[0]  # nicht konfiguriert
+
+    def test_is_online_property_handled(self):
+        """is_online als Property (nicht Methode) wird korrekt behandelt."""
+        from elder_berry.comms.commands.selfcheck_commands import SelfcheckCommandHandler
+
+        # Simuliere ein Objekt mit is_online als Property (nicht callable)
+        class FakeService:
+            is_online = True
+        svc = FakeService()
+        ok, _ = SelfcheckCommandHandler._probe_service("some_service", svc)
+        assert ok is True

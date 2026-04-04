@@ -3522,6 +3522,25 @@ User: "Lies meine Mails und trag den Zahnarzttermin ein"
 - Dateien: src/elder_berry/comms/commands/contact_commands.py, tests/test_contact_commands.py
 - Tests: 142/142 grün (10 neue Tests für Zuweisungs-Parsing)
 
+## Abgeschlossen: Phase 44.6 – Integration + Cutover (2026-04-04)
+- update_commands.py: pip install Gruppen plattformabhängig
+  → Windows: .[windows,tts-neural,avatar,matrix,remote,memory,stt]
+  → Linux/Server: .[server]
+  → Neue Funktion _pip_install_groups() statt hardcoded String
+- restart_manager.py: systemd-aware Restart
+  → _is_systemd_managed() prüft INVOCATION_ID env-var
+  → Unter systemd: sys.exit(0) statt os.execv (Restart=always startet neu)
+- system_commands.py: Screenshot via TowerAgent als Fallback
+  → _screenshot_local() → _screenshot_tower() Kaskade
+  → TowerAgent als neuer Konstruktor-Parameter
+- remote_commands.py: tower_agent Parameter durchgereicht an SystemCommandHandler
+- start_saleria.py: TowerAgent an RemoteCommandHandler übergeben
+- selfcheck_commands.py: Tower-Agent als optionaler Service im Selfcheck
+  → Heartbeat wird beim Check ausgelöst (nicht nur cached is_online)
+  → is_online Property/Methode beide korrekt behandelt (callable-Check)
+- Branch: feature/phase-44-6-integration-cutover
+- Tests: 136/136 grün (12 neue: 4 Screenshot, 2 pip-Gruppen, 3 systemd, 4 Tower-Selfcheck)
+
 ## Abgeschlossen: Phase 44.5 – Server-Deploy Vorbereitung (2026-04-04)
 - pyproject.toml: neue [server] Dependency-Gruppe (matrix, memory, tools, documents, web, nextcloud)
   → Alles was der Server braucht, ohne Tower-spezifisches (torch, coqui, pyautogui)
