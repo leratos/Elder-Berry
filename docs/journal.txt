@@ -3670,3 +3670,30 @@ User: "Lies meine Mails und trag den Zahnarzttermin ein"
 - Hilfe-Links: nur offizielle Doku verlinken, keine eigenen Hilfeseiten
 - ~38 Tests geplant
 - PROJECT_ROADMAP.md um Phase 46 ergänzt
+
+## Abgeschlossen: Phase 45 – Konzept-Erweiterung Settings Dashboard (2026-04-05)
+- Konzept: docs/concepts/phase-45-settings-dashboard.md um 4 neue Sektionen erweitert
+- Funktionsstabilität: Input-Validierung (Typ, Länge, Regex), asyncio.Lock für Writes,
+  Graceful Degradation bei korrumpiertem SecretStore, LLM-Mode-Persistenz nach Neustart,
+  Neustart-Hinweise für kritische Keys (requires_restart), Fehler-Isolation via
+  globalen Exception-Handler
+- Sicherheit (Detail): CORS-Fix (allow_origins aus SecretStore statt "*"),
+  SecurityHeadersMiddleware (X-Content-Type-Options, X-Frame-Options, CSP),
+  Audit-Logging für alle Schreib-Operationen (ohne Secret-Werte),
+  zweistufiges Löschen (2-Step Confirmation im Frontend),
+  Rate-Limiting via Nginx limit_req oder FastAPI slowapi,
+  Sensitivitäts-Klassifizierung im Registry-Schema (sensitive: True/False)
+- Erweiterbarkeit: vollständiges SecretRegistryEntry TypedDict-Schema,
+  SettingsDashboard.register_key() für dynamische Key-Registrierung durch neue Module,
+  Observer-Pattern (on_change/notify) für reaktive Settings-Updates,
+  Settings-Export-Endpoint (non-sensitive Werte + Namen gesetzter sensitiver Keys),
+  Checkliste für neue Settings-Sektionen in zukünftigen Phasen
+- Nutzen & UX: "Verbindung testen"-Button pro API-Key (nutzt SetupTests aus Phase 46),
+  Letzter-Änderungszeitpunkt pro Key (secrets_meta.json, unverschlüsselt),
+  Client-seitiger Suchfilter in der Key-Tabelle,
+  Direktlinks zu Anbieter-Dashboards via link-Feld im Registry-Schema,
+  Health-Widget (Polling /health alle 30s mit erweitertem Response),
+  Accordion für Kategorien mit localStorage-Zustand
+- Edge-Cases-Tabelle erweitert: concurrent writes, korrumpierter Store, Neustart-Hinweise
+- Tests aktualisiert: ~48 Tests (30 API + 10 LLMRouter + 8 Stabilität)
+- Implementierungsschritte auf 15 Punkte erweitert
