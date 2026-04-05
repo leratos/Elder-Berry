@@ -121,6 +121,7 @@ async def perform_restart(
     if msg_server_ts > 0:
         flag_content += f"\n{int(msg_server_ts * 1000)}"
     try:
+        RESTART_FLAG_FILE.parent.mkdir(parents=True, exist_ok=True)
         RESTART_FLAG_FILE.write_text(flag_content, encoding="utf-8")
     except Exception as e:
         logger.error("Restart-Flag schreiben fehlgeschlagen: %s", e)
