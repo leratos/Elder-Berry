@@ -876,18 +876,20 @@ vollständigen Schema ausgebaut. Jede neue Phase kann eigene Keys
 mit Validierungsregeln anmelden:
 
 ```python
-class SecretRegistryEntry(TypedDict, total=False):
-    key: str                    # Pflicht
-    label: str                  # Pflicht: Anzeigename
-    category: str               # Pflicht: Kategorie-Name
-    sensitive: bool             # Default: True – nie in GET zurückgeben
-    requires_restart: bool      # Default: False
-    type: str                   # "str" | "int" | "float" | "url" | "email" | "bool"
-    min: float | int            # für type=int/float
-    max: float | int            # für type=int/float
-    pattern: str                # Regex-Pattern für type=str
-    description: str            # Tooltip-Text im Frontend
-    link: str                   # Direktlink zum Anbieter-Dashboard
+from typing import NotRequired, TypedDict
+
+class SecretRegistryEntry(TypedDict):
+    key: str                           # Pflicht
+    label: str                         # Pflicht: Anzeigename
+    category: str                      # Pflicht: Kategorie-Name
+    sensitive: NotRequired[bool]       # Default: True – nie in GET zurückgeben
+    requires_restart: NotRequired[bool]  # Default: False
+    type: NotRequired[str]             # "str" | "int" | "float" | "url" | "email" | "bool"
+    min: NotRequired[float | int]      # für type=int/float
+    max: NotRequired[float | int]      # für type=int/float
+    pattern: NotRequired[str]          # Regex-Pattern für type=str
+    description: NotRequired[str]      # Tooltip-Text im Frontend
+    link: NotRequired[str]             # Direktlink zum Anbieter-Dashboard
 ```
 
 Beispiel mit allen Feldern:
