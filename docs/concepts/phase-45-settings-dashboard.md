@@ -577,7 +577,8 @@ dupliziert wird.
 **Typ-spezifische Regeln (anhand des Registry-Eintrags):**
 
 ```python
-# Erweiterung SECRET_REGISTRY um optionalen "validate"-Schlüssel:
+# Erweiterung SECRET_REGISTRY um optionale Validierungsfelder wie
+# "type", "min", "max" und "pattern":
 {
     "key": "email_imap_port",
     "label": "IMAP Port",
