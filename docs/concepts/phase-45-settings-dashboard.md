@@ -703,7 +703,7 @@ from fastapi.responses import JSONResponse
 
 @self._app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
-    logger.error("Unbehandelte Ausnahme in %s: %s", request.url.path, exc)
+    logger.exception("Unbehandelte Ausnahme in %s", request.url.path)
     return JSONResponse(
         {"error": "Interner Fehler – Details im Log."},
         status_code=500,
