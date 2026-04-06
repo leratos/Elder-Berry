@@ -58,7 +58,23 @@ sudo raspi-config
 # → Interface Options → I2C → Enable → Finish → Reboot
 ```
 
-### 6. Statische IP (empfohlen)
+### 6. GPU-Zugriff & Display-Rotation
+
+```bash
+# User muss in video/render-Gruppe sein (für kmsdrm/DRM-Framebuffer)
+sudo usermod -aG video,render pi
+```
+
+Display ist physisch um 180° gedreht (Kamera-Flachband geht sonst in die falsche Richtung).
+Rotation in `/boot/firmware/config.txt`:
+
+```
+display_lcd_rotate=2
+```
+
+Danach Reboot nötig. Dreht Display + Touch-Input gemeinsam.
+
+### 7. Statische IP (empfohlen)
 
 ```bash
 sudo nmcli con mod "preconfigured" \
@@ -80,8 +96,12 @@ cd /home/pi/elder-berry
 python3 -m venv .venv
 source .venv/bin/activate
 pip install -e ".[robot,avatar]"
-pip install pygame-ce
+pip install pygame-ce  # WICHTIG: Standard-pygame hat kein kmsdrm auf Bookworm Lite!
 ```
+
+> **Warum pygame-ce?** RPi OS Lite (Bookworm) liefert SDL2 ohne kmsdrm/fbcon/x11-Backend —
+> nur `dummy` funktioniert. `pygame-ce` (Community Edition) bringt eine eigene SDL2 mit
+> kmsdrm-Support mit. Gleiche API, Drop-in Replacement, kein Code-Änderung nötig.
 
 ---
 
@@ -161,4 +181,7 @@ Vom Handy aus (Element):
 | SSH "Connection refused" | 60-90s warten, SSH beim Flashen aktiviert? |
 | "Host key verification failed" | `ssh-keygen -R elderberry.local` |
 | Display bleibt schwarz | `SDL_VIDEODRIVER=kmsdrm` gesetzt? DSI-Kabel prüfen |
+| `kmsdrm not available` | `pygame-ce` statt `pygame` installiert? `pip install pygame-ce` |
+| Display steht Kopf | `display_lcd_rotate=2` in `/boot/firmware/config.txt` + Reboot |
+| `Permission denied` auf Display | `sudo usermod -aG video,render pi` + neu einloggen |
 | Statische IP geht nicht | `nmcli con show "preconfigured"` prüfen |
