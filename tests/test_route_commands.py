@@ -348,6 +348,31 @@ class TestResolveAddress:
         addr = handler._resolve_address("Unbekannt")
         assert addr is None
 
+    @pytest.mark.parametrize("raw_address", [
+        "Am Brendegraben 21, 13127 Berlin",
+        "Musterstr. 1, 12345 Berlin",
+        "Hauptstraße 42",
+        "10115 Berlin",
+        '"Am Brendegraben 21 in 13127 Berlin"',
+    ])
+    def test_direct_address(
+        self, handler: RouteCommandHandler,
+        contact_store: MagicMock,
+        raw_address: str,
+    ) -> None:
+        """Direkte Adresse (mit Ziffern) wird nicht im ContactStore gesucht."""
+        addr = handler._resolve_address(raw_address)
+        assert addr is not None
+        # ContactStore.search darf NICHT aufgerufen werden
+        contact_store.search.assert_not_called()
+
+    def test_direct_address_strips_quotes(
+        self, handler: RouteCommandHandler,
+    ) -> None:
+        """Anführungszeichen werden von direkten Adressen entfernt."""
+        addr = handler._resolve_address('"Am Brendegraben 21, 13127 Berlin"')
+        assert addr == "Am Brendegraben 21, 13127 Berlin"
+
 
 # ---------------------------------------------------------------------------
 # _strip_time_suffix

@@ -271,6 +271,41 @@ async def system_info():
         raise HTTPException(status_code=500, detail=f"System-Info Fehler: {e}") from e
 
 
+@app.get("/avatar")
+async def avatar(emotion: str = "neutral"):
+    """Rendert Avatar als PNG (headless, kein Fenster nötig)."""
+    try:
+        from elder_berry.avatar.layered_renderer import LayeredSpriteRenderer
+        from elder_berry.character.base import Emotion
+    except ImportError:
+        raise HTTPException(
+            status_code=503,
+            detail="Avatar-Renderer nicht verfügbar (pygame fehlt)",
+        )
+
+    try:
+        emo = Emotion(emotion)
+    except ValueError:
+        emo = Emotion.NEUTRAL
+
+    try:
+        renderer = LayeredSpriteRenderer()
+        with tempfile.NamedTemporaryFile(
+            suffix=".png", prefix="avatar_", delete=False,
+        ) as tmp:
+            tmp_path = Path(tmp.name)
+
+        renderer.render_to_file(tmp_path, emo)
+        png_bytes = tmp_path.read_bytes()
+        return Response(content=png_bytes, media_type="image/png")
+    except Exception as e:
+        logger.error("Avatar-Render Fehler: %s", e)
+        raise HTTPException(status_code=500, detail=f"Avatar-Fehler: {e}") from e
+    finally:
+        if tmp_path.exists():
+            tmp_path.unlink()
+
+
 @app.post("/tts")
 async def tts(request: TTSRequest):
     """Synthetisiert Text zu WAV via CoquiTTSEngine (XTTS v2)."""

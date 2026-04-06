@@ -276,21 +276,39 @@ class TestAvatarCommand:
         assert result.success is True
         avatar_renderer.render_to_file.assert_called_once()
 
-    def test_avatar_no_renderer(self, handler_minimal):
+    def test_avatar_no_renderer_no_tower(self, handler_minimal):
         result = handler_minimal.execute("avatar", "avatar")
         assert result.success is False
-        assert "AvatarRenderer" in result.text
+        assert "weder lokal noch via Tower" in result.text
 
-    def test_avatar_not_implemented(self, handler, avatar_renderer):
+    def test_avatar_local_fails_no_tower(self, handler, avatar_renderer):
         avatar_renderer.render_to_file.side_effect = NotImplementedError()
         result = handler.execute("avatar", "avatar")
         assert result.success is False
-        assert "unterstützt" in result.text.lower()
+        assert "weder lokal noch via Tower" in result.text
 
-    def test_avatar_exception(self, handler, avatar_renderer):
+    def test_avatar_local_exception_no_tower(self, handler, avatar_renderer):
         avatar_renderer.render_to_file.side_effect = RuntimeError("render fail")
         result = handler.execute("avatar", "avatar")
         assert result.success is False
+
+    def test_avatar_via_tower(self):
+        """Avatar-Fallback via TowerAgent."""
+        tower = MagicMock()
+        tower.host = "127.0.0.1:12769"
+        handler = SystemCommandHandler(tower_agent=tower)
+
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.content = b"\x89PNG\r\nfake_avatar"
+
+        with patch("httpx.get", return_value=mock_response):
+            result = handler.execute("avatar", "avatar happy")
+        assert result.success is True
+        assert "Tower" in result.text
+        assert result.image_path is not None
+        if result.image_path and result.image_path.exists():
+            result.image_path.unlink()
 
 
 # ---------------------------------------------------------------------------

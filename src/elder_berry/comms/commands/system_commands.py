@@ -476,26 +476,41 @@ class SystemCommandHandler(CommandHandler):
             )
 
     def _cmd_avatar(self, raw_text: str) -> CommandResult:
-        """Avatar-Bild rendern und als PNG zur\u00fcckgeben."""
-        if not self._avatar_renderer:
-            return CommandResult(
-                command="avatar",
-                success=False,
-                text="AvatarRenderer nicht verf\u00fcgbar.",
-            )
-
+        """Avatar-Bild rendern – lokal oder via TowerAgent."""
         # Emotion aus Befehl extrahieren (optional)
-        from elder_berry.character.base import Emotion
-
-        emotion = Emotion.NEUTRAL
+        emotion_str = "neutral"
         match = AVATAR_EMOTION_PATTERN.match(raw_text.strip())
         if match:
-            emotion_str = match.group(1).lower()
-            if emotion_str in AVATAR_EMOTIONS:
-                try:
-                    emotion = Emotion(emotion_str)
-                except ValueError:
-                    pass
+            parsed = match.group(1).lower()
+            if parsed in AVATAR_EMOTIONS:
+                emotion_str = parsed
+
+        # Versuch 1: Lokal (pygame verfügbar)
+        result = self._avatar_local(emotion_str)
+        if result:
+            return result
+
+        # Versuch 2: Via TowerAgent
+        result = self._avatar_tower(emotion_str)
+        if result:
+            return result
+
+        return CommandResult(
+            command="avatar",
+            success=False,
+            text="Avatar nicht möglich: weder lokal noch via Tower verfügbar.",
+        )
+
+    def _avatar_local(self, emotion_str: str) -> CommandResult | None:
+        """Avatar lokal rendern. None wenn kein Renderer."""
+        if not self._avatar_renderer:
+            return None
+
+        from elder_berry.character.base import Emotion
+        try:
+            emotion = Emotion(emotion_str)
+        except ValueError:
+            emotion = Emotion.NEUTRAL
 
         try:
             tmp = tempfile.NamedTemporaryFile(
@@ -512,19 +527,42 @@ class SystemCommandHandler(CommandHandler):
                 text=f"Saleria ({emotion.value})",
                 image_path=tmp_path,
             )
-        except NotImplementedError:
+        except (NotImplementedError, Exception) as e:
+            logger.error("Lokales Avatar-Rendering fehlgeschlagen: %s", e)
+            return None
+
+    def _avatar_tower(self, emotion_str: str) -> CommandResult | None:
+        """Avatar via TowerAgent rendern. None wenn nicht verfügbar."""
+        if not self._tower_agent:
+            return None
+
+        try:
+            import httpx
+            r = httpx.get(
+                f"http://{self._tower_agent.host}/avatar",
+                params={"emotion": emotion_str},
+                timeout=10.0,
+            )
+            r.raise_for_status()
+            png_bytes = r.content
+
+            tmp = tempfile.NamedTemporaryFile(
+                suffix=".png", prefix="avatar_tower_", delete=False,
+            )
+            tmp_path = Path(tmp.name)
+            tmp.write(png_bytes)
+            tmp.close()
+
+            logger.info("Avatar via TowerAgent: %s, %d bytes", emotion_str, len(png_bytes))
             return CommandResult(
                 command="avatar",
-                success=False,
-                text="Avatar-Renderer unterst\u00fctzt kein Datei-Rendering.",
+                success=True,
+                text=f"Saleria ({emotion_str}) (via Tower)",
+                image_path=tmp_path,
             )
         except Exception as e:
-            logger.error("Avatar-Rendering fehlgeschlagen: %s", e)
-            return CommandResult(
-                command="avatar",
-                success=False,
-                text=f"Avatar-Rendering fehlgeschlagen: {e}",
-            )
+            logger.error("Tower-Avatar fehlgeschlagen: %s", e)
+            return None
 
     @staticmethod
     def _cmd_restart() -> CommandResult:

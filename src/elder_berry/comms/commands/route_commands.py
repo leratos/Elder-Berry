@@ -225,7 +225,8 @@ class RouteCommandHandler(CommandHandler):
             return CommandResult(
                 command=command, success=True,
                 text=f"Ich konnte keine Adresse für '{dest_name}' finden. "
-                     f"Ist eine Adresse im Kontakt hinterlegt?",
+                     f"Verwende einen Kontaktnamen oder eine direkte Adresse "
+                     f"(z.B. Musterstr. 1, 12345 Berlin).",
             )
 
         # 2. Ankunftszeit parsen
@@ -278,10 +279,17 @@ class RouteCommandHandler(CommandHandler):
     # Synonyme für "von mir" / "von zuhause" → Home-Lookup
     _HOME_SYNONYMS = {"mir", "zuhause", "daheim", "home", "zu hause", "meiner"}
 
+    # Heuristik: enthält Ziffern + mindestens ein Wort → wahrscheinlich
+    # eine direkte Adresse, kein Kontaktname
+    _ADDRESS_PATTERN = re.compile(
+        r"\d+.*[a-zA-ZäöüÄÖÜß]|[a-zA-ZäöüÄÖÜß].*\d+",
+    )
+
     def _resolve_address(self, name: str | None) -> str | None:
-        """Kontaktname → Adresse auflösen.
+        """Kontaktname oder direkte Adresse auflösen.
 
         None oder Home-Synonym → Home-Kontakt (Gruppe 'home')
+        Enthält Ziffern (Hausnummer/PLZ) → direkte Adresse
         'Lisa' → ContactStore fuzzy search → address-Feld
         """
         if name is None or name.lower() in self._HOME_SYNONYMS:
@@ -293,6 +301,14 @@ class RouteCommandHandler(CommandHandler):
                 return addr if addr else None
             return None
 
+        # Anführungszeichen entfernen (User schreibt "Am Brendegraben 21")
+        cleaned = name.strip().strip('"').strip("'").strip()
+
+        # Direkte Adresse? (enthält Ziffern → Hausnummer oder PLZ)
+        if self._ADDRESS_PATTERN.search(cleaned):
+            return cleaned
+
+        # Kontaktname → ContactStore
         results = self._contacts.search(self._default_user_id, name)
         if not results:
             return None
