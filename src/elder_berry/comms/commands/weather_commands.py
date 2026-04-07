@@ -265,7 +265,7 @@ class WeatherCommandHandler(CommandHandler):
                         break
 
             if param == "morgen":
-                forecasts = self._weather.get_days(2, location=location)
+                forecasts = self._weather.get_days(2) if location is None else self._weather.get_days(2, location=location)
                 if len(forecasts) >= 2:
                     text = self._weather.format_forecast([forecasts[1]])
                 else:
@@ -273,7 +273,7 @@ class WeatherCommandHandler(CommandHandler):
                 return CommandResult(command="wetter", success=True, text=text)
 
             if param == "woche":
-                forecasts = self._weather.get_days(7, location=location)
+                forecasts = self._weather.get_days(7) if location is None else self._weather.get_days(7, location=location)
                 text = self._weather.format_forecast(forecasts)
                 return CommandResult(command="wetter", success=True, text=text)
 
@@ -286,7 +286,7 @@ class WeatherCommandHandler(CommandHandler):
 
             if match and match.group(2):
                 days = int(match.group(2))
-                forecasts = self._weather.get_days(days, location=location)
+                forecasts = self._weather.get_days(days) if location is None else self._weather.get_days(days, location=location)
                 text = self._weather.format_forecast(forecasts)
                 return CommandResult(command="wetter", success=True, text=text)
 

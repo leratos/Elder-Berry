@@ -92,7 +92,7 @@ IP-Adressen an dein Netzwerk anpassen!
 ## Elder-Berry installieren
 
 ```bash
-cd /home/pi/elder-berry
+cd /home/pi/Elder-Berry
 python3 -m venv .venv
 source .venv/bin/activate
 pip install -e ".[robot,avatar]"
@@ -128,8 +128,8 @@ After=network.target
 [Service]
 Type=simple
 User=pi
-WorkingDirectory=/home/pi/elder-berry
-ExecStart=/home/pi/elder-berry/.venv/bin/python scripts/start_rpi5.py
+WorkingDirectory=/home/pi/Elder-Berry
+ExecStart=/home/pi/Elder-Berry/.venv/bin/python scripts/start_rpi5.py
 Restart=on-failure
 RestartSec=5
 Environment=SDL_VIDEODRIVER=kmsdrm
@@ -164,6 +164,60 @@ Der Tower steuert den Avatar dann automatisch via `RobotClient`:
 - TTS-Sprechen → Lip-Sync auf dem Display
 - Health-Check → `GET /health`
 
+## Harmony Hub (Phase 37.1)
+
+Der RPi5 steuert den Harmony Hub direkt per WebSocket — ohne Logitech-Cloud.
+
+### 1. aioharmony installieren
+
+```bash
+source /home/pi/Elder-Berry/.venv/bin/activate
+pip install aioharmony
+```
+
+### 2. Config-Datei bereitstellen
+
+Die Config wurde vom Tower aus dem Hub exportiert und liegt im Repo unter
+`config/harmony_config_backup.json`. Sie muss auf den RPi5 kopiert werden:
+
+```bash
+mkdir -p /home/pi/.elder-berry
+# Vom Tower kopieren (einmalig):
+scp lera@<tower-ip>:/c/Dev/Elder-Berry/config/harmony_config_backup.json \
+    /home/pi/.elder-berry/harmony_config.json
+```
+
+### 3. Verbindung testen
+
+```bash
+source /home/pi/Elder-Berry/.venv/bin/activate
+python -c "
+import asyncio
+from aioharmony.harmonyapi import HarmonyAPI
+async def test():
+    h = HarmonyAPI('192.168.50.133')
+    if await h.connect():
+        print('OK — aktive Aktivität:', await h.get_current_activity())
+        await h.close()
+    else:
+        print('FEHLER: Hub nicht erreichbar')
+asyncio.run(test())
+"
+```
+
+### 4. Endpoint prüfen
+
+Nach Neustart des elder-berry Services sollte der Harmony-Endpoint antworten:
+
+```bash
+curl http://localhost:8000/harmony/status
+```
+
+> **Hinweis:** Der Hub hat die feste IP `192.168.50.133` (per MAC-Reservierung im Router).
+> Falls sich die IP ändert, muss sie im SecretStore (`harmony_hub_ip`) angepasst werden.
+
+---
+
 ## Remote-Update via Matrix
 
 Vom Handy aus (Element):
@@ -185,3 +239,7 @@ Vom Handy aus (Element):
 | Display steht Kopf | `display_lcd_rotate=2` in `/boot/firmware/config.txt` + Reboot |
 | `Permission denied` auf Display | `sudo usermod -aG video,render pi` + neu einloggen |
 | Statische IP geht nicht | `nmcli con show "preconfigured"` prüfen |
+| Harmony Hub nicht erreichbar | Hub-IP `192.168.50.133` anpingen, WLAN-Netz identisch? |
+| `aioharmony` Import-Fehler | `pip install aioharmony` im venv vergessen? |
+| `/harmony/status` 404 | Git-Stand aktuell? `git pull` + `pip install -e ".[robot,avatar]"` |
+| Harmony Config fehlt | `harmony_config.json` nach `/home/pi/.elder-berry/` kopieren |

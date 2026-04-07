@@ -486,19 +486,28 @@ class SystemCommandHandler(CommandHandler):
                 emotion_str = parsed
 
         # Versuch 1: Lokal (pygame verfügbar)
-        result = self._avatar_local(emotion_str)
-        if result:
-            return result
+        local_result = self._avatar_local(emotion_str)
+        if local_result and local_result.success:
+            return local_result
 
         # Versuch 2: Via TowerAgent
-        result = self._avatar_tower(emotion_str)
-        if result:
-            return result
+        tower_result = self._avatar_tower(emotion_str)
+        if tower_result:
+            return tower_result
+
+        if local_result is not None:
+            if local_result.text == "Avatar Datei-Rendering ist lokal nicht implementiert.":
+                return CommandResult(
+                    command="avatar",
+                    success=False,
+                    text="Avatar Datei-Rendering ist lokal nicht implementiert, weder lokal noch via Tower möglich.",
+                )
+            return local_result
 
         return CommandResult(
             command="avatar",
             success=False,
-            text="Avatar nicht möglich: weder lokal noch via Tower verfügbar.",
+            text="Avatar nicht verfügbar: weder lokal noch via Tower möglich.",
         )
 
     def _avatar_local(self, emotion_str: str) -> CommandResult | None:
@@ -527,9 +536,20 @@ class SystemCommandHandler(CommandHandler):
                 text=f"Saleria ({emotion.value})",
                 image_path=tmp_path,
             )
-        except (NotImplementedError, Exception) as e:
+        except NotImplementedError as e:
             logger.error("Lokales Avatar-Rendering fehlgeschlagen: %s", e)
-            return None
+            return CommandResult(
+                command="avatar",
+                success=False,
+                text="Avatar Datei-Rendering ist lokal nicht implementiert.",
+            )
+        except Exception as e:
+            logger.error("Lokales Avatar-Rendering fehlgeschlagen: %s", e)
+            return CommandResult(
+                command="avatar",
+                success=False,
+                text=f"Avatar-Rendering fehlgeschlagen: {e}",
+            )
 
     def _avatar_tower(self, emotion_str: str) -> CommandResult | None:
         """Avatar via TowerAgent rendern. None wenn nicht verfügbar."""

@@ -6,6 +6,7 @@ const moduleMap = {
     harmony: () => import("./harmony.js"),
     system:  () => import("./system.js"),
     saleria: () => import("./saleria.js"),
+    settings: () => import("./settings.js"),
 };
 
 async function loadModules() {

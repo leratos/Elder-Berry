@@ -5,95 +5,111 @@
 import { DashboardModule } from "./base.js";
 
 export default class SystemModule extends DashboardModule {
-
     render() {
         return `
-        <div class="card card-compact">
+        <div class="card">
             <div class="card-header">
-                <span class="card-title">System</span>
+                <span class="card-title">Systemstatus</span>
+                <span class="badge" id="system-health-badge">Lade...</span>
             </div>
-            <div class="status-row" id="sys-rpi5-row">
-                <span class="label">RPi5</span>
-                <span class="status-info">
-                    <span class="value" id="sys-rpi5-info"></span>
-                    <span class="status-dot" id="sys-rpi5"></span>
-                </span>
-            </div>
-            <div class="status-row" id="sys-tower-row">
-                <span class="label">Tower</span>
-                <span class="status-info">
-                    <span class="value" id="sys-tower-info"></span>
-                    <span class="status-dot" id="sys-tower"></span>
-                </span>
-            </div>
-            <div class="status-row" id="sys-saleria-row">
-                <span class="label">Saleria</span>
-                <span class="status-info">
-                    <span class="value" id="sys-saleria-info"></span>
-                    <span class="status-dot" id="sys-saleria"></span>
-                </span>
-            </div>
+            <div class="settings-summary" id="system-summary"></div>
+            <div class="settings-alert" id="system-alert"></div>
+            <div class="settings-grid" id="system-grid"></div>
         </div>`;
     }
 
-    get pollInterval() { return 30000; }
-
-    async init() { await this.poll(); }
-
-    async poll() {
-        const rpi5  = await this.apiFetch(`${this.config.rpi5_url}/health`);
-        const tower = await this.apiFetch(`${this.config.tower_url}/health`);
-
-        this._updateRow("sys-rpi5", rpi5, rpi5 !== null);
-        this._updateRow("sys-tower", tower, tower !== null);
-
-        const saleriaOk = tower?.saleria_running ?? false;
-        this._setDot("sys-saleria", saleriaOk);
-        const saleriaInfo = document.getElementById("sys-saleria-info");
-        if (saleriaInfo) {
-            if (!tower) {
-                saleriaInfo.textContent = "";
-            } else {
-                saleriaInfo.textContent = saleriaOk ? "aktiv" : "inaktiv";
-            }
-        }
-
-        // Connection-Dot im Header
-        const connDot = document.getElementById("connection-status");
-        if (connDot) {
-            connDot.className = `status-dot ${rpi5 !== null ? "ok" : "error"}`;
-        }
+    get pollInterval() {
+        return 30000;
     }
 
-    _updateRow(prefix, data, online) {
-        this._setDot(prefix, online);
-        const info = document.getElementById(`${prefix}-info`);
-        if (!info) return;
+    async init() {
+        await this.refresh();
+    }
 
-        if (!online) {
-            info.textContent = "offline";
+    async poll() {
+        await this.refresh();
+    }
+
+    async refresh() {
+        const [towerStatus, settingsStatus] = await Promise.all([
+            this.apiFetch(`${this.config.tower_url}/health`),
+            this.apiFetch(`${this.config.tower_url}/api/settings/status`),
+        ]);
+
+        const summary = document.getElementById("system-summary");
+        const alert = document.getElementById("system-alert");
+        const grid = document.getElementById("system-grid");
+        const badge = document.getElementById("system-health-badge");
+        if (!summary || !alert || !grid || !badge) return;
+
+        if (!towerStatus) {
+            summary.textContent = "Tower aktuell nicht erreichbar.";
+            alert.textContent = "Ohne Tower-Health sind Runtime-, Monitor- und Settings-Signale unvollständig.";
+            alert.className = "settings-alert warn";
+            grid.innerHTML = "";
+            badge.textContent = "offline";
+            badge.className = "badge badge-error";
             return;
         }
 
-        const parts = [];
-        if (data.uptime != null) {
-            parts.push(this._formatUptime(data.uptime));
-        }
-        if (data.cpu_temp != null) {
-            parts.push(`${data.cpu_temp}°C`);
-        }
-        info.textContent = parts.join(" · ") || "online";
+        const restartCount = settingsStatus?.restartRequiredSettings?.length || 0;
+        const configured = settingsStatus?.configured ?? 0;
+        const total = settingsStatus?.total ?? 0;
+        const monitor = settingsStatus?.monitor || { available: false, selected: null, monitorCount: 0 };
+        const topology = settingsStatus?.towerTopology || { dashboardRemote: false, towerLocal: false };
+
+        summary.innerHTML = `
+            <div>Hostname: <strong>${this._escape(towerStatus.hostname || "unbekannt")}</strong></div>
+            <div>LLM-Modus: <strong>${this._escape(settingsStatus?.llmMode || "unbekannt")}</strong></div>
+            <div>Zeitzone: <strong>${this._escape(settingsStatus?.timezone || "unbekannt")}</strong></div>
+            <div>Settings: <strong>${configured}/${total}</strong> konfiguriert</div>
+        `;
+
+        alert.textContent = topology.dashboardRemote && topology.towerLocal
+            ? "Dashboard läuft remote, Tower/Computer Use ist lokal angebunden. Monitorstatus kommt über die Tower-Verbindung."
+            : (restartCount > 0
+                ? `${restartCount} restart-relevante Settings sollten nach Änderungen neu gestartet werden.`
+                : "Aktuell keine restart-relevanten Änderungen offen.");
+        alert.className = topology.dashboardRemote && topology.towerLocal
+            ? "settings-alert warn"
+            : (restartCount > 0 ? "settings-alert warn" : "settings-alert ok");
+
+        grid.innerHTML = [
+            this._card("Tower", towerStatus.status === "ok" ? "Erreichbar" : "Unklar", "runtime", "low"),
+            this._card("Saleria-Prozess", towerStatus.saleria_running ? "Läuft" : "Nicht aktiv", "service", towerStatus.saleria_running ? "low" : "medium"),
+            this._card("Restart-Hinweis", restartCount > 0 ? `${restartCount} Settings sind restart-relevant.` : "Aktuell keine restart-relevanten Settings offen.", "ops", restartCount > 0 ? "medium" : "low"),
+            this._card("Monitor / Computer Use", monitor.available ? `Monitor ${monitor.selected ?? "?"} aktiv, ${monitor.monitorCount} erkannt.` : "Computer Use / Monitor-Auswahl lokal nicht verfügbar.", "tower", monitor.available ? "low" : "medium"),
+            this._card("Topologie", topology.dashboardRemote && topology.towerLocal ? "Dashboard remote, Tower lokal per Tunnel verbunden." : "Lokale oder vereinfachte Topologie.", "network", "low"),
+            this._card("Settings-Kategorien", this._formatCategories(settingsStatus?.categories || {}), "overview", "low"),
+        ].join("");
+
+        badge.textContent = restartCount > 0 ? "Achtung" : "OK";
+        badge.className = restartCount > 0 ? "badge badge-warn" : "badge badge-ok";
     }
 
-    _setDot(id, ok) {
-        const el = document.getElementById(id);
-        if (el) el.className = `status-dot ${ok ? "ok" : "error"}`;
+    _card(label, text, tag, risk) {
+        return `
+            <div class="setting-card risk-${this._escape(risk)}">
+                <div class="setting-header">
+                    <span class="setting-label">${this._escape(label)}</span>
+                    <span class="setting-risk">${this._escape(tag)}</span>
+                </div>
+                <div class="setting-help">${this._escape(text)}</div>
+            </div>`;
     }
 
-    _formatUptime(seconds) {
-        const h = Math.floor(seconds / 3600);
-        const m = Math.floor((seconds % 3600) / 60);
-        if (h > 0) return `${h}h ${m}m`;
-        return `${m}m`;
+    _formatCategories(categories) {
+        const entries = Object.entries(categories);
+        if (!entries.length) return "Keine Kategorien geladen.";
+        return entries.map(([key, value]) => `${key}: ${value}`).join(" · ");
+    }
+
+    _escape(value) {
+        return String(value)
+            .replaceAll("&", "&amp;")
+            .replaceAll("<", "&lt;")
+            .replaceAll(">", "&gt;")
+            .replaceAll('"', "&quot;")
+            .replaceAll("'", "&#39;");
     }
 }
