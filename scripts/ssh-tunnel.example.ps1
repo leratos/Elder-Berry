@@ -51,15 +51,20 @@ function Clear-RemotePort {
         Kills stale sshd processes holding the remote port after a connection drop.
         Without this, reconnect fails with "remote port forwarding failed" because
         the old sshd still occupies the port until its TCP timeout expires.
+
+        Requires passwordless sudo for fuser on the server (sshd runs as root):
+          echo 'your-user ALL=(root) NOPASSWD: /usr/bin/fuser' | sudo tee /etc/sudoers.d/tunnel-cleanup
+          sudo chmod 440 /etc/sudoers.d/tunnel-cleanup
     #>
     Write-Log "Clearing stale port $RemotePort on $RemoteHost..."
     $null = & ssh -o "ConnectTimeout=5" -o "BatchMode=yes" `
         "${RemoteUser}@${RemoteHost}" `
-        "fuser -k ${RemotePort}/tcp 2>/dev/null; echo ok" 2>&1
+        "sudo fuser -k -9 ${RemotePort}/tcp 2>/dev/null; for i in 1 2 3 4 5 6 7 8 9 10; do if ! sudo fuser ${RemotePort}/tcp >/dev/null 2>&1; then echo FREE; exit 0; fi; sleep 1; done; echo BUSY; exit 1" 2>&1
     if ($LASTEXITCODE -eq 0) {
-        Write-Log "Remote port $RemotePort cleared."
+        Write-Log "Remote port $RemotePort is free."
     } else {
-        Write-Log "Could not clear remote port (server unreachable?)." "WARN"
+        Write-Log "Remote port $RemotePort still busy after cleanup. Waiting 15s..." "WARN"
+        Start-Sleep -Seconds 15
     }
 }
 
