@@ -15,6 +15,10 @@
 <body>
     <header class="dashboard-header">
         <span class="header-title">Saleria</span>
+        <nav class="header-nav" id="header-nav">
+            <button class="nav-tab active" data-view="remote">Fernbedienung</button>
+            <button class="nav-tab" data-view="settings">Einstellungen</button>
+        </nav>
         <span id="connection-status" class="status-dot"></span>
     </header>
 
@@ -26,7 +30,11 @@
         window.DASHBOARD_CONFIG = {
             rpi5_url:  "http://192.168.50.220:8000",
             tower_url: _isServer ? "" : "http://192.168.50.100:8090",
-            modules:   ["system", "settings", "harmony", "saleria"]
+            views: {
+                remote:   ["harmony"],
+                settings: ["system", "settings"]
+            },
+            defaultView: "remote"
         };
     </script>
     <script type="module" src="modules/loader.js"></script>

@@ -3697,3 +3697,40 @@ User: "Lies meine Mails und trag den Zahnarzttermin ein"
 - Edge-Cases-Tabelle erweitert: concurrent writes, korrumpierter Store, Neustart-Hinweise
 - Tests aktualisiert: ~48 Tests (30 API + 10 LLMRouter + 8 Stabilität)
 - Implementierungsschritte auf 15 Punkte erweitert
+
+## In Arbeit: Phase 45 – Server-Deployment Fixes + Monitor-Proxy (2026-04-07)
+- Dashboard-Config (index.html): tower_url dynamisch (relativ auf Server, LAN-IP lokal)
+- rpi5_url bleibt immer LAN-IP (Fernbedienung nur aus Heimnetz)
+- SO_REUSEADDR + Retry (10×3s) für Port 8090 beim Neustart/Update
+  → behebt TIME_WAIT-Problem wenn alter Prozess den Port noch hält
+- uvicorn startet jetzt mit vorgebundenem Socket (SO_REUSEADDR)
+- TowerServer (tower/tower_server.py): GET /monitors + POST /monitor Endpoints
+  → Monitor-Auswahl und Screenshot nutzen gespeicherten _monitor_index
+- TowerAgent (core/tower_agent.py): get_monitors() + set_monitor() Methoden
+- AudioDashboard: neuer Parameter tower_agent, Monitor-Routen leiten an Tower
+  weiter wenn tower_agent vorhanden (Server → SSH-Tunnel → Tower:8090)
+- _get_monitor_status() ist jetzt async, holt Daten direkt vom Tower
+- start_saleria.py: tower_agent wird einmal erstellt und an Dashboard + RemoteCommandHandler übergeben
+- Dateien geändert: index.html, audio_dashboard.py, tower_server.py, tower_agent.py, start_saleria.py
+
+## Phase 45 – Statusabgleich mit Konzept (2026-04-07)
+
+### Implementiert:
+- Settings Schema/Values/Status/Update API (/api/settings/*)
+- SettingDefinition mit type, risk_level, restart_required, min/max
+- LLM-Mode (llm_mode im SecretStore, api_preferred/local_only)
+- Monitor-Auswahl (lokal + Tower-Proxy via SSH-Tunnel)
+- Health-Endpoint, Allowed Senders, Zeitzone, STT-Timeout, Audio-Modus
+- Tower-Topology (dashboardRemote/towerLocal)
+- Dashboard PWA Frontend (system.js, settings.js, saleria.js, harmony.js)
+- Server-Deployment (relative URLs, Nginx-Proxy, SO_REUSEADDR)
+
+### Noch offen (laut Konzept):
+- SECRET_REGISTRY: vollständige Key-Registry mit ~30 Keys + Secrets-API (/api/secrets/*)
+- LLM Status/Mode separate API (/api/llm/status, /api/llm/mode)
+- Sicherheitshärtung: CORS-Fix, SecurityHeadersMiddleware, Audit-Logging, asyncio.Lock
+- Input-Validierung (zentrale _validate_secret, Typ-Checks)
+- UX: Suchfeld, Accordion, "Verbindung testen"-Button, Direktlinks, 2-Stufen-Löschen
+- Metadaten-Timestamps (updated_at pro Key), Change-Callbacks, Settings-Export
+- Rename AudioDashboard → SettingsDashboard
+- Tests: ~48 geplant (30 API + 10 LLMRouter + 8 Stabilität), bisher 37 vorhanden
