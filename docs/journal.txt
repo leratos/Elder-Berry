@@ -3802,3 +3802,15 @@ User: "Lies meine Mails und trag den Zahnarzttermin ein"
 - Dateien geändert: settings_dashboard.py, router.py, __init__.py, avatar_editor.py,
   start_saleria.py, settings.js, test_settings_dashboard.py, test_secrets_api.py,
   test_llm_api.py, test_security.py, test_avatar_editor.py, test_settings_stability.py
+
+## Abgeschlossen: SSH-Tunnel Härtung (2026-04-07)
+- Problem: VPN-Unterbrechung killt SSH-Tunnel, Zombie-Session blockiert Port 12769
+  auf last-strawberry.com, Tower kann nicht reconnecten
+- Server (last-strawberry.com): sshd_config-Härtung dokumentiert
+  (ClientAliveInterval 15, ClientAliveCountMax 3 → Zombie nach 45s gekillt)
+- Tower (Windows 11): scripts/ssh-tunnel.ps1 – Auto-Reconnect mit Exponential
+  Backoff (5s → 120s), Logging nach logs/ssh-tunnel.log
+- Tower: scripts/Install-SshTunnelTask.ps1 – Scheduled Task "Elder-Berry SSH Tunnel"
+  (Start bei Login, Restart bei Fehler alle 60s, bis zu 999×)
+- Doku: docs/ssh-tunnel.md (Übersicht, Server-Config, Tower-Script, Troubleshooting)
+- Dateien erstellt: ssh-tunnel.ps1, Install-SshTunnelTask.ps1, ssh-tunnel.md
