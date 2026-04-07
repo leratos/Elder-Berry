@@ -21,9 +21,11 @@
     <main id="module-container"></main>
 
     <script>
+        // Lokal (LAN): direkte IPs; Server (fern.last-strawberry.com): relative Pfade via Nginx
+        const _isServer = location.hostname.includes("last-strawberry.com");
         window.DASHBOARD_CONFIG = {
-            rpi5_url:  "http://192.168.50.220:8000",
-            tower_url: "http://192.168.50.100:8090",
+            rpi5_url:  _isServer ? "" : "http://192.168.50.220:8000",
+            tower_url: _isServer ? "" : "http://192.168.50.100:8090",
             modules:   ["system", "settings", "harmony", "saleria"]
         };
     </script>
