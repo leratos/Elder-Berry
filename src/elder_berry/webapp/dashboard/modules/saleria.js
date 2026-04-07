@@ -1,6 +1,6 @@
 /**
- * SaleriaModule – Zeigt Saleria-Status (Tower-abhängig).
- * Graceful offline wenn Tower nicht erreichbar.
+ * SaleriaModule – Zeigt Status des direkten Tower-/RPi-Pfads.
+ * In Server-Deployments kann dieser Pfad absichtlich getrennt vom Dashboard-Backend sein.
  */
 import { DashboardModule } from "./base.js";
 
@@ -28,7 +28,7 @@ export default class SaleriaModule extends DashboardModule {
 
         if (!status) {
             if (dot) dot.className = "status-dot error";
-            if (info) info.textContent = "Tower offline";
+            if (info) info.textContent = "Direkter Tower-/RPi-Pfad nicht erreichbar";
             if (this.container) this.container.classList.add("module-offline");
             return;
         }
