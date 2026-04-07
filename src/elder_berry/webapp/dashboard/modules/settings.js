@@ -53,9 +53,9 @@ export default class SettingsModule extends DashboardModule {
 
     async refresh() {
         const [schemaRes, valuesRes, statusRes] = await Promise.all([
-            this.apiFetch(`${this.config.tower_url}/api/settings/schema`),
-            this.apiFetch(`${this.config.tower_url}/api/settings/values`),
-            this.apiFetch(`${this.config.tower_url}/api/settings/status`),
+            this.apiFetch(`/api/settings/schema`),
+            this.apiFetch(`/api/settings/values`),
+            this.apiFetch(`/api/settings/status`),
         ]);
 
         if (!schemaRes || !valuesRes || !statusRes) {
@@ -292,7 +292,7 @@ export default class SettingsModule extends DashboardModule {
         status.textContent = "speichert...";
         status.className = "setting-status";
 
-        const response = await fetch(`${this.config.tower_url}/api/settings/update`, {
+        const response = await fetch(`/api/settings/update`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ key, value }),

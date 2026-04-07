@@ -32,8 +32,8 @@ export default class SystemModule extends DashboardModule {
 
     async refresh() {
         const [towerStatus, settingsStatus] = await Promise.all([
-            this.apiFetch(`${this.config.tower_url}/health`),
-            this.apiFetch(`${this.config.tower_url}/api/settings/status`),
+            this.apiFetch(`/health`),
+            this.apiFetch(`/api/settings/status`),
         ]);
 
         const summary = document.getElementById("system-summary");
@@ -43,8 +43,8 @@ export default class SystemModule extends DashboardModule {
         if (!summary || !alert || !grid || !badge) return;
 
         if (!towerStatus) {
-            summary.textContent = "Tower aktuell nicht erreichbar.";
-            alert.textContent = "Ohne Tower-Health sind Runtime-, Monitor- und Settings-Signale unvollständig.";
+            summary.textContent = "Dashboard-Backend aktuell nicht erreichbar.";
+            alert.textContent = "Ohne Dashboard-Health sind Runtime-, Monitor- und Settings-Signale unvollständig.";
             alert.className = "settings-alert warn";
             grid.innerHTML = "";
             badge.textContent = "offline";
@@ -75,7 +75,7 @@ export default class SystemModule extends DashboardModule {
             : (restartCount > 0 ? "settings-alert warn" : "settings-alert ok");
 
         grid.innerHTML = [
-            this._card("Tower", towerStatus.status === "ok" ? "Erreichbar" : "Unklar", "runtime", "low"),
+            this._card("Dashboard-Backend", towerStatus.status === "ok" ? "Erreichbar" : "Unklar", "runtime", "low"),
             this._card("Saleria-Prozess", towerStatus.saleria_running ? "Läuft" : "Nicht aktiv", "service", towerStatus.saleria_running ? "low" : "medium"),
             this._card("Restart-Hinweis", restartCount > 0 ? `${restartCount} Settings sind restart-relevant.` : "Aktuell keine restart-relevanten Settings offen.", "ops", restartCount > 0 ? "medium" : "low"),
             this._card("Monitor / Computer Use", monitor.available ? `Monitor ${monitor.selected ?? "?"} aktiv, ${monitor.monitorCount} erkannt.` : "Computer Use / Monitor-Auswahl lokal nicht verfügbar.", "tower", monitor.available ? "low" : "medium"),
