@@ -35,6 +35,10 @@ body {
     width: 100%; max-width: 480px;
     display: flex; align-items: center; justify-content: space-between;
     padding: 8px 4px 12px;
+    transition: max-width 0.25s ease;
+}
+body[data-view="settings"] .dashboard-header {
+    max-width: 1100px;
 }
 .header-title {
     font-size: 1.2em; font-weight: 700;
@@ -64,6 +68,10 @@ body {
 #module-container {
     width: 100%; max-width: 480px;
     display: flex; flex-direction: column; gap: 12px;
+    transition: max-width 0.25s ease;
+}
+body[data-view="settings"] #module-container {
+    max-width: 1100px;
 }
 
 /* -- Cards ------------------------------------------------------------- */
@@ -463,8 +471,146 @@ textarea.setting-input {
     font-size: 0.9em;
     padding: 8px 0;
 }
+/* -- Secrets-Sektion (Phase 45) ---------------------------------------- */
+.settings-panel-secrets {
+    grid-column: 1 / -1;
+}
+.settings-search {
+    margin-bottom: 12px;
+}
+.secrets-category {
+    margin-bottom: 10px;
+    border: 1px solid rgba(255,255,255,0.06);
+    border-radius: 12px;
+    overflow: hidden;
+}
+.secrets-category-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 14px;
+    cursor: pointer;
+    background: rgba(255,255,255,0.03);
+    user-select: none;
+    transition: background 0.15s;
+}
+.secrets-category-header:hover {
+    background: rgba(255,255,255,0.06);
+}
+.accordion-icon {
+    font-size: 0.7em;
+    color: var(--text-muted);
+    width: 14px;
+}
+.secrets-category-count {
+    margin-left: auto;
+    font-size: 0.8em;
+    color: var(--text-muted);
+}
+.secrets-category-body {
+    padding: 0 8px 8px;
+}
+.secrets-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.88em;
+}
+.secrets-table th {
+    text-align: left;
+    padding: 6px 8px;
+    font-size: 0.78em;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    border-bottom: 1px solid rgba(255,255,255,0.08);
+}
+.secrets-table td {
+    padding: 7px 8px;
+    border-bottom: 1px solid rgba(255,255,255,0.04);
+    vertical-align: middle;
+}
+.secrets-table tr:last-child td {
+    border-bottom: none;
+}
+.secret-key {
+    font-family: 'SF Mono', 'Fira Code', monospace;
+    font-size: 0.9em;
+    word-break: break-all;
+}
+.secret-link {
+    text-decoration: none;
+    margin-left: 4px;
+    font-size: 0.85em;
+}
+.secret-updated {
+    font-size: 0.78em;
+    color: var(--text-muted);
+    margin-left: 6px;
+}
+.secret-actions {
+    display: flex;
+    gap: 4px;
+}
+.secret-edit-btn,
+.secret-delete-btn {
+    width: auto;
+    padding: 4px 8px;
+    font-size: 0.85em;
+    background: transparent;
+    border: 1px solid rgba(255,255,255,0.1);
+    border-radius: 6px;
+    cursor: pointer;
+}
+.secret-delete-btn.confirm {
+    background: rgba(239,68,68,0.15);
+    border-color: var(--status-error);
+    color: var(--status-error);
+    font-size: 0.75em;
+}
+.secret-edit-form {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 0;
+}
+.secret-value-input {
+    flex: 1;
+    margin-bottom: 0;
+}
+.secret-save-btn,
+.secret-cancel-btn {
+    width: auto;
+    padding: 8px 14px;
+    font-size: 0.85em;
+}
+.secret-save-btn {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: #fff;
+}
+.secret-feedback {
+    font-size: 0.8em;
+    color: var(--text-muted);
+}
+.secret-feedback.ok { color: var(--status-ok); }
+.secret-feedback.warn { color: var(--status-warn); }
+.secret-feedback.error { color: var(--status-error); }
+.setting-flag-small {
+    font-size: 0.65em;
+    padding: 2px 5px;
+    border-radius: 4px;
+    background: rgba(245,158,11,0.12);
+    color: var(--status-warn);
+    margin-left: 4px;
+    vertical-align: middle;
+}
+
 @media (max-width: 980px) {
     .settings-layout {
         grid-template-columns: 1fr;
+    }
+    body[data-view="settings"] .dashboard-header,
+    body[data-view="settings"] #module-container {
+        max-width: 100%;
     }
 }

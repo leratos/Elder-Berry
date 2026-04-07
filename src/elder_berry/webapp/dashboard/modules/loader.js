@@ -70,6 +70,7 @@ function switchView(viewName) {
     }
 
     activeView = viewName;
+    document.body.dataset.view = viewName;
 
     // Nav-Tabs aktualisieren
     document.querySelectorAll("#header-nav .nav-tab").forEach(tab => {
