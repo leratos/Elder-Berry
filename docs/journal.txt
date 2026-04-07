@@ -3734,3 +3734,71 @@ User: "Lies meine Mails und trag den Zahnarzttermin ein"
 - Metadaten-Timestamps (updated_at pro Key), Change-Callbacks, Settings-Export
 - Rename AudioDashboard → SettingsDashboard
 - Tests: ~48 geplant (30 API + 10 LLMRouter + 8 Stabilität), bisher 37 vorhanden
+
+## Abgeschlossen: Phase 45 – SECRET_REGISTRY + Secrets-API (2026-04-07)
+- SecretRegistryEntry TypedDict mit allen Feldern (sensitive, requires_restart,
+  type, min/max, pattern, description, link)
+- SECRET_REGISTRY: 30 Keys in 8 Kategorien (KI & Sprache, Suche & Karten,
+  Matrix, E-Mail, Nextcloud, Dienste, Infrastruktur, Wetter & Standort)
+- Zentrale _validate_secret(): Key-Format, Wert-Länge, Typ-Validierung
+  (int mit min/max, float mit min/max, url mit http(s)-Prefix)
+- asyncio.Lock (_write_lock) für serialisierte Schreibzugriffe auf SecretStore
+  → auch bestehender settings_update Endpoint nutzt jetzt den Lock
+- 3 neue API-Endpoints: GET /api/secrets/status, POST /api/secrets/set,
+  POST /api/secrets/delete – alle mit Audit-Logging (Key + Client-IP)
+- _REGISTRY_BY_KEY Dict für schnellen Zugriff
+- 26 neue Tests in tests/test_secrets_api.py (Status, Set, Delete,
+  Typ-Validierung, Edge Cases)
+- Alle 63 Tests grün (37 bestehende + 26 neue)
+- Dateien geändert: audio_dashboard.py, tests/test_secrets_api.py
+
+## Abgeschlossen: Phase 45 – LLM-Endpoints (2026-04-07)
+- LLMRouter erweitert: mode Property/Setter, _select_client mit local_only-Logik,
+  primary_name/fallback_name/primary_available/fallback_available Properties
+- active_backend berücksichtigt jetzt den Mode
+- LLMRouter als DI-Parameter in AudioDashboard.__init__ (llm_router)
+- GET /api/llm/status → available, mode, active_backend, primary/fallback Info
+- POST /api/llm/mode → Modus umschalten + Persistenz im SecretStore + Audit-Log
+- 22 neue Tests in tests/test_llm_api.py (12 Router-Unit + 10 Endpoint-Tests)
+- Alle 85 Tests grün (37 + 26 + 22)
+- Dateien geändert: router.py, audio_dashboard.py, tests/test_llm_api.py
+
+## Abgeschlossen: Phase 45 – Sicherheitshärtung (2026-04-07)
+- CORS-Fix: allow_origins aus SecretStore ("dashboard_origin") + localhost,
+  nur GET/POST/DELETE, nur Content-Type Header, kein credentials
+- SecurityHeadersMiddleware: X-Content-Type-Options: nosniff, X-Frame-Options: DENY,
+  Referrer-Policy: no-referrer, CSP mit default-src 'self'
+- Globaler Exception-Handler: fängt unbehandelte Ausnahmen, loggt mit Pfad,
+  gibt generische 500-Antwort zurück (keine Stack-Traces im Response)
+- 13 neue Tests in tests/test_security.py (6 Header, 5 CORS, 2 Exception-Handler)
+- Alle 98 Tests grün (37 + 26 + 22 + 13)
+- Dateien geändert: audio_dashboard.py, tests/test_security.py
+
+## Abgeschlossen: Phase 45 – Rename + Stability-Tests + UX (2026-04-07)
+- Rename: AudioDashboard → SettingsDashboard, audio_dashboard.py → settings_dashboard.py
+  → Klasse, Datei, Imports in start_saleria.py, __init__.py, avatar_editor.py,
+    alle 6 Test-Dateien aktualisiert
+  → __init__.py enthält AudioDashboard = SettingsDashboard als Rückwärtskompatibilität
+- LLMRouter erweitert: mode Property/Setter, _select_client mit local_only-Logik,
+  primary_name/fallback_name/primary_available/fallback_available Properties
+- Change-Callbacks: on_change(key, callback), _notify_change(key, value) in SettingsDashboard
+  → Callbacks werden bei /api/secrets/set aufgerufen, Fehler isoliert
+- Metadaten-Timestamps: _record_meta(key) speichert updated_at (UTC ISO),
+  in /api/secrets/status Response als updated_at pro Key
+- Settings-Export: GET /api/settings/export
+  → non_sensitive Werte + sensitive_keys_set (nur Key-Namen)
+- test_settings_stability.py: 13 Tests (concurrent writes, audit log, restart hints,
+  change callbacks mit Fehler-Isolation, export, metadata timestamps)
+- Frontend-UX in settings.js:
+  → Secrets-Sektion: Tabelle mit Status (✅/❌) pro Key nach Kategorie
+  → Suchfeld: Client-seitiger Filter über Key und Label
+  → Accordion: einklappbare Kategorien mit localStorage-Zustand
+  → 2-Stufen-Löschen: Button → "Wirklich?" (5s Timeout) → tatsächlich löschen
+  → Direktlinks: 🔗-Icon zu Anbieter-Dashboards (aus Registry link-Feld)
+  → Edit-Inline: ✏️-Button klappt password-Input auf, Speichern/Abbrechen
+  → Restart-Badge + updated_at Anzeige pro Key
+- Alle 142 Tests grün (37 dashboard + 26 secrets + 22 llm + 13 security
+  + 13 stability + 31 avatar_editor)
+- Dateien geändert: settings_dashboard.py, router.py, __init__.py, avatar_editor.py,
+  start_saleria.py, settings.js, test_settings_dashboard.py, test_secrets_api.py,
+  test_llm_api.py, test_security.py, test_avatar_editor.py, test_settings_stability.py

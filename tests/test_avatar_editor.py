@@ -88,7 +88,7 @@ def avatar_config_yaml(tmp_path):
 @pytest.fixture
 def client(avatar_assets, avatar_config_yaml):
     """TestClient mit gemockten Asset- und Config-Pfaden."""
-    from elder_berry.web.audio_dashboard import AudioDashboard
+    from elder_berry.web.settings_dashboard import SettingsDashboard
     import elder_berry.web.avatar_editor as ae
 
     # Patch die Module-Level-Pfade
@@ -103,7 +103,7 @@ def client(avatar_assets, avatar_config_yaml):
     acl.DEFAULT_CONFIG_PATH = avatar_config_yaml
 
     router = AudioRouter(local_available=True)
-    dashboard = AudioDashboard(audio_router=router)
+    dashboard = SettingsDashboard(audio_router=router)
     tc = TestClient(dashboard.app)
 
     yield tc
@@ -117,7 +117,7 @@ def client(avatar_assets, avatar_config_yaml):
 @pytest.fixture
 def client_with_renderer(avatar_assets, avatar_config_yaml):
     """TestClient mit gemocktem Renderer für Hot-Reload-Tests."""
-    from elder_berry.web.audio_dashboard import AudioDashboard
+    from elder_berry.web.settings_dashboard import SettingsDashboard
     import elder_berry.web.avatar_editor as ae
 
     original_assets = ae._ASSETS_DIR
@@ -133,7 +133,7 @@ def client_with_renderer(avatar_assets, avatar_config_yaml):
     mock_renderer.reload_config.return_value = True
 
     router = AudioRouter(local_available=True)
-    dashboard = AudioDashboard(audio_router=router, avatar_renderer=mock_renderer)
+    dashboard = SettingsDashboard(audio_router=router, avatar_renderer=mock_renderer)
     tc = TestClient(dashboard.app)
 
     yield tc, mock_renderer

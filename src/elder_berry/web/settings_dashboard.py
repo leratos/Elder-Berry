@@ -1,4 +1,4 @@
-"""AudioDashboard – Web-UI für Systemeinstellungen und Avatar-Editor.
+"""SettingsDashboard – Web-UI für Systemeinstellungen und Avatar-Editor.
 
 Stellt eine FastAPI-App bereit mit:
 - GET /             → HTML-Seite mit Audio-Toggle + Monitor-Dropdown + Sicherheit
@@ -15,12 +15,14 @@ Stellt eine FastAPI-App bereit mit:
 
 from __future__ import annotations
 
+import asyncio
 import logging
+import re
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Literal
+from typing import TYPE_CHECKING, Any, Literal, NotRequired, TypedDict
 
-from fastapi import Body, FastAPI
+from fastapi import Body, FastAPI, Request
 from fastapi.responses import HTMLResponse, JSONResponse
 
 if TYPE_CHECKING:
@@ -30,8 +32,191 @@ if TYPE_CHECKING:
     from elder_berry.core.audio_router import AudioRouter
     from elder_berry.core.tower_agent import TowerAgent
     from elder_berry.core.secret_store import SecretStore
+    from elder_berry.llm.router import LLMRouter
 
 logger = logging.getLogger(__name__)
+
+# ---------------------------------------------------------------------------
+# Secret Registry – vollständige Key-Definition für das Dashboard
+# ---------------------------------------------------------------------------
+
+_VALID_KEY_RE = re.compile(r"^[a-z0-9_]{1,128}$")
+_MAX_VALUE_LENGTH = 4096
+
+
+class SecretRegistryEntry(TypedDict):
+    """Schema für einen Registry-Eintrag."""
+
+    key: str
+    label: str
+    category: str
+    sensitive: NotRequired[bool]            # Default: True
+    requires_restart: NotRequired[bool]     # Default: False
+    type: NotRequired[str]                  # "str" | "int" | "float" | "url"
+    min: NotRequired[float | int]
+    max: NotRequired[float | int]
+    pattern: NotRequired[str]
+    description: NotRequired[str]
+    link: NotRequired[str]
+
+
+SECRET_REGISTRY: list[SecretRegistryEntry] = [
+    # --- KI & Sprache ---
+    {
+        "key": "anthropic_api_key", "label": "Claude API", "category": "KI & Sprache",
+        "sensitive": True, "requires_restart": True,
+        "description": "API Key für Anthropic Claude.",
+        "link": "https://console.anthropic.com/",
+    },
+    {
+        "key": "groq_api_key", "label": "Groq", "category": "KI & Sprache",
+        "sensitive": True, "requires_restart": True,
+        "description": "API Key für Groq (optional).",
+        "link": "https://console.groq.com/",
+    },
+    {
+        "key": "elevenlabs_api_key", "label": "ElevenLabs API", "category": "KI & Sprache",
+        "sensitive": True, "requires_restart": True,
+        "description": "API Key für ElevenLabs TTS.",
+        "link": "https://elevenlabs.io/app/speech-synthesis",
+    },
+    {
+        "key": "elevenlabs_voice_id", "label": "ElevenLabs Voice", "category": "KI & Sprache",
+        "sensitive": False, "requires_restart": True,
+        "description": "Voice-ID für ElevenLabs TTS.",
+    },
+    # --- Suche & Karten ---
+    {
+        "key": "brave_api_key", "label": "Brave Search", "category": "Suche & Karten",
+        "sensitive": True, "requires_restart": True,
+        "description": "API Key für Brave Web Search.",
+        "link": "https://brave.com/search/api/",
+    },
+    {
+        "key": "google_maps_api_key", "label": "Google Maps", "category": "Suche & Karten",
+        "sensitive": True, "requires_restart": True,
+        "description": "Google Directions API Key.",
+        "link": "https://console.cloud.google.com/",
+    },
+    {
+        "key": "google_oauth_tokens", "label": "Google OAuth", "category": "Suche & Karten",
+        "sensitive": True, "requires_restart": True,
+        "description": "Google Calendar OAuth Tokens (Legacy-Fallback).",
+    },
+    # --- Matrix ---
+    {
+        "key": "matrix_homeserver", "label": "Homeserver", "category": "Matrix",
+        "sensitive": False, "requires_restart": True, "type": "url",
+        "description": "URL des Matrix-Homeservers (z.B. https://matrix.example.com).",
+    },
+    {
+        "key": "matrix_user_id", "label": "User ID", "category": "Matrix",
+        "sensitive": False, "requires_restart": True,
+        "description": "Matrix User-ID (z.B. @bot:example.com).",
+    },
+    {
+        "key": "matrix_password", "label": "Passwort", "category": "Matrix",
+        "sensitive": True, "requires_restart": True,
+    },
+    {
+        "key": "matrix_access_token", "label": "Access Token", "category": "Matrix",
+        "sensitive": True, "requires_restart": True,
+    },
+    {
+        "key": "matrix_room_id", "label": "Room ID", "category": "Matrix",
+        "sensitive": False, "requires_restart": True,
+        "description": "Matrix-Raum-ID (z.B. !abc:example.com).",
+    },
+    {
+        "key": "matrix_allowed_senders", "label": "Erlaubte Sender", "category": "Matrix",
+        "sensitive": False, "requires_restart": True,
+        "description": "Komma-getrennte Liste erlaubter Matrix-IDs.",
+    },
+    # --- E-Mail ---
+    {
+        "key": "email_user", "label": "Benutzer", "category": "E-Mail",
+        "sensitive": False, "requires_restart": True,
+    },
+    {
+        "key": "email_password", "label": "Passwort", "category": "E-Mail",
+        "sensitive": True, "requires_restart": True,
+    },
+    {
+        "key": "email_imap_host", "label": "IMAP Host", "category": "E-Mail",
+        "sensitive": False, "requires_restart": True,
+    },
+    {
+        "key": "email_imap_port", "label": "IMAP Port", "category": "E-Mail",
+        "sensitive": False, "requires_restart": True,
+        "type": "int", "min": 1, "max": 65535,
+    },
+    {
+        "key": "smtp_host", "label": "SMTP Host", "category": "E-Mail",
+        "sensitive": False, "requires_restart": True,
+    },
+    {
+        "key": "smtp_port", "label": "SMTP Port", "category": "E-Mail",
+        "sensitive": False, "requires_restart": True,
+        "type": "int", "min": 1, "max": 65535,
+    },
+    # --- Nextcloud ---
+    {
+        "key": "nextcloud_url", "label": "URL", "category": "Nextcloud",
+        "sensitive": False, "requires_restart": True, "type": "url",
+    },
+    {
+        "key": "nextcloud_user", "label": "Benutzer", "category": "Nextcloud",
+        "sensitive": False, "requires_restart": True,
+    },
+    {
+        "key": "nextcloud_app_password", "label": "App-Passwort", "category": "Nextcloud",
+        "sensitive": True, "requires_restart": True,
+    },
+    # --- Dienste ---
+    {
+        "key": "berry_gym_api_token", "label": "API Token", "category": "Dienste",
+        "sensitive": True, "requires_restart": False,
+        "description": "Fitness-Tracker API Token.",
+    },
+    {
+        "key": "stirling_pdf_url", "label": "URL", "category": "Dienste",
+        "sensitive": False, "requires_restart": False, "type": "url",
+        "description": "Stirling PDF Service URL.",
+    },
+    {
+        "key": "stirling_pdf_api_key", "label": "API Key", "category": "Dienste",
+        "sensitive": True, "requires_restart": False,
+    },
+    # --- Infrastruktur ---
+    {
+        "key": "robot_host", "label": "RPi5 Host", "category": "Infrastruktur",
+        "sensitive": False, "requires_restart": False,
+        "description": "IP/Hostname des RPi5.",
+    },
+    {
+        "key": "tower_host", "label": "Tower Host", "category": "Infrastruktur",
+        "sensitive": False, "requires_restart": False,
+        "description": "IP/Hostname des Towers.",
+    },
+    # --- Wetter & Standort ---
+    {
+        "key": "weather_city", "label": "Stadt", "category": "Wetter & Standort",
+        "sensitive": False, "requires_restart": False,
+    },
+    {
+        "key": "weather_latitude", "label": "Breitengrad", "category": "Wetter & Standort",
+        "sensitive": False, "requires_restart": False,
+        "type": "float", "min": -90.0, "max": 90.0,
+    },
+    {
+        "key": "weather_longitude", "label": "Längengrad", "category": "Wetter & Standort",
+        "sensitive": False, "requires_restart": False,
+        "type": "float", "min": -180.0, "max": 180.0,
+    },
+]
+
+# Schnellzugriff: key → Entry
+_REGISTRY_BY_KEY: dict[str, SecretRegistryEntry] = {e["key"]: e for e in SECRET_REGISTRY}
 
 
 @dataclass(frozen=True)
@@ -57,8 +242,8 @@ class SettingDefinition:
 _TEMPLATE_DIR = Path(__file__).parent / "templates"
 
 
-class AudioDashboard:
-    """Web-Dashboard für Audio-Routing und Computer-Use-Monitor-Auswahl.
+class SettingsDashboard:
+    """Web-Dashboard für Systemeinstellungen, Audio-Routing und Computer-Use.
 
     Parameters
     ----------
@@ -109,6 +294,7 @@ class AudioDashboard:
         avatar_renderer: LayeredSpriteRenderer | None = None,
         audio_pipeline: AudioPipeline | None = None,
         tower_agent: TowerAgent | None = None,
+        llm_router: LLMRouter | None = None,
         host: str = "0.0.0.0",
         port: int = 8090,
     ) -> None:
@@ -117,16 +303,59 @@ class AudioDashboard:
         self._secret_store = secret_store
         self._audio_pipeline = audio_pipeline
         self._tower_agent = tower_agent
+        self._llm_router = llm_router
         self._host = host
         self._port = port
         self._app = FastAPI(title="Elder-Berry Settings Dashboard")
+
+        # --- CORS: Origins aus SecretStore oder nur localhost ---
         from fastapi.middleware.cors import CORSMiddleware
+        allowed_origins = [
+            f"http://localhost:{port}",
+            f"http://127.0.0.1:{port}",
+        ]
+        if secret_store:
+            dashboard_origin = secret_store.get_or_none("dashboard_origin")
+            if dashboard_origin:
+                allowed_origins.append(dashboard_origin)
         self._app.add_middleware(
             CORSMiddleware,
-            allow_origins=["*"],
-            allow_methods=["*"],
-            allow_headers=["*"],
+            allow_origins=allowed_origins,
+            allow_methods=["GET", "POST", "DELETE"],
+            allow_headers=["Content-Type"],
+            allow_credentials=False,
         )
+
+        # --- Security Response Headers ---
+        from starlette.middleware.base import BaseHTTPMiddleware
+
+        class _SecurityHeadersMiddleware(BaseHTTPMiddleware):
+            async def dispatch(self, request, call_next):
+                response = await call_next(request)
+                response.headers["X-Content-Type-Options"] = "nosniff"
+                response.headers["X-Frame-Options"] = "DENY"
+                response.headers["Referrer-Policy"] = "no-referrer"
+                response.headers["Content-Security-Policy"] = (
+                    "default-src 'self'; "
+                    "script-src 'self' 'unsafe-inline'; "
+                    "style-src 'self' 'unsafe-inline';"
+                )
+                return response
+
+        self._app.add_middleware(_SecurityHeadersMiddleware)
+
+        # --- Globaler Exception-Handler für Fehler-Isolation ---
+        @self._app.exception_handler(Exception)
+        async def _global_exception_handler(request: Request, exc: Exception):
+            logger.exception("Unbehandelte Ausnahme in %s", request.url.path)
+            return JSONResponse(
+                {"error": "Interner Fehler – Details im Log."},
+                status_code=500,
+            )
+
+        self._write_lock = asyncio.Lock()
+        self._change_callbacks: dict[str, list[Any]] = {}
+        self._secrets_meta: dict[str, dict[str, str]] = {}
         self._thread = None
         self._register_routes()
 
@@ -236,6 +465,61 @@ class AudioDashboard:
                     return stored
             return self.DEFAULT_LLM_MODE
         raise KeyError(key)
+
+    @staticmethod
+    def _validate_secret(key: str, value: str) -> None:
+        """Zentrale Validierung für Secret-Keys und -Werte.
+
+        Raises
+        ------
+        ValueError
+            Bei ungültigem Key oder Wert.
+        """
+        # Key-Format
+        if not _VALID_KEY_RE.match(key):
+            raise ValueError(
+                "Key darf nur Kleinbuchstaben, Ziffern und Unterstriche enthalten "
+                "(max. 128 Zeichen)."
+            )
+        # Value leer
+        if not value or not value.strip():
+            raise ValueError("Wert darf nicht leer sein.")
+        # Value zu lang
+        if len(value) > _MAX_VALUE_LENGTH:
+            raise ValueError(
+                f"Wert zu lang (max. {_MAX_VALUE_LENGTH} Zeichen)."
+            )
+        # Typ-spezifische Validierung anhand Registry
+        entry = _REGISTRY_BY_KEY.get(key)
+        if not entry:
+            return  # Unbekannter Key – keine Typ-Validierung
+        entry_type = entry.get("type", "str")
+        if entry_type == "int":
+            try:
+                num = int(value)
+            except ValueError:
+                raise ValueError(f"Wert für '{key}' muss eine Ganzzahl sein.") from None
+            if "min" in entry and num < entry["min"]:
+                raise ValueError(f"Wert für '{key}' muss >= {entry['min']} sein.")
+            if "max" in entry and num > entry["max"]:
+                raise ValueError(f"Wert für '{key}' muss <= {entry['max']} sein.")
+        elif entry_type == "float":
+            try:
+                num_f = float(value)
+            except ValueError:
+                raise ValueError(f"Wert für '{key}' muss eine Zahl sein.") from None
+            if "min" in entry and num_f < entry["min"]:
+                raise ValueError(f"Wert für '{key}' muss >= {entry['min']} sein.")
+            if "max" in entry and num_f > entry["max"]:
+                raise ValueError(f"Wert für '{key}' muss <= {entry['max']} sein.")
+        elif entry_type == "url":
+            if not value.startswith(("http://", "https://")):
+                raise ValueError(
+                    f"Wert für '{key}' muss mit http:// oder https:// beginnen."
+                )
+        if "pattern" in entry:
+            if not re.match(entry["pattern"], value):
+                raise ValueError(f"Wert für '{key}' entspricht nicht dem erwarteten Format.")
 
     def _validate_setting_value(self, definition: SettingDefinition, value: Any) -> str | float:
         if definition.key == self.ALLOWED_SENDERS_KEY:
@@ -659,7 +943,8 @@ class AudioDashboard:
 
             try:
                 validated = self._validate_setting_value(definition, value)
-                self._store_setting_value(definition, validated)
+                async with self._write_lock:
+                    self._store_setting_value(definition, validated)
             except ValueError as exc:
                 return JSONResponse({"error": str(exc)}, status_code=400)
             except Exception as exc:
@@ -672,6 +957,180 @@ class AudioDashboard:
                 "value": self._get_setting_value(definition.key),
                 "restartRequired": definition.restart_required,
                 "riskLevel": definition.risk_level,
+            })
+
+        @self._app.get("/api/settings/export")
+        async def settings_export():
+            """Exportiert alle nicht-sensitiven Werte + Namen gesetzter sensitiver Keys."""
+            from datetime import datetime, timezone
+            non_sensitive: dict[str, str] = {}
+            sensitive_keys_set: list[str] = []
+            for entry in SECRET_REGISTRY:
+                key = entry["key"]
+                is_sensitive = entry.get("sensitive", True)
+                value = self._secret_store.get_or_none(key) if self._secret_store else None
+                if is_sensitive:
+                    if value is not None:
+                        sensitive_keys_set.append(key)
+                else:
+                    if value is not None:
+                        non_sensitive[key] = value
+            return JSONResponse({
+                "export_version": 1,
+                "exported_at": datetime.now(timezone.utc).isoformat(),
+                "non_sensitive": non_sensitive,
+                "sensitive_keys_set": sensitive_keys_set,
+            })
+
+        # ----------------------------------------------------------
+        # Secrets-API (Registry-basiert)
+        # ----------------------------------------------------------
+
+        @self._app.get("/api/secrets/status")
+        async def secrets_status():
+            if not self._secret_store:
+                return JSONResponse({"available": False, "categories": []})
+            categories: dict[str, list[dict[str, Any]]] = {}
+            for entry in SECRET_REGISTRY:
+                cat = entry["category"]
+                is_set = self._secret_store.get_or_none(entry["key"]) is not None
+                item = {
+                    "key": entry["key"],
+                    "label": entry["label"],
+                    "is_set": is_set,
+                    "sensitive": entry.get("sensitive", True),
+                    "requires_restart": entry.get("requires_restart", False),
+                }
+                if entry.get("description"):
+                    item["description"] = entry["description"]
+                if entry.get("link"):
+                    item["link"] = entry["link"]
+                meta = self._secrets_meta.get(entry["key"])
+                if meta and "updated_at" in meta:
+                    item["updated_at"] = meta["updated_at"]
+                categories.setdefault(cat, []).append(item)
+            result = [
+                {"name": name, "keys": keys}
+                for name, keys in categories.items()
+            ]
+            return JSONResponse({"available": True, "categories": result})
+
+        @self._app.post("/api/secrets/set")
+        async def secrets_set(request: Request, body: dict = Body(...)):
+            if not self._secret_store:
+                return JSONResponse(
+                    {"error": "SecretStore nicht verfügbar."},
+                    status_code=503,
+                )
+            key = body.get("key")
+            value = body.get("value")
+            if not key or not isinstance(key, str):
+                return JSONResponse(
+                    {"error": "Parameter 'key' fehlt."},
+                    status_code=400,
+                )
+            if value is None or not isinstance(value, str):
+                return JSONResponse(
+                    {"error": "Parameter 'value' fehlt oder ist kein String."},
+                    status_code=400,
+                )
+            try:
+                self._validate_secret(key, value)
+            except ValueError as exc:
+                return JSONResponse({"error": str(exc)}, status_code=400)
+
+            entry = _REGISTRY_BY_KEY.get(key)
+            async with self._write_lock:
+                self._secret_store.set(key, value)
+            self._record_meta(key)
+            self._notify_change(key, value)
+            client_host = request.client.host if request.client else "unbekannt"
+            logger.info("AUDIT: secret '%s' gesetzt von %s", key, client_host)
+            return JSONResponse({
+                "success": True,
+                "key": key,
+                "requires_restart": entry.get("requires_restart", False) if entry else False,
+            })
+
+        @self._app.post("/api/secrets/delete")
+        async def secrets_delete(request: Request, body: dict = Body(...)):
+            if not self._secret_store:
+                return JSONResponse(
+                    {"error": "SecretStore nicht verfügbar."},
+                    status_code=503,
+                )
+            key = body.get("key")
+            if not key or not isinstance(key, str):
+                return JSONResponse(
+                    {"error": "Parameter 'key' fehlt."},
+                    status_code=400,
+                )
+            # Prüfen ob Key existiert
+            if self._secret_store.get_or_none(key) is None:
+                return JSONResponse(
+                    {"error": f"Key '{key}' nicht vorhanden."},
+                    status_code=404,
+                )
+            async with self._write_lock:
+                self._secret_store.delete(key)
+            client_host = request.client.host if request.client else "unbekannt"
+            logger.info("AUDIT: secret '%s' gelöscht von %s", key, client_host)
+            return JSONResponse({"success": True, "key": key})
+
+        # ----------------------------------------------------------
+        # LLM-API (Status + Mode-Umschalter)
+        # ----------------------------------------------------------
+
+        @self._app.get("/api/llm/status")
+        async def llm_status():
+            if not self._llm_router:
+                return JSONResponse({
+                    "available": False,
+                    "mode": None,
+                    "active_backend": "none",
+                    "primary": {"name": None, "available": False},
+                    "fallback": {"name": None, "available": False},
+                })
+            return JSONResponse({
+                "available": True,
+                "mode": self._llm_router.mode,
+                "active_backend": self._llm_router.active_backend,
+                "primary": {
+                    "name": self._llm_router.primary_name,
+                    "available": self._llm_router.primary_available,
+                },
+                "fallback": {
+                    "name": self._llm_router.fallback_name,
+                    "available": self._llm_router.fallback_available,
+                },
+            })
+
+        @self._app.post("/api/llm/mode")
+        async def llm_mode(request: Request, body: dict = Body(...)):
+            if not self._llm_router:
+                return JSONResponse(
+                    {"error": "LLMRouter nicht verfügbar."},
+                    status_code=503,
+                )
+            new_mode = body.get("mode")
+            if new_mode not in ("api_preferred", "local_only"):
+                return JSONResponse(
+                    {"error": f"Ungültiger Modus: {new_mode}. "
+                              "Erlaubt: api_preferred, local_only"},
+                    status_code=400,
+                )
+            self._llm_router.mode = new_mode
+            # Persistieren im SecretStore
+            if self._secret_store:
+                async with self._write_lock:
+                    self._secret_store.set(self.LLM_MODE_KEY, new_mode)
+            client_host = request.client.host if request.client else "unbekannt"
+            logger.info(
+                "AUDIT: LLM-Modus auf '%s' gesetzt von %s", new_mode, client_host,
+            )
+            return JSONResponse({
+                "mode": self._llm_router.mode,
+                "active_backend": self._llm_router.active_backend,
             })
 
         @self._app.get("/health")
@@ -704,6 +1163,28 @@ class AudioDashboard:
             if tz:
                 return tz
         return self.DEFAULT_TIMEZONE
+
+    def on_change(self, key: str, callback: Any) -> None:
+        """Registriert einen Callback für Änderungen an einem Key.
+
+        Callback-Signatur: callback(new_value: str) -> None
+        """
+        self._change_callbacks.setdefault(key, []).append(callback)
+
+    def _notify_change(self, key: str, new_value: str) -> None:
+        """Ruft alle registrierten Callbacks für einen Key auf."""
+        for cb in self._change_callbacks.get(key, []):
+            try:
+                cb(new_value)
+            except Exception as exc:
+                logger.error("Callback-Fehler für '%s': %s", key, exc)
+
+    def _record_meta(self, key: str) -> None:
+        """Speichert den Änderungs-Timestamp für einen Key."""
+        from datetime import datetime, timezone
+        self._secrets_meta[key] = {
+            "updated_at": datetime.now(timezone.utc).isoformat(),
+        }
 
     def _is_port_free(self) -> bool:
         """Prüft ob der Port frei ist."""

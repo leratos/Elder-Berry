@@ -35,6 +35,17 @@ export default class SettingsModule extends DashboardModule {
                     </div>
                     <div class="settings-groups" id="settings-groups"></div>
                 </section>
+                <section class="settings-panel settings-panel-secrets">
+                    <div class="settings-panel-header">
+                        <h3>API-Keys &amp; Secrets</h3>
+                        <p>Status aller bekannten Keys – Werte werden nie angezeigt.</p>
+                    </div>
+                    <div class="settings-search">
+                        <input type="text" id="secrets-filter" class="setting-input"
+                               placeholder="Key oder Label filtern..." />
+                    </div>
+                    <div id="secrets-categories"></div>
+                </section>
             </div>
         </div>`;
     }
@@ -43,8 +54,11 @@ export default class SettingsModule extends DashboardModule {
 
     async init() {
         this.currentFilter = "all";
+        this._deleteConfirmKey = null;
+        this._deleteTimeout = null;
         await this.refresh();
         this._bindToolbar();
+        this._bindSecretsFilter();
     }
 
     async poll() {
@@ -52,10 +66,11 @@ export default class SettingsModule extends DashboardModule {
     }
 
     async refresh() {
-        const [schemaRes, valuesRes, statusRes] = await Promise.all([
+        const [schemaRes, valuesRes, statusRes, secretsRes] = await Promise.all([
             this.apiFetch(`/api/settings/schema`),
             this.apiFetch(`/api/settings/values`),
             this.apiFetch(`/api/settings/status`),
+            this.apiFetch(`/api/secrets/status`),
         ]);
 
         if (!schemaRes || !valuesRes || !statusRes) {
@@ -66,10 +81,12 @@ export default class SettingsModule extends DashboardModule {
         this.schema = schemaRes.settings || [];
         this.values = valuesRes.values || {};
         this.status = statusRes;
+        this.secrets = secretsRes;
 
         this._renderSummary();
         this._renderInsights();
         this._renderGroups();
+        this._renderSecrets();
     }
 
     _bindToolbar() {
@@ -314,6 +331,227 @@ export default class SettingsModule extends DashboardModule {
         status.textContent = data?.restartRequired ? "Gespeichert, Neustart nötig" : "Gespeichert";
         status.className = data?.restartRequired ? "setting-status warn" : "setting-status ok";
         await this.refresh();
+    }
+
+    // ----------------------------------------------------------
+    // Secrets-Sektion: Accordion, Suchfeld, 2-Stufen-Löschen
+    // ----------------------------------------------------------
+
+    _bindSecretsFilter() {
+        const input = document.getElementById("secrets-filter");
+        if (!input) return;
+        input.addEventListener("input", () => {
+            const term = input.value.toLowerCase();
+            document.querySelectorAll(".secret-row").forEach(row => {
+                const key = (row.dataset.key || "").toLowerCase();
+                const label = (row.dataset.label || "").toLowerCase();
+                row.style.display = (key.includes(term) || label.includes(term)) ? "" : "none";
+            });
+        });
+    }
+
+    _renderSecrets() {
+        const container = document.getElementById("secrets-categories");
+        if (!container || !this.secrets || !this.secrets.available) {
+            if (container) container.innerHTML = `<div class="settings-empty">Secrets nicht verfügbar.</div>`;
+            return;
+        }
+
+        const savedState = this._loadAccordionState();
+        container.innerHTML = (this.secrets.categories || []).map(cat => {
+            const isOpen = savedState[cat.name] !== false; // Default: offen
+            return `
+            <div class="secrets-category">
+                <div class="secrets-category-header" data-category="${this._escape(cat.name)}">
+                    <span class="accordion-icon">${isOpen ? "▼" : "▶"}</span>
+                    <strong>${this._escape(cat.name)}</strong>
+                    <span class="secrets-category-count">${cat.keys.filter(k => k.is_set).length}/${cat.keys.length}</span>
+                </div>
+                <div class="secrets-category-body" style="${isOpen ? "" : "display:none"}">
+                    <table class="secrets-table">
+                        <thead><tr><th>Key</th><th>Label</th><th>Status</th><th>Aktionen</th></tr></thead>
+                        <tbody>
+                            ${cat.keys.map(k => this._renderSecretRow(k)).join("")}
+                        </tbody>
+                    </table>
+                </div>
+            </div>`;
+        }).join("");
+
+        this._bindAccordion(container);
+        this._bindSecretActions(container);
+    }
+
+    _renderSecretRow(entry) {
+        const statusIcon = entry.is_set ? "✅" : "❌";
+        const linkHtml = entry.link
+            ? `<a href="${this._escape(entry.link)}" target="_blank" rel="noopener" class="secret-link" title="Anbieter-Dashboard">🔗</a>`
+            : "";
+        const updatedAt = entry.updated_at
+            ? `<span class="secret-updated" title="Zuletzt geändert">${new Date(entry.updated_at).toLocaleString()}</span>`
+            : "";
+        const restartBadge = entry.requires_restart
+            ? `<span class="setting-flag setting-flag-small">Restart</span>`
+            : "";
+
+        return `
+        <tr class="secret-row" data-key="${this._escape(entry.key)}" data-label="${this._escape(entry.label)}">
+            <td class="secret-key">${this._escape(entry.key)} ${linkHtml} ${restartBadge}</td>
+            <td>${this._escape(entry.label)}</td>
+            <td class="secret-status">${statusIcon} ${updatedAt}</td>
+            <td class="secret-actions">
+                <button class="secret-edit-btn" data-key="${this._escape(entry.key)}" title="Setzen/Ändern">✏️</button>
+                ${entry.is_set ? `<button class="secret-delete-btn" data-key="${this._escape(entry.key)}" title="Löschen">🗑️</button>` : ""}
+            </td>
+        </tr>
+        <tr class="secret-edit-row" id="edit-row-${entry.key}" style="display:none">
+            <td colspan="4">
+                <div class="secret-edit-form">
+                    <input type="password" class="setting-input secret-value-input"
+                           id="secret-input-${entry.key}" placeholder="Neuer Wert..." />
+                    <button class="secret-save-btn" data-key="${this._escape(entry.key)}">Speichern</button>
+                    <button class="secret-cancel-btn" data-key="${this._escape(entry.key)}">Abbrechen</button>
+                    <span class="secret-feedback" id="secret-feedback-${entry.key}"></span>
+                </div>
+            </td>
+        </tr>`;
+    }
+
+    _bindAccordion(container) {
+        container.querySelectorAll(".secrets-category-header").forEach(header => {
+            header.addEventListener("click", () => {
+                const body = header.nextElementSibling;
+                const icon = header.querySelector(".accordion-icon");
+                const cat = header.dataset.category;
+                if (body.style.display === "none") {
+                    body.style.display = "";
+                    if (icon) icon.textContent = "▼";
+                    this._saveAccordionState(cat, true);
+                } else {
+                    body.style.display = "none";
+                    if (icon) icon.textContent = "▶";
+                    this._saveAccordionState(cat, false);
+                }
+            });
+        });
+    }
+
+    _loadAccordionState() {
+        try {
+            return JSON.parse(localStorage.getItem("secrets-accordion") || "{}");
+        } catch { return {}; }
+    }
+
+    _saveAccordionState(category, isOpen) {
+        const state = this._loadAccordionState();
+        state[category] = isOpen;
+        localStorage.setItem("secrets-accordion", JSON.stringify(state));
+    }
+
+    _bindSecretActions(container) {
+        // Edit-Button: Zeile aufklappen
+        container.querySelectorAll(".secret-edit-btn").forEach(btn => {
+            btn.addEventListener("click", () => {
+                const key = btn.dataset.key;
+                const editRow = document.getElementById(`edit-row-${key}`);
+                if (editRow) editRow.style.display = editRow.style.display === "none" ? "" : "none";
+            });
+        });
+
+        // Save-Button: Wert speichern
+        container.querySelectorAll(".secret-save-btn").forEach(btn => {
+            btn.addEventListener("click", () => this._onSecretSave(btn.dataset.key));
+        });
+
+        // Cancel-Button: Zeile zuklappen
+        container.querySelectorAll(".secret-cancel-btn").forEach(btn => {
+            btn.addEventListener("click", () => {
+                const editRow = document.getElementById(`edit-row-${btn.dataset.key}`);
+                if (editRow) editRow.style.display = "none";
+            });
+        });
+
+        // Delete-Button: 2-Stufen-Löschen
+        container.querySelectorAll(".secret-delete-btn").forEach(btn => {
+            btn.addEventListener("click", () => this._onSecretDelete(btn));
+        });
+    }
+
+    async _onSecretSave(key) {
+        const input = document.getElementById(`secret-input-${key}`);
+        const feedback = document.getElementById(`secret-feedback-${key}`);
+        if (!input || !feedback) return;
+
+        const value = input.value;
+        if (!value.trim()) {
+            feedback.textContent = "Wert darf nicht leer sein.";
+            feedback.className = "secret-feedback error";
+            return;
+        }
+
+        feedback.textContent = "Speichere...";
+        feedback.className = "secret-feedback";
+
+        try {
+            const res = await fetch("/api/secrets/set", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ key, value }),
+            });
+            const data = await res.json();
+            if (!res.ok) {
+                feedback.textContent = data.error || "Fehler";
+                feedback.className = "secret-feedback error";
+                return;
+            }
+            feedback.textContent = data.requires_restart ? "Gespeichert – Neustart nötig" : "Gespeichert";
+            feedback.className = data.requires_restart ? "secret-feedback warn" : "secret-feedback ok";
+            input.value = "";
+            setTimeout(() => this.refresh(), 500);
+        } catch (err) {
+            feedback.textContent = "Netzwerkfehler";
+            feedback.className = "secret-feedback error";
+        }
+    }
+
+    _onSecretDelete(btn) {
+        const key = btn.dataset.key;
+
+        // Stufe 1: Bestätigungsmodus aktivieren
+        if (this._deleteConfirmKey !== key) {
+            // Reset vorherige Bestätigung
+            if (this._deleteTimeout) clearTimeout(this._deleteTimeout);
+            this._deleteConfirmKey = key;
+            btn.textContent = "Wirklich?";
+            btn.classList.add("confirm");
+            // Nach 5 Sekunden zurücksetzen
+            this._deleteTimeout = setTimeout(() => {
+                this._deleteConfirmKey = null;
+                btn.textContent = "🗑️";
+                btn.classList.remove("confirm");
+            }, 5000);
+            return;
+        }
+
+        // Stufe 2: Tatsächlich löschen
+        clearTimeout(this._deleteTimeout);
+        this._deleteConfirmKey = null;
+        btn.textContent = "...";
+        fetch("/api/secrets/delete", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ key }),
+        }).then(res => {
+            if (res.ok) {
+                setTimeout(() => this.refresh(), 300);
+            } else {
+                btn.textContent = "Fehler";
+                setTimeout(() => { btn.textContent = "🗑️"; btn.classList.remove("confirm"); }, 2000);
+            }
+        }).catch(() => {
+            btn.textContent = "🗑️";
+            btn.classList.remove("confirm");
+        });
     }
 
     _escape(value) {
