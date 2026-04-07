@@ -663,15 +663,29 @@ class AudioDashboard:
             except OSError:
                 return False
 
-    def start(self) -> None:
-        """Startet den Dashboard-Server in einem Hintergrund-Thread."""
+    def start(self, retries: int = 5, retry_delay: float = 2.0) -> None:
+        """Startet den Dashboard-Server in einem Hintergrund-Thread.
+
+        Bei Update/Neustart kann der alte Prozess den Port noch kurz
+        halten. Daher wird bis zu ``retries``-mal gewartet.
+        """
         import threading
+        import time
         import uvicorn
 
-        if not self._is_port_free():
+        for attempt in range(1, retries + 1):
+            if self._is_port_free():
+                break
+            if attempt < retries:
+                logger.info(
+                    "Settings-Dashboard: Port %d belegt, Retry %d/%d in %.0fs …",
+                    self._port, attempt, retries, retry_delay,
+                )
+                time.sleep(retry_delay)
+        else:
             logger.warning(
-                "Settings-Dashboard: Port %d bereits belegt – übersprungen.",
-                self._port,
+                "Settings-Dashboard: Port %d nach %d Versuchen belegt – übersprungen.",
+                self._port, retries,
             )
             return
 
