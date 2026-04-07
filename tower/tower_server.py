@@ -52,6 +52,7 @@ class _Engines:
         self.tts = None  # CoquiTTSEngine | None
         self.stt = None  # FasterWhisperEngine | None
         self.actions = None  # WindowsActionController | None
+        self._monitor_index = 1  # Aktiver Monitor für Computer Use / Screenshot
 
     def init_tts(self) -> None:
         """Initialisiert CoquiTTSEngine mit Default-Konfiguration."""
@@ -385,6 +386,69 @@ async def action(request: ActionRequest):
         ) from e
 
 
+@app.get("/monitors")
+async def get_monitors():
+    """Verfügbare Monitore für Computer Use."""
+    try:
+        import mss
+    except ImportError:
+        return {"available": False, "monitors": [], "selected": 1}
+
+    try:
+        with mss.mss() as sct:
+            monitors = []
+            for i, mon in enumerate(sct.monitors):
+                if i == 0:
+                    continue  # Index 0 = "alle Monitore kombiniert"
+                monitors.append({
+                    "index": i,
+                    "width": mon["width"],
+                    "height": mon["height"],
+                    "left": mon["left"],
+                    "top": mon["top"],
+                })
+        # Aktuellen Index aus engines.actions oder Default 1
+        selected = getattr(engines, "_monitor_index", 1)
+        return {
+            "available": True,
+            "monitors": monitors,
+            "selected": selected,
+            "monitorCount": len(monitors),
+        }
+    except Exception as e:
+        logger.error("Monitor-Abfrage Fehler: %s", e)
+        return {"available": False, "monitors": [], "selected": 1}
+
+
+@app.post("/monitor")
+async def set_monitor(body: dict | None = None):
+    """Monitor-Index für Computer Use setzen."""
+    if not body or "index" not in body:
+        raise HTTPException(status_code=400, detail="Parameter 'index' fehlt.")
+
+    try:
+        index = int(body["index"])
+    except (ValueError, TypeError):
+        raise HTTPException(status_code=400, detail="Ungültiger Monitor-Index.")
+
+    try:
+        import mss
+        with mss.mss() as sct:
+            valid = set(range(1, len(sct.monitors)))
+    except ImportError:
+        raise HTTPException(status_code=503, detail="mss nicht installiert.")
+
+    if index not in valid:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Monitor {index} nicht verfügbar. Gültig: {sorted(valid)}",
+        )
+
+    engines._monitor_index = index
+    logger.info("Monitor-Index geändert: %d", index)
+    return {"selected": index}
+
+
 @app.get("/screenshot")
 async def screenshot():
     """Nimmt einen Screenshot des Tower-Desktops auf (PNG)."""
@@ -399,7 +463,10 @@ async def screenshot():
 
     try:
         with mss.mss() as sct:
-            monitor = sct.monitors[1]  # Primärer Monitor
+            mon_idx = getattr(engines, "_monitor_index", 1)
+            if mon_idx >= len(sct.monitors):
+                mon_idx = 1
+            monitor = sct.monitors[mon_idx]
             img = sct.grab(monitor)
             png_bytes = mss.tools.to_png(img.rgb, img.size)
         return Response(content=png_bytes, media_type="image/png")

@@ -150,6 +150,45 @@ class TowerAgent:
         except httpx.HTTPError as e:
             raise TowerAgentError("Tower Action fehlgeschlagen: %s" % e) from e
 
+    async def get_monitors(self) -> dict:
+        """Verfügbare Monitore vom Tower abfragen.
+
+        Returns:
+            Dict mit available, monitors, selected, monitorCount.
+
+        Raises:
+            TowerAgentError: Bei Verbindungsfehlern.
+        """
+        try:
+            async with httpx.AsyncClient(timeout=_DEFAULT_TIMEOUT) as client:
+                r = await client.get(f"http://{self._host}/monitors")
+                r.raise_for_status()
+                return r.json()
+        except httpx.HTTPError as e:
+            raise TowerAgentError("Tower Monitor-Abfrage fehlgeschlagen: %s" % e) from e
+
+    async def set_monitor(self, index: int) -> dict:
+        """Monitor-Index auf dem Tower setzen.
+
+        Args:
+            index: Monitor-Index (1=primär, 2=zweiter, ...).
+
+        Returns:
+            Ergebnis-Dict mit selected.
+
+        Raises:
+            TowerAgentError: Bei Verbindungs- oder Validierungsfehlern.
+        """
+        try:
+            async with httpx.AsyncClient(timeout=_DEFAULT_TIMEOUT) as client:
+                r = await client.post(
+                    f"http://{self._host}/monitor", json={"index": index},
+                )
+                r.raise_for_status()
+                return r.json()
+        except httpx.HTTPError as e:
+            raise TowerAgentError("Tower Monitor-Setzen fehlgeschlagen: %s" % e) from e
+
     async def screenshot(self) -> bytes:
         """Screenshot vom Tower-Desktop.
 

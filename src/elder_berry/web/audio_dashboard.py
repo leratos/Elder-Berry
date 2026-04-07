@@ -28,6 +28,7 @@ if TYPE_CHECKING:
     from elder_berry.avatar.layered_renderer import LayeredSpriteRenderer
     from elder_berry.comms.audio_pipeline import AudioPipeline
     from elder_berry.core.audio_router import AudioRouter
+    from elder_berry.core.tower_agent import TowerAgent
     from elder_berry.core.secret_store import SecretStore
 
 logger = logging.getLogger(__name__)
@@ -107,6 +108,7 @@ class AudioDashboard:
         secret_store: SecretStore | None = None,
         avatar_renderer: LayeredSpriteRenderer | None = None,
         audio_pipeline: AudioPipeline | None = None,
+        tower_agent: TowerAgent | None = None,
         host: str = "0.0.0.0",
         port: int = 8090,
     ) -> None:
@@ -114,6 +116,7 @@ class AudioDashboard:
         self._computer_use = computer_use
         self._secret_store = secret_store
         self._audio_pipeline = audio_pipeline
+        self._tower_agent = tower_agent
         self._host = host
         self._port = port
         self._app = FastAPI(title="Elder-Berry Settings Dashboard")
@@ -272,19 +275,32 @@ class AudioDashboard:
         self._secret_store.set(definition.key, str(value))
 
     def _get_monitor_status(self) -> dict[str, Any]:
-        if not self._computer_use:
+        # Lokal: ComputerUseController direkt abfragen
+        if self._computer_use and not self._tower_agent:
+            monitors = self._computer_use.get_available_monitors()
             return {
-                "available": False,
+                "available": True,
+                "selected": self._computer_use.monitor_index,
+                "monitorCount": len(monitors),
+                "monitors": monitors,
+                "source": "local",
+            }
+        # Remote: Daten kommen async vom Tower – hier nur Platzhalter
+        # (Die echten Daten liefert GET /api/monitors)
+        if self._tower_agent:
+            return {
+                "available": True,
                 "selected": None,
                 "monitorCount": 0,
                 "monitors": [],
+                "source": "tower",
             }
-        monitors = self._computer_use.get_available_monitors()
         return {
-            "available": True,
-            "selected": self._computer_use.monitor_index,
-            "monitorCount": len(monitors),
-            "monitors": monitors,
+            "available": False,
+            "selected": None,
+            "monitorCount": 0,
+            "monitors": [],
+            "source": "none",
         }
 
     def _register_routes(self) -> None:
@@ -333,6 +349,21 @@ class AudioDashboard:
 
         @self._app.get("/api/monitors")
         async def get_monitors():
+            # Remote: Tower via SSH-Tunnel abfragen
+            if self._tower_agent:
+                try:
+                    data = await self._tower_agent.get_monitors()
+                    return JSONResponse(data)
+                except Exception as e:
+                    logger.warning("Tower Monitor-Abfrage fehlgeschlagen: %s", e)
+                    return JSONResponse({
+                        "available": False,
+                        "monitors": [],
+                        "selected": 1,
+                        "error": "Tower nicht erreichbar",
+                    })
+
+            # Lokal: ComputerUseController direkt
             if not self._computer_use:
                 return JSONResponse({
                     "available": False,
@@ -348,11 +379,6 @@ class AudioDashboard:
 
         @self._app.post("/api/monitor")
         async def set_monitor(body: dict | None = None):
-            if not self._computer_use:
-                return JSONResponse(
-                    {"error": "Computer Use nicht verfügbar."},
-                    status_code=400,
-                )
             if not body or "index" not in body:
                 return JSONResponse(
                     {"error": "Parameter 'index' fehlt."},
@@ -363,6 +389,26 @@ class AudioDashboard:
             except (ValueError, TypeError):
                 return JSONResponse(
                     {"error": "Ungültiger Monitor-Index."},
+                    status_code=400,
+                )
+
+            # Remote: an Tower weiterleiten
+            if self._tower_agent:
+                try:
+                    data = await self._tower_agent.set_monitor(index)
+                    logger.info("Tower Monitor geändert: %d", index)
+                    return JSONResponse(data)
+                except Exception as e:
+                    logger.warning("Tower Monitor-Setzen fehlgeschlagen: %s", e)
+                    return JSONResponse(
+                        {"error": f"Tower nicht erreichbar: {e}"},
+                        status_code=502,
+                    )
+
+            # Lokal
+            if not self._computer_use:
+                return JSONResponse(
+                    {"error": "Computer Use nicht verfügbar."},
                     status_code=400,
                 )
 

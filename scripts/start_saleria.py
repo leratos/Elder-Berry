@@ -988,6 +988,9 @@ def run_matrix(assistant, stt=None, avatar=None, audio_converter=None, robot=Non
     # --- 3. Kontext & Werkzeuge ---
     tools = _init_context_and_tools(secrets, assistant, svc)
 
+    # --- Tower-Agent (SSH-Tunnel zum Tower) ---
+    tower_agent = _init_tower_agent(secrets)
+
     # --- 4. RemoteCommandHandler ---
     remote = RemoteCommandHandler(
         system_monitor=SystemMonitor(),
@@ -1017,7 +1020,7 @@ def run_matrix(assistant, stt=None, avatar=None, audio_converter=None, robot=Non
         carddav_sync=svc.get("carddav_sync"),
         route_planner=svc.get("route_planner"),
         default_user_id=default_user_id,
-        tower_agent=_init_tower_agent(secrets),
+        tower_agent=tower_agent,
     )
     assistant._remote_commands = remote
     if tools.get("smart_context_provider"):
@@ -1108,6 +1111,7 @@ def run_matrix(assistant, stt=None, avatar=None, audio_converter=None, robot=Non
             computer_use=tools.get("computer_use"),
             secret_store=secrets,
             audio_pipeline=bridge.audio_pipeline,
+            tower_agent=tower_agent,
             port=8090,
         )
         # Gespeicherten STT-Timeout laden und auf Pipeline anwenden
