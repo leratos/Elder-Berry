@@ -46,20 +46,16 @@ function Test-SshAvailable {
 }
 
 function Start-Tunnel {
-    $sshArgs = @(
-        "-N",
-        "-R", "127.0.0.1:${RemotePort}:127.0.0.1:${LocalPort}",
-        "-o", "ServerAliveInterval=$SshAliveInterval",
-        "-o", "ServerAliveCountMax=$SshAliveCountMax",
-        "-o", "ExitOnForwardFailure=yes",
-        "-o", "ConnectTimeout=10",
-        "-o", "BatchMode=yes",
-        "${RemoteUser}@${RemoteHost}"
-    )
-    Write-Log "Starting tunnel: ssh $($sshArgs -join ' ')"
-    $process = Start-Process -FilePath "ssh" -ArgumentList $sshArgs `
-        -NoNewWindow -PassThru -Wait
-    return $process.ExitCode
+    $sshCmd = "ssh -N -R 127.0.0.1:${RemotePort}:127.0.0.1:${LocalPort} -o ServerAliveInterval=$SshAliveInterval -o ServerAliveCountMax=$SshAliveCountMax -o ExitOnForwardFailure=yes -o ConnectTimeout=10 -o BatchMode=yes ${RemoteUser}@${RemoteHost}"
+    Write-Log "Starting tunnel: $sshCmd"
+    & ssh -N -R "127.0.0.1:${RemotePort}:127.0.0.1:${LocalPort}" `
+        -o "ServerAliveInterval=$SshAliveInterval" `
+        -o "ServerAliveCountMax=$SshAliveCountMax" `
+        -o "ExitOnForwardFailure=yes" `
+        -o "ConnectTimeout=10" `
+        -o "BatchMode=yes" `
+        "${RemoteUser}@${RemoteHost}" 2>&1 | ForEach-Object { Write-Log "SSH: $_" }
+    return $LASTEXITCODE
 }
 
 # ── Main Loop ───────────────────────────────────────────────────────────────
