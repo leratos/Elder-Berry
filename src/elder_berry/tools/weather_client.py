@@ -22,6 +22,7 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 API_BASE_URL = "https://api.open-meteo.com/v1/forecast"
+GEOCODING_URL = "https://geocoding-api.open-meteo.com/v1/search"
 REQUEST_TIMEOUT = 10
 DEFAULT_TIMEZONE = "Europe/Berlin"
 
@@ -172,9 +173,39 @@ class WeatherClient:
 
         return lat, lon, city
 
-    def get_current(self) -> WeatherData:
-        """Aktuelles Wetter: Temperatur, Beschreibung, Wind, Luftfeuchtigkeit."""
-        lat, lon, city = self._get_location()
+    def geocode(self, city_name: str) -> tuple[str, str, str] | None:
+        """Stadtname → (latitude, longitude, display_name) via Open-Meteo Geocoding.
+
+        Returns:
+            Tuple (lat, lon, name) oder None wenn nicht gefunden.
+        """
+        client = self._get_client()
+        try:
+            resp = client.get(
+                GEOCODING_URL,
+                params={"name": city_name, "count": 1, "language": "de"},
+            )
+            resp.raise_for_status()
+            data = resp.json()
+            results = data.get("results", [])
+            if not results:
+                return None
+            r = results[0]
+            name = r.get("name", city_name)
+            country = r.get("country", "")
+            display = f"{name}, {country}" if country else name
+            return str(r["latitude"]), str(r["longitude"]), display
+        except Exception as e:
+            logger.error("Geocoding fehlgeschlagen für '%s': %s", city_name, e)
+            return None
+
+    def get_current(self, location: tuple[str, str, str] | None = None) -> WeatherData:
+        """Aktuelles Wetter: Temperatur, Beschreibung, Wind, Luftfeuchtigkeit.
+
+        Args:
+            location: Optionales (lat, lon, city) Tuple. Default: SecretStore.
+        """
+        lat, lon, city = location or self._get_location()
         client = self._get_client()
 
         resp = client.get(
@@ -202,22 +233,27 @@ class WeatherClient:
             city=city,
         )
 
-    def get_today(self) -> WeatherForecast:
+    # get_today ist jetzt oberhalb von get_days definiert (mit location-Parameter)
+
+    def get_today(self, location: tuple[str, str, str] | None = None) -> WeatherForecast:
         """Tagesprognose: Min/Max Temperatur, Niederschlag."""
-        forecasts = self.get_days(1)
+        forecasts = self.get_days(1, location=location)
         return forecasts[0]
 
-    def get_days(self, days: int = 3) -> list[WeatherForecast]:
+    def get_days(
+        self, days: int = 3, *, location: tuple[str, str, str] | None = None,
+    ) -> list[WeatherForecast]:
         """Mehrtagesprognose (max 7 Tage).
 
         Args:
             days: Anzahl Tage (1-7, wird auf 7 begrenzt).
+            location: Optionales (lat, lon, city) Tuple. Default: SecretStore.
 
         Returns:
             Liste von WeatherForecast (ein Eintrag pro Tag).
         """
         days = max(1, min(days, 7))
-        lat, lon, city = self._get_location()
+        lat, lon, city = location or self._get_location()
         client = self._get_client()
 
         resp = client.get(

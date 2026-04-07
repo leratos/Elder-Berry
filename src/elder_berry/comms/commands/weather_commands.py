@@ -31,6 +31,12 @@ WEATHER_PATTERN = re.compile(
     re.IGNORECASE,
 )
 
+# Regex: "wetter in Leipzig", "wie ist das wetter in Berlin morgen"
+WEATHER_LOCATION_PATTERN = re.compile(
+    r"(?:wetter|temperatur).*?\s+in\s+([A-ZÄÖÜa-zäöüß][\w\s\-]+?)(?:\s+(?:morgen|heute|woche|\d{1,2}))?$",
+    re.IGNORECASE,
+)
+
 # Regex: "timer 20 min", "timer 5 min", "timer 1 stunde", "timer 90 sekunden"
 TIMER_PATTERN = re.compile(
     r"^timer\s+(\d+)\s*(min(?:uten?)?|h(?:ours?)?|stunden?|sek(?:unden?)?|s|m)$",
@@ -233,7 +239,7 @@ class WeatherCommandHandler(CommandHandler):
     # ------------------------------------------------------------------
 
     def _cmd_weather(self, raw_text: str) -> CommandResult:
-        """Wetter abfragen: aktuell, morgen, woche oder N Tage."""
+        """Wetter abfragen: aktuell, morgen, woche, N Tage, optional mit Ort."""
         if not self._weather:
             return CommandResult(
                 command="wetter",
@@ -243,41 +249,50 @@ class WeatherCommandHandler(CommandHandler):
 
         try:
             normalized = raw_text.strip().lower()
+
+            # Ort aus Text extrahieren ("wetter in Leipzig")
+            location = self._extract_location(raw_text)
+
+            # Zeitparameter parsen
             match = WEATHER_PATTERN.match(normalized)
+            param = match.group(1) if match else None
 
-            if match:
-                param = match.group(1)
-                if param == "morgen":
-                    forecasts = self._weather.get_days(2)
-                    if len(forecasts) >= 2:
-                        text = self._weather.format_forecast([forecasts[1]])
-                    else:
-                        text = self._weather.format_forecast(forecasts[-1:])
-                    return CommandResult(command="wetter", success=True, text=text)
+            # Auch aus Location-Texten den Zeitparameter extrahieren
+            if not param:
+                for keyword in ("morgen", "heute", "woche"):
+                    if keyword in normalized:
+                        param = keyword
+                        break
 
-                if param == "woche":
-                    forecasts = self._weather.get_days(7)
-                    text = self._weather.format_forecast(forecasts)
-                    return CommandResult(command="wetter", success=True, text=text)
+            if param == "morgen":
+                forecasts = self._weather.get_days(2, location=location)
+                if len(forecasts) >= 2:
+                    text = self._weather.format_forecast([forecasts[1]])
+                else:
+                    text = self._weather.format_forecast(forecasts[-1:])
+                return CommandResult(command="wetter", success=True, text=text)
 
-                if param == "heute":
-                    # Aktuell + Tagesprognose
-                    current = self._weather.get_current()
-                    today = self._weather.get_today()
-                    text = self._weather.format_current(current)
-                    text += "\n\n" + self._weather.format_forecast([today])
-                    return CommandResult(command="wetter", success=True, text=text)
+            if param == "woche":
+                forecasts = self._weather.get_days(7, location=location)
+                text = self._weather.format_forecast(forecasts)
+                return CommandResult(command="wetter", success=True, text=text)
 
-                # Zahl: N Tage
-                if match.group(2):
-                    days = int(match.group(2))
-                    forecasts = self._weather.get_days(days)
-                    text = self._weather.format_forecast(forecasts)
-                    return CommandResult(command="wetter", success=True, text=text)
+            if param == "heute":
+                current = self._weather.get_current(location=location)
+                today = self._weather.get_today(location=location)
+                text = self._weather.format_current(current)
+                text += "\n\n" + self._weather.format_forecast([today])
+                return CommandResult(command="wetter", success=True, text=text)
+
+            if match and match.group(2):
+                days = int(match.group(2))
+                forecasts = self._weather.get_days(days, location=location)
+                text = self._weather.format_forecast(forecasts)
+                return CommandResult(command="wetter", success=True, text=text)
 
             # Default: aktuelles Wetter + Tagesprognose
-            current = self._weather.get_current()
-            today = self._weather.get_today()
+            current = self._weather.get_current(location=location)
+            today = self._weather.get_today(location=location)
             text = self._weather.format_current(current)
             text += "\n\n" + self._weather.format_forecast([today])
             return CommandResult(command="wetter", success=True, text=text)
@@ -289,6 +304,30 @@ class WeatherCommandHandler(CommandHandler):
                 success=False,
                 text=f"Wetter-Abfrage fehlgeschlagen: {e}",
             )
+
+    def _extract_location(
+        self, raw_text: str,
+    ) -> tuple[str, str, str] | None:
+        """Extrahiert Ort aus Freitext und geocodet ihn.
+
+        Returns:
+            (lat, lon, city) oder None für Default-Standort.
+        """
+        match = WEATHER_LOCATION_PATTERN.search(raw_text)
+        if not match:
+            return None
+
+        city_name = match.group(1).strip()
+        if not city_name:
+            return None
+
+        location = self._weather.geocode(city_name)
+        if not location:
+            logger.warning("Ort '%s' nicht gefunden, nutze Default", city_name)
+            return None
+
+        logger.info("Wetter-Ort erkannt: '%s' → %s", city_name, location[2])
+        return location
 
     # ------------------------------------------------------------------
     # Timer & Erinnerungen
