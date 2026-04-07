@@ -49,7 +49,7 @@ def register_avatar_editor_routes(
     Parameters
     ----------
     app : FastAPI
-        Die FastAPI-Instanz (z.B. AudioDashboard.app).
+        Die FastAPI-Instanz (z.B. SettingsDashboard.app).
     renderer : LayeredSpriteRenderer | None
         Optionaler Renderer für Hot-Reload. Ohne Renderer ist
         der Reload-Button deaktiviert.

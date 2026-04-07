@@ -18,9 +18,19 @@ class LLMRouter(LLMClient):
     Für den Standard-Anwendungsfall: LLMRouter.create_default()
     """
 
-    def __init__(self, primary: LLMClient, fallback: LLMClient) -> None:
+    VALID_MODES = ("api_preferred", "local_only")
+
+    def __init__(
+        self,
+        primary: LLMClient,
+        fallback: LLMClient,
+        mode: str = "api_preferred",
+    ) -> None:
         self._primary = primary
         self._fallback = fallback
+        if mode not in self.VALID_MODES:
+            raise ValueError(f"Ungültiger LLM-Modus: {mode}")
+        self._mode = mode
 
     @classmethod
     def create_default(
@@ -42,7 +52,26 @@ class LLMRouter(LLMClient):
             fallback=OllamaClient(**kwargs_fallback),
         )
 
+    @property
+    def mode(self) -> str:
+        """Aktueller Routing-Modus ('api_preferred' oder 'local_only')."""
+        return self._mode
+
+    @mode.setter
+    def mode(self, value: str) -> None:
+        if value not in self.VALID_MODES:
+            raise ValueError(f"Ungültiger LLM-Modus: {value}")
+        self._mode = value
+
     def _select_client(self) -> LLMClient:
+        if self._mode == "local_only":
+            if self._fallback.is_available():
+                name = getattr(self._fallback, "name", type(self._fallback).__name__)
+                logger.info("LLM-Backend: %s (local_only)", name)
+                return self._fallback
+            raise RuntimeError("Ollama nicht erreichbar (local_only Modus).")
+
+        # api_preferred: primär → fallback
         if self._primary.is_available():
             name = getattr(self._primary, "name", type(self._primary).__name__)
             logger.info("LLM-Backend: %s (primär)", name)
@@ -66,7 +95,31 @@ class LLMRouter(LLMClient):
     @property
     def active_backend(self) -> str:
         """Gibt den Namen des aktiven Backends zurück (z.B. 'anthropic', 'ollama')."""
+        if self._mode == "local_only":
+            if self._fallback.is_available():
+                return getattr(self._fallback, "name", type(self._fallback).__name__.lower())
+            return "none"
         for client in (self._primary, self._fallback):
             if client.is_available():
                 return getattr(client, "name", type(client).__name__.lower())
         return "none"
+
+    @property
+    def primary_name(self) -> str:
+        """Modellname des primären Backends."""
+        return getattr(self._primary, "model", type(self._primary).__name__)
+
+    @property
+    def fallback_name(self) -> str:
+        """Modellname des Fallback-Backends."""
+        return getattr(self._fallback, "model", type(self._fallback).__name__)
+
+    @property
+    def primary_available(self) -> bool:
+        """Ist das primäre Backend erreichbar?"""
+        return self._primary.is_available()
+
+    @property
+    def fallback_available(self) -> bool:
+        """Ist das Fallback-Backend erreichbar?"""
+        return self._fallback.is_available()

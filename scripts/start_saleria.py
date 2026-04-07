@@ -1105,8 +1105,8 @@ def run_matrix(assistant, stt=None, avatar=None, audio_converter=None, robot=Non
 
     # --- 8. Dashboard + Start ---
     try:
-        from elder_berry.web.audio_dashboard import AudioDashboard
-        dashboard = AudioDashboard(
+        from elder_berry.web.settings_dashboard import SettingsDashboard
+        dashboard = SettingsDashboard(
             audio_router=tools.get("audio_router"),
             computer_use=tools.get("computer_use"),
             secret_store=secrets,

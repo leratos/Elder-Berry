@@ -1,3 +1,6 @@
-from .audio_dashboard import AudioDashboard
+from .settings_dashboard import SettingsDashboard
 
-__all__ = ["AudioDashboard"]
+# Rückwärtskompatibilität bis alle Imports migriert sind
+AudioDashboard = SettingsDashboard
+
+__all__ = ["SettingsDashboard"]
