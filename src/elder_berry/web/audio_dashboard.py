@@ -274,9 +274,25 @@ class AudioDashboard:
             return
         self._secret_store.set(definition.key, str(value))
 
-    def _get_monitor_status(self) -> dict[str, Any]:
+    async def _get_monitor_status(self) -> dict[str, Any]:
+        # Remote: Tower via SSH-Tunnel abfragen
+        if self._tower_agent:
+            try:
+                data = await self._tower_agent.get_monitors()
+                data["source"] = "tower"
+                return data
+            except Exception as e:
+                logger.debug("Tower Monitor-Status nicht abrufbar: %s", e)
+                return {
+                    "available": False,
+                    "selected": None,
+                    "monitorCount": 0,
+                    "monitors": [],
+                    "source": "tower",
+                    "error": str(e),
+                }
         # Lokal: ComputerUseController direkt abfragen
-        if self._computer_use and not self._tower_agent:
+        if self._computer_use:
             monitors = self._computer_use.get_available_monitors()
             return {
                 "available": True,
@@ -284,16 +300,6 @@ class AudioDashboard:
                 "monitorCount": len(monitors),
                 "monitors": monitors,
                 "source": "local",
-            }
-        # Remote: Daten kommen async vom Tower – hier nur Platzhalter
-        # (Die echten Daten liefert GET /api/monitors)
-        if self._tower_agent:
-            return {
-                "available": True,
-                "selected": None,
-                "monitorCount": 0,
-                "monitors": [],
-                "source": "tower",
             }
         return {
             "available": False,
@@ -631,7 +637,7 @@ class AudioDashboard:
                 "llmMode": self._get_setting_value(self.LLM_MODE_KEY),
                 "timezone": self._get_setting_value(self.TIMEZONE_KEY),
                 "restartRequiredSettings": restart_required,
-                "monitor": self._get_monitor_status(),
+                "monitor": await self._get_monitor_status(),
                 "towerTopology": {
                     "dashboardRemote": True,
                     "towerLocal": True,
