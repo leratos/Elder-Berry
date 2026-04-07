@@ -498,7 +498,7 @@ class SystemCommandHandler(CommandHandler):
         return CommandResult(
             command="avatar",
             success=False,
-            text="Avatar nicht möglich: weder lokal noch via Tower verfügbar.",
+            text="Avatar nicht verfügbar: weder lokal noch via Tower möglich.",
         )
 
     def _avatar_local(self, emotion_str: str) -> CommandResult | None:
@@ -527,9 +527,20 @@ class SystemCommandHandler(CommandHandler):
                 text=f"Saleria ({emotion.value})",
                 image_path=tmp_path,
             )
-        except (NotImplementedError, Exception) as e:
+        except NotImplementedError as e:
             logger.error("Lokales Avatar-Rendering fehlgeschlagen: %s", e)
-            return None
+            return CommandResult(
+                command="avatar",
+                success=False,
+                text="Avatar Datei-Rendering ist lokal nicht implementiert.",
+            )
+        except Exception as e:
+            logger.error("Lokales Avatar-Rendering fehlgeschlagen: %s", e)
+            return CommandResult(
+                command="avatar",
+                success=False,
+                text=f"Avatar-Rendering fehlgeschlagen: {e}",
+            )
 
     def _avatar_tower(self, emotion_str: str) -> CommandResult | None:
         """Avatar via TowerAgent rendern. None wenn nicht verfügbar."""
