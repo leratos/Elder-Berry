@@ -45,6 +45,24 @@ function Test-SshAvailable {
     }
 }
 
+function Clear-RemotePort {
+    <#
+    .SYNOPSIS
+        Kills stale sshd processes holding the remote port after a connection drop.
+        Without this, reconnect fails with "remote port forwarding failed" because
+        the old sshd still occupies the port until its TCP timeout expires.
+    #>
+    Write-Log "Clearing stale port $RemotePort on $RemoteHost..."
+    $null = & ssh -o "ConnectTimeout=5" -o "BatchMode=yes" `
+        "${RemoteUser}@${RemoteHost}" `
+        "fuser -k ${RemotePort}/tcp 2>/dev/null; echo ok" 2>&1
+    if ($LASTEXITCODE -eq 0) {
+        Write-Log "Remote port $RemotePort cleared."
+    } else {
+        Write-Log "Could not clear remote port (server unreachable?)." "WARN"
+    }
+}
+
 function Start-Tunnel {
     $sshCmd = "ssh -N -R 127.0.0.1:${RemotePort}:127.0.0.1:${LocalPort} -o ServerAliveInterval=$SshAliveInterval -o ServerAliveCountMax=$SshAliveCountMax -o ExitOnForwardFailure=yes -o ConnectTimeout=10 -o BatchMode=yes ${RemoteUser}@${RemoteHost}"
     Write-Log "Starting tunnel: $sshCmd"
@@ -89,4 +107,5 @@ while ($true) {
     }
 
     Start-Sleep -Seconds $currentDelay
+    Clear-RemotePort
 }
