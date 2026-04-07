@@ -3804,13 +3804,21 @@ User: "Lies meine Mails und trag den Zahnarzttermin ein"
   test_llm_api.py, test_security.py, test_avatar_editor.py, test_settings_stability.py
 
 ## Abgeschlossen: SSH-Tunnel Härtung (2026-04-07)
-- Problem: VPN-Unterbrechung killt SSH-Tunnel, Zombie-Session blockiert Port 12769
-  auf last-strawberry.com, Tower kann nicht reconnecten
-- Server (last-strawberry.com): sshd_config-Härtung dokumentiert
-  (ClientAliveInterval 15, ClientAliveCountMax 3 → Zombie nach 45s gekillt)
+- Problem: VPN-Unterbrechung killt SSH-Tunnel, Zombie-Session blockiert Remote-Port
+  auf Server, Client kann nicht reconnecten
+- Server: sshd_config-Härtung dokumentiert
+  (ClientAliveInterval 30, ClientAliveCountMax 3 → Zombie nach 90s gekillt)
 - Tower (Windows 11): scripts/ssh-tunnel.ps1 – Auto-Reconnect mit Exponential
   Backoff (5s → 120s), Logging nach logs/ssh-tunnel.log
 - Tower: scripts/Install-SshTunnelTask.ps1 – Scheduled Task "Elder-Berry SSH Tunnel"
   (Start bei Login, Restart bei Fehler alle 60s, bis zu 999×)
-- Doku: docs/ssh-tunnel.md (Übersicht, Server-Config, Tower-Script, Troubleshooting)
-- Dateien erstellt: ssh-tunnel.ps1, Install-SshTunnelTask.ps1, ssh-tunnel.md
+- RPi5: systemd Service ssh-tunnel.service für RPi→Server Tunnel dokumentiert
+  (RPi-API über Server erreichbar, z.B. für update rpi via Matrix)
+- .example.ps1-Dateien für Tower-Scripts (generisch, ohne Zugangsdaten)
+- SSH-Key-Setup-Anleitung für beide Geräte (Tower + RPi)
+- Doku: docs/ssh-tunnel.md (SSH-Keys, Server-Config, Tower-Script, RPi systemd,
+  Troubleshooting)
+- rpi5_setup.md: neuer Abschnitt "SSH Reverse Tunnel" mit Kurzanleitung
+- Dateien erstellt: ssh-tunnel.example.ps1, Install-SshTunnelTask.example.ps1,
+  ssh-tunnel.md
+- Dateien geändert: rpi5_setup.md, journal.txt

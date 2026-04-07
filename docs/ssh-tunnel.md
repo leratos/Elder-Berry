@@ -1,36 +1,78 @@
-# SSH Reverse Tunnel – Tower → Rootserver
+# SSH Reverse Tunnels
 
-> **Zweck:** Ein lokales Web-Interface (z.B. Dashboard) über einen externen
-> Server erreichbar machen, ohne dass der Tower eine öffentliche IP braucht.
+> **Zweck:** Lokale Services (Tower-Dashboard, RPi-API) über einen externen
+> Server erreichbar machen, ohne dass die Geräte eine öffentliche IP brauchen.
 >
-> **Richtung:** Tower → Server (Reverse Tunnel)
-> **Ergebnis:** Server `127.0.0.1:<REMOTE_PORT>` → Tower `127.0.0.1:<LOCAL_PORT>`
+> **Richtung:** Client → Server (Reverse Tunnel)
+> **Ergebnis:** Server `127.0.0.1:<REMOTE_PORT>` → Client `127.0.0.1:<LOCAL_PORT>`
 
 ---
 
 ## Übersicht
 
 ```
-Tower (Windows 11)                    Rootserver
-┌──────────────────┐     SSH Tunnel   ┌──────────────────┐
-│ Service :LOCAL   │ ──────────────── │ :REMOTE (lo)     │
-└──────────────────┘  -R REMOTE:LOCAL └──────────────────┘
+Tower (Windows 11)                    Rootserver                      RPi5 (Linux)
+┌──────────────────┐     SSH Tunnel   ┌──────────────────┐  SSH Tunnel  ┌──────────────────┐
+│ Dashboard :LOCAL │ ──────────────── │ :PORT_A (lo)     │ ──────────── │ FastAPI :LOCAL    │
+└──────────────────┘  -R PORT_A:LOCAL │ :PORT_B (lo)     │ -R PORT_B   └──────────────────┘
+                                      └──────────────────┘
                                               │
                                         Nginx Reverse Proxy
                                               │
                                         https://...
 ```
 
+Beide Tunnel sind unabhängig – jedes Gerät baut seinen eigenen auf.
+
 ---
 
-## 1. Server-Seite härten (sshd_config)
+## 1. SSH-Key einrichten (Voraussetzung)
+
+Die Tunnel laufen unbeaufsichtigt (kein Passwort-Prompt). Dafür muss auf
+jedem Gerät ein SSH-Key erzeugt und beim Server hinterlegt werden.
+
+### Tower (Windows 11)
+
+```powershell
+# Key erzeugen (falls noch keiner existiert):
+ssh-keygen -t ed25519 -C "tower"
+# → Enter bei allen Fragen (kein Passphrase für unbeaufsichtigten Betrieb)
+
+# Key auf dem Server hinterlegen:
+type $env:USERPROFILE\.ssh\id_ed25519.pub | ssh <USER>@<SERVER> "mkdir -p ~/.ssh && cat >> ~/.ssh/authorized_keys"
+```
+
+> **Hinweis:** Windows hat kein `ssh-copy-id`. Der `type ... | ssh`-Einzeiler
+> ist das Äquivalent.
+
+### RPi5 (Linux)
+
+```bash
+# Key erzeugen (falls noch keiner existiert):
+ssh-keygen -t ed25519 -C "rpi5"
+# → Enter bei allen Fragen (kein Passphrase)
+
+# Key auf dem Server hinterlegen:
+ssh-copy-id <USER>@<SERVER>
+```
+
+### Testen (beide Geräte)
+
+```bash
+ssh -o BatchMode=yes <USER>@<SERVER> "echo OK"
+# Muss "OK" ausgeben ohne Passwort-Abfrage.
+# Falls Passwort-Prompt kommt: Key nicht korrekt hinterlegt.
+```
+
+---
+
+## 2. Server-Seite härten (sshd_config)
 
 SSH auf dem Server so konfigurieren, dass tote Verbindungen schnell erkannt
 und der blockierte Port freigegeben wird.
 
 ```bash
 ssh <USER>@<SERVER>
-
 sudo nano /etc/ssh/sshd_config
 ```
 
@@ -64,21 +106,15 @@ sudo sshd -t               # Syntax-Check (keine Ausgabe = OK)
 sudo systemctl restart sshd
 ```
 
-> **Warum wichtig?** Ohne Keepalives bleibt bei VPN-/Netzwerk-Abbruch
-> die alte SSH-Session als Zombie auf dem Server. Der Remote-Port bleibt
-> belegt, und der Client bekommt "remote port forwarding failed" beim
-> Reconnect-Versuch. Mit den obigen Werten erkennt der Server nach
-> max. 90 Sekunden dass die Verbindung tot ist und gibt den Port frei.
+> **Warum wichtig?** Ohne Keepalives bleibt bei Netzwerk-Abbruch die alte
+> SSH-Session als Zombie auf dem Server. Der Remote-Port bleibt belegt,
+> und der Client bekommt "remote port forwarding failed" beim Reconnect.
+> Mit den obigen Werten erkennt der Server nach max. 90 Sekunden dass
+> die Verbindung tot ist und gibt den Port frei.
 
 ---
 
-## 2. Tower-Seite: Tunnel mit Auto-Reconnect
-
-### Voraussetzungen
-
-- Windows 11 OpenSSH Client (ist standardmäßig installiert)
-- SSH-Key beim Server hinterlegt (`ssh-copy-id <USER>@<SERVER>`)
-- **Kein Passwort-Prompt** – der Tunnel läuft unbeaufsichtigt
+## 3. Tower (Windows 11): Auto-Reconnect
 
 ### Manuell starten (Test)
 
@@ -129,12 +165,12 @@ powershell -ExecutionPolicy Bypass -File scripts\Install-SshTunnelTask.ps1
 
 Das erstellt einen Scheduled Task mit:
 
-| Einstellung | Wert |
-|---|---|
-| Trigger | Bei Anmeldung |
-| Restart bei Fehler | Alle 60s, bis zu 999× |
-| Batterie | Läuft auch im Akkubetrieb |
-| Zeitlimit | Keins (läuft dauerhaft) |
+| Einstellung        | Wert                          |
+| ------------------ | ----------------------------- |
+| Trigger            | Bei Anmeldung                 |
+| Restart bei Fehler | Alle 60s, bis zu 999×         |
+| Batterie           | Läuft auch im Akkubetrieb     |
+| Zeitlimit          | Keins (läuft dauerhaft)       |
 
 **Task verwalten:**
 
@@ -154,20 +190,88 @@ Unregister-ScheduledTask -TaskName "Elder-Berry SSH Tunnel"
 
 ---
 
-## 3. Troubleshooting
+## 4. RPi5 (Linux): Auto-Reconnect via systemd
 
-| Problem | Ursache | Lösung |
-|---|---|---|
-| `remote port forwarding failed` | Alter Zombie-Prozess blockiert den Port | Warten (max 45s nach sshd-Härtung) oder auf Server: `ss -tlnp \| grep <PORT>` und ggf. `kill <PID>` |
-| Tunnel baut sich nicht auf nach VPN-Reconnect | DNS/Routing noch nicht bereit | Script hat Backoff, wartet automatisch |
-| `Connection refused` | Server-SSH nicht erreichbar | VPN/Netzwerk prüfen, `ping <SERVER>` |
-| `Permission denied (publickey)` | SSH-Key nicht hinterlegt | `ssh-copy-id <USER>@<SERVER>` |
-| Log wird zu groß | Kein Log-Rotation | Manuell löschen oder Logfile in `.gitignore` |
-| Scheduled Task startet nicht | Nicht als Admin installiert | Install-Script als Admin ausführen |
+Der RPi baut einen eigenen Tunnel auf, damit der Server die RPi-API
+(z.B. Avatar, Update-Endpoint) erreichen kann.
+
+### Manuell testen
+
+```bash
+ssh -N -R 127.0.0.1:<REMOTE_PORT>:127.0.0.1:<LOCAL_PORT> \
+    -o ServerAliveInterval=15 \
+    -o ServerAliveCountMax=3 \
+    -o ExitOnForwardFailure=yes \
+    <USER>@<SERVER>
+```
+
+### systemd Service einrichten
+
+```bash
+sudo nano /etc/systemd/system/ssh-tunnel.service
+```
+
+Inhalt (Platzhalter anpassen):
+
+```ini
+[Unit]
+Description=SSH Reverse Tunnel to Rootserver
+After=network-online.target
+Wants=network-online.target
+# Max 50 Restarts innerhalb von 10 Minuten, danach stoppt systemd den Service
+StartLimitIntervalSec=600
+StartLimitBurst=50
+
+[Service]
+Type=simple
+User=pi
+ExecStart=/usr/bin/ssh -N \
+    -R 127.0.0.1:<REMOTE_PORT>:127.0.0.1:<LOCAL_PORT> \
+    -o ServerAliveInterval=15 \
+    -o ServerAliveCountMax=3 \
+    -o ExitOnForwardFailure=yes \
+    -o ConnectTimeout=10 \
+    -o BatchMode=yes \
+    <USER>@<SERVER>
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
+```
+
+Aktivieren und starten:
+
+```bash
+sudo systemctl daemon-reload
+sudo systemctl enable ssh-tunnel     # Autostart beim Booten
+sudo systemctl start ssh-tunnel      # Jetzt starten
+sudo systemctl status ssh-tunnel     # Status prüfen
+sudo journalctl -u ssh-tunnel -f     # Live-Logs
+```
+
+> **Vorteil gegenüber einem Wrapper-Script:** systemd übernimmt Restart,
+> Logging (journalctl), Boot-Autostart und Prozess-Überwachung nativ.
+> Kein zusätzliches Script nötig.
 
 ---
 
-## 4. Manuelle Zombie-Bereinigung (Notfall)
+## 5. Troubleshooting
+
+| Problem | Ursache | Lösung |
+| --- | --- | --- |
+| `remote port forwarding failed` | Zombie-Prozess blockiert den Port | Warten (max 90s) oder auf Server: `ss -tlnp \| grep <PORT>` → `kill <PID>` |
+| Tunnel baut sich nicht auf | DNS/Routing noch nicht bereit | Script/systemd hat Restart, wartet automatisch |
+| `Connection refused` | Server-SSH nicht erreichbar | Netzwerk prüfen, `ping <SERVER>` |
+| `Permission denied (publickey)` | SSH-Key nicht hinterlegt | Siehe Abschnitt 1 (SSH-Key einrichten) |
+| `Host key verification failed` | Server-Key geändert | `ssh-keygen -R <SERVER>` und neu verbinden |
+| RPi-Tunnel startet nicht beim Booten | Service nicht enabled | `sudo systemctl enable ssh-tunnel` |
+| Tower Scheduled Task startet nicht | Nicht als Admin installiert | Install-Script als Admin ausführen |
+| Log wird zu groß (Tower) | Kein Log-Rotation | `logs/ssh-tunnel.log` manuell löschen |
+
+---
+
+## 6. Manuelle Zombie-Bereinigung (Notfall)
 
 Falls der Port trotzdem blockiert bleibt:
 

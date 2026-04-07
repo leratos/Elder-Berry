@@ -164,6 +164,34 @@ Der Tower steuert den Avatar dann automatisch via `RobotClient`:
 - TTS-Sprechen → Lip-Sync auf dem Display
 - Health-Check → `GET /health`
 
+## SSH Reverse Tunnel (RPi → Rootserver)
+
+Der RPi baut einen SSH Reverse Tunnel zum Rootserver auf, damit dieser die
+RPi-API erreichen kann (z.B. für `update rpi` via Matrix). Ohne Tunnel
+wäre der RPi nur im lokalen Netzwerk erreichbar.
+
+Vollständige Anleitung (SSH-Key-Setup, sshd-Härtung, systemd Service):
+→ **[docs/ssh-tunnel.md](ssh-tunnel.md)**, Abschnitte 1, 2 und 4.
+
+Kurzfassung:
+
+```bash
+# 1. SSH-Key erzeugen + beim Server hinterlegen (einmalig)
+ssh-keygen -t ed25519 -C "rpi5"
+ssh-copy-id <USER>@<SERVER>
+
+# 2. Testen (muss ohne Passwort durchgehen)
+ssh -o BatchMode=yes <USER>@<SERVER> "echo OK"
+
+# 3. systemd Service anlegen
+sudo nano /etc/systemd/system/ssh-tunnel.service
+# → Inhalt siehe docs/ssh-tunnel.md Abschnitt 4
+
+# 4. Aktivieren
+sudo systemctl daemon-reload
+sudo systemctl enable --now ssh-tunnel
+```
+
 ## Harmony Hub (Phase 37.1)
 
 Der RPi5 steuert den Harmony Hub direkt per WebSocket — ohne Logitech-Cloud.
