@@ -16,10 +16,11 @@ Stellt eine FastAPI-App bereit mit:
 from __future__ import annotations
 
 import logging
+from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, Literal
 
-from fastapi import FastAPI
+from fastapi import Body, FastAPI
 from fastapi.responses import HTMLResponse, JSONResponse
 
 if TYPE_CHECKING:
@@ -30,6 +31,27 @@ if TYPE_CHECKING:
     from elder_berry.core.secret_store import SecretStore
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass(frozen=True)
+class SettingDefinition:
+    """Metadaten für ein Dashboard-Setting."""
+
+    key: str
+    label: str
+    category: str
+    type: Literal["text", "textarea", "select", "number", "secret"]
+    source: Literal["secret_store", "derived"] = "secret_store"
+    required: bool = False
+    restart_required: bool = False
+    risk_level: Literal["low", "medium", "high"] = "low"
+    placeholder: str | None = None
+    help_text: str | None = None
+    options: tuple[dict[str, str], ...] = ()
+    secret: bool = False
+    min_value: float | None = None
+    max_value: float | None = None
+
 
 _TEMPLATE_DIR = Path(__file__).parent / "templates"
 
@@ -53,6 +75,8 @@ class AudioDashboard:
     TIMEZONE_KEY = "user_timezone"
     STT_TIMEOUT_KEY = "stt_timeout"
     DEFAULT_STT_TIMEOUT = 120.0
+    LLM_MODE_KEY = "llm_mode"
+    DEFAULT_LLM_MODE = "api_preferred"
     DEFAULT_TIMEZONE = "Europe/Berlin"
 
     # Gängige Zeitzonen für das Dashboard-Dropdown
@@ -111,6 +135,141 @@ class AudioDashboard:
     def app(self) -> FastAPI:
         """FastAPI-App-Instanz (für Tests oder externe Einbindung)."""
         return self._app
+
+    def _setting_definitions(self) -> list[SettingDefinition]:
+        """Definiert die erste Registry für Phase 45."""
+        timezone_options = tuple(
+            {"value": tz, "label": tz} for tz in sorted(self.AVAILABLE_TIMEZONES)
+        )
+        llm_mode_options = (
+            {"value": "api_preferred", "label": "API bevorzugt"},
+            {"value": "local_preferred", "label": "Lokal bevorzugt"},
+            {"value": "fallback_only", "label": "Nur Fallback/Lokal"},
+        )
+        return [
+            SettingDefinition(
+                key=self.ALLOWED_SENDERS_KEY,
+                label="Erlaubte Sender",
+                category="Matrix",
+                type="textarea",
+                restart_required=True,
+                risk_level="high",
+                placeholder="@lera:matrix.example.com\n@kollege:matrix.example.com",
+                help_text="Eine Matrix-ID pro Zeile. Nur diese Sender dürfen Saleria steuern.",
+            ),
+            SettingDefinition(
+                key=self.TIMEZONE_KEY,
+                label="Zeitzone",
+                category="Verhalten",
+                type="select",
+                required=True,
+                options=timezone_options,
+                help_text="Standard-Zeitzone für Erinnerungen, Briefings und zeitbezogene Antworten.",
+            ),
+            SettingDefinition(
+                key=self.STT_TIMEOUT_KEY,
+                label="STT-Timeout (Sekunden)",
+                category="Audio",
+                type="number",
+                required=True,
+                risk_level="medium",
+                min_value=5,
+                max_value=600,
+                help_text="Wie lange auf Spracheingabe gewartet wird, bevor abgebrochen wird.",
+            ),
+            SettingDefinition(
+                key=self.LLM_MODE_KEY,
+                label="LLM-Modus",
+                category="LLM",
+                type="select",
+                required=True,
+                restart_required=True,
+                risk_level="medium",
+                options=llm_mode_options,
+                help_text="Steuert, ob API-Modelle oder lokale Modelle bevorzugt verwendet werden.",
+            ),
+        ]
+
+    def _setting_definition_map(self) -> dict[str, SettingDefinition]:
+        return {
+            definition.key: definition for definition in self._setting_definitions()
+        }
+
+    def _serialize_setting_definition(
+        self, definition: SettingDefinition,
+    ) -> dict[str, Any]:
+        return {
+            "key": definition.key,
+            "label": definition.label,
+            "category": definition.category,
+            "type": definition.type,
+            "source": definition.source,
+            "required": definition.required,
+            "restartRequired": definition.restart_required,
+            "riskLevel": definition.risk_level,
+            "placeholder": definition.placeholder,
+            "helpText": definition.help_text,
+            "options": list(definition.options),
+            "secret": definition.secret,
+            "minValue": definition.min_value,
+            "maxValue": definition.max_value,
+        }
+
+    def _get_setting_value(self, key: str) -> str | float:
+        if key == self.ALLOWED_SENDERS_KEY:
+            raw = self._secret_store.get_or_none(key) if self._secret_store else None
+            if not raw:
+                return ""
+            senders = [sender.strip() for sender in raw.split(",") if sender.strip()]
+            return "\n".join(senders)
+        if key == self.TIMEZONE_KEY:
+            return self.get_timezone()
+        if key == self.STT_TIMEOUT_KEY:
+            return self._get_stt_timeout()
+        if key == self.LLM_MODE_KEY:
+            if self._secret_store:
+                stored = self._secret_store.get_or_none(key)
+                if stored in {"api_preferred", "local_preferred", "fallback_only"}:
+                    return stored
+            return self.DEFAULT_LLM_MODE
+        raise KeyError(key)
+
+    def _validate_setting_value(self, definition: SettingDefinition, value: Any) -> str | float:
+        if definition.key == self.ALLOWED_SENDERS_KEY:
+            if not isinstance(value, str):
+                raise ValueError("Erlaubte Sender müssen Text sein.")
+            senders = [line.strip() for line in value.replace(",", "\n").splitlines() if line.strip()]
+            if any(not sender.startswith("@") for sender in senders):
+                raise ValueError("Jeder Sender muss mit @ beginnen.")
+            return "\n".join(senders)
+        if definition.key == self.TIMEZONE_KEY:
+            if not isinstance(value, str) or value not in self.AVAILABLE_TIMEZONES:
+                raise ValueError("Ungültige Zeitzone.")
+            return value
+        if definition.key == self.STT_TIMEOUT_KEY:
+            try:
+                numeric = float(value)
+            except (TypeError, ValueError):
+                raise ValueError("STT-Timeout muss eine Zahl sein.") from None
+            if definition.min_value is not None and numeric < definition.min_value:
+                raise ValueError(f"STT-Timeout muss >= {definition.min_value} sein.")
+            if definition.max_value is not None and numeric > definition.max_value:
+                raise ValueError(f"STT-Timeout muss <= {definition.max_value} sein.")
+            return numeric
+        if definition.key == self.LLM_MODE_KEY:
+            if value not in {"api_preferred", "local_preferred", "fallback_only"}:
+                raise ValueError("Ungültiger LLM-Modus.")
+            return str(value)
+        raise ValueError("Unbekanntes Setting.")
+
+    def _store_setting_value(self, definition: SettingDefinition, value: str | float) -> None:
+        if not self._secret_store:
+            raise RuntimeError("SecretStore nicht verfügbar")
+        if definition.key == self.ALLOWED_SENDERS_KEY:
+            senders = [line.strip() for line in str(value).splitlines() if line.strip()]
+            self._secret_store.set(definition.key, ",".join(senders))
+            return
+        self._secret_store.set(definition.key, str(value))
 
     def _register_routes(self) -> None:
         """Routen registrieren."""
@@ -371,6 +530,75 @@ class AudioDashboard:
             return JSONResponse({
                 "timeout": timeout,
                 "available": self._audio_pipeline is not None,
+            })
+
+        @self._app.get("/api/settings/schema")
+        async def settings_schema():
+            definitions = [
+                self._serialize_setting_definition(definition)
+                for definition in self._setting_definitions()
+            ]
+            return JSONResponse({"settings": definitions})
+
+        @self._app.get("/api/settings/values")
+        async def settings_values():
+            values = {
+                definition.key: self._get_setting_value(definition.key)
+                for definition in self._setting_definitions()
+            }
+            return JSONResponse({"values": values})
+
+        @self._app.get("/api/settings/status")
+        async def settings_status():
+            settings = self._setting_definitions()
+            categories: dict[str, int] = {}
+            configured = 0
+            restart_required = []
+            for definition in settings:
+                categories[definition.category] = categories.get(definition.category, 0) + 1
+                value = self._get_setting_value(definition.key)
+                is_set = bool(str(value).strip()) if isinstance(value, str) else True
+                if is_set:
+                    configured += 1
+                if definition.restart_required:
+                    restart_required.append(definition.key)
+            return JSONResponse({
+                "configured": configured,
+                "total": len(settings),
+                "categories": categories,
+                "llmMode": self._get_setting_value(self.LLM_MODE_KEY),
+                "timezone": self._get_setting_value(self.TIMEZONE_KEY),
+                "restartRequiredSettings": restart_required,
+            })
+
+        @self._app.post("/api/settings/update")
+        async def settings_update(body: dict = Body(...)):
+            if not self._secret_store:
+                return JSONResponse({"error": "SecretStore nicht verfügbar"}, status_code=503)
+            if not isinstance(body, dict):
+                return JSONResponse({"error": "JSON-Objekt erwartet"}, status_code=400)
+
+            key = body.get("key")
+            value = body.get("value")
+            definition = self._setting_definition_map().get(str(key)) if key else None
+            if not definition:
+                return JSONResponse({"error": "Unbekanntes Setting"}, status_code=400)
+
+            try:
+                validated = self._validate_setting_value(definition, value)
+                self._store_setting_value(definition, validated)
+            except ValueError as exc:
+                return JSONResponse({"error": str(exc)}, status_code=400)
+            except Exception as exc:
+                logger.error("Settings-Update fehlgeschlagen (%s): %s", key, exc)
+                return JSONResponse({"error": "Setting konnte nicht gespeichert werden"}, status_code=500)
+
+            return JSONResponse({
+                "status": "ok",
+                "key": definition.key,
+                "value": self._get_setting_value(definition.key),
+                "restartRequired": definition.restart_required,
+                "riskLevel": definition.risk_level,
             })
 
         @self._app.get("/health")

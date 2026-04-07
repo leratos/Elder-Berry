@@ -401,7 +401,10 @@ class TestPostAllowedSenders:
     def test_remove_nonexistent_ok(self, router_local):
         """Entfernen wenn nicht vorhanden: kein Fehler."""
         from unittest.mock import MagicMock
-        from elder_berry.core.secret_store import SecretNotFoundError
+
+        class SecretNotFoundError(Exception):
+            pass
+
         mock_store = MagicMock()
         mock_store.delete.side_effect = SecretNotFoundError("nicht da")
         dashboard = AudioDashboard(
@@ -443,3 +446,59 @@ class TestPostAllowedSenders:
         assert "senderInput" in r.text
         assert "Sicherheit" in r.text
         assert "Erlaubte Matrix-Absender" in r.text
+
+
+
+def test_settings_schema_contains_phase45_registry(router_local):
+    from unittest.mock import MagicMock
+    mock_store = MagicMock()
+    mock_store.get_or_none.return_value = None
+    dashboard = AudioDashboard(audio_router=router_local, secret_store=mock_store)
+    client = TestClient(dashboard.app)
+
+    r = client.get("/api/settings/schema")
+    assert r.status_code == 200
+    data = r.json()
+    keys = {item["key"] for item in data["settings"]}
+    assert {"matrix_allowed_senders", "user_timezone", "stt_timeout", "llm_mode"}.issubset(keys)
+
+
+def test_settings_values_returns_defaults(router_local):
+    from unittest.mock import MagicMock
+    mock_store = MagicMock()
+    mock_store.get_or_none.return_value = None
+    dashboard = AudioDashboard(audio_router=router_local, secret_store=mock_store)
+    client = TestClient(dashboard.app)
+
+    r = client.get("/api/settings/values")
+    assert r.status_code == 200
+    data = r.json()["values"]
+    assert data["matrix_allowed_senders"] == ""
+    assert data["user_timezone"] == "Europe/Berlin"
+    assert data["stt_timeout"] == 120.0
+    assert data["llm_mode"] == "api_preferred"
+
+
+def test_settings_update_validates_timezone(router_local):
+    from unittest.mock import MagicMock
+    mock_store = MagicMock()
+    mock_store.get_or_none.return_value = None
+    dashboard = AudioDashboard(audio_router=router_local, secret_store=mock_store)
+    client = TestClient(dashboard.app)
+
+    r = client.post("/api/settings/update", json={"key": "user_timezone", "value": "Mars/Olympus"})
+    assert r.status_code == 400
+    assert "Ungültige Zeitzone" in r.json()["error"]
+
+
+def test_settings_update_persists_llm_mode(router_local):
+    from unittest.mock import MagicMock
+    mock_store = MagicMock()
+    mock_store.get_or_none.side_effect = lambda key: None if key != "llm_mode" else "local_preferred"
+    dashboard = AudioDashboard(audio_router=router_local, secret_store=mock_store)
+    client = TestClient(dashboard.app)
+
+    r = client.post("/api/settings/update", json={"key": "llm_mode", "value": "local_preferred"})
+    assert r.status_code == 200
+    assert r.json()["value"] == "local_preferred"
+    mock_store.set.assert_called_with("llm_mode", "local_preferred")
