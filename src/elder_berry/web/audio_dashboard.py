@@ -657,17 +657,18 @@ class AudioDashboard:
         """Prüft ob der Port frei ist."""
         import socket
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+            s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
             try:
                 s.bind((self._host, self._port))
                 return True
             except OSError:
                 return False
 
-    def start(self, retries: int = 5, retry_delay: float = 2.0) -> None:
+    def start(self, retries: int = 10, retry_delay: float = 3.0) -> None:
         """Startet den Dashboard-Server in einem Hintergrund-Thread.
 
         Bei Update/Neustart kann der alte Prozess den Port noch kurz
-        halten. Daher wird bis zu ``retries``-mal gewartet.
+        halten (TIME_WAIT). Daher wird bis zu ``retries``-mal gewartet.
         """
         import threading
         import time
@@ -690,12 +691,25 @@ class AudioDashboard:
             return
 
         def _run():
-            uvicorn.run(
+            import asyncio
+            import socket as _sock
+
+            # Socket mit SO_REUSEADDR: Port sofort wiederverwendbar nach Prozess-Ende
+            sock = _sock.socket(_sock.AF_INET, _sock.SOCK_STREAM)
+            sock.setsockopt(_sock.SOL_SOCKET, _sock.SO_REUSEADDR, 1)
+            sock.bind((self._host, self._port))
+
+            config = uvicorn.Config(
                 self._app,
                 host=self._host,
                 port=self._port,
                 log_level="warning",
             )
+            server = uvicorn.Server(config)
+
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            loop.run_until_complete(server.serve(sockets=[sock]))
 
         self._thread = threading.Thread(
             target=_run,
