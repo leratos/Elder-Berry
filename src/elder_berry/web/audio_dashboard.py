@@ -271,6 +271,22 @@ class AudioDashboard:
             return
         self._secret_store.set(definition.key, str(value))
 
+    def _get_monitor_status(self) -> dict[str, Any]:
+        if not self._computer_use:
+            return {
+                "available": False,
+                "selected": None,
+                "monitorCount": 0,
+                "monitors": [],
+            }
+        monitors = self._computer_use.get_available_monitors()
+        return {
+            "available": True,
+            "selected": self._computer_use.monitor_index,
+            "monitorCount": len(monitors),
+            "monitors": monitors,
+        }
+
     def _register_routes(self) -> None:
         """Routen registrieren."""
 
@@ -569,6 +585,11 @@ class AudioDashboard:
                 "llmMode": self._get_setting_value(self.LLM_MODE_KEY),
                 "timezone": self._get_setting_value(self.TIMEZONE_KEY),
                 "restartRequiredSettings": restart_required,
+                "monitor": self._get_monitor_status(),
+                "towerTopology": {
+                    "dashboardRemote": True,
+                    "towerLocal": True,
+                },
             })
 
         @self._app.post("/api/settings/update")

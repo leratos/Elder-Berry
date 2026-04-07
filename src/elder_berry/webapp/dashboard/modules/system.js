@@ -44,7 +44,7 @@ export default class SystemModule extends DashboardModule {
 
         if (!towerStatus) {
             summary.textContent = "Tower aktuell nicht erreichbar.";
-            alert.textContent = "Ohne Tower-Health sind Runtime- und Settings-Signale unvollst?ndig.";
+            alert.textContent = "Ohne Tower-Health sind Runtime-, Monitor- und Settings-Signale unvollständig.";
             alert.className = "settings-alert warn";
             grid.innerHTML = "";
             badge.textContent = "offline";
@@ -55,6 +55,8 @@ export default class SystemModule extends DashboardModule {
         const restartCount = settingsStatus?.restartRequiredSettings?.length || 0;
         const configured = settingsStatus?.configured ?? 0;
         const total = settingsStatus?.total ?? 0;
+        const monitor = settingsStatus?.monitor || { available: false, selected: null, monitorCount: 0 };
+        const topology = settingsStatus?.towerTopology || { dashboardRemote: false, towerLocal: false };
 
         summary.innerHTML = `
             <div>Hostname: <strong>${this._escape(towerStatus.hostname || "unbekannt")}</strong></div>
@@ -63,15 +65,21 @@ export default class SystemModule extends DashboardModule {
             <div>Settings: <strong>${configured}/${total}</strong> konfiguriert</div>
         `;
 
-        alert.textContent = restartCount > 0
-            ? `${restartCount} restart-relevante Settings sollten nach ?nderungen neu gestartet werden.`
-            : "Aktuell keine restart-relevanten ?nderungen offen.";
-        alert.className = restartCount > 0 ? "settings-alert warn" : "settings-alert ok";
+        alert.textContent = topology.dashboardRemote && topology.towerLocal
+            ? "Dashboard läuft remote, Tower/Computer Use ist lokal angebunden. Monitorstatus kommt über die Tower-Verbindung."
+            : (restartCount > 0
+                ? `${restartCount} restart-relevante Settings sollten nach Änderungen neu gestartet werden.`
+                : "Aktuell keine restart-relevanten Änderungen offen.");
+        alert.className = topology.dashboardRemote && topology.towerLocal
+            ? "settings-alert warn"
+            : (restartCount > 0 ? "settings-alert warn" : "settings-alert ok");
 
         grid.innerHTML = [
             this._card("Tower", towerStatus.status === "ok" ? "Erreichbar" : "Unklar", "runtime", "low"),
             this._card("Saleria-Prozess", towerStatus.saleria_running ? "Läuft" : "Nicht aktiv", "service", towerStatus.saleria_running ? "low" : "medium"),
             this._card("Restart-Hinweis", restartCount > 0 ? `${restartCount} Settings sind restart-relevant.` : "Aktuell keine restart-relevanten Settings offen.", "ops", restartCount > 0 ? "medium" : "low"),
+            this._card("Monitor / Computer Use", monitor.available ? `Monitor ${monitor.selected ?? "?"} aktiv, ${monitor.monitorCount} erkannt.` : "Computer Use / Monitor-Auswahl lokal nicht verfügbar.", "tower", monitor.available ? "low" : "medium"),
+            this._card("Topologie", topology.dashboardRemote && topology.towerLocal ? "Dashboard remote, Tower lokal per Tunnel verbunden." : "Lokale oder vereinfachte Topologie.", "network", "low"),
             this._card("Settings-Kategorien", this._formatCategories(settingsStatus?.categories || {}), "overview", "low"),
         ].join("");
 
