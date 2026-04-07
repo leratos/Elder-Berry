@@ -6,18 +6,36 @@ import { DashboardModule } from "./base.js";
 export default class SettingsModule extends DashboardModule {
     render() {
         return `
-        <div class="card">
+        <div class="card settings-shell">
             <div class="card-header">
                 <span class="card-title">Settings</span>
                 <span class="badge" id="settings-restart-badge">Lade...</span>
             </div>
-            <div class="settings-summary" id="settings-summary"></div>
-            <div class="settings-toolbar" id="settings-toolbar">
-                <button class="toolbar-button active" data-filter="all">Alle</button>
-                <button class="toolbar-button" data-filter="high">High Risk</button>
-                <button class="toolbar-button" data-filter="restart">Neustart nötig</button>
+            <div class="settings-overview" id="settings-overview">
+                <div class="settings-summary" id="settings-summary"></div>
+                <div class="settings-alert" id="settings-overview-alert"></div>
             </div>
-            <div class="settings-groups" id="settings-groups"></div>
+            <div class="settings-layout">
+                <section class="settings-panel settings-panel-overview">
+                    <div class="settings-panel-header">
+                        <h3>Overview</h3>
+                        <p>Aktueller Zustand, Risiken und restart-relevante Hinweise.</p>
+                    </div>
+                    <div class="settings-insights" id="settings-insights"></div>
+                </section>
+                <section class="settings-panel settings-panel-edit">
+                    <div class="settings-panel-header">
+                        <h3>Edit</h3>
+                        <p>Bekannte Settings gezielt ändern, ohne die Übersicht zu verlieren.</p>
+                    </div>
+                    <div class="settings-toolbar" id="settings-toolbar">
+                        <button class="toolbar-button active" data-filter="all">Alle</button>
+                        <button class="toolbar-button" data-filter="high">High Risk</button>
+                        <button class="toolbar-button" data-filter="restart">Neustart nötig</button>
+                    </div>
+                    <div class="settings-groups" id="settings-groups"></div>
+                </section>
+            </div>
         </div>`;
     }
 
@@ -50,6 +68,7 @@ export default class SettingsModule extends DashboardModule {
         this.status = statusRes;
 
         this._renderSummary();
+        this._renderInsights();
         this._renderGroups();
     }
 
@@ -66,9 +85,16 @@ export default class SettingsModule extends DashboardModule {
 
     _renderError() {
         const summary = document.getElementById("settings-summary");
+        const alert = document.getElementById("settings-overview-alert");
+        const insights = document.getElementById("settings-insights");
         const groups = document.getElementById("settings-groups");
         const badge = document.getElementById("settings-restart-badge");
         if (summary) summary.textContent = "Settings aktuell nicht erreichbar.";
+        if (alert) {
+            alert.textContent = "Ohne Settings-Status sind Übersicht und Bearbeitung momentan eingeschränkt.";
+            alert.className = "settings-alert warn";
+        }
+        if (insights) insights.innerHTML = "";
         if (groups) groups.innerHTML = "";
         if (badge) {
             badge.textContent = "offline";
@@ -78,11 +104,13 @@ export default class SettingsModule extends DashboardModule {
 
     _renderSummary() {
         const summary = document.getElementById("settings-summary");
+        const alert = document.getElementById("settings-overview-alert");
         const badge = document.getElementById("settings-restart-badge");
-        if (!summary || !badge) return;
+        if (!summary || !alert || !badge) return;
 
         const restartCount = (this.status.restartRequiredSettings || []).length;
         const highRiskCount = this.schema.filter(item => item.riskLevel === "high").length;
+        const mediumRiskCount = this.schema.filter(item => item.riskLevel === "medium").length;
 
         summary.innerHTML = `
             <div class="summary-grid">
@@ -102,14 +130,66 @@ export default class SettingsModule extends DashboardModule {
                     <span class="summary-label">High Risk</span>
                     <strong>${highRiskCount}</strong>
                 </div>
-            </div>
-            <div class="settings-alert ${restartCount > 0 ? "warn" : "ok"}">
-                ${restartCount > 0 ? `${restartCount} restart-relevante Settings sollten nach Änderungen neu gestartet werden.` : "Aktuell keine restart-relevanten Änderungen offen."}
+                <div class="summary-item">
+                    <span class="summary-label">Medium Risk</span>
+                    <strong>${mediumRiskCount}</strong>
+                </div>
             </div>
         `;
 
+        alert.textContent = restartCount > 0
+            ? `${restartCount} restart-relevante Settings sollten nach Änderungen neu gestartet werden.`
+            : "Aktuell keine restart-relevanten Änderungen offen.";
+        alert.className = restartCount > 0 ? "settings-alert warn" : "settings-alert ok";
+
         badge.textContent = restartCount > 0 ? "Restart relevant" : "Live/ok";
         badge.className = restartCount > 0 ? "badge badge-warn" : "badge badge-ok";
+    }
+
+    _renderInsights() {
+        const container = document.getElementById("settings-insights");
+        if (!container) return;
+
+        const restartItems = this.status.restartRequiredSettings || [];
+        const highRiskItems = this.schema.filter(item => item.riskLevel === "high");
+        const categoryEntries = Object.entries(this.status.categories || {});
+
+        container.innerHTML = [
+            this._renderInsightCard(
+                "Restart-Folgen",
+                restartItems.length
+                    ? `${restartItems.length} Settings haben Betriebsfolgen nach Änderungen.`
+                    : "Keine offenen restart-relevanten Änderungen.",
+                restartItems.length ? restartItems.join(", ") : "Änderungen können aktuell ohne zusätzlichen Restart-Hinweis geprüft werden.",
+                restartItems.length ? "warn" : "ok"
+            ),
+            this._renderInsightCard(
+                "Risiko-Fokus",
+                `${highRiskItems.length} High-Risk-Settings im Registry-Scope.`,
+                highRiskItems.length
+                    ? highRiskItems.map(item => item.label).join(", ")
+                    : "Aktuell keine High-Risk-Settings erkannt.",
+                highRiskItems.length ? "warn" : "ok"
+            ),
+            this._renderInsightCard(
+                "Kategorien",
+                `${categoryEntries.length} Settings-Kategorien aktiv.`,
+                categoryEntries.length
+                    ? categoryEntries.map(([key, value]) => `${key}: ${value}`).join(" · ")
+                    : "Noch keine Kategorien verfügbar.",
+                "neutral"
+            ),
+        ].join("");
+    }
+
+    _renderInsightCard(title, headline, detail, tone = "neutral") {
+        return `
+            <div class="settings-insight settings-insight-${this._escape(tone)}">
+                <div class="settings-insight-title">${this._escape(title)}</div>
+                <div class="settings-insight-headline">${this._escape(headline)}</div>
+                <div class="settings-insight-detail">${this._escape(detail)}</div>
+            </div>
+        `;
     }
 
     _renderGroups() {
@@ -130,7 +210,10 @@ export default class SettingsModule extends DashboardModule {
 
         container.innerHTML = Array.from(grouped.entries()).map(([category, settings]) => `
             <section class="settings-group">
-                <h3>${this._escape(category)}</h3>
+                <div class="settings-group-header">
+                    <h4>${this._escape(category)}</h4>
+                    <span>${settings.length} Einträge</span>
+                </div>
                 <div class="settings-grid">
                     ${settings.map(setting => this._renderSetting(setting)).join("")}
                 </div>
@@ -153,6 +236,12 @@ export default class SettingsModule extends DashboardModule {
         const riskClass = `risk-${setting.riskLevel || "low"}`;
         const restartHint = setting.restartRequired ? `<span class="setting-flag">Neustart nötig</span>` : "";
         const helpText = setting.helpText ? `<div class="setting-help">${this._escape(setting.helpText)}</div>` : "";
+        const meta = `
+            <div class="setting-meta">
+                <span>Quelle: ${this._escape(setting.source || "registry")}</span>
+                <span>Typ: ${this._escape(setting.type || "text")}</span>
+            </div>
+        `;
         const input = this._renderInput(setting, value);
         return `
             <div class="setting-card ${riskClass}">
@@ -162,6 +251,7 @@ export default class SettingsModule extends DashboardModule {
                 </div>
                 ${restartHint}
                 ${helpText}
+                ${meta}
                 ${input}
                 <div class="setting-actions">
                     <button class="settings-save" data-key="${this._escape(setting.key)}">Speichern</button>
