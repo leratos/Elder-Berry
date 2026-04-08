@@ -93,6 +93,7 @@ Regeln:
 # "lösche den 2. mail" (Index-basiert aus letztem Ergebnis)
 # Neu: "mail #5 löschen", "lösche mail 5" (Verb vorne), "mail 5 löschen" (ID dann Verb)
 MAIL_DELETE_PATTERN = re.compile(
+    r"(?:bitte\s+)?"
     r"(?:mails?\s+(?:löschen|lösche|lösch|entferne[n]?)\s*#?(\d+)?"
     r"|(?:lösche?|lösch|entferne?)\s+(?:die\s+|den\s+\d+\.\s+)?(?:mail|email|e-mail)\s*#?(\d+)?"
     r"|(?:lösche?|lösch|entferne?)\s+(?:die\s+)?(?:letzte\s+)?mail"
@@ -165,10 +166,15 @@ class MailCommandHandler(CommandHandler):
                 "e-mails", "posteingang", "post", "nachrichten",
                 "eingang", "hab ich mails", "gibt es neue mails",
                 "sind mails da", "mails checken", "mail check",
+                "post abholen", "neue nachrichten",
             ],
             "mail_summary": [
                 "mail zusammenfassung", "mails zusammenfassung",
                 "fasse mails zusammen", "mails zusammenfassen",
+            ],
+            "mail_search": [
+                "mail suche", "suche die mail", "finde mails",
+                "mail finden", "mails durchsuchen",
             ],
             "mail_reply": [
                 "antworte auf mail", "beantworte mail",
@@ -211,8 +217,7 @@ class MailCommandHandler(CommandHandler):
             return CommandResult(
                 command="mails",
                 success=False,
-                text="E-Mail nicht konfiguriert.\n"
-                     "Setup: SecretStore().set('email_imap_host', 'imap.strato.de') etc.",
+                text="E-Mail nicht konfiguriert. Bitte den Admin kontaktieren.",
             )
 
         normalized = raw_text.strip().lower()
@@ -263,7 +268,7 @@ class MailCommandHandler(CommandHandler):
         if not match:
             return CommandResult(
                 command="mail_search", success=False,
-                text="Format: mail suche <Begriff>",
+                text="Suchbegriff fehlt. Beispiel: mail suche Rechnung",
             )
 
         # Drei alternative Gruppen im Pattern
@@ -307,7 +312,7 @@ class MailCommandHandler(CommandHandler):
         if not match:
             return CommandResult(
                 command="mail_attachment", success=False,
-                text="Format: mail anhang <Mail-ID>",
+                text="Mail-ID fehlt. Beispiel: mail anhang 123",
             )
 
         # Drei alternative Gruppen im Pattern

@@ -28,13 +28,13 @@ logger = logging.getLogger(__name__)
 
 # "merk dir: WLAN Büro ist xyz123" oder "merk dir WLAN Büro = xyz"
 NOTE_SET_FACT_PATTERN = re.compile(
-    r"^(?:merk|merke)\s+dir[:\s]+(.+?)\s+(?:ist|=|:)\s+(.+)$",
+    r"^(?:bitte\s+)?(?:merk|merke)\s+dir[:\s]+(.+?)\s+(?:ist|=|:)\s+(.+)$",
     re.IGNORECASE,
 )
 
 # "notiz: Vermieter heißt Müller"
 NOTE_ADD_PATTERN = re.compile(
-    r"^notiz[:\s]+(.+)$",
+    r"^(?:bitte\s+)?notiz[:\s]+(.+)$",
     re.IGNORECASE,
 )
 
@@ -189,7 +189,7 @@ class NoteCommandHandler(CommandHandler):
             return CommandResult(
                 command="note_set_fact",
                 success=False,
-                text="Format: merk dir: <schlüssel> ist <wert>",
+                text="Nicht erkannt. Beispiel: merk dir: WLAN Passwort ist abc123",
             )
 
         key = match.group(1).strip()
@@ -221,7 +221,7 @@ class NoteCommandHandler(CommandHandler):
             return CommandResult(
                 command="note_add",
                 success=False,
-                text="Format: notiz: <text>",
+                text="Text fehlt. Beispiel: notiz: Vermieter heißt Müller",
             )
 
         content = match.group(1).strip()
@@ -258,7 +258,7 @@ class NoteCommandHandler(CommandHandler):
             return CommandResult(
                 command="note_search",
                 success=False,
-                text="Format: notizen suche <begriff>",
+                text="Suchbegriff fehlt. Beispiel: notizen suche Vermieter",
             )
 
         query = match.group(1).strip()
@@ -309,7 +309,7 @@ class NoteCommandHandler(CommandHandler):
             return CommandResult(
                 command="note_delete",
                 success=False,
-                text="Format: notiz löschen #<id>",
+                text="Welche Notiz? Beispiel: notiz löschen #3",
             )
 
         note_id = int(match.group(1))
@@ -334,7 +334,7 @@ class NoteCommandHandler(CommandHandler):
             return CommandResult(
                 command="note_delete_fact",
                 success=False,
-                text="Format: vergiss <schlüssel>",
+                text="Was soll ich vergessen? Beispiel: vergiss WLAN Passwort",
             )
 
         key = match.group(1).strip()
