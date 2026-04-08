@@ -191,6 +191,7 @@ class WeatherCommandHandler(CommandHandler):
                 "sonne", "gewitter", "schnee", "regenschirm",
                 "friert es", "wird es kalt", "wird es warm",
                 "soll ich eine jacke mitnehmen",
+                "wie warm ist es", "wie kalt ist es",
             ],
             "erinnerungen": [
                 "meine erinnerungen", "offene timer", "was steht an timer",
@@ -359,7 +360,7 @@ class WeatherCommandHandler(CommandHandler):
             if not match:
                 return CommandResult(
                     command="timer", success=False,
-                    text="Format: timer <Zahl> <min/stunde/sek>",
+                    text="Timer nicht erkannt. Beispiel: timer 20 min",
                 )
 
             amount = int(match.group(1))
@@ -396,7 +397,8 @@ class WeatherCommandHandler(CommandHandler):
             if not match:
                 return CommandResult(
                     command="reminder", success=False,
-                    text="Format: erinnere mich um HH:MM: Nachricht / erinnere mich in N min: Nachricht",
+                    text="Nicht erkannt. Beispiel: erinnere mich um 18:00: Wäsche\n"
+                         "Oder: erinnere mich in 30 min: Kuchen aus dem Ofen",
                 )
 
             time_str = match.group(1)    # "18:00" oder None

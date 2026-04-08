@@ -184,6 +184,21 @@ class ContactCommandHandler(CommandHandler):
                 "neuer kontakt", "kontakt speichern",
                 "kontakt anlegen", "kontakt hinzufügen",
             ],
+            "contact_who": [
+                "wer ist", "kennst du",
+            ],
+            "contact_search": [
+                "kontakt suche", "kontakt finden",
+                "finde kontakt", "suche kontakt",
+            ],
+            "contact_delete": [
+                "kontakt löschen", "kontakt entfernen",
+                "lösche kontakt",
+            ],
+            "contact_update": [
+                "kontakt ändern", "kontakt bearbeiten",
+                "kontakt aktualisieren",
+            ],
         }
 
     @property
