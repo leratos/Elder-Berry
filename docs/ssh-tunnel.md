@@ -156,6 +156,10 @@ powershell -ExecutionPolicy Bypass -File scripts\ssh-tunnel.ps1
 > ohne Zugangsdaten). Die kopierten `.ps1`-Dateien sind in `.gitignore`
 > und werden nicht ins Repo aufgenommen.
 
+Das Script räumt vor jedem Reconnect den blockierten Remote-Port per
+`ssh ... sudo fuser -k <PORT>/tcp`. Dafür muss auf dem Server das
+sudoers-Setup eingerichtet sein (siehe Abschnitt 4: "sudo für fuser").
+
 ### Als Scheduled Task installieren (Autostart bei Login)
 
 ```powershell
@@ -225,6 +229,13 @@ StartLimitBurst=50
 [Service]
 Type=simple
 User=pi
+
+# Vor jedem (Re-)Start: alten Zombie-Prozess auf dem Remote-Port killen.
+# Braucht passwortloses sudo für fuser auf dem Server (siehe unten).
+ExecStartPre=/usr/bin/ssh -o ConnectTimeout=5 -o BatchMode=yes \
+    <USER>@<SERVER> \
+    "sudo fuser -k <REMOTE_PORT>/tcp 2>/dev/null; sleep 1; exit 0"
+
 ExecStart=/usr/bin/ssh -N \
     -R 127.0.0.1:<REMOTE_PORT>:127.0.0.1:<LOCAL_PORT> \
     -o ServerAliveInterval=15 \
@@ -240,7 +251,25 @@ RestartSec=5
 WantedBy=multi-user.target
 ```
 
-Aktivieren und starten:
+### sudo für fuser einrichten (auf dem Server, einmalig)
+
+`ExecStartPre` räumt vor jedem Reconnect den blockierten Port auf dem
+Server. Da `fuser` root-Rechte braucht (sshd läuft als root), muss der
+SSH-User passwortloses sudo dafür bekommen:
+
+```bash
+ssh <USER>@<SERVER>
+echo '<USER> ALL=(root) NOPASSWD: /usr/bin/fuser' | sudo tee /etc/sudoers.d/tunnel-cleanup
+sudo chmod 440 /etc/sudoers.d/tunnel-cleanup
+
+# Testen (muss ohne Passwort-Prompt durchgehen):
+sudo fuser -k 99999/tcp 2>/dev/null; echo $?
+```
+
+> **Sicherheit:** Der User kann nur `fuser` als root ausführen, nichts
+> anderes. Das ist minimal-invasiv.
+
+### Aktivieren und starten
 
 ```bash
 sudo systemctl daemon-reload
