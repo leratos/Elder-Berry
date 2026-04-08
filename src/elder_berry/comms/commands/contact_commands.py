@@ -76,8 +76,11 @@ CONTACT_DELETE_PATTERN = re.compile(
 )
 
 # Natürliche Feld-Abfragen
+# Neu: "geburtstag von Max", "wann ist Annas geburtstag" (Genitiv-s)
 CONTACT_FIELD_QUERY_PATTERN = re.compile(
     r"^(?:wann\s+hat\s+(.+?)\s+geburtstag"
+    r"|wann\s+ist\s+(.+?)s?\s+geburtstag"
+    r"|geburtstag\s+(?:von\s+)?(.+?)"
     r"|(?:was|wie)\s+ist\s+(?:die\s+)?(?:adresse|anschrift)\s+von\s+(.+?)"
     r"|(?:was|wie)\s+ist\s+(?:die\s+)?(?:telefonnummer|nummer|handynummer)\s+von\s+(.+?)"
     r"|(?:was|wie)\s+ist\s+(?:die\s+)?(?:email|e-mail|mailadresse)\s+von\s+(.+?)"
@@ -180,6 +183,21 @@ class ContactCommandHandler(CommandHandler):
             "contact_add": [
                 "neuer kontakt", "kontakt speichern",
                 "kontakt anlegen", "kontakt hinzufügen",
+            ],
+            "contact_who": [
+                "wer ist", "kennst du",
+            ],
+            "contact_search": [
+                "kontakt suche", "kontakt finden",
+                "finde kontakt", "suche kontakt",
+            ],
+            "contact_delete": [
+                "kontakt löschen", "kontakt entfernen",
+                "lösche kontakt",
+            ],
+            "contact_update": [
+                "kontakt ändern", "kontakt bearbeiten",
+                "kontakt aktualisieren",
             ],
         }
 
@@ -419,24 +437,25 @@ class ContactCommandHandler(CommandHandler):
                                  text=None, fallthrough=True)
 
         groups = match.groups()
-        # Gruppen: (0) geburtstag, (1) adresse, (2) telefon, (3) email,
-        #          (4) adresse2, (5) gruppe, (6) wo arbeitet/wohnt
+        # Gruppen: (0) wann hat X geburtstag, (1) wann ist Xs geburtstag,
+        #          (2) geburtstag von X, (3) adresse, (4) telefon, (5) email,
+        #          (6) adresse2, (7) gruppe, (8) wo arbeitet/wohnt
         name = None
         query_type = None
         for i, g in enumerate(groups):
             if g:
                 name = g.strip()
-                if i == 0:
+                if i in (0, 1, 2):
                     query_type = "birthday"
-                elif i in (1, 4):
+                elif i in (3, 6):
                     query_type = "address"
-                elif i == 2:
+                elif i == 4:
                     query_type = "phones"
-                elif i == 3:
-                    query_type = "emails"
                 elif i == 5:
+                    query_type = "emails"
+                elif i == 7:
                     query_type = "categories"
-                elif i == 6:
+                elif i == 8:
                     # "wo arbeitet X" → organization, "wo wohnt X" → address
                     lower = raw_text.lower()
                     if "arbeitet" in lower:

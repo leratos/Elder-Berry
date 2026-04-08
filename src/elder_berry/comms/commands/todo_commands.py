@@ -27,12 +27,12 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 TODO_ADD_PATTERN = re.compile(
-    r"^(?:todo|aufgabe)[:\s]+(.+)$", re.IGNORECASE,
+    r"^(?:bitte\s+)?(?:todo|aufgabe)[:\s]+(.+)$", re.IGNORECASE,
 )
 
 TODO_COMPLETE_PATTERN = re.compile(
-    r"todo\s+erledigt\s+#?(\d+)"
-    r"|todo\s+#?(\d+)\s+erledigt",
+    r"(?:todo|aufgabe)\s+erledigt\s+#?(\d+)"
+    r"|(?:todo|aufgabe)\s+#?(\d+)\s+erledigt",
     re.IGNORECASE,
 )
 
@@ -49,7 +49,7 @@ TODO_PRIORITY_PATTERN = re.compile(
 )
 
 TODO_DELETE_PATTERN = re.compile(
-    r"^todo\s+(?:löschen|lösche|entferne?)\s+#?(\d+)$",
+    r"^(?:bitte\s+)?todo\s+(?:löschen|lösche|entferne?)\s+#?(\d+)$",
     re.IGNORECASE,
 )
 
@@ -87,8 +87,11 @@ class TodoCommandHandler(CommandHandler):
             "todos": [
                 "todos", "aufgaben", "to-do", "to do",
                 "meine aufgaben", "offene aufgaben",
-                "was muss ich noch", "was steht an",
-                "aufgabenliste", "todo liste",
+                "was muss ich noch", "aufgabenliste", "todo liste",
+            ],
+            "todo_add": [
+                "neues todo", "neue aufgabe", "todo hinzufügen",
+                "aufgabe hinzufügen", "aufgabe anlegen",
             ],
         }
 
@@ -131,11 +134,11 @@ class TodoCommandHandler(CommandHandler):
         match = TODO_ADD_PATTERN.match(raw_text.strip())
         if not match:
             return CommandResult(command="todo_add", success=False,
-                                 text="Format: todo: <text>")
+                                 text="Text fehlt. Beispiel: todo: Einkaufen gehen")
         fields = self._parse_todo_fields(match.group(1))
         if not fields or not fields.get("text"):
             return CommandResult(command="todo_add", success=False,
-                                 text="Mindestens ein Text ist nötig.")
+                                 text="Text fehlt. Beispiel: todo: Einkaufen gehen, hoch, Haushalt")
         todo = self._store.add(
             self._default_user_id, text=fields["text"],
             priority=fields.get("priority", "niedrig"),
@@ -148,7 +151,7 @@ class TodoCommandHandler(CommandHandler):
         match = TODO_COMPLETE_PATTERN.search(raw_text.strip())
         if not match:
             return CommandResult(command="todo_complete", success=False,
-                                 text="Format: todo erledigt #<ID>")
+                                 text="Welche Aufgabe? Beispiel: todo erledigt #5")
         tid = int(match.group(1) or match.group(2))
         todo = self._store.complete(tid)
         if todo:
@@ -161,7 +164,7 @@ class TodoCommandHandler(CommandHandler):
         match = TODO_REOPEN_PATTERN.search(raw_text.strip())
         if not match:
             return CommandResult(command="todo_reopen", success=False,
-                                 text="Format: todo wieder öffnen #<ID>")
+                                 text="Welche Aufgabe? Beispiel: todo wieder öffnen #5")
         tid = int(match.group(1) or match.group(2))
         todo = self._store.reopen(tid)
         if todo:
@@ -174,7 +177,7 @@ class TodoCommandHandler(CommandHandler):
         match = TODO_PRIORITY_PATTERN.search(raw_text.strip())
         if not match:
             return CommandResult(command="todo_priority", success=False,
-                                 text="Format: todo priorität #<ID> hoch/mittel/niedrig")
+                                 text="Nicht erkannt. Beispiel: todo priorität #5 hoch")
         tid = int(match.group(1) or match.group(3))
         prio = (match.group(2) or match.group(4)).lower()
         try:
@@ -192,7 +195,7 @@ class TodoCommandHandler(CommandHandler):
         match = TODO_DELETE_PATTERN.match(raw_text.strip())
         if not match:
             return CommandResult(command="todo_delete", success=False,
-                                 text="Format: todo löschen #<ID>")
+                                 text="Welche Aufgabe? Beispiel: todo löschen #5")
         tid = int(match.group(1))
         if self._store.delete(tid):
             return CommandResult(command="todo_delete", success=True,

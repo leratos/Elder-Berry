@@ -3822,3 +3822,54 @@ User: "Lies meine Mails und trag den Zahnarzttermin ein"
 - Dateien erstellt: ssh-tunnel.example.ps1, Install-SshTunnelTask.example.ps1,
   ssh-tunnel.md
 - Dateien geändert: rpi5_setup.md, journal.txt
+
+## Abgeschlossen: Phase 47 – Befehlsmuster-Stabilisierung (2026-04-08)
+- Konzeptdatei erstellt: docs/concepts/phase-47-befehlsmuster-stabilisierung.md
+- Alle Befehlspatterns analysiert und Lücken dokumentiert
+- 7 kritische Lücken (🔴), 6 mittlere (🟡), 3 niedrige (🟢) identifiziert
+- 3 Risiko-Fixes implementiert:
+  - VOLUME_PATTERN: .search() → .match() + Anker, "stell/setz/bitte/auf" Varianten
+  - NOTE_GET_FACT_PATTERN: "wie lautet" ergänzt, Domain-Lookahead gegen
+    Catch-All ("was ist wetter" → kein Match mehr)
+  - START_PROCESS_PATTERN: .+ statt \S+ für Leerzeichen in Programmnamen,
+    Negative Lookahead für Harmony-Aktivitäten + "dich neu" + "szene"
+- Pattern-Erweiterungen (9 Handler-Dateien):
+  - system_commands.py: VOLUME_PATTERN (stell/setz/bitte/auf)
+  - mail_commands.py: MAIL_DELETE_PATTERN ("mail #5 löschen", "lösche mail 5")
+  - harmony_commands.py: ACTIVITY_ON ("schalte tv ein", "starte tv"),
+    ALL_OFF ("mach alles aus", "ausschalten"), VOLUME ("bitte lauter")
+  - weather_commands.py: WEATHER_PATTERN ("wetter übermorgen"),
+    WEATHER_LOCATION ("wetter Berlin" ohne "in")
+  - process_commands.py: START/KILL (.+ für Leerzeichen im Namen)
+  - contact_commands.py: BIRTHDAY ("geburtstag von Max", "wann ist Annas geburtstag")
+  - calendar_commands.py: TERMIN_CREATE ("neuer termin:")
+  - note_commands.py: NOTE_GET_FACT ("wie lautet das Passwort")
+  - todo_commands.py: TODO_COMPLETE ("aufgabe erledigt #2")
+- 90 neue Pattern-Tests in tests/test_pattern_stabilisierung.py
+  (inkl. Cross-Handler-Konflikttests)
+- Bestehende Tests angepasst (remote_commands, process_commands)
+- Alle 3939 Tests grün (3928 bestehende + 11 neue Tests netto)
+- Dateien geändert: system_commands.py, mail_commands.py, harmony_commands.py,
+  weather_commands.py, process_commands.py, contact_commands.py,
+  calendar_commands.py, note_commands.py, todo_commands.py,
+  test_pattern_stabilisierung.py, test_remote_commands.py, test_process_commands.py
+
+## Abgeschlossen: Phase 47b – UX-Polish (2026-04-08)
+- Fehlende Keywords ergänzt (5 Handler):
+  - mail_commands: mail_search Keywords ("mail suche", "finde mails", ...)
+  - calendar_commands: termin_create + termin_search Keywords
+  - contact_commands: contact_who/search/delete/update Keywords
+  - weather_commands: "wie warm ist es", "wie kalt ist es"
+  - todo_commands: todo_add Keywords ("neue aufgabe", ...)
+- Fehlermeldungen verbessert (6 Handler):
+  - Technische Hinweise entfernt (SecretStore-Referenzen → "Bitte den Admin kontaktieren")
+  - "Format: ..." ersetzt durch "Beispiel: ..." mit konkreten Eingaben
+  - Betroffen: mail, calendar, weather, todo, note (15+ Meldungen)
+- "bitte"-Prefix universell ergänzt (4 Handler):
+  - mail_commands: MAIL_DELETE_PATTERN
+  - calendar_commands: TERMIN_CREATE_PATTERN, TERMIN_DELETE_PATTERN
+  - todo_commands: TODO_ADD_PATTERN, TODO_DELETE_PATTERN
+  - note_commands: NOTE_SET_FACT_PATTERN, NOTE_ADD_PATTERN
+- Alle 3939 Tests grün (keine neuen Tests nötig, reine UX-Änderungen)
+- Dateien geändert: mail_commands.py, calendar_commands.py, contact_commands.py,
+  weather_commands.py, todo_commands.py, note_commands.py

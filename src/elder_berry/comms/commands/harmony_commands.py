@@ -30,16 +30,20 @@ _VOLUME_DEVICE = "Samsung TV"
 # -- Patterns -------------------------------------------------------------- #
 
 ACTIVITY_ON_PATTERN = re.compile(
-    r"^(?:starte?\s+)?(?P<activity>fernsehen|tv|musik|radio|gaming|"
-    r"film|kino)\s+an$",
+    r"^(?:bitte\s+)?(?:"
+    r"(?:starte?\s+)?(?P<activity>fernsehen|tv|musik|radio|gaming|film|kino)\s+an"
+    r"|(?:schalte?|mach)\s+(?:(?:den|die|das)\s+)?(?P<activity2>fernsehen|tv|musik|radio|gaming|film|kino)\s+(?:an|ein)"
+    r"|(?:starte?)\s+(?:(?:den|die|das)\s+)?(?P<activity3>fernsehen|tv|musik|radio|gaming|film|kino)"
+    r")$",
     re.IGNORECASE,
 )
 ALL_OFF_PATTERN = re.compile(
-    r"^(?:alles?\s+aus|harmony\s+aus|schalte?\s+alles?\s+aus)$",
+    r"^(?:bitte\s+)?(?:alles?\s+aus|harmony\s+aus|schalte?\s+alles?\s+aus"
+    r"|mach\s+alles?\s+aus|ausschalten|alles?\s+ausschalten)$",
     re.IGNORECASE,
 )
-VOLUME_UP_PATTERN = re.compile(r"^(?:mach\s+)?lauter$", re.IGNORECASE)
-VOLUME_DOWN_PATTERN = re.compile(r"^(?:mach\s+)?leiser$", re.IGNORECASE)
+VOLUME_UP_PATTERN = re.compile(r"^(?:bitte\s+)?(?:mach\s+)?lauter$", re.IGNORECASE)
+VOLUME_DOWN_PATTERN = re.compile(r"^(?:bitte\s+)?(?:mach\s+)?leiser$", re.IGNORECASE)
 MUTE_PATTERN = re.compile(r"^(?:stummschalten|stumm)$", re.IGNORECASE)
 CURRENT_PATTERN = re.compile(
     r"^(?:was\s+(?:l[äa]uft|ist\s+an)|harmony\s+status)$",
@@ -175,7 +179,11 @@ class HarmonyCommandHandler(CommandHandler):
                 text="Aktivität nicht erkannt.",
             )
 
-        activity = match.group("activity")
+        activity = (
+            match.group("activity")
+            or match.group("activity2")
+            or match.group("activity3")
+        )
         # Mapping Kurzformen → Harmony-Aktivitaetsnamen
         activity_map = {
             "fernsehen": "Fernsehen",

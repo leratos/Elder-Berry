@@ -43,7 +43,9 @@ TERMINE_PATTERN = re.compile(
 # Auch ohne Doppelpunkt: "termin Zahnarzt morgen 14:00"
 # Auch mit "erstelle": "erstelle termin Zahnarzt morgen 14:00"
 TERMIN_CREATE_PATTERN = re.compile(
-    r"^(?:erstelle?\s+(?:(?:einen?\s+)?termin\s*[:\s]?\s*)"  # "erstelle termin ..."
+    r"^(?:bitte\s+)?"
+    r"(?:erstelle?\s+(?:(?:einen?\s+)?termin\s*[:\s]?\s*)"    # "erstelle termin ..."
+    r"|(?:neuer?)\s+termin[:\s]\s*"                            # "neuer termin: ..."
     r"|termin[:\s]\s*)"                                        # oder "termin: ..."
     r"(.+?)\s+"                                                # Titel (non-greedy)
     r"(morgen|übermorgen|uebermorgen"                           # Wort-Datum
@@ -61,6 +63,7 @@ TERMIN_CREATE_PATTERN = re.compile(
 # "termin löschen alle", "lösche alle termine"
 # "lösch den 2. termin", "entferne termin 1"
 TERMIN_DELETE_PATTERN = re.compile(
+    r"(?:bitte\s+)?"
     r"(?:termin[e]?\s+(?:löschen|lösche|entferne[n]?|lösch|storniere[n]?)\s+(.+)"
     r"|(?:lösche?|entferne?|storniere?)\s+(?:den\s+|die\s+|alle\s+)?(?:termin[e]?\s+)?(.+?)(?:\s+termin[e]?)?$"
     r")",
@@ -207,6 +210,14 @@ class CalendarCommandHandler(CommandHandler):
                 "nächster termin", "termine heute", "habe ich termine",
                 "zeitplan", "terminplan", "agenda", "was hab ich vor",
                 "hab ich heute was", "bin ich heute frei",
+            ],
+            "termin_create": [
+                "neuer termin", "termin erstellen", "termin anlegen",
+                "termin hinzufügen", "kalender eintrag",
+            ],
+            "termin_search": [
+                "termin suche", "termin finden", "suche termin",
+                "suche den termin",
             ],
         }
 
@@ -386,7 +397,7 @@ class CalendarCommandHandler(CommandHandler):
         if not match:
             return CommandResult(
                 command="termin_search", success=False,
-                text="Format: termin suche <Begriff>",
+                text="Suchbegriff fehlt. Beispiel: termin suche Zahnarzt",
             )
 
         # Zwei alternative Gruppen im Pattern

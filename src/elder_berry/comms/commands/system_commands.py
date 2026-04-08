@@ -30,9 +30,11 @@ MEDIA_KEYS = {
     "previous": "prevtrack",
 }
 
-# Regex fuer Volume-Command: "volume 50", "vol 75", "lautstaerke 30"
+# Regex fuer Volume-Command: "volume 50", "vol 75", "lautstaerke 30",
+# "stell lautstärke auf 70", "setz lautstärke 50", "lautstärke auf 50"
 VOLUME_PATTERN = re.compile(
-    r"(?:volume|vol|lautst\u00e4rke|lautstarke)\s+(\d{1,3})\b",
+    r"^(?:(?:bitte\s+)?(?:(?:stell|setz)\s+)?(?:die\s+)?)?(?:volume|vol|lautst\u00e4rke|lautstarke)"
+    r"\s+(?:auf\s+)?(\d{1,3})$",
     re.IGNORECASE,
 )
 
@@ -75,7 +77,7 @@ class SystemCommandHandler(CommandHandler):
     @property
     def patterns(self) -> list[tuple[re.Pattern, str, bool, bool]]:
         return [
-            (VOLUME_PATTERN, "volume", False, True),
+            (VOLUME_PATTERN, "volume", False, False),
             (AVATAR_EMOTION_PATTERN, "avatar", False, False),
         ]
 
@@ -442,7 +444,7 @@ class SystemCommandHandler(CommandHandler):
                 text="ActionController nicht verf\u00fcgbar.",
             )
 
-        match = VOLUME_PATTERN.search(raw_text.strip().lower())
+        match = VOLUME_PATTERN.match(raw_text.strip().lower())
         if not match:
             return CommandResult(
                 command="volume",

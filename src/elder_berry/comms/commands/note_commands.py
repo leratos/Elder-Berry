@@ -28,19 +28,29 @@ logger = logging.getLogger(__name__)
 
 # "merk dir: WLAN Büro ist xyz123" oder "merk dir WLAN Büro = xyz"
 NOTE_SET_FACT_PATTERN = re.compile(
-    r"^(?:merk|merke)\s+dir[:\s]+(.+?)\s+(?:ist|=|:)\s+(.+)$",
+    r"^(?:bitte\s+)?(?:merk|merke)\s+dir[:\s]+(.+?)\s+(?:ist|=|:)\s+(.+)$",
     re.IGNORECASE,
 )
 
 # "notiz: Vermieter heißt Müller"
 NOTE_ADD_PATTERN = re.compile(
-    r"^notiz[:\s]+(.+)$",
+    r"^(?:bitte\s+)?notiz[:\s]+(.+)$",
     re.IGNORECASE,
 )
 
 # "was ist das WLAN Passwort?" oder "was ist WLAN Büro"
+# "wie lautet das Passwort?" oder "wie lautet die Adresse"
+# Negative Lookahead: Domain-Keywords (wetter, termin, mail, ...) nicht abfangen,
+# damit diese an die zuständigen Handler weitergeleitet werden.
+# Negative Lookahead: prueft ob nach optionalem Artikel ein Domain-Keyword folgt.
+# Steht VOR der optionalen Artikel-Gruppe, damit kein Backtracking den Schutz umgeht.
+_DOMAIN_WORDS = r"wetter|termin|mail|todo|kontakt|erinnerung|timer"
 NOTE_GET_FACT_PATTERN = re.compile(
-    r"^was\s+ist\s+(?:(?:der|die|das|mein[e]?)\s+)?(.+?)\??\s*$",
+    r"^(?:was\s+ist\s+(?!(?:(?:der|die|das|mein[e]?)\s+)?(?:" + _DOMAIN_WORDS + r")\b)"
+    r"(?:(?:der|die|das|mein[e]?)\s+)?(.+?)"
+    r"|wie\s+lautet\s+(?!(?:(?:der|die|das|mein[e]?)\s+)?(?:" + _DOMAIN_WORDS + r")\b)"
+    r"(?:(?:der|die|das|mein[e]?)\s+)?(.+?))"
+    r"\??\s*$",
     re.IGNORECASE,
 )
 
@@ -179,7 +189,7 @@ class NoteCommandHandler(CommandHandler):
             return CommandResult(
                 command="note_set_fact",
                 success=False,
-                text="Format: merk dir: <schlüssel> ist <wert>",
+                text="Nicht erkannt. Beispiel: merk dir: WLAN Passwort ist abc123",
             )
 
         key = match.group(1).strip()
@@ -211,7 +221,7 @@ class NoteCommandHandler(CommandHandler):
             return CommandResult(
                 command="note_add",
                 success=False,
-                text="Format: notiz: <text>",
+                text="Text fehlt. Beispiel: notiz: Vermieter heißt Müller",
             )
 
         content = match.group(1).strip()
@@ -228,7 +238,7 @@ class NoteCommandHandler(CommandHandler):
         if not match:
             return CommandResult(command="note_get_fact", success=False, text=None)
 
-        key = match.group(1).strip()
+        key = (match.group(1) or match.group(2) or "").strip()
         note = self._store.get_fact(user_id, key)
 
         if note is None:
@@ -248,7 +258,7 @@ class NoteCommandHandler(CommandHandler):
             return CommandResult(
                 command="note_search",
                 success=False,
-                text="Format: notizen suche <begriff>",
+                text="Suchbegriff fehlt. Beispiel: notizen suche Vermieter",
             )
 
         query = match.group(1).strip()
@@ -299,7 +309,7 @@ class NoteCommandHandler(CommandHandler):
             return CommandResult(
                 command="note_delete",
                 success=False,
-                text="Format: notiz löschen #<id>",
+                text="Welche Notiz? Beispiel: notiz löschen #3",
             )
 
         note_id = int(match.group(1))
@@ -324,7 +334,7 @@ class NoteCommandHandler(CommandHandler):
             return CommandResult(
                 command="note_delete_fact",
                 success=False,
-                text="Format: vergiss <schlüssel>",
+                text="Was soll ich vergessen? Beispiel: vergiss WLAN Passwort",
             )
 
         key = match.group(1).strip()

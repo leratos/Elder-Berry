@@ -25,13 +25,22 @@ logger = logging.getLogger(__name__)
 # Patterns
 # ---------------------------------------------------------------------------
 
+# Negative Lookahead schließt Harmony-Aktivitäten und System-Keywords aus,
+# damit "starte tv" → Harmony und "starte dich neu" → Restart gehen.
+_HARMONY_ACTIVITIES = r"(?:fernsehen|tv|musik|radio|gaming|film|kino)"
+
 START_PROCESS_PATTERN = re.compile(
-    r"^(?:starte?|start|öffne|open)\s+(\S+)$",
+    r"^(?:starte?|start|öffne|open)\s+"
+    r"(?!" + _HARMONY_ACTIVITIES + r"(?:\s+(?:an|ein))?$"
+    r"|(?:dich\s+)?neu$"       # → restart (SystemCommandHandler)
+    r"|szene\s+"               # → harmony scene
+    r")"
+    r"(.+)$",
     re.IGNORECASE,
 )
 
 KILL_PROCESS_PATTERN = re.compile(
-    r"^(?:kill|beende|stoppe?|schließe?)\s+(\S+)$",
+    r"^(?:kill|beende|stoppe?|schließe?)\s+(.+)$",
     re.IGNORECASE,
 )
 
@@ -99,7 +108,7 @@ class ProcessCommandHandler(CommandHandler):
                 text="Ungültiges Format. Beispiel: starte chrome",
             )
 
-        program = match.group(1).lower()
+        program = match.group(1).strip().lower()
 
         if program not in START_WHITELIST:
             allowed = ", ".join(sorted(START_WHITELIST.keys()))
@@ -148,7 +157,7 @@ class ProcessCommandHandler(CommandHandler):
                 text="Ungültiges Format. Beispiel: kill blender",
             )
 
-        process_name = match.group(1).lower()
+        process_name = match.group(1).strip().lower()
 
         if process_name not in KILL_WHITELIST:
             allowed = ", ".join(sorted(KILL_WHITELIST))
