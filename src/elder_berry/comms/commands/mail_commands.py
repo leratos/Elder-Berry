@@ -91,10 +91,12 @@ Regeln:
 # "lösche mail #123", "mail löschen #123", "lösche die mail", "mail löschen"
 # "lösch die mail #456", "entferne mail 789", "lösche mail 2"
 # "lösche den 2. mail" (Index-basiert aus letztem Ergebnis)
+# Neu: "mail #5 löschen", "lösche mail 5" (Verb vorne), "mail 5 löschen" (ID dann Verb)
 MAIL_DELETE_PATTERN = re.compile(
     r"(?:mails?\s+(?:löschen|lösche|lösch|entferne[n]?)\s*#?(\d+)?"
     r"|(?:lösche?|lösch|entferne?)\s+(?:die\s+|den\s+\d+\.\s+)?(?:mail|email|e-mail)\s*#?(\d+)?"
-    r"|(?:lösche?|lösch|entferne?)\s+(?:die\s+)?(?:letzte\s+)?mail)"
+    r"|(?:lösche?|lösch|entferne?)\s+(?:die\s+)?(?:letzte\s+)?mail"
+    r"|mail\s*#?(\d+)\s+(?:löschen|lösche|lösch|entferne[n]?))"
     r"$",
     re.IGNORECASE,
 )
@@ -429,8 +431,9 @@ class MailCommandHandler(CommandHandler):
         match = MAIL_DELETE_PATTERN.match(raw_text.strip())
         msg_id = None
         if match:
-            # Zwei alternative Gruppen: (1) "mail löschen #123", (2) "lösche mail #123"
-            msg_id = match.group(1) or match.group(2)
+            # Drei alternative Gruppen: (1) "mail löschen #123", (2) "lösche mail #123",
+            # (3) "mail #5 löschen"
+            msg_id = match.group(1) or match.group(2) or match.group(3)
 
         if msg_id:
             return self._delete_mail_by_uid(msg_id)

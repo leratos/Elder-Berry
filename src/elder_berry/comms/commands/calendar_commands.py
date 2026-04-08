@@ -44,6 +44,7 @@ TERMINE_PATTERN = re.compile(
 # Auch mit "erstelle": "erstelle termin Zahnarzt morgen 14:00"
 TERMIN_CREATE_PATTERN = re.compile(
     r"^(?:erstelle?\s+(?:(?:einen?\s+)?termin\s*[:\s]?\s*)"  # "erstelle termin ..."
+    r"|(?:neuer?)\s+termin[:\s]\s*"                            # "neuer termin: ..."
     r"|termin[:\s]\s*)"                                        # oder "termin: ..."
     r"(.+?)\s+"                                                # Titel (non-greedy)
     r"(morgen|übermorgen|uebermorgen"                           # Wort-Datum

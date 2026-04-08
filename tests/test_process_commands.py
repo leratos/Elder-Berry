@@ -41,9 +41,26 @@ class TestStartProcessPattern:
     @pytest.mark.parametrize("text", [
         "starte",           # kein Programm
         "start",            # kein Programm
-        "starte a b",       # zwei Wörter
     ])
     def test_invalid_patterns(self, text):
+        assert START_PROCESS_PATTERN.match(text) is None
+
+    def test_multi_word_program(self):
+        """Programmnamen mit Leerzeichen sollen matchen (Phase 47)."""
+        m = START_PROCESS_PATTERN.match("starte Visual Studio Code")
+        assert m is not None
+        assert m.group(1).strip() == "Visual Studio Code"
+
+    @pytest.mark.parametrize("text", [
+        "starte tv",
+        "starte fernsehen",
+        "starte musik",
+        "starte tv an",
+        "starte dich neu",
+        "starte neu",
+    ])
+    def test_excluded_patterns(self, text):
+        """Harmony-Aktivitaeten und System-Keywords duerfen nicht matchen."""
         assert START_PROCESS_PATTERN.match(text) is None
 
 

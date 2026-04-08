@@ -31,8 +31,8 @@ TODO_ADD_PATTERN = re.compile(
 )
 
 TODO_COMPLETE_PATTERN = re.compile(
-    r"todo\s+erledigt\s+#?(\d+)"
-    r"|todo\s+#?(\d+)\s+erledigt",
+    r"(?:todo|aufgabe)\s+erledigt\s+#?(\d+)"
+    r"|(?:todo|aufgabe)\s+#?(\d+)\s+erledigt",
     re.IGNORECASE,
 )
 

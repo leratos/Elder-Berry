@@ -25,15 +25,19 @@ TRAINING_PATTERN = re.compile(
     re.IGNORECASE,
 )
 
-# Regex: "wetter morgen", "wetter woche", "wetter 3" (Tage)
+# Regex: "wetter morgen", "wetter woche", "wetter 3" (Tage), "wetter übermorgen"
 WEATHER_PATTERN = re.compile(
-    r"^wetter\s+(morgen|heute|woche|(\d{1,2}))$",
+    r"^wetter\s+(morgen|heute|woche|übermorgen|uebermorgen|(\d{1,2}))$",
     re.IGNORECASE,
 )
 
-# Regex: "wetter in Leipzig", "wie ist das wetter in Berlin morgen"
+# Regex: "wetter in Leipzig", "wie ist das wetter in Berlin morgen",
+# "wetter Berlin" (Ort ohne Präposition – Negativliste für Zeitwörter)
+_WEATHER_TIME_WORDS = r"(?:morgen|heute|übermorgen|uebermorgen|woche|draußen)"
 WEATHER_LOCATION_PATTERN = re.compile(
-    r"(?:wetter|temperatur).*?\s+in\s+([A-ZÄÖÜa-zäöüß][\w\s\-]+?)(?:\s+(?:morgen|heute|woche|\d{1,2}))?$",
+    r"(?:wetter|temperatur).*?(?:\s+in\s+([A-ZÄÖÜa-zäöüß][\w\s\-]+?)"
+    r"|\s+(?!" + _WEATHER_TIME_WORDS + r"(?:\s|$))([A-ZÄÖÜ][\wäöüß\-]+(?:\s+[A-ZÄÖÜ][\wäöüß\-]+)*))"
+    r"(?:\s+(?:morgen|heute|übermorgen|uebermorgen|woche|\d{1,2}))?$",
     re.IGNORECASE,
 )
 
@@ -259,10 +263,18 @@ class WeatherCommandHandler(CommandHandler):
 
             # Auch aus Location-Texten den Zeitparameter extrahieren
             if not param:
-                for keyword in ("morgen", "heute", "woche"):
+                for keyword in ("übermorgen", "uebermorgen", "morgen", "heute", "woche"):
                     if keyword in normalized:
                         param = keyword
                         break
+
+            if param in ("übermorgen", "uebermorgen"):
+                forecasts = self._weather.get_days(3) if location is None else self._weather.get_days(3, location=location)
+                if len(forecasts) >= 3:
+                    text = self._weather.format_forecast([forecasts[2]])
+                else:
+                    text = self._weather.format_forecast(forecasts[-1:])
+                return CommandResult(command="wetter", success=True, text=text)
 
             if param == "morgen":
                 forecasts = self._weather.get_days(2) if location is None else self._weather.get_days(2, location=location)
@@ -317,7 +329,7 @@ class WeatherCommandHandler(CommandHandler):
         if not match:
             return None
 
-        city_name = match.group(1).strip()
+        city_name = (match.group(1) or match.group(2) or "").strip()
         if not city_name:
             return None
 

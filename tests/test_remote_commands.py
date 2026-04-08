@@ -189,7 +189,7 @@ class TestParseCommand:
     def test_volume_in_sentence(self):
         handler = RemoteCommandHandler()
         assert handler.parse_command("setz lautstärke 50") == "volume"
-        assert handler.parse_command("bitte volume 30 setzen") == "volume"
+        assert handler.parse_command("stell lautstärke auf 70") == "volume"
 
     # --- Tier 2: Clipboard ---
     def test_clipboard_read(self):
@@ -542,7 +542,7 @@ class TestCmdVolume:
     def test_volume_in_sentence(self):
         ctrl = _make_controller_mock()
         handler = RemoteCommandHandler(controller=ctrl)
-        result = handler.execute("volume", "setz lautstärke 50")
+        result = handler.execute("volume", "stell lautstärke auf 50")
 
         assert result.success is True
         ctrl.set_volume.assert_called_once_with(0.5)
@@ -1107,17 +1107,19 @@ class TestUnknownCommand:
 
 class TestVolumePattern:
     def test_matches(self):
-        assert VOLUME_PATTERN.search("volume 50")
-        assert VOLUME_PATTERN.search("vol 75")
-        assert VOLUME_PATTERN.search("lautstärke 100")
-        assert VOLUME_PATTERN.search("lautstarke 30")
-        assert VOLUME_PATTERN.search("Volume 0")
-        assert VOLUME_PATTERN.search("setz volume 50 bitte")
+        assert VOLUME_PATTERN.match("volume 50")
+        assert VOLUME_PATTERN.match("vol 75")
+        assert VOLUME_PATTERN.match("lautstärke 100")
+        assert VOLUME_PATTERN.match("lautstarke 30")
+        assert VOLUME_PATTERN.match("Volume 0")
+        assert VOLUME_PATTERN.match("setz volume 50")
+        assert VOLUME_PATTERN.match("stell lautstärke auf 70")
 
     def test_no_match(self):
-        assert not VOLUME_PATTERN.search("volume")
-        assert not VOLUME_PATTERN.search("volume abc")
-        assert not VOLUME_PATTERN.search("volume 1000")  # 4 digits
+        assert not VOLUME_PATTERN.match("volume")
+        assert not VOLUME_PATTERN.match("volume abc")
+        assert not VOLUME_PATTERN.match("volume 1000")  # 4 digits
+        assert not VOLUME_PATTERN.match("bitte volume 30 setzen")  # zu lose
 
 
 # ---------------------------------------------------------------------------
