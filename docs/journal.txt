@@ -3822,3 +3822,9 @@ User: "Lies meine Mails und trag den Zahnarzttermin ein"
 - Dateien erstellt: ssh-tunnel.example.ps1, Install-SshTunnelTask.example.ps1,
   ssh-tunnel.md
 - Dateien geändert: rpi5_setup.md, journal.txt
+
+## In Arbeit: Phase 47 – Befehlsmuster-Stabilisierung (2026-04-08)
+- Konzeptdatei erstellt: docs/concepts/phase-47-befehlsmuster-stabilisierung.md
+- Alle Befehlspatterns analysiert und Lücken dokumentiert
+- 7 kritische Lücken (🔴), 6 mittlere (🟡), 3 niedrige (🟢) identifiziert
+- Nächster Schritt: Pattern-Erweiterungen in den Command-Handler-Dateien
