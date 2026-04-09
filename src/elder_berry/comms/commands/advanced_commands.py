@@ -5,6 +5,7 @@ Extrahiert aus remote_commands.py (Refactoring).
 from __future__ import annotations
 
 import logging
+import os
 import re
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -193,9 +194,9 @@ class AdvancedCommandHandler(CommandHandler):
                      f"Erlaubt: PDF, TXT.",
             )
 
-        # Datei nicht lokal vorhanden → Nextcloud-Download versuchen
+        # Datei nicht lokal lesbar → Nextcloud-Download versuchen
         nc_temp_path: Path | None = None
-        if not file_path.exists() and self._nc_files:
+        if self._nc_files and not self._is_readable(file_path):
             nc_temp_path = self._download_from_nc(file_path_str)
             if nc_temp_path:
                 file_path = nc_temp_path
@@ -231,6 +232,14 @@ class AdvancedCommandHandler(CommandHandler):
         finally:
             if nc_temp_path:
                 nc_temp_path.unlink(missing_ok=True)
+
+    @staticmethod
+    def _is_readable(path: Path) -> bool:
+        """Prüft ob eine Datei existiert und lesbar ist."""
+        try:
+            return path.exists() and os.access(path, os.R_OK)
+        except (OSError, ValueError):
+            return False
 
     def _download_from_nc(self, path_str: str) -> Path | None:
         """Versucht eine Datei von Nextcloud herunterzuladen.
