@@ -244,27 +244,52 @@ class AdvancedCommandHandler(CommandHandler):
     def _download_from_nc(self, path_str: str) -> Path | None:
         """Versucht eine Datei von Nextcloud herunterzuladen.
 
-        Erkennt NC-Pfade (z.B. /Dokumente/Haus/datei.pdf oder
-        Dokumente/Haus/datei.pdf) und lädt sie in ein temp-Verzeichnis.
+        Strategie:
+        1. Exakter NC-Pfad versuchen (z.B. Dokumente/Haus/datei.pdf)
+        2. Bei Fehler: Dateiname extrahieren und per NC-Suche finden
 
         Returns:
             Lokaler Pfad zur heruntergeladenen Datei oder None bei Fehler.
         """
         import tempfile
 
-        # NC-Pfad normalisieren: führenden / entfernen
         nc_path = path_str.lstrip("/")
         if not nc_path:
             return None
 
+        tmp_dir = Path(tempfile.mkdtemp(prefix="nc_summary_"))
+
+        # 1. Exakter Pfad
         try:
-            tmp_dir = Path(tempfile.mkdtemp(prefix="nc_summary_"))
             local_path = self._nc_files.download(nc_path, tmp_dir)
-            logger.info("NC-Download für Zusammenfassung: %s → %s", nc_path, local_path)
+            logger.info("NC-Download (exakt): %s → %s", nc_path, local_path)
             return local_path
         except Exception as exc:
-            logger.debug("NC-Download fehlgeschlagen für '%s': %s", nc_path, exc)
+            logger.debug("NC exakter Pfad fehlgeschlagen '%s': %s", nc_path, exc)
+
+        # 2. Fallback: Dateiname suchen
+        filename = nc_path.rsplit("/", 1)[-1]
+        if not filename:
             return None
+
+        try:
+            results = self._nc_files.search(filename)
+            # Exakten Treffer bevorzugen
+            match = next(
+                (f for f in results if f.name == filename),
+                results[0] if results else None,
+            )
+            if match:
+                local_path = self._nc_files.download(match.path, tmp_dir)
+                logger.info(
+                    "NC-Download (Suche): '%s' → %s → %s",
+                    filename, match.path, local_path,
+                )
+                return local_path
+        except Exception as exc:
+            logger.debug("NC-Suche fehlgeschlagen für '%s': %s", filename, exc)
+
+        return None
 
     # ------------------------------------------------------------------
     # Audio

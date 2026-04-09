@@ -3932,6 +3932,9 @@ User: "Lies meine Mails und trag den Zahnarzttermin ein"
 - remote_commands.py: nextcloud_files an AdvancedCommandHandler durchgereicht
 - 436 betroffene Tests grün
 - Dateien geändert: advanced_commands.py, remote_commands.py
-- Follow-up: exists() → _is_readable() (os.access R_OK) –
-  behebt PermissionError bei /root/nextcloud/ Mount (Datei existiert,
-  aber keine Leserechte → NC-Download als Fallback)
+- Follow-up 1: exists() → _is_readable() (os.access R_OK) –
+  behebt PermissionError bei /root/nextcloud/ Mount
+- Follow-up 2: _download_from_nc() mit Dateiname-Suche als Fallback –
+  LLM generiert manchmal falsche NC-Pfade (z.B. /Haus/... statt
+  /Dokumente/Haus/...), Dateiname-Suche via NC search() findet die
+  richtige Datei trotzdem
