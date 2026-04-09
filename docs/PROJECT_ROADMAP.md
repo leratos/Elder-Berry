@@ -441,7 +441,7 @@ Hardware bereits getestet (test_stepper.py, test_hall.py).
 | LLM-Qualität | Abhängig von Anthropic/Ollama | Kein eigenes Fine-Tuning nötig – Sonnet 4.6 ist state-of-the-art |
 | Offline-Fallback | phi4:14b lokal | Schlechter als Sonnet, aber funktional für einfache Anfragen |
 | Gleichzeitige User | 1 (sequenziell) | Single-User by Design – kein Problem |
-| Sprachqualität | XTTS v2 | Gut genug für Alltagsnutzung; ElevenLabs wäre besser, kostet aber |
+| Sprachqualität | ElevenLabs (primär) + XTTS v2 (Fallback) | Seit Phase 44 Cloud-TTS primär (~€22/Monat), lokales XTTS v2 als Fallback |
 | Avatar-Display | Pepper's Ghost (5") | Klein, aber charmant – passt zum Holunder-Konzept |
 | Kamera-Reasoning | Cloud-LLM nötig | Vision-Modelle lokal noch nicht ausgereift; OpenRouter ist sinnvoll |
 
@@ -701,39 +701,40 @@ Setzt Phase 37.2 (Szenen-Engine) voraus und physischen Zugang zum Hub.
 - **Abhängigkeit**: 37.2 ✅
 
 
-## Phase 42 – Dokument-Ablage (Cloud Aufräumen) 📂 GEPLANT
+## Phase 42 – Dokument-Ablage (Cloud Aufräumen) 📂 ✅ ABGESCHLOSSEN
 
 Saleria analysiert Dokumente im `/Eingang/`-Ordner auf Nextcloud, schlägt
 nach der Dateinamenskonvention (`YYYY-MM-DD_Kategorie_Beschreibung.ext`)
 einen Namen und Zielordner vor, und verschiebt nach Bestätigung.
 
-- **Analyse**: Lokal via Ollama phi4:14b (Text) + llava:7b (Bilder) — keine externen APIs
-- **Textextraktion**: pymupdf (lokal) → Stirling-PDF OCR (Fallback) → Ollama Vision (Bilder)
-- **Flow**: Einzelbestätigung pro Datei via Matrix (ja / korrigieren / überspringen)
-- **Neue Klassen**: DocumentClassifier, FilingCommandHandler
-- **Erweiterungen**: NextcloudFilesClient.move(), OllamaClient.generate_with_image()
-- **Tests**: ~48 geplant
+- ✅ **DocumentClassifier**: Textextraktion (pymupdf → Stirling-PDF OCR → Vision) + Ollama-Analyse
+- ✅ **FilingCommandHandler**: "cloud aufräumen" mit Einzelbestätigung (ja / korrigieren / überspringen)
+- ✅ **NextcloudFilesClient.move()**: WebDAV MOVE (Overwrite:F, Zielordner auto-erstellt)
+- ✅ **OllamaClient.generate_with_image()**: Ollama Vision (llava:7b) für Bilder
+- ✅ **Mail-Anhang-Ablage**: "anhang ablegen #<ID>" – PDF-Anhänge aus Mails direkt klassifizieren und ablegen
+  - Nur PDF erlaubt (exe, docx, xlsx abgelehnt – Sicherheit), Bitdefender-Validierung
+- ✅ **Tests**: 68 neue Tests (23 Classifier + 21 Filing + 8 Move + 5 Vision + 11 Mail-Anhang)
 - **Konzept**: `docs/concepts/phase-42-dokument-ablage.md`
-- **Abhängigkeit**: Phase 36 ✅, Stirling-PDF ✅, Ollama ✅
 
 
-## Phase 43 – Routenplanung (Google Maps Directions) 🗺️ GEPLANT
+## Phase 43 – Routenplanung (Google Maps Directions) 🗺️ ✅ ABGESCHLOSSEN
 
 "Plane meine Fahrt zu Lisa, muss morgen um 16 Uhr da sein" → Adresse aus
 Kontakten, Fahrtdauer via Google Maps API, Abfahrtszeit, klickbarer Link.
 
-- **RoutePlanner**: Google Maps Directions API, Fahrtdauer, Rückwärtsrechnung, Link-Generierung
-- **RouteCommandHandler**: Intent-Parsing ("plane fahrt zu ...", "von X zu Y"), Kontakt-Lookup
-- **Home-Adresse**: Kontakt mit Gruppe "home" (Option A – flexibel, kein Sonderfall)
-- **ContactStore**: `find_by_group()` Methode ergänzen
-- **Verkehrsprognose**: `departure_time` + `traffic_model=best_guess` wenn Abfahrt in der Zukunft
-- **Google Maps Link**: Deep-Link öffnet App auf Android (kompatibel mit Android Auto)
-- **Tests**: ~35 geplant
+- ✅ **RoutePlanner**: Google Maps Directions API, Fahrtdauer, Rückwärtsrechnung, Deep-Link (`tools/route_planner.py`)
+  - RouteResult Dataclass, RouteError Exception, synchron (httpx.Client)
+- ✅ **RouteCommandHandler**: Intent-Parsing ("plane fahrt zu Lisa", "fahrt von Mama zu Lisa", "wie komme ich zu")
+  - parse_arrival_time(): "morgen um 16 uhr", "übermorgen", Wochentage
+  - Kontakt-Lookup via ContactStore.search(), Home via find_by_group("home")
+  - Abfahrtszeit-Berechnung mit konfigurierbarem Puffer (default 15 Min)
+- ✅ **ContactStore**: `find_by_group()` als Alias für `find_by_category()`
+- ✅ **Google Maps Link**: Deep-Link öffnet App auf Android (kompatibel mit Android Auto)
+- ✅ **Tests**: 62 neue Tests (19 RoutePlanner + 43 RouteCommandHandler)
 - **Konzept**: `docs/concepts/phase-43-routenplanung.md`
-- **Abhängigkeit**: Phase 38 ✅ (Kontakte mit Adressen), Google Cloud ✅
 
 
-## Phase 44 – Server-Migration & Audio-Router 🚀 GEPLANT
+## Phase 44 – Server-Migration & Audio-Router 🚀 ✅ ABGESCHLOSSEN
 
 Saleria zieht vom Tower auf den Rootserver. Bot läuft 24/7 unabhängig
 vom Tower. ElevenLabs TTS primär, XTTS v2 Fallback. Cloud-STT primär,
@@ -743,37 +744,49 @@ lokales Whisper Fallback. Tower wird optionaler Agent für PC-Steuerung.
 
 | Phase | Titel | Status |
 |-------|-------|--------|
-| 44.1 | ElevenLabsClient + TTSRouter | offen |
-| 44.2 | CloudSTTClient + STTRouter | offen |
-| 44.3 | DocumentClassifier Umbau (Ollama → Anthropic Vision) | offen |
-| 44.4 | TowerAgent + TowerServer | offen |
-| 44.5 | Server-Deploy + Daten-Migration | offen |
-| 44.6 | Integration + Cutover | offen |
+| 44.1 | ElevenLabsClient + TTSRouter | ✅ abgeschlossen |
+| 44.2 | CloudSTTClient + STTRouter | ✅ abgeschlossen |
+| 44.3 | DocumentClassifier Umbau (Ollama → Anthropic Vision) | ✅ abgeschlossen |
+| 44.4 | TowerServer (FastAPI für Tower-PC) | ✅ abgeschlossen |
+| 44.5 | Server-Deploy Vorbereitung | ✅ abgeschlossen |
+| 44.6 | Integration + Cutover | ✅ abgeschlossen |
 
-- **Neue Klassen**: ElevenLabsClient, CloudSTTClient, TTSRouter, STTRouter, TowerAgent, TowerServer
-- **Geänderte Klassen**: DocumentClassifier, AudioPipeline, MessageHandlers, Assistant, start_saleria
+- ✅ **ElevenLabsClient**: REST API, MP3-Rückgabe, SecretStore Keys (elevenlabs_api_key, elevenlabs_voice_id)
+- ✅ **TTSRouter**: ElevenLabs primär, Tower XTTS v2 Fallback (implementiert TTSEngine ABC)
+- ✅ **CloudSTTClient**: Groq Whisper API (whisper-large-v3, Sprach-Hint)
+- ✅ **STTRouter**: Groq primär, Tower FasterWhisper Fallback (implementiert STTEngine ABC)
+- ✅ **TowerAgent**: Proxy für Tower-Dienste (TTS/STT/Actions/Screenshot via HTTP), Heartbeat
+- ✅ **TowerServer**: FastAPI-Service, 5 Endpoints (/status, /tts, /stt, /action, /screenshot), Action-Dispatcher für 12 Aktionen
+- ✅ **DocumentClassifier Umbau**: OllamaClient → AnthropicClient (kein separates Ollama mehr nötig)
+- ✅ **Server-Deploy**: [server] Dependency-Gruppe, systemd Units (elder-berry.service + elder-berry-tower.service), ELDER_BERRY_HOME env-var, Security-Hardening
+- ✅ **Integration**: Plattform-aware pip install, systemd-aware Restart, Screenshot-Fallback via TowerAgent
+- ✅ **Tests**: 136+ neue Tests (43 TTS + 36 STT + 25 Classifier + 32 TowerServer + 25 Deploy + 12 Integration)
 - **Kosten**: ~€20-25/Monat Mehrkosten (ElevenLabs Creator $22)
-- **Tests**: ~80 geplant
 - **Konzept**: `docs/concepts/phase-44-server-migration.md`
-- **Abhängigkeit**: Alle bisherigen Phasen ✅, Hetzner Backup ✅
 
 
-## Phase 45 – Settings Dashboard Erweiterung ⚙️ GEPLANT
+## Phase 45 – Settings Dashboard Erweiterung ⚙️ ✅ ABGESCHLOSSEN
 
-Bestehendes Dashboard (localhost:8090) um drei Sektionen erweitern:
-API-Verwaltung, LLM-Umschalter, Grundeinstellungen.
+Bestehendes Dashboard (localhost:8090) um API-Verwaltung, LLM-Umschalter,
+Grundeinstellungen und Sicherheitshärtung erweitert.
 
-- **API-Status**: Alle 30 SecretStore-Keys gruppiert anzeigen (✅/❌), Keys setzen/löschen
-- **LLM-Umschalter**: Toggle "API bevorzugt" / "Nur lokal (Ollama)", Live-Status beider Backends
-- **Grundeinstellungen**: Wetter-Standort, Briefing-Uhrzeit, Routen-Puffer, Host-IPs
-- **Rename**: AudioDashboard → SettingsDashboard (Klasse + Dateien)
-- **LLMRouter**: `mode` Property + Setter (api_preferred / local_only)
+- ✅ **Rename**: AudioDashboard → SettingsDashboard (Klasse + Datei + alle Imports)
+- ✅ **SECRET_REGISTRY**: 30 Keys in 8 Kategorien, SecretRegistryEntry TypedDict
+  - Zentrale `_validate_secret()` mit Typ-Checks (int min/max, float, URL-Prefix)
+  - asyncio.Lock für serialisierte Schreibzugriffe
+- ✅ **Secrets-API**: GET /api/secrets/status, POST /api/secrets/set, POST /api/secrets/delete
+  - Audit-Logging (Key + Client-IP, ohne Secret-Werte)
+- ✅ **LLM-Endpoints**: GET /api/llm/status, POST /api/llm/mode
+  - LLMRouter: mode Property/Setter, primary/fallback Info, Persistenz im SecretStore
+- ✅ **Sicherheitshärtung**: CORS-Fix (allow_origins aus SecretStore), SecurityHeadersMiddleware
+  (X-Content-Type-Options, X-Frame-Options, CSP), globaler Exception-Handler
+- ✅ **Change-Callbacks**: on_change(key, callback) mit Fehler-Isolation
+- ✅ **Metadaten**: updated_at Timestamp pro Key, Settings-Export-Endpoint
+- ✅ **Frontend-UX**: Secrets-Tabelle mit Status pro Key, Suchfeld, Accordion-Kategorien,
+  2-Stufen-Löschen, Direktlinks zu Anbieter-Dashboards, Inline-Editing, Restart-Badges
+- ✅ **Tests**: 142 Tests (37 Dashboard + 26 Secrets + 22 LLM + 13 Security + 13 Stability + 31 Avatar-Editor)
 - **Tier 2 (nicht in Phase 45)**: Memory-Browser, Service-Health, Log-Viewer
-- **Sicherheit**: IP-Whitelist (NordVPN dedicated IP) + Basic Auth auf Nginx-Ebene
-- **Deployment**: Pfad unter fern.last-strawberry.com/settings/ + Fail2Ban-Jail
-- **Tests**: ~30 geplant (20 API + 10 LLMRouter)
 - **Konzept**: `docs/concepts/phase-45-settings-dashboard.md`
-- **Abhängigkeit**: Keine – alle nötigen Komponenten existieren
 
 
 ## Phase 46 – Setup-Wizard (Installationsassistent) 🧙 GEPLANT
