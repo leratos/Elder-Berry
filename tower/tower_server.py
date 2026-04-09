@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import io
 import logging
+import os
 import socket
 import tempfile
 from contextlib import asynccontextmanager
@@ -475,6 +476,95 @@ async def screenshot():
         raise HTTPException(
             status_code=500, detail=f"Screenshot-Fehler: {e}",
         ) from e
+
+
+# ---------------------------------------------------------------------------
+# System-Update
+# ---------------------------------------------------------------------------
+
+_PROJECT_ROOT = Path(__file__).resolve().parent.parent
+
+
+@app.post("/system/update")
+async def system_update():
+    """Git pull + pip install.  Beendet den Prozess danach mit exit(1),
+    damit der Task-Scheduler ihn mit neuem Code neu startet."""
+    import subprocess
+    import sys
+    import threading
+
+    cwd = str(_PROJECT_ROOT)
+    steps: list[str] = []
+
+    # 1. git fetch
+    try:
+        r = subprocess.run(
+            ["git", "fetch", "origin"],
+            capture_output=True, text=True,
+            timeout=30, cwd=cwd,
+        )
+        if r.returncode != 0:
+            return {"success": False, "message": f"Git Fetch fehlgeschlagen: {r.stderr}"}
+    except Exception as e:
+        return {"success": False, "message": f"Git Fetch Fehler: {e}"}
+
+    # 2. Commits behind?
+    try:
+        r = subprocess.run(
+            ["git", "rev-list", "--count", "HEAD..@{u}"],
+            capture_output=True, text=True,
+            timeout=10, cwd=cwd,
+        )
+        behind = int(r.stdout.strip()) if r.returncode == 0 else 0
+    except Exception:
+        behind = 0
+
+    if behind == 0:
+        return {"success": True, "message": "Alles aktuell -- kein Update noetig."}
+
+    steps.append(f"{behind} neue(r) Commit(s)")
+
+    # 3. git pull --ff-only
+    try:
+        r = subprocess.run(
+            ["git", "pull", "--ff-only"],
+            capture_output=True, text=True,
+            timeout=60, cwd=cwd,
+        )
+        if r.returncode != 0:
+            return {"success": False, "message": f"Git Pull fehlgeschlagen: {r.stderr}"}
+        steps.append("Code aktualisiert")
+    except Exception as e:
+        return {"success": False, "message": f"Git Pull Fehler: {e}"}
+
+    # 4. pip install (Windows Tower extras)
+    try:
+        r = subprocess.run(
+            [sys.executable, "-m", "pip", "install", "-e",
+             ".[windows,tts-neural,avatar,matrix,remote,memory,stt]",
+             "--quiet"],
+            capture_output=True, text=True,
+            timeout=300, cwd=cwd,
+        )
+        if r.returncode == 0:
+            steps.append("Dependencies installiert")
+        else:
+            steps.append(f"pip Warnung: {r.stderr[:200]}")
+    except Exception as e:
+        steps.append(f"pip Fehler: {e}")
+
+    # 5. Verzögerter Exit – Response geht noch raus, dann beendet sich
+    #    der Prozess. Task-Scheduler startet ihn automatisch neu.
+    def _delayed_exit():
+        import time
+        time.sleep(2)
+        logger.info("Tower-Update abgeschlossen – beende Prozess fuer Neustart")
+        os._exit(1)
+
+    threading.Thread(target=_delayed_exit, daemon=True).start()
+    steps.append("Neustart in 2 Sekunden...")
+
+    return {"success": True, "message": " | ".join(steps)}
 
 
 # ---------------------------------------------------------------------------

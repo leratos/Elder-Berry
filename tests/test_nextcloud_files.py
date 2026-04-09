@@ -323,6 +323,57 @@ def test_search_no_results(mock_req, client):
     assert results == []
 
 
+_PROPFIND_SEPARATOR = """\
+<?xml version="1.0"?>
+<d:multistatus xmlns:d="DAV:">
+  <d:response>
+    <d:href>/remote.php/dav/files/saleria/</d:href>
+    <d:propstat>
+      <d:prop>
+        <d:displayname>saleria</d:displayname>
+        <d:resourcetype><d:collection/></d:resourcetype>
+        <d:getcontentlength/>
+        <d:getlastmodified>Sat, 29 Mar 2026 10:00:00 GMT</d:getlastmodified>
+      </d:prop>
+    </d:propstat>
+  </d:response>
+  <d:response>
+    <d:href>/remote.php/dav/files/saleria/2026-04-08_Haus_PV-Angebot.pdf</d:href>
+    <d:propstat>
+      <d:prop>
+        <d:displayname>2026-04-08_Haus_PV-Angebot.pdf</d:displayname>
+        <d:resourcetype/>
+        <d:getcontentlength>102400</d:getcontentlength>
+        <d:getlastmodified>Tue, 08 Apr 2026 14:00:00 GMT</d:getlastmodified>
+      </d:prop>
+    </d:propstat>
+  </d:response>
+</d:multistatus>"""
+
+
+@patch("elder_berry.tools.nextcloud_files.httpx.request")
+def test_search_separator_normalization(mock_req, client):
+    """'pv angebot' (space) should match 'PV-Angebot' (hyphen)."""
+    mock_req.return_value = MagicMock(
+        status_code=207, text=_PROPFIND_SEPARATOR
+    )
+
+    results = client.search("pv angebot")
+    assert len(results) == 1
+    assert "PV-Angebot" in results[0].name
+
+
+@patch("elder_berry.tools.nextcloud_files.httpx.request")
+def test_search_separator_underscore(mock_req, client):
+    """'haus pv' should match 'Haus_PV-Angebot' (underscore + hyphen)."""
+    mock_req.return_value = MagicMock(
+        status_code=207, text=_PROPFIND_SEPARATOR
+    )
+
+    results = client.search("haus pv")
+    assert len(results) == 1
+
+
 # ── Share Link (intern, kein öffentlicher Link) ───────────────────────
 
 

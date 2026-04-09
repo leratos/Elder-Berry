@@ -9,6 +9,7 @@ Credentials are read from SecretStore:
 from __future__ import annotations
 
 import logging
+import re
 import xml.etree.ElementTree as ET
 from dataclasses import dataclass
 from pathlib import Path
@@ -531,8 +532,14 @@ class NextcloudFilesClient:
         if all_entries:
             all_entries = all_entries[1:]
 
-        query_lower = query.lower()
-        return [e for e in all_entries if query_lower in e.name.lower()]
+        # Normalize separators so "pv angebot" matches "PV-Angebot.pdf"
+        _SEP = re.compile(r"[\s\-_\.]+")
+        tokens = _SEP.split(query.lower().strip())
+        tokens = [t for t in tokens if t]
+        return [
+            e for e in all_entries
+            if all(t in _SEP.sub(" ", e.name.lower()) for t in tokens)
+        ]
 
     def share_link(self, remote_path: str) -> str:
         """Erstellt einen internen NC-Link (erfordert Login, kein öffentlicher Zugang).

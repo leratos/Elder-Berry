@@ -22,6 +22,7 @@ from elder_berry.comms.commands.cmd_utils import CmdResult, run_cmd
 
 if TYPE_CHECKING:
     from elder_berry.core.secret_store import SecretStore
+    from elder_berry.core.tower_agent import TowerAgent
     from elder_berry.robot.client import RobotClient
 
 logger = logging.getLogger(__name__)
@@ -42,6 +43,11 @@ ROLLBACK_PATTERN = re.compile(
 
 UPDATE_RPI_PATTERN = re.compile(
     r"^(?:update\s+rpi|rpi\s+update|aktualisier(?:e)?\s+rpi)$",
+    re.IGNORECASE,
+)
+
+UPDATE_TOWER_PATTERN = re.compile(
+    r"^(?:update\s+tower|tower\s+update|aktualisier(?:e)?\s+tower)$",
     re.IGNORECASE,
 )
 
@@ -83,19 +89,22 @@ class UpdateCommandHandler(CommandHandler):
         self,
         project_root: Path | None = None,
         robot_client: RobotClient | None = None,
+        tower_agent: TowerAgent | None = None,
     ) -> None:
         self._project_root = project_root
         self._robot = robot_client
+        self._tower = tower_agent
 
     @property
     def simple_commands(self) -> set[str]:
-        return {"update", "rollback", "update rpi", "update alles"}
+        return {"update", "rollback", "update rpi", "update tower", "update alles"}
 
     @property
     def patterns(self) -> list[tuple[re.Pattern, str, bool, bool]]:
         return [
             (UPDATE_PATTERN, "update", False, False),
             (UPDATE_RPI_PATTERN, "update_rpi", False, False),
+            (UPDATE_TOWER_PATTERN, "update_tower", False, False),
             (UPDATE_ALL_PATTERN, "update_all", False, False),
             (ROLLBACK_PATTERN, "rollback", False, False),
         ]
@@ -103,9 +112,10 @@ class UpdateCommandHandler(CommandHandler):
     @property
     def command_descriptions(self) -> list[str]:
         return [
-            "update: Git Pull + Dependencies + Neustart (Tower)",
+            "update: Git Pull + Dependencies + Neustart (Server)",
+            "update tower: Tower-PC aktualisieren (git pull + pip + restart)",
             "update rpi: RPi5 aktualisieren (git pull + pip + restart)",
-            "update alles: Tower + RPi5 nacheinander aktualisieren",
+            "update alles: Server + Tower + RPi5 nacheinander aktualisieren",
             "rollback: Auf Stand vor letztem Update zurücksetzen",
         ]
 
@@ -120,6 +130,10 @@ class UpdateCommandHandler(CommandHandler):
             "update_rpi": [
                 "update rpi", "rpi aktualisieren", "rpi updaten",
                 "raspberry update", "aktualisiere den rpi",
+            ],
+            "update_tower": [
+                "update tower", "tower aktualisieren", "tower updaten",
+                "aktualisiere den tower", "pc updaten",
             ],
             "update_all": [
                 "update alles", "alles updaten", "alles aktualisieren",
@@ -136,6 +150,8 @@ class UpdateCommandHandler(CommandHandler):
             return self._cmd_update()
         if command in ("update_rpi", "update rpi"):
             return self._cmd_update_rpi()
+        if command in ("update_tower", "update tower"):
+            return self._cmd_update_tower()
         if command in ("update_all", "update alles"):
             return self._cmd_update_all()
         if command == "rollback":
@@ -322,26 +338,67 @@ class UpdateCommandHandler(CommandHandler):
                 text=f"RPi5 Update fehlgeschlagen: {e}",
             )
 
+    # ------------------------------------------------------------------
+    # Update Tower (remote via TowerAgent HTTP)
+    # ------------------------------------------------------------------
+
+    def _cmd_update_tower(self) -> CommandResult:
+        """Tower-PC aktualisieren: git pull + pip install + Neustart."""
+        if not self._tower:
+            return CommandResult(
+                command="update_tower",
+                success=False,
+                text="Tower-Agent nicht verfügbar (Tower nicht verbunden).",
+            )
+        try:
+            import httpx
+            r = httpx.post(
+                f"http://{self._tower.host}/system/update",
+                timeout=120.0,
+            )
+            r.raise_for_status()
+            data = r.json()
+            success = data.get("success", False)
+            message = data.get("message", "Keine Rückmeldung")
+            return CommandResult(
+                command="update_tower",
+                success=success,
+                text=f"🖥️ Tower Update: {message}",
+            )
+        except Exception as e:
+            logger.error("Tower Update fehlgeschlagen: %s", e)
+            return CommandResult(
+                command="update_tower",
+                success=False,
+                text=f"Tower Update fehlgeschlagen: {e}",
+            )
+
     def _cmd_update_all(self) -> CommandResult:
-        """Tower + RPi5 nacheinander aktualisieren."""
+        """Server + Tower + RPi5 nacheinander aktualisieren."""
         steps: list[str] = []
 
         if self._robot:
             rpi_result = self._cmd_update_rpi()
             steps.append(f"RPi5: {rpi_result.text}")
         else:
-            steps.append("RPi5: nicht verbunden, uebersprungen")
+            steps.append("RPi5: nicht verbunden, übersprungen")
 
-        tower_result = self._cmd_update()
-        steps.append(f"Tower: {tower_result.text}")
+        if self._tower:
+            tower_result = self._cmd_update_tower()
+            steps.append(f"Tower: {tower_result.text}")
+        else:
+            steps.append("Tower: nicht verbunden, übersprungen")
+
+        server_result = self._cmd_update()
+        steps.append(f"Server: {server_result.text}")
 
         return CommandResult(
             command="update_all",
-            success=tower_result.success,
+            success=server_result.success,
             text="\n\n".join(steps),
-            restart=tower_result.restart,
-            pending_confirmation=tower_result.pending_confirmation,
-            pending_data=tower_result.pending_data,
+            restart=server_result.restart,
+            pending_confirmation=server_result.pending_confirmation,
+            pending_data=server_result.pending_data,
         )
 
     # ------------------------------------------------------------------

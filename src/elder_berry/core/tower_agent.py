@@ -189,6 +189,24 @@ class TowerAgent:
         except httpx.HTTPError as e:
             raise TowerAgentError("Tower Monitor-Setzen fehlgeschlagen: %s" % e) from e
 
+    async def update_tower(self) -> dict:
+        """Tower aktualisieren: git pull + pip install + Neustart.
+
+        Returns:
+            Ergebnis-Dict mit ``success`` und ``message``.
+
+        Raises:
+            TowerAgentError: Bei Verbindungs- oder Verarbeitungsfehlern.
+        """
+        try:
+            timeout = httpx.Timeout(connect=5.0, read=120.0, write=10.0, pool=5.0)
+            async with httpx.AsyncClient(timeout=timeout) as client:
+                r = await client.post(f"http://{self._host}/system/update")
+                r.raise_for_status()
+                return r.json()
+        except httpx.HTTPError as e:
+            raise TowerAgentError("Tower Update fehlgeschlagen: %s" % e) from e
+
     async def screenshot(self) -> bytes:
         """Screenshot vom Tower-Desktop.
 

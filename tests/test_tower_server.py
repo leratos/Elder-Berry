@@ -425,3 +425,54 @@ class TestDispatchAction:
         result = _dispatch_action(ctrl, "get_volume", {})
         assert result["success"] is True
         assert result["result"] == 0.42
+
+
+# ===========================================================================
+# /system/update
+# ===========================================================================
+
+
+class TestSystemUpdate:
+    @patch("subprocess.run")
+    def test_update_already_current(self, mock_run, client):
+        """Kein Update nötig → Erfolg ohne git pull."""
+        mock_run.side_effect = [
+            MagicMock(returncode=0, stdout="", stderr=""),  # fetch
+            MagicMock(returncode=0, stdout="0\n", stderr=""),  # behind
+        ]
+        r = client.post("/system/update")
+        assert r.status_code == 200
+        data = r.json()
+        assert data["success"] is True
+        assert "aktuell" in data["message"].lower()
+
+    @patch("subprocess.run")
+    def test_update_fetch_fails(self, mock_run, client):
+        mock_run.return_value = MagicMock(
+            returncode=1, stdout="", stderr="network error",
+        )
+        r = client.post("/system/update")
+        assert r.status_code == 200
+        data = r.json()
+        assert data["success"] is False
+        assert "Fetch" in data["message"]
+
+    @patch("threading.Thread")
+    @patch("subprocess.run")
+    def test_update_success(self, mock_run, mock_thread, client):
+        """Volles Update: fetch + pull + pip + delayed exit."""
+        mock_run.side_effect = [
+            MagicMock(returncode=0, stdout="", stderr=""),       # fetch
+            MagicMock(returncode=0, stdout="3\n", stderr=""),    # behind
+            MagicMock(returncode=0, stdout="ok\n", stderr=""),   # pull
+            MagicMock(returncode=0, stdout="", stderr=""),       # pip
+        ]
+        r = client.post("/system/update")
+        assert r.status_code == 200
+        data = r.json()
+        assert data["success"] is True
+        assert "3 neue(r) Commit(s)" in data["message"]
+        assert "Code aktualisiert" in data["message"]
+        # Delayed exit thread was started
+        mock_thread.assert_called_once()
+        mock_thread.return_value.start.assert_called_once()

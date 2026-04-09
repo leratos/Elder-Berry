@@ -10,6 +10,7 @@ from elder_berry.comms.commands.update_commands import (
     UPDATE_ALL_PATTERN,
     UPDATE_PATTERN,
     UPDATE_RPI_PATTERN,
+    UPDATE_TOWER_PATTERN,
     UpdateCommandHandler,
     _is_valid_git_hash,
     _pip_install_groups,
@@ -50,6 +51,33 @@ def handler_with_robot(tmp_path, monkeypatch):
     return UpdateCommandHandler(project_root=tmp_path, robot_client=robot)
 
 
+@pytest.fixture
+def handler_with_tower(tmp_path, monkeypatch):
+    monkeypatch.setattr(
+        "elder_berry.comms.commands.update_commands.DEFAULT_BACKUP_DIR",
+        tmp_path / ".elder-berry",
+    )
+    tower = MagicMock()
+    tower.host = "127.0.0.1:12769"
+    return UpdateCommandHandler(project_root=tmp_path, tower_agent=tower)
+
+
+@pytest.fixture
+def handler_full(tmp_path, monkeypatch):
+    """Handler mit Robot + Tower."""
+    monkeypatch.setattr(
+        "elder_berry.comms.commands.update_commands.DEFAULT_BACKUP_DIR",
+        tmp_path / ".elder-berry",
+    )
+    robot = MagicMock()
+    robot.update_rpi.return_value = MagicMock(success=True, message="OK")
+    tower = MagicMock()
+    tower.host = "127.0.0.1:12769"
+    return UpdateCommandHandler(
+        project_root=tmp_path, robot_client=robot, tower_agent=tower,
+    )
+
+
 # ---------------------------------------------------------------------------
 # Pattern Tests
 # ---------------------------------------------------------------------------
@@ -80,6 +108,18 @@ class TestUpdateRpiPattern:
     ])
     def test_valid(self, text):
         assert UPDATE_RPI_PATTERN.match(text) is not None
+
+
+class TestUpdateTowerPattern:
+    @pytest.mark.parametrize("text", [
+        "update tower", "tower update", "aktualisiere tower",
+    ])
+    def test_valid(self, text):
+        assert UPDATE_TOWER_PATTERN.match(text) is not None
+
+    def test_invalid(self):
+        assert UPDATE_TOWER_PATTERN.match("update rpi") is None
+        assert UPDATE_TOWER_PATTERN.match("update alles") is None
 
 
 class TestUpdateAllPattern:
@@ -119,16 +159,19 @@ class TestUpdateInterface:
     def test_simple_commands(self, handler):
         cmds = handler.simple_commands
         assert "update" in cmds
+        assert "update tower" in cmds
         assert "rollback" in cmds
 
     def test_patterns(self, handler):
         names = [p[1] for p in handler.patterns]
         assert "update" in names
+        assert "update_tower" in names
         assert "rollback" in names
 
     def test_keywords(self, handler):
         kw = handler.keywords
         assert "update" in kw
+        assert "update_tower" in kw
         assert "rollback" in kw
 
 
@@ -199,6 +242,52 @@ class TestUpdateRpi:
 
 
 # ---------------------------------------------------------------------------
+# Update Tower (remote)
+# ---------------------------------------------------------------------------
+
+class TestUpdateTower:
+    def test_no_tower_agent(self, handler):
+        result = handler.execute("update_tower", "update tower")
+        assert result.success is False
+        assert "Tower-Agent" in result.text
+
+    @patch("httpx.post")
+    def test_tower_success(self, mock_post, handler_with_tower):
+        mock_resp = MagicMock()
+        mock_resp.json.return_value = {
+            "success": True,
+            "message": "2 neue(r) Commit(s) | Code aktualisiert",
+        }
+        mock_post.return_value = mock_resp
+        result = handler_with_tower.execute("update_tower", "update tower")
+        assert result.success is True
+        assert "Tower Update" in result.text
+        mock_post.assert_called_once_with(
+            "http://127.0.0.1:12769/system/update",
+            timeout=120.0,
+        )
+
+    @patch("httpx.post")
+    def test_tower_up_to_date(self, mock_post, handler_with_tower):
+        mock_resp = MagicMock()
+        mock_resp.json.return_value = {
+            "success": True,
+            "message": "Alles aktuell -- kein Update noetig.",
+        }
+        mock_post.return_value = mock_resp
+        result = handler_with_tower.execute("update_tower", "update tower")
+        assert result.success is True
+        assert "aktuell" in result.text
+
+    @patch("httpx.post")
+    def test_tower_connection_error(self, mock_post, handler_with_tower):
+        mock_post.side_effect = ConnectionError("offline")
+        result = handler_with_tower.execute("update_tower", "update tower")
+        assert result.success is False
+        assert "fehlgeschlagen" in result.text.lower()
+
+
+# ---------------------------------------------------------------------------
 # Rollback
 # ---------------------------------------------------------------------------
 
@@ -266,6 +355,36 @@ class TestUpdateAllExecution:
         assert result.pending_confirmation is True
         assert result.pending_data == {"action": "restart"}
         assert "aktuell" in result.text.lower()
+
+    @patch("httpx.post")
+    @patch("elder_berry.comms.commands.update_commands.run_cmd")
+    def test_update_all_includes_tower(self, mock_run_cmd, mock_post, handler_full):
+        from elder_berry.comms.commands.cmd_utils import CmdResult
+        # Tower HTTP response
+        mock_resp = MagicMock()
+        mock_resp.json.return_value = {"success": True, "message": "Tower OK"}
+        mock_post.return_value = mock_resp
+        # Server self-update: already up to date
+        mock_run_cmd.side_effect = [
+            CmdResult(success=True, output=""),    # fetch
+            CmdResult(success=True, output="0"),   # behind
+        ]
+        result = handler_full.execute("update_all", "update alles")
+        assert "RPi5" in result.text
+        assert "Tower" in result.text
+        assert "Server" in result.text
+
+    @patch("elder_berry.comms.commands.update_commands.run_cmd")
+    def test_update_all_skips_disconnected(self, mock_run_cmd, handler):
+        """No robot + no tower → both skipped, server still runs."""
+        from elder_berry.comms.commands.cmd_utils import CmdResult
+        mock_run_cmd.side_effect = [
+            CmdResult(success=True, output=""),
+            CmdResult(success=True, output="0"),
+        ]
+        result = handler.execute("update_all", "update alles")
+        assert "übersprungen" in result.text
+        assert result.text.count("übersprungen") == 2
 
 
 # ---------------------------------------------------------------------------

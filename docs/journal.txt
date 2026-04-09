@@ -3938,3 +3938,32 @@ User: "Lies meine Mails und trag den Zahnarzttermin ein"
   LLM generiert manchmal falsche NC-Pfade (z.B. /Haus/... statt
   /Dokumente/Haus/...), Dateiname-Suche via NC search() findet die
   richtige Datei trotzdem
+
+## Abgeschlossen: Cloud-Suche Optimierung (2026-04-09)
+- Problem: "cloud suche pv angebot" (Leerzeichen) fand nicht "PV-Angebot" (Bindestrich)
+- Fix: search() normalisiert Trennzeichen (Leerzeichen, Bindestrich, Unterstrich, Punkt)
+  als gleichwertig – Query wird in Tokens aufgesplittet, alle müssen im normalisierten
+  Dateinamen vorkommen
+- "pv angebot" matcht jetzt "PV-Angebot.pdf", "Haus_PV-Angebot", etc.
+- 2 neue Tests: test_search_separator_normalization, test_search_separator_underscore
+- Alle 5 Such-Tests grün
+- Dateien geändert: nextcloud_files.py, test_nextcloud_files.py
+
+## Abgeschlossen: Update Tower – Remote-Update via TowerServer (2026-04-09)
+- Neuer Command "update tower" – Tower-PC remote aktualisieren (git pull + pip + Neustart)
+- tower_server.py: POST /system/update Endpoint
+  → git fetch → git pull --ff-only → pip install → verzögerter exit(1)
+  → Task-Scheduler startet Prozess automatisch neu (Einstellung: "Falls Aufgabe scheitert, neu starten")
+- tower_agent.py: update_tower() Methode (sync httpx, 120s Timeout)
+- update_commands.py:
+  → UPDATE_TOWER_PATTERN: "update tower", "tower update", "aktualisiere tower"
+  → _cmd_update_tower(): sync httpx.post gegen tower_agent.host
+  → _cmd_update_all() erweitert: RPi5 + Tower + Server (statt nur RPi + Server)
+  → Keywords: "tower updaten", "pc updaten", "aktualisiere den tower"
+- remote_commands.py: tower_agent an UpdateCommandHandler durchgereicht
+- HELP_TEXT aktualisiert
+- 81 Tests grün (46 update_commands + 35 tower_server)
+  → 10 neue Tests: Pattern, success, up-to-date, connection-error, update-all-includes-tower, skips-disconnected
+- Dateien geändert: tower_server.py, tower_agent.py, update_commands.py, remote_commands.py
+- Dateien geändert (Tests): test_update_commands.py, test_tower_server.py
+- HINWEIS: Task-Scheduler manuell konfigurieren: "Falls Aufgabe scheitert, neu starten alle 1 Minute, max 3 Versuche"

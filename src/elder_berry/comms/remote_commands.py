@@ -302,9 +302,10 @@ Sprachnachrichten:
   Optional: "morgen um 16 uhr", "übermorgen 10 uhr" → Abfahrtszeit
 
 🔄 Self-Update:
-  update / update dich – Git Pull + Dependencies + Neustart (Tower)
+  update / update dich – Git Pull + Dependencies + Neustart (Server)
+  update tower – Tower-PC aktualisieren (git pull + pip + restart)
   update rpi – RPi5 aktualisieren (git pull + pip + systemctl restart)
-  update alles – Tower + RPi5 nacheinander aktualisieren
+  update alles – Server + Tower + RPi5 nacheinander aktualisieren
   rollback / update zurücksetzen – Auf Stand vor letztem Update zurücksetzen
 
 🩺 Systemcheck:
@@ -394,6 +395,7 @@ class RemoteCommandHandler:
         self._update = UpdateCommandHandler(
             project_root=project_root,
             robot_client=robot_client,
+            tower_agent=tower_agent,
         )
         self._selfcheck = SelfcheckCommandHandler(
             project_root=project_root,
