@@ -202,11 +202,17 @@ class BridgeMessageHandler:
                 )
 
             # Mehrere Dateien senden (z.B. Mail-Anhänge)
-            for fpath in (result.file_paths or []):
-                if fpath.exists():
-                    await self._send_file_via_nc_or_matrix(
-                        msg.room_id, fpath, cleanup=True,
+            if result.file_paths:
+                if result.command == "mail_attachment" and self._nc_files:
+                    await self._handle_attachment_upload_with_menu(
+                        msg, result.file_paths,
                     )
+                else:
+                    for fpath in result.file_paths:
+                        if fpath.exists():
+                            await self._send_file_via_nc_or_matrix(
+                                msg.room_id, fpath, cleanup=True,
+                            )
 
             # Restart
             if result.restart:
@@ -272,6 +278,12 @@ class BridgeMessageHandler:
     ) -> None:
         """Verarbeitet Filing-Antworten die kein Standard-Confirm/Cancel sind."""
         await self._confirm.handle_filing_response(msg, action)
+
+    async def handle_attachment_menu_response(
+        self, msg: IncomingMessage, action: PendingAction,
+    ) -> None:
+        """Verarbeitet Anhang-Aktionsmenü-Antworten."""
+        await self._confirm.handle_attachment_menu(msg, action)
 
     # ------------------------------------------------------------------
     # Claude Agent
@@ -396,6 +408,80 @@ class BridgeMessageHandler:
                 )
             except Exception:
                 logger.error("Konnte Fehlermeldung nicht senden")
+
+    # ------------------------------------------------------------------
+    # Attachment-Aktionsmenü (Phase 49)
+    # ------------------------------------------------------------------
+
+    async def _handle_attachment_upload_with_menu(
+        self, msg: IncomingMessage, file_paths: list[Path],
+    ) -> None:
+        """Lädt Mail-Anhänge zu Nextcloud hoch und bietet Aktionsmenü an.
+
+        Nur für PDFs wird das Menü angeboten (zusammenfassen/ablegen/löschen).
+        Nicht-PDFs werden normal hochgeladen und gelöscht.
+        """
+        pdf_paths: list[Path] = []
+        nc_remote_paths: list[str] = []
+
+        from datetime import datetime
+        month_folder = datetime.now().strftime("%Y-%m")
+
+        for fpath in file_paths:
+            if not fpath.exists():
+                continue
+
+            remote_path = f"Saleria/{month_folder}/{fpath.name}"
+            link = await self._upload_to_nc_and_share(fpath)
+
+            if link:
+                await self._channel.send_text(
+                    msg.room_id, f"📎 {fpath.name}: {link}",
+                )
+                if fpath.suffix.lower() == ".pdf":
+                    pdf_paths.append(fpath)
+                    nc_remote_paths.append(remote_path)
+                else:
+                    # Nicht-PDFs: direkt aufräumen
+                    fpath.unlink(missing_ok=True)
+            else:
+                # NC-Upload fehlgeschlagen → Matrix-Fallback
+                try:
+                    await self._channel.send_file(msg.room_id, fpath)
+                except NotImplementedError:
+                    await self._channel.send_text(
+                        msg.room_id, "Datei-Upload nicht unterstützt.",
+                    )
+                fpath.unlink(missing_ok=True)
+
+        # Aktionsmenü nur für PDFs anbieten
+        if not pdf_paths:
+            return
+
+        menu_text = (
+            "\nWas soll ich damit tun?\n"
+            "  → \"zusammenfassen\" – PDF analysieren\n"
+            "  → \"ablegen\" – Dateiname vorschlagen und einsortieren\n"
+            "  → \"löschen\" – Datei aus Nextcloud entfernen\n"
+            "  → \"nichts\" – so lassen"
+        )
+        await self._channel.send_text(msg.room_id, menu_text)
+
+        # PendingAction setzen
+        pending_action = PendingAction(
+            action_type="attachment_menu",
+            description="Anhang-Aktionsmenü",
+            data={
+                "pdf_local_paths": [str(p) for p in pdf_paths],
+                "nc_remote_paths": nc_remote_paths,
+            },
+        )
+        self._pending.set(msg.sender, pending_action)
+        self._chat_history.add(msg.sender, "user", msg.body)
+        self._chat_history.add(
+            msg.sender, "assistant",
+            f"{len(pdf_paths)} PDF-Anhang/Anhänge hochgeladen. Aktionsmenü angeboten.",
+        )
 
     # ------------------------------------------------------------------
     # Nextcloud File-Hub

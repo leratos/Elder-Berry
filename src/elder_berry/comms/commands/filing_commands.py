@@ -335,9 +335,9 @@ class FilingCommandHandler(CommandHandler):
         target = action.data["suggestion"]["target_folder"]
         filename = action.data["suggestion"]["filename"]
         dest = f"{target}/{filename}"
-        is_mail = action.data.get("source_type") == "mail_attachment"
+        source_type = action.data.get("source_type", "inbox")
 
-        if is_mail:
+        if source_type == "mail_attachment":
             # Mail-Anhang: lokale Datei direkt auf Nextcloud hochladen
             local_path = Path(action.data["local_temp"])
             try:
@@ -347,6 +347,17 @@ class FilingCommandHandler(CommandHandler):
                 return CommandResult(
                     command="anhang_ablegen", success=False,
                     text=f"Upload fehlgeschlagen: {exc}",
+                )
+        elif source_type == "nc_attachment":
+            # Bereits auf NC (z.B. /Saleria/YYYY-MM/) → MOVE ins Ziel
+            source = action.data["source_path"]
+            try:
+                self._nc.move(source, dest)
+            except Exception as exc:
+                logger.error("MOVE fehlgeschlagen: %s → %s: %s", source, dest, exc)
+                return CommandResult(
+                    command="anhang_ablegen", success=False,
+                    text=f"Verschieben fehlgeschlagen: {exc}",
                 )
         else:
             # Eingang: WebDAV MOVE
@@ -364,7 +375,8 @@ class FilingCommandHandler(CommandHandler):
         # Temp-Datei aufräumen
         self._cleanup_temp(action)
 
-        command = "anhang_ablegen" if is_mail else "cloud_aufräumen"
+        is_attachment = source_type in ("mail_attachment", "nc_attachment")
+        command = "anhang_ablegen" if is_attachment else "cloud_aufräumen"
 
         # Nächste Mail-Anhänge?
         remaining_attachments = action.data.get("remaining_attachments", [])
@@ -376,7 +388,7 @@ class FilingCommandHandler(CommandHandler):
         if remaining:
             return self._process_remaining(remaining, dest)
 
-        if is_mail:
+        if is_attachment:
             return CommandResult(
                 command=command, success=True,
                 text=f"✅ Abgelegt: {filename}",

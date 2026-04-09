@@ -363,6 +363,10 @@ class MatrixBridge:
             if action.action_type == "filing":
                 await self._handler.handle_filing_response(msg, action)
                 return
+            # Attachment-Menü: zusammenfassen / ablegen / löschen / nichts
+            if action.action_type == "attachment_menu":
+                await self._handler.handle_attachment_menu_response(msg, action)
+                return
             await self._channel.send_text(
                 msg.room_id,
                 f"\u23f3 Du hast noch eine offene Aktion ({action.action_type}).\n"

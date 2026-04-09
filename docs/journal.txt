@@ -3900,3 +3900,24 @@ User: "Lies meine Mails und trag den Zahnarzttermin ein"
   begründet – kein Split nötig
 - PROJECT_ROADMAP.md: Phasen 42–45 auf ✅ ABGESCHLOSSEN aktualisiert,
   Sprachqualität-Tabelle auf ElevenLabs+XTTS korrigiert
+
+## Abgeschlossen: Phase 49 – Anhang-Aktionsmenü (2026-04-09)
+- Nach Mail-Anhang-Upload bietet Saleria Aktionsmenü an (nur PDFs):
+  → "zusammenfassen" – DocumentReader + LLM-Zusammenfassung
+  → "ablegen" – DocumentClassifier → Filing-Flow (Vorschlag + Bestätigung)
+  → "löschen" – Datei aus Nextcloud entfernen
+  → "nichts" – so lassen
+- message_handlers.py: _handle_attachment_upload_with_menu() –
+  Upload zu NC, Temp-Dateien behalten bis User entschieden hat,
+  PendingAction "attachment_menu" mit NC-Pfaden + lokalen Temp-Pfaden
+- bridge.py: Routing für attachment_menu im pending-Block ergänzt
+- confirmation_handlers.py: handle_attachment_menu() mit 4 Aktionen,
+  _attachment_summarize (via _handle_llm_enrichment),
+  _attachment_file (Classifier → Filing PendingAction mit source_type "nc_attachment"),
+  _attachment_delete (NC delete), _attachment_cleanup_temp
+- filing_commands.py: handle_confirm() um source_type "nc_attachment" erweitert
+  (MOVE von /Saleria/YYYY-MM/ ins Ziel statt Upload)
+- Nicht-PDFs werden normal hochgeladen (kein Menü)
+- Alle 96 betroffenen Tests grün, keine Regressionen
+- Dateien geändert: message_handlers.py, bridge.py, confirmation_handlers.py,
+  filing_commands.py
