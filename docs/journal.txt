@@ -3894,3 +3894,9 @@ User: "Lies meine Mails und trag den Zahnarzttermin ein"
 - Dateien erstellt: secrets_api.py, llm_api.py, security_middleware.py,
   confirmation_handlers.py
 - Dateien geändert: settings_dashboard.py, message_handlers.py, bridge.py
+- Weitere 700+-Zeilen-Dateien geprüft (claude_agent, contact_commands,
+  carddav_sync, contact_store, weather_commands, mail_commands, server,
+  matrix_channel): Größe durch Pattern-Daten oder kohärente Domänenlogik
+  begründet – kein Split nötig
+- PROJECT_ROADMAP.md: Phasen 42–45 auf ✅ ABGESCHLOSSEN aktualisiert,
+  Sprachqualität-Tabelle auf ElevenLabs+XTTS korrigiert
