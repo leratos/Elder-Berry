@@ -3873,3 +3873,24 @@ User: "Lies meine Mails und trag den Zahnarzttermin ein"
 - Alle 3939 Tests grün (keine neuen Tests nötig, reine UX-Änderungen)
 - Dateien geändert: mail_commands.py, calendar_commands.py, contact_commands.py,
   weather_commands.py, todo_commands.py, note_commands.py
+
+## Abgeschlossen: Phase 48 – Technische Schulden / Qualität (2026-04-09)
+- settings_dashboard.py aufgeteilt: 1.259 → 825 Zeilen (35% Reduktion)
+  → web/secrets_api.py (370 Zeilen): SECRET_REGISTRY, SecretRegistryEntry,
+    validate_secret(), _REGISTRY_BY_KEY, Secrets-Endpoints + Export
+  → web/llm_api.py (74 Zeilen): LLM-Status/Mode-Endpoints
+  → web/security_middleware.py (73 Zeilen): SecurityHeadersMiddleware,
+    CORS-Setup, globaler Exception-Handler
+  → Re-Exports in settings_dashboard.py für Rückwärtskompatibilität
+- message_handlers.py aufgeteilt: 1.158 → 752 Zeilen (35% Reduktion)
+  → comms/confirmation_handlers.py (436 Zeilen): ConfirmationHandler-Klasse
+    mit Mail-Senden, Filing-Confirm/Skip/Correction, Restart-Confirm,
+    Nextcloud-Setup, Mail-Draft-Modify
+  → ConfirmationHandler greift via parent-Referenz auf Dependencies zu
+    (Tests können weiterhin handler._email_sender = None setzen)
+- Alle 206 betroffenen Tests grün (142 Dashboard + 64 Bridge/Handler)
+- 3.912 bestehende Tests grün (37 Failures sind pre-existing:
+  fehlende httpx/python-multipart in Codespaces-Umgebung)
+- Dateien erstellt: secrets_api.py, llm_api.py, security_middleware.py,
+  confirmation_handlers.py
+- Dateien geändert: settings_dashboard.py, message_handlers.py, bridge.py
