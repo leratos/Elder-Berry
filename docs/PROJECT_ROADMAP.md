@@ -803,3 +803,41 @@ Web-Wizard der Schritt für Schritt alle Dienste konfiguriert und testet.
 - **Tests**: ~38 geplant (20 SetupTests + 13 API + 5 Scripts)
 - **Konzept**: `docs/concepts/phase-46-setup-wizard.md`
 - **Abhängigkeit**: Phase 45 (SettingsDashboard Rename)
+
+
+## Phase 47 – Befehlsmuster-Stabilisierung 🔧 ✅ ABGESCHLOSSEN
+
+Alle Befehlspatterns analysiert, Lücken dokumentiert und kritische Fixes implementiert.
+
+- ✅ **Pattern-Analyse**: 7 kritische (🔴), 6 mittlere (🟡), 3 niedrige (🟢) Lücken identifiziert
+- ✅ **3 Risiko-Fixes**: VOLUME_PATTERN (.search→.match + Anker), NOTE_GET_FACT_PATTERN
+  (Domain-Lookahead gegen Catch-All), START_PROCESS_PATTERN (Negative Lookahead)
+- ✅ **Pattern-Erweiterungen**: 9 Handler-Dateien (system, mail, harmony, weather, process,
+  contact, calendar, note, todo)
+- ✅ **Tests**: 90 neue Pattern-Tests inkl. Cross-Handler-Konflikttests
+- ✅ Alle 3.939 Tests grün
+- **Konzept**: `docs/concepts/phase-47-befehlsmuster-stabilisierung.md`
+
+### Phase 47b – UX-Polish ✅ ABGESCHLOSSEN
+
+Fehlende Keywords, verbesserte Fehlermeldungen und universeller "bitte"-Prefix.
+
+- ✅ **Keywords**: 5 Handler ergänzt (mail_search, termin_create/search, contact, weather, todo)
+- ✅ **Fehlermeldungen**: Technische Hinweise entfernt, "Format:" → "Beispiel:" mit konkreten Eingaben
+- ✅ **"bitte"-Prefix**: Universell in 4 Handlern ergänzt (mail, calendar, todo, note)
+- ✅ Alle 3.939 Tests grün
+
+
+## Phase 48 – Technische Schulden / Qualität 🔧 ✅ ABGESCHLOSSEN
+
+Refactoring der zwei größten Dateien und Roadmap-Aktualisierung.
+
+- ✅ **settings_dashboard.py aufgeteilt**: 1.259 → 825 Zeilen (35% Reduktion)
+  - `web/secrets_api.py` (370 Zeilen): SECRET_REGISTRY, Validierung, Secrets-Endpoints + Export
+  - `web/llm_api.py` (74 Zeilen): LLM-Status/Mode-Endpoints
+  - `web/security_middleware.py` (73 Zeilen): CORS, Security-Headers, Exception-Handler
+- ✅ **message_handlers.py aufgeteilt**: 1.158 → 752 Zeilen (35% Reduktion)
+  - `comms/confirmation_handlers.py` (436 Zeilen): Mail-Senden, Filing, Restart, NC-Setup
+- ✅ **Weitere 700+-Zeilen-Dateien geprüft**: Größe durch Pattern-Daten oder kohärente
+  Domänenlogik begründet – kein Split nötig
+- ✅ **Tests**: 206 betroffene Tests grün, keine Regressionen
