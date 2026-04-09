@@ -139,10 +139,12 @@ def test_is_available_timeout(mock_req, client):
 # ── Upload ──────────────────────────────────────────────────────────────
 
 
+@patch("elder_berry.tools.nextcloud_files.httpx.request")
 @patch("elder_berry.tools.nextcloud_files.httpx.put")
-def test_upload_success(mock_put, client, tmp_path):
+def test_upload_success(mock_put, mock_req, client, tmp_path):
     test_file = tmp_path / "report.pdf"
     test_file.write_bytes(b"PDF content")
+    mock_req.return_value = MagicMock(status_code=201)  # MKCOL
     mock_put.return_value = MagicMock(status_code=201)
 
     result = client.upload(test_file, "Dokumente/report.pdf")
@@ -185,20 +187,24 @@ def test_upload_file_too_large(client, tmp_path):
                     client.upload(big_file, "huge.bin")
 
 
+@patch("elder_berry.tools.nextcloud_files.httpx.request")
 @patch("elder_berry.tools.nextcloud_files.httpx.put")
-def test_upload_server_error(mock_put, client, tmp_path):
+def test_upload_server_error(mock_put, mock_req, client, tmp_path):
     test_file = tmp_path / "file.txt"
     test_file.write_bytes(b"data")
+    mock_req.return_value = MagicMock(status_code=201)  # MKCOL
     mock_put.return_value = MagicMock(status_code=500)
 
     with pytest.raises(NextcloudError, match="HTTP 500"):
         client.upload(test_file, "file.txt")
 
 
+@patch("elder_berry.tools.nextcloud_files.httpx.request")
 @patch("elder_berry.tools.nextcloud_files.httpx.put")
-def test_upload_auth_error(mock_put, client, tmp_path):
+def test_upload_auth_error(mock_put, mock_req, client, tmp_path):
     test_file = tmp_path / "file.txt"
     test_file.write_bytes(b"data")
+    mock_req.return_value = MagicMock(status_code=201)  # MKCOL
     mock_put.return_value = MagicMock(status_code=401)
 
     with pytest.raises(NextcloudAuthError):
