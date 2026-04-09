@@ -455,6 +455,7 @@ class RemoteCommandHandler:
             document_reader=document_reader,
             audio_router=audio_router,
             web_fetcher=web_fetcher,
+            nextcloud_files=nextcloud_files,
         )
         # NoteCommandHandler: nur wenn NoteStore vorhanden
         self._notes: NoteCommandHandler | None = None

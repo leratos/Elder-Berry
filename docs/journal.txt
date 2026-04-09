@@ -3921,3 +3921,14 @@ User: "Lies meine Mails und trag den Zahnarzttermin ein"
 - Alle 96 betroffenen Tests grün, keine Regressionen
 - Dateien geändert: message_handlers.py, bridge.py, confirmation_handlers.py,
   filing_commands.py
+
+## Bugfix: Zusammenfassung von Nextcloud-Dateien (2026-04-09)
+- Problem: "cloud suche X" findet Datei auf NC, aber "zusammenfassung /Dokumente/..."
+  versucht lokalen Pfad zu lesen → FileNotFoundError
+- Fix: advanced_commands.py _cmd_document_summary() erkennt wenn Datei nicht lokal
+  existiert und lädt sie automatisch von Nextcloud herunter (temp, cleanup nach Lesen)
+- Neue Methode: _download_from_nc() – NC-Pfad normalisieren, download in temp-dir
+- AdvancedCommandHandler: nextcloud_files als optionaler Parameter
+- remote_commands.py: nextcloud_files an AdvancedCommandHandler durchgereicht
+- 436 betroffene Tests grün
+- Dateien geändert: advanced_commands.py, remote_commands.py

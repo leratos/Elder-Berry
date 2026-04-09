@@ -16,6 +16,7 @@ if TYPE_CHECKING:
     from elder_berry.core.audio_router import AudioRouter
     from elder_berry.tools.brave_search_client import BraveSearchClient
     from elder_berry.tools.document_reader import DocumentReader
+    from elder_berry.tools.nextcloud_files import NextcloudFilesClient
     from elder_berry.tools.web_fetcher import WebFetcher
 
 logger = logging.getLogger(__name__)
@@ -74,12 +75,14 @@ class AdvancedCommandHandler(CommandHandler):
         document_reader: DocumentReader | None = None,
         audio_router: AudioRouter | None = None,
         web_fetcher: WebFetcher | None = None,
+        nextcloud_files: NextcloudFilesClient | None = None,
     ) -> None:
         self._computer_use = computer_use
         self._search_client = search_client
         self._document_reader = document_reader
         self._audio_router = audio_router
         self._web_fetcher = web_fetcher
+        self._nc_files = nextcloud_files
 
     @property
     def simple_commands(self) -> set[str]:
@@ -190,6 +193,13 @@ class AdvancedCommandHandler(CommandHandler):
                      f"Erlaubt: PDF, TXT.",
             )
 
+        # Datei nicht lokal vorhanden → Nextcloud-Download versuchen
+        nc_temp_path: Path | None = None
+        if not file_path.exists() and self._nc_files:
+            nc_temp_path = self._download_from_nc(file_path_str)
+            if nc_temp_path:
+                file_path = nc_temp_path
+
         try:
             result = self._document_reader.read_file(file_path)
 
@@ -218,6 +228,34 @@ class AdvancedCommandHandler(CommandHandler):
                 command="document_summary", success=False,
                 text=f"Fehler beim Lesen: {e}",
             )
+        finally:
+            if nc_temp_path:
+                nc_temp_path.unlink(missing_ok=True)
+
+    def _download_from_nc(self, path_str: str) -> Path | None:
+        """Versucht eine Datei von Nextcloud herunterzuladen.
+
+        Erkennt NC-Pfade (z.B. /Dokumente/Haus/datei.pdf oder
+        Dokumente/Haus/datei.pdf) und lädt sie in ein temp-Verzeichnis.
+
+        Returns:
+            Lokaler Pfad zur heruntergeladenen Datei oder None bei Fehler.
+        """
+        import tempfile
+
+        # NC-Pfad normalisieren: führenden / entfernen
+        nc_path = path_str.lstrip("/")
+        if not nc_path:
+            return None
+
+        try:
+            tmp_dir = Path(tempfile.mkdtemp(prefix="nc_summary_"))
+            local_path = self._nc_files.download(nc_path, tmp_dir)
+            logger.info("NC-Download für Zusammenfassung: %s → %s", nc_path, local_path)
+            return local_path
+        except Exception as exc:
+            logger.debug("NC-Download fehlgeschlagen für '%s': %s", nc_path, exc)
+            return None
 
     # ------------------------------------------------------------------
     # Audio
