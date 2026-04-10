@@ -233,17 +233,21 @@ class NoteCommandHandler(CommandHandler):
         )
 
     def _cmd_get_fact(self, raw_text: str, user_id: str) -> CommandResult:
-        """was ist <key>? → KV-Lookup, Miss → success=False (LLM-Fallthrough)."""
+        """was ist <key>? → KV-Lookup, Miss → fallthrough ans LLM."""
         match = NOTE_GET_FACT_PATTERN.match(raw_text.strip())
         if not match:
-            return CommandResult(command="note_get_fact", success=False, text=None)
+            return CommandResult(
+                command="note_get_fact", success=False, fallthrough=True,
+            )
 
         key = (match.group(1) or match.group(2) or "").strip()
         note = self._store.get_fact(user_id, key)
 
         if note is None:
-            # Kein Treffer → LLM-Fallthrough (success=False, kein Text)
-            return CommandResult(command="note_get_fact", success=False, text=None)
+            # Kein Treffer → LLM-Fallthrough (z.B. "was ist deine meinung")
+            return CommandResult(
+                command="note_get_fact", success=False, fallthrough=True,
+            )
 
         return CommandResult(
             command="note_get_fact",
