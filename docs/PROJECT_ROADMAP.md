@@ -789,20 +789,25 @@ Grundeinstellungen und Sicherheitshärtung erweitert.
 - **Konzept**: `docs/concepts/phase-45-settings-dashboard.md`
 
 
-## Phase 46 – Setup-Wizard (Installationsassistent) 🧙 GEPLANT
+## Phase 46 – Setup-Wizard (Installationsassistent) 🧙 ✅ ABGESCHLOSSEN
 
 Neuer Nutzer kann Elder-Berry von Null aufsetzen: Bootstrap-Script +
 Web-Wizard der Schritt für Schritt alle Dienste konfiguriert und testet.
 
-- **Bootstrap**: `install.ps1` / `install.sh` (Git clone, venv, pip install)
-- **Web-Wizard**: 8-Schritt-Wizard auf localhost:8090/setup
-  - Voraussetzungen, LLM, Matrix, Nextcloud, E-Mail, Standort, Optionale Dienste, Zusammenfassung
-- **SetupTests**: Verbindungstest-Klasse (Anthropic, Matrix, Nextcloud, IMAP/SMTP, Ollama, Brave)
-- **First-Run-Detection**: start_saleria.py erkennt fehlende Matrix-Keys → Wizard starten
-- **Hilfe-Links**: Offizielle Doku verlinken (Nextcloud, Matrix, Anthropic etc.) – keine eigenen Docs
-- **Tests**: ~38 geplant (20 SetupTests + 13 API + 5 Scripts)
+- ✅ **Bootstrap**: `scripts/install.ps1` (Windows) + `scripts/install.sh` (Linux/RPi5)
+- ✅ **Web-Wizard**: 8-Schritt-Wizard auf localhost:8090/setup
+  - Willkommen, LLM, Matrix, Nextcloud, E-Mail, Standort, Optionale Dienste, Zusammenfassung
+  - Progress-Bar, Inline-Verbindungstests, Provider-Dropdown, Hilfe-Links
+- ✅ **SetupTests** (`web/setup_tests.py`): Verbindungstest-Klasse (Anthropic, Matrix,
+  Nextcloud WebDAV/CalDAV/CardDAV, IMAP/SMTP, Ollama, Brave, Groq, Google Maps)
+- ✅ **First-Run-Detection**: `start_saleria.py` erkennt fehlende Matrix-Keys → Wizard starten
+- ✅ **Dashboard-Integration**: GET / Redirect auf /setup wenn Setup nicht abgeschlossen,
+  Re-Setup-Button im Dashboard für spätere Neukonfiguration
+- ✅ **Geocoding**: Standort-Schritt mit Nominatim/OSM-Suche (Stadt → Lat/Lon, kein API-Key)
+- ✅ **Standalone-Starter**: `scripts/setup_wizard.py` mit Browser-Auto-Open
+- ✅ **FastAPI in Core-Dependencies**: Wizard funktioniert auf frischem System nach `pip install -e .`
+- ✅ **Tests**: 50 Tests (19 SetupTests + 21 Wizard-API + 10 Install-Scripts)
 - **Konzept**: `docs/concepts/phase-46-setup-wizard.md`
-- **Abhängigkeit**: Phase 45 (SettingsDashboard Rename)
 
 
 ## Phase 47 – Befehlsmuster-Stabilisierung 🔧 ✅ ABGESCHLOSSEN
@@ -841,3 +846,22 @@ Refactoring der zwei größten Dateien und Roadmap-Aktualisierung.
 - ✅ **Weitere 700+-Zeilen-Dateien geprüft**: Größe durch Pattern-Daten oder kohärente
   Domänenlogik begründet – kein Split nötig
 - ✅ **Tests**: 206 betroffene Tests grün, keine Regressionen
+
+
+## Phase 49 – Anhang-Aktionsmenü ✅ ABGESCHLOSSEN
+
+Nach Mail-Anhang-Upload bietet Saleria ein Aktionsmenü an (nur PDFs).
+
+- ✅ **Aktionsmenü**: Nach Upload bietet Saleria 4 Optionen an:
+  - "zusammenfassen" – DocumentReader + LLM-Zusammenfassung
+  - "ablegen" – DocumentClassifier → Filing-Flow (Vorschlag + Bestätigung)
+  - "löschen" – Datei aus Nextcloud entfernen
+  - "nichts" – so lassen
+- ✅ **message_handlers.py**: `_handle_attachment_upload_with_menu()` –
+  Upload zu NC, Temp-Dateien behalten bis User entschieden hat,
+  PendingAction "attachment_menu" mit NC-Pfaden + lokalen Temp-Pfaden
+- ✅ **bridge.py**: Routing für attachment_menu im pending-Block
+- ✅ **confirmation_handlers.py**: `handle_attachment_menu()` mit 4 Aktionen
+- ✅ **filing_commands.py**: `handle_confirm()` um source_type "nc_attachment" erweitert
+  (MOVE statt Upload)
+- ✅ **Tests**: 96 betroffene Tests grün
