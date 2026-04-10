@@ -865,3 +865,171 @@ Nach Mail-Anhang-Upload bietet Saleria ein Aktionsmenü an (nur PDFs).
 - ✅ **filing_commands.py**: `handle_confirm()` um source_type "nc_attachment" erweitert
   (MOVE statt Upload)
 - ✅ **Tests**: 96 betroffene Tests grün
+
+
+---
+
+## UX-Verbesserungen (Phase 50–53)
+
+Aus einer systematischen UX-Analyse (2026-04-10) abgeleitet. Ziel: Benutzererfahrung
+über alle Touchpoints (Matrix, Web-Dashboard, Setup, Startup) konsistent und
+hilfreich machen.
+
+---
+
+## Phase 50 – Fehler-UX & Bestätigungsdialoge 🛡️ GEPLANT
+
+Fehlermeldungen humanisieren und destruktive Commands absichern.
+
+### 50.1 – Fehler-Wrapper für Command-Handler
+- **Problem**: 30+ `except Exception as e` geben Raw-Exceptions an Matrix weiter
+  ("ConnectionRefusedError", "401 Unauthorized") – nicht hilfreich für den Nutzer
+- **Lösung**: `user_friendly_error(e)` Utility in `comms/commands/base.py`
+  - Mapping bekannter Exceptions → nutzerfreundliche Texte mit Handlungsempfehlung
+  - ConnectionError → "Server nicht erreichbar. Prüfe ob der Dienst läuft."
+  - 401/403 → "Zugangsdaten ungültig oder abgelaufen. Neu konfigurieren: /setup"
+  - Timeout → "Zeitüberschreitung. Versuch es gleich nochmal."
+  - Fallback: kurze Fehlerbeschreibung ohne Stacktrace
+- **Scope**: Alle 18 Command-Handler in `comms/commands/` refactoren
+- **Tests**: Wrapper-Unit-Tests + Stichproben-Tests pro Handler
+
+### 50.2 – "Nicht konfiguriert"-Meldungen mit Setup-Link
+- **Problem**: "E-Mail nicht konfiguriert." sagt nicht WAS der Nutzer tun soll
+- **Lösung**: Jede "nicht konfiguriert"-Meldung ergänzen:
+  "E-Mail nicht konfiguriert. Einrichten unter http://localhost:8090/setup (Schritt 5)."
+- **Scope**: Alle Handler die optionale Dienste nutzen (Mail, Cloud, Brave, Gym, Kamera, Harmony)
+
+### 50.3 – Bestätigungsdialoge für destruktive Commands
+- **Problem**: `restart`, `lösche alle termine`, `lösche alle erinnerungen`,
+  `todos aufräumen`, `update` führen sofort aus ohne Rückfrage
+- **Lösung**: `pending_confirmation` nutzen (Mechanismus existiert bereits)
+  - "Alle 4 Erinnerungen löschen? Bestätige mit 'ja'."
+  - "Bot wird neugestartet. Sicher? Bestätige mit 'ja'."
+- **Scope**: 5 Commands in 3 Handlern (weather, calendar, process/update)
+
+### 50.4 – Konsistentes Fehlerformat
+- **Problem**: Manche Handler sagen "nicht konfiguriert", andere "Fehler: ...",
+  andere "Exception: ..."
+- **Lösung**: Einheitliches Format für alle Fehler-Rückgaben:
+  - Feature fehlt: "⚠ [Feature] nicht konfiguriert. → [Link/Anleitung]"
+  - Aktion fehlgeschlagen: "❌ [Was schiefging]. [Was der Nutzer tun kann]."
+  - Teilerfolg: "⚠ [Was geklappt hat], aber [was fehlgeschlagen ist]."
+
+
+## Phase 51 – Kontextsensitive Hilfe & Command-Discovery 📖 GEPLANT
+
+Hilfesystem überarbeiten: vom monolithischen Textblock zu kategorisierter,
+durchsuchbarer Hilfe.
+
+### 51.1 – Kategorisierte Hilfe
+- **Problem**: `hilfe` gibt ~190 Zeilen auf einmal aus – in Matrix unlesbar
+- **Lösung**: `hilfe` zeigt nur Kategorien-Übersicht (10 Zeilen):
+  ```
+  Verfügbare Hilfe-Kategorien:
+  hilfe basis – Status, Screenshot, Restart
+  hilfe kalender – Termine, Suche, Erstellen
+  hilfe mail – Mails, Suche, Antworten
+  hilfe wetter – Wetter, Timer, Erinnerungen
+  hilfe notizen – Notizen, Fakten, Wissen
+  hilfe kontakte – Kontaktbuch
+  hilfe todos – Aufgabenliste
+  hilfe cloud – Nextcloud Dateien
+  hilfe medien – Audio, Mediensteuerung
+  hilfe system – Prozesse, Git, Docker, Update
+  hilfe alles – Vollständige Hilfe
+  ```
+- **Technisch**: HELP_TEXT aufteilen in Dict `HELP_SECTIONS`, Abfrage per Kategorie
+- **Scope**: `remote_commands.py` (HELP_TEXT + parse_command/execute)
+
+### 51.2 – Tippfehler-Erkennung (Did-you-mean)
+- **Problem**: "volumen 50", "statsu", "screnshot" → keine Erkennung, geht ans LLM
+- **Lösung**: Levenshtein-Distanz auf `simple_commands` aller Handler
+  - Distanz ≤ 2 → "Meintest du 'volume'? Versuche: volume 50"
+  - Keine neue Dependency (difflib.get_close_matches aus stdlib)
+- **Scope**: `remote_commands.py` (nach fehlgeschlagenem parse_command)
+
+### 51.3 – Keyword-Erweiterung für natürliche Sprache
+- **Problem**: "Zeig mir meine Termine" oder "Kannst du den Status checken" werden
+  nicht erkannt, weil Keywords zu eng definiert sind
+- **Lösung**: Systematische Erweiterung der Keyword-Listen um Varianten mit
+  Füllwörtern ("zeig mir", "sag mir", "kannst du", "bitte", "check mal")
+- **Scope**: Alle 18 Handler in `comms/commands/`, aufbauend auf Phase 47b
+- **Risiko**: Mehr Keywords = mehr Kollisionen → Cross-Handler-Konflikttests erweitern
+
+
+## Phase 52 – Unified Settings & Startup-Feedback ⚙️ GEPLANT
+
+Konfiguration an einem Ort statt über 3 Oberflächen verteilt.
+Startup gibt klares Feedback was funktioniert und was fehlt.
+
+### 52.1 – Unified Settings-Panel
+- **Problem**: Secrets in Setup-Wizard, 4 Settings im Dashboard, Rest nur per API
+  oder Terminal → fragmentiert und verwirrend
+- **Lösung**: Settings-Dashboard (`/settings`) als zentrale Konfigurations-Oberfläche
+  - Tab 1: Dienste & API-Keys (alle aus SECRET_REGISTRY, gruppiert nach Kategorie)
+  - Tab 2: Verhalten (Timezone, LLM-Modus, STT-Timeout, etc.)
+  - Tab 3: Sicherheit (Allowed Senders, CORS)
+  - Jedes Feld: Inline-Edit, Verbindungstest-Button, Hilfe-Link, "Restart nötig"-Badge
+  - Setup-Wizard bleibt nur für Erst-Einrichtung (First-Run), wird nicht mehr für
+    Re-Konfiguration angeboten
+- **Scope**: `web/settings_dashboard.py`, neues Template `settings_panel.html`
+
+### 52.2 – Startup-Summary
+- **Problem**: `start_saleria.py` loggt einzelne Komponenten, aber zeigt nie eine
+  Gesamtübersicht. Nutzer sieht nicht was fehlt.
+- **Lösung**: Nach dem Startup eine Summary ausgeben + optional an Matrix senden:
+  ```
+  ╔═══════════════════════════════════════╗
+  ║        Saleria – Startup Summary      ║
+  ╠═══════════════════════════════════════╣
+  ║ ✓ LLM: Anthropic (Sonnet 4.6)        ║
+  ║ ✓ Matrix: @saleria:matrix.example.com ║
+  ║ ✓ Kalender: Nextcloud CalDAV          ║
+  ║ ✓ Wetter: Open-Meteo (Berlin)         ║
+  ║ ⚠ E-Mail: nicht konfiguriert          ║
+  ║ ⚠ Nextcloud: nicht konfiguriert       ║
+  ║ ✗ Tower: nicht erreichbar             ║
+  ║ ✗ RPi5: nicht erreichbar              ║
+  ╚═══════════════════════════════════════╝
+  ```
+- **Scope**: `scripts/start_saleria.py` (neue Funktion `_print_startup_summary()`)
+
+### 52.3 – Setup-Wizard → Settings-Migration
+- **Problem**: Re-Setup-Button im Dashboard öffnet den 8-Schritte-Wizard –
+  Wizard-Metapher ist unpassend wenn man nur einen API-Key ändern will
+- **Lösung**: Re-Setup-Button entfernen, stattdessen Link zu `/settings`
+  mit Deep-Link zur richtigen Kategorie (z.B. `/settings#llm`)
+- **Scope**: `web/templates/audio_dashboard.html`, `settings_dashboard.py`
+
+
+## Phase 53 – Install-Script Härtung & Avatar-Editor UX 🔧 GEPLANT
+
+Kleinere UX-Verbesserungen für Installation und Avatar-Konfiguration.
+
+### 53.1 – Install-Script Fehlerhandling
+- **Problem**: `pip install --quiet` verschluckt Fehler, Nutzer sieht erst
+  beim Start dass Dependencies fehlen
+- **Lösung**:
+  - `--quiet` entfernen, stattdessen Output nach stderr filtern
+  - Exit-Code prüfen und explizit warnen wenn pip fehlschlägt
+  - Ollama-Check mit Erklärung: "Ohne Ollama nur Anthropic API (kostenpflichtig)"
+  - Post-Install-Validierung: `python -c "import elder_berry"` als Smoke-Test
+- **Scope**: `scripts/install.ps1`, `scripts/install.sh`
+
+### 53.2 – Avatar-Editor Onboarding
+- **Problem**: Avatar-Editor hat kein Onboarding, Nutzer versteht nicht was
+  Assets, Layers und Emotion-Maps bedeuten
+- **Lösung**: Intro-Modal beim ersten Aufruf:
+  - "Salerias Avatar besteht aus 3 Layern: Körper, Augen, Mund"
+  - "Jede Emotion hat eine eigene Kombination"
+  - "Wähle links ein Asset, sieh rechts die Vorschau"
+  - "Zurücksetzen auf Standard" Button
+- **Scope**: `web/templates/avatar_editor.html`
+
+### 53.3 – Settings aus Config-Datei statt Hardcode
+- **Problem**: SettingDefinitions sind als Python-Klassen in `settings_dashboard.py`
+  hardcoded – neue Settings erfordern Code-Änderungen
+- **Lösung**: Settings-Definitionen in `config/settings.yaml` auslagern,
+  SettingsDashboard lädt dynamisch
+- **Vorteil**: Neue Settings per YAML hinzufügen ohne Python-Code zu ändern
+- **Scope**: `web/settings_dashboard.py`, neues `config/settings.yaml`

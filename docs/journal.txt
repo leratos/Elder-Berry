@@ -4044,3 +4044,13 @@ User: "Lies meine Mails und trag den Zahnarzttermin ein"
 - Schnellstart-Abschnitt mit Bootstrap-Scripts (install.ps1/install.sh)
 - Verweis auf Setup-Wizard als empfohlene Konfigurationsmethode
 - setup_wizard.py in Script-Tabelle aufgenommen
+
+## UX-Analyse & Roadmap-Ergänzung (2026-04-10)
+- Systematische UX-Bewertung aller Benutzer-Touchpoints durchgeführt
+- 13 Schwachstellen identifiziert, priorisiert nach Impact
+- 4 neue Phasen in PROJECT_ROADMAP.md ergänzt:
+  - Phase 50: Fehler-UX & Bestätigungsdialoge (kritisch)
+  - Phase 51: Kontextsensitive Hilfe & Command-Discovery (hoch)
+  - Phase 52: Unified Settings & Startup-Feedback (hoch)
+  - Phase 53: Install-Script Härtung & Avatar-Editor UX (mittel)
+- Dateien geändert: docs/PROJECT_ROADMAP.md, docs/journal.txt
