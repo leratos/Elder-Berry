@@ -10,7 +10,7 @@ import re
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from elder_berry.comms.commands.base import CommandHandler, CommandResult
+from elder_berry.comms.commands.base import CommandHandler, CommandResult, user_friendly_error
 
 if TYPE_CHECKING:
     from elder_berry.actions.computer_use import ComputerUseController
@@ -227,7 +227,7 @@ class AdvancedCommandHandler(CommandHandler):
             logger.error("Dokument-Zusammenfassung fehlgeschlagen: %s", e)
             return CommandResult(
                 command="document_summary", success=False,
-                text=f"Fehler beim Lesen: {e}",
+                text=user_friendly_error(e, "Dokument"),
             )
         finally:
             if nc_temp_path:
@@ -360,7 +360,7 @@ class AdvancedCommandHandler(CommandHandler):
             logger.error("Computer Use fehlgeschlagen: %s", e)
             return CommandResult(
                 command="computer_use", success=False,
-                text=f"Computer Use fehlgeschlagen: {e}",
+                text=user_friendly_error(e, "Computer Use"),
             )
 
         return CommandResult(
@@ -477,7 +477,7 @@ class AdvancedCommandHandler(CommandHandler):
             logger.error("Web-Suche fehlgeschlagen: %s", e)
             return CommandResult(
                 command="web_search", success=False,
-                text=f"Web-Suche fehlgeschlagen: {e}",
+                text=user_friendly_error(e, "Web-Suche"),
             )
 
         text = self._search_client.format_results(results)

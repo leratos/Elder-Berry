@@ -130,7 +130,7 @@ class TestStartProcess:
         mock_popen.side_effect = OSError("access denied")
         result = handler.execute("start_process", "starte chrome")
         assert result.success is False
-        assert "fehlgeschlagen" in result.text.lower()
+        assert "❌" in result.text
 
 
 # ---------------------------------------------------------------------------

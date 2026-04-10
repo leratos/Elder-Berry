@@ -108,8 +108,7 @@ class TodoCommandHandler(CommandHandler):
 
     def execute(self, command: str, raw_text: str) -> CommandResult:
         if not self._store:
-            return CommandResult(command=command, success=False,
-                                 text="Aufgabenliste nicht konfiguriert.")
+            return self.not_configured(command, "Aufgabenliste")
         dispatch = {
             "todos": self._cmd_list, "aufgaben": self._cmd_list,
             "todo": self._cmd_list,
@@ -256,12 +255,29 @@ class TodoCommandHandler(CommandHandler):
                              text="\n".join(lines))
 
     def _cmd_cleanup(self) -> CommandResult:
-        deleted = self._store.delete_all_done(self._default_user_id)
-        if deleted == 0:
+        done_todos = self._store.get_done(
+            self._default_user_id, limit=100,
+        )
+        if not done_todos:
             return CommandResult(command="todos_cleanup", success=True,
                                  text="📋 Keine erledigten Todos zum Aufräumen.")
+        count = len(done_todos)
+        return CommandResult(
+            command="todos_cleanup",
+            success=True,
+            text=f"🗑️ {count} erledigte Todos löschen? Bestätige mit 'ja'.",
+            pending_confirmation=True,
+            pending_data={
+                "action_type": "bulk_delete_todos",
+                "count": count,
+            },
+        )
+
+    def execute_cleanup(self) -> CommandResult:
+        """Führt das Aufräumen nach Bestätigung aus."""
+        deleted = self._store.delete_all_done(self._default_user_id)
         return CommandResult(command="todos_cleanup", success=True,
-                             text=f"🗑️ {deleted} erledigte Todos gelöscht.")
+                             text=f"✅ {deleted} erledigte Todos gelöscht.")
 
     # ------------------------------------------------------------------
     # Parsing

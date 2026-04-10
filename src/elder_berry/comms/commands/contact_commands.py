@@ -222,10 +222,7 @@ class ContactCommandHandler(CommandHandler):
     def execute(self, command: str, raw_text: str) -> CommandResult:
         """Führt einen Kontakt-Command aus."""
         if not self._store:
-            return CommandResult(
-                command=command, success=False,
-                text="Kontaktbuch nicht konfiguriert.",
-            )
+            return self.not_configured(command, "Kontaktbuch")
         dispatch = {
             "kontakte": self._cmd_list,
             "contact_add": self._cmd_add,
@@ -646,9 +643,8 @@ class ContactCommandHandler(CommandHandler):
 
     def _cmd_sync(self, raw_text: str) -> CommandResult:
         if not self._carddav_sync:
-            return CommandResult(
-                command="contact_sync", success=False,
-                text="CardDAV-Sync nicht konfiguriert (Nextcloud-Credentials fehlen).",
+            return self.not_configured(
+                "contact_sync", "CardDAV-Sync (Nextcloud)", setup_step=4,
             )
         match = CONTACT_SYNC_PATTERN.match(raw_text.strip())
         direction = match.group(1).lower() if match and match.group(1) else None

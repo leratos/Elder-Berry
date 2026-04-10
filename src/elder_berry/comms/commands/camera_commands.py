@@ -8,7 +8,7 @@ import tempfile
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from elder_berry.comms.commands.base import CommandHandler, CommandResult
+from elder_berry.comms.commands.base import CommandHandler, CommandResult, user_friendly_error
 
 if TYPE_CHECKING:
     from elder_berry.llm.anthropic_client import AnthropicClient
@@ -182,7 +182,7 @@ class CameraCommandHandler(CommandHandler):
             return CommandResult(
                 command="camera_describe",
                 success=True,
-                text=f"Foto aufgenommen, aber Analyse fehlgeschlagen: {e}",
+                text=user_friendly_error(e, "Kamera-Analyse"),
                 image_path=tmp_path,
             )
 

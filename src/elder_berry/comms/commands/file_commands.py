@@ -8,7 +8,7 @@ import logging
 import re
 from pathlib import Path
 
-from elder_berry.comms.commands.base import CommandHandler, CommandResult
+from elder_berry.comms.commands.base import CommandHandler, CommandResult, user_friendly_error
 
 logger = logging.getLogger(__name__)
 
@@ -161,7 +161,7 @@ class FileCommandHandler(CommandHandler):
             return CommandResult(
                 command="clipboard",
                 success=False,
-                text=f"Clipboard lesen fehlgeschlagen: {e}",
+                text=user_friendly_error(e, "Clipboard lesen"),
             )
 
     def _cmd_clipboard_write(self, raw_text: str) -> CommandResult:
@@ -204,7 +204,7 @@ class FileCommandHandler(CommandHandler):
             return CommandResult(
                 command="clip_write",
                 success=False,
-                text=f"Clipboard schreiben fehlgeschlagen: {e}",
+                text=user_friendly_error(e, "Clipboard schreiben"),
             )
 
     # ------------------------------------------------------------------
@@ -230,7 +230,7 @@ class FileCommandHandler(CommandHandler):
             return CommandResult(
                 command="send_file",
                 success=False,
-                text=f"Ungültiger Pfad: {e}",
+                text=user_friendly_error(e, "Datei"),
             )
 
         # Pfad gegen erlaubte Wurzelverzeichnisse prüfen (Roots bereits beim Init aufgelöst)
@@ -372,7 +372,7 @@ class FileCommandHandler(CommandHandler):
             return CommandResult(
                 command="download",
                 success=False,
-                text=f"Download fehlgeschlagen: {e}",
+                text=user_friendly_error(e, "Download"),
             )
         except Exception as e:
             logger.error("Download fehlgeschlagen: %s", e)
@@ -380,5 +380,5 @@ class FileCommandHandler(CommandHandler):
             return CommandResult(
                 command="download",
                 success=False,
-                text=f"Download fehlgeschlagen: {e}",
+                text=user_friendly_error(e, "Download"),
             )

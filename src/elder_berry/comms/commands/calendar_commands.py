@@ -15,7 +15,7 @@ import re
 from datetime import date, datetime
 from typing import TYPE_CHECKING
 
-from elder_berry.comms.commands.base import CommandHandler, CommandResult
+from elder_berry.comms.commands.base import CommandHandler, CommandResult, user_friendly_error
 
 if TYPE_CHECKING:
     from elder_berry.tools.google_calendar import GoogleCalendarClient
@@ -248,11 +248,7 @@ class CalendarCommandHandler(CommandHandler):
     def _cmd_termine(self, raw_text: str, variant: str = "termine") -> CommandResult:
         """Termine abfragen (heute, morgen, woche, N Tage)."""
         if not self._calendar:
-            return CommandResult(
-                command="termine",
-                success=False,
-                text="Kalender nicht konfiguriert.",
-            )
+            return self.not_configured("termine", "Kalender", setup_step=4)
 
         normalized = raw_text.strip().lower()
         match = TERMINE_PATTERN.match(normalized)
@@ -304,7 +300,7 @@ class CalendarCommandHandler(CommandHandler):
             return CommandResult(
                 command="termine",
                 success=False,
-                text=f"Kalender-Fehler: {e}",
+                text=user_friendly_error(e, "Kalender"),
             )
 
     @staticmethod
@@ -317,11 +313,7 @@ class CalendarCommandHandler(CommandHandler):
     def _cmd_termin_create(self, raw_text: str) -> CommandResult:
         """Neuen Termin erstellen."""
         if not self._calendar:
-            return CommandResult(
-                command="termin_create",
-                success=False,
-                text="Kalender nicht konfiguriert.",
-            )
+            return self.not_configured("termin_create", "Kalender", setup_step=4)
 
         match = TERMIN_CREATE_PATTERN.match(raw_text.strip())
         if not match:
@@ -382,16 +374,13 @@ class CalendarCommandHandler(CommandHandler):
             return CommandResult(
                 command="termin_create",
                 success=False,
-                text=f"Termin erstellen fehlgeschlagen: {e}",
+                text=user_friendly_error(e, "Termin erstellen"),
             )
 
     def _cmd_termin_search(self, raw_text: str) -> CommandResult:
         """Termine per Volltextsuche finden."""
         if not self._calendar:
-            return CommandResult(
-                command="termin_search", success=False,
-                text="Kalender nicht konfiguriert.",
-            )
+            return self.not_configured("termin_search", "Kalender", setup_step=4)
 
         match = TERMIN_SEARCH_PATTERN.search(raw_text.strip())
         if not match:
@@ -420,16 +409,13 @@ class CalendarCommandHandler(CommandHandler):
             logger.error("Termin-Suche fehlgeschlagen: %s", e)
             return CommandResult(
                 command="termin_search", success=False,
-                text=f"Termin-Suche fehlgeschlagen: {e}",
+                text=user_friendly_error(e, "Termin-Suche"),
             )
 
     def _cmd_termin_delete(self, raw_text: str) -> CommandResult:
         """Termin(e) löschen per Event-ID, Index oder 'alle'."""
         if not self._calendar:
-            return CommandResult(
-                command="termin_delete", success=False,
-                text="Kalender nicht konfiguriert.",
-            )
+            return self.not_configured("termin_delete", "Kalender", setup_step=4)
 
         normalized = raw_text.strip().lower()
 
@@ -482,36 +468,53 @@ class CalendarCommandHandler(CommandHandler):
         )
 
     def _delete_all_events(self) -> CommandResult:
-        """Löscht alle Events aus dem letzten Ergebnis."""
+        """Zeigt Bestätigungsdialog vor dem Löschen aller Events."""
         if not self._last_events:
             return CommandResult(
                 command="termin_delete", success=False,
                 text="Keine Termine zum Löschen. Frag erst nach Terminen.",
             )
 
+        count = len(self._last_events)
+        event_ids = [
+            e.event_id for e in self._last_events if e.event_id
+        ]
+        return CommandResult(
+            command="termin_delete",
+            success=True,
+            text=f"🗑️ {count} Termin{'e' if count != 1 else ''} löschen? "
+                 "Bestätige mit 'ja'.",
+            pending_confirmation=True,
+            pending_data={
+                "action_type": "bulk_delete_events",
+                "event_ids": event_ids,
+                "count": count,
+            },
+        )
+
+    def execute_delete_all_events(self, event_ids: list[str]) -> CommandResult:
+        """Führt das Löschen nach Bestätigung aus (von ConfirmationHandler aufgerufen)."""
         deleted = 0
         errors = []
-        for event in self._last_events:
-            if not event.event_id:
-                continue
+        for eid in event_ids:
             try:
-                self._calendar.delete_event(event.event_id)
+                self._calendar.delete_event(eid)
                 deleted += 1
             except Exception as e:
-                errors.append(f"{event.summary}: {e}")
+                errors.append(f"{eid}: {e}")
 
         self._last_events = []
 
         if errors:
             return CommandResult(
                 command="termin_delete", success=False,
-                text=f"{deleted} gelöscht, {len(errors)} Fehler:\n"
+                text=f"❌ {deleted} gelöscht, {len(errors)} Fehler:\n"
                      + "\n".join(errors),
             )
 
         return CommandResult(
             command="termin_delete", success=True,
-            text=f"{deleted} Termin{'e' if deleted != 1 else ''} gelöscht.",
+            text=f"✅ {deleted} Termin{'e' if deleted != 1 else ''} gelöscht.",
         )
 
     def _delete_event_by_index(self, index: int) -> CommandResult:
@@ -545,7 +548,7 @@ class CalendarCommandHandler(CommandHandler):
         except Exception as e:
             return CommandResult(
                 command="termin_delete", success=False,
-                text=f"Löschen fehlgeschlagen: {e}",
+                text=user_friendly_error(e, "Termin löschen"),
             )
 
     def _delete_event_by_id(self, event_id: str) -> CommandResult:
@@ -563,7 +566,7 @@ class CalendarCommandHandler(CommandHandler):
         except Exception as e:
             return CommandResult(
                 command="termin_delete", success=False,
-                text=f"Löschen fehlgeschlagen: {e}",
+                text=user_friendly_error(e, "Termin löschen"),
             )
 
     def _delete_event_by_title(self, title: str) -> CommandResult:
@@ -607,7 +610,7 @@ class CalendarCommandHandler(CommandHandler):
         except Exception as e:
             return CommandResult(
                 command="termin_delete", success=False,
-                text=f"Löschen fehlgeschlagen: {e}",
+                text=user_friendly_error(e, "Termin löschen"),
             )
 
     @staticmethod

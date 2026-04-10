@@ -263,7 +263,7 @@ class TestExecute:
         route_planner.get_route.side_effect = RouteError("ZERO_RESULTS")
         result = handler.execute("route_plan", "plane fahrt zu Lisa")
         assert result.success
-        assert "routenfehler" in result.text.lower()
+        assert "❌" in result.text and "Route" in result.text
 
     def test_maps_link_in_response(
         self, handler: RouteCommandHandler,

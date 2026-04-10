@@ -10,7 +10,7 @@ import tempfile
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from elder_berry.comms.commands.base import CommandHandler, CommandResult
+from elder_berry.comms.commands.base import CommandHandler, CommandResult, user_friendly_error
 
 if TYPE_CHECKING:
     from elder_berry.actions.base import ActionController
@@ -294,7 +294,7 @@ class SystemCommandHandler(CommandHandler):
             return CommandResult(
                 command="status",
                 success=False,
-                text=f"Fehler bei Status-Abfrage: {e}",
+                text=user_friendly_error(e, "Systemstatus"),
             )
 
     @staticmethod
@@ -432,7 +432,7 @@ class SystemCommandHandler(CommandHandler):
             return CommandResult(
                 command=command,
                 success=False,
-                text=f"Media-Command fehlgeschlagen: {e}",
+                text=user_friendly_error(e, "Mediensteuerung"),
             )
 
     def _cmd_volume(self, raw_text: str) -> CommandResult:
@@ -474,7 +474,7 @@ class SystemCommandHandler(CommandHandler):
             return CommandResult(
                 command="volume",
                 success=False,
-                text=f"Lautst\u00e4rke setzen fehlgeschlagen: {e}",
+                text=user_friendly_error(e, "Lautst\u00e4rke"),
             )
 
     def _cmd_avatar(self, raw_text: str) -> CommandResult:
@@ -550,7 +550,7 @@ class SystemCommandHandler(CommandHandler):
             return CommandResult(
                 command="avatar",
                 success=False,
-                text=f"Avatar-Rendering fehlgeschlagen: {e}",
+                text=user_friendly_error(e, "Avatar"),
             )
 
     def _avatar_tower(self, emotion_str: str) -> CommandResult | None:
@@ -588,10 +588,11 @@ class SystemCommandHandler(CommandHandler):
 
     @staticmethod
     def _cmd_restart() -> CommandResult:
-        """Signalisiert der Bridge einen Neustart."""
+        """Fragt vor dem Neustart nach Bestätigung."""
         return CommandResult(
             command="restart",
             success=True,
-            text="Starte neu... Bis gleich! \U0001f504",
-            restart=True,
+            text="🔄 Bot wird neugestartet. Sicher? Bestätige mit 'ja'.",
+            pending_confirmation=True,
+            pending_data={"action_type": "restart"},
         )

@@ -319,13 +319,14 @@ class TestRestartCommand:
     def test_restart(self, handler):
         result = handler.execute("restart", "restart")
         assert result.success is True
-        assert result.restart is True
-        assert "Starte neu" in result.text
+        assert result.pending_confirmation is True
+        assert result.pending_data["action_type"] == "restart"
+        assert "Bestätige" in result.text
 
     def test_neustart(self, handler):
         result = handler.execute("neustart", "neustart")
         assert result.success is True
-        assert result.restart is True
+        assert result.pending_confirmation is True
 
 
 # ---------------------------------------------------------------------------

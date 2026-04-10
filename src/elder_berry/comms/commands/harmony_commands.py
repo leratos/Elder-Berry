@@ -17,7 +17,7 @@ import logging
 import re
 from typing import TYPE_CHECKING
 
-from elder_berry.comms.commands.base import CommandHandler, CommandResult
+from elder_berry.comms.commands.base import CommandHandler, CommandResult, user_friendly_error
 
 if TYPE_CHECKING:
     from elder_berry.robot.client import RobotClient
@@ -210,7 +210,7 @@ class HarmonyCommandHandler(CommandHandler):
         except Exception as e:
             return CommandResult(
                 command="harmony_activity_on", success=False,
-                text=f"Fehler: {e}",
+                text=user_friendly_error(e, "Harmony"),
             )
 
     def _cmd_all_off(self) -> CommandResult:
@@ -228,7 +228,7 @@ class HarmonyCommandHandler(CommandHandler):
         except Exception as e:
             return CommandResult(
                 command="harmony_all_off", success=False,
-                text=f"Fehler: {e}",
+                text=user_friendly_error(e, "Harmony"),
             )
 
     def _cmd_volume(self, command: str, label: str) -> CommandResult:
@@ -248,7 +248,7 @@ class HarmonyCommandHandler(CommandHandler):
         except Exception as e:
             return CommandResult(
                 command=f"harmony_{command.lower()}", success=False,
-                text=f"Fehler: {e}",
+                text=user_friendly_error(e, "Harmony"),
             )
 
     def _cmd_current(self) -> CommandResult:
@@ -273,7 +273,7 @@ class HarmonyCommandHandler(CommandHandler):
         except Exception as e:
             return CommandResult(
                 command="harmony_current", success=False,
-                text=f"Fehler: {e}",
+                text=user_friendly_error(e, "Harmony"),
             )
 
     def _cmd_list_activities(self) -> CommandResult:
@@ -295,7 +295,7 @@ class HarmonyCommandHandler(CommandHandler):
         except Exception as e:
             return CommandResult(
                 command="harmony_list_activities", success=False,
-                text=f"Fehler: {e}",
+                text=user_friendly_error(e, "Harmony"),
             )
 
     def _cmd_list_devices(self) -> CommandResult:
@@ -317,7 +317,7 @@ class HarmonyCommandHandler(CommandHandler):
         except Exception as e:
             return CommandResult(
                 command="harmony_list_devices", success=False,
-                text=f"Fehler: {e}",
+                text=user_friendly_error(e, "Harmony"),
             )
 
     def _cmd_list_commands(self, raw_text: str) -> CommandResult:
@@ -384,7 +384,7 @@ class HarmonyCommandHandler(CommandHandler):
         except Exception as e:
             return CommandResult(
                 command="harmony_scene_start", success=False,
-                text=f"Fehler: {e}",
+                text=user_friendly_error(e, "Harmony"),
             )
 
     def _cmd_scene_list(self) -> CommandResult:
@@ -406,5 +406,5 @@ class HarmonyCommandHandler(CommandHandler):
         except Exception as e:
             return CommandResult(
                 command="harmony_scene_list", success=False,
-                text=f"Fehler: {e}",
+                text=user_friendly_error(e, "Harmony"),
             )

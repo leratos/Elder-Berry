@@ -384,4 +384,4 @@ def test_setup_list_dir_error(handler, nc_client):
     result = handler.execute("nextcloud_setup", "richte nextcloud ein")
 
     assert result.success is False
-    assert "nicht gelesen werden" in result.text
+    assert "Nextcloud" in result.text

@@ -5,11 +5,14 @@ Commands parsen und ausführen.
 """
 from __future__ import annotations
 
+import logging
 import re
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -116,6 +119,28 @@ class CommandHandler(ABC):
         """
         return []
 
+    @staticmethod
+    def not_configured(
+        command: str,
+        service: str,
+        setup_step: int | None = None,
+    ) -> CommandResult:
+        """Einheitliche Antwort wenn ein Dienst nicht konfiguriert ist.
+
+        Args:
+            command: Command-Name für das CommandResult.
+            service: Anzeigename des Dienstes (z.B. "E-Mail", "Nextcloud").
+            setup_step: Optionale Schritt-Nummer im Setup-Wizard.
+        """
+        hint = f"Einrichten unter http://localhost:8090/setup"
+        if setup_step is not None:
+            hint += f" (Schritt {setup_step})"
+        return CommandResult(
+            command=command,
+            success=False,
+            text=f"⚠ {service} nicht konfiguriert. {hint}",
+        )
+
     @abstractmethod
     def execute(self, command: str, raw_text: str) -> CommandResult:
         """Führt einen erkannten Command aus.
@@ -127,3 +152,109 @@ class CommandHandler(ABC):
         Returns:
             CommandResult mit Ergebnis.
         """
+
+
+# ---- Setup-Step-Mapping für not_configured()-Hinweise ----
+SETUP_STEPS: dict[str, int] = {
+    "llm": 2,
+    "anthropic": 2,
+    "ollama": 2,
+    "matrix": 3,
+    "nextcloud": 4,
+    "caldav": 4,
+    "carddav": 4,
+    "cloud": 4,
+    "email": 5,
+    "imap": 5,
+    "smtp": 5,
+    "standort": 6,
+    "wetter": 6,
+    "brave": 7,
+    "elevenlabs": 7,
+    "groq": 7,
+    "google_maps": 7,
+    "rpi": 7,
+    "gym": 7,
+    "harmony": 7,
+}
+
+
+def user_friendly_error(exc: Exception, context: str = "") -> str:
+    """Wandelt eine Exception in eine nutzerfreundliche Fehlermeldung um.
+
+    Args:
+        exc: Die aufgetretene Exception.
+        context: Optionaler Kontext (z.B. "E-Mail-Abfrage", "Kalender").
+
+    Returns:
+        Nutzerfreundlicher Fehlertext mit Handlungsempfehlung.
+    """
+    prefix = f"{context}: " if context else ""
+    exc_type = type(exc).__name__
+    exc_str = str(exc)
+
+    # --- Netzwerk / Verbindung ---
+    if isinstance(exc, ConnectionError) or "ConnectionRefused" in exc_type:
+        return (
+            f"❌ {prefix}Server nicht erreichbar. "
+            "Prüfe ob der Dienst läuft und die Adresse stimmt."
+        )
+
+    if isinstance(exc, TimeoutError) or "Timeout" in exc_type:
+        return (
+            f"❌ {prefix}Zeitüberschreitung. "
+            "Der Server antwortet nicht. Versuch es gleich nochmal."
+        )
+
+    if "ConnectError" in exc_type or "ConnectionError" in exc_type:
+        return (
+            f"❌ {prefix}Verbindung fehlgeschlagen. "
+            "Prüfe Netzwerk und Server-Erreichbarkeit."
+        )
+
+    # --- Auth / API ---
+    if "401" in exc_str or "Unauthorized" in exc_str:
+        return (
+            f"❌ {prefix}Zugangsdaten ungültig oder abgelaufen. "
+            "Neu konfigurieren unter http://localhost:8090/setup"
+        )
+
+    if "403" in exc_str or "Forbidden" in exc_str:
+        return (
+            f"❌ {prefix}Zugriff verweigert. "
+            "Prüfe ob die Berechtigungen korrekt sind."
+        )
+
+    if "404" in exc_str or "Not Found" in exc_str:
+        return f"❌ {prefix}Nicht gefunden. Prüfe ob die Adresse/Ressource existiert."
+
+    if "429" in exc_str or "RateLimit" in exc_type or "rate" in exc_str.lower():
+        return (
+            f"❌ {prefix}Zu viele Anfragen. "
+            "Warte kurz und versuch es dann nochmal."
+        )
+
+    if "5" == exc_str[:1] and len(exc_str) >= 3 and exc_str[1:3].isdigit():
+        return (
+            f"❌ {prefix}Serverfehler ({exc_str[:3]}). "
+            "Der Dienst hat ein Problem. Versuch es später nochmal."
+        )
+
+    # --- Dateisystem ---
+    if isinstance(exc, FileNotFoundError):
+        return f"❌ {prefix}Datei nicht gefunden: {exc}"
+
+    if isinstance(exc, PermissionError):
+        return f"❌ {prefix}Keine Berechtigung für diese Datei/diesen Ordner."
+
+    if isinstance(exc, OSError) and "disk" in exc_str.lower():
+        return f"❌ {prefix}Speicherplatz-Problem. Prüfe den verfügbaren Platz."
+
+    # --- Daten / Parsing ---
+    if isinstance(exc, (ValueError, KeyError)):
+        return f"❌ {prefix}Ungültige Daten: {exc}"
+
+    # --- Fallback: kurze Beschreibung ohne Stacktrace ---
+    short = exc_str if len(exc_str) <= 120 else exc_str[:117] + "..."
+    logger.debug("user_friendly_error fallback für %s: %s", exc_type, exc_str)
+    return f"❌ {prefix}Fehler: {short}"

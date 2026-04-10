@@ -150,7 +150,7 @@ class TestCmdMailDelete:
         handler._email_client.delete.side_effect = RuntimeError("IMAP kaputt")
         result = handler.execute("mail_delete", "lösche mail #123")
         assert not result.success
-        assert "fehlgeschlagen" in result.text
+        assert "❌" in result.text
 
     def test_delete_removes_from_last_mails(self, handler: MailCommandHandler):
         """Nach Löschen wird Mail aus _last_mails entfernt."""

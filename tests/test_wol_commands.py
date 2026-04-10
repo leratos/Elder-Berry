@@ -120,4 +120,4 @@ class TestWolCommand:
         mock_sock.sendto.side_effect = OSError("network down")
         result = handler.execute("wol", "wol")
         assert result.success is False
-        assert "fehlgeschlagen" in result.text.lower()
+        assert "❌" in result.text

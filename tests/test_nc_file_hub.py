@@ -176,7 +176,7 @@ class TestContentSearchExecution:
         handler = CloudCommandHandler(nextcloud_files=nc_client)
         r = handler.execute("cloud_content_search", "cloud inhalt test")
         assert not r.success
-        assert "fehlgeschlagen" in r.text
+        assert "❌" in r.text
 
 
 # ── NC Upload + Share Tests ───────────────────────────────────────────

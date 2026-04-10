@@ -101,14 +101,11 @@ class FilingCommandHandler(CommandHandler):
             )
 
         if self._nc is None:
-            return CommandResult(
-                command=command, success=False,
-                text="Nextcloud nicht konfiguriert.",
-            )
+            return self.not_configured(command, "Nextcloud", setup_step=4)
         if self._classifier is None:
             return CommandResult(
                 command=command, success=False,
-                text="Dokument-Analyse nicht verfügbar (Ollama fehlt).",
+                text="⚠ Dokument-Analyse nicht verfügbar (Ollama fehlt).",
             )
 
         return self._cmd_aufräumen()
@@ -201,20 +198,14 @@ class FilingCommandHandler(CommandHandler):
     def _cmd_anhang_ablegen(self, raw_text: str) -> CommandResult:
         """PDF-Anhänge aus einer Mail klassifizieren und ablegen."""
         if self._nc is None:
-            return CommandResult(
-                command="anhang_ablegen", success=False,
-                text="Nextcloud nicht konfiguriert.",
-            )
+            return self.not_configured("anhang_ablegen", "Nextcloud", setup_step=4)
         if self._classifier is None:
             return CommandResult(
                 command="anhang_ablegen", success=False,
-                text="Dokument-Analyse nicht verfügbar (Ollama fehlt).",
+                text="⚠ Dokument-Analyse nicht verfügbar (Ollama fehlt).",
             )
         if self._email is None:
-            return CommandResult(
-                command="anhang_ablegen", success=False,
-                text="E-Mail nicht konfiguriert.",
-            )
+            return self.not_configured("anhang_ablegen", "E-Mail", setup_step=5)
 
         match = FILING_ATTACHMENT_PATTERN.search(raw_text.strip())
         if not match:

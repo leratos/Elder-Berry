@@ -467,7 +467,7 @@ class TestCmdMedia:
         result = handler.execute("pause", "pause")
 
         assert result.success is False
-        assert "fehlgeschlagen" in result.text
+        assert "❌" in result.text
 
 
 # ---------------------------------------------------------------------------
@@ -522,7 +522,7 @@ class TestCmdVolume:
         result = handler.execute("volume", "volume 50")
 
         assert result.success is False
-        assert "fehlgeschlagen" in result.text
+        assert "❌" in result.text
 
     def test_volume_german_keyword(self):
         ctrl = _make_controller_mock()
@@ -1286,7 +1286,7 @@ class TestCmdAvatar:
         result = handler.execute("avatar", "avatar")
 
         assert result.success is False
-        assert "fehlgeschlagen" in result.text
+        assert "❌" in result.text
 
     def test_selfie_alias(self):
         mock_renderer = MagicMock()
@@ -1314,11 +1314,12 @@ class TestRestartCommand:
         assert handler.parse_command("neustart") == "neustart"
 
     def test_execute_neustart_via_simple(self):
-        """'neustart' als SIMPLE_COMMAND wird korrekt ausgeführt."""
+        """'neustart' als SIMPLE_COMMAND gibt Bestätigungsdialog zurück."""
         handler = RemoteCommandHandler()
         result = handler.execute("neustart", "neustart")
         assert result.success is True
-        assert result.restart is True
+        assert result.pending_confirmation is True
+        assert result.pending_data["action_type"] == "restart"
 
     def test_parse_keyword_bitte_neustarten(self):
         handler = RemoteCommandHandler()
@@ -1333,8 +1334,8 @@ class TestRestartCommand:
         result = handler.execute("restart", "restart")
 
         assert result.success is True
-        assert result.restart is True
-        assert "Starte neu" in result.text
+        assert result.pending_confirmation is True
+        assert "Bestätige" in result.text
 
     def test_restart_flag_default_false(self):
         """CommandResult hat restart=False als Default."""
@@ -1628,7 +1629,7 @@ class TestTerminDeleteCommand:
         assert result.success is True
         mock_cal.delete_event.assert_called_once_with("evt_1")
 
-    def test_execute_delete_alle(self):
+    def test_execute_delete_alle_asks_confirmation(self):
         mock_cal = MagicMock()
         handler = RemoteCommandHandler(calendar=mock_cal)
         handler._calendar._last_events = self._make_events(3)
@@ -1636,8 +1637,10 @@ class TestTerminDeleteCommand:
         result = handler.execute("termin_delete", "lösche alle termine")
 
         assert result.success is True
-        assert "3 Termine" in result.text
-        assert mock_cal.delete_event.call_count == 3
+        assert result.pending_confirmation is True
+        assert result.pending_data["action_type"] == "bulk_delete_events"
+        assert len(result.pending_data["event_ids"]) == 3
+        mock_cal.delete_event.assert_not_called()
 
     def test_execute_delete_no_events(self):
         mock_cal = MagicMock()
@@ -1678,7 +1681,7 @@ class TestTerminDeleteCommand:
         result = handler.execute("termin_delete", "lösche den 1. termin")
 
         assert result.success is False
-        assert "fehlgeschlagen" in result.text.lower()
+        assert "❌" in result.text
 
     def test_termine_stores_last_events(self):
         """termine-Command speichert Events für späteres Löschen."""
@@ -1907,7 +1910,7 @@ class TestMailAttachmentCommand:
         result = handler.execute("mail_attachment", "mail anhang 42")
 
         assert result.success is False
-        assert "fehlgeschlagen" in result.text
+        assert "❌" in result.text
 
 
 # ---------------------------------------------------------------------------
@@ -1957,7 +1960,7 @@ class TestWeatherExecute:
         handler = RemoteCommandHandler()
         result = handler.execute("wetter", "wetter")
         assert result.success is False
-        assert "nicht verfügbar" in result.text
+        assert "nicht konfiguriert" in result.text
 
     def test_execute_current(self):
         from elder_berry.tools.weather_client import WeatherData, WeatherForecast
@@ -2118,7 +2121,7 @@ class TestTimerExecute:
         assert "Wäsche" in result.text
         store.close()
 
-    def test_reminder_delete_all(self, tmp_path):
+    def test_reminder_delete_all_asks_confirmation(self, tmp_path):
         from elder_berry.tools.reminder_store import ReminderStore
         from datetime import datetime, timezone, timedelta
         store = ReminderStore(db_path=tmp_path / "test.db")
@@ -2129,8 +2132,10 @@ class TestTimerExecute:
         result = handler.execute("reminder_delete", "lösche alle erinnerungen")
 
         assert result.success is True
-        assert "2" in result.text
-        assert store.get_pending() == []
+        assert result.pending_confirmation is True
+        assert result.pending_data["action_type"] == "bulk_delete_reminders"
+        # Erinnerungen noch da – erst nach Bestätigung löschen
+        assert len(store.get_pending()) == 2
         store.close()
 
 
@@ -2589,7 +2594,7 @@ class TestComputerUseExecute:
         handler = RemoteCommandHandler(computer_use=mock_cu)
         result = handler.execute("computer_use", "klick auf OK")
         assert result.success is False
-        assert "fehlgeschlagen" in result.text
+        assert "❌" in result.text
 
     def test_with_verification_image(self, tmp_path):
         from unittest.mock import MagicMock
@@ -2728,7 +2733,7 @@ class TestWebSearchExecute:
         result = handler.execute("web_search", "suche Test")
 
         assert result.success is False
-        assert "fehlgeschlagen" in result.text
+        assert "❌" in result.text
 
     def test_empty_query_not_parsed(self):
         """'suche ' (ohne Suchbegriff) wird nicht als Command erkannt."""

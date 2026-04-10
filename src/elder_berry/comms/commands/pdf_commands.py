@@ -18,7 +18,7 @@ import tempfile
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from elder_berry.comms.commands.base import CommandHandler, CommandResult
+from elder_berry.comms.commands.base import CommandHandler, CommandResult, user_friendly_error
 
 if TYPE_CHECKING:
     from elder_berry.tools.nextcloud_files import NextcloudFilesClient
@@ -147,11 +147,8 @@ class PDFCommandHandler(CommandHandler):
 
     def execute(self, command: str, raw_text: str) -> CommandResult:
         if self._spdf is None:
-            return CommandResult(
-                command=command,
-                success=False,
-                text="PDF-Verarbeitung nicht konfiguriert "
-                     "(Stirling-PDF nicht verfügbar).",
+            return self.not_configured(
+                command, "PDF-Verarbeitung (Stirling-PDF)", setup_step=7,
             )
 
         if command == "pdf_merge":
@@ -187,13 +184,13 @@ class PDFCommandHandler(CommandHandler):
             Bei Fehler: (None, "", error_message)
         """
         if self._nc is None:
-            return None, "", "Nextcloud nicht konfiguriert."
+            return None, "", "⚠ Nextcloud nicht konfiguriert. Einrichten unter http://localhost:8090/setup (Schritt 4)"
 
         try:
             results = self._nc.search(name)
         except Exception as exc:
             logger.error("NC search failed: %s", exc)
-            return None, "", f"Nextcloud-Suche fehlgeschlagen: {exc}"
+            return None, "", user_friendly_error(exc, "Nextcloud-Suche")
 
         # Alle Dateien (nicht nur PDFs) — für to_pdf brauchen wir auch DOCX etc.
         matches = [f for f in results if not f.is_dir]

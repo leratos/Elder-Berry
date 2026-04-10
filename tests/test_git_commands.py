@@ -150,4 +150,4 @@ class TestGitExecute:
         mock_run.side_effect = OSError("permission denied")
         result = handler.execute("git", "git status")
         assert result.success is False
-        assert "fehlgeschlagen" in result.text.lower()
+        assert "❌" in result.text and "Git" in result.text

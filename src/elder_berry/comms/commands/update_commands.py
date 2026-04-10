@@ -17,7 +17,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from elder_berry.comms.commands.base import CommandHandler, CommandResult
+from elder_berry.comms.commands.base import CommandHandler, CommandResult, user_friendly_error
 from elder_berry.comms.commands.cmd_utils import CmdResult, run_cmd
 
 if TYPE_CHECKING:
@@ -172,7 +172,7 @@ class UpdateCommandHandler(CommandHandler):
             return CommandResult(
                 command="update",
                 success=False,
-                text="Projekt-Root nicht konfiguriert.",
+                text="⚠ Projekt-Root nicht konfiguriert.",
             )
 
         cwd = str(self._project_root)
@@ -335,7 +335,7 @@ class UpdateCommandHandler(CommandHandler):
             return CommandResult(
                 command="update_rpi",
                 success=False,
-                text=f"RPi5 Update fehlgeschlagen: {e}",
+                text=user_friendly_error(e, "RPi5 Update"),
             )
 
     # ------------------------------------------------------------------
@@ -370,7 +370,7 @@ class UpdateCommandHandler(CommandHandler):
             return CommandResult(
                 command="update_tower",
                 success=False,
-                text=f"Tower Update fehlgeschlagen: {e}",
+                text=user_friendly_error(e, "Tower Update"),
             )
 
     def _cmd_update_all(self) -> CommandResult:
@@ -444,7 +444,7 @@ class UpdateCommandHandler(CommandHandler):
             return CommandResult(
                 command="rollback",
                 success=False,
-                text="Projekt-Root nicht konfiguriert.",
+                text="⚠ Projekt-Root nicht konfiguriert.",
             )
 
         backup = self._read_backup()
