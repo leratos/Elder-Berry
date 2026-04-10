@@ -684,9 +684,13 @@ class ConfirmationHandler:
                 f"Passt das? (ja / korrigieren / überspringen)"
             )
 
-            # Remaining PDFs für Follow-up
+            # Remaining PDFs für Follow-up: (Dateiname, lokaler Pfad, NC-Pfad)
             remaining = [
-                (str(pdf_paths[i]), nc_paths[i] if i < len(nc_paths) else "")
+                (
+                    pdf_paths[i].name,
+                    str(pdf_paths[i]),
+                    nc_paths[i] if i < len(nc_paths) else "",
+                )
                 for i in range(len(pdf_paths))
                 if i != first_idx and pdf_paths[i].exists()
             ]
