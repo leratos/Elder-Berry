@@ -4018,6 +4018,13 @@ User: "Lies meine Mails und trag den Zahnarzttermin ein"
 - 297 remote_commands Tests + 33 weather_commands Tests grün
 - Dateien geändert: advanced_commands.py, remote_commands.py
 
+## Setup-Wizard Polish (2026-04-10)
+- audio_dashboard.html: "Setup-Wizard" Card mit Link zu /setup hinzugefügt
+  → Re-Konfiguration direkt aus dem Dashboard möglich
+- setup_wizard.html: Geocoding-Suche im Standort-Schritt (Nominatim/OSM)
+  → Stadt eingeben → "Suchen" → Lat/Lon automatisch ausgefüllt, kein API-Key nötig
+- Dateien geändert: audio_dashboard.html, setup_wizard.html
+
 ## INSTALLATION.md aktualisiert (2026-04-10)
 - Schnellstart-Abschnitt mit Bootstrap-Scripts (install.ps1/install.sh)
 - Verweis auf Setup-Wizard als empfohlene Konfigurationsmethode

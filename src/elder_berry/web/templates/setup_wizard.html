@@ -358,7 +358,12 @@
             <p style="margin-bottom:1rem; font-size:0.9rem;">Für Wetter, Briefing, Routenplanung.</p>
             <div class="form-group">
                 <label>Stadt</label>
-                <input type="text" id="weather_city" placeholder="Berlin">
+                <div class="inline-test">
+                    <input type="text" id="weather_city" placeholder="Berlin">
+                    <button class="btn btn-test" onclick="geocodeCity()">Suchen</button>
+                </div>
+                <div class="test-result" id="geocode-result"></div>
+                <p class="hint">Koordinaten werden automatisch aus dem Stadtnamen ermittelt.</p>
             </div>
             <div class="form-row">
                 <div class="form-group">
@@ -763,6 +768,31 @@ async function loadSummary() {
             list.appendChild(li);
         }
     } catch { /* ignore */ }
+}
+
+async function geocodeCity() {
+    const city = v('weather_city');
+    const el = document.getElementById('geocode-result');
+    if (!city) { el.className = 'test-result error'; el.textContent = 'Bitte Stadt eingeben.'; return; }
+    el.className = 'test-result loading'; el.style.display = 'block'; el.textContent = 'Suche...';
+    try {
+        const r = await fetch('https://nominatim.openstreetmap.org/search?format=json&limit=1&q=' + encodeURIComponent(city), {
+            headers: {'Accept-Language': 'de'}
+        });
+        const data = await r.json();
+        if (data.length > 0) {
+            document.getElementById('weather_latitude').value = parseFloat(data[0].lat).toFixed(4);
+            document.getElementById('weather_longitude').value = parseFloat(data[0].lon).toFixed(4);
+            el.className = 'test-result success';
+            el.textContent = '\u2705 ' + data[0].display_name;
+        } else {
+            el.className = 'test-result error';
+            el.textContent = '\u274C Ort nicht gefunden. Koordinaten bitte manuell eingeben.';
+        }
+    } catch (e) {
+        el.className = 'test-result error';
+        el.textContent = '\u274C Geocoding fehlgeschlagen: ' + e.message;
+    }
 }
 
 async function completeSetup() {
