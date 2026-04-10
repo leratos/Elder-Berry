@@ -3967,3 +3967,14 @@ User: "Lies meine Mails und trag den Zahnarzttermin ein"
 - Dateien geändert: tower_server.py, tower_agent.py, update_commands.py, remote_commands.py
 - Dateien geändert (Tests): test_update_commands.py, test_tower_server.py
 - HINWEIS: Task-Scheduler manuell konfigurieren: "Falls Aufgabe scheitert, neu starten alle 1 Minute, max 3 Versuche"
+
+## Abgeschlossen: Bugfix – Wetter-Ortserkennung (2026-04-10)
+- Problem: "Wie ist heute das Wetter in Brandenburg an der Havel" → Ort wird nicht erkannt, Fallback auf Heimatort
+- Ursache 1: WEATHER_LOCATION_PATTERN fehlte in patterns-Liste → kein direktes Pattern-Routing
+- Ursache 2: Keyword "wie ist das wetter" matchte nicht "wie ist heute das wetter" (Wort dazwischen)
+- Folge: Nachricht ging ans LLM → LLM gab "wetter" zurück → Ortsinfo ging verloren
+- Fix in weather_commands.py:
+  - WEATHER_LOCATION_PATTERN in patterns-Liste eingetragen (use_search=True)
+  - Keywords erweitert: "wie ist heute das wetter", "wie wird das wetter", "wetter in "
+- 11 neue Tests (Pattern, Routing, Execution), alle 33 Tests grün
+- Dateien geändert: weather_commands.py, test_weather_commands.py

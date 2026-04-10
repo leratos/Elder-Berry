@@ -10,6 +10,7 @@ from elder_berry.comms.commands.weather_commands import (
     RECURRING_MONTHLY_PATTERN,
     RECURRING_WEEKDAY_PATTERN,
     RECURRING_WEEKLY_PATTERN,
+    WEATHER_LOCATION_PATTERN,
     WeatherCommandHandler,
 )
 from elder_berry.tools.reminder_store import ReminderStore
@@ -105,6 +106,104 @@ class TestRecurringMonthlyPattern:
 # ---------------------------------------------------------------------------
 # Command Registration
 # ---------------------------------------------------------------------------
+
+class TestWeatherLocationPattern:
+    """WEATHER_LOCATION_PATTERN erkennt Orte aus natürlichsprachlichen Anfragen."""
+
+    def test_wetter_in_city(self):
+        m = WEATHER_LOCATION_PATTERN.search("wetter in Leipzig")
+        assert m is not None
+        assert (m.group(1) or "").strip() == "Leipzig"
+
+    def test_wetter_in_multi_word_city(self):
+        m = WEATHER_LOCATION_PATTERN.search("wetter in Brandenburg an der Havel")
+        assert m is not None
+        assert (m.group(1) or "").strip() == "Brandenburg an der Havel"
+
+    def test_natural_language_with_heute(self):
+        m = WEATHER_LOCATION_PATTERN.search(
+            "Wie ist heute das Wetter in Brandenburg an der Havel",
+        )
+        assert m is not None
+        assert (m.group(1) or "").strip() == "Brandenburg an der Havel"
+
+    def test_natural_language_morgen(self):
+        m = WEATHER_LOCATION_PATTERN.search("wetter in Berlin morgen")
+        assert m is not None
+        assert (m.group(1) or "").strip() == "Berlin"
+
+    def test_no_city_no_match(self):
+        m = WEATHER_LOCATION_PATTERN.search("wetter morgen")
+        assert m is None
+
+    def test_no_city_heute(self):
+        m = WEATHER_LOCATION_PATTERN.search("wetter heute")
+        assert m is None
+
+
+class TestWeatherLocationRouting:
+    """WEATHER_LOCATION_PATTERN ist in patterns registriert (use_search=True)."""
+
+    def test_location_pattern_in_patterns(self, handler):
+        patterns = handler.patterns
+        location_entries = [
+            (pat, cmd, use_orig, use_search)
+            for pat, cmd, use_orig, *rest in patterns
+            if pat is WEATHER_LOCATION_PATTERN
+            for use_search in (rest[0] if rest else False,)
+        ]
+        assert len(location_entries) == 1
+        _, cmd, _, use_search = location_entries[0]
+        assert cmd == "wetter"
+        assert use_search is True
+
+    def test_keyword_wie_ist_heute_das_wetter(self, handler):
+        keywords = handler.keywords["wetter"]
+        assert "wie ist heute das wetter" in keywords
+
+    def test_keyword_wetter_in(self, handler):
+        keywords = handler.keywords["wetter"]
+        assert "wetter in " in keywords
+
+    def test_keyword_wie_wird_das_wetter(self, handler):
+        keywords = handler.keywords["wetter"]
+        assert "wie wird das wetter" in keywords
+
+
+class TestWeatherLocationExecution:
+    """_extract_location + _cmd_weather korrekt für Ort-basierte Anfragen."""
+
+    def test_location_extracted_and_used(self):
+        weather_mock = MagicMock()
+        weather_mock.geocode.return_value = ("52.41", "12.56", "Brandenburg an der Havel")
+        weather_mock.get_current.return_value = {"temp": 5.0}
+        weather_mock.get_today.return_value = {"day": "heute"}
+        weather_mock.format_current.return_value = "Wetter in Brandenburg"
+        weather_mock.format_forecast.return_value = "Vorhersage"
+
+        handler = WeatherCommandHandler(weather=weather_mock)
+        result = handler.execute(
+            "wetter", "Wie ist heute das Wetter in Brandenburg an der Havel",
+        )
+        assert result.success is True
+        weather_mock.geocode.assert_called_once_with("Brandenburg an der Havel")
+        weather_mock.get_current.assert_called_once_with(
+            location=("52.41", "12.56", "Brandenburg an der Havel"),
+        )
+
+    def test_location_not_found_falls_back(self):
+        weather_mock = MagicMock()
+        weather_mock.geocode.return_value = None
+        weather_mock.get_current.return_value = {"temp": 3.0}
+        weather_mock.get_today.return_value = {"day": "heute"}
+        weather_mock.format_current.return_value = "Wetter Default"
+        weather_mock.format_forecast.return_value = "Vorhersage"
+
+        handler = WeatherCommandHandler(weather=weather_mock)
+        result = handler.execute("wetter", "wetter in Nirgendwo")
+        assert result.success is True
+        weather_mock.get_current.assert_called_once_with(location=None)
+
 
 class TestCommandRegistration:
     def test_recurring_patterns_registered(self, handler):

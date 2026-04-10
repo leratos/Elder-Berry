@@ -152,6 +152,7 @@ class WeatherCommandHandler(CommandHandler):
             (RECURRING_WEEKDAY_PATTERN, "recurring_reminder", False, False),
             (RECURRING_MONTHLY_PATTERN, "recurring_reminder", False, False),
             (WEATHER_PATTERN, "wetter", False, False),
+            (WEATHER_LOCATION_PATTERN, "wetter", False, True),
             (TIMER_PATTERN, "timer", False, False),
             (REMINDER_PATTERN, "reminder", False, False),
             (TRAINING_PATTERN, "training", False, False),
@@ -184,7 +185,8 @@ class WeatherCommandHandler(CommandHandler):
                 "bestleistungen", "rekorde",
             ],
             "wetter": [
-                "wie ist das wetter", "wetter draußen", "regnet es",
+                "wie ist das wetter", "wie ist heute das wetter",
+                "wie wird das wetter", "wetter draußen", "regnet es",
                 "temperatur", "brauche ich einen schirm",
                 "brauche ich eine jacke", "wie warm", "wie kalt",
                 "wettervorhersage", "prognose", "regen", "sonnig",
@@ -192,6 +194,7 @@ class WeatherCommandHandler(CommandHandler):
                 "friert es", "wird es kalt", "wird es warm",
                 "soll ich eine jacke mitnehmen",
                 "wie warm ist es", "wie kalt ist es",
+                "wetter in ",
             ],
             "erinnerungen": [
                 "meine erinnerungen", "offene timer", "was steht an timer",
