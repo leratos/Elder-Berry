@@ -161,6 +161,11 @@ class SettingsDashboard:
         from elder_berry.web.avatar_editor import register_avatar_editor_routes
         register_avatar_editor_routes(self._app, renderer=avatar_renderer)
 
+        # Setup-Wizard-Routen (Re-Konfiguration auch nach Ersteinrichtung möglich)
+        if self._secret_store:
+            from elder_berry.web.setup_wizard import register_setup_wizard_routes
+            register_setup_wizard_routes(self._app, self._secret_store)
+
     @property
     def app(self) -> FastAPI:
         """FastAPI-App-Instanz (für Tests oder externe Einbindung)."""
@@ -351,6 +356,10 @@ class SettingsDashboard:
 
         @self._app.get("/", response_class=HTMLResponse)
         async def dashboard():
+            # Redirect zum Setup-Wizard wenn Setup nicht abgeschlossen
+            if self._secret_store and not self._secret_store.has("setup_wizard_completed"):
+                from fastapi.responses import RedirectResponse
+                return RedirectResponse(url="/setup", status_code=302)
             template_path = _TEMPLATE_DIR / "audio_dashboard.html"
             if template_path.exists():
                 return HTMLResponse(template_path.read_text(encoding="utf-8"))

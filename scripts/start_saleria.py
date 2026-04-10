@@ -109,6 +109,20 @@ def parse_args() -> argparse.Namespace:
 # Secrets → Env-Variablen (damit LLMRouter + andere Komponenten sie finden)
 # ---------------------------------------------------------------------------
 
+def _check_first_run() -> bool:
+    """Prüft ob die Minimal-Konfiguration vorhanden ist.
+
+    Returns True wenn Matrix-Token vorhanden (= Setup bereits durchlaufen).
+    """
+    try:
+        from elder_berry.core.secret_store import SecretStore
+        store = SecretStore()
+        required = ["matrix_access_token", "matrix_user_id", "matrix_homeserver"]
+        return all(store.has(k) for k in required)
+    except Exception:
+        return False
+
+
 def load_secrets_to_env():
     """Lädt API-Keys aus SecretStore in os.environ (wenn nicht bereits gesetzt)."""
     try:
@@ -1161,6 +1175,17 @@ def main():
 
     # Secrets aus SecretStore in Env laden (für LLMRouter etc.)
     load_secrets_to_env()
+
+    # First-Run-Check: wenn kein Matrix-Token → Setup-Wizard starten
+    if not _check_first_run():
+        logger.info("Erste Ausführung erkannt – starte Setup-Wizard")
+        print("\n  Keine Konfiguration gefunden – Setup-Wizard wird gestartet...")
+        print("  Öffne http://localhost:8090/setup im Browser\n")
+        from elder_berry.core.secret_store import SecretStore
+        from elder_berry.web.setup_wizard import run_setup_wizard
+        run_setup_wizard(SecretStore(), port=8090)
+        # Nach dem Wizard Secrets neu laden
+        load_secrets_to_env()
 
     llm = init_llm()
     db = init_actions_db()

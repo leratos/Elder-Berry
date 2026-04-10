@@ -3978,3 +3978,28 @@ User: "Lies meine Mails und trag den Zahnarzttermin ein"
   - Keywords erweitert: "wie ist heute das wetter", "wie wird das wetter", "wetter in "
 - 11 neue Tests (Pattern, Routing, Execution), alle 33 Tests grün
 - Dateien geändert: weather_commands.py, test_weather_commands.py
+
+## Abgeschlossen: Phase 46 – Setup-Wizard (Installationsassistent) (2026-04-10)
+- Zwei Stufen: Bootstrap-Script + Web-Wizard (8 Schritte)
+- web/setup_tests.py: SetupTests-Klasse – Verbindungstests für Anthropic, Matrix,
+  Nextcloud (WebDAV/CalDAV/CardDAV), E-Mail (IMAP/SMTP), Ollama, Brave, Groq,
+  Google Maps + Prerequisite-Checks (Python, Git, Ollama)
+- web/setup_wizard.py: FastAPI-Routes – /api/setup/status, step CRUD, test,
+  complete, providers; Passwörter nie per GET; run_setup_wizard() Standalone-Modus
+- web/templates/setup_wizard.html: 8-Schritte-Wizard (Willkommen → LLM → Matrix →
+  Nextcloud → E-Mail → Standort → Optionale Dienste → Zusammenfassung) mit
+  Progress-Bar, Inline-Tests, Provider-Dropdown, Hilfe-Links
+- start_saleria.py: _check_first_run() – prüft Matrix-Pflicht-Keys, startet
+  Setup-Wizard wenn fehlend
+- settings_dashboard.py: Setup-Wizard Routes eingebunden, GET / Redirect auf /setup
+  wenn setup_wizard_completed nicht gesetzt
+- scripts/install.ps1: Windows Bootstrap (Python+Git Check, Clone, venv, pip, Wizard)
+- scripts/install.sh: Linux Bootstrap (RPi5/Ubuntu, gleiche Struktur)
+- scripts/setup_wizard.py: Standalone-Starter mit Browser-Auto-Open
+- 50 Tests grün (19 setup_tests + 21 wizard_api + 10 install_scripts)
+- Dateien erstellt: web/setup_tests.py, web/setup_wizard.py,
+  web/templates/setup_wizard.html, scripts/setup_wizard.py,
+  scripts/install.ps1, scripts/install.sh
+- Dateien geändert: settings_dashboard.py, start_saleria.py
+- Tests erstellt: test_setup_tests.py, test_setup_wizard_api.py,
+  test_install_scripts.py
