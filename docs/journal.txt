@@ -4025,6 +4025,21 @@ User: "Lies meine Mails und trag den Zahnarzttermin ein"
   → Stadt eingeben → "Suchen" → Lat/Lon automatisch ausgefüllt, kein API-Key nötig
 - Dateien geändert: audio_dashboard.html, setup_wizard.html
 
+## Setup-Wizard UX-Fixes (2026-04-10)
+- Fix 1: Whitespace-only Pflichtfelder werden jetzt korrekt abgelehnt
+  (vorher: "   " passierte Validierung, wurde aber nicht gespeichert)
+- Fix 2: Browser öffnet sich automatisch im First-Run-Modus (start_saleria.py)
+- Fix 3: Standalone-Wizard beendet sich nach Setup-Abschluss automatisch,
+  zeigt "Starte Saleria mit: python scripts/start_saleria.py" statt Redirect
+  (app.state.standalone Flag + SIGINT nach 1s Verzögerung)
+- Fix 4: Formularwerte nach Page-Refresh wiederhergestellt –
+  nicht-sensitive Felder werden vom Server geladen, Passwort-Felder zeigen
+  "(bereits gesetzt)" Platzhalter, Pflicht-Keys die bereits im SecretStore
+  existieren dürfen leer bleiben (kein Neueintippen nötig)
+- Lade-Indikator beim "Setup abschließen"-Button
+- 50 Tests grün
+- Dateien geändert: setup_wizard.py, setup_wizard.html, start_saleria.py
+
 ## INSTALLATION.md aktualisiert (2026-04-10)
 - Schnellstart-Abschnitt mit Bootstrap-Scripts (install.ps1/install.sh)
 - Verweis auf Setup-Wizard als empfohlene Konfigurationsmethode

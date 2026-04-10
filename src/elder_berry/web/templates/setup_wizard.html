@@ -615,7 +615,11 @@ async function loadStepValues(n) {
             const el = document.getElementById(key);
             if (!el) continue;
             if (info.value !== undefined && info.value !== null) {
+                // Nicht-sensitiver Wert → direkt setzen
                 el.value = info.value;
+            } else if (info.is_set && el.type === 'password') {
+                // Sensitiver Wert gesetzt → Platzhalter zeigen, Feld nicht überschreiben
+                el.placeholder = '(bereits gesetzt)';
             }
         }
     } catch { /* ignore */ }
@@ -796,12 +800,27 @@ async function geocodeCity() {
 }
 
 async function completeSetup() {
+    const btn = document.querySelector('#step8 .btn-success');
+    if (btn) { btn.disabled = true; btn.textContent = 'Wird abgeschlossen...'; }
     try {
         const r = await fetch('/api/setup/complete', {method: 'POST'});
         const data = await r.json();
-        if (data.redirect) window.location.href = data.redirect;
+        if (data.standalone) {
+            // Standalone-Modus: Server beendet sich, Saleria muss neu gestartet werden
+            document.getElementById('step8').innerHTML =
+                '<h2>Setup abgeschlossen!</h2>' +
+                '<p style="margin-top:1rem; font-size:0.95rem; color:#a8d5a2;">' +
+                'Die Konfiguration wurde gespeichert.</p>' +
+                '<p style="margin-top:1rem; font-size:0.9rem;">Starte Saleria jetzt mit:</p>' +
+                '<code style="display:block; margin:1rem 0; padding:0.8rem; background:#0f3460; border-radius:8px; font-size:0.9rem;">' +
+                'python scripts/start_saleria.py</code>' +
+                '<p style="font-size:0.85rem; color:#888;">Dieses Fenster kann geschlossen werden.</p>';
+        } else if (data.redirect) {
+            window.location.href = data.redirect;
+        }
     } catch (e) {
         alert('Fehler: ' + e.message);
+        if (btn) { btn.disabled = false; btn.textContent = 'Setup abschließen'; }
     }
 }
 </script>

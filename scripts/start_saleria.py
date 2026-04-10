@@ -1181,6 +1181,9 @@ def main():
         logger.info("Erste Ausführung erkannt – starte Setup-Wizard")
         print("\n  Keine Konfiguration gefunden – Setup-Wizard wird gestartet...")
         print("  Öffne http://localhost:8090/setup im Browser\n")
+        import webbrowser
+        from threading import Timer
+        Timer(1.5, webbrowser.open, args=["http://localhost:8090/setup"]).start()
         from elder_berry.core.secret_store import SecretStore
         from elder_berry.web.setup_wizard import run_setup_wizard
         run_setup_wizard(SecretStore(), port=8090)

@@ -241,9 +241,11 @@ def register_setup_wizard_routes(
             step_def["required_keys"] + step_def["optional_keys"]
         )
 
-        # Pflicht-Keys prüfen
+        # Pflicht-Keys prüfen (auch Whitespace-only abfangen)
+        # Bereits gespeicherte Keys akzeptieren (z.B. nach Page-Refresh)
         for key in step_def["required_keys"]:
-            if key not in body or not body[key]:
+            val = body.get(key)
+            if (not val or not str(val).strip()) and not secret_store.has(key):
                 return JSONResponse(
                     {"error": f"Pflichtfeld '{key}' fehlt."},
                     status_code=400,
@@ -297,9 +299,22 @@ def register_setup_wizard_routes(
         """Markiert das Setup als abgeschlossen."""
         secret_store.set(SETUP_COMPLETE_KEY, "true")
         logger.info("Setup-Wizard abgeschlossen")
+
+        # Im Standalone-Modus Server nach kurzer Verzögerung beenden
+        if getattr(app.state, "standalone", False):
+            import asyncio
+            async def _shutdown():
+                await asyncio.sleep(1.0)
+                logger.info("Standalone-Wizard wird beendet")
+                import os
+                import signal
+                os.kill(os.getpid(), signal.SIGINT)
+            asyncio.create_task(_shutdown())
+
         return JSONResponse({
             "success": True,
             "redirect": "/",
+            "standalone": getattr(app.state, "standalone", False),
         })
 
     @app.get("/api/setup/providers")
@@ -435,10 +450,12 @@ def run_setup_wizard(secret_store: SecretStore, port: int = 8090) -> None:
     """Startet den Setup-Wizard als Standalone-Server (blockierend).
 
     Wird von start_saleria.py aufgerufen wenn kein Matrix-Token vorhanden ist.
+    Beendet sich automatisch nach Abschluss des Setups.
     """
     import uvicorn
 
     app = FastAPI(title="Elder-Berry Setup-Wizard")
+    app.state.standalone = True
     register_setup_wizard_routes(app, secret_store)
 
     logger.info("Setup-Wizard gestartet auf http://localhost:%d/setup", port)
