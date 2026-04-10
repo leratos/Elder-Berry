@@ -1,5 +1,7 @@
 """Tests: Bootstrap-Scripts – Syntax und Inhalt prüfen."""
+import shutil
 import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -8,6 +10,10 @@ _SCRIPTS_DIR = Path(__file__).parent.parent / "scripts"
 
 
 class TestInstallSh:
+    @pytest.mark.skipif(
+        sys.platform == "win32" or shutil.which("bash") is None,
+        reason="Bash nicht verfügbar (Windows CI ohne WSL)",
+    )
     def test_syntax_valid(self):
         """Bash-Script ist syntaktisch korrekt."""
         script = _SCRIPTS_DIR / "install.sh"
