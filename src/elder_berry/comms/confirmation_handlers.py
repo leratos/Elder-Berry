@@ -48,6 +48,14 @@ class ConfirmationHandler:
             await self._execute_restart_confirm(msg, action)
         elif action.action_type == "filing":
             await self._execute_filing_confirm(msg, action)
+        elif action.action_type == "restart":
+            await self._execute_restart_confirm(msg, action)
+        elif action.action_type in (
+            "bulk_delete_events",
+            "bulk_delete_todos",
+            "bulk_delete_reminders",
+        ):
+            await self._execute_bulk_delete(msg, action)
         else:
             logger.warning("Unbekannter PendingAction-Typ: %s", action.action_type)
             await self._p._channel.send_text(
@@ -437,6 +445,73 @@ class ConfirmationHandler:
             self._p._pending.clear(msg.sender)
 
     # ------------------------------------------------------------------
+    # Bulk-Delete (Phase 50: Bestätigungsdialoge)
+    # ------------------------------------------------------------------
+
+    async def _execute_bulk_delete(
+        self, msg: IncomingMessage, action: PendingAction,
+    ) -> None:
+        """Führt eine bestätigte Bulk-Löschung aus (Termine/Todos/Erinnerungen)."""
+        self._p._pending.clear(msg.sender)
+        self._p._chat_history.add(msg.sender, "user", "ja")
+
+        rc = self._p._remote_commands
+        if not rc:
+            await self._p._channel.send_text(msg.room_id, "❌ Interner Fehler.")
+            return
+
+        try:
+            loop = asyncio.get_running_loop()
+
+            if action.action_type == "bulk_delete_events":
+                handler = getattr(rc, "_calendar", None)
+                if not handler:
+                    await self._p._channel.send_text(
+                        msg.room_id, "❌ Kalender nicht verfügbar.",
+                    )
+                    return
+                event_ids = action.data.get("event_ids", [])
+                result = await loop.run_in_executor(
+                    None, handler.execute_delete_all_events, event_ids,
+                )
+
+            elif action.action_type == "bulk_delete_todos":
+                handler = getattr(rc, "_todos", None)
+                if not handler:
+                    await self._p._channel.send_text(
+                        msg.room_id, "❌ Aufgabenliste nicht verfügbar.",
+                    )
+                    return
+                result = await loop.run_in_executor(
+                    None, handler.execute_cleanup,
+                )
+
+            elif action.action_type == "bulk_delete_reminders":
+                handler = getattr(rc, "_weather", None)
+                if not handler:
+                    await self._p._channel.send_text(
+                        msg.room_id, "❌ Erinnerungen nicht verfügbar.",
+                    )
+                    return
+                result = await loop.run_in_executor(
+                    None, handler.execute_delete_all_reminders,
+                )
+            else:
+                await self._p._channel.send_text(
+                    msg.room_id, f"❌ Unbekannter Bulk-Delete-Typ: {action.action_type}",
+                )
+                return
+
+            await self._p._channel.send_text(msg.room_id, result.text)
+            self._p._chat_history.add(msg.sender, "assistant", result.text)
+
+        except Exception as e:
+            logger.error("Bulk-Delete fehlgeschlagen: %s", e)
+            await self._p._channel.send_text(
+                msg.room_id, f"❌ Löschen fehlgeschlagen: {type(e).__name__}",
+            )
+
+    # ------------------------------------------------------------------
     # Anhang-Aktionsmenü (Phase 49)
     # ------------------------------------------------------------------
 
@@ -609,9 +684,13 @@ class ConfirmationHandler:
                 f"Passt das? (ja / korrigieren / überspringen)"
             )
 
-            # Remaining PDFs für Follow-up
+            # Remaining PDFs für Follow-up: (Dateiname, lokaler Pfad, NC-Pfad)
             remaining = [
-                (str(pdf_paths[i]), nc_paths[i] if i < len(nc_paths) else "")
+                (
+                    pdf_paths[i].name,
+                    str(pdf_paths[i]),
+                    nc_paths[i] if i < len(nc_paths) else "",
+                )
                 for i in range(len(pdf_paths))
                 if i != first_idx and pdf_paths[i].exists()
             ]

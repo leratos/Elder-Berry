@@ -5,7 +5,7 @@ import logging
 import re
 from typing import TYPE_CHECKING
 
-from elder_berry.comms.commands.base import CommandHandler, CommandResult
+from elder_berry.comms.commands.base import CommandHandler, CommandResult, user_friendly_error
 
 if TYPE_CHECKING:
     from elder_berry.robot.client import RobotClient
@@ -125,7 +125,7 @@ class TurntableCommandHandler(CommandHandler):
         except Exception as e:
             return CommandResult(
                 command="drehteller home", success=False,
-                text=f"Homing fehlgeschlagen: {e}",
+                text=user_friendly_error(e, "Drehteller-Homing"),
             )
 
     def _cmd_stop(self) -> CommandResult:
@@ -138,7 +138,7 @@ class TurntableCommandHandler(CommandHandler):
         except Exception as e:
             return CommandResult(
                 command="drehteller stopp", success=False,
-                text=f"Stopp fehlgeschlagen: {e}",
+                text=user_friendly_error(e, "Drehteller-Stopp"),
             )
 
     def _cmd_status(self) -> CommandResult:
@@ -166,7 +166,7 @@ class TurntableCommandHandler(CommandHandler):
         except Exception as e:
             return CommandResult(
                 command="drehteller status", success=False,
-                text=f"Status-Abfrage fehlgeschlagen: {e}",
+                text=user_friendly_error(e, "Drehteller-Status"),
             )
 
     def _cmd_rotate(self, command: str, raw_text: str) -> CommandResult:
@@ -227,7 +227,7 @@ class TurntableCommandHandler(CommandHandler):
         except Exception as e:
             return CommandResult(
                 command="turntable_rotate", success=False,
-                text=f"Rotation fehlgeschlagen: {e}",
+                text=user_friendly_error(e, "Drehteller"),
             )
 
     def _execute_rotate_to(self, degrees: float) -> CommandResult:
@@ -240,5 +240,5 @@ class TurntableCommandHandler(CommandHandler):
         except Exception as e:
             return CommandResult(
                 command="turntable_rotate", success=False,
-                text=f"Rotation fehlgeschlagen: {e}",
+                text=user_friendly_error(e, "Drehteller"),
             )

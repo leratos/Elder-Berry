@@ -883,7 +883,7 @@ class TestUpdateRpiExecute:
         h = UpdateCommandHandler(project_root=tmp_path, robot_client=robot)
         result = h.execute("update_rpi", "update rpi")
         assert result.success is False
-        assert "fehlgeschlagen" in result.text.lower()
+        assert "❌" in result.text
 
 
 class TestUpdateAllExecute:

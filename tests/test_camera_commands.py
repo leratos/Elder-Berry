@@ -167,7 +167,7 @@ class TestCameraCommandExecution:
         result = h.execute("camera_describe", "was siehst du")
         assert result.success is True
         assert result.image_path is not None
-        assert "Analyse fehlgeschlagen" in result.text
+        assert "Kamera-Analyse" in result.text
         # Cleanup
         result.image_path.unlink(missing_ok=True)
 

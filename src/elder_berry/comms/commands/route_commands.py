@@ -16,7 +16,7 @@ import re
 from datetime import datetime, timedelta
 from typing import TYPE_CHECKING
 
-from elder_berry.comms.commands.base import CommandHandler, CommandResult
+from elder_berry.comms.commands.base import CommandHandler, CommandResult, user_friendly_error
 
 if TYPE_CHECKING:
     from elder_berry.tools.contact_store import ContactStore
@@ -239,13 +239,13 @@ class RouteCommandHandler(CommandHandler):
         except RouteError as e:
             return CommandResult(
                 command=command, success=True,
-                text=f"Routenfehler: {e}",
+                text=user_friendly_error(e, "Route"),
             )
         except Exception as e:
             logger.error("Route-API Fehler: %s", e)
             return CommandResult(
                 command=command, success=True,
-                text=f"Fehler bei der Routenberechnung: {e}",
+                text=user_friendly_error(e, "Routenberechnung"),
             )
 
         # 4. Abfahrtszeit berechnen (wenn Ankunftszeit angegeben)

@@ -101,14 +101,11 @@ class FilingCommandHandler(CommandHandler):
             )
 
         if self._nc is None:
-            return CommandResult(
-                command=command, success=False,
-                text="Nextcloud nicht konfiguriert.",
-            )
+            return self.not_configured(command, "Nextcloud", setup_step=4)
         if self._classifier is None:
             return CommandResult(
                 command=command, success=False,
-                text="Dokument-Analyse nicht verfügbar (Ollama fehlt).",
+                text="⚠ Dokument-Analyse nicht verfügbar (Ollama fehlt).",
             )
 
         return self._cmd_aufräumen()
@@ -201,20 +198,14 @@ class FilingCommandHandler(CommandHandler):
     def _cmd_anhang_ablegen(self, raw_text: str) -> CommandResult:
         """PDF-Anhänge aus einer Mail klassifizieren und ablegen."""
         if self._nc is None:
-            return CommandResult(
-                command="anhang_ablegen", success=False,
-                text="Nextcloud nicht konfiguriert.",
-            )
+            return self.not_configured("anhang_ablegen", "Nextcloud", setup_step=4)
         if self._classifier is None:
             return CommandResult(
                 command="anhang_ablegen", success=False,
-                text="Dokument-Analyse nicht verfügbar (Ollama fehlt).",
+                text="⚠ Dokument-Analyse nicht verfügbar (Ollama fehlt).",
             )
         if self._email is None:
-            return CommandResult(
-                command="anhang_ablegen", success=False,
-                text="E-Mail nicht konfiguriert.",
-            )
+            return self.not_configured("anhang_ablegen", "E-Mail", setup_step=5)
 
         match = FILING_ATTACHMENT_PATTERN.search(raw_text.strip())
         if not match:
@@ -498,10 +489,18 @@ class FilingCommandHandler(CommandHandler):
         return result
 
     def _process_next_attachment(
-        self, remaining: list[tuple[str, str]], last_filename: str,
+        self, remaining: list[tuple], last_filename: str,
     ) -> CommandResult:
-        """Klassifiziert den nächsten Mail-Anhang."""
-        name, path_str = remaining[0]
+        """Klassifiziert den nächsten Mail-Anhang.
+
+        remaining-Elemente sind entweder:
+        - (name, local_path_str) – aus _cmd_anhang_ablegen (source_type=mail_attachment)
+        - (name, local_path_str, nc_path) – aus Attachment-Menü (source_type=nc_attachment)
+        """
+        entry = remaining[0]
+        name = entry[0]
+        path_str = entry[1]
+        nc_path = entry[2] if len(entry) > 2 else ""
         rest = remaining[1:]
         local_path = Path(path_str)
 
@@ -530,6 +529,10 @@ class FilingCommandHandler(CommandHandler):
             f"Passt das? (ja / korrigieren / überspringen)"
         )
 
+        # nc_attachment wenn NC-Pfad vorhanden (Attachment-Menü), sonst mail_attachment
+        source_type = "nc_attachment" if nc_path else "mail_attachment"
+        source_path = nc_path if nc_path else f"_mail_anhang/{name}"
+
         return CommandResult(
             command="anhang_ablegen",
             success=True,
@@ -537,8 +540,8 @@ class FilingCommandHandler(CommandHandler):
             pending_confirmation=True,
             pending_data={
                 "action_type": "filing",
-                "source_type": "mail_attachment",
-                "source_path": f"_mail_anhang/{name}",
+                "source_type": source_type,
+                "source_path": source_path,
                 "local_temp": path_str,
                 "suggestion": {
                     "filename": suggestion.filename,

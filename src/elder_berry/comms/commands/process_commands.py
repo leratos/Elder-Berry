@@ -17,7 +17,7 @@ import logging
 import re
 import subprocess
 
-from elder_berry.comms.commands.base import CommandHandler, CommandResult
+from elder_berry.comms.commands.base import CommandHandler, CommandResult, user_friendly_error
 
 logger = logging.getLogger(__name__)
 
@@ -144,7 +144,7 @@ class ProcessCommandHandler(CommandHandler):
             return CommandResult(
                 command="start_process",
                 success=False,
-                text=f"Starten fehlgeschlagen: {e}",
+                text=user_friendly_error(e, "Prozess starten"),
             )
 
     def _cmd_kill_process(self, raw_text: str) -> CommandResult:
@@ -205,5 +205,5 @@ class ProcessCommandHandler(CommandHandler):
             return CommandResult(
                 command="kill_process",
                 success=False,
-                text=f"Beenden fehlgeschlagen: {e}",
+                text=user_friendly_error(e, "Prozess beenden"),
             )

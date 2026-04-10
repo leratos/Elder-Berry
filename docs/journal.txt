@@ -4054,3 +4054,28 @@ User: "Lies meine Mails und trag den Zahnarzttermin ein"
   - Phase 52: Unified Settings & Startup-Feedback (hoch)
   - Phase 53: Install-Script Härtung & Avatar-Editor UX (mittel)
 - Dateien geändert: docs/PROJECT_ROADMAP.md, docs/journal.txt
+
+## Abgeschlossen: Phase 50 – Fehler-UX & Bestätigungsdialoge (2026-04-10)
+- 50.1: user_friendly_error(exc, context) in base.py – wandelt Exceptions in
+  nutzerfreundliche Texte um (ConnectionError → "Server nicht erreichbar",
+  401 → "Zugangsdaten ungültig", Timeout → "Zeitüberschreitung", etc.)
+- 50.2: not_configured(command, service, setup_step) – einheitliche Meldung
+  mit Link zum Setup-Wizard (⚠ E-Mail nicht konfiguriert. Einrichten unter
+  http://localhost:8090/setup (Schritt 5))
+  → 23 Stellen in 12 Handlern refactored
+- 50.3: Bestätigungsdialoge für 4 destruktive Commands:
+  - "lösche alle termine" → pending_confirmation + bulk_delete_events
+  - "todos aufräumen" → pending_confirmation + bulk_delete_todos
+  - "lösche alle erinnerungen" → pending_confirmation + bulk_delete_reminders
+  - "restart" → pending_confirmation + restart
+  → ConfirmationHandler._execute_bulk_delete() für Bestätigungslogik
+- 50.4: ~60 except-Exception-Blöcke in 18 Handlern refactored:
+  text=f"...{e}" → text=user_friendly_error(e, "Kontext")
+  → Konsistentes Format: ❌ Kontext: nutzerfreundliche Erklärung
+  → ⚠ für fehlende Konfiguration, ❌ für Fehler, ✅ für Erfolg
+- SETUP_STEPS Dict: Mapping service → Setup-Wizard-Schritt (2-7)
+- 4035 Tests grün (26 neue + 15 angepasste), keine Regressionen
+- Dateien erstellt: tests/test_error_ux.py (26 Tests)
+- Dateien geändert: base.py, confirmation_handlers.py, + 20 Handler-Dateien
+  + 12 Test-Dateien
+- Branch: feature/phase-50-error-ux

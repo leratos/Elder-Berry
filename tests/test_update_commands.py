@@ -284,7 +284,7 @@ class TestUpdateTower:
         mock_post.side_effect = ConnectionError("offline")
         result = handler_with_tower.execute("update_tower", "update tower")
         assert result.success is False
-        assert "fehlgeschlagen" in result.text.lower()
+        assert "❌" in result.text
 
 
 # ---------------------------------------------------------------------------

@@ -11,7 +11,7 @@ import logging
 import re
 import subprocess
 
-from elder_berry.comms.commands.base import CommandHandler, CommandResult
+from elder_berry.comms.commands.base import CommandHandler, CommandResult, user_friendly_error
 
 logger = logging.getLogger(__name__)
 
@@ -120,5 +120,5 @@ class DockerCommandHandler(CommandHandler):
             return CommandResult(
                 command="docker",
                 success=False,
-                text=f"Docker-Befehl fehlgeschlagen: {e}",
+                text=user_friendly_error(e, "Docker"),
             )

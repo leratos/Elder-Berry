@@ -15,7 +15,7 @@ import tempfile
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from elder_berry.comms.commands.base import CommandHandler, CommandResult
+from elder_berry.comms.commands.base import CommandHandler, CommandResult, user_friendly_error
 
 if TYPE_CHECKING:
     from elder_berry.core.anthropic_client import AnthropicClient
@@ -214,11 +214,7 @@ class MailCommandHandler(CommandHandler):
     def _cmd_mails(self, raw_text: str) -> CommandResult:
         """E-Mails abfragen (ungelesen oder letzte N Tage)."""
         if not self._email_client:
-            return CommandResult(
-                command="mails",
-                success=False,
-                text="E-Mail nicht konfiguriert. Bitte den Admin kontaktieren.",
-            )
+            return self.not_configured("mails", "E-Mail", setup_step=5)
 
         normalized = raw_text.strip().lower()
         match = MAILS_DAYS_PATTERN.match(normalized)
@@ -253,16 +249,13 @@ class MailCommandHandler(CommandHandler):
             return CommandResult(
                 command="mails",
                 success=False,
-                text=f"E-Mail-Fehler: {e}",
+                text=user_friendly_error(e, "E-Mail"),
             )
 
     def _cmd_mail_search(self, raw_text: str) -> CommandResult:
         """E-Mails nach Betreff/Absender durchsuchen."""
         if not self._email_client:
-            return CommandResult(
-                command="mail_search", success=False,
-                text="E-Mail nicht konfiguriert.",
-            )
+            return self.not_configured("mail_search", "E-Mail", setup_step=5)
 
         match = MAIL_SEARCH_PATTERN.search(raw_text.strip())
         if not match:
@@ -297,16 +290,13 @@ class MailCommandHandler(CommandHandler):
             logger.error("Mail-Suche fehlgeschlagen: %s", e)
             return CommandResult(
                 command="mail_search", success=False,
-                text=f"Mail-Suche fehlgeschlagen: {e}",
+                text=user_friendly_error(e, "Mail-Suche"),
             )
 
     def _cmd_mail_attachment(self, raw_text: str) -> CommandResult:
         """Anhänge einer E-Mail per UID abrufen und als temp-Dateien bereitstellen."""
         if not self._email_client:
-            return CommandResult(
-                command="mail_attachment", success=False,
-                text="E-Mail nicht konfiguriert.",
-            )
+            return self.not_configured("mail_attachment", "E-Mail", setup_step=5)
 
         match = MAIL_ATTACHMENT_PATTERN.search(raw_text.strip())
         if not match:
@@ -361,16 +351,13 @@ class MailCommandHandler(CommandHandler):
             logger.error("Mail-Anhang fehlgeschlagen (UID %s): %s", msg_id, e)
             return CommandResult(
                 command="mail_attachment", success=False,
-                text=f"Anhang abrufen fehlgeschlagen: {e}",
+                text=user_friendly_error(e, "Anhang abrufen"),
             )
 
     def _cmd_mail_by_id(self, raw_text: str) -> CommandResult:
         """Einzelne Mail per UID abrufen (Body als history_text für LLM-Kontext)."""
         if not self._email_client:
-            return CommandResult(
-                command="mail_by_id", success=False,
-                text="E-Mail nicht konfiguriert.",
-            )
+            return self.not_configured("mail_by_id", "E-Mail", setup_step=5)
 
         match = MAIL_ID_PATTERN.match(raw_text.strip().lower())
         if not match:
@@ -420,7 +407,7 @@ class MailCommandHandler(CommandHandler):
             logger.error("Mail UID %s abrufen fehlgeschlagen: %s", msg_id, e)
             return CommandResult(
                 command="mail_by_id", success=False,
-                text=f"Mail abrufen fehlgeschlagen: {e}",
+                text=user_friendly_error(e, "Mail abrufen"),
             )
 
     # -- Mail-Delete Command ------------------------------------------------
@@ -428,10 +415,7 @@ class MailCommandHandler(CommandHandler):
     def _cmd_mail_delete(self, raw_text: str) -> CommandResult:
         """Mail per UID oder letzte abgerufene Mail löschen."""
         if not self._email_client:
-            return CommandResult(
-                command="mail_delete", success=False,
-                text="E-Mail nicht konfiguriert.",
-            )
+            return self.not_configured("mail_delete", "E-Mail", setup_step=5)
 
         match = MAIL_DELETE_PATTERN.match(raw_text.strip())
         msg_id = None
@@ -475,7 +459,7 @@ class MailCommandHandler(CommandHandler):
             logger.error("Mail UID %s löschen fehlgeschlagen: %s", msg_id, e)
             return CommandResult(
                 command="mail_delete", success=False,
-                text=f"Löschen fehlgeschlagen: {e}",
+                text=user_friendly_error(e, "Mail löschen"),
             )
 
         # Aus _last_mails entfernen
@@ -496,15 +480,9 @@ class MailCommandHandler(CommandHandler):
         Die Bridge zeigt den Draft und wartet auf Bestätigung.
         """
         if not self._email_client:
-            return CommandResult(
-                command="mail_reply", success=False,
-                text="E-Mail nicht konfiguriert.",
-            )
+            return self.not_configured("mail_reply", "E-Mail", setup_step=5)
         if not self._anthropic:
-            return CommandResult(
-                command="mail_reply", success=False,
-                text="Claude API nicht konfiguriert (ANTHROPIC_API_KEY fehlt).",
-            )
+            return self.not_configured("mail_reply", "Claude API", setup_step=2)
 
         msg_id, instruction = self._parse_reply_args(raw_text)
         if not msg_id:
@@ -520,7 +498,7 @@ class MailCommandHandler(CommandHandler):
             logger.error("Mail UID %s abrufen fehlgeschlagen: %s", msg_id, e)
             return CommandResult(
                 command="mail_reply", success=False,
-                text=f"Mail #{msg_id} konnte nicht abgerufen werden: {e}",
+                text=user_friendly_error(e, f"Mail #{msg_id}"),
             )
 
         if not original:
@@ -576,11 +554,10 @@ class MailCommandHandler(CommandHandler):
 
         raw_text kommt von der Bridge als "#<id> <neue anweisung>".
         """
-        if not self._email_client or not self._anthropic:
-            return CommandResult(
-                command="mail_reply_modify", success=False,
-                text="E-Mail oder Claude API nicht konfiguriert.",
-            )
+        if not self._email_client:
+            return self.not_configured("mail_reply_modify", "E-Mail", setup_step=5)
+        if not self._anthropic:
+            return self.not_configured("mail_reply_modify", "Claude API", setup_step=2)
 
         match = MAIL_REPLY_MODIFY_PATTERN.match(raw_text.strip())
         if not match:
@@ -598,7 +575,7 @@ class MailCommandHandler(CommandHandler):
             logger.error("Mail UID %s abrufen fehlgeschlagen: %s", msg_id, e)
             return CommandResult(
                 command="mail_reply_modify", success=False,
-                text=f"Mail #{msg_id} konnte nicht abgerufen werden: {e}",
+                text=user_friendly_error(e, f"Mail #{msg_id}"),
             )
 
         if not original:

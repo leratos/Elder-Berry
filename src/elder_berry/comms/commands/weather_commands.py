@@ -9,7 +9,7 @@ import re
 from datetime import datetime, timedelta
 from typing import TYPE_CHECKING, Callable
 
-from elder_berry.comms.commands.base import CommandHandler, CommandResult
+from elder_berry.comms.commands.base import CommandHandler, CommandResult, user_friendly_error
 
 if TYPE_CHECKING:
     from elder_berry.comms.briefing_scheduler import BriefingScheduler
@@ -249,11 +249,7 @@ class WeatherCommandHandler(CommandHandler):
     def _cmd_weather(self, raw_text: str) -> CommandResult:
         """Wetter abfragen: aktuell, morgen, woche, N Tage, optional mit Ort."""
         if not self._weather:
-            return CommandResult(
-                command="wetter",
-                success=False,
-                text="Wetter nicht verfügbar (Standort nicht konfiguriert).",
-            )
+            return self.not_configured("wetter", "Wetter (Standort)", setup_step=6)
 
         try:
             normalized = raw_text.strip().lower()
@@ -318,7 +314,7 @@ class WeatherCommandHandler(CommandHandler):
             return CommandResult(
                 command="wetter",
                 success=False,
-                text=f"Wetter-Abfrage fehlgeschlagen: {e}",
+                text=user_friendly_error(e, "Wetter"),
             )
 
     def _extract_location(
@@ -383,7 +379,7 @@ class WeatherCommandHandler(CommandHandler):
         except Exception as e:
             return CommandResult(
                 command="timer", success=False,
-                text=f"Timer fehlgeschlagen: {e}",
+                text=user_friendly_error(e, "Timer"),
             )
 
     def _cmd_reminder(self, raw_text: str) -> CommandResult:
@@ -437,7 +433,7 @@ class WeatherCommandHandler(CommandHandler):
         except Exception as e:
             return CommandResult(
                 command="reminder", success=False,
-                text=f"Erinnerung fehlgeschlagen: {e}",
+                text=user_friendly_error(e, "Erinnerung"),
             )
 
     def _cmd_erinnerungen(self, raw_text: str) -> CommandResult:
@@ -463,12 +459,25 @@ class WeatherCommandHandler(CommandHandler):
         try:
             normalized = raw_text.strip().lower()
 
-            # "lösche alle erinnerungen"
+            # "lösche alle erinnerungen" → Bestätigung
             if "alle" in normalized:
-                count = self._reminder_store.cancel_all("_timer_user")
+                reminders = self._reminder_store.get_pending("_timer_user")
+                count = len(reminders)
+                if count == 0:
+                    return CommandResult(
+                        command="reminder_delete", success=True,
+                        text="✅ Keine offenen Erinnerungen vorhanden.",
+                    )
                 return CommandResult(
-                    command="reminder_delete", success=True,
-                    text=f"\u2705 {count} Erinnerung(en) gelöscht.",
+                    command="reminder_delete",
+                    success=True,
+                    text=f"🗑️ {count} Erinnerung{'en' if count != 1 else ''} "
+                         "löschen? Bestätige mit 'ja'.",
+                    pending_confirmation=True,
+                    pending_data={
+                        "action_type": "bulk_delete_reminders",
+                        "count": count,
+                    },
                 )
 
             # ID extrahieren
@@ -491,8 +500,16 @@ class WeatherCommandHandler(CommandHandler):
         except Exception as e:
             return CommandResult(
                 command="reminder_delete", success=False,
-                text=f"Löschen fehlgeschlagen: {e}",
+                text=user_friendly_error(e, "Erinnerung löschen"),
             )
+
+    def execute_delete_all_reminders(self) -> CommandResult:
+        """Führt das Löschen aller Erinnerungen nach Bestätigung aus."""
+        count = self._reminder_store.cancel_all("_timer_user")
+        return CommandResult(
+            command="reminder_delete", success=True,
+            text=f"✅ {count} Erinnerung{'en' if count != 1 else ''} gelöscht.",
+        )
 
     # ------------------------------------------------------------------
     # Wiederkehrende Erinnerungen
@@ -560,7 +577,7 @@ class WeatherCommandHandler(CommandHandler):
         except Exception as e:
             return CommandResult(
                 command="recurring_reminder", success=False,
-                text=f"Wiederkehrende Erinnerung fehlgeschlagen: {e}",
+                text=user_friendly_error(e, "Wiederkehrende Erinnerung"),
             )
 
     def _create_recurring(
@@ -688,7 +705,7 @@ class WeatherCommandHandler(CommandHandler):
             logger.error("Briefing fehlgeschlagen: %s", e)
             return CommandResult(
                 command="briefing", success=False,
-                text=f"Briefing fehlgeschlagen: {e}",
+                text=user_friendly_error(e, "Briefing"),
             )
 
     # ------------------------------------------------------------------
@@ -698,11 +715,7 @@ class WeatherCommandHandler(CommandHandler):
     def _cmd_training(self, raw_text: str) -> CommandResult:
         """Trainingsdaten von Berry-Gym abrufen."""
         if not self._gym_client:
-            return CommandResult(
-                command="training", success=False,
-                text="Berry-Gym nicht konfiguriert.\n"
-                     "Setup: SecretStore().set('berry_gym_api_token', '<token>')",
-            )
+            return self.not_configured("training", "Berry-Gym", setup_step=7)
 
         normalized = raw_text.strip().lower()
         match = TRAINING_PATTERN.match(normalized)
@@ -739,16 +752,13 @@ class WeatherCommandHandler(CommandHandler):
             logger.error("Berry-Gym Abfrage fehlgeschlagen: %s", e)
             return CommandResult(
                 command="training", success=False,
-                text=f"Berry-Gym Fehler: {e}",
+                text=user_friendly_error(e, "Berry-Gym"),
             )
 
     def _cmd_prs(self) -> CommandResult:
         """Personal Records von Berry-Gym."""
         if not self._gym_client:
-            return CommandResult(
-                command="prs", success=False,
-                text="Berry-Gym nicht konfiguriert.",
-            )
+            return self.not_configured("prs", "Berry-Gym", setup_step=7)
 
         try:
             prs = self._gym_client.get_prs()
@@ -758,5 +768,5 @@ class WeatherCommandHandler(CommandHandler):
             logger.error("Berry-Gym PRs fehlgeschlagen: %s", e)
             return CommandResult(
                 command="prs", success=False,
-                text=f"Berry-Gym Fehler: {e}",
+                text=user_friendly_error(e, "Berry-Gym"),
             )

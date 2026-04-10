@@ -10,7 +10,7 @@ import re
 import socket
 from typing import TYPE_CHECKING
 
-from elder_berry.comms.commands.base import CommandHandler, CommandResult
+from elder_berry.comms.commands.base import CommandHandler, CommandResult, user_friendly_error
 
 if TYPE_CHECKING:
     from elder_berry.core.secret_store import SecretStore
@@ -110,5 +110,5 @@ class WolCommandHandler(CommandHandler):
             return CommandResult(
                 command="wol",
                 success=False,
-                text=f"Wake-on-LAN fehlgeschlagen: {e}",
+                text=user_friendly_error(e, "Wake-on-LAN"),
             )

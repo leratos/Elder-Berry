@@ -199,11 +199,21 @@ class TestCmdTodoFilter:
         assert r.success
         assert "Fertig" in r.text
 
-    def test_filter_cleanup(self, handler: TodoCommandHandler,
-                            store: TodoStore) -> None:
+    def test_filter_cleanup_asks_confirmation(self, handler: TodoCommandHandler,
+                                              store: TodoStore) -> None:
         t = store.add(USER, "Alt")
         store.complete(t.id)
         r = handler.execute("todo_filter", "todos aufräumen")
+        assert r.success
+        assert r.pending_confirmation is True
+        assert r.pending_data["action_type"] == "bulk_delete_todos"
+        assert r.pending_data["count"] == 1
+
+    def test_filter_cleanup_confirmed(self, handler: TodoCommandHandler,
+                                      store: TodoStore) -> None:
+        t = store.add(USER, "Alt")
+        store.complete(t.id)
+        r = handler.execute_cleanup()
         assert r.success
         assert "1 erledigte Todos gelöscht" in r.text
 

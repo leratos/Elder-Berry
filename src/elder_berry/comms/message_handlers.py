@@ -173,8 +173,9 @@ class BridgeMessageHandler:
                 self._chat_history.add(msg.sender, "user", msg.body)
                 self._chat_history.add(msg.sender, "assistant", history_content)
 
-            # Fehlgeschlagene Commands loggen
-            if not result.success:
+            # Fehlgeschlagene Commands loggen (nicht bei Fallthrough –
+            # das ist kein Fehler, sondern bewusste Delegation ans LLM)
+            if not result.success and not result.fallthrough:
                 logger.error(
                     "Command '%s' fehlgeschlagen: %s",
                     command, result.text or "Command fehlgeschlagen",

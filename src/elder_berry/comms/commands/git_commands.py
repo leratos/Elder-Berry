@@ -13,7 +13,7 @@ import re
 import subprocess
 from pathlib import Path
 
-from elder_berry.comms.commands.base import CommandHandler, CommandResult
+from elder_berry.comms.commands.base import CommandHandler, CommandResult, user_friendly_error
 
 logger = logging.getLogger(__name__)
 
@@ -120,5 +120,5 @@ class GitCommandHandler(CommandHandler):
             return CommandResult(
                 command="git",
                 success=False,
-                text=f"Git-Befehl fehlgeschlagen: {e}",
+                text=user_friendly_error(e, "Git"),
             )

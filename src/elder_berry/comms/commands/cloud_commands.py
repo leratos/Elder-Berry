@@ -15,7 +15,7 @@ import re
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from elder_berry.comms.commands.base import CommandHandler, CommandResult
+from elder_berry.comms.commands.base import CommandHandler, CommandResult, user_friendly_error
 
 if TYPE_CHECKING:
     from elder_berry.tools.nextcloud_files import NextcloudFilesClient
@@ -151,11 +151,7 @@ class CloudCommandHandler(CommandHandler):
 
     def execute(self, command: str, raw_text: str) -> CommandResult:
         if self._nc is None:
-            return CommandResult(
-                command=command,
-                success=False,
-                text="Nextcloud nicht konfiguriert.",
-            )
+            return self.not_configured(command, "Nextcloud", setup_step=4)
 
         if command == "nextcloud_setup":
             return self._cmd_nextcloud_setup()
@@ -232,7 +228,7 @@ class CloudCommandHandler(CommandHandler):
             return CommandResult(
                 command="cloud_upload",
                 success=False,
-                text=f"Upload fehlgeschlagen: {e}",
+                text=user_friendly_error(e, "Cloud-Upload"),
             )
 
     # ── Download ────────────────────────────────────────────────────────
@@ -260,7 +256,7 @@ class CloudCommandHandler(CommandHandler):
             return CommandResult(
                 command="cloud_download",
                 success=False,
-                text=f"Download fehlgeschlagen: {e}",
+                text=user_friendly_error(e, "Cloud-Download"),
             )
 
     # ── List ────────────────────────────────────────────────────────────
@@ -276,7 +272,7 @@ class CloudCommandHandler(CommandHandler):
             return CommandResult(
                 command="cloud_list",
                 success=False,
-                text=f"Verzeichnis konnte nicht gelesen werden: {e}",
+                text=user_friendly_error(e, "Cloud-Verzeichnis"),
             )
 
         if not entries:
@@ -322,7 +318,7 @@ class CloudCommandHandler(CommandHandler):
             return CommandResult(
                 command="cloud_search",
                 success=False,
-                text=f"Suche fehlgeschlagen: {e}",
+                text=user_friendly_error(e, "Cloud-Suche"),
             )
 
         if not results:
@@ -375,7 +371,7 @@ class CloudCommandHandler(CommandHandler):
             return CommandResult(
                 command="cloud_content_search",
                 success=False,
-                text=f"Inhaltssuche fehlgeschlagen: {e}",
+                text=user_friendly_error(e, "Cloud-Inhaltssuche"),
             )
 
         if not results:
@@ -432,7 +428,7 @@ class CloudCommandHandler(CommandHandler):
             return CommandResult(
                 command="cloud_link",
                 success=False,
-                text=f"Share-Link fehlgeschlagen: {e}",
+                text=user_friendly_error(e, "Share-Link"),
             )
 
     # ── Nextcloud Setup ────────────────────────────────────────────────
@@ -446,7 +442,7 @@ class CloudCommandHandler(CommandHandler):
             return CommandResult(
                 command="nextcloud_setup",
                 success=False,
-                text=f"Nextcloud-Root konnte nicht gelesen werden: {e}",
+                text=user_friendly_error(e, "Nextcloud"),
             )
 
         existing_names = {e.name for e in root_entries}

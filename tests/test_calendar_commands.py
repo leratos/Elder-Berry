@@ -318,10 +318,19 @@ class TestTerminDelete:
         assert result.success is True
         calendar.delete_event.assert_called_once_with("id1")
 
-    def test_delete_alle(self, handler, calendar):
+    def test_delete_alle_asks_confirmation(self, handler, calendar):
         events = [_make_event("A", "id1"), _make_event("B", "id2")]
         handler._last_events = events
         result = handler.execute("termin_delete", "lösche alle termine")
+        assert result.success is True
+        assert result.pending_confirmation is True
+        assert result.pending_data["action_type"] == "bulk_delete_events"
+        assert result.pending_data["event_ids"] == ["id1", "id2"]
+        calendar.delete_event.assert_not_called()
+
+    def test_delete_alle_confirmed(self, handler, calendar):
+        """execute_delete_all_events löscht nach Bestätigung."""
+        result = handler.execute_delete_all_events(["id1", "id2"])
         assert result.success is True
         assert calendar.delete_event.call_count == 2
 
