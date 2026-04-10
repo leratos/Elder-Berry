@@ -1,20 +1,47 @@
 # Installation
 
-## Voraussetzungen
+## Schnellstart (empfohlen)
 
-- **Python 3.12+**
-- **Windows 10/11** (Tower) – Linux für RPi5
+Der einfachste Weg: **Bootstrap-Script** ausführen. Es klont das Repo,
+erstellt die venv, installiert alle Dependencies und startet den Setup-Wizard.
+
+### Windows (PowerShell)
+
+```powershell
+# PowerShell als Admin öffnen, dann:
+powershell -ExecutionPolicy Bypass -File install.ps1
+```
+
+### Linux / RPi5 (Bash)
+
+```bash
+bash install.sh
+```
+
+Der **Setup-Wizard** öffnet sich automatisch im Browser (`http://localhost:8090/setup`)
+und führt Schritt für Schritt durch die Konfiguration aller Dienste.
+
+---
+
+## Manuelle Installation
+
+Falls du die Schritte lieber einzeln ausführen möchtest:
+
+### Voraussetzungen
+
+- **Python 3.12+** (Windows) oder **Python 3.13** (RPi5 Bookworm)
+- **Git**
 - **GPU empfohlen**: NVIDIA mit CUDA (für TTS + STT)
 - **ffmpeg**: Für Audio-Konvertierung (`winget install ffmpeg`)
 
-## 1. Repository klonen
+### 1. Repository klonen
 
 ```bash
-git clone https://github.com/leratos/Elder-Berry.git
+git clone https://github.com/Leratos/Elder-Berry.git
 cd Elder-Berry
 ```
 
-## 2. Virtuelle Umgebung erstellen
+### 2. Virtuelle Umgebung erstellen
 
 ```bash
 py -3.12 -m venv .venv
@@ -25,7 +52,7 @@ py -3.12 -m venv .venv
 **Wichtig**: Immer `python` statt `py` verwenden wenn die venv aktiv ist.
 `py` ist der Python Launcher und ignoriert die virtuelle Umgebung.
 
-## 3. Pakete installieren
+### 3. Pakete installieren
 
 Elder-Berry nutzt optionale Dependency-Gruppen. Für den Tower empfiehlt sich die Vollinstallation:
 
@@ -35,7 +62,7 @@ pip install -e ".[windows,tts-neural,avatar,matrix,remote,memory,stt]"
 pip install chromadb faster-whisper
 ```
 
-### Einzelne Gruppen
+#### Einzelne Gruppen
 
 ```bash
 pip install -e "."                # Kern (LLM, Aktions-DB)
@@ -53,7 +80,7 @@ pip install -e ".[robot]"        # RPi5-Kommunikation (fastapi, uvicorn)
 pip install -e ".[agent]"        # Laptop-Agent-Server (fastapi, audio)
 ```
 
-## 4. Ollama (optionaler Offline-Fallback)
+### 4. Ollama (optionaler Offline-Fallback)
 
 ```bash
 # Ollama installieren: https://ollama.ai
@@ -62,7 +89,7 @@ ollama pull phi4:14b           # LLM-Fallback
 ollama pull nomic-embed-text   # Embedding-Modell für RAG-Memory
 ```
 
-## 5. API-Keys & Accounts
+### 5. API-Keys & Accounts
 
 | Dienst | Benötigt? | Registrierung | Kosten |
 |---|---|---|---|
@@ -75,9 +102,20 @@ ollama pull nomic-embed-text   # Embedding-Modell für RAG-Memory
 | **Open-Meteo** | Optional (Wetter) | Keine Registrierung nötig | Kostenlos |
 | **Ollama** | Optional (Offline) | Lokale Installation | Kostenlos |
 
-## 6. Secrets konfigurieren
+### 6. Secrets konfigurieren
 
-Alle Credentials werden verschlüsselt im SecretStore gespeichert (Fernet-Verschlüsselung).
+**Empfohlen: Setup-Wizard** – Der Wizard konfiguriert alle Secrets interaktiv:
+
+```bash
+python scripts/setup_wizard.py
+# Öffnet http://localhost:8090/setup im Browser
+```
+
+Der Setup-Wizard startet auch automatisch beim ersten Start von Saleria,
+wenn noch keine Matrix-Konfiguration vorhanden ist.
+
+**Alternativ: Manuell per Python** – Alle Credentials werden verschlüsselt
+im SecretStore gespeichert (Fernet-Verschlüsselung):
 
 ```python
 from elder_berry.core.secret_store import SecretStore
@@ -136,7 +174,7 @@ store.set("tower_mac_address", "AA:BB:CC:DD:EE:FF")
 store.set("robot_host", "http://192.168.50.220:8000")
 ```
 
-## 7. Starten
+### 7. Starten
 
 ```bash
 # Matrix-Modus (Standard – empfohlen)
@@ -156,14 +194,15 @@ python scripts/start_saleria.py --whisper-model large-v3  # Besseres STT
 python scripts/start_saleria.py --debug             # Debug-Logging
 ```
 
-## 8. Setup-Scripts
+### 8. Setup-Scripts
 
 | Script | Zweck |
 |---|---|
+| `scripts/setup_wizard.py` | Setup-Wizard im Browser (alle Dienste konfigurieren) |
 | `scripts/setup_email.py` | E-Mail (IMAP + SMTP) interaktiv konfigurieren |
 | `scripts/setup_google_oauth.py` | Google Calendar OAuth2 einrichten |
 
-## 9. Alexa Sprachsteuerung (optional)
+### 9. Alexa Sprachsteuerung (optional)
 
 Saleria kann über einen Amazon Echo per Sprache gesteuert werden (Harmony Hub Befehle).
 
@@ -184,7 +223,7 @@ Saleria kann über einen Amazon Echo per Sprache gesteuert werden (Harmony Hub B
 
 Der Skill bleibt im Development-Modus (nur auf eigenem Echo nutzbar, kein Store-Publishing nötig).
 
-### 9.1 Request-Verifikation einrichten (A1 – empfohlen)
+#### 9.1 Request-Verifikation einrichten (A1 – empfohlen)
 
 Ohne Verifikation akzeptiert der `/saleria`-Endpoint jeden HTTP-POST – also auch Anfragen,
 die nicht von Amazon stammen. Der `AlexaRequestVerifier` schließt diese Lücke:
@@ -248,7 +287,7 @@ wird weiterhin durchgelassen.
 > **Hinweis**: Ohne `alexa_verifier` (bzw. `application_id=None`) bleibt der Endpoint
 > funktionsfähig, aber offen. Für Produktivbetrieb wird die Verifikation dringend empfohlen.
 
-## LLM-Strategie
+### LLM-Strategie
 
 | Modus | Modell | Einsatz |
 |---|---|---|

@@ -3978,3 +3978,47 @@ User: "Lies meine Mails und trag den Zahnarzttermin ein"
   - Keywords erweitert: "wie ist heute das wetter", "wie wird das wetter", "wetter in "
 - 11 neue Tests (Pattern, Routing, Execution), alle 33 Tests grün
 - Dateien geändert: weather_commands.py, test_weather_commands.py
+
+## Abgeschlossen: Phase 46 – Setup-Wizard (Installationsassistent) (2026-04-10)
+- Zwei Stufen: Bootstrap-Script + Web-Wizard (8 Schritte)
+- web/setup_tests.py: SetupTests-Klasse – Verbindungstests für Anthropic, Matrix,
+  Nextcloud (WebDAV/CalDAV/CardDAV), E-Mail (IMAP/SMTP), Ollama, Brave, Groq,
+  Google Maps + Prerequisite-Checks (Python, Git, Ollama)
+- web/setup_wizard.py: FastAPI-Routes – /api/setup/status, step CRUD, test,
+  complete, providers; Passwörter nie per GET; run_setup_wizard() Standalone-Modus
+- web/templates/setup_wizard.html: 8-Schritte-Wizard (Willkommen → LLM → Matrix →
+  Nextcloud → E-Mail → Standort → Optionale Dienste → Zusammenfassung) mit
+  Progress-Bar, Inline-Tests, Provider-Dropdown, Hilfe-Links
+- start_saleria.py: _check_first_run() – prüft Matrix-Pflicht-Keys, startet
+  Setup-Wizard wenn fehlend
+- settings_dashboard.py: Setup-Wizard Routes eingebunden, GET / Redirect auf /setup
+  wenn setup_wizard_completed nicht gesetzt
+- scripts/install.ps1: Windows Bootstrap (Python+Git Check, Clone, venv, pip, Wizard)
+- scripts/install.sh: Linux Bootstrap (RPi5/Ubuntu, gleiche Struktur)
+- scripts/setup_wizard.py: Standalone-Starter mit Browser-Auto-Open
+- 50 Tests grün (19 setup_tests + 21 wizard_api + 10 install_scripts)
+- Dateien erstellt: web/setup_tests.py, web/setup_wizard.py,
+  web/templates/setup_wizard.html, scripts/setup_wizard.py,
+  scripts/install.ps1, scripts/install.sh
+- Dateien geändert: settings_dashboard.py, start_saleria.py
+- Tests erstellt: test_setup_tests.py, test_setup_wizard_api.py,
+  test_install_scripts.py
+
+## Bugfix: "google mal" als Web-Suche statt Wetter (2026-04-10)
+- Problem: "google mal wie das Wetter in Berlin ist" → erkannt als "wetter"
+  statt "web_search" (CI-Test fehlgeschlagen)
+- Ursache: Keyword "wetter in " im WeatherHandler matcht per search() im Text,
+  WeatherHandler hat höhere Priorität als AdvancedHandler
+- Fix 1: WEB_SEARCH_PATTERN um "google mal", "google mir", "recherchiere" erweitert
+- Fix 2: parse_command() Pattern-Matching in 2 Stufen aufgeteilt:
+  Stufe 2a: match() (Textanfang, höhere Konfidenz) für ALLE Handler zuerst
+  Stufe 2b: search() (irgendwo im Text, niedrigere Konfidenz) danach
+  → "google mal X" matcht WEB_SEARCH_PATTERN am Anfang (Stufe 2a),
+    bevor WEATHER_LOCATION_PATTERN per search() greifen kann (Stufe 2b)
+- 297 remote_commands Tests + 33 weather_commands Tests grün
+- Dateien geändert: advanced_commands.py, remote_commands.py
+
+## INSTALLATION.md aktualisiert (2026-04-10)
+- Schnellstart-Abschnitt mit Bootstrap-Scripts (install.ps1/install.sh)
+- Verweis auf Setup-Wizard als empfohlene Konfigurationsmethode
+- setup_wizard.py in Script-Tabelle aufgenommen
