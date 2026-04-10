@@ -4003,3 +4003,22 @@ User: "Lies meine Mails und trag den Zahnarzttermin ein"
 - Dateien geändert: settings_dashboard.py, start_saleria.py
 - Tests erstellt: test_setup_tests.py, test_setup_wizard_api.py,
   test_install_scripts.py
+
+## Bugfix: "google mal" als Web-Suche statt Wetter (2026-04-10)
+- Problem: "google mal wie das Wetter in Berlin ist" → erkannt als "wetter"
+  statt "web_search" (CI-Test fehlgeschlagen)
+- Ursache: Keyword "wetter in " im WeatherHandler matcht per search() im Text,
+  WeatherHandler hat höhere Priorität als AdvancedHandler
+- Fix 1: WEB_SEARCH_PATTERN um "google mal", "google mir", "recherchiere" erweitert
+- Fix 2: parse_command() Pattern-Matching in 2 Stufen aufgeteilt:
+  Stufe 2a: match() (Textanfang, höhere Konfidenz) für ALLE Handler zuerst
+  Stufe 2b: search() (irgendwo im Text, niedrigere Konfidenz) danach
+  → "google mal X" matcht WEB_SEARCH_PATTERN am Anfang (Stufe 2a),
+    bevor WEATHER_LOCATION_PATTERN per search() greifen kann (Stufe 2b)
+- 297 remote_commands Tests + 33 weather_commands Tests grün
+- Dateien geändert: advanced_commands.py, remote_commands.py
+
+## INSTALLATION.md aktualisiert (2026-04-10)
+- Schnellstart-Abschnitt mit Bootstrap-Scripts (install.ps1/install.sh)
+- Verweis auf Setup-Wizard als empfohlene Konfigurationsmethode
+- setup_wizard.py in Script-Tabelle aufgenommen

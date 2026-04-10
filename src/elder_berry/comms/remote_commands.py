@@ -616,13 +616,24 @@ class RemoteCommandHandler:
         if normalized in self._simple_commands:
             return normalized
 
-        # Stufe 2: Pattern-Match (Handler-Reihenfolge bestimmt Priorität)
+        # Stufe 2a: Pattern-Match am Textanfang (match, höhere Konfidenz)
         for handler in self._handlers:
             for pattern, command, use_original, *rest in handler.patterns:
                 use_search = rest[0] if rest else False
+                if use_search:
+                    continue  # search-Patterns in Stufe 2b
                 check_text = text.strip() if use_original else normalized
-                match = pattern.search(check_text) if use_search else pattern.match(check_text)
-                if match:
+                if pattern.match(check_text):
+                    return command
+
+        # Stufe 2b: Pattern-Suche im Text (search, niedrigere Konfidenz)
+        for handler in self._handlers:
+            for pattern, command, use_original, *rest in handler.patterns:
+                use_search = rest[0] if rest else False
+                if not use_search:
+                    continue  # Bereits in Stufe 2a geprüft
+                check_text = text.strip() if use_original else normalized
+                if pattern.search(check_text):
                     return command
 
         # Stufe 3: Keyword-Suche in natürlicher Sprache
