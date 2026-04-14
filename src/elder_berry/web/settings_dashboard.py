@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal
@@ -88,9 +89,18 @@ class SettingsDashboard:
     computer_use : ComputerUseController | None
         Optionaler ComputerUseController für Monitor-Auswahl.
     host : str
-        Bind-Adresse (Default: 0.0.0.0).
+        Bind-Adresse (Default Phase 52: 127.0.0.1 – Loopback-Only).
+        Wer Remote-Zugriff will, setzt explizit ``ELDER_BERRY_SETTINGS_BIND``
+        oder übergibt einen anderen Wert.
     port : int
         Port (Default: 8090).
+    require_settings_token : bool
+        Wenn True (Phase 52.1a), wird die SettingsTokenMiddleware
+        installiert und schreibende API-Aufrufe verlangen einen gültigen
+        ``X-Saleria-Settings-Token``-Header. Default False für
+        Test-Kompatibilität – ``start_saleria.py`` aktiviert es explizit.
+    settings_token_path : Path | None
+        Pfad zur Token-Datei. Default: ``ELDER_BERRY_HOME/settings_token``.
     """
 
     ALLOWED_SENDERS_KEY = "matrix_allowed_senders"
@@ -131,8 +141,10 @@ class SettingsDashboard:
         audio_pipeline: AudioPipeline | None = None,
         tower_agent: TowerAgent | None = None,
         llm_router: LLMRouter | None = None,
-        host: str = "0.0.0.0",
+        host: str = "127.0.0.1",
         port: int = 8090,
+        require_settings_token: bool = False,
+        settings_token_path: Path | None = None,
     ) -> None:
         self._router = audio_router
         self._computer_use = computer_use
@@ -146,6 +158,27 @@ class SettingsDashboard:
 
         # Security: CORS, Headers, Exception-Handler
         setup_security(self._app, port, secret_store)
+
+        # Phase 52.1a: Token-Middleware (opt-in)
+        self._token_manager = None
+        if require_settings_token:
+            from elder_berry.web.settings_token import SettingsTokenManager
+            from elder_berry.web.settings_token_middleware import (
+                SettingsTokenMiddleware,
+            )
+
+            if settings_token_path is None:
+                home = Path(
+                    os.environ.get(
+                        "ELDER_BERRY_HOME", Path(__file__).parent.parent.parent.parent,
+                    )
+                ).resolve()
+                settings_token_path = home / "settings_token"
+            self._token_manager = SettingsTokenManager(settings_token_path)
+            self._token_manager.load_or_create()
+            self._app.add_middleware(
+                SettingsTokenMiddleware, token_manager=self._token_manager,
+            )
 
         self._write_lock = asyncio.Lock()
         self._change_callbacks: dict[str, list[Any]] = {}
@@ -175,59 +208,82 @@ class SettingsDashboard:
     # Settings-Definitionen (Phase 45)
     # ------------------------------------------------------------------
 
+    # Phase 52: Welche Registry-Keys werden im Settings-Dashboard angezeigt.
+    # Reihenfolge bestimmt die Anzeige-Reihenfolge.
+    DASHBOARD_SETTING_KEYS: tuple[str, ...] = (
+        "matrix_allowed_senders",
+        "user_timezone",
+        "stt_timeout",
+        "llm_mode",
+    )
+
     def _setting_definitions(self) -> list[SettingDefinition]:
-        """Definiert die erste Registry für Phase 45."""
-        timezone_options = tuple(
-            {"value": tz, "label": tz} for tz in sorted(self.AVAILABLE_TIMEZONES)
+        """Leitet SettingDefinitions aus SECRET_REGISTRY ab (Phase 52).
+
+        Quelle: ``DASHBOARD_SETTING_KEYS`` in der Reihenfolge der Anzeige.
+        Für ``user_timezone`` werden die Zeitzonen-Optionen aus
+        ``AVAILABLE_TIMEZONES`` injiziert (UI-spezifisch, nicht in der
+        Registry hinterlegt).
+        """
+        definitions: list[SettingDefinition] = []
+        for key in self.DASHBOARD_SETTING_KEYS:
+            entry = _REGISTRY_BY_KEY.get(key)
+            if entry is None:
+                logger.warning("Dashboard-Key '%s' nicht in SECRET_REGISTRY", key)
+                continue
+            definitions.append(self._registry_to_setting_definition(entry))
+        return definitions
+
+    def _registry_to_setting_definition(
+        self, entry: SecretRegistryEntry,
+    ) -> SettingDefinition:
+        """Konvertiert einen Registry-Eintrag in eine SettingDefinition."""
+        key = entry["key"]
+        registry_type = entry.get("type", "str")
+
+        ui_type: Literal["text", "textarea", "select", "number", "secret"]
+        if registry_type == "textarea":
+            ui_type = "textarea"
+        elif registry_type == "select":
+            ui_type = "select"
+        elif registry_type in ("int", "float"):
+            ui_type = "number"
+        elif entry.get("sensitive", True) and not entry.get("behavior", False):
+            ui_type = "secret"
+        else:
+            ui_type = "text"
+
+        if key == self.TIMEZONE_KEY:
+            options: tuple[dict[str, str], ...] = tuple(
+                {"value": tz, "label": tz} for tz in sorted(self.AVAILABLE_TIMEZONES)
+            )
+        else:
+            options = tuple(entry.get("select_options", []))
+
+        risk_raw = entry.get("risk_level", "low")
+        risk_level: Literal["low", "medium", "high"] = (
+            risk_raw if risk_raw in ("low", "medium", "high") else "low"
         )
-        llm_mode_options = (
-            {"value": "api_preferred", "label": "API bevorzugt"},
-            {"value": "local_preferred", "label": "Lokal bevorzugt"},
-            {"value": "fallback_only", "label": "Nur Fallback/Lokal"},
+
+        min_value = entry.get("min")
+        max_value = entry.get("max")
+
+        return SettingDefinition(
+            key=key,
+            label=entry["label"],
+            category=entry["category"],
+            type=ui_type,
+            source="secret_store",
+            required=entry.get("behavior", False),
+            restart_required=entry.get("requires_restart", False),
+            risk_level=risk_level,
+            placeholder=entry.get("placeholder"),
+            help_text=entry.get("description"),
+            options=options,
+            secret=entry.get("sensitive", True) and not entry.get("behavior", False),
+            min_value=float(min_value) if min_value is not None else None,
+            max_value=float(max_value) if max_value is not None else None,
         )
-        return [
-            SettingDefinition(
-                key=self.ALLOWED_SENDERS_KEY,
-                label="Erlaubte Sender",
-                category="Matrix",
-                type="textarea",
-                restart_required=True,
-                risk_level="high",
-                placeholder="@lera:matrix.example.com\n@kollege:matrix.example.com",
-                help_text="Eine Matrix-ID pro Zeile. Nur diese Sender dürfen Saleria steuern.",
-            ),
-            SettingDefinition(
-                key=self.TIMEZONE_KEY,
-                label="Zeitzone",
-                category="Verhalten",
-                type="select",
-                required=True,
-                options=timezone_options,
-                help_text="Standard-Zeitzone für Erinnerungen, Briefings und zeitbezogene Antworten.",
-            ),
-            SettingDefinition(
-                key=self.STT_TIMEOUT_KEY,
-                label="STT-Timeout (Sekunden)",
-                category="Audio",
-                type="number",
-                required=True,
-                risk_level="medium",
-                min_value=5,
-                max_value=600,
-                help_text="Wie lange auf Spracheingabe gewartet wird, bevor abgebrochen wird.",
-            ),
-            SettingDefinition(
-                key=self.LLM_MODE_KEY,
-                label="LLM-Modus",
-                category="LLM",
-                type="select",
-                required=True,
-                restart_required=True,
-                risk_level="medium",
-                options=llm_mode_options,
-                help_text="Steuert, ob API-Modelle oder lokale Modelle bevorzugt verwendet werden.",
-            ),
-        ]
 
     def _setting_definition_map(self) -> dict[str, SettingDefinition]:
         return {
@@ -364,6 +420,14 @@ class SettingsDashboard:
             if template_path.exists():
                 return HTMLResponse(template_path.read_text(encoding="utf-8"))
             return HTMLResponse("<h1>Template nicht gefunden</h1>", status_code=500)
+
+        @self._app.get("/settings", response_class=HTMLResponse)
+        async def settings_panel():
+            """Phase 52.1b: Unified Settings-Panel."""
+            template_path = _TEMPLATE_DIR / "settings_panel.html"
+            if template_path.exists():
+                return HTMLResponse(template_path.read_text(encoding="utf-8"))
+            return HTMLResponse("<h1>settings_panel.html nicht gefunden</h1>", status_code=500)
 
         @self._app.get("/api/audio")
         async def get_audio_mode():

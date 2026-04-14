@@ -28,19 +28,28 @@ _MAX_VALUE_LENGTH = 4096
 
 
 class SecretRegistryEntry(TypedDict):
-    """Schema für einen Registry-Eintrag."""
+    """Schema für einen Registry-Eintrag.
+
+    Phase 52: Felder ``behavior``, ``risk_level``, ``placeholder`` und
+    ``select_options`` erweitern die Registry zur Single Source of Truth
+    für das Unified Settings-Panel.
+    """
 
     key: str
     label: str
     category: str
     sensitive: NotRequired[bool]            # Default: True
+    behavior: NotRequired[bool]             # Phase 52: non-secret behavior setting
     requires_restart: NotRequired[bool]     # Default: False
-    type: NotRequired[str]                  # "str" | "int" | "float" | "url"
+    type: NotRequired[str]                  # "str" | "int" | "float" | "url" | "textarea" | "select"
     min: NotRequired[float | int]
     max: NotRequired[float | int]
     pattern: NotRequired[str]
     description: NotRequired[str]
     link: NotRequired[str]
+    risk_level: NotRequired[str]            # Phase 52: "low" | "medium" | "high"
+    placeholder: NotRequired[str]           # Phase 52: UI placeholder
+    select_options: NotRequired[list[dict[str, str]]]  # Phase 52: für type="select"
 
 
 SECRET_REGISTRY: list[SecretRegistryEntry] = [
@@ -112,8 +121,10 @@ SECRET_REGISTRY: list[SecretRegistryEntry] = [
     },
     {
         "key": "matrix_allowed_senders", "label": "Erlaubte Sender", "category": "Matrix",
-        "sensitive": False, "requires_restart": True,
-        "description": "Komma-getrennte Liste erlaubter Matrix-IDs.",
+        "sensitive": False, "requires_restart": True, "type": "textarea",
+        "risk_level": "high",
+        "placeholder": "@lera:matrix.example.com\n@kollege:matrix.example.com",
+        "description": "Eine Matrix-ID pro Zeile. Nur diese Sender dürfen Saleria steuern.",
     },
     # --- E-Mail ---
     {
@@ -195,6 +206,30 @@ SECRET_REGISTRY: list[SecretRegistryEntry] = [
         "key": "weather_longitude", "label": "Längengrad", "category": "Wetter & Standort",
         "sensitive": False, "requires_restart": False,
         "type": "float", "min": -180.0, "max": 180.0,
+    },
+    # --- Verhalten (Phase 52: Behavior-Settings, kein Secret) ---
+    {
+        "key": "user_timezone", "label": "Zeitzone", "category": "Verhalten",
+        "sensitive": False, "behavior": True, "requires_restart": False,
+        "type": "select", "risk_level": "low",
+        "description": "Standard-Zeitzone für Erinnerungen, Briefings und zeitbezogene Antworten.",
+    },
+    {
+        "key": "stt_timeout", "label": "STT-Timeout (Sekunden)", "category": "Verhalten",
+        "sensitive": False, "behavior": True, "requires_restart": False,
+        "type": "float", "risk_level": "medium", "min": 5, "max": 600,
+        "description": "Wie lange auf Spracheingabe gewartet wird, bevor abgebrochen wird.",
+    },
+    {
+        "key": "llm_mode", "label": "LLM-Modus", "category": "Verhalten",
+        "sensitive": False, "behavior": True, "requires_restart": True,
+        "type": "select", "risk_level": "medium",
+        "select_options": [
+            {"value": "api_preferred", "label": "API bevorzugt"},
+            {"value": "local_preferred", "label": "Lokal bevorzugt"},
+            {"value": "fallback_only", "label": "Nur Fallback/Lokal"},
+        ],
+        "description": "Steuert, ob API-Modelle oder lokale Modelle bevorzugt verwendet werden.",
     },
 ]
 

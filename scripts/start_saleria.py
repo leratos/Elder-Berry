@@ -1120,13 +1120,17 @@ def run_matrix(assistant, stt=None, avatar=None, audio_converter=None, robot=Non
     # --- 8. Dashboard + Start ---
     try:
         from elder_berry.web.settings_dashboard import SettingsDashboard
+        # Phase 52.1a: Loopback-Default + Token-Schutz
+        settings_bind = os.environ.get("ELDER_BERRY_SETTINGS_BIND", "127.0.0.1")
         dashboard = SettingsDashboard(
             audio_router=tools.get("audio_router"),
             computer_use=tools.get("computer_use"),
             secret_store=secrets,
             audio_pipeline=bridge.audio_pipeline,
             tower_agent=tower_agent,
+            host=settings_bind,
             port=8090,
+            require_settings_token=True,
         )
         # Gespeicherten STT-Timeout laden und auf Pipeline anwenden
         saved_timeout = dashboard._get_stt_timeout()
@@ -1135,8 +1139,20 @@ def run_matrix(assistant, stt=None, avatar=None, audio_converter=None, robot=Non
     except Exception as e:
         logger.warning("Settings-Dashboard nicht gestartet: %s", e)
 
+    # Phase 52.2: Startup-Summary
+    summary = _build_startup_summary(
+        assistant=assistant, stt=stt, robot=robot, secrets=secrets,
+        svc=svc, tools=tools, tower_agent=tower_agent,
+        matrix_user_id=user_id, matrix_room_id=room_id,
+        allowed_senders=allowed_senders, claude_agent=claude_agent,
+    )
+    print()
+    print(summary.render())
+    print()
+    _maybe_send_summary_to_matrix(summary, channel, room_id)
+
     logger.info("Matrix-Bridge startet – Saleria ist online")
-    print(f"\n─── Saleria Matrix-Modus ───")
+    print(f"─── Saleria Matrix-Modus ───")
     print(f"Bot: {user_id}")
     print("Ctrl+C zum Beenden\n")
 
@@ -1150,6 +1166,109 @@ def run_matrix(assistant, stt=None, avatar=None, audio_converter=None, robot=Non
     finally:
         bridge.stop()
         logger.info("Saleria beendet.")
+
+
+# ---------------------------------------------------------------------------
+# Phase 52.2 – Startup Summary Helpers
+# ---------------------------------------------------------------------------
+
+def _build_startup_summary(
+    *, assistant, stt, robot, secrets, svc, tools, tower_agent,
+    matrix_user_id, matrix_room_id, allowed_senders, claude_agent,
+):
+    """Sammelt Komponenten-Status nach dem Init und gibt eine StartupSummary
+    zurück. Reine Introspektion – keine Seiteneffekte."""
+    from elder_berry.core.startup_summary import StartupSummary
+
+    summary = StartupSummary()
+
+    # LLM
+    llm = getattr(assistant, "_llm", None)
+    if llm is not None:
+        backend = type(llm).__name__
+        summary.add("LLM", "ok", backend)
+    else:
+        summary.add("LLM", "fail", "kein Backend")
+
+    # TTS / STT / Avatar / Memory
+    if getattr(assistant, "_tts", None) is not None:
+        summary.add("TTS", "ok", type(assistant._tts).__name__)
+    else:
+        summary.add("TTS", "warn", "deaktiviert")
+    summary.add("STT", "ok" if stt else "warn", type(stt).__name__ if stt else "deaktiviert")
+    summary.add(
+        "Avatar",
+        "ok" if getattr(assistant, "_avatar", None) else "warn",
+        type(assistant._avatar).__name__ if assistant._avatar else "kein Renderer",
+    )
+    summary.add(
+        "Memory",
+        "ok" if getattr(assistant, "_memory", None) else "warn",
+        type(assistant._memory).__name__ if assistant._memory else "deaktiviert",
+    )
+
+    # Matrix
+    summary.add("Matrix", "ok", f"{matrix_user_id} → {matrix_room_id}")
+    summary.add(
+        "Allowed-Senders",
+        "ok" if allowed_senders else "warn",
+        f"{len(allowed_senders)} Sender" if allowed_senders else "alle akzeptiert",
+    )
+
+    # Tower / RPi5
+    summary.add(
+        "Tower",
+        "ok" if tower_agent else "warn",
+        "verbunden" if tower_agent else "nicht konfiguriert",
+    )
+    summary.add(
+        "RPi5 (Robot)",
+        "ok" if robot else "warn",
+        "verbunden" if robot else "nicht erreichbar",
+    )
+
+    # Optionale Services aus svc/tools
+    _add_service(summary, "Kalender", svc.get("calendar"))
+    _add_service(summary, "E-Mail (IMAP)", svc.get("email_client"))
+    _add_service(summary, "E-Mail (SMTP)", svc.get("email_sender"))
+    _add_service(summary, "Wetter", svc.get("weather"))
+    _add_service(summary, "Notizen", svc.get("note_store"))
+    _add_service(summary, "Kontakte", svc.get("contact_store"))
+    _add_service(summary, "Todos", svc.get("todo_store"))
+    _add_service(summary, "Erinnerungen", svc.get("reminder_store"))
+    _add_service(summary, "Nextcloud Files", svc.get("nextcloud_files"))
+    _add_service(summary, "Stirling-PDF", svc.get("stirling_pdf"))
+    _add_service(summary, "Berry-Gym", svc.get("gym_client"))
+    _add_service(summary, "Brave Search", tools.get("search_client"))
+    _add_service(summary, "ClaudeAgent", claude_agent)
+
+    return summary
+
+
+def _add_service(summary, label: str, instance) -> None:
+    if instance is None:
+        summary.add(label, "warn", "nicht konfiguriert")
+    else:
+        summary.add(label, "ok", type(instance).__name__)
+
+
+def _maybe_send_summary_to_matrix(summary, channel, room_id) -> None:
+    """Versucht best-effort, die Summary als Matrix-Nachricht zu schicken.
+
+    Fehler werden geloggt, aber nicht propagiert – ein scheiternder
+    Send darf den Startup nicht blockieren.
+    """
+    if channel is None or not room_id:
+        return
+    try:
+        message = summary.to_matrix_message()
+        send = getattr(channel, "send_text", None) or getattr(channel, "send", None)
+        if send is None:
+            logger.debug("Channel %s hat keine send-Methode – Summary nicht gesendet", type(channel).__name__)
+            return
+        send(room_id, message)
+    except Exception as exc:
+        logger.warning("Startup-Summary an Matrix senden fehlgeschlagen: %s", exc)
 
 
 # ---------------------------------------------------------------------------

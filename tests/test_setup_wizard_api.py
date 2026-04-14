@@ -258,11 +258,26 @@ class TestSetupComplete:
         assert data["redirect"] == "/"
         assert fresh_store.get(SETUP_COMPLETE_KEY) == "true"
 
-    def test_re_setup_possible(self, complete_store):
-        """Nach Abschluss kann der Wizard erneut aufgerufen werden."""
+    def test_re_setup_redirects_to_settings(self, complete_store):
+        """Phase 52.3: Nach Abschluss redirected /setup → /settings."""
         client = _make_client(complete_store)
-        r = client.get("/setup")
+        r = client.get("/setup", follow_redirects=False)
+        assert r.status_code == 307
+        assert r.headers["location"] == "/settings"
+
+    def test_re_setup_force_opens_wizard(self, complete_store):
+        """Mit ?force=1 öffnet der Wizard auch nach Abschluss."""
+        client = _make_client(complete_store)
+        r = client.get("/setup?force=1", follow_redirects=False)
         assert r.status_code == 200
+        assert "text/html" in r.headers["content-type"]
+
+    def test_first_run_serves_wizard(self, fresh_store):
+        """First Run (kein Marker): /setup liefert direkt das HTML."""
+        client = _make_client(fresh_store)
+        r = client.get("/setup", follow_redirects=False)
+        assert r.status_code == 200
+        assert "text/html" in r.headers["content-type"]
 
 
 # ---------------------------------------------------------------------------
