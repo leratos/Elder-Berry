@@ -4079,3 +4079,25 @@ User: "Lies meine Mails und trag den Zahnarzttermin ein"
 - Dateien geändert: base.py, confirmation_handlers.py, + 20 Handler-Dateien
   + 12 Test-Dateien
 - Branch: feature/phase-50-error-ux
+
+## In Arbeit: Phase 54 – Investment-Experiment Konzeptdokument (2026-04-10)
+- Konzeptdokument für autonomes KI-Investment-Experiment
+- Nächster Schritt: docs/concepts/phase-54-investment-experiment.md erstellen
+
+## Abgeschlossen: Phase 54 Konzept – Investment-Experiment (2026-04-10)
+- Konzeptdokument erstellt: docs/concepts/phase-54-investment-experiment.md
+- Architektur: 6 Klassen (InvestmentEngine, AIAdvisor, BudgetTracker,
+  TradeExecutor, PortfolioTracker, DailySettlement)
+- Guthaben-Formel: Grunderhöhung (10% Gesamtgewinn) + Bonus (20% Tagesgewinn),
+  Cap 20€/Tag, Grundgebühr 0,50€/Tag, Start 5€
+- Phase 1: virtuell mit echten Kursdaten, Phase 2: Live via Matrix/Trade Republic
+- SQLite-Schema für Portfolio, Trades, Budget-Log, Daily Settlement
+- Offene Entscheidungen: Watchlist-Scope, Fractional Shares, Matrix-Integration
+
+## Update: Phase 54 Konzept – Bull-Berry (2026-04-10)
+- Projektname: Bull-Berry (eigenständiges Projekt, Schnittstelle zu Saleria)
+- Offene Entscheidungen finalisiert:
+  1. Watchlist: feste Startliste (~30 Titel), KI-erweiterbar mit Validierung
+  2. Frequenz: kein Limit, Selbstregulierung (BudgetTracker blockt bei ≤0)
+  3. Input: nur Kursdaten, keine News (Phase 1)
+- Nächster Schritt: Bull-Berry als eigenes Projekt aufsetzen
