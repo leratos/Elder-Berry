@@ -383,7 +383,7 @@ class MatrixBridge:
                 return
             # Phase 51.2: Did-you-mean Vorschlag bei Tippfehlern
             suggestion = self._remote_commands.suggest_command(msg.body)
-            if suggestion:
+            if isinstance(suggestion, str) and suggestion:
                 await self._channel.send_text(msg.room_id, suggestion)
                 return
 
