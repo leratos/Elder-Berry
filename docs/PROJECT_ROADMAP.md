@@ -916,7 +916,7 @@ Fehlermeldungen humanisieren und destruktive Commands absichern.
   - Teilerfolg: "⚠ [Was geklappt hat], aber [was fehlgeschlagen ist]."
 
 
-## Phase 51 – Kontextsensitive Hilfe & Command-Discovery 📖 GEPLANT
+## Phase 51 – Kontextsensitive Hilfe & Command-Discovery 📖 ✅ ABGESCHLOSSEN
 
 Hilfesystem überarbeiten: vom monolithischen Textblock zu kategorisierter,
 durchsuchbarer Hilfe.

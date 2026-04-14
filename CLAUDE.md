@@ -61,14 +61,17 @@ Logiklücken und Fehler hin.
   - base.py: CommandHandler ABC + CommandResult DTO
   - system_commands.py, calendar_commands.py, mail_commands.py, file_commands.py,
     process_commands.py, weather_commands.py, advanced_commands.py
-- remote_commands.py ist NUR der Orchestrator (~310 Zeilen) – KEINE Command-Logik dort
+- remote_commands.py ist NUR der Orchestrator – KEINE Command-Logik dort
 - Neuer Command: in passenden Handler einfügen oder neuen Handler erstellen
 - Neuer Handler: CommandHandler ABC erben, patterns/keywords/execute() definieren,
   in RemoteCommandHandler._handlers Liste eintragen (Reihenfolge = Priorität!)
 - Pattern-Tuple: (compiled_pattern, command_name, use_original_text, use_search)
   - use_original_text=True wenn Pfade erkannt werden (case-sensitiv)
   - use_search=True für pattern.search() statt pattern.match()
-- HELP_TEXT in remote_commands.py nachtragen – sonst weiß niemand dass das Feature existiert
+- Hilfe-Text: neue Commands müssen in die passende Sektion in
+  src/elder_berry/comms/commands/help_sections.py (HELP_SECTIONS dict) –
+  sonst weiß niemand, dass das Feature existiert. Neue Kategorie? Eintrag
+  in CATEGORY_LABELS + HELP_SECTIONS (beide in derselben Datei).
 - KEYWORD_MAP wird automatisch aus allen Handler.keywords aggregiert
 
 ## ARCHITEKTUR (Prinzipien)
