@@ -32,11 +32,19 @@ Verwendung:
 """
 from __future__ import annotations
 
+import difflib
 import logging
+import re
 from pathlib import Path
 from typing import TYPE_CHECKING
 
 from elder_berry.comms.commands.base import CommandHandler, CommandResult
+from elder_berry.comms.commands.help_sections import (
+    CATEGORY_LABELS,
+    build_full_help,
+    build_overview,
+    get_section,
+)
 from elder_berry.comms.commands.system_commands import SystemCommandHandler
 from elder_berry.comms.commands.calendar_commands import CalendarCommandHandler
 from elder_berry.comms.commands.mail_commands import MailCommandHandler
@@ -92,227 +100,88 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 # Re-export für Rückwärtskompatibilität (Bridge, Tests etc. importieren von hier)
-__all__ = ["RemoteCommandHandler", "CommandResult", "HELP_TEXT", "KEYWORD_MAP"]
+__all__ = [
+    "RemoteCommandHandler",
+    "CommandResult",
+    "HELP_TEXT",
+    "HELP_OVERVIEW",
+    "KEYWORD_MAP",
+]
 
-# Hilfe-Text: ALLE Commands hier auflisten!
-# (siehe CLAUDE.md – bei neuen Features nachtragen)
-HELP_TEXT = """Verfügbare Commands:
+# Phase 51.1: Hilfe ist in thematische Sektionen aufgeteilt (help_sections.py).
+# HELP_OVERVIEW – kurze Kategorien-Übersicht (Default bei "hilfe")
+# HELP_TEXT      – Volltext aller Sektionen (bei "hilfe alles", Tests, Validierung)
+HELP_OVERVIEW = build_overview()
+HELP_TEXT = build_full_help()
 
-Basis:
-  status / systemstatus – CPU, RAM, GPU, Disk, Top-Prozesse
-  screenshot / screen – Screenshot als Bild
-  hilfe / help – Diese Hilfe anzeigen
+# Phase 51.3: Füllwörter am Satzanfang, die vor Command-Erkennung entfernt werden.
+# Konservativ gehalten (nur neutrale Höflichkeits- und Aufforderungs-Floskeln),
+# damit keine Kollisionen mit bestehenden Keywords entstehen.
+_FILLER_PREFIXES: tuple[str, ...] = (
+    "kannst du mir mal",
+    "kannst du mir bitte",
+    "kannst du mir",
+    "kannst du mal",
+    "kannst du bitte",
+    "kannst du",
+    "könntest du mir",
+    "könntest du",
+    "würdest du",
+    "zeig mir mal",
+    "zeig mir bitte",
+    "zeig mir",
+    "zeige mir",
+    "sag mir mal",
+    "sag mir bitte",
+    "sag mir",
+    "sage mir",
+    "gib mir mal",
+    "gib mir",
+    "check mir mal",
+    "check mir",
+    "check mal",
+    "schau mal",
+    "bitte",
+    "mal",
+)
 
-Medien:
-  pause / play – Musik pausieren/fortsetzen
-  skip / next – Nächster Track
-  prev / previous – Vorheriger Track
-  volume <0-100> – Lautstärke setzen
+# Trailing Füllwörter (neutrale Hilfsverben, die nach einem Command folgen
+# können, ohne seine Bedeutung zu verändern). Konservativ gehalten.
+_FILLER_SUFFIXES: tuple[str, ...] = (
+    "bitte",
+    "mal",
+    "zeigen",
+    "anzeigen",
+    "ausgeben",
+    "checken",
+)
 
-Avatar:
-  selfie / avatar – Bild von Saleria senden
-  selfie <emotion> – Mit Emotion (angry, cheerful, sad, ...)
+# Vorkompilierter Regex: entfernt einen Füllwort-Prefix inkl. optionalem Komma.
+_FILLER_PREFIX_RE = re.compile(
+    r"^(?:" + "|".join(re.escape(p) for p in _FILLER_PREFIXES) + r")\b[,\s]*",
+    re.IGNORECASE,
+)
 
-Clipboard:
-  clipboard – Zwischenablage lesen
-  clip: <text> – Text in Zwischenablage schreiben
+_FILLER_SUFFIX_RE = re.compile(
+    r"[,\s]*\b(?:" + "|".join(re.escape(s) for s in _FILLER_SUFFIXES) + r")$",
+    re.IGNORECASE,
+)
 
-Dateien:
-  schick mir <pfad> – Datei senden (max 50 MB, nur erlaubte Verzeichnisse)
-  download <url> – Datei herunterladen
 
-Cloud (Nextcloud):
-  cloud upload <pfad> [ziel] – Datei zu Nextcloud hochladen
-  cloud download <pfad> – Datei aus Nextcloud herunterladen
-  cloud dateien [ordner] – Verzeichnis auflisten
-  cloud suche <query> – Dateien suchen
-  cloud link <pfad> – Öffentlichen Share-Link erstellen
-  richte nextcloud ein – Standard-Dateien löschen + Ordnerstruktur anlegen
+def _strip_fillers(text: str) -> str:
+    """Entfernt bekannte Füllwort-Prefixe und -Suffixe iterativ.
 
-Dokument-Ablage:
-  cloud aufräumen – Dateien im Eingang klassifizieren und ablegen
-  anhang ablegen #<ID> – PDF-Anhänge aus Mail klassifizieren und ablegen
+    "Kannst du mir mal den Status zeigen" → "den Status"
+    "bitte zeig mir status bitte" → "status"
+    """
+    prev = None
+    current = text.strip()
+    while prev != current:
+        prev = current
+        current = _FILLER_PREFIX_RE.sub("", current).strip()
+        current = _FILLER_SUFFIX_RE.sub("", current).strip()
+    return current or text.strip()
 
-PDF-Verarbeitung (Stirling-PDF):
-  pdf zusammenfügen <a.pdf> <b.pdf> – PDFs zusammenfügen
-  pdf aufteilen <datei> seiten 1-3 – Seiten extrahieren
-  pdf komprimieren <datei> [stufe 1-9] – Dateigröße reduzieren
-  pdf ocr <datei> – Text erkennen (Deutsch+Englisch)
-  pdf zu word <datei> – PDF → Word konvertieren
-  zu pdf <datei> – Word/Bild → PDF konvertieren
-  pdf bilder <datei> – Bilder aus PDF extrahieren
-
-Prozesse:
-  starte <programm> – Programm starten (Whitelist)
-  kill <prozess> – Prozess beenden (Whitelist)
-
-System:
-  wol – Wake-on-LAN (Tower aufwecken)
-  restart / neustart – Bot neu starten (z.B. nach git pull)
-  git status / git pull / git log / git diff
-  docker ps / docker restart <name> / docker logs <name>
-
-Kalender:
-  termine – Termine heute
-  termine morgen – Termine morgen
-  termine woche – Termine nächste 7 Tage
-  termine monat – Termine bis Monatsende
-  termin suche <Begriff> – Termin suchen (nächste 90 Tage)
-  termin: Titel morgen 14:00 – Termin erstellen (morgen/übermorgen/DD.MM/YYYY-MM-DD)
-  erstelle termin Titel 30.03 10:00 – Termin erstellen (natürliche Sprache)
-  lösche termin <Titel/ID> – Termin löschen
-  lösche den 2. termin – Per Index aus letztem Ergebnis
-  lösche alle termine – Alle aus letztem Ergebnis löschen
-
-E-Mail:
-  mails – Ungelesene E-Mails
-  mails 5 – Letzte 5 Tage
-  mail suche <Begriff> – Mails nach Betreff/Absender durchsuchen
-  mail <ID> / mail #<ID> – Mail anzeigen (z.B. mail 99, fasse mail #99 zusammen)
-  mail anhang <ID> – Anhänge einer Mail senden (ID aus Suchergebnis)
-  mail zusammenfassung – LLM-Zusammenfassung ungelesener Mails
-  antworte auf #<ID> <Anweisung> – Email-Antwort generieren
-    Beispiele: antworte auf #4523 positiv, bedanke dich
-    → Saleria zeigt Entwurf, du bestätigst mit 'ja'
-  lösche mail #<ID> – Mail löschen (z.B. lösche mail #4523)
-  lösche die mail – Letzte abgerufene Mail löschen
-
-Fitness (Berry-Gym):
-  training – Zusammenfassung (letztes Training, Woche, Gewicht)
-  training details – Letztes Training mit allen Sätzen
-  training woche – Trainings der letzten 7 Tage
-  prs – Personal Records (letzte 30 Tage)
-
-Wetter:
-  wetter – Aktuelles Wetter
-  wetter morgen – Wetterprognose morgen
-  wetter woche – 7-Tage-Prognose
-  wetter 3 – Prognose für 3 Tage
-
-Timer & Erinnerungen:
-  timer 20 min – Timer auf 20 Minuten
-  timer 1 stunde – Timer auf 1 Stunde
-  erinnere mich um 18:00: Wäsche – Erinnerung zu bestimmter Uhrzeit
-  erinnere mich in 2 stunden: Kuchen – Erinnerung nach Zeitspanne
-  erinnerungen – Offene Erinnerungen anzeigen
-  lösche erinnerung 3 – Erinnerung #3 löschen
-  lösche alle erinnerungen – Alle löschen
-
-🔁 Wiederkehrende Erinnerungen:
-  erinnere mich jeden montag um 9:00: Wochenbericht – Wöchentlich
-  erinnere mich täglich um 8:00: Standup – Täglich
-  erinnere mich werktags um 7:30: Aufstehen – Mo–Fr
-  erinnere mich jeden 1. um 10:00: Miete – Monatlich
-
-Briefing:
-  briefing – Tagesübersicht (Wetter + Termine + Erinnerungen)
-
-📝 Notizen & Wissen:
-  merk dir: <schlüssel> ist <wert>  – Fakt speichern (z.B. merk dir: WLAN Büro ist xyz123)
-  notiz: <text>                      – Freitext-Notiz speichern
-  was ist <schlüssel>?               – Fakt abrufen
-  notizen suche <Begriff>            – Notizen durchsuchen
-  notizen                            – Alle Notizen anzeigen (max 20)
-  notiz löschen #<id>                – Notiz per ID löschen
-  vergiss <schlüssel>                – KV-Fakt vergessen
-
-📇 Kontakte:
-  kontakt: Name, Rolle, Email, Anrede – Kontakt anlegen
-    Beispiel: kontakt: Herr Müller, Vermieter, info@mueller.de, förmlich
-  wer ist <Name>? – Kontakt abrufen
-  kontakte – Alle Kontakte anzeigen
-  kontakte suche <Begriff> – Kontakt suchen
-  kontakt löschen #<ID> – Kontakt löschen
-  kontakte sync – Kontakte mit Nextcloud synchronisieren
-  kontakte sync push – Nur lokal → Nextcloud
-  kontakte sync pull – Nur Nextcloud → lokal
-
-✅ Aufgaben (To-Do):
-  todo: <text> – Aufgabe anlegen (optional: , hoch/mittel, Kategorie)
-  todos / aufgaben – Offene Aufgaben anzeigen
-  todos hoch / todos Arbeit – Gefiltert nach Priorität/Kategorie
-  todo erledigt #<ID> – Aufgabe abhaken
-  todo wieder öffnen #<ID> – Aufgabe wieder öffnen
-  todo priorität #<ID> hoch – Priorität ändern (hoch/mittel/niedrig)
-  todo löschen #<ID> – Aufgabe löschen
-  todos erledigt – Erledigte Aufgaben anzeigen
-  todos aufräumen – Alle erledigten löschen
-
-Kamera:
-  foto / kamera – Foto aufnehmen und senden
-  was siehst du [kontext] – Kamerabild + KI-Beschreibung
-
-Audio:
-  audio – Audio-Modus anzeigen (matrix_only / matrix_and_local)
-  audio lokal an – Lokale Wiedergabe aktivieren (Matrix + PC)
-  audio lokal aus – Nur Matrix (Standard)
-
-Dokumente:
-  zusammenfassung <Pfad> – PDF/TXT zusammenfassen (z.B. zusammenfassung C:\\Docs\\report.pdf)
-  fasse zusammen <Pfad> – Alias für zusammenfassung
-
-Web-Zusammenfassung:
-  fasse <URL> zusammen – Webseite zusammenfassen (z.B. fasse https://example.com zusammen)
-  zusammenfassung von <URL> – Alias für fasse zusammen
-  fasse die seite <URL> zusammen – Alias für fasse zusammen
-
-Web-Suche:
-  suche <Begriff> – Im Internet suchen (z.B. suche Dachdecker Plattenburg)
-  such mal <Begriff> – Alias für suche
-  google <Begriff> – Alias für suche
-
-Harmony Hub (Smart Home):
-  <aktivität> an – Aktivität starten (z.B. fernsehen an, musik an)
-  alles aus / harmony aus – Alle Geräte ausschalten
-  lauter / mach lauter – Lautstärke erhöhen (Receiver)
-  leiser / mach leiser – Lautstärke senken (Receiver)
-  stummschalten / stumm – Receiver stummschalten
-  was läuft / harmony status – Aktuelle Aktivität anzeigen
-  harmony aktivitäten – Alle Aktivitäten auflisten
-  harmony geräte – Alle Geräte auflisten
-  harmony befehle <gerät> – Verfügbare Befehle für ein Gerät
-  starte szene <name> / szene <name> – Harmony-Szene starten
-  szenen / szenen liste – Alle Szenen auflisten
-
-Drehteller:
-  drehteller home – Home-Position anfahren
-  dreh dich um <grad> [nach links/rechts] – Relativ drehen
-  dreh dich nach links/rechts – 90 Grad in Richtung drehen
-  dreh dich auf <grad> – Auf absolute Position fahren
-  schau nach links/rechts – Drehteller in Richtung drehen
-  drehteller stopp – Rotation sofort abbrechen
-  drehteller status – Aktuelle Position anzeigen
-
-Computer Use (Vision-gesteuert):
-  klick auf <Element> – Klickt auf ein Bildschirmelement (z.B. klick auf den Discord-Button)
-  tippe <Text> – Tippt Text an der aktuellen Position
-  scroll runter/hoch – Scrollt auf dem Bildschirm
-  drück <Taste> – Drückt eine Taste/Kombination (z.B. drück Strg+S)
-
-Claude-Agent:
-  claude "<Auftrag>" – Komplexe Anfrage an Claude API
-
-Sprachnachrichten:
-  🎤 OGG/Opus Sprachnachricht → Whisper STT → Saleria antwortet (Text + Sprache)
-
-🗺️ Routenplanung:
-  plane fahrt zu <Name> – Route von Zuhause zu Kontakt
-  fahrt von <Name> zu <Name> – Route zwischen zwei Kontakten
-  wie komme ich zu <Name> – Route von Zuhause
-  Optional: "morgen um 16 uhr", "übermorgen 10 uhr" → Abfahrtszeit
-
-🔄 Self-Update:
-  update / update dich – Git Pull + Dependencies + Neustart (Server)
-  update tower – Tower-PC aktualisieren (git pull + pip + restart)
-  update rpi – RPi5 aktualisieren (git pull + pip + systemctl restart)
-  update alles – Server + Tower + RPi5 nacheinander aktualisieren
-  rollback / update zurücksetzen – Auf Stand vor letztem Update zurücksetzen
-
-🩺 Systemcheck:
-  selfcheck / systemcheck / prüf dich – Infrastruktur + Fähigkeiten-Check
-  alles ok? – Kurzform für Systemcheck
-  Prüft: Git, Python, Disk, RAM, Ollama, SecretStore, Imports, Dependencies
-  + Fähigkeiten: LLM, Kalender, Mail, Nextcloud, Wetter, TTS, STT, Memory, ..."""
 
 # Aggregierte Keyword-Map (aus allen Handlern zusammengeführt).
 # Wird von der Bridge für Keyword-Routing genutzt.
@@ -596,21 +465,37 @@ class RemoteCommandHandler:
         """Prüft ob der Text ein direkter Command ist.
 
         Erkennung in mehreren Stufen:
-        1. Exakter Match gegen Simple-Commands aller Handler
-        2. Pattern-Match gegen alle Handler-Patterns (in Handler-Reihenfolge)
-        3. Keyword-Suche in natürlicher Sprache
+        0. Füllwort-Stripping am Satzanfang ("kannst du mir mal ..." → "...")
+        1. Hilfe (inkl. ``hilfe <kategorie>`` und ``hilfe alles``)
+        2. Exakter Match gegen Simple-Commands aller Handler
+        3. Pattern-Match gegen alle Handler-Patterns (in Handler-Reihenfolge)
+        4. Keyword-Suche in natürlicher Sprache
 
         Args:
             text: Nachrichtentext vom Nutzer.
 
         Returns:
             Normalisierter Command-Name oder None wenn kein Command erkannt.
+            Für Hilfe-Unterkategorien wird ``"hilfe:<kategorie>"`` zurückgegeben.
         """
-        normalized = text.strip().lower()
+        # Phase 51.3: gestrippte Variante für exakte/Pattern-Matches,
+        # originaler Text für Keyword-Suche (Keywords enthalten bewusst
+        # natürlichsprachige Floskeln wie "zeig mir den bildschirm").
+        original_normalized = text.strip().lower()
+        stripped = _strip_fillers(text)
+        normalized = stripped.lower()
 
         # Stufe 1: Hilfe (bleibt im Orchestrator)
         if normalized in ("hilfe", "help"):
-            return normalized
+            return "hilfe"
+        if normalized in ("hilfe alles", "help alles", "hilfe all", "help all"):
+            return "hilfe:alles"
+        if normalized.startswith(("hilfe ", "help ")):
+            category = normalized.split(None, 1)[1].strip()
+            if category in CATEGORY_LABELS:
+                return f"hilfe:{category}"
+            # Unbekannte Kategorie – als Hilfe-Overview + Hinweis behandeln
+            return f"hilfe:?{category}"
 
         # Stufe 2: Exakter Match gegen Simple-Commands
         if normalized in self._simple_commands:
@@ -636,11 +521,13 @@ class RemoteCommandHandler:
                 if pattern.search(check_text):
                     return command
 
-        # Stufe 3: Keyword-Suche in natürlicher Sprache
+        # Stufe 3: Keyword-Suche in natürlicher Sprache.
+        # Hier auf dem *originalen* Text (nicht stripped), damit Keywords
+        # wie "zeig mir den bildschirm" oder "schau mal im netz" weiter greifen.
         for handler in self._handlers:
             for command, keywords in handler.keywords.items():
                 for keyword in keywords:
-                    if keyword in normalized:
+                    if keyword in original_normalized:
                         return command
 
         return None
@@ -655,9 +542,23 @@ class RemoteCommandHandler:
         Returns:
             CommandResult mit Ergebnis.
         """
-        # Hilfe bleibt im Orchestrator
+        # Hilfe bleibt im Orchestrator (Phase 51.1)
         if command in ("hilfe", "help"):
+            return CommandResult(command="hilfe", success=True, text=HELP_OVERVIEW)
+        if command == "hilfe:alles":
             return CommandResult(command="hilfe", success=True, text=HELP_TEXT)
+        if command.startswith("hilfe:?"):
+            unknown = command[len("hilfe:?"):]
+            text = (
+                f"Unbekannte Hilfe-Kategorie: '{unknown}'.\n\n" + HELP_OVERVIEW
+            )
+            return CommandResult(command="hilfe", success=True, text=text)
+        if command.startswith("hilfe:"):
+            category = command.split(":", 1)[1]
+            section = get_section(category)
+            if section:
+                return CommandResult(command="hilfe", success=True, text=section)
+            return CommandResult(command="hilfe", success=True, text=HELP_OVERVIEW)
 
         # Handler-Lookup (alle Commands bei Init registriert)
         handler = self._command_handler_map.get(command)
@@ -669,3 +570,35 @@ class RemoteCommandHandler:
             success=False,
             text=f"Unbekannter Command: {command}",
         )
+
+    def suggest_command(self, text: str) -> str | None:
+        """Did-you-mean Vorschlag wenn parse_command fehlgeschlagen ist.
+
+        Nutzt ``difflib.get_close_matches`` auf den ersten Token der Eingabe
+        gegen die aggregierten Simple-Commands aller Handler. Rückgabe ist
+        ein fertig formatierter Hinweistext oder ``None`` wenn kein hinreichend
+        ähnlicher Command gefunden wurde (cutoff 0.75).
+
+        Phase 51.2.
+        """
+        stripped = _strip_fillers(text).lower()
+        if not stripped:
+            return None
+        tokens = stripped.split()
+        # Nur bei sehr kurzen Eingaben (max. 2 Tokens) vorschlagen –
+        # sonst würden ganze Sätze, die ans LLM gehen sollen, abgefangen.
+        if len(tokens) > 2:
+            return None
+        first_token = tokens[0]
+        if len(first_token) < 4:
+            return None
+        # Keine Vorschläge wenn das erste Token bereits ein echter Command ist.
+        if first_token in self._simple_commands:
+            return None
+        candidates = sorted(self._simple_commands)
+        matches = difflib.get_close_matches(
+            first_token, candidates, n=1, cutoff=0.75,
+        )
+        if not matches:
+            return None
+        return f"Meintest du '{matches[0]}'? Tippe 'hilfe' für alle Commands."
