@@ -280,7 +280,8 @@ class TestParseCommand:
     def test_hilfe(self):
         handler = RemoteCommandHandler()
         assert handler.parse_command("hilfe") == "hilfe"
-        assert handler.parse_command("help") == "help"
+        # "help" wird auf "hilfe" normalisiert (Phase 51.1)
+        assert handler.parse_command("help") == "hilfe"
 
     def test_hilfe_keyword(self):
         handler = RemoteCommandHandler()
@@ -1200,23 +1201,50 @@ class TestNewPatterns:
 # ---------------------------------------------------------------------------
 
 class TestCmdHilfe:
-    def test_hilfe_returns_help_text(self):
+    def test_hilfe_returns_overview(self):
+        # Phase 51.1: "hilfe" zeigt nur Kategorien-Übersicht
         handler = RemoteCommandHandler()
         result = handler.execute("hilfe", "hilfe")
 
         assert result.success is True
         assert result.command == "hilfe"
+        assert "Hilfe-Kategorien" in result.text
+        assert "hilfe basis" in result.text
+        assert "hilfe alles" in result.text
+
+    def test_hilfe_alles_returns_full_text(self):
+        handler = RemoteCommandHandler()
+        result = handler.execute("hilfe:alles", "hilfe alles")
+
+        assert result.success is True
         assert "status" in result.text
         assert "screenshot" in result.text
         assert "selfie" in result.text
         assert "claude" in result.text.lower()
 
-    def test_help_alias(self):
+    def test_hilfe_category_section(self):
         handler = RemoteCommandHandler()
-        result = handler.execute("help", "help")
+        result = handler.execute("hilfe:kalender", "hilfe kalender")
 
         assert result.success is True
-        assert "status" in result.text
+        assert "termin" in result.text.lower()
+        # Andere Kategorien sollen nicht enthalten sein
+        assert "pdf ocr" not in result.text.lower()
+
+    def test_hilfe_unknown_category(self):
+        handler = RemoteCommandHandler()
+        result = handler.execute("hilfe:?quatsch", "hilfe quatsch")
+
+        assert result.success is True
+        assert "Unbekannte Hilfe-Kategorie" in result.text
+        assert "hilfe basis" in result.text  # Overview als Fallback
+
+    def test_help_alias(self):
+        handler = RemoteCommandHandler()
+        result = handler.execute("hilfe", "help")
+
+        assert result.success is True
+        assert "Hilfe-Kategorien" in result.text
 
 
 class TestCmdAvatar:

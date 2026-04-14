@@ -4101,3 +4101,40 @@ User: "Lies meine Mails und trag den Zahnarzttermin ein"
   2. Frequenz: kein Limit, Selbstregulierung (BudgetTracker blockt bei ≤0)
   3. Input: nur Kursdaten, keine News (Phase 1)
 - Nächster Schritt: Bull-Berry als eigenes Projekt aufsetzen
+
+## In Arbeit: Phase 51 – Kontextsensitive Hilfe & Command-Discovery (2026-04-14)
+- Roadmap: Phase 50 auf ABGESCHLOSSEN korrigiert
+- Branch: feature/phase-51-help-discovery
+- Teilschritte: 51.1 Kategorisierte Hilfe, 51.2 Did-you-mean (difflib),
+  51.3 Füllwort-Stripping (zentral in parse_command, keine Handler-Änderung)
+- Nächster Schritt: 51.1 – HELP_TEXT in HELP_SECTIONS aufteilen,
+  Datei: src/elder_berry/comms/commands/help_sections.py
+
+## Abgeschlossen: Phase 51 – Kontextsensitive Hilfe & Command-Discovery (2026-04-14)
+- 51.1 Kategorisierte Hilfe:
+  - NEU: src/elder_berry/comms/commands/help_sections.py mit
+    CATEGORY_LABELS + HELP_SECTIONS (15 Kategorien: basis, medien, avatar,
+    dateien, cloud, kalender, mail, fitness, wetter, notizen, kontakte,
+    todos, smart-home, web, system)
+  - HELP_OVERVIEW (~20 Zeilen) als Default bei "hilfe"
+  - "hilfe <kategorie>" liefert Sektion, "hilfe alles" Volltext,
+    unbekannte Kategorie → Overview + Hinweis
+  - parse_command returnt "hilfe" / "hilfe:<cat>" / "hilfe:alles" / "hilfe:?<unknown>"
+  - execute() dispatcht auf Sektion / Overview / Volltext
+- 51.2 Did-you-mean (difflib, keine neue Dependency):
+  - suggest_command(text) in RemoteCommandHandler
+  - Nur bei ≤2 Tokens, erstes Token ≥4 Zeichen, cutoff 0.75
+  - bridge.py ruft suggest_command() wenn parse_command None liefert
+- 51.3 Füllwort-Stripping (zentral, keine Handler-Änderung):
+  - _FILLER_PREFIXES (kannst du, zeig mir, bitte, check mal, ...)
+  - _FILLER_SUFFIXES (bitte, mal, zeigen, anzeigen, ausgeben, checken)
+  - _strip_fillers() iterativ bis Fixpunkt
+  - parse_command nutzt stripped für Simple/Pattern, original für Keywords
+    → Keywords wie "zeig mir den bildschirm" bleiben erhalten
+- Tests: 433 betroffene Tests grün (test_remote_commands, test_intent_routing,
+  test_help_sections NEU 16 Tests, test_command_discovery NEU 15 Tests)
+  - 61 pre-existing Fails in elevenlabs/tts/stt/computer_use (nicht Phase 51)
+- Dateien geändert: bridge.py, remote_commands.py, test_remote_commands.py,
+  docs/PROJECT_ROADMAP.md (Phase 50 auf ABGESCHLOSSEN)
+- Dateien neu: help_sections.py, test_help_sections.py, test_command_discovery.py
+- Branch: feature/phase-51-help-discovery
