@@ -190,8 +190,16 @@ def register_setup_wizard_routes(
     """Registriert die Setup-Wizard-Endpoints auf der FastAPI-App."""
 
     @app.get("/setup")
-    async def setup_page():
-        """Liefert die Setup-Wizard HTML-Seite."""
+    async def setup_page(force: int = 0):
+        """Liefert die Setup-Wizard HTML-Seite.
+
+        Phase 52.3: Wenn das Setup bereits abgeschlossen ist, wird auf
+        ``/settings`` umgeleitet. Mit ``?force=1`` lässt sich der Wizard
+        trotzdem öffnen (Recovery-Pfad).
+        """
+        if force != 1 and secret_store.has(SETUP_COMPLETE_KEY):
+            from fastapi.responses import RedirectResponse
+            return RedirectResponse(url="/settings", status_code=307)
         template_path = _TEMPLATE_DIR / "setup_wizard.html"
         if not template_path.exists():
             return HTMLResponse(
