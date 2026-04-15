@@ -43,7 +43,6 @@ agent = [
 matrix = [
     "matrix-nio>=0.24",
     "aiofiles>=23.0",
-    "pydub>=0.25",
 ]
 remote = [
     "mss>=9.0",
@@ -95,7 +94,6 @@ tower = [
 server = [
     "matrix-nio>=0.24",
     "aiofiles>=23.0",
-    "pydub>=0.25",
     "chromadb>=0.5",
     "google-api-python-client>=2.0",
     "google-auth-oauthlib>=1.0",
@@ -106,6 +104,9 @@ server = [
     "caldav>=1.0",
     "vobject>=0.9",
 ]
+dev = [
+    "pytest-timeout>=2.3",
+]
 
 [tool.setuptools.packages.find]
 where = ["src"]
@@ -114,3 +115,9 @@ where = ["src"]
 testpaths = ["tests"]
 pythonpath = ["src", "."]
 asyncio_mode = "auto"
+# Phase 55.2 – jeder Test wird nach 60s zwangsweise abgebrochen. Fängt
+# Hänger durch echte Syscalls (SendMessageTimeoutW, Netzwerk, Display)
+# früh ab, statt den ganzen Run zu blockieren. Einzelne Tests dürfen
+# mit @pytest.mark.timeout(n) einen höheren Wert setzen.
+timeout = 60
+timeout_method = "thread"

@@ -425,7 +425,7 @@ def init_audio_converter():
         logger.warning("AudioConverter: ffmpeg nicht gefunden – keine Sprachantworten")
         return None
     except ImportError:
-        logger.debug("AudioConverter: pydub nicht installiert")
+        logger.debug("AudioConverter: Modul nicht importierbar")
         return None
 
 

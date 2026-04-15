@@ -299,14 +299,38 @@ class SystemCommandHandler(CommandHandler):
 
     @staticmethod
     def _wake_monitor() -> None:
-        """Weckt den Monitor auf (Windows: SC_MONITORPOWER)."""
+        """Weckt den Monitor auf (Windows: SC_MONITORPOWER).
+
+        Nutzt ``SendMessageTimeoutW`` mit ``SMTO_ABORTIFHUNG``, damit ein
+        hängendes Top-Level-Fenster den Broadcast nicht blockiert –
+        ``SendMessageW`` mit ``HWND_BROADCAST`` hängt sonst indefinit,
+        wenn irgendein Prozess im System seinen Message-Loop nicht
+        bedient (Phase 55.2).
+        """
         import sys
         if sys.platform != "win32":
             return
         try:
             import ctypes
-            # WM_SYSCOMMAND + SC_MONITORPOWER + -1 (ON)
-            ctypes.windll.user32.SendMessageW(0xFFFF, 0x0112, 0xF170, -1)
+            import ctypes.wintypes
+
+            HWND_BROADCAST = 0xFFFF
+            WM_SYSCOMMAND = 0x0112
+            SC_MONITORPOWER = 0xF170
+            MONITOR_ON = -1
+            SMTO_ABORTIFHUNG = 0x0002
+            TIMEOUT_MS = 2000
+
+            result = ctypes.wintypes.DWORD()
+            ctypes.windll.user32.SendMessageTimeoutW(
+                HWND_BROADCAST,
+                WM_SYSCOMMAND,
+                SC_MONITORPOWER,
+                MONITOR_ON,
+                SMTO_ABORTIFHUNG,
+                TIMEOUT_MS,
+                ctypes.byref(result),
+            )
             import time
             time.sleep(1)  # Monitor braucht ~1s zum Aufwachen
         except Exception as e:
