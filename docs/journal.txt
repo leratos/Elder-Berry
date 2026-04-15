@@ -4138,3 +4138,27 @@ User: "Lies meine Mails und trag den Zahnarzttermin ein"
   docs/PROJECT_ROADMAP.md (Phase 50 auf ABGESCHLOSSEN)
 - Dateien neu: help_sections.py, test_help_sections.py, test_command_discovery.py
 - Branch: feature/phase-51-help-discovery
+
+## In Arbeit: Phase 52 – Unified Settings & Startup-Feedback (2026-04-15)
+- Branch: feature/phase-52-unified-settings (von main; chore-branch mit
+  Coroutine-Warning-Fixes läuft separat)
+- Reihenfolge:
+  1. 52.2 Startup-Summary in scripts/start_saleria.py – isoliert, sofort wertvoll
+  2. 52.1a Backend-Endpoints: /api/settings/test/{service}, /api/settings/security
+  3. 52.1b Settings-Panel-Frontend: settings_panel.html (Chunks ≤400 Zeilen),
+     Route GET /settings, 3 Tabs (Dienste, Verhalten, Sicherheit)
+  4. 52.3 audio_dashboard Re-Setup-Button → /settings#dienste,
+     /setup blockt nach Setup-Wizard-Completed mit Bestätigungs-Dialog
+- Nächster Schritt: 52.2 – _print_startup_summary() in start_saleria.py
+
+## Zwischenstand: Phase 52.2 – Startup-Summary fertig (2026-04-15)
+- scripts/start_saleria.py: 4 Helper + _print_startup_summary() vor main()
+  - _summary_check_secrets / _summary_llm_label / _summary_tower_label /
+    _summary_robot_label / _print_startup_summary
+  - Box-Drawing-Output mit ✓/⚠/✗ je Service
+  - Services: LLM, Matrix, Kalender, Wetter, E-Mail, Nextcloud, Tower, RPi5
+  - Tower: instanziiert TowerAgent on-the-fly für Heartbeat wenn nicht übergeben
+  - Aufruf in main() nach Assistant-Init, vor Mode-Dispatch
+- tests/test_startup_summary.py: 28 Tests grün
+- Kein Matrix-Push (Scope-Begrenzung – nur Konsole für 52.2)
+- Nächster Schritt: 52.1a – /api/settings/test/{service} + /api/settings/security
