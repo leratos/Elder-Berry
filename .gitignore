@@ -216,3 +216,4 @@ config/harmony_config_backup.json
 server/borg-backup.sh
 scripts/Install-SshTunnelTask.ps1
 scripts/ssh-tunnel.ps1
+.claude/worktrees/elated-morse
