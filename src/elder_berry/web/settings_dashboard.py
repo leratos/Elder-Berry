@@ -157,6 +157,10 @@ class SettingsDashboard:
         register_secrets_routes(self._app, self)
         register_llm_routes(self._app, self)
 
+        # Phase 52.1a: Verbindungstest- und Security-Endpunkte
+        from elder_berry.web.settings_test_api import register_settings_test_routes
+        register_settings_test_routes(self._app, self._secret_store, self._port)
+
         # Avatar-Editor-Routen
         from elder_berry.web.avatar_editor import register_avatar_editor_routes
         register_avatar_editor_routes(self._app, renderer=avatar_renderer)

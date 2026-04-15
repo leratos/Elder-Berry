@@ -4162,3 +4162,19 @@ User: "Lies meine Mails und trag den Zahnarzttermin ein"
 - tests/test_startup_summary.py: 28 Tests grün
 - Kein Matrix-Push (Scope-Begrenzung – nur Konsole für 52.2)
 - Nächster Schritt: 52.1a – /api/settings/test/{service} + /api/settings/security
+
+## Zwischenstand: Phase 52.1a – Backend-Endpoints fertig (2026-04-15)
+- NEU: src/elder_berry/web/settings_test_api.py
+  - SERVICE_TESTS-Registry: 10 Dienste (anthropic, groq, brave, google_maps,
+    matrix, nextcloud, email, ollama, tower, rpi5)
+  - _MissingSecret-Exception → HTTP 400 mit missing_config-Flag
+  - register_settings_test_routes(app, secret_store, port):
+    - POST /api/settings/test/{service} – Credentials aus SecretStore,
+      ruft jeweilige SetupTests-Methode auf
+    - GET /api/settings/security – CORS-Origins (read-only) + Allowed-Senders-Count
+  - _compute_cors_origins() spiegelt setup_security() für die UI
+- settings_dashboard.py: register_settings_test_routes() im __init__ eingebunden
+- tests/test_settings_test_api.py: 32 Tests grün (Helper, alle 10 Service-Runner,
+  Security-Endpunkt, Registry-Konsistenz)
+- Keine Regressionen in test_settings_dashboard.py (37 Tests bleiben grün)
+- Nächster Schritt: 52.1b – settings_panel.html + GET /settings Route
