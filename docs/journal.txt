@@ -4358,3 +4358,63 @@ User: "Lies meine Mails und trag den Zahnarzttermin ein"
 - 53.3 obsolet durch Phase 52.0
 - Roadmap: Phase 53 auf ABGESCHLOSSEN, 53.3 auf "ERLEDIGT DURCH 52.0"
 - Branch: feature/phase-53-install-and-avatar-ux
+
+## Planung: Phase 56 – Nextcloud Tasks als Todo-Backend (2026-04-15)
+- Konzept erstellt: docs/concepts/phase-56-nextcloud-tasks.md
+- Roadmap-Eintrag: Phase 56 mit 5 Subphasen (56.1–56.5) angelegt
+- Hintergrund: TodoStore (SQLite) hat kein Fälligkeitsdatum, keine
+  Handy-Sync. Nextcloud Tasks (CalDAV VTODO) wird Single Source of Truth.
+- CalDAVTaskClient folgt dem Muster von CalDAVCalendarClient
+  (gleiche Credentials, gleiche Library, Lazy-Init + Retry)
+- Offene Design-Frage: UUID-Handling für Chat-Interaktion
+  → Empfehlung: Session-basierter Index (#1, #2, #3 pro Abfrage)
+
+## In Arbeit: Phase 55 – audioop/pydub Migration (2026-04-15)
+- Branch: feature/phase-55-audioop-migration (von main)
+- Ziel: pydub aus audio_converter.py entfernen, weil pydub unconditional
+  `audioop` importiert und Python 3.13 das Modul entfernt hat (PEP 594).
+  RPi5 Bookworm läuft auf Python 3.13 System-Python → ImportError-Risiko
+  bei Upgrade. Aktuell nur DeprecationWarning auf Tower/Laptop (3.12).
+- Scope (laut docs/concepts/phase-55-audioop-migration.md, Option B):
+  - to_ogg_opus(): direkt subprocess.run([ffmpeg, -i, ..., -c:a libopus, ...])
+  - get_duration_ms(): subprocess.run([ffprobe, ...]) + JSON-Parse
+  - _ffprobe_available Check in __init__
+  - pydub aus pyproject.toml [matrix]- und [server]-Gruppe entfernen
+  - Tests: TestToOggOpusMocked / TestGetDurationMocked auf subprocess-Mock
+    umstellen; Live-Tests mit echtem ffmpeg bleiben unverändert (ffmpeg
+    ist weiterhin Pflicht-Dependency)
+- Nächster Schritt: audio_converter.py auf subprocess umstellen
+
+## Abgeschlossen: Phase 55 – pydub entfernt + Screenshot-Hänger gefixt (2026-04-15)
+- 55.1 audio_converter.py komplett auf ffmpeg/ffprobe Subprocess umgestellt:
+  - to_ogg_opus(): subprocess.run(['ffmpeg', ..., '-c:a', 'libopus', ...]) mit
+    Exit-Code-Check + Timeout (60s) + FileNotFoundError-Handling
+  - _probe_duration_ms(): subprocess.run(['ffprobe', ..., '-of', 'json']) +
+    JSON-Parse mit Timeout (15s). Neue _ffprobe_available-Property im ctor.
+  - get_duration_ms() delegiert an _probe_duration_ms
+  - Fehlerpfade: ffmpeg/ffprobe nonzero, TimeoutExpired, FileNotFound,
+    unlesbares JSON, fehlender format.duration-Key – jeweils als
+    AudioConverterError
+- test_audio_converter.py: Mock-Tests von pydub auf subprocess umgestellt,
+  7 bestehende Mock-Tests ersetzt durch 15 subprocess-Mock-Tests (inkl.
+  Timeout-, FileNotFound-, ffprobe-Fehler-, BadJson-, MissingKey-Pfaden).
+  Laufzeit: 1.06s statt ~30s (kein echter ffmpeg-Subprozess mehr in Mocks)
+- pydub aus pyproject.toml [matrix] + [server] entfernt
+- start_saleria.py Log-Text "pydub nicht installiert" → "Modul nicht
+  importierbar" (generischer, weil pydub weg ist)
+- Lokal: `pip uninstall pydub` ausgeführt, alle 32 Tests weiterhin grün
+- 55.2 Screenshot-Hänger gefixt:
+  - Root Cause: system_commands._wake_monitor() nutzte SendMessageW mit
+    HWND_BROADCAST, was blockiert wenn irgendein System-Fenster einen
+    hängenden Message-Loop hat. Ersetzt durch SendMessageTimeoutW mit
+    SMTO_ABORTIFHUNG + 2000ms Timeout. Echtes Bugfix in Prod-Code.
+  - TestCmdScreenshot: 2 bisher deselektierte Tests (test_screenshot_
+    result_shape, test_screenshot_via_execute) mocken jetzt mss komplett
+    und patchen _wake_monitor zur No-Op. Laufzeit: 0.37s.
+- pytest-timeout als [dev]-Gruppe in pyproject.toml + globales
+  `timeout = 60` / `timeout_method = "thread"` in [tool.pytest.ini_options].
+  Verhindert zukünftige Hänger im Fullrun.
+- Fullrun: 4344 passed, 2 skipped, 1 warning (nur noch pygame/
+  pkg_resources Deprecation – pydub/audioop ist weg)
+- Roadmap: Phase 55 auf ABGESCHLOSSEN
+- Branch: feature/phase-55-audioop-migration

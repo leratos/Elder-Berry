@@ -1070,3 +1070,71 @@ Kleinere UX-Verbesserungen für Installation und Avatar-Konfiguration.
   brauchen nur noch einen Registry-Eintrag, kein Code-Change in
   settings_dashboard.py. YAML-Auslagerung würde das Problem nochmal lösen
   ohne Mehrwert.
+
+
+## Phase 55 – pydub/audioop Migration 🐍 ✅ ABGESCHLOSSEN
+
+Python 3.13 entfernt das `audioop`-Stdlib-Modul (PEP 594). `pydub`
+importiert es unconditional → ImportError beim RPi5-Upgrade auf
+Bookworm/Python 3.13.
+
+Konzept: `docs/concepts/phase-55-audioop-migration.md`
+
+### 55.1 – audio_converter.py auf direkten ffmpeg-Subprozess umgestellt
+
+- `to_ogg_opus()` ruft jetzt `subprocess.run(['ffmpeg', -c:a, libopus, ...])`
+  mit Exit-Code-Check und Timeout direkt auf
+- `get_duration_ms()` nutzt `ffprobe -show_entries format=duration -of json`
+- pydub aus `[matrix]` und `[server]` in `pyproject.toml` entfernt
+- 32 Tests grün, Laufzeit von ~30s auf 1s (kein echter ffmpeg-Call mehr
+  in Mocks)
+
+### 55.2 – Screenshot-Hänger + pytest-timeout
+
+- `system_commands._wake_monitor()` nutzt jetzt `SendMessageTimeoutW` mit
+  `SMTO_ABORTIFHUNG`, statt des blockierenden `SendMessageW`-Broadcasts.
+  Echtes Prod-Bugfix: ein Broadcast zu HWND_BROADCAST hing, sobald ein
+  beliebiges System-Fenster einen kaputten Message-Loop hatte.
+- `TestCmdScreenshot`: mss + `_wake_monitor` in den beiden Live-Tests
+  gemockt, keine deselect-Liste mehr nötig
+- `pytest-timeout>=2.3` als neue `[dev]`-Gruppe in `pyproject.toml`
+- Globales `timeout = 60` in `[tool.pytest.ini_options]`, damit
+  zukünftige Hänger nach 60s zwangsweise abgebrochen werden
+
+## Phase 56 – Nextcloud Tasks als Todo-Backend 📋 GEPLANT
+
+Nextcloud Tasks (CalDAV VTODO) ersetzt den lokalen SQLite-TodoStore.
+Aufgaben werden über DAVx5 aufs Handy synchronisiert. Fälligkeitsdaten
+werden unterstützt ("aufgaben morgen", "todo: Arzt, morgen").
+
+Konzept: `docs/concepts/phase-56-nextcloud-tasks.md`
+
+### 56.1 – CalDAVTaskClient
+
+- **Neue Klasse** `tools/caldav_tasks.py`: TaskItem-Dataclass + CalDAVTaskClient
+- Gleicher Pattern wie CalDAVCalendarClient: Lazy-Init, retry, graceful degradation
+- Liest/schreibt VTODOs via `caldav` + `icalendar` Library
+- Fälligkeitsdatum (DUE), Priorität, Kategorie
+
+### 56.2 – TodoCommandHandler umverdrahten
+
+- TodoStore-Referenzen durch CalDAVTaskClient ersetzen
+- user_id-Parameter entfernen (CalDAV hat keine User-ID)
+- ID-Typ von int auf str (UUID), mit Session-Index für Chat-Usability
+
+### 56.3 – Due-Date-Support in Commands
+
+- Neue Patterns: "todo: X, morgen", "aufgaben morgen/heute/überfällig"
+- Date-Parsing: heute, morgen, Wochentage, DD.MM(.YYYY)
+- Filter-Erweiterung in _cmd_filter
+
+### 56.4 – SmartContext + BriefingScheduler umstellen
+
+- smart_context._query_todos → task_client.format_for_briefing()
+- briefing_scheduler._build_todo_section → task_client
+- Constructor-Parameter und Imports anpassen
+
+### 56.5 – Migration & Deprecation
+
+- Migrations-Script: SQLite-Todos → Nextcloud Tasks (einmalig)
+- TodoStore aus allen Imports entfernen, Datei deprecaten
