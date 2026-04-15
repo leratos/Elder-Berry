@@ -4275,3 +4275,24 @@ User: "Lies meine Mails und trag den Zahnarzttermin ein"
   * src/elder_berry/web/templates/audio_dashboard.html (Link → /settings)
   * tests/test_setup_wizard_api.py (Redirect-Tests)
 - Branch: feature/phase-52-unified-settings (bereit für Commit + PR)
+
+## Merge-Korrektur: Phase 52 – parallele Branches vereinigt (2026-04-15)
+- Sachlage: Auf dem lokalen feature/phase-52-unified-settings-Branch war
+  in 3 Commits (8aedd2e, b16c5f7, 036fe67) eine zweite, parallele Phase-52-
+  Implementation entstanden (inline Startup-Summary-Helper, settings_test_api,
+  eigenes settings_panel.html mit Tabs, Setup-Reconfirm-HTML-Seite).
+  origin/main hatte zum selben Zeitpunkt bereits die ausgereiftere Variante
+  mit StartupSummary-Klasse, Token-Auth, Loopback-Bind und Schema-
+  Konsolidierung (165 Tests) gemerged.
+- Merge-Strategie: theirs (origin/main) als Basis, meine lokalen Dateien
+  verworfen, weil sie sicherheitsrelevante Features (Token-Middleware,
+  127.0.0.1-Bind) nicht hatten und zu kollidierenden Endpoints führten
+  (/api/settings/test/{service} vs /api/setup/test/{key}).
+- Entfernt: src/elder_berry/web/settings_test_api.py,
+  tests/test_settings_test_api.py, tests/test_setup_wizard_reconfirm.py
+- Alle 8 konfliktbehafteten Dateien mit --theirs aufgelöst:
+  start_saleria.py, settings_dashboard.py, setup_wizard.py,
+  audio_dashboard.html, settings_panel.html, test_settings_panel.py,
+  test_startup_summary.py, journal.txt
+- Meine Commits bleiben in der git-Historie, der Merge-Commit macht ihre
+  Additions zurück. Die PR bleibt sauber.

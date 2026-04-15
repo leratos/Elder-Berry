@@ -957,7 +957,7 @@ durchsuchbarer Hilfe.
 - **Risiko**: Mehr Keywords = mehr Kollisionen → Cross-Handler-Konflikttests erweitern
 
 
-## Phase 52 – Unified Settings & Startup-Feedback ⚙️ GEPLANT
+## Phase 52 – Unified Settings & Startup-Feedback ⚙️ ✅ ABGESCHLOSSEN
 
 Konfiguration an einem Ort statt über 3 Oberflächen verteilt.
 Startup gibt klares Feedback was funktioniert und was fehlt.
