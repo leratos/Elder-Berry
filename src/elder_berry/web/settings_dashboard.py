@@ -369,6 +369,17 @@ class SettingsDashboard:
                 return HTMLResponse(template_path.read_text(encoding="utf-8"))
             return HTMLResponse("<h1>Template nicht gefunden</h1>", status_code=500)
 
+        @self._app.get("/settings", response_class=HTMLResponse)
+        async def settings_panel():
+            """Phase 52.1b – zentrales Settings-Panel (Tabs)."""
+            template_path = _TEMPLATE_DIR / "settings_panel.html"
+            if template_path.exists():
+                return HTMLResponse(template_path.read_text(encoding="utf-8"))
+            return HTMLResponse(
+                "<h1>settings_panel.html nicht gefunden</h1>",
+                status_code=500,
+            )
+
         @self._app.get("/api/audio")
         async def get_audio_mode():
             return JSONResponse({
