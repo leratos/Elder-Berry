@@ -42,6 +42,21 @@ def _make_router(elevenlabs=None, tower=None):
     return TTSRouter(elevenlabs=el, tower=tower)
 
 
+def _stub_run_async(result=None, *, raises=None):
+    """Ersatz für TTSRouter._run_async in sync-Tests.
+
+    Schließt die übergebene Coroutine sauber, damit pytest keinen
+    "coroutine was never awaited"-Warning wirft.
+    """
+    def runner(coro):
+        if hasattr(coro, "close"):
+            coro.close()
+        if raises is not None:
+            raise raises
+        return result
+    return runner
+
+
 # ---------------------------------------------------------------------------
 # synthesize() – Routing-Logik
 # ---------------------------------------------------------------------------
@@ -140,7 +155,7 @@ class TestGenerateAudio:
         """generate_audio() schreibt MP3-Datei."""
         audio = b"\xff\xfb\x90" * 100
         router = _make_router()
-        router._run_async = MagicMock(return_value=audio)
+        router._run_async = _stub_run_async(audio)
 
         output = tmp_path / "speech.wav"
         result = router.generate_audio("Hallo Welt", output)
@@ -153,7 +168,7 @@ class TestGenerateAudio:
     def test_original_wav_not_created(self, tmp_path):
         """Die .wav-Datei wird NICHT erstellt (nur .mp3)."""
         router = _make_router()
-        router._run_async = MagicMock(return_value=b"\xff" * 200)
+        router._run_async = _stub_run_async(b"\xff" * 200)
 
         output = tmp_path / "speech.wav"
         router.generate_audio("Test", output)
@@ -165,7 +180,7 @@ class TestGenerateAudio:
         """Auch Fallback-Audio wird korrekt geschrieben."""
         tower_audio = b"\x00\x01" * 200
         router = _make_router()
-        router._run_async = MagicMock(return_value=tower_audio)
+        router._run_async = _stub_run_async(tower_audio)
 
         output = tmp_path / "speech.wav"
         result = router.generate_audio("Test", output, emotion="neutral")
@@ -176,7 +191,7 @@ class TestGenerateAudio:
     def test_generate_audio_returns_path(self, tmp_path):
         """Rückgabewert ist der tatsächliche Pfad (.mp3)."""
         router = _make_router()
-        router._run_async = MagicMock(return_value=b"\xff" * 100)
+        router._run_async = _stub_run_async(b"\xff" * 100)
 
         result = router.generate_audio("Test", tmp_path / "out.wav")
 
@@ -191,7 +206,7 @@ class TestGenerateAudio:
 
         router = _make_router(elevenlabs=_make_elevenlabs(fail=True))
         router._local_tts = local_tts
-        router._run_async = MagicMock(side_effect=TTSUnavailableError("down"))
+        router._run_async = _stub_run_async(raises=TTSUnavailableError("down"))
 
         result = router.generate_audio("Test", expected_path, emotion="neutral")
 
@@ -203,7 +218,7 @@ class TestGenerateAudio:
     def test_no_local_fallback_raises(self, tmp_path):
         """Ohne lokalen Fallback → Error propagiert."""
         router = _make_router(elevenlabs=_make_elevenlabs(fail=True))
-        router._run_async = MagicMock(side_effect=TTSUnavailableError("down"))
+        router._run_async = _stub_run_async(raises=TTSUnavailableError("down"))
 
         with pytest.raises(TTSUnavailableError):
             router.generate_audio("Test", tmp_path / "speech.wav")

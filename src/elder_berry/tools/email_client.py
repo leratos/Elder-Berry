@@ -382,8 +382,18 @@ class IMAPEmailClient:
             conn = self._connect()
             conn.select(self._mailbox, readonly=True)
 
-            # UID-basierte Suche (stabiler als Sequenznummern)
-            _, data = conn.uid("search", None, search_criteria)
+            # UID-basierte Suche (stabiler als Sequenznummern).
+            # IMAP SEARCH ist standardmäßig ASCII; bei Umlauten (z.B.
+            # "Müller", "über") muss CHARSET UTF-8 + bytes-Criterion
+            # verwendet werden, sonst UnicodeEncodeError in imaplib.
+            try:
+                search_criteria.encode("ascii")
+                _, data = conn.uid("search", None, search_criteria)
+            except UnicodeEncodeError:
+                _, data = conn.uid(
+                    "search", "CHARSET", "UTF-8",
+                    search_criteria.encode("utf-8"),
+                )
             uids = data[0].split() if data[0] else []
 
             # Neueste zuerst, limitieren

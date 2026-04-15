@@ -40,6 +40,15 @@ def _make_router(cloud=None, tower=None):
     return STTRouter(cloud_stt=cl, tower=tower)
 
 
+def _stub_run_async(result):
+    """Ersatz für STTRouter._run_async; schließt die Coroutine sauber."""
+    def runner(coro):
+        if hasattr(coro, "close"):
+            coro.close()
+        return result
+    return runner
+
+
 # ---------------------------------------------------------------------------
 # transcribe_async() – Routing-Logik
 # ---------------------------------------------------------------------------
@@ -141,14 +150,17 @@ class TestTranscribe:
         audio_file.write_bytes(b"\x00" * 200)
 
         router = _make_router(cloud=_make_cloud(text="Datei erkannt"))
-        router._run_async = MagicMock(
-            return_value=TranscriptionResult(text="Datei erkannt", language="de"),
-        )
+        called = {"n": 0}
+        def fake(coro):
+            coro.close()
+            called["n"] += 1
+            return TranscriptionResult(text="Datei erkannt", language="de")
+        router._run_async = fake
 
         result = router.transcribe(audio_file)
 
         assert result.text == "Datei erkannt"
-        router._run_async.assert_called_once()
+        assert called["n"] == 1
 
     def test_passes_filename(self, tmp_path):
         """Dateiname wird an transcribe_async übergeben."""
@@ -156,14 +168,16 @@ class TestTranscribe:
         audio_file.write_bytes(b"\x00" * 100)
 
         router = _make_router()
-        router._run_async = MagicMock(
-            return_value=TranscriptionResult(text="OK"),
-        )
+        called = {"n": 0}
+        def fake(coro):
+            coro.close()
+            called["n"] += 1
+            return TranscriptionResult(text="OK")
+        router._run_async = fake
 
         router.transcribe(audio_file)
 
-        # _run_async bekommt die Coroutine; wir prüfen dass er aufgerufen wird
-        router._run_async.assert_called_once()
+        assert called["n"] == 1
 
 
 # ---------------------------------------------------------------------------
@@ -174,8 +188,8 @@ class TestTranscribeBytes:
     def test_creates_wav_and_transcribes(self):
         """transcribe_bytes() erstellt WAV und transkribiert."""
         router = _make_router()
-        router._run_async = MagicMock(
-            return_value=TranscriptionResult(text="PCM erkannt"),
+        router._run_async = _stub_run_async(
+            TranscriptionResult(text="PCM erkannt"),
         )
 
         # Dummy PCM: 1600 samples × 2 bytes = 3200 bytes = 0.1s bei 16kHz

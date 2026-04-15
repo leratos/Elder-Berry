@@ -385,6 +385,55 @@ class TestDelete:
         mock_conn.select.assert_called_once_with("INBOX", readonly=False)
 
 
+class TestFetchMailsCharset:
+    """Regression: Umlaute im Suchkriterium (Müller, über, ...) dürfen
+    nicht zum UnicodeEncodeError führen – imaplib SEARCH ist sonst ASCII."""
+
+    def _mock_conn(self):
+        mock_conn = MagicMock()
+        mock_conn.uid.return_value = ("OK", [b""])
+        mock_conn.select.return_value = ("OK", [b"1"])
+        return mock_conn
+
+    def test_ascii_criteria_uses_no_charset(self):
+        client = IMAPEmailClient("host", "user", "pass")
+        mock_conn = self._mock_conn()
+
+        with patch.object(client, "_connect", return_value=mock_conn):
+            client._fetch_mails("UNSEEN", max_results=10, is_unread=True)
+
+        mock_conn.uid.assert_called_once_with("search", None, "UNSEEN")
+
+    def test_umlaut_criteria_falls_back_to_utf8(self):
+        client = IMAPEmailClient("host", "user", "pass")
+        mock_conn = self._mock_conn()
+        criteria = '(OR OR SUBJECT "Müller" FROM "Müller" BODY "Müller") SINCE 01-Jan-2026'
+
+        with patch.object(client, "_connect", return_value=mock_conn):
+            client._fetch_mails(criteria, max_results=10, is_unread=False)
+
+        mock_conn.uid.assert_called_once_with(
+            "search", "CHARSET", "UTF-8", criteria.encode("utf-8"),
+        )
+
+    def test_search_with_umlaut_does_not_raise(self):
+        """End-to-end via search(): Umlaut-Query darf keinen Crash auslösen."""
+        client = IMAPEmailClient("host", "user", "pass")
+        mock_conn = self._mock_conn()
+
+        with patch.object(client, "_connect", return_value=mock_conn):
+            result = client.search("Müller", max_results=5, days=30)
+
+        assert result == []
+        # Aufruf muss CHARSET-Variante genutzt haben
+        args = mock_conn.uid.call_args[0]
+        assert args[0] == "search"
+        assert args[1] == "CHARSET"
+        assert args[2] == "UTF-8"
+        assert isinstance(args[3], bytes)
+        assert "Müller".encode("utf-8") in args[3]
+
+
 class TestSearch:
     def test_search_builds_correct_criteria(self):
         """search() baut korrekte IMAP OR-Suche."""
