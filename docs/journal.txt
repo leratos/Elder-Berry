@@ -4139,61 +4139,160 @@ User: "Lies meine Mails und trag den Zahnarzttermin ein"
 - Dateien neu: help_sections.py, test_help_sections.py, test_command_discovery.py
 - Branch: feature/phase-51-help-discovery
 
-## In Arbeit: Phase 52 – Unified Settings & Startup-Feedback (2026-04-15)
-- Branch: feature/phase-52-unified-settings (von main; chore-branch mit
-  Coroutine-Warning-Fixes läuft separat)
-- Reihenfolge:
-  1. 52.2 Startup-Summary in scripts/start_saleria.py – isoliert, sofort wertvoll
-  2. 52.1a Backend-Endpoints: /api/settings/test/{service}, /api/settings/security
-  3. 52.1b Settings-Panel-Frontend: settings_panel.html (Chunks ≤400 Zeilen),
-     Route GET /settings, 3 Tabs (Dienste, Verhalten, Sicherheit)
-  4. 52.3 audio_dashboard Re-Setup-Button → /settings#dienste,
-     /setup blockt nach Setup-Wizard-Completed mit Bestätigungs-Dialog
-- Nächster Schritt: 52.2 – _print_startup_summary() in start_saleria.py
+## In Arbeit: Phase 52 – Unified Settings & Startup-Feedback (2026-04-14)
+- Konzeptdokument anlegen: docs/concepts/phase-52-unified-settings.md
+- Entscheidungen vorab:
+  * SECRET_REGISTRY wird Single Source of Truth (52.0 Schema-Konsolidierung)
+  * StartupSummary als eigenes Modul src/elder_berry/core/startup_summary.py
+  * /settings Auth: Loopback-Only Bind + Token-Header für sensitive PUTs
+  * Setup-Wizard nur First-Run, Marker im SecretStore, ?force=1 als Fallback
+- Befund: settings_dashboard bindet heute 0.0.0.0 ohne Auth – Sicherheitsfix
+  ist Teil von Phase 52
+- Nächster Schritt: Konzeptdokument schreiben, dann auf OK warten
 
-## Zwischenstand: Phase 52.2 – Startup-Summary fertig (2026-04-15)
-- scripts/start_saleria.py: 4 Helper + _print_startup_summary() vor main()
-  - _summary_check_secrets / _summary_llm_label / _summary_tower_label /
-    _summary_robot_label / _print_startup_summary
-  - Box-Drawing-Output mit ✓/⚠/✗ je Service
-  - Services: LLM, Matrix, Kalender, Wetter, E-Mail, Nextcloud, Tower, RPi5
-  - Tower: instanziiert TowerAgent on-the-fly für Heartbeat wenn nicht übergeben
-  - Aufruf in main() nach Assistant-Init, vor Mode-Dispatch
-- tests/test_startup_summary.py: 28 Tests grün
-- Kein Matrix-Push (Scope-Begrenzung – nur Konsole für 52.2)
-- Nächster Schritt: 52.1a – /api/settings/test/{service} + /api/settings/security
-
-## Zwischenstand: Phase 52.1a – Backend-Endpoints fertig (2026-04-15)
-- NEU: src/elder_berry/web/settings_test_api.py
-  - SERVICE_TESTS-Registry: 10 Dienste (anthropic, groq, brave, google_maps,
-    matrix, nextcloud, email, ollama, tower, rpi5)
-  - _MissingSecret-Exception → HTTP 400 mit missing_config-Flag
-  - register_settings_test_routes(app, secret_store, port):
-    - POST /api/settings/test/{service} – Credentials aus SecretStore,
-      ruft jeweilige SetupTests-Methode auf
-    - GET /api/settings/security – CORS-Origins (read-only) + Allowed-Senders-Count
-  - _compute_cors_origins() spiegelt setup_security() für die UI
-- settings_dashboard.py: register_settings_test_routes() im __init__ eingebunden
-- tests/test_settings_test_api.py: 32 Tests grün (Helper, alle 10 Service-Runner,
-  Security-Endpunkt, Registry-Konsistenz)
-- Keine Regressionen in test_settings_dashboard.py (37 Tests bleiben grün)
-- Nächster Schritt: 52.1b – settings_panel.html + GET /settings Route
-
-## Abgeschlossen: Phase 52 – Unified Settings & Startup-Feedback (2026-04-15)
-- 52.2 Startup-Summary: Box-Drawing-Übersicht in scripts/start_saleria.py,
-  28 Tests grün (Commit 8aedd2e)
-- 52.1a Backend: web/settings_test_api.py mit 10 Service-Test-Runnern und
-  Security-Endpunkt; 32 Tests grün (Commit b16c5f7)
-- 52.1b Frontend: src/elder_berry/web/templates/settings_panel.html (550
-  Zeilen, dark theme, 3 Tabs Dienste/Verhalten/Sicherheit, Vanilla JS),
-  Route GET /settings im SettingsDashboard. Hinweis: Template ist über
-  CLAUDE.md-Soft-Limit (400 Zeilen), bewusst inline gehalten konsistent
-  zu audio_dashboard.html (553 Zeilen) – kein StaticFiles-Mount nötig.
-  19 Smoke-Tests (Template-Hooks + Route + Backend-Contracts).
-- 52.3 audio_dashboard.html: Re-Setup-Button → "Settings öffnen" mit
-  /settings#dienste. setup_wizard.py: /setup zeigt nach completed-Flag
-  eine Reconfirm-Seite (3 Buttons: Settings / Dashboard / Wizard via
-  ?confirm=1 trotzdem starten). 6 Tests in test_setup_wizard_reconfirm.py.
-- Roadmap: Phase 52 auf ABGESCHLOSSEN
+## Zwischenstand: Phase 52.0 – Schema-Konsolidierung (2026-04-14)
 - Branch: feature/phase-52-unified-settings
-- Commits: 8aedd2e, b16c5f7, + (52.1b/52.3 commit folgt)
+- Konzeptdokument: docs/concepts/phase-52-unified-settings.md (mit
+  finalisierten Detail-Entscheidungen für ENV/Token/risk_level)
+- SecretRegistryEntry erweitert um: behavior, risk_level, placeholder,
+  select_options
+- matrix_allowed_senders: type=textarea, risk_level=high, placeholder,
+  description ergänzt
+- 3 neue Behavior-Einträge in SECRET_REGISTRY: user_timezone, stt_timeout,
+  llm_mode (alle sensitive=False, behavior=True, Kategorie "Verhalten")
+- _setting_definitions() in settings_dashboard.py auf Registry-Ableitung
+  umgestellt: DASHBOARD_SETTING_KEYS Tuple + _registry_to_setting_definition()
+  Konverter; Zeitzonen-Optionen werden weiterhin zur Laufzeit injiziert
+- Tests: tests/test_secret_registry.py NEU (17 Tests), alle bestehenden
+  test_settings_dashboard/test_secrets_api/test_settings_stability/
+  test_setup_wizard_api/test_secret_store grün (142/142)
+- Nächster Schritt: 52.1a – Auth (Loopback-Default + Token-Header) bevor
+  das neue Panel Live-Zugriff bekommt
+
+## Zwischenstand: Phase 52.1a – Settings-Token Auth (2026-04-14)
+- NEU: src/elder_berry/web/settings_token.py
+  * SettingsTokenManager(token_path, token_length=32)
+  * load_or_create() – persistiert/lädt Token, chmod 600 auf POSIX
+  * validate() – konstant-zeitiger Vergleich via secrets.compare_digest
+  * Token-Datei: ${ELDER_BERRY_HOME}/settings_token, beim ersten Start in
+    Konsole geloggt
+- NEU: src/elder_berry/web/settings_token_middleware.py
+  * SettingsTokenMiddleware – Header X-Saleria-Settings-Token
+  * Schützt POST/PUT/DELETE/PATCH unter PROTECTED_PREFIXES
+    (/api/secrets, /api/settings, /api/audio, /api/timezone, ...)
+  * GET ist generell offen (sensitive Werte werden ohnehin maskiert)
+  * /api/setup ist exempt für First-Run – wird in 52.3 verschärft
+- SettingsDashboard:
+  * Default host 0.0.0.0 → 127.0.0.1 (secure by default)
+  * Neue Parameter require_settings_token, settings_token_path
+  * Token-Manager wird nur bei require_settings_token=True instanziiert
+    (Test-Kompatibilität: bestehende Tests bleiben unverändert)
+- start_saleria.py:
+  * Liest ELDER_BERRY_SETTINGS_BIND env (Default 127.0.0.1)
+  * Übergibt require_settings_token=True an SettingsDashboard
+- Tests: tests/test_settings_token.py NEU (23 Tests):
+  * SettingsTokenManager: 11 Tests (Generate, Load, chmod, validate)
+  * SettingsTokenMiddleware: 7 Tests (GET/POST, exempt, header)
+  * Dashboard-Integration: 5 Tests
+- Stand: 137/137 Tests grün (test_settings_token + alle bestehenden)
+- Nächster Schritt: 52.1b – Unified Settings-Panel UI
+
+## Zwischenstand: Phase 52.1b – Unified Settings-Panel (2026-04-14)
+- NEU: src/elder_berry/web/templates/settings_panel.html (621 Zeilen,
+  als zusammenhängendes Chunk – analog audio_dashboard.html mit 553)
+  * Sidebar mit dynamisch generierten Tabs (Kategorien aus Registry +
+    Behavior-Schema)
+  * Pro Feld: Label, Risk/Restart/Set-Badges, Hilfe, Inline-Edit
+  * Token-Modal beim ersten Schreibversuch, Persistenz in localStorage
+  * Vanilla JS, kein Build, holt /api/secrets/status, /api/settings/schema,
+    /api/settings/values
+  * Verbindungstest-Buttons rufen /api/setup/test/{key} (geteilt mit Wizard)
+  * Sensitive Felder zeigen nur "gesetzt"/"leer" (nie Klartext)
+  * High-Risk-Felder: JS-Confirm vor PUT
+- NEU: GET /settings Route in settings_dashboard.py
+- Tests: tests/test_settings_panel.py NEU (9 Tests):
+  * Route liefert HTML mit Layout-Skelett und Token-Header-Konstante
+  * Alle benötigten API-Endpoints existieren
+- Stand: 146/146 Tests grün
+- Nächster Schritt: 52.2 – StartupSummary Modul + Integration
+
+## Zwischenstand: Phase 52.2 – Startup-Summary (2026-04-14)
+- NEU: src/elder_berry/core/startup_summary.py
+  * StartupSummary-Klasse mit add(component, status, detail)
+  * Status: "ok" / "warn" / "fail" mit Glyphen ✓ / ⚠ / ✗
+  * render() liefert ASCII-Box mit konsistenter Breite
+  * to_matrix_message() liefert Markdown für Matrix
+  * counts() + has_failures() für Tests/Logik
+- start_saleria.py:
+  * _build_startup_summary() – introspektiert assistant/svc/tools und
+    erstellt eine StartupSummary mit ~20 Einträgen (LLM, TTS, STT,
+    Avatar, Memory, Matrix, Tower, RPi5, Allowed-Senders, Calendar,
+    Email, Wetter, Notizen, Kontakte, Todos, Reminders, Nextcloud,
+    Stirling, Berry-Gym, Brave, ClaudeAgent)
+  * _add_service() Helper für optionale Services
+  * _maybe_send_summary_to_matrix() – best-effort Versand, niemals blocking
+  * Aufruf in run_matrix() direkt vor bridge.start()
+- Tests: tests/test_startup_summary.py NEU (17 Tests):
+  * add() Validierung, counts/has_failures/entries
+  * render() ASCII-Box mit konsistenter Breite, Glyphen, Custom Title
+  * to_matrix_message() Markdown-Format inkl. Summary-Zeile
+- Stand: 163/163 Tests grün
+- Nächster Schritt: 52.3 – Wizard First-Run Marker + Dashboard-Link
+
+## Abgeschlossen: Phase 52 – Unified Settings & Startup-Feedback (2026-04-14)
+- 52.3: Wizard First-Run-Marker + Dashboard-Link
+  * setup_wizard_completed-Marker existierte bereits; /setup Route prüft
+    ihn jetzt und liefert 307 → /settings (außer mit ?force=1)
+  * audio_dashboard.html: "Setup-Wizard"-Card ersetzt durch "Einstellungen"-
+    Card mit Link zu /settings; Wizard nur noch als Recovery-Link
+    (/setup?force=1) erreichbar
+  * test_setup_wizard_api: test_re_setup_possible ersetzt durch
+    test_re_setup_redirects_to_settings + test_re_setup_force_opens_wizard
+    + test_first_run_serves_wizard
+- Finaler Stand Phase 52: 165/165 Tests grün
+  * test_secret_registry (17), test_settings_token (23),
+    test_settings_panel (9), test_startup_summary (17),
+    test_settings_dashboard (37), test_secrets_api (26),
+    test_settings_stability (13), test_setup_wizard_api (23)
+- Pre-existing Fails im Codespace (pytest-asyncio fehlt, numpy fehlt) sind
+  nicht Phase-52-bezogen – alle sync TestClient-Tests laufen sauber
+- Dateien NEU (9):
+  * docs/concepts/phase-52-unified-settings.md
+  * src/elder_berry/core/startup_summary.py
+  * src/elder_berry/web/settings_token.py
+  * src/elder_berry/web/settings_token_middleware.py
+  * src/elder_berry/web/templates/settings_panel.html
+  * tests/test_secret_registry.py
+  * tests/test_settings_token.py
+  * tests/test_settings_panel.py
+  * tests/test_startup_summary.py
+- Dateien geändert (6):
+  * scripts/start_saleria.py (Token, Bind-ENV, Startup-Summary-Helper)
+  * src/elder_berry/web/secrets_api.py (Registry-Felder + 3 Behavior-Keys)
+  * src/elder_berry/web/settings_dashboard.py (Registry-Ableitung, Loopback,
+    Token-Middleware, /settings Route)
+  * src/elder_berry/web/setup_wizard.py (First-Run-Redirect)
+  * src/elder_berry/web/templates/audio_dashboard.html (Link → /settings)
+  * tests/test_setup_wizard_api.py (Redirect-Tests)
+- Branch: feature/phase-52-unified-settings (bereit für Commit + PR)
+
+## Merge-Korrektur: Phase 52 – parallele Branches vereinigt (2026-04-15)
+- Sachlage: Auf dem lokalen feature/phase-52-unified-settings-Branch war
+  in 3 Commits (8aedd2e, b16c5f7, 036fe67) eine zweite, parallele Phase-52-
+  Implementation entstanden (inline Startup-Summary-Helper, settings_test_api,
+  eigenes settings_panel.html mit Tabs, Setup-Reconfirm-HTML-Seite).
+  origin/main hatte zum selben Zeitpunkt bereits die ausgereiftere Variante
+  mit StartupSummary-Klasse, Token-Auth, Loopback-Bind und Schema-
+  Konsolidierung (165 Tests) gemerged.
+- Merge-Strategie: theirs (origin/main) als Basis, meine lokalen Dateien
+  verworfen, weil sie sicherheitsrelevante Features (Token-Middleware,
+  127.0.0.1-Bind) nicht hatten und zu kollidierenden Endpoints führten
+  (/api/settings/test/{service} vs /api/setup/test/{key}).
+- Entfernt: src/elder_berry/web/settings_test_api.py,
+  tests/test_settings_test_api.py, tests/test_setup_wizard_reconfirm.py
+- Alle 8 konfliktbehafteten Dateien mit --theirs aufgelöst:
+  start_saleria.py, settings_dashboard.py, setup_wizard.py,
+  audio_dashboard.html, settings_panel.html, test_settings_panel.py,
+  test_startup_summary.py, journal.txt
+- Meine Commits bleiben in der git-Historie, der Merge-Commit macht ihre
+  Additions zurück. Die PR bleibt sauber.

@@ -1,272 +1,158 @@
-"""Tests: Phase 52.2 – Startup-Summary in scripts/start_saleria.py."""
-from __future__ import annotations
+"""Tests für StartupSummary (Phase 52.2)."""
 
-import importlib.util
-import sys
-from pathlib import Path
-from unittest.mock import AsyncMock, MagicMock
+from __future__ import annotations
 
 import pytest
 
-
-# scripts/ ist kein Python-Package – via spec aus Datei laden
-_REPO = Path(__file__).resolve().parents[1]
-_SCRIPT = _REPO / "scripts" / "start_saleria.py"
+from elder_berry.core.startup_summary import StartupSummary
 
 
-@pytest.fixture(scope="module")
-def start_saleria():
-    spec = importlib.util.spec_from_file_location("start_saleria_mod", _SCRIPT)
-    mod = importlib.util.module_from_spec(spec)
-    sys.modules["start_saleria_mod"] = mod
-    spec.loader.exec_module(mod)
-    return mod
+class TestStartupSummaryAdd:
+    """add() validiert Input und füllt Einträge."""
+
+    def test_add_increments_length(self):
+        s = StartupSummary()
+        assert len(s) == 0
+        s.add("LLM", "ok")
+        assert len(s) == 1
+        s.add("Matrix", "warn", "kein Token")
+        assert len(s) == 2
+
+    def test_add_strips_whitespace(self):
+        s = StartupSummary()
+        s.add("  LLM  ", "ok", "  Anthropic  ")
+        e = s.entries[0]
+        assert e.component == "LLM"
+        assert e.detail == "Anthropic"
+
+    def test_add_invalid_status_raises(self):
+        s = StartupSummary()
+        with pytest.raises(ValueError, match="Ungültiger Status"):
+            s.add("LLM", "wrong")  # type: ignore[arg-type]
+
+    def test_add_empty_component_raises(self):
+        s = StartupSummary()
+        with pytest.raises(ValueError):
+            s.add("", "ok")
+        with pytest.raises(ValueError):
+            s.add("   ", "ok")
 
 
-def _make_store(values: dict[str, str | None]):
-    """Mock-SecretStore mit get_or_none()."""
-    store = MagicMock()
-    store.get_or_none.side_effect = lambda k: values.get(k)
-    return store
+class TestStartupSummaryQueries:
+    """counts(), has_failures(), entries."""
+
+    def test_counts(self):
+        s = StartupSummary()
+        s.add("A", "ok")
+        s.add("B", "ok")
+        s.add("C", "warn")
+        s.add("D", "fail")
+        c = s.counts()
+        assert c == {"ok": 2, "warn": 1, "fail": 1}
+
+    def test_has_failures_true(self):
+        s = StartupSummary()
+        s.add("A", "ok")
+        s.add("B", "fail")
+        assert s.has_failures() is True
+
+    def test_has_failures_false(self):
+        s = StartupSummary()
+        s.add("A", "ok")
+        s.add("B", "warn")
+        assert s.has_failures() is False
+
+    def test_entries_is_immutable_tuple(self):
+        s = StartupSummary()
+        s.add("A", "ok")
+        es = s.entries
+        assert isinstance(es, tuple)
+        # Mutation der Tuple-Kopie wirkt nicht zurück
+        with pytest.raises((TypeError, AttributeError)):
+            es[0].component = "X"  # type: ignore[misc]
 
 
-# ---------------------------------------------------------------------------
-# _summary_check_secrets
-# ---------------------------------------------------------------------------
+class TestStartupSummaryRender:
+    """ASCII-Box-Rendering."""
 
-class TestSummaryCheckSecrets:
-    def test_all_set_returns_true(self, start_saleria):
-        store = _make_store({"a": "x", "b": "y"})
-        assert start_saleria._summary_check_secrets(store, ["a", "b"]) is True
-
-    def test_one_missing_returns_false(self, start_saleria):
-        store = _make_store({"a": "x", "b": None})
-        assert start_saleria._summary_check_secrets(store, ["a", "b"]) is False
-
-    def test_empty_string_counts_as_missing(self, start_saleria):
-        store = _make_store({"a": ""})
-        assert start_saleria._summary_check_secrets(store, ["a"]) is False
-
-    def test_no_store_returns_false(self, start_saleria):
-        assert start_saleria._summary_check_secrets(None, ["a"]) is False
-
-    def test_exception_returns_false(self, start_saleria):
-        store = MagicMock()
-        store.get_or_none.side_effect = RuntimeError("db down")
-        assert start_saleria._summary_check_secrets(store, ["a"]) is False
-
-
-# ---------------------------------------------------------------------------
-# _summary_llm_label
-# ---------------------------------------------------------------------------
-
-class TestSummaryLlmLabel:
-    def test_none(self, start_saleria):
-        assert start_saleria._summary_llm_label(None) == "kein Backend"
-
-    def test_backend_only(self, start_saleria):
-        llm = MagicMock(spec=["active_backend"])
-        llm.active_backend = "anthropic"
-        assert start_saleria._summary_llm_label(llm) == "anthropic"
-
-    def test_backend_and_model(self, start_saleria):
-        llm = MagicMock(spec=["active_backend", "active_model"])
-        llm.active_backend = "anthropic"
-        llm.active_model = "claude-sonnet-4-6"
-        result = start_saleria._summary_llm_label(llm)
-        assert "anthropic" in result and "claude-sonnet-4-6" in result
-
-
-# ---------------------------------------------------------------------------
-# _summary_tower_label
-# ---------------------------------------------------------------------------
-
-class TestSummaryTowerLabel:
-    def test_no_host_warn(self, start_saleria):
-        store = _make_store({})
-        sym, label = start_saleria._summary_tower_label(store, None)
-        assert sym == "⚠"
-        assert "nicht konfiguriert" in label
-
-    def test_agent_online(self, start_saleria):
-        store = _make_store({"tower_host": "127.0.0.1:12769"})
-        agent = MagicMock()
-        agent.heartbeat = AsyncMock(return_value=True)
-        sym, label = start_saleria._summary_tower_label(store, agent)
-        assert sym == "✓"
-        assert "127.0.0.1:12769" in label
-
-    def test_agent_offline(self, start_saleria):
-        store = _make_store({"tower_host": "127.0.0.1:12769"})
-        agent = MagicMock()
-        agent.heartbeat = AsyncMock(return_value=False)
-        sym, label = start_saleria._summary_tower_label(store, agent)
-        assert sym == "✗"
-        assert "nicht erreichbar" in label
-
-    def test_agent_raises(self, start_saleria):
-        store = _make_store({"tower_host": "127.0.0.1:12769"})
-        agent = MagicMock()
-        agent.heartbeat = AsyncMock(side_effect=RuntimeError("boom"))
-        sym, _ = start_saleria._summary_tower_label(store, agent)
-        assert sym == "✗"
-
-
-# ---------------------------------------------------------------------------
-# _summary_robot_label
-# ---------------------------------------------------------------------------
-
-class TestSummaryRobotLabel:
-    def test_no_host_warn(self, start_saleria):
-        sym, label = start_saleria._summary_robot_label(_make_store({}), None)
-        assert sym == "⚠"
-        assert "nicht konfiguriert" in label
-
-    def test_no_robot_offline(self, start_saleria):
-        store = _make_store({"robot_host": "http://pi:8000"})
-        sym, label = start_saleria._summary_robot_label(store, None)
-        assert sym == "✗"
-
-    def test_robot_online(self, start_saleria):
-        store = _make_store({"robot_host": "http://pi:8000"})
-        robot = MagicMock()
-        robot.is_online.return_value = True
-        sym, label = start_saleria._summary_robot_label(store, robot)
-        assert sym == "✓"
-        assert "http://pi:8000" in label
-
-    def test_robot_raises(self, start_saleria):
-        store = _make_store({"robot_host": "http://pi:8000"})
-        robot = MagicMock()
-        robot.is_online.side_effect = RuntimeError("dead")
-        sym, _ = start_saleria._summary_robot_label(store, robot)
-        assert sym == "✗"
-
-
-# ---------------------------------------------------------------------------
-# _print_startup_summary
-# ---------------------------------------------------------------------------
-
-class TestPrintStartupSummary:
-    def _row(self, rows, name):
-        for sym, n, label in rows:
-            if n == name:
-                return sym, label
-        raise AssertionError(f"Row '{name}' nicht gefunden in {rows}")
-
-    def test_all_unconfigured(self, start_saleria, capsys):
-        rows = start_saleria._print_startup_summary(secret_store=_make_store({}))
-        out = capsys.readouterr().out
+    def test_empty_summary_renders(self):
+        s = StartupSummary()
+        out = s.render()
         assert "Saleria – Startup Summary" in out
-        # Alle Services außer Tower (kein host → ⚠)
-        for name in ("LLM", "Matrix", "Kalender", "Wetter", "E-Mail",
-                     "Nextcloud", "Tower", "RPi5"):
-            sym, _ = self._row(rows, name)
-            assert sym == "⚠", f"{name} sollte ⚠ sein"
+        assert "(keine Komponenten)" in out
+        assert out.startswith("╔")
+        assert out.endswith("╝")
 
-    def test_llm_active_backend(self, start_saleria, capsys):
-        llm = MagicMock(spec=["active_backend", "active_model"])
-        llm.active_backend = "anthropic"
-        llm.active_model = "claude-sonnet-4-6"
-        rows = start_saleria._print_startup_summary(
-            secret_store=_make_store({}), llm=llm,
-        )
-        sym, label = self._row(rows, "LLM")
-        assert sym == "✓"
-        assert "anthropic" in label
+    def test_render_contains_all_entries(self):
+        s = StartupSummary()
+        s.add("LLM", "ok", "Anthropic")
+        s.add("Matrix", "warn", "kein Token")
+        s.add("Tower", "fail", "nicht erreichbar")
+        out = s.render()
+        assert "LLM" in out
+        assert "Anthropic" in out
+        assert "Matrix" in out
+        assert "kein Token" in out
+        assert "Tower" in out
+        assert "nicht erreichbar" in out
 
-    def test_matrix_with_password(self, start_saleria, capsys):
-        store = _make_store({
-            "matrix_homeserver": "https://matrix.example.com",
-            "matrix_user_id": "@bot:matrix.example.com",
-            "matrix_password": "secret",
-        })
-        rows = start_saleria._print_startup_summary(secret_store=store)
-        sym, label = self._row(rows, "Matrix")
-        assert sym == "✓"
-        assert "@bot:matrix.example.com" in label
+    def test_render_uses_status_glyphs(self):
+        s = StartupSummary()
+        s.add("A", "ok")
+        s.add("B", "warn")
+        s.add("C", "fail")
+        out = s.render()
+        assert "✓" in out
+        assert "⚠" in out
+        assert "✗" in out
 
-    def test_matrix_with_token(self, start_saleria):
-        store = _make_store({
-            "matrix_homeserver": "https://matrix.example.com",
-            "matrix_user_id": "@bot:matrix.example.com",
-            "matrix_access_token": "abc",
-        })
-        rows = start_saleria._print_startup_summary(secret_store=store)
-        sym, _ = self._row(rows, "Matrix")
-        assert sym == "✓"
+    def test_render_lines_have_consistent_width(self):
+        s = StartupSummary()
+        s.add("A", "ok", "kurz")
+        s.add("Eine ziemlich lange Komponente", "warn", "mit Detail-Text")
+        out = s.render()
+        lines = out.splitlines()
+        widths = {len(line) for line in lines}
+        assert len(widths) == 1, f"Zeilen unterschiedlich breit: {widths}"
 
-    def test_calendar_nextcloud(self, start_saleria):
-        store = _make_store({
-            "nextcloud_url": "https://cloud.example.com",
-            "nextcloud_user": "user",
-        })
-        rows = start_saleria._print_startup_summary(secret_store=store)
-        sym, label = self._row(rows, "Kalender")
-        assert sym == "✓"
-        assert "Nextcloud" in label
+    def test_render_uses_custom_title(self):
+        s = StartupSummary(title="Testlauf")
+        s.add("X", "ok")
+        out = s.render()
+        assert "Testlauf" in out
 
-    def test_weather_city(self, start_saleria):
-        store = _make_store({"weather_city": "Berlin"})
-        rows = start_saleria._print_startup_summary(secret_store=store)
-        sym, label = self._row(rows, "Wetter")
-        assert sym == "✓"
-        assert "Berlin" in label
 
-    def test_weather_coords_only(self, start_saleria):
-        store = _make_store({
-            "weather_latitude": "52.52",
-            "weather_longitude": "13.41",
-        })
-        rows = start_saleria._print_startup_summary(secret_store=store)
-        sym, label = self._row(rows, "Wetter")
-        assert sym == "✓"
-        assert "Koordinaten" in label
+class TestStartupSummaryMatrix:
+    """Matrix-Markdown-Format."""
 
-    def test_email_complete(self, start_saleria):
-        store = _make_store({
-            "email_imap_host": "imap.strato.de",
-            "email_user": "me@example.com",
-            "email_password": "secret",
-        })
-        rows = start_saleria._print_startup_summary(secret_store=store)
-        sym, label = self._row(rows, "E-Mail")
-        assert sym == "✓"
-        assert "me@example.com" in label
+    def test_empty_matrix_message(self):
+        s = StartupSummary()
+        msg = s.to_matrix_message()
+        assert "Saleria" in msg
+        assert "keine Komponenten" in msg
 
-    def test_nextcloud_complete(self, start_saleria):
-        store = _make_store({
-            "nextcloud_url": "https://cloud.example.com",
-            "nextcloud_user": "u",
-            "nextcloud_app_password": "p",
-        })
-        rows = start_saleria._print_startup_summary(secret_store=store)
-        sym, _ = self._row(rows, "Nextcloud")
-        assert sym == "✓"
+    def test_matrix_message_contains_entries(self):
+        s = StartupSummary()
+        s.add("LLM", "ok", "Anthropic")
+        s.add("Email", "warn", "nicht konfiguriert")
+        msg = s.to_matrix_message()
+        assert "**LLM**" in msg
+        assert "Anthropic" in msg
+        assert "**Email**" in msg
+        assert "nicht konfiguriert" in msg
 
-    def test_tower_uses_provided_agent(self, start_saleria):
-        store = _make_store({"tower_host": "127.0.0.1:12769"})
-        agent = MagicMock()
-        agent.heartbeat = AsyncMock(return_value=True)
-        rows = start_saleria._print_startup_summary(
-            secret_store=store, tower_agent=agent,
-        )
-        sym, _ = self._row(rows, "Tower")
-        assert sym == "✓"
+    def test_matrix_message_summary_line(self):
+        s = StartupSummary()
+        s.add("A", "ok")
+        s.add("B", "warn")
+        s.add("C", "fail")
+        msg = s.to_matrix_message()
+        assert "1 ok" in msg
+        assert "1 warn" in msg
+        assert "1 fail" in msg
 
-    def test_robot_provided(self, start_saleria):
-        store = _make_store({"robot_host": "http://pi:8000"})
-        robot = MagicMock()
-        robot.is_online.return_value = True
-        rows = start_saleria._print_startup_summary(
-            secret_store=store, robot=robot,
-        )
-        sym, _ = self._row(rows, "RPi5")
-        assert sym == "✓"
-
-    def test_box_drawing_present(self, start_saleria, capsys):
-        start_saleria._print_startup_summary(secret_store=_make_store({}))
-        out = capsys.readouterr().out
-        assert "╔" in out and "╗" in out
-        assert "╠" in out and "╣" in out
-        assert "╚" in out and "╝" in out
+    def test_matrix_message_uses_glyphs(self):
+        s = StartupSummary()
+        s.add("X", "ok")
+        msg = s.to_matrix_message()
+        assert "✓" in msg

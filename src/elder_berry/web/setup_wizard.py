@@ -129,86 +129,6 @@ _SENSITIVE_KEYS: set[str] = {
 SETUP_COMPLETE_KEY = "setup_wizard_completed"
 
 
-# Phase 52.3 – Bestätigungs-Seite, wenn /setup nach abgeschlossenem
-# Wizard erneut aufgerufen wird. Bewusst minimales, self-contained HTML –
-# kein eigenes Template, da der Inhalt rein statisch ist.
-_RECONFIRM_PAGE = """<!DOCTYPE html>
-<html lang="de">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Setup neu starten?</title>
-    <style>
-        body {
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-            background: #1a1a2e;
-            color: #e0e0e0;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            min-height: 100vh;
-            margin: 0;
-            padding: 1rem;
-        }
-        .card {
-            background: #16213e;
-            border-radius: 16px;
-            padding: 2rem 2.5rem;
-            max-width: 460px;
-            box-shadow: 0 8px 32px rgba(0,0,0,0.3);
-        }
-        h1 { font-size: 1.25rem; color: #a8d5a2; margin-bottom: 0.6rem; }
-        p  { font-size: 0.92rem; color: #ccc; margin-bottom: 0.8rem; line-height: 1.45; }
-        .warn {
-            background: #3a2a1a;
-            border-left: 3px solid #f0c070;
-            color: #f0c070;
-            padding: 0.7rem 0.9rem;
-            border-radius: 6px;
-            font-size: 0.85rem;
-            margin: 1rem 0 1.4rem;
-        }
-        .btns { display: flex; gap: 0.6rem; flex-wrap: wrap; }
-        a.btn {
-            display: inline-block;
-            padding: 0.7rem 1.2rem;
-            border-radius: 8px;
-            text-decoration: none;
-            font-weight: 600;
-            font-size: 0.9rem;
-            transition: background 0.15s;
-        }
-        a.primary   { background: #533483; color: #fff; }
-        a.primary:hover { background: #6c4ab6; }
-        a.danger    { background: #5a2a2a; color: #f0c0c0; }
-        a.danger:hover  { background: #7a3a3a; }
-        a.cancel    { background: #2a3a5a; color: #c8d8e8; }
-        a.cancel:hover  { background: #3a4a7a; }
-    </style>
-</head>
-<body>
-    <div class="card">
-        <h1>Setup ist bereits abgeschlossen</h1>
-        <p>
-            Du hast den Setup-Wizard schon einmal komplett durchlaufen.
-            Für normale Änderungen an Diensten, API-Keys oder Verhalten
-            gibt es jetzt das zentrale Settings-Panel.
-        </p>
-        <div class="warn">
-            ⚠ Wenn du den Wizard erneut startest, läuft er nochmal Schritt
-            für Schritt durch alle Eingaben – auch für Werte, die längst
-            korrekt gespeichert sind. Empfohlen ist der Weg über Settings.
-        </div>
-        <div class="btns">
-            <a class="btn primary" href="/settings#dienste">Zu den Settings</a>
-            <a class="btn cancel" href="/">Zurück zum Dashboard</a>
-            <a class="btn danger" href="/setup?confirm=1">Trotzdem Wizard neu starten</a>
-        </div>
-    </div>
-</body>
-</html>"""
-
-
 def _get_setup_status(secret_store: SecretStore) -> dict[str, Any]:
     """Ermittelt den aktuellen Setup-Status."""
     configured: list[str] = []
@@ -270,18 +190,16 @@ def register_setup_wizard_routes(
     """Registriert die Setup-Wizard-Endpoints auf der FastAPI-App."""
 
     @app.get("/setup")
-    async def setup_page(confirm: int = 0):
+    async def setup_page(force: int = 0):
         """Liefert die Setup-Wizard HTML-Seite.
 
-        Phase 52.3: Nach abgeschlossenem Setup wird statt des Wizards eine
-        Bestätigungs-Seite ausgeliefert, sofern nicht ?confirm=1 übergeben
-        wird. Dadurch kann der Wizard nicht versehentlich erneut Schritt-
-        für-Schritt durchlaufen werden – Re-Konfiguration läuft normal über
-        /settings.
+        Phase 52.3: Wenn das Setup bereits abgeschlossen ist, wird auf
+        ``/settings`` umgeleitet. Mit ``?force=1`` lässt sich der Wizard
+        trotzdem öffnen (Recovery-Pfad).
         """
-        already_done = bool(secret_store.has("setup_wizard_completed"))
-        if already_done and confirm != 1:
-            return HTMLResponse(_RECONFIRM_PAGE)
+        if force != 1 and secret_store.has(SETUP_COMPLETE_KEY):
+            from fastapi.responses import RedirectResponse
+            return RedirectResponse(url="/settings", status_code=307)
         template_path = _TEMPLATE_DIR / "setup_wizard.html"
         if not template_path.exists():
             return HTMLResponse(

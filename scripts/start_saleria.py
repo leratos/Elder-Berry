@@ -1120,13 +1120,17 @@ def run_matrix(assistant, stt=None, avatar=None, audio_converter=None, robot=Non
     # --- 8. Dashboard + Start ---
     try:
         from elder_berry.web.settings_dashboard import SettingsDashboard
+        # Phase 52.1a: Loopback-Default + Token-Schutz
+        settings_bind = os.environ.get("ELDER_BERRY_SETTINGS_BIND", "127.0.0.1")
         dashboard = SettingsDashboard(
             audio_router=tools.get("audio_router"),
             computer_use=tools.get("computer_use"),
             secret_store=secrets,
             audio_pipeline=bridge.audio_pipeline,
             tower_agent=tower_agent,
+            host=settings_bind,
             port=8090,
+            require_settings_token=True,
         )
         # Gespeicherten STT-Timeout laden und auf Pipeline anwenden
         saved_timeout = dashboard._get_stt_timeout()
@@ -1135,8 +1139,20 @@ def run_matrix(assistant, stt=None, avatar=None, audio_converter=None, robot=Non
     except Exception as e:
         logger.warning("Settings-Dashboard nicht gestartet: %s", e)
 
+    # Phase 52.2: Startup-Summary
+    summary = _build_startup_summary(
+        assistant=assistant, stt=stt, robot=robot, secrets=secrets,
+        svc=svc, tools=tools, tower_agent=tower_agent,
+        matrix_user_id=user_id, matrix_room_id=room_id,
+        allowed_senders=allowed_senders, claude_agent=claude_agent,
+    )
+    print()
+    print(summary.render())
+    print()
+    _maybe_send_summary_to_matrix(summary, channel, room_id)
+
     logger.info("Matrix-Bridge startet – Saleria ist online")
-    print(f"\n─── Saleria Matrix-Modus ───")
+    print(f"─── Saleria Matrix-Modus ───")
     print(f"Bot: {user_id}")
     print("Ctrl+C zum Beenden\n")
 
@@ -1153,173 +1169,106 @@ def run_matrix(assistant, stt=None, avatar=None, audio_converter=None, robot=Non
 
 
 # ---------------------------------------------------------------------------
-# Startup-Summary (Phase 52.2)
+# Phase 52.2 – Startup Summary Helpers
 # ---------------------------------------------------------------------------
 
-def _summary_check_secrets(secret_store, keys: list[str]) -> bool:
-    """True wenn alle angegebenen SecretStore-Keys gesetzt sind."""
-    if secret_store is None:
-        return False
-    for key in keys:
-        try:
-            value = secret_store.get_or_none(key)
-        except Exception:
-            return False
-        if not value:
-            return False
-    return True
+def _build_startup_summary(
+    *, assistant, stt, robot, secrets, svc, tools, tower_agent,
+    matrix_user_id, matrix_room_id, allowed_senders, claude_agent,
+):
+    """Sammelt Komponenten-Status nach dem Init und gibt eine StartupSummary
+    zurück. Reine Introspektion – keine Seiteneffekte."""
+    from elder_berry.core.startup_summary import StartupSummary
 
-
-def _summary_llm_label(llm) -> str:
-    """Liefert ein Label für den aktiven LLM-Backend."""
-    if llm is None:
-        return "kein Backend"
-    backend = getattr(llm, "active_backend", None) or "unbekannt"
-    model = getattr(llm, "active_model", None)
-    if model:
-        return f"{backend} ({model})"
-    return str(backend)
-
-
-def _summary_tower_label(secret_store, tower_agent) -> tuple[str, str]:
-    """Status für Tower – (symbol, label)."""
-    host = secret_store.get_or_none("tower_host") if secret_store else None
-    if not host:
-        return "⚠", "nicht konfiguriert"
-    agent = tower_agent
-    if agent is None:
-        try:
-            from elder_berry.core.tower_agent import TowerAgent
-            agent = TowerAgent(tower_host=host)
-        except Exception as exc:
-            logger.debug("TowerAgent-Init im Summary fehlgeschlagen: %s", exc)
-            return "✗", f"{host} (TowerAgent-Init fehlgeschlagen)"
-    try:
-        import asyncio
-        loop = asyncio.new_event_loop()
-        try:
-            online = loop.run_until_complete(agent.heartbeat())
-        finally:
-            loop.close()
-    except Exception as exc:
-        logger.debug("Tower-Heartbeat im Summary fehlgeschlagen: %s", exc)
-        online = False
-    if online:
-        return "✓", str(host)
-    return "✗", f"{host} nicht erreichbar"
-
-
-def _summary_robot_label(secret_store, robot) -> tuple[str, str]:
-    """Status für RPi5 – (symbol, label)."""
-    host = secret_store.get_or_none("robot_host") if secret_store else None
-    if not host:
-        return "⚠", "nicht konfiguriert"
-    if robot is None:
-        return "✗", f"{host} nicht erreichbar"
-    try:
-        online = bool(robot.is_online())
-    except Exception as exc:
-        logger.debug("RobotClient-Check im Summary fehlgeschlagen: %s", exc)
-        online = False
-    return ("✓", str(host)) if online else ("✗", f"{host} nicht erreichbar")
-
-
-def _print_startup_summary(
-    secret_store=None,
-    *,
-    llm=None,
-    tower_agent=None,
-    robot=None,
-) -> list[tuple[str, str, str]]:
-    """Druckt eine Zusammenfassung aller Komponenten + Status nach dem Startup.
-
-    Returns:
-        Liste der gedruckten Zeilen als (symbol, name, label) – primär
-        für Tests, normal wird sie ignoriert.
-    """
-    rows: list[tuple[str, str, str]] = []
+    summary = StartupSummary()
 
     # LLM
-    if llm is not None and getattr(llm, "active_backend", None) not in (None, "none"):
-        rows.append(("✓", "LLM", _summary_llm_label(llm)))
-    elif _summary_check_secrets(secret_store, ["anthropic_api_key"]):
-        rows.append(("⚠", "LLM", "API-Key gesetzt, kein aktives Backend"))
+    llm = getattr(assistant, "_llm", None)
+    if llm is not None:
+        backend = type(llm).__name__
+        summary.add("LLM", "ok", backend)
     else:
-        rows.append(("⚠", "LLM", "nicht konfiguriert"))
+        summary.add("LLM", "fail", "kein Backend")
+
+    # TTS / STT / Avatar / Memory
+    if getattr(assistant, "_tts", None) is not None:
+        summary.add("TTS", "ok", type(assistant._tts).__name__)
+    else:
+        summary.add("TTS", "warn", "deaktiviert")
+    summary.add("STT", "ok" if stt else "warn", type(stt).__name__ if stt else "deaktiviert")
+    summary.add(
+        "Avatar",
+        "ok" if getattr(assistant, "_avatar", None) else "warn",
+        type(assistant._avatar).__name__ if assistant._avatar else "kein Renderer",
+    )
+    summary.add(
+        "Memory",
+        "ok" if getattr(assistant, "_memory", None) else "warn",
+        type(assistant._memory).__name__ if assistant._memory else "deaktiviert",
+    )
 
     # Matrix
-    matrix_basic = _summary_check_secrets(
-        secret_store, ["matrix_homeserver", "matrix_user_id"],
+    summary.add("Matrix", "ok", f"{matrix_user_id} → {matrix_room_id}")
+    summary.add(
+        "Allowed-Senders",
+        "ok" if allowed_senders else "warn",
+        f"{len(allowed_senders)} Sender" if allowed_senders else "alle akzeptiert",
     )
-    matrix_auth = _summary_check_secrets(secret_store, ["matrix_password"]) or \
-        _summary_check_secrets(secret_store, ["matrix_access_token"])
-    if matrix_basic and matrix_auth:
-        user = secret_store.get_or_none("matrix_user_id") or ""
-        rows.append(("✓", "Matrix", user))
+
+    # Tower / RPi5
+    summary.add(
+        "Tower",
+        "ok" if tower_agent else "warn",
+        "verbunden" if tower_agent else "nicht konfiguriert",
+    )
+    summary.add(
+        "RPi5 (Robot)",
+        "ok" if robot else "warn",
+        "verbunden" if robot else "nicht erreichbar",
+    )
+
+    # Optionale Services aus svc/tools
+    _add_service(summary, "Kalender", svc.get("calendar"))
+    _add_service(summary, "E-Mail (IMAP)", svc.get("email_client"))
+    _add_service(summary, "E-Mail (SMTP)", svc.get("email_sender"))
+    _add_service(summary, "Wetter", svc.get("weather"))
+    _add_service(summary, "Notizen", svc.get("note_store"))
+    _add_service(summary, "Kontakte", svc.get("contact_store"))
+    _add_service(summary, "Todos", svc.get("todo_store"))
+    _add_service(summary, "Erinnerungen", svc.get("reminder_store"))
+    _add_service(summary, "Nextcloud Files", svc.get("nextcloud_files"))
+    _add_service(summary, "Stirling-PDF", svc.get("stirling_pdf"))
+    _add_service(summary, "Berry-Gym", svc.get("gym_client"))
+    _add_service(summary, "Brave Search", tools.get("search_client"))
+    _add_service(summary, "ClaudeAgent", claude_agent)
+
+    return summary
+
+
+def _add_service(summary, label: str, instance) -> None:
+    if instance is None:
+        summary.add(label, "warn", "nicht konfiguriert")
     else:
-        rows.append(("⚠", "Matrix", "nicht konfiguriert"))
+        summary.add(label, "ok", type(instance).__name__)
 
-    # Kalender (Google OAuth oder Nextcloud CalDAV)
-    if _summary_check_secrets(secret_store, ["google_oauth_tokens"]):
-        rows.append(("✓", "Kalender", "Google OAuth"))
-    elif _summary_check_secrets(secret_store, ["nextcloud_url", "nextcloud_user"]):
-        rows.append(("✓", "Kalender", "Nextcloud CalDAV"))
-    else:
-        rows.append(("⚠", "Kalender", "nicht konfiguriert"))
 
-    # Wetter
-    if _summary_check_secrets(secret_store, ["weather_city"]):
-        city = secret_store.get_or_none("weather_city") or ""
-        rows.append(("✓", "Wetter", f"Open-Meteo ({city})"))
-    elif _summary_check_secrets(
-        secret_store, ["weather_latitude", "weather_longitude"],
-    ):
-        rows.append(("✓", "Wetter", "Open-Meteo (Koordinaten)"))
-    else:
-        rows.append(("⚠", "Wetter", "nicht konfiguriert"))
+def _maybe_send_summary_to_matrix(summary, channel, room_id) -> None:
+    """Versucht best-effort, die Summary als Matrix-Nachricht zu schicken.
 
-    # E-Mail
-    if _summary_check_secrets(
-        secret_store, ["email_imap_host", "email_user", "email_password"],
-    ):
-        user = secret_store.get_or_none("email_user") or ""
-        rows.append(("✓", "E-Mail", user))
-    else:
-        rows.append(("⚠", "E-Mail", "nicht konfiguriert"))
-
-    # Nextcloud (Files / WebDAV)
-    if _summary_check_secrets(
-        secret_store, ["nextcloud_url", "nextcloud_user", "nextcloud_app_password"],
-    ):
-        url = secret_store.get_or_none("nextcloud_url") or ""
-        rows.append(("✓", "Nextcloud", url))
-    else:
-        rows.append(("⚠", "Nextcloud", "nicht konfiguriert"))
-
-    # Tower (Heartbeat)
-    sym, label = _summary_tower_label(secret_store, tower_agent)
-    rows.append((sym, "Tower", label))
-
-    # RPi5
-    sym, label = _summary_robot_label(secret_store, robot)
-    rows.append((sym, "RPi5", label))
-
-    # Box drucken
-    title = "Saleria – Startup Summary"
-    inner_width = max(
-        len(title),
-        max(len(f"{sym} {name}: {label}") for sym, name, label in rows),
-    ) + 2
-    border = "═" * inner_width
-    print(f"╔{border}╗")
-    print(f"║ {title.center(inner_width - 2)} ║")
-    print(f"╠{border}╣")
-    for sym, name, label in rows:
-        line = f"{sym} {name}: {label}"
-        print(f"║ {line.ljust(inner_width - 2)} ║")
-    print(f"╚{border}╝")
-
-    return rows
+    Fehler werden geloggt, aber nicht propagiert – ein scheiternder
+    Send darf den Startup nicht blockieren.
+    """
+    if channel is None or not room_id:
+        return
+    try:
+        message = summary.to_matrix_message()
+        send = getattr(channel, "send_text", None) or getattr(channel, "send", None)
+        if send is None:
+            logger.debug("Channel %s hat keine send-Methode – Summary nicht gesendet", type(channel).__name__)
+            return
+        send(room_id, message)
+    except Exception as exc:
+        logger.warning("Startup-Summary an Matrix senden fehlgeschlagen: %s", exc)
 
 
 # ---------------------------------------------------------------------------
@@ -1400,18 +1349,6 @@ def main():
         memory=memory,
         robot=robot,
     )
-
-    # Phase 52.2 – Startup Summary
-    try:
-        from elder_berry.core.secret_store import SecretStore
-        _print_startup_summary(
-            secret_store=SecretStore(),
-            llm=llm,
-            tower_agent=None,
-            robot=robot,
-        )
-    except Exception as exc:
-        logger.debug("Startup-Summary fehlgeschlagen: %s", exc)
 
     print()
     if args.mode == "terminal":
