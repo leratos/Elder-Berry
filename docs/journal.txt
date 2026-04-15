@@ -4314,3 +4314,47 @@ User: "Lies meine Mails und trag den Zahnarzttermin ein"
      - 3-Layer-Erklärung, Emotion-Maps, Reset-Button
      - Smoke-Tests dass Modal im HTML präsent ist
 - Nächster Schritt: 53.1 – scripts/install.ps1 patchen
+
+## Zwischenstand: Phase 53.1 – Install-Scripts gehärtet (2026-04-15)
+- install.ps1 + install.sh: --quiet aus pip install entfernt,
+  $LASTEXITCODE / bash `if !` Guard für pip install, Smoke-Test
+  `python -c "import elder_berry"` als neuer Schritt [5/6], Ollama-Block
+  mit Kostenhinweis auf die Anthropic Cloud-API.
+- Counter durchgängig auf [n/6] aktualisiert.
+- tests/test_install_scripts.py: 16 neue Assertions (TestPipNotQuiet,
+  TestExplicitErrorHandling, TestPostInstallSmokeTest, TestOllamaHint,
+  TestStepCounterConsistent). 21 passed, 1 skipped (Windows ohne bash).
+- Commit: 9bb0e8f
+- Nächster Schritt: 53.2 – Avatar-Editor Onboarding-Modal
+
+## Zwischenstand: Phase 53.2 – Avatar-Editor Onboarding (2026-04-15)
+- src/elder_berry/web/templates/avatar_editor.html:
+  - Neues Onboarding-Overlay mit 4 Erklärungs-Punkten (Layer & Assets,
+    Emotionen, Lip-Sync & Breathing, Speichern & Hot-Reload)
+  - CSS-Block am Ende von <style> (display:none Default, .active zeigt)
+  - "ⓘ Hilfe"-Button in der Topbar, um das Modal manuell zu öffnen
+  - localStorage-Key 'elderberry.avatar.onboarding.seen' zum Merken
+  - ESC und Backdrop-Click schließen (ohne Merken), Dismiss-Button
+    ("Verstanden, nicht mehr anzeigen") setzt Flag
+  - initOnboarding auf DOMContentLoaded; Abfrage localStorage → öffnet
+    Modal beim allerersten Besuch
+  - a11y: role="dialog", aria-modal, aria-labelledby="onboardingTitle"
+- tests/test_avatar_editor_onboarding.py NEU: 17 Tests grün
+  (Struktur, Aktionen, JavaScript, CSS)
+- Keine Regressionen in test_avatar_editor.py (52 Tests bleiben grün)
+
+## Zu 53.3 – obsolet durch Phase 52.0 (2026-04-15)
+- Die Roadmap beschreibt 53.3 als "Settings aus YAML laden statt
+  hardcode". Phase 52.0 hat SECRET_REGISTRY in secrets_api.py bereits
+  zur Single Source of Truth gemacht (mit behavior, risk_level,
+  placeholder, select_options, 3 Behavior-Keys). _setting_definitions()
+  wird via _registry_to_setting_definition() daraus abgeleitet. YAML-
+  Auslagerung würde das Problem nochmal lösen ohne Mehrwert.
+- Aktion: Roadmap auf "ERLEDIGT DURCH 52.0" markieren, keinen Code.
+
+## Abgeschlossen: Phase 53 – Install-Script Härtung & Avatar-Editor UX (2026-04-15)
+- 53.1 Install-Scripts (Commit 9bb0e8f)
+- 53.2 Avatar-Editor Onboarding
+- 53.3 obsolet durch Phase 52.0
+- Roadmap: Phase 53 auf ABGESCHLOSSEN, 53.3 auf "ERLEDIGT DURCH 52.0"
+- Branch: feature/phase-53-install-and-avatar-ux
