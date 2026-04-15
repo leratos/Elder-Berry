@@ -4296,3 +4296,21 @@ User: "Lies meine Mails und trag den Zahnarzttermin ein"
   test_startup_summary.py, journal.txt
 - Meine Commits bleiben in der git-Historie, der Merge-Commit macht ihre
   Additions zurück. Die PR bleibt sauber.
+
+## In Arbeit: Phase 53 – Install-Script Härtung & Avatar-Editor UX (2026-04-15)
+- Branch: feature/phase-53-install-and-avatar-ux (von main)
+- Scope (53.1 + 53.2 – 53.3 wird gestrichen, da SECRET_REGISTRY durch
+  Phase 52.0 bereits Single Source of Truth ist und YAML-Auslagerung
+  das Problem nochmal lösen würde)
+- Reihenfolge:
+  1. 53.1 Install-Scripts (install.ps1 + install.sh):
+     - --quiet aus pip install entfernen
+     - Exit-Code nach pip explizit prüfen (redundant wegen set -e, aber
+       explizite Meldung statt Abbruch mitten im Script)
+     - Ollama-Check mit Erklärung (kostenpflichtig-Hinweis)
+     - Post-Install-Smoke-Test: python -c "import elder_berry"
+  2. 53.2 Avatar-Editor Onboarding:
+     - Intro-Modal bei erstem Aufruf (localStorage-Flag)
+     - 3-Layer-Erklärung, Emotion-Maps, Reset-Button
+     - Smoke-Tests dass Modal im HTML präsent ist
+- Nächster Schritt: 53.1 – scripts/install.ps1 patchen
