@@ -4138,3 +4138,43 @@ User: "Lies meine Mails und trag den Zahnarzttermin ein"
   docs/PROJECT_ROADMAP.md (Phase 50 auf ABGESCHLOSSEN)
 - Dateien neu: help_sections.py, test_help_sections.py, test_command_discovery.py
 - Branch: feature/phase-51-help-discovery
+
+## Korrektur: Phase 51 – 61 pre-existing Fails sind gar nicht real (2026-04-15)
+- Fullrun auf main: 4235 passed, 1 skipped, 0 failed (136s)
+- Die im Phase-51-Journal-Eintrag genannten "61 pre-existing Fails in
+  elevenlabs/tts/stt/computer_use" existieren so nicht. Vermutlich damals
+  Collection-Errors durch fehlende optionale Deps oder falsch gezählt.
+- Was real ist: 9 Warnings im Fullrun, davon zwei Kategorien:
+  1. "coroutine '...' was never awaited" in test_tts_router / test_stt_router
+     → Tests mocken _run_async mit MagicMock, die übergebene Coroutine wird
+     nie konsumiert (stiller Testabdeckungs-Verlust)
+  2. pydub/audioop Deprecation (Python 3.13 entfernt audioop!) → RPi5-Risiko
+     pygame/pkg_resources Deprecation → kleiner
+
+## Abgeschlossen: Housekeeping – Coroutine-Warnings + audioop-Konzept + IMAP-Umlaut-Fix (2026-04-15)
+- A) Coroutine-Warnings im Test gefixt:
+  - tests/test_tts_router.py: _stub_run_async(result, raises=...) Helper,
+    schließt übergebene Coroutine via .close() vor dem Return → kein Leak.
+    6 TestGenerateAudio-Tests umgestellt (MagicMock → _stub_run_async).
+  - tests/test_stt_router.py: gleicher Helper, 3 Tests umgestellt.
+    Bei den zwei Tests, die assert_called_once() brauchten, lokales
+    Closure mit Counter statt Helper.
+  - Verifikation: pytest -W error::RuntimeWarning auf beiden Files → 42 passed,
+    0 RuntimeWarnings (vorher 7).
+- B) docs/concepts/phase-55-audioop-migration.md angelegt:
+  - Problem: pydub importiert audioop, Python 3.13 entfernt audioop (PEP 594).
+    RPi5 Bookworm nutzt System-Python 3.13 → ImportError-Risiko.
+  - Empfehlung: Option B (pydub komplett raus, direkt ffmpeg/ffprobe-Subprozess
+    in audio_converter.py). pydub ist ohnehin seit ~5 Jahren unmaintained und
+    wir nutzen <1% der API.
+  - Phase-Nummer 55 (54 ist Bull-Berry).
+- C) Bonus-Bug: 'ascii' codec can't encode '\xfc' bei IMAP fetch
+  - Ursache: email_client.search() baute Suchkriterium mit Query verbatim,
+    bei "Müller" / "über" konnte imaplib das nicht ASCII-encoden.
+  - Fix in email_client._fetch_mails(): try criteria.encode("ascii"); bei
+    UnicodeEncodeError fällt der Code auf conn.uid("search", "CHARSET",
+    "UTF-8", criteria.encode("utf-8")) zurück. Strato/Gmail/GMX unterstützen
+    CHARSET UTF-8.
+  - 3 Regression-Tests in TestFetchMailsCharset (ASCII-Pfad, UTF-8-Fallback,
+    end-to-end via search("Müller")). 42 passed in test_email_client.py.
+- Branch: chore/test-coroutine-warnings-and-audioop-concept
