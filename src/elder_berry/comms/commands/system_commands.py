@@ -188,6 +188,7 @@ class SystemCommandHandler(CommandHandler):
             r = httpx.get(
                 f"http://{self._tower_agent.host}/system",
                 timeout=5.0,
+                headers=self._tower_agent._auth_headers(),
             )
             r.raise_for_status()
             data = r.json()
@@ -381,6 +382,7 @@ class SystemCommandHandler(CommandHandler):
             r = httpx.get(
                 f"http://{self._tower_agent.host}/screenshot",
                 timeout=10.0,
+                headers=self._tower_agent._auth_headers(),
             )
             r.raise_for_status()
             png_bytes = r.content
@@ -564,6 +566,7 @@ class SystemCommandHandler(CommandHandler):
                 f"http://{self._tower_agent.host}/avatar",
                 params={"emotion": emotion_str},
                 timeout=10.0,
+                headers=self._tower_agent._auth_headers(),
             )
             r.raise_for_status()
             png_bytes = r.content
