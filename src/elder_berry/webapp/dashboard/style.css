@@ -710,14 +710,16 @@ textarea.setting-input {
 }
 
 /* Phase 58: Avatar-Editor-Modul */
-.avatar-shell { padding: 1rem; }
+.avatar-shell { padding: 1rem; max-width: 1100px; margin: 0 auto; }
 .avatar-layout {
     display: grid;
-    grid-template-columns: 1fr 1fr;
+    /* Vorschau breiter als Editor; Sprites sind portrait (512x1024) */
+    grid-template-columns: minmax(280px, 1fr) minmax(280px, 1fr);
     gap: 1rem;
     margin-top: 0.5rem;
+    align-items: start;
 }
-@media (max-width: 720px) {
+@media (max-width: 820px) {
     .avatar-layout { grid-template-columns: 1fr; }
 }
 .avatar-panel {
@@ -747,12 +749,15 @@ textarea.setting-input {
 .avatar-preview {
     position: relative;
     width: 100%;
-    aspect-ratio: 1;
+    /* Sprites sind 512×1024 → Portrait-Verhältnis 1:2 */
+    aspect-ratio: 1 / 2;
+    max-height: 70vh;
     background: #0f0a2a;
     border-radius: 4px;
     display: flex;
     justify-content: center;
     align-items: center;
+    margin: 0 auto;
 }
 .avatar-layer-img {
     position: absolute;

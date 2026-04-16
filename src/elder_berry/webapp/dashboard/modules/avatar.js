@@ -1,19 +1,38 @@
 /**
  * AvatarModule – Avatar-Editor als Dashboard-Modul (Phase 58).
  *
- * Funktionen:
- * - Emotion auswählen (Dropdown)
- * - Layer (body/eye/mouth/effect) per Sprite-Auswahl konfigurieren
- * - Live-Preview als gestapelte PNGs (CSS-Layer, nicht Canvas – passt
- *   zum LayeredSpriteRenderer und braucht keine Image-Decoding-Tricks)
- * - Save → PUT /api/avatar/config
- * - Reload → POST /api/avatar/reload
+ * Layer-Struktur (1:1 wie Original-Editor + LayeredSpriteRenderer):
+ *   - body          (assets aus body/)
+ *   - eye_left      (assets aus eye/, gefiltert auf "eye_left_*")
+ *   - eye_right     (assets aus eye/, gefiltert auf "eye_right_*")
+ *   - mouth         (assets aus mouth/)
+ *   - effect        (optional, assets aus effect/)
+ *
+ * Render-Reihenfolge: body → eye_left → eye_right → mouth → effect
+ * Sprites werden voll überlagert (CSS-Stack); jedes eye-Sprite enthält
+ * nur das jeweilige Auge im richtigen Pixel-Offset innerhalb der
+ * Gesamt-Sprite-Größe (Original-Verhalten, nicht position-basiert).
  *
  * Alle API-Aufrufe gehen über apiFetch → Cookie + 401-Handling drin.
  */
 import { DashboardModule } from "./base.js";
 
-const CATEGORIES = ["body", "eye", "mouth", "effect"];
+// Layer-Konfiguration – Reihenfolge bestimmt Z-Stack (oben = später)
+const LAYERS = [
+    {key: "body",      category: "body",   filter: null,         optional: false},
+    {key: "eye_left",  category: "eye",    filter: "eye_left_",  optional: false},
+    {key: "eye_right", category: "eye",    filter: "eye_right_", optional: false},
+    {key: "mouth",     category: "mouth",  filter: null,         optional: false},
+    {key: "effect",    category: "effect", filter: null,         optional: true},
+];
+
+const LAYER_LABELS = {
+    body:      "Body",
+    eye_left:  "Eye L",
+    eye_right: "Eye R",
+    mouth:     "Mouth",
+    effect:    "Effect",
+};
 
 export default class AvatarModule extends DashboardModule {
     render() {
@@ -76,10 +95,11 @@ export default class AvatarModule extends DashboardModule {
             return;
         }
         this.config = data.config || {emotions: {}};
+        if (!this.config.emotions) this.config.emotions = {};
         this.emotions = data.emotions || [];
         this.reloadAvailable = !!data.reload_available;
         this.currentEmotion =
-            this.emotions.find(e => this.config.emotions?.[e])
+            this.emotions.find(e => this.config.emotions[e])
             || this.emotions[0] || null;
         this._setStatus(this.reloadAvailable ? "Bereit (Live)" : "Bereit");
     }
@@ -113,48 +133,47 @@ export default class AvatarModule extends DashboardModule {
         }
     }
 
-    _currentEmotionLayers() {
+    _emotionConfig() {
         if (!this.currentEmotion) return {};
-        const e = this.config.emotions?.[this.currentEmotion];
-        if (!e) return {};
-        // Config-Format: emotions[name].layers = [{type, sprite, ...}, ...]
-        // ODER vereinfacht: emotions[name] = {body, eye, mouth, effect}
-        if (Array.isArray(e.layers)) {
-            const result = {};
-            for (const L of e.layers) {
-                if (L.type && L.sprite) result[L.type] = L.sprite;
-            }
-            return result;
-        }
-        return e;
+        return this.config.emotions[this.currentEmotion] || {};
+    }
+
+    _availableSprites(category, filter) {
+        const items = this.assets[category] || [];
+        if (!filter) return items;
+        return items.filter(name => name.startsWith(filter));
     }
 
     _renderLayers() {
         const wrap = this.container.querySelector("#avatar-layers");
         wrap.innerHTML = "";
-        const current = this._currentEmotionLayers();
-        for (const cat of CATEGORIES) {
+        const emo = this._emotionConfig();
+        for (const layer of LAYERS) {
             const row = document.createElement("div");
             row.className = "avatar-layer-row";
             const label = document.createElement("label");
-            label.textContent = cat;
-            label.htmlFor = `avatar-layer-${cat}`;
+            label.textContent = LAYER_LABELS[layer.key] || layer.key;
+            label.htmlFor = `avatar-layer-${layer.key}`;
             const sel = document.createElement("select");
-            sel.id = `avatar-layer-${cat}`;
-            sel.dataset.category = cat;
-            const empty = document.createElement("option");
-            empty.value = "";
-            empty.textContent = "(keine)";
-            sel.appendChild(empty);
-            for (const sprite of this.assets[cat] || []) {
+            sel.id = `avatar-layer-${layer.key}`;
+            sel.dataset.layerKey = layer.key;
+            if (layer.optional) {
+                const empty = document.createElement("option");
+                empty.value = "";
+                empty.textContent = "(keine)";
+                sel.appendChild(empty);
+            }
+            const current = emo[layer.key] || "";
+            const sprites = this._availableSprites(layer.category, layer.filter);
+            for (const sprite of sprites) {
                 const opt = document.createElement("option");
                 opt.value = sprite;
                 opt.textContent = sprite;
-                if (sprite === current[cat]) opt.selected = true;
+                if (sprite === current) opt.selected = true;
                 sel.appendChild(opt);
             }
             sel.addEventListener("change", () => {
-                this._setLayer(cat, sel.value);
+                this._setLayer(layer.key, sel.value);
                 this._renderPreview();
             });
             row.appendChild(label);
@@ -163,42 +182,30 @@ export default class AvatarModule extends DashboardModule {
         }
     }
 
-    _setLayer(category, sprite) {
+    _setLayer(layerKey, sprite) {
         if (!this.currentEmotion) return;
-        if (!this.config.emotions) this.config.emotions = {};
         if (!this.config.emotions[this.currentEmotion]) {
-            this.config.emotions[this.currentEmotion] = {layers: []};
+            this.config.emotions[this.currentEmotion] = {};
         }
         const e = this.config.emotions[this.currentEmotion];
-        if (Array.isArray(e.layers)) {
-            // Layer mit gleichem type ersetzen oder hinzufügen
-            const idx = e.layers.findIndex(L => L.type === category);
-            if (!sprite) {
-                if (idx >= 0) e.layers.splice(idx, 1);
-            } else if (idx >= 0) {
-                e.layers[idx].sprite = sprite;
-            } else {
-                e.layers.push({type: category, sprite});
-            }
+        if (sprite) {
+            e[layerKey] = sprite;
         } else {
-            // Vereinfachtes Format
-            if (sprite) e[category] = sprite;
-            else delete e[category];
+            delete e[layerKey];
         }
     }
 
     _renderPreview() {
         const preview = this.container.querySelector("#avatar-preview");
         preview.innerHTML = "";
-        const current = this._currentEmotionLayers();
-        // Render-Reihenfolge body→effect (effect liegt oben)
-        for (const cat of CATEGORIES) {
-            const sprite = current[cat];
+        const emo = this._emotionConfig();
+        for (const layer of LAYERS) {
+            const sprite = emo[layer.key];
             if (!sprite) continue;
             const img = document.createElement("img");
             img.className = "avatar-layer-img";
-            img.alt = `${cat}: ${sprite}`;
-            img.src = `/api/avatar/assets/${cat}/${sprite}`;
+            img.alt = `${layer.key}: ${sprite}`;
+            img.src = `/api/avatar/assets/${layer.category}/${sprite}`;
             preview.appendChild(img);
         }
     }
