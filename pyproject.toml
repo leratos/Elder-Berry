@@ -25,6 +25,7 @@ windows = [
     "pycaw>=20230407",
     "comtypes>=1.2",
     "pyttsx3>=2.90",
+    "bcrypt>=4.0",  # Phase 58: Dashboard-Login (PW-Hash)
 ]
 tts-neural = [
     "coqui-tts>=0.27",

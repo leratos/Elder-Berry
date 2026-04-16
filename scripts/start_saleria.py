@@ -1186,6 +1186,13 @@ def run_matrix(assistant, stt=None, avatar=None, audio_converter=None, robot=Non
         from elder_berry.web.settings_dashboard import SettingsDashboard
         # Phase 52.1a: Loopback-Default + Token-Schutz
         settings_bind = os.environ.get("ELDER_BERRY_SETTINGS_BIND", "127.0.0.1")
+        # Phase 58: Login-Layer aktiv (überlebt VPN-Leak, schützt auch GET).
+        # TTL aus Setting "dashboard_session_hours" lesen, Default 12 h.
+        try:
+            ttl_raw = secrets.get_or_none("dashboard_session_hours")
+            session_hours = int(ttl_raw) if ttl_raw else 12
+        except (ValueError, TypeError):
+            session_hours = 12
         dashboard = SettingsDashboard(
             audio_router=tools.get("audio_router"),
             computer_use=tools.get("computer_use"),
@@ -1195,6 +1202,8 @@ def run_matrix(assistant, stt=None, avatar=None, audio_converter=None, robot=Non
             host=settings_bind,
             port=8090,
             require_settings_token=True,
+            require_dashboard_login=True,
+            dashboard_session_hours=session_hours,
         )
         # Gespeicherten STT-Timeout laden und auf Pipeline anwenden
         saved_timeout = dashboard._get_stt_timeout()
