@@ -32,6 +32,7 @@ export class DashboardAuth {
         this.errorEl = document.getElementById("login-error");
         this.pwInput = document.getElementById("login-password");
         this.logoutBtn = document.getElementById("logout-btn");
+        this.loginBtn = document.getElementById("login-btn");
 
         if (!this.modal || !this.form) {
             console.warn("Login-Modal nicht im DOM – Auth deaktiviert");
@@ -45,12 +46,30 @@ export class DashboardAuth {
         if (this.logoutBtn) {
             this.logoutBtn.addEventListener("click", () => this.logout());
         }
+        if (this.loginBtn) {
+            this.loginBtn.addEventListener("click", () => this.showLogin());
+        }
+        // Klick auf Backdrop schließt das Modal
+        this.modal.addEventListener("click", (e) => {
+            if (e.target === this.modal) {
+                this._cancelPending();
+                this.hideLogin();
+            }
+        });
 
         // 401-Handler global registrieren
         window.__dashboardOn401 = async () => this._on401();
 
         await this.checkStatus();
         this._updateUI();
+    }
+
+    _cancelPending() {
+        if (this._pendingResolve) {
+            const r = this._pendingResolve;
+            this._pendingResolve = null;
+            r(false);
+        }
     }
 
     async checkStatus() {
@@ -165,13 +184,17 @@ export class DashboardAuth {
                     }
                 }
             };
+            this._escListener = closeOnEsc;
             document.addEventListener("keydown", closeOnEsc);
         });
     }
 
     _updateUI() {
-        // Logout-Button und Avatar/Settings-Tabs nur sichtbar wenn
-        // eingeloggt
+        // Login-Button: nur sichtbar wenn NICHT eingeloggt
+        // Logout-Button + Avatar/Settings-Tabs: nur sichtbar wenn eingeloggt
+        if (this.loginBtn) {
+            this.loginBtn.style.display = this.authenticated ? "none" : "";
+        }
         if (this.logoutBtn) {
             this.logoutBtn.style.display = this.authenticated ? "" : "none";
         }

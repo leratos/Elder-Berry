@@ -824,3 +824,16 @@ textarea.setting-input {
 .avatar-message-error {
     color: #fca5a5;
 }
+
+/* Phase 58: Login-Button im Header (sichtbar wenn nicht eingeloggt) */
+.login-btn-header {
+    background: #7c3aed;
+    color: #fff;
+    border: none;
+    border-radius: 6px;
+    padding: 0.35rem 0.85rem;
+    cursor: pointer;
+    font-size: 0.85rem;
+    font-weight: 500;
+}
+.login-btn-header:hover { background: #6d28d9; }
