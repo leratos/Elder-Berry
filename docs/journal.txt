@@ -4643,6 +4643,19 @@ User: "Lies meine Mails und trag den Zahnarzttermin ein"
   test_start_saleria_bind.py, test_tower_auth.py, phase-57 Konzept)
 - Geänderte Dateien: 14
 - Branch: feature/phase-57-security-haertung
+<<<<<<< feature/phase-57-security-haertung
+- Nachbesserungen nach PR-Merge (auf demselben Branch):
+  * fix: Selfcheck sendet Tower-Token bei /status-Check mit (c792b08)
+  * fix: system_commands.py 3× direkter httpx-Call ohne Token
+    (/system, /screenshot, /avatar) → _auth_headers() ergänzt (d61e99d)
+  * fix: Selfcheck prüft task_client statt veralteten todo_store (3cd0a2d)
+    (Phase-56-Überbleibsel, nicht Phase-57-verursacht)
+  * fix: Avatar-Renderer "via Tower" wenn lokal nicht verfügbar,
+    nutzt Live-Tower-Status aus dem Selfcheck-Loop statt gecachten
+    Heartbeat (3866a8d, f772112)
+  * fix: dictConfig Guard in start_saleria.py verhindert
+    Test-Pollution durch ErrorCollectorHandler (a704de7)
+=======
 
 ## In Arbeit: Phase 56.1 – CalDAVTaskClient (2026-04-16)
 - nächster Schritt: src/elder_berry/tools/caldav_tasks.py / TaskItem + CalDAVTaskClient
@@ -4803,3 +4816,4 @@ User: "Lies meine Mails und trag den Zahnarzttermin ein"
   todo_store.py)
 - Gesamte Tests: 67 (caldav_tasks) + 70 (todo_commands) = 137 neue/geänderte
 - Branch: feature/phase-56-nextcloud-tasks
+>>>>>>> main
