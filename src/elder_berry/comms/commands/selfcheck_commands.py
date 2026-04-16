@@ -440,6 +440,11 @@ class SelfcheckCommandHandler(CommandHandler):
         # Services die optional sind – offline ist Warning, nicht Error
         optional_services = {"tower_agent", "robot_client", "avatar"}
 
+        # Wird im Loop gesetzt wenn der tower_agent-Check erfolgreich war.
+        # Dient als Fallback für Services die lokal fehlen aber über den
+        # Tower remote verfügbar sind (z.B. Avatar-Renderer ohne pygame).
+        tower_online = False
+
         for key in check_order:
             label = _SERVICE_LABELS.get(key, key)
             svc = self._services.get(key)
@@ -447,16 +452,18 @@ class SelfcheckCommandHandler(CommandHandler):
             if svc is None:
                 # Avatar ist auf dem Server oft nicht lokal verfügbar
                 # (kein pygame), läuft aber über den TowerAgent remote.
-                if key == "avatar":
-                    tower = self._services.get("tower_agent")
-                    if tower and getattr(tower, "is_online", False):
-                        checks.append(f"✅ {label}: via Tower")
-                        continue
+                if key == "avatar" and tower_online:
+                    checks.append(f"✅ {label}: via Tower")
+                    continue
                 checks.append(f"➖ {label}: nicht konfiguriert")
                 continue
 
             ok, detail = self._probe_service(key, svc)
             if ok:
+                # Merken ob der Tower erreichbar ist (für spätere
+                # Fallback-Checks wie Avatar via Tower).
+                if key == "tower_agent":
+                    tower_online = True
                 suffix = f" ({detail})" if detail else ""
                 checks.append(f"✅ {label}{suffix}")
             elif key in optional_services:
