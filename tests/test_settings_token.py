@@ -233,3 +233,159 @@ class TestDashboardWithToken:
             audio_router=AudioRouter(local_available=True),
         )
         assert dashboard._host == "127.0.0.1"
+
+
+# ---------------------------------------------------------------------------
+# Phase 57.2: First-Run-Gate für /api/setup-Exemption
+# ---------------------------------------------------------------------------
+
+
+def _make_app_with_store(
+    token_manager: SettingsTokenManager,
+    secret_store,
+) -> FastAPI:
+    """Helper wie _make_app, aber mit durchgereichtem SecretStore."""
+    app = FastAPI()
+    app.add_middleware(
+        SettingsTokenMiddleware,
+        token_manager=token_manager,
+        secret_store=secret_store,
+    )
+
+    @app.post("/api/setup/step/1")
+    async def post_setup():
+        return {"ok": True}
+
+    @app.post("/api/secrets/set")
+    async def post_set():
+        return {"ok": True}
+
+    return app
+
+
+class TestFirstRunGate:
+    """Phase 57.2: Wizard-Exemption entfällt nach Setup-Abschluss."""
+
+    @pytest.fixture
+    def manager(self, tmp_path):
+        m = SettingsTokenManager(tmp_path / "settings_token")
+        m.load_or_create()
+        return m
+
+    def test_setup_exempt_when_marker_not_set(self, manager):
+        """Vor dem Wizard-Finish ist /api/setup offen (wie Phase 52.1a)."""
+        from unittest.mock import MagicMock
+        store = MagicMock()
+        store.get_or_none.return_value = None
+
+        client = TestClient(_make_app_with_store(manager, store))
+        r = client.post("/api/setup/step/1", json={})
+        assert r.status_code == 200
+
+    def test_setup_exempt_when_marker_false(self, manager):
+        """Explizit ``"false"``-Marker wird nicht als completed gelesen."""
+        from unittest.mock import MagicMock
+        store = MagicMock()
+        store.get_or_none.return_value = "false"
+
+        client = TestClient(_make_app_with_store(manager, store))
+        r = client.post("/api/setup/step/1", json={})
+        assert r.status_code == 200
+
+    def test_setup_requires_token_when_marker_true(self, manager):
+        """Nach Wizard-Finish verlangt /api/setup den Settings-Token."""
+        from unittest.mock import MagicMock
+        store = MagicMock()
+        store.get_or_none.return_value = "true"
+
+        client = TestClient(_make_app_with_store(manager, store))
+        r = client.post("/api/setup/step/1", json={})
+        assert r.status_code == 401
+        assert r.json()["header"] == "X-Saleria-Settings-Token"
+
+    def test_setup_accepts_valid_token_when_marker_true(self, manager):
+        """Mit gültigem Token kommt man auch nach Finish an /api/setup."""
+        from unittest.mock import MagicMock
+        store = MagicMock()
+        store.get_or_none.return_value = "true"
+
+        client = TestClient(_make_app_with_store(manager, store))
+        r = client.post(
+            "/api/setup/step/1",
+            json={},
+            headers={"X-Saleria-Settings-Token": manager.get()},
+        )
+        assert r.status_code == 200
+
+    def test_cache_invalidation_after_marker_change(self, manager):
+        """Cache-Invalidation triggert Neulade des Markers.
+
+        Simuliert den Wizard-Finish-Flow: vor dem Finish ist /api/setup
+        exempted (200), dann wird der Marker gesetzt + die Middleware
+        invalidiert, und ab dem nächsten Request gilt 401.
+        """
+        from unittest.mock import MagicMock
+        from elder_berry.web.settings_token_middleware import (
+            invalidate_setup_completion_cache,
+        )
+
+        store = MagicMock()
+        store.get_or_none.return_value = None  # Marker noch nicht gesetzt
+
+        client = TestClient(_make_app_with_store(manager, store))
+
+        # Vor Finish: exempted
+        r1 = client.post("/api/setup/step/1", json={})
+        assert r1.status_code == 200
+
+        # Marker setzen (simuliert /api/setup/complete) und Cache leeren
+        store.get_or_none.return_value = "true"
+        invalidate_setup_completion_cache()
+
+        # Nach Finish: 401
+        r2 = client.post("/api/setup/step/1", json={})
+        assert r2.status_code == 401
+
+    def test_without_secret_store_exemption_remains(self, manager):
+        """Backwards-Kompat: ohne SecretStore bleibt /api/setup permanent offen."""
+        # _make_app (aus der älteren Test-Klasse) übergibt keinen Store
+        client = TestClient(_make_app(manager))
+        r = client.post("/api/setup/step/1", json={})
+        assert r.status_code == 200
+
+    def test_marker_cached_between_requests(self, manager):
+        """Der Store wird nur einmal gelesen, weitere Requests nutzen den Cache."""
+        from unittest.mock import MagicMock
+        store = MagicMock()
+        store.get_or_none.return_value = None
+
+        client = TestClient(_make_app_with_store(manager, store))
+
+        # Zwei /api/setup-Requests hintereinander
+        client.post("/api/setup/step/1", json={})
+        client.post("/api/setup/step/1", json={})
+
+        # Store wurde nur einmal abgefragt (der Cache hält den Wert)
+        assert store.get_or_none.call_count == 1
+        store.get_or_none.assert_called_with("setup_wizard_completed")
+
+    def test_protected_endpoint_not_affected_by_gate(self, manager):
+        """Protected-Prefix bleibt unverändert geschützt, egal ob Marker gesetzt."""
+        from unittest.mock import MagicMock
+        store = MagicMock()
+
+        # Marker false
+        store.get_or_none.return_value = None
+        client = TestClient(_make_app_with_store(manager, store))
+        r = client.post("/api/secrets/set", json={})
+        assert r.status_code == 401
+
+        # Marker true – gleiches Verhalten
+        store.get_or_none.return_value = "true"
+        invalidate_for_next = __import__(
+            "elder_berry.web.settings_token_middleware",
+            fromlist=["invalidate_setup_completion_cache"],
+        ).invalidate_setup_completion_cache
+        invalidate_for_next()
+        r = client.post("/api/secrets/set", json={})
+        assert r.status_code == 401

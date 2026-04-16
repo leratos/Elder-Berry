@@ -110,15 +110,25 @@ def _make_msg(
     )
 
 
+# Phase 57.4: Sentinel für den _make_bridge-Default, damit Tests einen
+# explizit ``None`` als "kein Whitelist übergeben"-Signal reinreichen
+# können (für die Fail-Closed-Regression-Tests), während der normale
+# Default eine populated Menge ist, die alle Test-Sender enthält.
+_UNSET = object()
+_DEFAULT_TEST_SENDERS = frozenset({"@user:x", "@admin:x"})
+
+
 def _make_bridge(
     channel: MockChannel | None = None,
     assistant: MagicMock | None = None,
-    allowed_senders: frozenset[str] | None = None,
+    allowed_senders=_UNSET,
     pending_store: PendingConfirmationStore | None = None,
     **kwargs,
 ) -> tuple[MockChannel, MatrixBridge]:
     ch = channel or MockChannel()
     ast = assistant or _make_assistant()
+    if allowed_senders is _UNSET:
+        allowed_senders = _DEFAULT_TEST_SENDERS
     bridge = MatrixBridge(
         channel=ch,
         assistant=ast,
@@ -223,7 +233,16 @@ class TestSenderWhitelist:
 
         run_async(_test())
 
-    def test_no_whitelist_allows_all(self):
+    def test_no_whitelist_rejects_all(self):
+        """Phase 57.4: strikt fail-closed.
+
+        Frühere Design-Entscheidung (Phase 32): leere/None allowed_senders
+        deaktivierte den Filter. Mit Phase 57.4 ist das umgekehrt – die
+        Bridge lehnt jede Nachricht ab, wenn die Whitelist fehlt oder leer
+        ist. Der Startup-Code in start_saleria.py stellt zusätzlich sicher,
+        dass die Bridge in Produktion gar nicht erst mit None gebaut wird,
+        aber Dev-/Test-Pfade erreichen diesen Zustand direkt.
+        """
         async def _test():
             ch, bridge = _make_bridge(allowed_senders=None)
             bridge._start_time = 0.0
@@ -231,7 +250,20 @@ class TestSenderWhitelist:
             msg = _make_msg(sender="@anyone:x", timestamp=time.time())
             await bridge._handle_message(msg)
 
-            assert len(ch._sent_texts) >= 1
+            assert len(ch._sent_texts) == 0
+
+        run_async(_test())
+
+    def test_empty_whitelist_rejects_all(self):
+        """Phase 57.4: leere Menge ist genauso streng wie None."""
+        async def _test():
+            ch, bridge = _make_bridge(allowed_senders=frozenset())
+            bridge._start_time = 0.0
+
+            msg = _make_msg(sender="@anyone:x", timestamp=time.time())
+            await bridge._handle_message(msg)
+
+            assert len(ch._sent_texts) == 0
 
         run_async(_test())
 

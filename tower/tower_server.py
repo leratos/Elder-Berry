@@ -3,22 +3,28 @@
 Exponiert TTS, STT, PC-Steuerung und Screenshot über HTTP.
 Läuft auf dem Tower-PC und wird vom Server via SSH-Tunnel erreicht.
 
+Phase 57.3: Alle Endpoints sind mit ``X-Saleria-Tower-Token`` geschützt.
+Token-Quelle (Priorität): Env ``ELDER_BERRY_TOWER_TOKEN`` → SecretStore
+``tower_auth_token``. Ohne Token verweigert der Server den Start.
+
 Starten:
-    uvicorn tower.tower_server:app --host 0.0.0.0 --port 8090
+    ELDER_BERRY_TOWER_TOKEN=<token> uvicorn tower.tower_server:app --port 8090
 """
 from __future__ import annotations
 
 import io
 import logging
 import os
+import secrets as _secrets
 import socket
 import tempfile
 from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, UploadFile
-from fastapi.responses import Response
+from fastapi.responses import JSONResponse, Response
 from pydantic import BaseModel
+from starlette.middleware.base import BaseHTTPMiddleware
 
 logger = logging.getLogger(__name__)
 
@@ -106,6 +112,63 @@ class _Engines:
 
 
 engines = _Engines()
+
+
+# ---------------------------------------------------------------------------
+# Phase 57.3: Tower-Token-Middleware
+# ---------------------------------------------------------------------------
+
+
+class TowerTokenMiddleware(BaseHTTPMiddleware):
+    """Schützt alle Endpoints mit ``X-Saleria-Tower-Token``."""
+
+    HEADER_NAME = "X-Saleria-Tower-Token"
+
+    async def dispatch(self, request, call_next):
+        expected = getattr(request.app.state, "tower_token", None)
+        if not expected:
+            return JSONResponse(
+                {"error": "Tower-Token nicht konfiguriert (Serverfehler)."},
+                status_code=500,
+            )
+        token = request.headers.get(self.HEADER_NAME)
+        if not token or not _secrets.compare_digest(token, expected):
+            return JSONResponse(
+                {
+                    "error": "Tower-Token erforderlich oder ungültig.",
+                    "header": self.HEADER_NAME,
+                },
+                status_code=401,
+            )
+        return await call_next(request)
+
+
+def _load_tower_token() -> str:
+    """Lädt den Tower-Token aus Env oder SecretStore.
+
+    Raises ``RuntimeError`` wenn weder Env noch Store einen Token liefern.
+    """
+    token = os.environ.get("ELDER_BERRY_TOWER_TOKEN")
+    if token:
+        logger.info("Tower-Token aus Env-Variable geladen")
+        return token
+
+    try:
+        from elder_berry.core.secret_store import SecretStore
+        store = SecretStore()
+        token = store.get_or_none("tower_auth_token")
+        if token:
+            logger.info("Tower-Token aus SecretStore geladen")
+            return token
+    except Exception as exc:
+        logger.debug("SecretStore nicht verfügbar: %s", exc)
+
+    raise RuntimeError(
+        "Kein Tower-Token konfiguriert. "
+        "Setze ELDER_BERRY_TOWER_TOKEN oder lege 'tower_auth_token' "
+        "im SecretStore an (Settings-Dashboard)."
+    )
+
 
 # ---------------------------------------------------------------------------
 # Action-Dispatcher – mappt Aktionsnamen auf Controller-Methoden
@@ -196,7 +259,15 @@ def _dispatch_action(
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Startup: Engines laden. Shutdown: Engines entladen."""
+    """Startup: Token prüfen, Engines laden. Shutdown: Engines entladen."""
+    # Phase 57.3: Token laden – ohne Token kein Start
+    try:
+        app.state.tower_token = _load_tower_token()
+    except RuntimeError as exc:
+        logger.error("%s", exc)
+        import sys
+        sys.exit(1)
+
     logger.info("TowerServer startet auf %s", socket.gethostname())
 
     # Engines initialisieren – Fehler einzeln fangen damit
@@ -222,6 +293,7 @@ async def lifespan(app: FastAPI):
 # ---------------------------------------------------------------------------
 
 app = FastAPI(title="Elder-Berry Tower Server", lifespan=lifespan)
+app.add_middleware(TowerTokenMiddleware)
 
 
 @app.get("/status")

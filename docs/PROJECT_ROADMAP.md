@@ -1138,3 +1138,95 @@ Konzept: `docs/concepts/phase-56-nextcloud-tasks.md`
 
 - Migrations-Script: SQLite-Todos → Nextcloud Tasks (einmalig)
 - TodoStore aus allen Imports entfernen, Datei deprecaten
+
+
+## Phase 57 – Security-Härtung: Loopback, First-Run-Gate, Tower-Auth 🛡️ GEPLANT
+
+Schließt 4 Sicherheitslücken, die ein Code-Review nach Phase 52 aufgedeckt
+hat. Phase 52 hat die Basis gelegt (Loopback + Token fürs Settings-Panel),
+57 zieht das gleiche Muster durch für Setup-Wizard, TowerServer und die
+Wizard-Exemption der Middleware.
+
+Konzept: `docs/concepts/phase-57-security-haertung.md`
+
+### 57.1 – Loopback-Default + Grace-Period für Setup-Wizard und TowerAgent
+
+- **Problem**: `setup_wizard.py:470` und `start_saleria.py:538` binden
+  standalone auf `0.0.0.0`. Secrets (API-Keys, Matrix-Tokens) sind
+  während des First-Run im LAN mitlesbar, Tower-Steuerung ist direkt
+  exponiert.
+- **Lösung**: Default-Bind `127.0.0.1`. Zwei neue Env-Variablen
+  `ELDER_BERRY_SETUP_BIND` und `ELDER_BERRY_TOWER_BIND` (konsistent zu
+  `ELDER_BERRY_SETTINGS_BIND` aus Phase 52). Bei LAN-Bind Warn-Log.
+- **Grace-Period (57.1a)**: Beim ersten Upgrade-Start bindet der
+  Wizard einmalig auf `0.0.0.0`, damit headless Installationen nicht
+  ausgesperrt werden. Marker-Datei `~/.elder-berry/.phase57_migration_done`
+  + gelbes Banner im Wizard-UI. Ab dem zweiten Start (oder wenn der
+  Marker existiert) gilt Loopback-Default.
+- **Scope**: `scripts/start_saleria.py`, `src/elder_berry/web/setup_wizard.py`
+- **Breaking Change**: Dauerhaft-headless-Installationen müssen die
+  Env-Variable explizit setzen. Grace-Period fängt den einmaligen
+  Upgrade-Fall ab.
+- **Abhängigkeit**: Muss **nach 57.2** gemerged werden, sonst ist das
+  Grace-Period-Fenster doppelt riskant (LAN + offene Middleware-
+  Exemption).
+
+### 57.2 – First-Run-Gate für Wizard-Exemption
+
+- **Problem**: `SettingsTokenMiddleware` exempted `/api/setup` dauerhaft.
+  Der First-Run-Marker `setup_wizard_completed` existiert, wird aber
+  nicht ausgewertet. Phase 52.3 war genau diese Arbeit, wurde irrtümlich
+  gestrichen.
+- **Lösung**: Middleware bekommt `SecretStore`-Dependency, prüft
+  `setup_wizard_completed`. Nach Abschluss entfällt die Exemption und
+  `/api/setup` verlangt den Settings-Token. Cache-Invalidation im
+  Finish-Endpoint.
+- **Scope**: `src/elder_berry/web/settings_token_middleware.py`,
+  Cache-Invalidation in `setup_wizard.py`
+
+### 57.3 – Tower-Token + Host-Discovery
+
+- **Problem**: `tower/tower_server.py` hat keinerlei Auth. `/action`
+  erlaubt beliebige PC-Steuerung, sobald der Server direkt im LAN
+  erreichbar ist.
+- **Lösung**: Header `X-Saleria-Tower-Token`, Quelle (Priorität):
+  Env `ELDER_BERRY_TOWER_TOKEN` → `SecretStore.get("tower_auth_token")`.
+  Fail-closed beim Start (kein Token → Server verweigert Start).
+- **Auto-Migration (Token + Host)**: `start_saleria.py` generiert beim
+  ersten Upgrade einen neuen Token (`secrets.token_hex(32)`) **und**
+  ermittelt den lokalen `tower_advertised_host` über eine Fallback-
+  Kette (Env `ELDER_BERRY_TOWER_ADVERTISED_HOST` → UDP-Route-
+  Heuristik → `gethostbyname` → `127.0.0.1`). Beide Werte werden im
+  `SecretStore` abgelegt und einmalig geloggt.
+- **RobotClient zieht beides gemeinsam** aus dem `SecretStore` – ein
+  Eintrag weniger im Dashboard, keine doppelte Pflege von Host und
+  Token.
+- **Scope**: `tower/tower_server.py`, `scripts/start_saleria.py`,
+  `src/elder_berry/robot/client.py` (Header + Host-Lookup),
+  `SECRET_REGISTRY` (zwei neue Einträge `tower_auth_token` +
+  `tower_advertised_host`, Kategorie "Tower & Agent")
+- **Breaking Change**: Bestehende Installationen erhalten automatisch
+  Token und Host beim ersten Upgrade-Start, User muss im Normalfall
+  nichts manuell eintragen.
+
+### 57.4 – `matrix_allowed_senders` Fail-Closed-Audit
+
+- **Problem**: Unklar, wie Bridge und MessageHandler auf leere
+  `allowed_senders`-Liste reagieren (fail-closed vs. fail-open).
+- **Lösung**: Audit zuerst (vor 57.1–57.3). Fall A (fail-closed): neuer
+  Regression-Test. Fall B (fail-open): Phase 57 pausiert, Hotfix auf
+  separatem Branch, danach 57 wieder aufnehmen.
+- **Scope**: `src/elder_berry/comms/bridge.py`,
+  `src/elder_berry/comms/message_handlers.py`,
+  `tests/test_allowed_senders_fail_closed.py` (neu)
+
+### Reihenfolge
+
+1. **57.4 Audit** (Go/No-Go für die Phase)
+2. **57.2 First-Run-Gate** – **muss vor 57.1** gemerged sein, sonst
+   ist das Grace-Period-Fenster in 57.1 doppelt riskant (LAN-Bind
+   plus offene Middleware-Exemption gleichzeitig). Nicht verhandelbar.
+3. **57.1 Loopback-Default + Grace-Period** (Einmal-BC für Upgrade-User,
+   dauerhafter BC nur für LAN-Dauer-Nutzer)
+4. **57.3 Tower-Token + Host-Discovery** (größter BC, Auto-Migration
+   für Token **und** Host)

@@ -79,8 +79,14 @@ LOGGING_CONFIG = {
     },
 }
 
-logging.config.dictConfig(LOGGING_CONFIG)
 logger = logging.getLogger("saleria")
+
+# dictConfig nur bei direkter Ausführung – nicht beim Import aus Tests.
+# Ein Test-Import von ``from start_saleria import run_agent`` würde sonst
+# einen ErrorCollectorHandler permanent an den Root-Logger hängen und
+# test_bridge.py::TestErrorAlerting im Batch-Lauf stören.
+if __name__ == "__main__":
+    logging.config.dictConfig(LOGGING_CONFIG)
 
 # ---------------------------------------------------------------------------
 # Argument-Parser
@@ -141,6 +147,12 @@ def load_secrets_to_env():
                     logger.debug("Secret '%s' → $%s geladen", secret_name, env_name)
     except Exception as e:
         logger.debug("SecretStore nicht verfügbar: %s", e)
+
+
+# Phase 57.4: ``load_allowed_senders`` lebt in einem eigenen Comms-Modul
+# und wird von dort importiert – der Test-Code darf die Funktion
+# importieren, ohne die Logging-Config dieses Skripts zu triggern.
+from elder_berry.comms.allowed_senders import load_allowed_senders  # noqa: E402
 
 
 # ---------------------------------------------------------------------------
@@ -323,6 +335,10 @@ def _init_tts_router(event_loop=None, local_tts=None):
 def _init_tower_agent(store=None):
     """Erstellt TowerAgent wenn tower_host konfiguriert ist.
 
+    Phase 57.3: Token wird aus dem SecretStore gelesen und an den
+    TowerAgent durchgereicht. Ohne Token funktionieren die Requests
+    zum Tower-Server nicht (401).
+
     Returns:
         TowerAgent oder None.
     """
@@ -337,7 +353,19 @@ def _init_tower_agent(store=None):
         if not tower_host:
             return None
 
-        agent = TowerAgent(tower_host=tower_host)
+        # Phase 57.3: Token für den Tower-Server
+        tower_token = (
+            os.environ.get("ELDER_BERRY_TOWER_TOKEN")
+            or store.get_or_none("tower_auth_token")
+        )
+        if not tower_token:
+            logger.warning(
+                "TowerAgent: kein Tower-Token konfiguriert – Requests "
+                "werden mit 401 abgelehnt. Setze tower_auth_token im "
+                "SecretStore oder ELDER_BERRY_TOWER_TOKEN als Env.",
+            )
+
+        agent = TowerAgent(tower_host=tower_host, tower_token=tower_token)
         logger.info("TowerAgent: konfiguriert für %s", tower_host)
         return agent
     except Exception as e:
@@ -522,6 +550,27 @@ def run_agent(port: int = 8090):
     # tower/ Package muss importierbar sein
     sys.path.insert(0, str(_PROJECT_ROOT))
 
+    # Phase 57.3: Token laden oder Auto-Generieren
+    tower_token = os.environ.get("ELDER_BERRY_TOWER_TOKEN")
+    if not tower_token:
+        try:
+            from elder_berry.core.secret_store import SecretStore
+            store = SecretStore()
+            tower_token = store.get_or_none("tower_auth_token")
+            if not tower_token:
+                import secrets as _sec
+                tower_token = _sec.token_hex(32)
+                store.set("tower_auth_token", tower_token)
+                logger.info("Tower-Token automatisch generiert und gespeichert")
+                logger.info(
+                    "Tower-Token (für X-Saleria-Tower-Token Header): %s",
+                    tower_token,
+                )
+        except Exception as exc:
+            logger.error("Tower-Token konnte nicht geladen/generiert werden: %s", exc)
+            sys.exit(1)
+    os.environ["ELDER_BERRY_TOWER_TOKEN"] = tower_token
+
     try:
         from tower.tower_server import app  # noqa: F401
     except ImportError as e:
@@ -531,11 +580,20 @@ def run_agent(port: int = 8090):
     print("\n─── Saleria Agent-Modus (TowerServer) ───")
     print(f"  Endpunkte: /status, /tts, /stt, /action, /screenshot")
     print(f"  Port: {port}")
+    print(f"  Token: {'aus Env' if os.environ.get('ELDER_BERRY_TOWER_TOKEN') == tower_token else 'aus SecretStore'}")
     print("  Ctrl+C zum Beenden\n")
 
+    # Phase 57.1: Loopback-Default
+    tower_bind = os.environ.get("ELDER_BERRY_TOWER_BIND", "127.0.0.1")
+    if tower_bind not in ("127.0.0.1", "localhost", "::1"):
+        logger.warning(
+            "TowerServer lauscht auf %s:%d – Steuerung ist im Netz "
+            "erreichbar. Nur im vertrauenswürdigen Netz nutzen.",
+            tower_bind, port,
+        )
     uvicorn.run(
         "tower.tower_server:app",
-        host="0.0.0.0",
+        host=tower_bind,
         port=port,
         log_level="info",
     )
@@ -1067,19 +1125,25 @@ def run_matrix(assistant, stt=None, avatar=None, audio_converter=None, robot=Non
     if stt:
         logger.info("Matrix-STT: Sprachnachrichten werden transkribiert")
 
-    allowed_senders = None
-    raw_senders = secrets.get_or_none("matrix_allowed_senders")
-    if raw_senders:
-        sender_list = [s.strip() for s in raw_senders.split(",") if s.strip()]
-        if sender_list:
-            allowed_senders = frozenset(sender_list)
-            logger.info("Allowed-Senders: %d konfiguriert", len(allowed_senders))
-    if not allowed_senders:
-        logger.warning(
-            "Allowed-Senders nicht konfiguriert – alle Absender werden akzeptiert. "
-            "Setze via Dashboard (http://localhost:8090) oder SecretStore: "
-            "matrix_allowed_senders = '@user:domain.com'"
+    try:
+        allowed_senders = load_allowed_senders(secrets)
+        logger.info("Allowed-Senders: %d konfiguriert", len(allowed_senders))
+    except ValueError as exc:
+        # Phase 57.4: strikt fail-closed. Die frühere Design-Entscheidung
+        # "leere Liste = keine Filterung" (Phase 32) wird bewusst
+        # zurückgenommen – Single-User-Matrix-Bot ohne Sender-Whitelist
+        # wäre eine offene Einladung an jeden Matrix-User im Raum.
+        logger.error(
+            "Allowed-Senders nicht konfiguriert – Matrix-Bridge verweigert "
+            "den Start (Phase 57.4, strikt fail-closed).\n"
+            "Grund: %s\n"
+            "Setze mindestens einen Sender via Dashboard "
+            "(http://localhost:8090) oder direkt im SecretStore:\n"
+            "    matrix_allowed_senders = '@user:domain.com'\n"
+            "Mehrere Sender: komma-getrennt.",
+            exc,
         )
+        sys.exit(1)
 
     # --- 7. Summarizer + Bridge ---
     from elder_berry.comms.chat_history import ChatMessage
@@ -1298,14 +1362,54 @@ def main():
     # First-Run-Check: wenn kein Matrix-Token → Setup-Wizard starten
     if not _check_first_run():
         logger.info("Erste Ausführung erkannt – starte Setup-Wizard")
+        from elder_berry.core.secret_store import SecretStore
+        store = SecretStore()
+
+        # Phase 57.1: Bind-Adresse bestimmen
+        setup_bind = os.environ.get("ELDER_BERRY_SETUP_BIND", "127.0.0.1")
+        compat_mode = False
+        migration_marker = _PROJECT_ROOT.parent / ".elder-berry" / ".phase57_migration_done"
+        home_env = os.environ.get("ELDER_BERRY_HOME")
+        if home_env:
+            migration_marker = Path(home_env) / ".phase57_migration_done"
+
+        # Phase 57.1a: Grace-Period – einmaliger LAN-Modus beim Upgrade
+        setup_done = store.get_or_none("setup_wizard_completed") == "true"
+        if (
+            not migration_marker.exists()
+            and not setup_done
+            and setup_bind == "127.0.0.1"
+        ):
+            compat_mode = True
+            setup_bind = "0.0.0.0"
+            logger.warning(
+                "Phase 57.1 Upgrade: Setup-Wizard läuft EINMALIG auf "
+                "0.0.0.0:8090 (LAN-Kompatibilitätsmodus). Ab dem nächsten "
+                "Start gilt 127.0.0.1. Dauerhaft LAN? Setze "
+                "ELDER_BERRY_SETUP_BIND=0.0.0.0",
+            )
+        elif setup_bind not in ("127.0.0.1", "localhost", "::1"):
+            logger.warning(
+                "Setup-Wizard lauscht auf %s:8090 – Secrets werden im "
+                "Klartext übertragen. Nur im vertrauenswürdigen Netz nutzen.",
+                setup_bind,
+            )
+
         print("\n  Keine Konfiguration gefunden – Setup-Wizard wird gestartet...")
+        if compat_mode:
+            print("  LAN-Kompatibilitätsmodus: Wizard auf 0.0.0.0 (einmalig)")
         print("  Öffne http://localhost:8090/setup im Browser\n")
         import webbrowser
         from threading import Timer
         Timer(1.5, webbrowser.open, args=["http://localhost:8090/setup"]).start()
-        from elder_berry.core.secret_store import SecretStore
         from elder_berry.web.setup_wizard import run_setup_wizard
-        run_setup_wizard(SecretStore(), port=8090)
+        run_setup_wizard(
+            store,
+            port=8090,
+            bind=setup_bind,
+            compat_mode=compat_mode,
+            migration_marker=migration_marker,
+        )
         # Nach dem Wizard Secrets neu laden
         load_secrets_to_env()
 

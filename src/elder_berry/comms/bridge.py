@@ -328,8 +328,19 @@ class MatrixBridge:
             )
             return
 
-        # Sender-Whitelist
-        if self._allowed_senders and msg.sender not in self._allowed_senders:
+        # Sender-Whitelist (Phase 57.4: strikt fail-closed).
+        # Weder None noch eine leere Menge darf Nachrichten durchlassen.
+        # Der Startup-Code in start_saleria.py verhindert bereits, dass die
+        # Bridge mit allowed_senders=None in den Matrix-Modus geht – dieser
+        # Filter ist die zweite Verteidigungslinie für Dev-/Test-Pfade,
+        # die die Bridge direkt instanziieren.
+        if not self._allowed_senders:
+            logger.warning(
+                "allowed_senders ist leer/None – Nachricht abgelehnt: %s",
+                msg.sender,
+            )
+            return
+        if msg.sender not in self._allowed_senders:
             logger.warning("Nachricht von unbekanntem Sender ignoriert: %s", msg.sender)
             return
 

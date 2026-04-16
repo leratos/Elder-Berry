@@ -4418,3 +4418,228 @@ User: "Lies meine Mails und trag den Zahnarzttermin ein"
   pkg_resources Deprecation – pydub/audioop ist weg)
 - Roadmap: Phase 55 auf ABGESCHLOSSEN
 - Branch: feature/phase-55-audioop-migration
+
+## In Arbeit: Phase 57 – Security-Härtung: Loopback, First-Run-Gate, Tower-Auth (2026-04-15)
+- Ausgelöst durch Sicherheits-Analyse (Code-Review 2026-04-15): 4 offene Lücken
+  * K1: setup_wizard.py:470 bindet standalone auf 0.0.0.0
+  * K2: tower/tower_server.py ohne jegliche Auth, start_saleria.py:538 auf 0.0.0.0
+  * K3: SettingsTokenMiddleware /api/setup-Exemption dauerhaft. Der First-Run-
+    Marker setup_wizard_completed existiert, wird aber nicht ausgewertet.
+    Phase 52.3 war genau diese Arbeit, wurde aber irrtümlich als "erledigt
+    durch 52.0" gestrichen – die YAML-Umstellung war gestrichen, nicht
+    die Middleware-Verschärfung.
+  * K4: matrix_allowed_senders fail-closed/fail-open unklar
+- Phase 54/55/56 sind belegt (Bull-Berry extern, 55 abgeschlossen, 56 geplant).
+  Phase 57 ist die nächste freie Nummer.
+- Nicht-Ziele: kein OAuth, kein mTLS, kein Reverse-Proxy, keine Token-Rotation,
+  kein strukturierter Audit-Log
+- Reihenfolge der Sub-Phasen: 57.4 Audit zuerst (entscheidet über Hotfix-
+  Eskalation), dann 57.2 First-Run-Gate (kleinster Scope), 57.1 Loopback-
+  Default (mittlerer BC), 57.3 Tower-Token (größter BC, Auto-Migration nötig)
+- Env-Variablen: ELDER_BERRY_SETUP_BIND + ELDER_BERRY_TOWER_BIND (getrennt,
+  Default 127.0.0.1, konsistent zu ELDER_BERRY_SETTINGS_BIND aus Phase 52)
+- Tower-Token-Header: X-Saleria-Tower-Token (konsistent zu X-Saleria-Settings-
+  Token), Quelle in Reihenfolge: Env → SecretStore, Fail-closed beim Start
+- Konzeptdatei: docs/concepts/phase-57-security-haertung.md geschrieben
+- Roadmap-Eintrag für Phase 57 ergänzt
+
+## Zwischenstand: Phase 57 – Konzept verfeinert (Grace-Mode + Host-Discovery) (2026-04-15)
+- Nach Diskussion Scope von 57.1 und 57.3 erweitert:
+- 57.1a Kompatibilitäts-Grace-Period:
+  * Marker-Datei ~/.elder-berry/.phase57_migration_done entscheidet
+    über Einmal-Binding auf 0.0.0.0 beim Upgrade
+  * Template-Variable compat_mode: bool → gelbes Banner im Wizard-UI
+  * Fette Log-Warnmeldung beim Start
+  * Nach Wizard-Finish wird Marker geschrieben, zweiter Start ist
+    Loopback-Default
+  * Frische Neuinstallationen nutzen Kompat-Modus mit (bewusst
+    akzeptiert, Alternative im Review-Termin diskutieren)
+  * HART: 57.2 MUSS vor 57.1 gemerged sein, sonst doppeltes Risiko
+    (LAN-Bind + offene Middleware-Exemption gleichzeitig)
+- 57.3 Host-Discovery zusätzlich zum Tower-Token:
+  * Neue Registry-Key tower_advertised_host (non-sensitive, low risk)
+  * Fallback-Kette: Env ELDER_BERRY_TOWER_ADVERTISED_HOST →
+    UDP-Route-Heuristik (connect 8.8.8.8:80 + getsockname) →
+    socket.gethostbyname(socket.gethostname()) → 127.0.0.1 (mit Warn-Log)
+  * RobotClient Constructor bekommt tower_host + tower_token als
+    optionale Parameter (None = Fetch aus SecretStore)
+  * Auto-Migration legt beim ersten Upgrade-Start Token UND Host ab
+  * User pflegt Host und Token nicht mehr an zwei verschiedenen Stellen
+- Konzept und Roadmap entsprechend aktualisiert
+- Nächster Schritt: Go für die Implementierungs-Phase abwarten (neuer
+  Branch feature/phase-57-security-haertung wird dann erstellt)
+
+## Zwischenstand: Phase 57.4 – Design-Umkehrung matrix_allowed_senders (2026-04-15)
+- Branch erstellt: feature/phase-57-security-haertung (vom Worktree aus)
+- Audit-Ergebnis: Fall B (fail-open), ABER keine unbemerkte Lücke
+  * bridge.py:332 `if self._allowed_senders and ...` ist falsy-anfällig
+  * None und frozenset() werden beide nicht gefiltert → alles durch
+  * start_saleria.py hat bisher nur gewarnt und ist weitergelaufen
+  * journal.txt:2530 (Phase 32) dokumentiert das explizit als
+    "Design-Entscheidung, kein Bug" – d.h. die alten Autoren wussten
+    es. Deshalb kein Hotfix-Eskalationspfad (weil es nie als Bug galt),
+    sondern bewusste Design-Umkehrung in 57.4 selbst.
+- Entscheidung: Variante A (strikt fail-closed), Nutzer bestätigt.
+  None UND frozenset() blocken alles. Tests setzen bei Bedarf
+  explizit ein populated Set.
+- Code-Änderungen:
+  * src/elder_berry/comms/bridge.py:332 – Filter zweistufig (not whitelist
+    → reject, sender nicht drin → reject), mit klaren Log-Warnungen
+  * src/elder_berry/comms/allowed_senders.py NEU – load_allowed_senders
+    (secret_store) → frozenset[str], wirft ValueError bei missing/
+    empty/whitespace/comma-only/kombi
+  * scripts/start_saleria.py – Die Inline-Variante wurde nach einem
+    Test-Pollution-Problem (siehe unten) wieder entfernt, stattdessen
+    Import aus comms/allowed_senders.py
+  * scripts/start_saleria.py:1070ff – Warnung → logger.error +
+    sys.exit(1) bei leerer/fehlender Whitelist
+- Test-Änderungen:
+  * tests/test_bridge.py: test_no_whitelist_allows_all umbenannt zu
+    test_no_whitelist_rejects_all, Assertion invertiert + neuer
+    test_empty_whitelist_rejects_all
+  * _make_bridge() bekam einen _UNSET-Sentinel, damit Tests explizit
+    None reinreichen können; Default ist jetzt frozenset({"@user:x",
+    "@admin:x"})
+  * tests/test_comms.py: Subclass-Shadow
+    `class MatrixBridge(_RealMatrixBridge)` + _DEFAULT_TEST_SENDERS
+    mit allen in den Tests vorkommenden Sendern (ohne @unknown:test,
+    damit der existierende Block-Test funktioniert). Subclass statt
+    Funktions-Wrapper, damit TestExtractClaudeMessage weiter
+    MatrixBridge.extract_claude_message direkt aufrufen kann.
+  * tests/test_allowed_senders_fail_closed.py NEU: 12 Tests
+    (8× TestLoadAllowedSenders, 4× TestBridgeFailClosed), alle grün
+- Regression:
+  * test_bridge.py + test_comms.py + test_allowed_senders_fail_closed.py:
+    131/131 grün
+  * Zwischenfall: Anfangs scheiterte
+    TestErrorAlerting::test_setup_with_collector_handler, weil mein
+    erster Ansatz (Inline-Funktion _load_allowed_senders in
+    start_saleria.py) beim Test-Import die LOGGING_CONFIG triggerte.
+    Die dort angelegte dictConfig hängt einen ErrorCollectorHandler
+    an den Root-Logger, der zwischen Tests liegen bleibt und
+    _setup_error_alerting() dazu bringt, DESSEN Callback zu setzen
+    statt dem des Test-eigenen Handlers. Nach Extraktion in das
+    saubere comms/allowed_senders.py-Modul verschwand die Kollision.
+- Die alte Notiz in journal.txt:2530 ("Design-Entscheidung, kein Bug")
+  bleibt historisch korrekt stehen und wird nicht editiert. Dieser
+  Zwischenstand nimmt sie explizit zurück.
+- Konzeptdatei Abschnitt 3.4 entsprechend umgeschrieben (Audit →
+  Design-Umkehrung mit konkreter Umsetzung)
+- Nächster Schritt: 57.2 First-Run-Gate (Middleware + Cache-Invalidation)
+
+## Zwischenstand: Phase 57.2 – First-Run-Gate für Wizard-Exemption (2026-04-16)
+- Code-Änderungen:
+  * src/elder_berry/web/settings_token_middleware.py – komplett umgeschrieben:
+    - Constructor bekommt optionalen secret_store-Parameter (None =
+      Phase-52.1a-Verhalten, Backwards-kompatibel)
+    - _is_setup_done() liest setup_wizard_completed aus SecretStore (cached)
+    - Dispatch-Logik: /api/setup ist nur exempt solange _is_setup_done()=False
+    - invalidate_completion_cache() Instanzmethode + Modul-Level
+      invalidate_setup_completion_cache() über WeakSet-Registry
+    - WeakSet statt Klassen-Level-Liste: Memory-Leak-sicher in Tests
+  * src/elder_berry/web/setup_wizard.py:305 – /api/setup/complete Handler
+    ruft nach secret_store.set(SETUP_COMPLETE_KEY, "true") jetzt auch
+    invalidate_setup_completion_cache() auf (Lazy-Import im Handler)
+  * src/elder_berry/web/settings_dashboard.py:179 – Middleware-Registration
+    bekommt jetzt secret_store=secret_store durchgereicht
+- Test-Änderungen:
+  * tests/test_settings_token.py – 8 neue Tests in TestFirstRunGate:
+    - test_setup_exempt_when_marker_not_set
+    - test_setup_exempt_when_marker_false
+    - test_setup_requires_token_when_marker_true
+    - test_setup_accepts_valid_token_when_marker_true
+    - test_cache_invalidation_after_marker_change (simuliert den
+      Complete-Flow: vor Finish → exempt, nach Finish+Invalidation → 401)
+    - test_without_secret_store_exemption_remains (Backwards-Kompat)
+    - test_marker_cached_between_requests (Store nur 1x gelesen)
+    - test_protected_endpoint_not_affected_by_gate (Protected ≠ Exempt)
+- Regression: 136 passed, 1 skipped (POSIX chmod) über
+  test_settings_token + test_settings_dashboard + test_setup_wizard_api
+  + test_settings_panel + test_start_saleria + test_allowed_senders_fail_closed
+- Bestehende 23 Tests in test_settings_token weiter grün (die nutzen
+  _make_app ohne SecretStore → Middleware fällt auf Phase-52.1a-Verhalten
+  zurück, Exemption permanent)
+- Nächster Schritt: 57.1 Loopback-Default + Grace-Period
+
+## Zwischenstand: Phase 57.1 – Loopback-Default + Grace-Period (2026-04-16)
+- Code-Änderungen:
+  * src/elder_berry/web/setup_wizard.py:
+    - run_setup_wizard() bekommt bind, compat_mode, migration_marker Parameter
+    - Default bind="127.0.0.1" (vorher hardcoded 0.0.0.0)
+    - Setup-Page injiziert gelbes Compat-Banner wenn compat_mode=True
+    - /api/setup/complete schreibt Marker-Datei wenn migration_marker gesetzt
+    - Bugfix: FastAPI-Import in run_setup_wizard() war unter TYPE_CHECKING
+      (fehlte zur Laufzeit → NameError). Lokal importiert.
+  * scripts/start_saleria.py:
+    - Wizard-Aufruf: ELDER_BERRY_SETUP_BIND + Grace-Period-Logik
+      (Marker-Datei + setup_wizard_completed prüfen, einmalig 0.0.0.0
+      bei Upgrade, Warn-Log)
+    - Tower-Agent: ELDER_BERRY_TOWER_BIND (Default 127.0.0.1), Warn-Log
+      bei LAN-Bind. Alte hardcoded 0.0.0.0 entfernt.
+  * tests/test_start_saleria.py: bestehender Test "assert 0.0.0.0 in source"
+    angepasst → "assert ELDER_BERRY_TOWER_BIND" + "127.0.0.1" in source
+- Neue Tests (tests/test_start_saleria_bind.py):
+  * TestSetupWizardBind: 4 Tests (Default loopback, bind forwarded, compat
+    mode in app.state, migration marker in app.state)
+  * TestCompatBanner: 2 Tests (Banner present/absent)
+  * TestMigrationMarker: 2 Tests (Marker written/not-written when path None)
+  * TestTowerAgentBind: 4 Tests (Env-Ref in source, Default loopback,
+    Setup-Bind-Ref, Setup-Bind-Default)
+- Regression: 233 passed + 1 skipped über alle relevanten Module
+  (1 pre-existing Failure: TestErrorAlerting im Batch mit test_start_saleria
+  wegen Root-Logger-Pollution – nicht Phase-57-verursacht, identisch mit
+  dem in 57.4 beschriebenen Problem)
+- Nächster Schritt: 57.3 Tower-Token + Host-Discovery
+
+## Abgeschlossen: Phase 57.3 – Tower-Token (ohne Host-Discovery) (2026-04-16)
+- Scope-Reduktion: Host-Discovery aus dem Konzept gestrichen. Begründung:
+  Bei SSH-Tunnel-Architektur ist der Tower-Host vom Server immer
+  127.0.0.1:12769 (Tunnel-Port). Eine automatische IP-Ermittlung auf dem
+  Tower-PC hätte keinen Nutzer-Mehrwert, weil der Server die IP nie
+  direkt nutzt. Das Konzept (3.3) wird mit einer Streichungs-Notiz versehen.
+- Code-Änderungen:
+  * tower/tower_server.py:
+    - TowerTokenMiddleware (BaseHTTPMiddleware): prüft X-Saleria-Tower-Token
+      Header auf allen Endpoints, constant-time mit secrets.compare_digest
+    - _load_tower_token(): Env ELDER_BERRY_TOWER_TOKEN → SecretStore
+      tower_auth_token → RuntimeError (fail-closed)
+    - Lifespan: Token beim Start laden, sys.exit(1) wenn fehlt
+    - app.add_middleware(TowerTokenMiddleware) nach App-Erzeugung
+  * src/elder_berry/core/tower_agent.py:
+    - Constructor: neuer tower_token-Parameter
+    - _auth_headers() → Dict mit X-Saleria-Tower-Token wenn Token gesetzt
+    - Alle 8 httpx.AsyncClient-Aufrufe: headers=self._auth_headers()
+  * scripts/start_saleria.py:
+    - Agent-Mode (run_agent): Token auto-generieren wenn nicht vorhanden
+      (token_hex(32)), in SecretStore speichern, einmalig loggen, in
+      os.environ setzen damit tower_server.py ihn findet
+    - Matrix-Mode (_init_tower_agent): Token aus Env/SecretStore lesen
+      und an TowerAgent durchreichen, Warnung wenn kein Token
+  * src/elder_berry/web/secrets_api.py: Neuer Registry-Eintrag
+    tower_auth_token (sensitive=True, risk_level=high, Kategorie
+    Infrastruktur)
+- Neue Tests (tests/test_tower_auth.py): 15 Tests
+  * TestTowerTokenMiddleware: rejects missing, rejects wrong, accepts
+    correct, 500 when unconfigured, constant-time compare
+  * TestLoadTowerToken: env priority, store fallback, raises when nothing,
+    env beats store
+  * TestTowerAgentAuth: headers present/absent, httpx uses headers
+  * TestAutoMigration: source analysis, registry entry present+sensitive
+- Regression: 264 passed, 1 skipped, 1 pre-existing Failure
+  (TestErrorAlerting Root-Logger-Pollution, nicht Phase-57-verursacht)
+
+## Abgeschlossen: Phase 57 – Security-Härtung (2026-04-16)
+- Alle 4 Sub-Phasen implementiert:
+  * 57.4: matrix_allowed_senders strikt fail-closed (Design-Umkehrung)
+  * 57.2: First-Run-Gate für /api/setup-Exemption
+  * 57.1: Loopback-Default + Grace-Period für Wizard + Tower
+  * 57.3: Tower-Token-Auth (X-Saleria-Tower-Token)
+- Scope-Änderungen gegenüber Konzept:
+  * 57.4 war als Audit geplant, wurde zur Design-Umkehrung erweitert
+    (Fall B gefunden, aber dokumentierte Design-Entscheidung)
+  * 57.3 Host-Discovery gestrichen (SSH-Tunnel macht es unnötig)
+- Gesamte neue Tests: 47 (12+8+12+15)
+- Neue Dateien: 5 (allowed_senders.py, test_allowed_senders_fail_closed.py,
+  test_start_saleria_bind.py, test_tower_auth.py, phase-57 Konzept)
+- Geänderte Dateien: 14
+- Branch: feature/phase-57-security-haertung

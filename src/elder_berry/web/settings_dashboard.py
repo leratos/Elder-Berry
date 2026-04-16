@@ -176,8 +176,15 @@ class SettingsDashboard:
                 settings_token_path = home / "settings_token"
             self._token_manager = SettingsTokenManager(settings_token_path)
             self._token_manager.load_or_create()
+            # Phase 57.2: SecretStore durchreichen, damit die Middleware
+            # den First-Run-Marker auswerten und die /api/setup-Exemption
+            # nach dem Setup-Abschluss aufheben kann. Ohne Store fällt
+            # die Middleware auf Phase-52.1a-Verhalten (permanente
+            # Exemption) zurück – relevant für Tests.
             self._app.add_middleware(
-                SettingsTokenMiddleware, token_manager=self._token_manager,
+                SettingsTokenMiddleware,
+                token_manager=self._token_manager,
+                secret_store=secret_store,
             )
 
         self._write_lock = asyncio.Lock()

@@ -27,17 +27,29 @@ class TowerAgent:
     Args:
         tower_host: Host:Port des Tower-FastAPI-Servers
             (z.B. "127.0.0.1:12769" via SSH-Tunnel).
+        tower_token: Phase 57.3 – Token für ``X-Saleria-Tower-Token``
+            Header. Ohne Token werden Requests mit 401 abgelehnt.
         heartbeat_timeout: Timeout für Heartbeat-Checks in Sekunden.
     """
+
+    HEADER_NAME = "X-Saleria-Tower-Token"
 
     def __init__(
         self,
         tower_host: str,
+        tower_token: str | None = None,
         heartbeat_timeout: float = 3.0,
     ) -> None:
         self._host = tower_host.rstrip("/")
+        self._tower_token = tower_token
         self._heartbeat_timeout = heartbeat_timeout
         self._online = False
+
+    def _auth_headers(self) -> dict[str, str]:
+        """Gibt den Auth-Header als Dict zurück (leer wenn kein Token)."""
+        if self._tower_token:
+            return {self.HEADER_NAME: self._tower_token}
+        return {}
 
     @property
     def is_online(self) -> bool:
@@ -58,7 +70,7 @@ class TowerAgent:
         try:
             timeout = httpx.Timeout(connect=self._heartbeat_timeout,
                                     read=self._heartbeat_timeout)
-            async with httpx.AsyncClient(timeout=timeout) as client:
+            async with httpx.AsyncClient(timeout=timeout, headers=self._auth_headers()) as client:
                 r = await client.get(f"http://{self._host}/status")
                 self._online = r.status_code == 200
         except Exception:
@@ -88,7 +100,7 @@ class TowerAgent:
             payload["emotion"] = emotion
 
         try:
-            async with httpx.AsyncClient(timeout=_DEFAULT_TIMEOUT) as client:
+            async with httpx.AsyncClient(timeout=_DEFAULT_TIMEOUT, headers=self._auth_headers()) as client:
                 r = await client.post(
                     f"http://{self._host}/tts", json=payload,
                 )
@@ -114,7 +126,7 @@ class TowerAgent:
             TowerAgentError: Bei Verbindungs- oder Verarbeitungsfehlern.
         """
         try:
-            async with httpx.AsyncClient(timeout=_DEFAULT_TIMEOUT) as client:
+            async with httpx.AsyncClient(timeout=_DEFAULT_TIMEOUT, headers=self._auth_headers()) as client:
                 files = {"file": ("audio.ogg", audio_bytes, "audio/ogg")}
                 r = await client.post(
                     f"http://{self._host}/stt", files=files,
@@ -141,7 +153,7 @@ class TowerAgent:
         """
         payload = {"action": action, "params": params or {}}
         try:
-            async with httpx.AsyncClient(timeout=_DEFAULT_TIMEOUT) as client:
+            async with httpx.AsyncClient(timeout=_DEFAULT_TIMEOUT, headers=self._auth_headers()) as client:
                 r = await client.post(
                     f"http://{self._host}/action", json=payload,
                 )
@@ -160,7 +172,7 @@ class TowerAgent:
             TowerAgentError: Bei Verbindungsfehlern.
         """
         try:
-            async with httpx.AsyncClient(timeout=_DEFAULT_TIMEOUT) as client:
+            async with httpx.AsyncClient(timeout=_DEFAULT_TIMEOUT, headers=self._auth_headers()) as client:
                 r = await client.get(f"http://{self._host}/monitors")
                 r.raise_for_status()
                 return r.json()
@@ -180,7 +192,7 @@ class TowerAgent:
             TowerAgentError: Bei Verbindungs- oder Validierungsfehlern.
         """
         try:
-            async with httpx.AsyncClient(timeout=_DEFAULT_TIMEOUT) as client:
+            async with httpx.AsyncClient(timeout=_DEFAULT_TIMEOUT, headers=self._auth_headers()) as client:
                 r = await client.post(
                     f"http://{self._host}/monitor", json={"index": index},
                 )
@@ -200,7 +212,7 @@ class TowerAgent:
         """
         try:
             timeout = httpx.Timeout(connect=5.0, read=120.0, write=10.0, pool=5.0)
-            async with httpx.AsyncClient(timeout=timeout) as client:
+            async with httpx.AsyncClient(timeout=timeout, headers=self._auth_headers()) as client:
                 r = await client.post(f"http://{self._host}/system/update")
                 r.raise_for_status()
                 return r.json()
@@ -217,7 +229,7 @@ class TowerAgent:
             TowerAgentError: Bei Verbindungs- oder Verarbeitungsfehlern.
         """
         try:
-            async with httpx.AsyncClient(timeout=_DEFAULT_TIMEOUT) as client:
+            async with httpx.AsyncClient(timeout=_DEFAULT_TIMEOUT, headers=self._auth_headers()) as client:
                 r = await client.get(f"http://{self._host}/screenshot")
                 r.raise_for_status()
                 return r.content
