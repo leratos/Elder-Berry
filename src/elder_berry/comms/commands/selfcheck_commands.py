@@ -51,7 +51,7 @@ _SERVICE_LABELS: dict[str, str] = {
     "gym_client": "Berry-Gym",
     "note_store": "Notizen-DB",
     "contact_store": "Kontakte-DB",
-    "todo_store": "Aufgaben-DB",
+    "task_client": "Aufgaben (Nextcloud Tasks)",
     "reminder_store": "Erinnerungen-DB",
     "tts": "Sprachausgabe (TTS)",
     "stt": "Spracherkennung (STT)",
@@ -431,7 +431,7 @@ class SelfcheckCommandHandler(CommandHandler):
             # Stores
             "note_store",
             "contact_store",
-            "todo_store",
+            "task_client",
             "reminder_store",
             # Fitness
             "gym_client",
@@ -445,6 +445,13 @@ class SelfcheckCommandHandler(CommandHandler):
             svc = self._services.get(key)
 
             if svc is None:
+                # Avatar ist auf dem Server oft nicht lokal verfügbar
+                # (kein pygame), läuft aber über den TowerAgent remote.
+                if key == "avatar":
+                    tower = self._services.get("tower_agent")
+                    if tower and getattr(tower, "is_online", False):
+                        checks.append(f"✅ {label}: via Tower")
+                        continue
                 checks.append(f"➖ {label}: nicht konfiguriert")
                 continue
 
