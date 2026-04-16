@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import logging
 import re
+from datetime import date, timedelta
 from typing import TYPE_CHECKING
 
 from elder_berry.comms.commands.base import CommandHandler, CommandResult
@@ -170,6 +171,7 @@ class TodoCommandHandler(CommandHandler):
             text=fields["text"],
             priority=fields.get("priority", "niedrig"),
             category=fields.get("category", ""),
+            due=fields.get("due"),
         )
         return CommandResult(command="todo_add", success=True,
                              text=f"✅ Aufgabe: {item.format_short()}")
@@ -281,6 +283,20 @@ class TodoCommandHandler(CommandHandler):
         if filter_text in ("aufräumen", "bereinigen", "cleanup"):
             return self._cmd_cleanup()
 
+        # Datums-Filter
+        if filter_text in ("heute", "today"):
+            return self._cmd_due_date(date.today(), "heute")
+        if filter_text in ("morgen", "tomorrow"):
+            return self._cmd_due_date(
+                date.today() + timedelta(days=1), "morgen",
+            )
+        if filter_text in ("überfällig", "overdue", "ueberfaellig"):
+            return self._cmd_overdue()
+        if filter_text in (
+            "woche", "diese woche", "this week",
+        ):
+            return self._cmd_due_week()
+
         # Prioritäts-Filter
         if filter_text in PRIORITIES:
             all_open = self._client.get_open()
@@ -298,6 +314,57 @@ class TodoCommandHandler(CommandHandler):
                                  text=f"📋 Keine Aufgaben für '{filter_text}'.")
         text = self._format_items(
             items, f"📋 {len(items)} Aufgaben ({filter_text}):",
+        )
+        return CommandResult(command="todo_filter", success=True, text=text)
+
+    def _cmd_due_date(
+        self, target: date, label: str,
+    ) -> CommandResult:
+        """Aufgaben mit Fälligkeit an einem bestimmten Datum."""
+        items = self._client.get_open_by_due(target)
+        if not items:
+            return CommandResult(
+                command="todo_filter", success=True,
+                text=f"📋 Keine Aufgaben fällig {label} "
+                     f"({target.strftime('%d.%m.')}).",
+            )
+        text = self._format_items(
+            items,
+            f"📋 {len(items)} Aufgaben fällig {label} "
+            f"({target.strftime('%d.%m.')}):",
+        )
+        return CommandResult(command="todo_filter", success=True, text=text)
+
+    def _cmd_overdue(self) -> CommandResult:
+        """Überfällige Aufgaben."""
+        items = self._client.get_overdue()
+        if not items:
+            return CommandResult(
+                command="todo_filter", success=True,
+                text="📋 Keine überfälligen Aufgaben. 👍",
+            )
+        text = self._format_items(
+            items, f"⚠ {len(items)} überfällige Aufgaben:",
+        )
+        return CommandResult(command="todo_filter", success=True, text=text)
+
+    def _cmd_due_week(self) -> CommandResult:
+        """Aufgaben fällig diese Woche (Mo–So)."""
+        today = date.today()
+        # Montag dieser Woche
+        monday = today - timedelta(days=today.weekday())
+        sunday = monday + timedelta(days=6)
+        items = self._client.get_open_by_due_range(monday, sunday)
+        if not items:
+            return CommandResult(
+                command="todo_filter", success=True,
+                text=f"📋 Keine Aufgaben fällig diese Woche "
+                     f"({monday.strftime('%d.%m.')}–{sunday.strftime('%d.%m.')}).",
+            )
+        text = self._format_items(
+            items,
+            f"📋 {len(items)} Aufgaben diese Woche "
+            f"({monday.strftime('%d.%m.')}–{sunday.strftime('%d.%m.')}):",
         )
         return CommandResult(command="todo_filter", success=True, text=text)
 
@@ -339,16 +406,84 @@ class TodoCommandHandler(CommandHandler):
     # ------------------------------------------------------------------
 
     @staticmethod
-    def _parse_todo_fields(raw: str) -> dict[str, str]:
-        """Parst komma-separierte Todo-Felder."""
+    def _parse_todo_fields(raw: str) -> dict:
+        """Parst komma-separierte Todo-Felder inkl. Fälligkeitsdatum.
+
+        Format: text[, priorität][, kategorie][, datum]
+        Datum: heute, morgen, übermorgen, Wochentag, DD.MM., DD.MM.YYYY
+        """
         parts = [p.strip() for p in raw.split(",") if p.strip()]
         if not parts:
             return {}
-        result = {"text": parts[0], "priority": "niedrig", "category": ""}
+        result: dict = {
+            "text": parts[0], "priority": "niedrig",
+            "category": "", "due": None,
+        }
         for part in parts[1:]:
             lower = part.lower()
             if lower in PRIORITIES:
                 result["priority"] = lower
-            elif not result["category"]:
+                continue
+            parsed_date = _parse_date_token(lower)
+            if parsed_date is not None:
+                result["due"] = parsed_date
+                continue
+            if not result["category"]:
                 result["category"] = part
         return result
+
+
+# ── Date-Parsing ─────────────────────────────────────────────────────
+
+_WEEKDAYS_DE = {
+    "montag": 0, "dienstag": 1, "mittwoch": 2, "donnerstag": 3,
+    "freitag": 4, "samstag": 5, "sonntag": 6,
+}
+
+_DATE_PATTERN = re.compile(
+    r"^(\d{1,2})\.(\d{1,2})\.(?:(\d{4}))?$",
+)
+
+
+def _parse_date_token(token: str) -> date | None:
+    """Parst ein einzelnes Datums-Token.
+
+    Unterstützt:
+    - heute, morgen, übermorgen
+    - Wochentage (nächster Montag, etc.)
+    - DD.MM. / DD.MM.YYYY
+    """
+    today = date.today()
+
+    if token in ("heute", "today"):
+        return today
+    if token in ("morgen", "tomorrow"):
+        return today + timedelta(days=1)
+    if token in ("übermorgen", "uebermorgen"):
+        return today + timedelta(days=2)
+
+    # Wochentag
+    if token in _WEEKDAYS_DE:
+        target_weekday = _WEEKDAYS_DE[token]
+        days_ahead = target_weekday - today.weekday()
+        if days_ahead <= 0:
+            days_ahead += 7
+        return today + timedelta(days=days_ahead)
+
+    # DD.MM. oder DD.MM.YYYY
+    match = _DATE_PATTERN.match(token)
+    if match:
+        day = int(match.group(1))
+        month = int(match.group(2))
+        year_str = match.group(3)
+        year = int(year_str) if year_str else today.year
+        try:
+            result = date(year, month, day)
+            # Wenn kein Jahr angegeben und Datum in Vergangenheit → nächstes Jahr
+            if not year_str and result < today:
+                result = date(year + 1, month, day)
+            return result
+        except ValueError:
+            return None
+
+    return None

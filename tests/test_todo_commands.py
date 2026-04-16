@@ -1,8 +1,8 @@
-"""Tests für TodoCommandHandler (Phase 56.2 – Nextcloud Tasks Backend)."""
+"""Tests für TodoCommandHandler (Phase 56.2/56.3 – Nextcloud Tasks Backend)."""
 from __future__ import annotations
 
-from datetime import date, datetime, timezone
-from unittest.mock import MagicMock
+from datetime import date, datetime, timedelta, timezone
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -10,6 +10,7 @@ from elder_berry.comms.commands.todo_commands import (
     TODO_ADD_PATTERN, TODO_COMPLETE_PATTERN, TODO_DELETE_PATTERN,
     TODO_FILTER_PATTERN, TODO_PRIORITY_PATTERN, TODO_REOPEN_PATTERN,
     TodoCommandHandler,
+    _parse_date_token,
 )
 from elder_berry.tools.caldav_tasks import TaskItem
 
@@ -190,6 +191,7 @@ class TestCmdTodoAdd:
         assert "Milch kaufen" in r.text
         client.add.assert_called_once_with(
             text="Milch kaufen", priority="niedrig", category="",
+            due=None,
         )
 
     def test_add_with_priority(
@@ -202,6 +204,7 @@ class TestCmdTodoAdd:
         assert r.success
         client.add.assert_called_once_with(
             text="Dachdecker", priority="hoch", category="Arbeit",
+            due=None,
         )
 
     def test_no_client(self) -> None:
@@ -400,3 +403,180 @@ class TestTodoKeywords:
     def test_descriptions(self, handler: TodoCommandHandler) -> None:
         desc = handler.command_descriptions
         assert len(desc) >= 4
+
+
+# ── Phase 56.3: Date-Parsing Tests ──────────────────────────────────
+
+class TestParseDateToken:
+    def test_heute(self) -> None:
+        assert _parse_date_token("heute") == date.today()
+
+    def test_today(self) -> None:
+        assert _parse_date_token("today") == date.today()
+
+    def test_morgen(self) -> None:
+        assert _parse_date_token("morgen") == date.today() + timedelta(days=1)
+
+    def test_tomorrow(self) -> None:
+        assert _parse_date_token("tomorrow") == date.today() + timedelta(days=1)
+
+    def test_uebermorgen(self) -> None:
+        assert _parse_date_token("übermorgen") == date.today() + timedelta(days=2)
+
+    def test_weekday_montag(self) -> None:
+        result = _parse_date_token("montag")
+        assert result.weekday() == 0  # Montag
+        assert result > date.today()  # in der Zukunft
+        assert result <= date.today() + timedelta(days=7)
+
+    def test_weekday_freitag(self) -> None:
+        result = _parse_date_token("freitag")
+        assert result.weekday() == 4
+
+    def test_date_dd_mm(self) -> None:
+        # Datum in der Zukunft
+        future = date.today() + timedelta(days=30)
+        token = f"{future.day}.{future.month:02d}."
+        result = _parse_date_token(token)
+        assert result.day == future.day
+        assert result.month == future.month
+
+    def test_date_dd_mm_yyyy(self) -> None:
+        result = _parse_date_token("15.05.2026")
+        assert result == date(2026, 5, 15)
+
+    def test_date_past_wraps_to_next_year(self) -> None:
+        # 01.01. ohne Jahr → wenn in Vergangenheit, nächstes Jahr
+        result = _parse_date_token("1.1.")
+        if date.today().month > 1 or (
+            date.today().month == 1 and date.today().day > 1
+        ):
+            assert result.year == date.today().year + 1
+        else:
+            assert result.year == date.today().year
+
+    def test_date_explicit_year_not_wrapped(self) -> None:
+        result = _parse_date_token("1.1.2025")
+        assert result == date(2025, 1, 1)  # bleibt in Vergangenheit
+
+    def test_invalid_date(self) -> None:
+        assert _parse_date_token("32.13.") is None
+
+    def test_unknown_token(self) -> None:
+        assert _parse_date_token("irgendwas") is None
+
+
+class TestParseTodoFieldsWithDate:
+    def test_text_with_due_morgen(self) -> None:
+        h = TodoCommandHandler()
+        r = h._parse_todo_fields("Arzt anrufen, morgen")
+        assert r["text"] == "Arzt anrufen"
+        assert r["due"] == date.today() + timedelta(days=1)
+
+    def test_text_with_priority_and_date(self) -> None:
+        h = TodoCommandHandler()
+        r = h._parse_todo_fields("Steuererklärung, hoch, 15.05.2026")
+        assert r["text"] == "Steuererklärung"
+        assert r["priority"] == "hoch"
+        assert r["due"] == date(2026, 5, 15)
+
+    def test_text_with_all_fields(self) -> None:
+        h = TodoCommandHandler()
+        r = h._parse_todo_fields("Meeting, hoch, Arbeit, morgen")
+        assert r["text"] == "Meeting"
+        assert r["priority"] == "hoch"
+        assert r["category"] == "Arbeit"
+        assert r["due"] == date.today() + timedelta(days=1)
+
+    def test_text_only_no_due(self) -> None:
+        h = TodoCommandHandler()
+        r = h._parse_todo_fields("Milch kaufen")
+        assert r["due"] is None
+
+
+class TestCmdAddWithDue:
+    def test_add_with_due(
+        self, handler: TodoCommandHandler, client: MagicMock,
+    ) -> None:
+        tomorrow = date.today() + timedelta(days=1)
+        client.add.return_value = _make_task(
+            text="Arzt", due=tomorrow,
+        )
+        r = handler.execute("todo_add", "todo: Arzt, morgen")
+        assert r.success
+        client.add.assert_called_once_with(
+            text="Arzt", priority="niedrig", category="",
+            due=tomorrow,
+        )
+
+
+class TestCmdFilterDueDate:
+    def test_filter_heute(
+        self, handler: TodoCommandHandler, client: MagicMock,
+    ) -> None:
+        client.get_open_by_due.return_value = [
+            _make_task(uid="h1", text="Heute fällig", due=date.today()),
+        ]
+        r = handler.execute("todo_filter", "todos heute")
+        assert r.success
+        assert "Heute fällig" in r.text
+        assert "fällig heute" in r.text
+        client.get_open_by_due.assert_called_once_with(date.today())
+
+    def test_filter_morgen(
+        self, handler: TodoCommandHandler, client: MagicMock,
+    ) -> None:
+        tomorrow = date.today() + timedelta(days=1)
+        client.get_open_by_due.return_value = [
+            _make_task(uid="m1", text="Morgen fällig", due=tomorrow),
+        ]
+        r = handler.execute("todo_filter", "todos morgen")
+        assert r.success
+        assert "Morgen fällig" in r.text
+        client.get_open_by_due.assert_called_once_with(tomorrow)
+
+    def test_filter_heute_empty(
+        self, handler: TodoCommandHandler, client: MagicMock,
+    ) -> None:
+        client.get_open_by_due.return_value = []
+        r = handler.execute("todo_filter", "todos heute")
+        assert r.success
+        assert "Keine Aufgaben fällig" in r.text
+
+    def test_filter_ueberfaellig(
+        self, handler: TodoCommandHandler, client: MagicMock,
+    ) -> None:
+        client.get_overdue.return_value = [
+            _make_task(uid="o1", text="Alt", due=date(2026, 1, 1)),
+        ]
+        r = handler.execute("todo_filter", "todos überfällig")
+        assert r.success
+        assert "überfällige" in r.text
+        assert "Alt" in r.text
+
+    def test_filter_ueberfaellig_empty(
+        self, handler: TodoCommandHandler, client: MagicMock,
+    ) -> None:
+        client.get_overdue.return_value = []
+        r = handler.execute("todo_filter", "todos überfällig")
+        assert r.success
+        assert "Keine überfälligen" in r.text
+
+    def test_filter_woche(
+        self, handler: TodoCommandHandler, client: MagicMock,
+    ) -> None:
+        client.get_open_by_due_range.return_value = [
+            _make_task(uid="w1", text="Diese Woche", due=date.today()),
+        ]
+        r = handler.execute("todo_filter", "todos woche")
+        assert r.success
+        assert "Diese Woche" in r.text
+        assert "diese Woche" in r.text
+
+    def test_filter_diese_woche(
+        self, handler: TodoCommandHandler, client: MagicMock,
+    ) -> None:
+        client.get_open_by_due_range.return_value = []
+        r = handler.execute("todo_filter", "todos diese woche")
+        assert r.success
+        assert "Keine Aufgaben fällig diese Woche" in r.text

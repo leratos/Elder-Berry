@@ -4708,3 +4708,32 @@ User: "Lies meine Mails und trag den Zahnarzttermin ein"
   * Alle Command-Tests umgestellt: erst auflisten, dann Index verwenden
   * 45 Tests, alle grün (vorher 32 Tests mit echtem SQLite-TodoStore)
 - Regression: 142 passed (caldav_tasks + todo_commands + caldav_calendar)
+
+## In Arbeit: Phase 56.3 – Due-Date-Support in Commands (2026-04-16)
+- nächster Schritt: todo_commands.py / _parse_todo_fields + _cmd_filter
+  erweitern um Datums-Parsing und Fälligkeits-Filter
+- Geänderte Datei: src/elder_berry/comms/commands/todo_commands.py
+  * Neue Funktion _parse_date_token(): parst Datums-Tokens
+    (heute/morgen/übermorgen, Wochentage, DD.MM./DD.MM.YYYY)
+  * _parse_todo_fields(): Return-Type dict[str, str] → dict (wegen date-Feld),
+    neues "due"-Feld, Date-Tokens werden automatisch erkannt
+  * _cmd_add(): reicht due an client.add() durch
+  * _cmd_filter(): neue Datums-Keywords:
+    - heute/today → get_open_by_due(date.today())
+    - morgen/tomorrow → get_open_by_due(date.today()+1)
+    - überfällig/overdue → get_overdue()
+    - woche/diese woche → get_open_by_due_range(Mo-So)
+  * Neue Methoden: _cmd_due_date(), _cmd_overdue(), _cmd_due_week()
+  * Wochentag-Mapping: montag-sonntag → nächster Wochentag
+  * DD.MM. ohne Jahr: wenn Vergangenheit → nächstes Jahr
+- Geänderte Test-Datei: tests/test_todo_commands.py
+  * TestParseDateToken: 13 Tests (heute/morgen/übermorgen, Wochentage,
+    DD.MM., DD.MM.YYYY, wrap-to-next-year, invalid, unknown)
+  * TestParseTodoFieldsWithDate: 4 Tests (morgen, prio+datum, alle Felder,
+    nur text)
+  * TestCmdAddWithDue: 1 Test
+  * TestCmdFilterDueDate: 7 Tests (heute, morgen, empty, überfällig,
+    überfällig-empty, woche, diese-woche)
+  * Bestehende add-Tests um due=None erweitert
+  * 70 Tests gesamt, alle grün (vorher 45)
+- Regression: 227 passed (caldav_tasks + todo_commands + pattern_stabilisierung)
