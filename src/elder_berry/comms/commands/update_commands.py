@@ -352,9 +352,13 @@ class UpdateCommandHandler(CommandHandler):
             )
         try:
             import httpx
+            headers = {}
+            if hasattr(self._tower, "_auth_headers"):
+                headers = self._tower._auth_headers()
             r = httpx.post(
                 f"http://{self._tower.host}/system/update",
                 timeout=120.0,
+                headers=headers,
             )
             r.raise_for_status()
             data = r.json()
