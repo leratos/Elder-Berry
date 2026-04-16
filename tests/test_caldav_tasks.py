@@ -94,7 +94,7 @@ def _client_with_task_list(mock_task_list=None):
     client = CalDAVTaskClient(secret_store=store)
     if mock_task_list is None:
         mock_task_list = MagicMock()
-    client._task_list = mock_task_list
+    client._task_lists = [mock_task_list]
     return client, mock_task_list
 
 
@@ -200,13 +200,13 @@ class TestCredentialsAndAvailability:
         store = _make_secret_store()
         client = CalDAVTaskClient(secret_store=store)
         assert client._store is store
-        assert client._task_list is None
+        assert client._task_lists is None
         assert client._client is None
 
     def test_is_available_success(self):
         store = _make_secret_store()
         client = CalDAVTaskClient(secret_store=store)
-        client._task_list = MagicMock()
+        client._task_lists = [MagicMock()]
         assert client.is_available() is True
 
     def test_is_available_no_credentials(self):
@@ -220,21 +220,21 @@ class TestCredentialsAndAvailability:
         client = CalDAVTaskClient(secret_store=store)
 
         with patch.object(
-            client, "_get_task_list", side_effect=ConnectionError("timeout"),
+            client, "_get_task_lists", side_effect=ConnectionError("timeout"),
         ):
             assert client.is_available() is False
 
     def test_lazy_init(self):
         store = _make_secret_store()
         client = CalDAVTaskClient(secret_store=store)
-        assert client._task_list is None
+        assert client._task_lists is None
         assert client._client is None
 
 
 # ── Task-Liste finden ────────────────────────────────────────────────
 
-class TestGetTaskList:
-    def test_finds_vtodo_collection_by_name(self):
+class TestGetTaskLists:
+    def test_finds_all_vtodo_collections(self):
         store = _make_secret_store()
         client = CalDAVTaskClient(secret_store=store)
 
@@ -246,37 +246,49 @@ class TestGetTaskList:
         mock_cal_tasks.name = "Aufgaben"
         mock_cal_tasks.get_supported_components.return_value = ["VTODO"]
 
+        mock_cal_haushalt = MagicMock()
+        mock_cal_haushalt.name = "Haushalt"
+        mock_cal_haushalt.get_supported_components.return_value = ["VTODO"]
+
         mock_principal = MagicMock()
-        mock_principal.calendars.return_value = [mock_cal_events, mock_cal_tasks]
+        mock_principal.calendars.return_value = [
+            mock_cal_events, mock_cal_tasks, mock_cal_haushalt,
+        ]
 
         mock_caldav = MagicMock()
         mock_caldav.DAVClient.return_value.principal.return_value = (
             mock_principal
         )
         with patch.dict(sys.modules, {"caldav": mock_caldav}):
-            result = client._get_task_list()
+            result = client._get_task_lists()
 
-        assert result is mock_cal_tasks
+        assert len(result) == 2
+        assert mock_cal_tasks in result
+        assert mock_cal_haushalt in result
+        assert mock_cal_events not in result
 
-    def test_fallback_to_first_vtodo_collection(self):
+    def test_default_prefers_aufgaben(self):
         store = _make_secret_store()
         client = CalDAVTaskClient(secret_store=store)
 
-        mock_cal = MagicMock()
-        mock_cal.name = "Meine Liste"
-        mock_cal.get_supported_components.return_value = ["VTODO"]
+        mock_haushalt = MagicMock()
+        mock_haushalt.name = "Haushalt"
 
-        mock_principal = MagicMock()
-        mock_principal.calendars.return_value = [mock_cal]
+        mock_aufgaben = MagicMock()
+        mock_aufgaben.name = "Aufgaben"
 
-        mock_caldav = MagicMock()
-        mock_caldav.DAVClient.return_value.principal.return_value = (
-            mock_principal
-        )
-        with patch.dict(sys.modules, {"caldav": mock_caldav}):
-            result = client._get_task_list()
+        client._task_lists = [mock_haushalt, mock_aufgaben]
+        assert client._get_default_task_list() is mock_aufgaben
 
-        assert result is mock_cal
+    def test_default_fallback_to_first(self):
+        store = _make_secret_store()
+        client = CalDAVTaskClient(secret_store=store)
+
+        mock_custom = MagicMock()
+        mock_custom.name = "Meine Liste"
+
+        client._task_lists = [mock_custom]
+        assert client._get_default_task_list() is mock_custom
 
     def test_no_vtodo_collection_raises(self):
         store = _make_secret_store()
@@ -295,7 +307,7 @@ class TestGetTaskList:
         )
         with patch.dict(sys.modules, {"caldav": mock_caldav}):
             with pytest.raises(RuntimeError, match="VTODO-Support"):
-                client._get_task_list()
+                client._get_task_lists()
 
     def test_no_collections_at_all_raises(self):
         store = _make_secret_store()
@@ -310,14 +322,14 @@ class TestGetTaskList:
         )
         with patch.dict(sys.modules, {"caldav": mock_caldav}):
             with pytest.raises(RuntimeError, match="Keine CalDAV-Collections"):
-                client._get_task_list()
+                client._get_task_lists()
 
-    def test_caches_task_list(self):
+    def test_caches_task_lists(self):
         store = _make_secret_store()
         client = CalDAVTaskClient(secret_store=store)
-        mock_tl = MagicMock()
-        client._task_list = mock_tl
-        assert client._get_task_list() is mock_tl
+        mock_lists = [MagicMock()]
+        client._task_lists = mock_lists
+        assert client._get_task_lists() is mock_lists
 
 
 # ── Parsing ──────────────────────────────────────────────────────────
@@ -775,12 +787,13 @@ class TestDelete:
         result = client.delete("gone")
         assert result is True
 
-    def test_delete_server_error_raises(self):
+    def test_delete_not_found_across_lists(self):
+        """delete() gibt True zurück wenn UID in keiner Liste gefunden."""
         client, tl = _client_with_task_list()
-        tl.todo_by_uid.side_effect = Exception("500 Internal Server Error")
+        tl.todo_by_uid.side_effect = Exception("404 Not Found")
 
-        with pytest.raises(RuntimeError, match="löschen fehlgeschlagen"):
-            client.delete("err")
+        result = client.delete("nowhere")
+        assert result is True
 
 
 @needs_icalendar
@@ -824,7 +837,7 @@ class TestConnectionRecovery:
 
         mock_tl.todos.side_effect = todos_with_fail
 
-        with patch.object(client, "_get_task_list", return_value=mock_tl):
+        with patch.object(client, "_get_task_lists", return_value=[mock_tl]):
             items = client.get_open()
 
         assert items == []
@@ -833,7 +846,7 @@ class TestConnectionRecovery:
     def test_retry_resets_cached_state(self):
         store = _make_secret_store()
         client = CalDAVTaskClient(secret_store=store)
-        client._task_list = MagicMock(name="old_task_list")
+        client._task_lists = [MagicMock(name="old_task_list")]
         client._client = MagicMock(name="old_client")
 
         def failing_op():
@@ -843,7 +856,7 @@ class TestConnectionRecovery:
             client._call_with_retry(failing_op)
 
         # Nach dem Fehler sollten die gecachten Objekte resettet sein
-        assert client._task_list is None
+        assert client._task_lists is None
         assert client._client is None
 
     def test_timeout_error_triggers_retry(self):
@@ -861,7 +874,7 @@ class TestConnectionRecovery:
 
         mock_tl.todos.side_effect = todos_timeout
 
-        with patch.object(client, "_get_task_list", return_value=mock_tl):
+        with patch.object(client, "_get_task_lists", return_value=[mock_tl]):
             result = client.get_open()
 
         assert result == []

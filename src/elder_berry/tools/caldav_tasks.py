@@ -88,20 +88,19 @@ class CalDAVTaskClient:
     def __init__(self, secret_store: SecretStore) -> None:
         self._store = secret_store
         self._client = None
-        self._task_list = None
+        self._task_lists: list | None = None
 
     # ------------------------------------------------------------------
     # Verbindung
     # ------------------------------------------------------------------
 
-    def _get_task_list(self):
-        """Lazy-Init: Verbindet mit Nextcloud CalDAV, findet die Task-Liste.
+    def _get_task_lists(self) -> list:
+        """Lazy-Init: Verbindet mit Nextcloud CalDAV, findet alle Task-Listen.
 
-        Sucht eine CalDAV-Collection mit VTODO-Support. Bevorzugt
-        "Aufgaben"/"Tasks"/"Todos", sonst die erste mit VTODO-Support.
+        Gibt alle CalDAV-Collections mit VTODO-Support zurück.
         """
-        if self._task_list is not None:
-            return self._task_list
+        if self._task_lists is not None:
+            return self._task_lists
 
         import caldav
 
@@ -120,7 +119,7 @@ class CalDAVTaskClient:
         if not calendars:
             raise RuntimeError("Keine CalDAV-Collections in Nextcloud gefunden")
 
-        # Finde Collection mit VTODO-Support
+        # Finde alle Collections mit VTODO-Support
         vtodo_collections = []
         for cal in calendars:
             try:
@@ -140,20 +139,60 @@ class CalDAVTaskClient:
                 "Keine Task-Liste mit VTODO-Support in Nextcloud gefunden"
             )
 
-        # Bevorzuge bekannte Namen
-        for cal in vtodo_collections:
+        self._task_lists = vtodo_collections
+        names = [getattr(c, "name", "?") for c in vtodo_collections]
+        logger.info(
+            "Nextcloud Task-Listen gefunden (%d): %s",
+            len(vtodo_collections), ", ".join(names),
+        )
+        return self._task_lists
+
+    def _get_default_task_list(self):
+        """Gibt die bevorzugte Task-Liste für neue Aufgaben zurück.
+
+        Bevorzugt "Aufgaben"/"Tasks"/"Todos", sonst die erste Liste.
+        """
+        lists = self._get_task_lists()
+        for cal in lists:
             name = (getattr(cal, "name", "") or "").lower()
             if name in _TASK_LIST_NAMES:
-                self._task_list = cal
-                logger.info("Nextcloud Task-Liste gefunden: %s", cal.name)
-                return self._task_list
+                return cal
+        return lists[0]
 
-        self._task_list = vtodo_collections[0]
-        logger.info(
-            "Nextcloud Task-Liste (Fallback): %s",
-            getattr(self._task_list, "name", "unbekannt"),
-        )
-        return self._task_list
+    def _collect_todos(self, include_completed: bool = False) -> list:
+        """Sammelt alle Todos aus allen Task-Listen.
+
+        Retriable Errors (Connection, Timeout) werden nicht gefangen,
+        damit _call_with_retry sie behandeln kann.
+        """
+        all_todos = []
+        for task_list in self._get_task_lists():
+            try:
+                if include_completed:
+                    try:
+                        todos = task_list.todos(include_completed=True)
+                    except TypeError:
+                        todos = task_list.todos()
+                else:
+                    todos = task_list.todos()
+                all_todos.extend(todos)
+            except self._RETRIABLE_ERRORS:
+                raise  # Retry-fähig → nach oben propagieren
+            except Exception as e:
+                logger.debug(
+                    "Task-Liste '%s' übersprungen: %s",
+                    getattr(task_list, "name", "?"), e,
+                )
+        return all_todos
+
+    def _find_todo_by_uid(self, uid: str):
+        """Sucht ein Todo per UID über alle Task-Listen."""
+        for task_list in self._get_task_lists():
+            try:
+                return task_list.todo_by_uid(uid)
+            except Exception:
+                continue
+        return None
 
     def _call_with_retry(self, operation):
         """Führt operation() aus, mit 1x Retry bei stale Connection."""
@@ -164,7 +203,7 @@ class CalDAVTaskClient:
                 "CalDAV Tasks Connection-Fehler, retry mit neuer Verbindung: %s",
                 e,
             )
-            self._task_list = None
+            self._task_lists = None
             self._client = None
             return operation()
 
@@ -176,10 +215,10 @@ class CalDAVTaskClient:
             pw = self._store.get_or_none("nextcloud_app_password")
             if not all([url, user, pw]):
                 return False
-            self._get_task_list()
+            self._get_task_lists()
             return True
         except Exception:
-            self._task_list = None
+            self._task_lists = None
             self._client = None
             return False
 
@@ -267,10 +306,9 @@ class CalDAVTaskClient:
     # ------------------------------------------------------------------
 
     def get_open(self, limit: int = 50) -> list[TaskItem]:
-        """Offene Aufgaben, sortiert: hoch → mittel → niedrig."""
+        """Offene Aufgaben aus allen Listen, sortiert: hoch → mittel → niedrig."""
         def _op():
-            task_list = self._get_task_list()
-            todos = task_list.todos()
+            todos = self._collect_todos()
 
             items = []
             for todo in todos:
@@ -290,8 +328,7 @@ class CalDAVTaskClient:
     def get_open_by_due(self, target: date) -> list[TaskItem]:
         """Offene Aufgaben mit Fälligkeit an einem bestimmten Datum."""
         def _op():
-            task_list = self._get_task_list()
-            todos = task_list.todos()
+            todos = self._collect_todos()
 
             items = []
             for todo in todos:
@@ -313,8 +350,7 @@ class CalDAVTaskClient:
     ) -> list[TaskItem]:
         """Offene Aufgaben mit Fälligkeit in einem Zeitraum (inklusiv)."""
         def _op():
-            task_list = self._get_task_list()
-            todos = task_list.todos()
+            todos = self._collect_todos()
 
             items = []
             for todo in todos:
@@ -335,8 +371,7 @@ class CalDAVTaskClient:
         today = date.today()
 
         def _op():
-            task_list = self._get_task_list()
-            todos = task_list.todos()
+            todos = self._collect_todos()
 
             items = []
             for todo in todos:
@@ -355,14 +390,7 @@ class CalDAVTaskClient:
     def get_done(self, limit: int = 20) -> list[TaskItem]:
         """Erledigte Aufgaben (neueste zuerst)."""
         def _op():
-            task_list = self._get_task_list()
-            # caldav todos() holt standardmäßig nur offene;
-            # für erledigte brauchen wir include_completed
-            try:
-                todos = task_list.todos(include_completed=True)
-            except TypeError:
-                # Fallback: manche caldav-Versionen kennen den Parameter nicht
-                todos = task_list.todos()
+            todos = self._collect_todos(include_completed=True)
 
             items = []
             for todo in todos:
@@ -438,7 +466,7 @@ class CalDAVTaskClient:
             )
 
         def _op():
-            task_list = self._get_task_list()
+            task_list = self._get_default_task_list()
             uid = str(uuid.uuid4())
             now = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
 
@@ -488,35 +516,25 @@ class CalDAVTaskClient:
         return self._call_with_retry(_op)
 
     def complete(self, uid: str) -> TaskItem | None:
-        """Aufgabe als erledigt markieren."""
+        """Aufgabe als erledigt markieren (sucht über alle Listen)."""
         def _op():
-            task_list = self._get_task_list()
-            try:
-                todo = task_list.todo_by_uid(uid)
-                todo.complete()
-                logger.info("Aufgabe erledigt: %s", uid)
-                return self._parse_todo(todo)
-            except Exception as e:
-                error_str = str(e).lower()
-                if "404" in error_str or "not found" in error_str:
-                    logger.warning("Aufgabe nicht gefunden: %s", uid)
-                    return None
-                raise
+            todo = self._find_todo_by_uid(uid)
+            if not todo:
+                logger.warning("Aufgabe nicht gefunden: %s", uid)
+                return None
+            todo.complete()
+            logger.info("Aufgabe erledigt: %s", uid)
+            return self._parse_todo(todo)
 
         return self._call_with_retry(_op)
 
     def reopen(self, uid: str) -> TaskItem | None:
-        """Erledigte Aufgabe wieder öffnen."""
+        """Erledigte Aufgabe wieder öffnen (sucht über alle Listen)."""
         def _op():
-            task_list = self._get_task_list()
-            try:
-                todo = task_list.todo_by_uid(uid)
-            except Exception as e:
-                error_str = str(e).lower()
-                if "404" in error_str or "not found" in error_str:
-                    logger.warning("Aufgabe nicht gefunden: %s", uid)
-                    return None
-                raise
+            todo = self._find_todo_by_uid(uid)
+            if not todo:
+                logger.warning("Aufgabe nicht gefunden: %s", uid)
+                return None
 
             import icalendar
 
@@ -538,20 +556,15 @@ class CalDAVTaskClient:
         return self._call_with_retry(_op)
 
     def update_priority(self, uid: str, priority: str) -> TaskItem | None:
-        """Priorität einer Aufgabe ändern."""
+        """Priorität einer Aufgabe ändern (sucht über alle Listen)."""
         if priority not in PRIORITIES:
             raise ValueError("Ungültige Priorität: %s" % priority)
 
         def _op():
-            task_list = self._get_task_list()
-            try:
-                todo = task_list.todo_by_uid(uid)
-            except Exception as e:
-                error_str = str(e).lower()
-                if "404" in error_str or "not found" in error_str:
-                    logger.warning("Aufgabe nicht gefunden: %s", uid)
-                    return None
-                raise
+            todo = self._find_todo_by_uid(uid)
+            if not todo:
+                logger.warning("Aufgabe nicht gefunden: %s", uid)
+                return None
 
             import icalendar
 
@@ -570,27 +583,17 @@ class CalDAVTaskClient:
         return self._call_with_retry(_op)
 
     def delete(self, uid: str) -> bool:
-        """Aufgabe löschen."""
+        """Aufgabe löschen (sucht über alle Listen)."""
         def _op():
-            task_list = self._get_task_list()
-            try:
-                todo = task_list.todo_by_uid(uid)
-                todo.delete()
-                logger.info("Aufgabe gelöscht: %s", uid)
-                return True
-            except Exception as e:
-                error_str = str(e).lower()
-                if "404" in error_str or "not found" in error_str:
-                    logger.info(
-                        "Aufgabe bereits gelöscht/nicht gefunden: %s", uid,
-                    )
-                    return True
-                logger.error(
-                    "Aufgabe löschen fehlgeschlagen (%s): %s", uid, e,
+            todo = self._find_todo_by_uid(uid)
+            if not todo:
+                logger.info(
+                    "Aufgabe bereits gelöscht/nicht gefunden: %s", uid,
                 )
-                raise RuntimeError(
-                    "Aufgabe löschen fehlgeschlagen: %s" % e,
-                ) from e
+                return True
+            todo.delete()
+            logger.info("Aufgabe gelöscht: %s", uid)
+            return True
 
         return self._call_with_retry(_op)
 
