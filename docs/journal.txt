@@ -4737,3 +4737,35 @@ User: "Lies meine Mails und trag den Zahnarzttermin ein"
   * Bestehende add-Tests um due=None erweitert
   * 70 Tests gesamt, alle grün (vorher 45)
 - Regression: 227 passed (caldav_tasks + todo_commands + pattern_stabilisierung)
+
+## In Arbeit: Phase 56.4 – SmartContext + BriefingScheduler umstellen (2026-04-16)
+- nächster Schritt: smart_context.py, briefing_scheduler.py, remote_commands.py,
+  start_saleria.py / todo_store → task_client
+- Geänderte Datei: src/elder_berry/core/smart_context.py
+  * Constructor: todo_store: TodoStore → task_client: CalDAVTaskClient
+  * _query_todos(): braucht keinen default_user_id mehr, ruft
+    task_client.format_for_briefing() direkt auf
+  * _filter_available(): TODOS mappt auf _task_client statt _todo_store
+  * TYPE_CHECKING Import: TodoStore → CalDAVTaskClient
+- Geänderte Datei: src/elder_berry/comms/briefing_scheduler.py
+  * Constructor: todo_store: TodoStore → task_client: CalDAVTaskClient
+  * _build_todo_section(): task_client.format_for_briefing() ohne user_id,
+    Prüfung nur noch auf task_client (kein default_user_id nötig)
+  * TYPE_CHECKING Import: TodoStore → CalDAVTaskClient
+- Geänderte Datei: src/elder_berry/comms/remote_commands.py
+  * Constructor: todo_store: TodoStore → task_client: CalDAVTaskClient
+  * TodoCommandHandler-Instanziierung: task_client=task_client (ohne
+    default_user_id)
+  * Selfcheck-Services: todo_store → task_client
+  * TYPE_CHECKING Import: TodoStore → CalDAVTaskClient
+- Geänderte Datei: scripts/start_saleria.py
+  * TodoStore-Instanziierung → CalDAVTaskClient(secret_store=secrets)
+  * svc["todo_store"] → svc["task_client"] an allen 5 Stellen
+  * Service-Summary: "Todos" → "Aufgaben"
+- Geänderte Test-Dateien:
+  * tests/test_smart_context.py: mock_todo_store → mock_task_client,
+    todo_store= → task_client=, test_no_user_id_returns_empty →
+    test_no_task_client_not_available
+  * tests/test_briefing_scheduler.py: todo_store/TodoStore →
+    task_client, default_user_id entfernt, "Todos" → "Aufgaben" in Assertions
+- Regression: 217 passed (smart_context + briefing + caldav_tasks + todo_commands)

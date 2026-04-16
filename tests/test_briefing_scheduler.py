@@ -471,20 +471,19 @@ class TestWeekendVariant:
         assert "Schönen Tag" in text
 
     def test_weekend_no_todos(self):
-        """Wochenende → Todos werden übersprungen."""
-        todo_store = MagicMock()
-        todo_store.format_for_briefing.return_value = "📋 Offene Todos: Einkaufen"
+        """Wochenende → Aufgaben werden übersprungen."""
+        task_client = MagicMock()
+        task_client.format_for_briefing.return_value = "📋 Offene Aufgaben: Einkaufen"
         scheduler = BriefingScheduler(
             send_briefing=MagicMock(),
             weather=_make_weather_mock(),
-            todo_store=todo_store,
-            default_user_id="@test:matrix.org",
+            task_client=task_client,
         )
         saturday = datetime(2026, 3, 28, 7, 30)
         text = scheduler.build_briefing(now=saturday)
 
-        assert "Todos" not in text
-        todo_store.format_for_briefing.assert_not_called()
+        assert "Aufgaben" not in text
+        task_client.format_for_briefing.assert_not_called()
 
     def test_weekend_no_reminders(self):
         """Wochenende → Erinnerungen werden übersprungen."""
@@ -500,19 +499,18 @@ class TestWeekendVariant:
         assert "Paket abholen" not in text
 
     def test_weekday_has_todos(self):
-        """Wochentag → Todos werden angezeigt."""
-        todo_store = MagicMock()
-        todo_store.format_for_briefing.return_value = "📋 Offene Todos: Einkaufen"
+        """Wochentag → Aufgaben werden angezeigt."""
+        task_client = MagicMock()
+        task_client.format_for_briefing.return_value = "📋 Offene Aufgaben: Einkaufen"
         scheduler = BriefingScheduler(
             send_briefing=MagicMock(),
             weather=_make_weather_mock(),
-            todo_store=todo_store,
-            default_user_id="@test:matrix.org",
+            task_client=task_client,
         )
         monday = datetime(2026, 3, 23, 7, 30)
         text = scheduler.build_briefing(now=monday)
 
-        assert "Todos" in text
+        assert "Aufgaben" in text
         assert "Einkaufen" in text
 
     def test_weekend_monday_preview(self):
