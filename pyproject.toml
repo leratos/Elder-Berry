@@ -16,6 +16,7 @@ dependencies = [
     "tzdata>=2024.1",
     "fastapi>=0.115",
     "uvicorn[standard]>=0.32",
+    "bcrypt>=4.0",  # Phase 58: Dashboard-Login (PW-Hash, Tower + CI)
 ]
 
 [project.optional-dependencies]
@@ -25,7 +26,6 @@ windows = [
     "pycaw>=20230407",
     "comtypes>=1.2",
     "pyttsx3>=2.90",
-    "bcrypt>=4.0",  # Phase 58: Dashboard-Login (PW-Hash)
 ]
 tts-neural = [
     "coqui-tts>=0.27",
