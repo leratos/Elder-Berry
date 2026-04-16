@@ -59,6 +59,7 @@ def handler_with_tower(tmp_path, monkeypatch):
     )
     tower = MagicMock()
     tower.host = "127.0.0.1:12769"
+    tower._auth_headers.return_value = {"X-Saleria-Tower-Token": "test-tok"}
     return UpdateCommandHandler(project_root=tmp_path, tower_agent=tower)
 
 
@@ -265,6 +266,7 @@ class TestUpdateTower:
         mock_post.assert_called_once_with(
             "http://127.0.0.1:12769/system/update",
             timeout=120.0,
+            headers={"X-Saleria-Tower-Token": "test-tok"},
         )
 
     @patch("httpx.post")
