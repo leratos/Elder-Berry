@@ -3,12 +3,20 @@
  *
  * Views werden per Tab umgeschaltet. Nur die Module der aktiven View
  * sind sichtbar, die anderen werden ausgeblendet (nicht entladen).
+ *
+ * Phase 58: Login-Gating für die Views "settings" und "avatar".
+ * Vor dem Wechsel auf eine geschützte View wird der Login-Status
+ * geprüft. Ist der Nutzer nicht eingeloggt, wird das Login-Modal
+ * gezeigt – nach erfolgreichem Login wechselt die View.
  */
+
+import authInstance from "./auth.js";
 
 const moduleMap = {
     harmony:  () => import("./harmony.js"),
     system:   () => import("./system.js"),
     settings: () => import("./settings.js"),
+    avatar:   () => import("./avatar.js"),
 };
 
 const loadedModules = {};   // name → { mod, section }
@@ -22,6 +30,9 @@ async function loadModules() {
         console.error("DASHBOARD_CONFIG fehlt oder hat keine views");
         return;
     }
+
+    // Auth-Helper initialisieren BEVOR Module geladen werden
+    await authInstance.init();
 
     // Alle Module aus allen Views laden (einmalig)
     const allModules = [...new Set(Object.values(config.views).flat())];
@@ -55,12 +66,22 @@ async function loadModules() {
         }
     }
 
-    // Default-View aktivieren
+    // Default-View aktivieren (Fernbedienung – kein Login nötig)
     switchView(config.defaultView || Object.keys(config.views)[0]);
     initNav();
 }
 
-function switchView(viewName) {
+async function switchView(viewName) {
+    // Phase 58: Login-Gate
+    const ok = await authInstance.ensureAuthForView(viewName);
+    if (!ok) {
+        // Nutzer hat Login abgebrochen → bleibe auf der Default-View
+        const def = window.DASHBOARD_CONFIG.defaultView || "remote";
+        if (viewName !== def) {
+            return switchView(def);
+        }
+    }
+
     const config = window.DASHBOARD_CONFIG;
     const viewModules = config.views[viewName] || [];
 
@@ -83,5 +104,8 @@ function initNav() {
         tab.addEventListener("click", () => switchView(tab.dataset.view));
     });
 }
+
+// Globale Hook für auth.js (z.B. beim Logout zur Default-View springen)
+window.__dashboardSwitchView = switchView;
 
 loadModules();

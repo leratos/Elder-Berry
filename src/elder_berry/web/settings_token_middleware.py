@@ -1,4 +1,4 @@
-"""Settings-Token-Middleware (Phase 52.1a + Phase 57.2 First-Run-Gate).
+"""Settings-Token-Middleware (Phase 52.1a + 57.2 + Phase 58 Cookie-OR-Token).
 
 Schützt schreibende Endpoints des Settings-Dashboards mit einem statischen
 Token im Header ``X-Saleria-Settings-Token``. Lesende Endpoints (GET)
@@ -7,6 +7,12 @@ der Wizard noch nicht abgeschlossen ist** ebenfalls offen – nach dem
 First-Run (Marker ``setup_wizard_completed`` im SecretStore) entfällt
 die Exemption und ``/api/setup/*`` verlangt den Token genauso wie jeder
 andere schreibende Endpoint (Phase 57.2).
+
+Phase 58: Wenn ein ``DashboardAuthManager`` injiziert wird, akzeptiert
+die Middleware **entweder** einen gültigen Token-Header **oder** ein
+gültiges Session-Cookie (``eb_dashboard_session``). Eingeloggte Browser-
+Sessions können damit schreibende Operationen ausführen, ohne dass das
+JS einen Token kennen muss; CLI-Skripte nutzen weiter den Token.
 """
 
 from __future__ import annotations
@@ -18,10 +24,16 @@ from typing import TYPE_CHECKING
 from fastapi.responses import JSONResponse
 from starlette.middleware.base import BaseHTTPMiddleware
 
+from elder_berry.web.dashboard_auth import (
+    COOKIE_NAME as DASHBOARD_COOKIE_NAME,
+    InvalidSessionError,
+)
+
 if TYPE_CHECKING:
     from starlette.requests import Request
 
     from elder_berry.core.secret_store import SecretStore
+    from elder_berry.web.dashboard_auth import DashboardAuthManager
     from elder_berry.web.settings_token import SettingsTokenManager
 
 logger = logging.getLogger(__name__)
@@ -96,10 +108,14 @@ class SettingsTokenMiddleware(BaseHTTPMiddleware):
         app,
         token_manager: SettingsTokenManager,
         secret_store: "SecretStore | None" = None,
+        auth_manager: "DashboardAuthManager | None" = None,
     ) -> None:
         super().__init__(app)
         self._token_manager = token_manager
         self._secret_store = secret_store
+        # Phase 58: Optional. Wenn gesetzt, akzeptiert die Middleware
+        # zusätzlich ein gültiges Session-Cookie als Auth-Nachweis.
+        self._auth_manager = auth_manager
         # Phase 57.2: Lazy-Load-Cache. None = noch nicht geladen,
         # True/False = aus SecretStore gelesen.
         self._setup_done: bool | None = None
@@ -138,6 +154,17 @@ class SettingsTokenMiddleware(BaseHTTPMiddleware):
 
         if not is_exempt_path and not is_protected_path:
             return await call_next(request)
+
+        # Phase 58: Cookie-OR-Token. Browser-Sessions kommen mit
+        # gültigem Session-Cookie durch, CLI-Skripte mit Token-Header.
+        if self._auth_manager is not None:
+            cookie = request.cookies.get(DASHBOARD_COOKIE_NAME)
+            if cookie:
+                try:
+                    self._auth_manager.verify_session(cookie)
+                    return await call_next(request)
+                except InvalidSessionError:
+                    pass  # Fallback auf Token-Header
 
         token = request.headers.get(self.HEADER_NAME)
         if not self._token_manager.validate(token):

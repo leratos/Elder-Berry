@@ -251,12 +251,52 @@ class TestServiceTest:
 
 class TestSetupComplete:
     def test_marks_done(self, fresh_store):
+        # Phase 58: PW muss vorher gesetzt sein
         client = _make_client(fresh_store)
+        r0 = client.post(
+            "/api/setup/dashboard-password",
+            json={"password": "supersecret123"},
+        )
+        assert r0.status_code == 200
         r = client.post("/api/setup/complete")
         data = r.json()
         assert data["success"] is True
         assert data["redirect"] == "/"
         assert fresh_store.get(SETUP_COMPLETE_KEY) == "true"
+
+    def test_complete_requires_dashboard_password(self, fresh_store):
+        """Phase 58: Ohne Dashboard-Passwort schlägt complete fehl."""
+        client = _make_client(fresh_store)
+        r = client.post("/api/setup/complete")
+        assert r.status_code == 409
+        assert r.json()["code"] == "dashboard_password_required"
+        assert fresh_store.get_or_none(SETUP_COMPLETE_KEY) is None
+
+    def test_dashboard_password_endpoint_validates(self, fresh_store):
+        """Phase 58: Endpoint prüft Mindestlänge."""
+        client = _make_client(fresh_store)
+        r1 = client.post(
+            "/api/setup/dashboard-password", json={"password": "short"},
+        )
+        assert r1.status_code == 400
+        assert r1.json()["code"] == "weak_password"
+
+        r2 = client.post("/api/setup/dashboard-password", json={})
+        assert r2.status_code == 400
+        assert r2.json()["code"] == "missing_password"
+
+    def test_dashboard_password_endpoint_stores_hash(self, fresh_store):
+        """Phase 58: Hash wird im SecretStore unter dem richtigen Key abgelegt."""
+        from elder_berry.web.dashboard_auth import PASSWORD_HASH_KEY
+        client = _make_client(fresh_store)
+        r = client.post(
+            "/api/setup/dashboard-password",
+            json={"password": "supersecret123"},
+        )
+        assert r.status_code == 200
+        stored = fresh_store.get_or_none(PASSWORD_HASH_KEY)
+        assert stored is not None
+        assert stored.startswith("$2b$")
 
     def test_re_setup_redirects_to_settings(self, complete_store):
         """Phase 52.3: Nach Abschluss redirected /setup → /settings."""

@@ -389,3 +389,90 @@ class TestFirstRunGate:
         invalidate_for_next()
         r = client.post("/api/secrets/set", json={})
         assert r.status_code == 401
+
+
+# ---------------------------------------------------------------------------
+# Phase 58: Cookie-OR-Token (DashboardAuthManager-Integration)
+# ---------------------------------------------------------------------------
+
+
+class _AuthFakeStore:
+    def __init__(self) -> None:
+        self._data: dict[str, str] = {}
+
+    def get_or_none(self, key):
+        return self._data.get(key)
+
+    def set(self, key, value):
+        self._data[key] = value
+
+    def has(self, key):
+        return key in self._data
+
+
+def _make_app_with_auth(token_manager, auth_manager) -> FastAPI:
+    app = FastAPI()
+    app.add_middleware(
+        SettingsTokenMiddleware,
+        token_manager=token_manager,
+        auth_manager=auth_manager,
+    )
+
+    @app.post("/api/secrets/set")
+    async def post_set():
+        return {"ok": True}
+
+    return app
+
+
+class TestCookieOrToken:
+    """Phase 58: gültiges Session-Cookie ersetzt den Token-Header."""
+
+    @pytest.fixture
+    def manager(self, tmp_path):
+        m = SettingsTokenManager(tmp_path / "settings_token")
+        m.load_or_create()
+        return m
+
+    @pytest.fixture
+    def auth(self):
+        from elder_berry.web.dashboard_auth import DashboardAuthManager
+        return DashboardAuthManager(_AuthFakeStore())
+
+    def test_cookie_alone_is_sufficient(self, manager, auth):
+        from elder_berry.web.dashboard_auth import COOKIE_NAME
+        cookie, _ = auth.issue_session()
+        client = TestClient(
+            _make_app_with_auth(manager, auth),
+            cookies={COOKIE_NAME: cookie},
+        )
+        r = client.post("/api/secrets/set", json={})
+        assert r.status_code == 200
+
+    def test_token_alone_still_works(self, manager, auth):
+        client = TestClient(_make_app_with_auth(manager, auth))
+        r = client.post(
+            "/api/secrets/set",
+            json={},
+            headers={"X-Saleria-Settings-Token": manager.get()},
+        )
+        assert r.status_code == 200
+
+    def test_invalid_cookie_falls_back_to_token(self, manager, auth):
+        from elder_berry.web.dashboard_auth import COOKIE_NAME
+        client = TestClient(
+            _make_app_with_auth(manager, auth),
+            cookies={COOKIE_NAME: "garbage"},
+        )
+        # Mit gültigem Token-Header geht's trotzdem durch
+        r = client.post(
+            "/api/secrets/set",
+            json={},
+            headers={"X-Saleria-Settings-Token": manager.get()},
+        )
+        assert r.status_code == 200
+
+    def test_no_cookie_no_token_blocked(self, manager, auth):
+        client = TestClient(_make_app_with_auth(manager, auth))
+        r = client.post("/api/secrets/set", json={})
+        assert r.status_code == 401

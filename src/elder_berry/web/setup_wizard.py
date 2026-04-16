@@ -316,9 +316,48 @@ def register_setup_wizard_routes(
                 {"error": str(e)}, status_code=400
             )
 
+    @app.post("/api/setup/dashboard-password")
+    async def setup_dashboard_password(body: dict = Body(...)):
+        """Setzt das Dashboard-Passwort während des Setup-Wizards (Phase 58).
+
+        Pflicht-Schritt: Ohne gesetztes Passwort verweigert
+        ``/api/setup/complete`` den Abschluss.
+        """
+        from elder_berry.web.dashboard_auth import DashboardAuthManager
+        password = body.get("password", "")
+        if not isinstance(password, str) or not password:
+            return JSONResponse(
+                {"error": "Passwort fehlt", "code": "missing_password"},
+                status_code=400,
+            )
+        auth = DashboardAuthManager(secret_store)
+        try:
+            auth.set_password(password)
+        except ValueError as exc:
+            return JSONResponse(
+                {"error": str(exc), "code": "weak_password"},
+                status_code=400,
+            )
+        return JSONResponse({"success": True})
+
     @app.post("/api/setup/complete")
     async def setup_complete():
-        """Markiert das Setup als abgeschlossen."""
+        """Markiert das Setup als abgeschlossen.
+
+        Phase 58: Verlangt vorher ein gesetztes Dashboard-Passwort,
+        damit nach dem Setup nicht versehentlich ohne Login-Layer
+        gestartet wird.
+        """
+        from elder_berry.web.dashboard_auth import PASSWORD_HASH_KEY
+        if not secret_store.has(PASSWORD_HASH_KEY):
+            return JSONResponse(
+                {
+                    "error": "Dashboard-Passwort muss gesetzt sein, bevor "
+                             "das Setup abgeschlossen werden kann.",
+                    "code": "dashboard_password_required",
+                },
+                status_code=409,
+            )
         secret_store.set(SETUP_COMPLETE_KEY, "true")
         logger.info("Setup-Wizard abgeschlossen")
 
@@ -329,6 +368,15 @@ def register_setup_wizard_routes(
             invalidate_setup_completion_cache,
         )
         invalidate_setup_completion_cache()
+
+        # Phase 58: Auch den Cache der DashboardAuthMiddleware
+        # invalidieren – nach Wizard-Abschluss verlangt /api/setup
+        # auch dort einen Login.
+        from elder_berry.web.dashboard_auth_middleware import (
+            invalidate_setup_completion_cache as
+            invalidate_auth_setup_cache,
+        )
+        invalidate_auth_setup_cache()
 
         # Phase 57.1a: Marker-Datei schreiben, damit die Grace-Period
         # beim nächsten Start nicht mehr greift.

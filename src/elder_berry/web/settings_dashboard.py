@@ -101,6 +101,13 @@ class SettingsDashboard:
         Test-Kompatibilität – ``start_saleria.py`` aktiviert es explizit.
     settings_token_path : Path | None
         Pfad zur Token-Datei. Default: ``ELDER_BERRY_HOME/settings_token``.
+    require_dashboard_login : bool
+        Wenn True (Phase 58), wird die DashboardAuthMiddleware installiert
+        und alle Settings-/Avatar-Endpoints verlangen ein gültiges
+        Login-Cookie. Erfordert einen ``secret_store``. Aktiviert
+        zusätzlich Cookie-OR-Token in der SettingsTokenMiddleware.
+    dashboard_session_hours : int
+        TTL der Login-Sessions in Stunden (Default 12, Range 1–168).
     """
 
     ALLOWED_SENDERS_KEY = "matrix_allowed_senders"
@@ -145,6 +152,8 @@ class SettingsDashboard:
         port: int = 8090,
         require_settings_token: bool = False,
         settings_token_path: Path | None = None,
+        require_dashboard_login: bool = False,
+        dashboard_session_hours: int = 12,
     ) -> None:
         self._router = audio_router
         self._computer_use = computer_use
@@ -158,6 +167,19 @@ class SettingsDashboard:
 
         # Security: CORS, Headers, Exception-Handler
         setup_security(self._app, port, secret_store)
+
+        # Phase 58: DashboardAuthManager (opt-in, vor Token-Middleware
+        # initialisieren weil Cookie-OR-Token sie als Dependency braucht)
+        self._auth_manager = None
+        if require_dashboard_login:
+            if secret_store is None:
+                raise ValueError(
+                    "require_dashboard_login=True benötigt secret_store"
+                )
+            from elder_berry.web.dashboard_auth import DashboardAuthManager
+            self._auth_manager = DashboardAuthManager(
+                secret_store, ttl_hours=dashboard_session_hours,
+            )
 
         # Phase 52.1a: Token-Middleware (opt-in)
         self._token_manager = None
@@ -181,11 +203,31 @@ class SettingsDashboard:
             # nach dem Setup-Abschluss aufheben kann. Ohne Store fällt
             # die Middleware auf Phase-52.1a-Verhalten (permanente
             # Exemption) zurück – relevant für Tests.
+            # Phase 58: auth_manager durchreichen → Cookie-OR-Token.
             self._app.add_middleware(
                 SettingsTokenMiddleware,
                 token_manager=self._token_manager,
                 secret_store=secret_store,
+                auth_manager=self._auth_manager,
             )
+
+        # Phase 58: DashboardAuthMiddleware NACH der Token-Middleware
+        # zufügen → Starlette baut den Stack rückwärts auf, d.h. die
+        # zuletzt hinzugefügte Middleware wird ZUERST ausgeführt. Damit
+        # läuft der Login-Check vor dem Token-Check.
+        if self._auth_manager is not None:
+            from elder_berry.web.dashboard_auth_middleware import (
+                DashboardAuthMiddleware,
+            )
+            from elder_berry.web.dashboard_auth_routes import (
+                register_dashboard_auth_routes,
+            )
+            self._app.add_middleware(
+                DashboardAuthMiddleware,
+                auth_manager=self._auth_manager,
+                secret_store=secret_store,
+            )
+            register_dashboard_auth_routes(self._app, self._auth_manager)
 
         self._write_lock = asyncio.Lock()
         self._change_callbacks: dict[str, list[Any]] = {}

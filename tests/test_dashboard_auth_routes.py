@@ -1,0 +1,234 @@
+"""Tests für Dashboard-Auth-Endpoints (Phase 58)."""
+
+from __future__ import annotations
+
+import pytest
+from fastapi import FastAPI
+from fastapi.testclient import TestClient
+
+from elder_berry.web.dashboard_auth import (
+    COOKIE_NAME,
+    DashboardAuthManager,
+)
+from elder_berry.web.dashboard_auth_routes import (
+    register_dashboard_auth_routes,
+)
+
+
+class _FakeStore:
+    def __init__(self) -> None:
+        self._data: dict[str, str] = {}
+
+    def get_or_none(self, key):
+        return self._data.get(key)
+
+    def set(self, key, value):
+        self._data[key] = value
+
+    def has(self, key):
+        return key in self._data
+
+
+@pytest.fixture
+def auth() -> DashboardAuthManager:
+    return DashboardAuthManager(_FakeStore())
+
+
+@pytest.fixture
+def client(auth: DashboardAuthManager) -> TestClient:
+    app = FastAPI()
+    register_dashboard_auth_routes(app, auth)
+    return TestClient(app)
+
+
+# -- /api/dashboard/auth/status -------------------------------------- #
+
+class TestAuthStatus:
+    def test_initial_state_no_password(
+        self, client: TestClient
+    ) -> None:
+        r = client.get("/api/dashboard/auth/status")
+        assert r.status_code == 200
+        data = r.json()
+        assert data["authenticated"] is False
+        assert data["password_set"] is False
+        assert data["expires_at"] is None
+
+    def test_password_set_unauthenticated(
+        self, client: TestClient, auth: DashboardAuthManager
+    ) -> None:
+        auth.set_password("supersecret123")
+        r = client.get("/api/dashboard/auth/status")
+        data = r.json()
+        assert data["password_set"] is True
+        assert data["authenticated"] is False
+
+    def test_authenticated_with_valid_cookie(
+        self, client: TestClient, auth: DashboardAuthManager
+    ) -> None:
+        auth.set_password("supersecret123")
+        cookie, exp = auth.issue_session()
+        client.cookies.set(COOKIE_NAME, cookie)
+        r = client.get("/api/dashboard/auth/status")
+        data = r.json()
+        assert data["authenticated"] is True
+        assert data["expires_at"] == exp
+
+
+# -- /api/dashboard/login -------------------------------------------- #
+
+class TestLogin:
+    def test_login_no_password_set(
+        self, client: TestClient
+    ) -> None:
+        r = client.post(
+            "/api/dashboard/login",
+            json={"password": "anything"},
+        )
+        assert r.status_code == 409
+        assert r.json()["code"] == "password_not_set"
+
+    def test_login_correct_password(
+        self, client: TestClient, auth: DashboardAuthManager
+    ) -> None:
+        auth.set_password("supersecret123")
+        r = client.post(
+            "/api/dashboard/login",
+            json={"password": "supersecret123"},
+        )
+        assert r.status_code == 200
+        assert r.json()["ok"] is True
+        assert "expires_at" in r.json()
+        # Cookie wurde gesetzt
+        assert COOKIE_NAME in r.cookies
+
+    def test_login_wrong_password(
+        self, client: TestClient, auth: DashboardAuthManager
+    ) -> None:
+        auth.set_password("supersecret123")
+        r = client.post(
+            "/api/dashboard/login",
+            json={"password": "wrong"},
+        )
+        assert r.status_code == 401
+        assert r.json()["code"] == "invalid_password"
+
+    def test_login_missing_password(
+        self, client: TestClient, auth: DashboardAuthManager
+    ) -> None:
+        auth.set_password("supersecret123")
+        r = client.post("/api/dashboard/login", json={})
+        assert r.status_code == 400
+        assert r.json()["code"] == "missing_password"
+
+    def test_login_empty_body(
+        self, client: TestClient, auth: DashboardAuthManager
+    ) -> None:
+        auth.set_password("supersecret123")
+        r = client.post("/api/dashboard/login")
+        assert r.status_code == 400
+
+
+# -- /api/dashboard/logout ------------------------------------------- #
+
+class TestLogout:
+    def test_logout_clears_cookie(
+        self, client: TestClient, auth: DashboardAuthManager
+    ) -> None:
+        auth.set_password("supersecret123")
+        cookie, _ = auth.issue_session()
+        client.cookies.set(COOKIE_NAME, cookie)
+        r = client.post("/api/dashboard/logout")
+        assert r.status_code == 200
+        # Set-Cookie löscht durch leeren Wert / Max-Age=0
+        sc = r.headers.get("set-cookie", "")
+        assert COOKIE_NAME in sc
+
+    def test_logout_works_without_cookie(
+        self, client: TestClient
+    ) -> None:
+        r = client.post("/api/dashboard/logout")
+        assert r.status_code == 200
+
+
+# -- /api/dashboard/password ----------------------------------------- #
+
+class TestChangePassword:
+    def test_set_initial_password(
+        self, client: TestClient, auth: DashboardAuthManager
+    ) -> None:
+        # Noch kein PW gesetzt → kein current_password nötig
+        r = client.post(
+            "/api/dashboard/password",
+            json={"new_password": "newsecret123"},
+        )
+        assert r.status_code == 200
+        assert auth.is_password_set()
+        assert auth.verify_password("newsecret123")
+
+    def test_change_with_correct_current(
+        self, client: TestClient, auth: DashboardAuthManager
+    ) -> None:
+        auth.set_password("oldsecret123")
+        r = client.post(
+            "/api/dashboard/password",
+            json={
+                "current_password": "oldsecret123",
+                "new_password": "newsecret123",
+            },
+        )
+        assert r.status_code == 200
+        assert auth.verify_password("newsecret123")
+
+    def test_change_with_wrong_current(
+        self, client: TestClient, auth: DashboardAuthManager
+    ) -> None:
+        auth.set_password("oldsecret123")
+        r = client.post(
+            "/api/dashboard/password",
+            json={
+                "current_password": "wrong",
+                "new_password": "newsecret123",
+            },
+        )
+        assert r.status_code == 401
+        assert r.json()["code"] == "invalid_current_password"
+        # Altes PW bleibt aktiv
+        assert auth.verify_password("oldsecret123")
+
+    def test_change_with_weak_new_password(
+        self, client: TestClient, auth: DashboardAuthManager
+    ) -> None:
+        auth.set_password("oldsecret123")
+        r = client.post(
+            "/api/dashboard/password",
+            json={
+                "current_password": "oldsecret123",
+                "new_password": "short",
+            },
+        )
+        assert r.status_code == 400
+        assert r.json()["code"] == "weak_password"
+
+    def test_change_returns_fresh_cookie(
+        self, client: TestClient, auth: DashboardAuthManager
+    ) -> None:
+        auth.set_password("oldsecret123")
+        r = client.post(
+            "/api/dashboard/password",
+            json={
+                "current_password": "oldsecret123",
+                "new_password": "newsecret123",
+            },
+        )
+        assert COOKIE_NAME in r.cookies
+
+    def test_change_missing_new_password(
+        self, client: TestClient, auth: DashboardAuthManager
+    ) -> None:
+        auth.set_password("oldsecret123")
+        r = client.post(
+            "/api/dashboard/password",
+            json={"current_password": "oldsecret123"},
+        )
+        assert r.status_code == 400

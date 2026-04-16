@@ -484,11 +484,27 @@
             <p style="margin-bottom:1rem; font-size:0.9rem;">Konfigurierte Dienste:</p>
             <ul class="summary-list" id="summaryList"></ul>
             <hr class="section-divider">
+            <h2 style="margin-top:1rem;">Dashboard-Login</h2>
+            <p class="subtitle">
+                Pflicht: Setze ein Passwort für das Dashboard. Schützt
+                Settings &amp; Avatar-Editor zusätzlich zur VPN/IP-Absicherung.
+                Die Fernbedienung bleibt ohne Login.
+            </p>
+            <div class="form-group">
+                <label for="dashboardPassword">Passwort (min. 8 Zeichen)</label>
+                <input type="password" id="dashboardPassword" autocomplete="new-password">
+            </div>
+            <div class="form-group">
+                <label for="dashboardPasswordConfirm">Passwort bestätigen</label>
+                <input type="password" id="dashboardPasswordConfirm" autocomplete="new-password">
+            </div>
+            <div id="dashboardPasswordError" style="color:#ff6b6b; font-size:0.85rem; margin-bottom:0.5rem;"></div>
+            <hr class="section-divider">
             <p style="font-size:0.9rem; margin-bottom:0.5rem;">Nächste Schritte:</p>
             <ol style="text-align:left; font-size:0.85rem; padding-left:1.5rem; color:#aaa; line-height:1.8;">
                 <li>Starte Saleria: <code>python scripts/start_saleria.py</code></li>
                 <li>Öffne Element und schreibe "hallo" an Saleria</li>
-                <li>Einstellungen: <a href="/" style="color:#a8d5a2;">Dashboard</a></li>
+                <li>Einstellungen: <a href="/" style="color:#a8d5a2;">Dashboard</a> (Login mit obigem Passwort)</li>
             </ol>
             <div class="btn-row">
                 <button class="btn btn-secondary" onclick="goToStep(7)">&larr; Zurück</button>
@@ -801,8 +817,36 @@ async function geocodeCity() {
 
 async function completeSetup() {
     const btn = document.querySelector('#step8 .btn-success');
+    const errEl = document.getElementById('dashboardPasswordError');
+    errEl.textContent = '';
+
+    // Phase 58: Dashboard-Passwort ist Pflicht
+    const pw = document.getElementById('dashboardPassword').value;
+    const pw2 = document.getElementById('dashboardPasswordConfirm').value;
+    if (!pw || pw.length < 8) {
+        errEl.textContent = 'Passwort muss mindestens 8 Zeichen lang sein.';
+        return;
+    }
+    if (pw !== pw2) {
+        errEl.textContent = 'Passwörter stimmen nicht überein.';
+        return;
+    }
+
     if (btn) { btn.disabled = true; btn.textContent = 'Wird abgeschlossen...'; }
     try {
+        // 1) PW setzen
+        const rPw = await fetch('/api/setup/dashboard-password', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({password: pw}),
+        });
+        if (!rPw.ok) {
+            const dPw = await rPw.json();
+            errEl.textContent = dPw.error || 'Passwort konnte nicht gesetzt werden.';
+            if (btn) { btn.disabled = false; btn.textContent = 'Setup abschließen'; }
+            return;
+        }
+        // 2) Setup abschließen
         const r = await fetch('/api/setup/complete', {method: 'POST'});
         const data = await r.json();
         if (data.standalone) {

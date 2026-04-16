@@ -130,6 +130,12 @@ class TestMigrationMarker:
         register_setup_wizard_routes(app, store)
 
         client = TestClient(app)
+        # Phase 58: complete verlangt vorher gesetztes Dashboard-PW
+        r0 = client.post(
+            "/api/setup/dashboard-password",
+            json={"password": "supersecret123"},
+        )
+        assert r0.status_code == 200
         r = client.post("/api/setup/complete")
         assert r.status_code == 200
         assert marker.exists()
@@ -146,6 +152,12 @@ class TestMigrationMarker:
         register_setup_wizard_routes(app, store)
 
         client = TestClient(app)
+        # Phase 58: complete verlangt vorher gesetztes Dashboard-PW
+        r0 = client.post(
+            "/api/setup/dashboard-password",
+            json={"password": "supersecret123"},
+        )
+        assert r0.status_code == 200
         r = client.post("/api/setup/complete")
         assert r.status_code == 200
         # Kein Marker-Pfad → kein Crash, kein Marker

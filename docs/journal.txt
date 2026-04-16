@@ -4817,3 +4817,63 @@ User: "Lies meine Mails und trag den Zahnarzttermin ein"
 - Gesamte Tests: 67 (caldav_tasks) + 70 (todo_commands) = 137 neue/geänderte
 - Branch: feature/phase-56-nextcloud-tasks
 >>>>>>> main
+
+## In Arbeit: Phase 58 – Dashboard-Login + Avatar-Tab (2026-04-16)
+- nächster Schritt: web/dashboard_auth.py (DashboardAuthManager + bcrypt + HMAC-Cookie)
+- Konzept: docs/concepts/phase-58-dashboard-login-avatar.md
+- Branch: feature/phase-58-dashboard-login-avatar
+- Scope: Login-Layer für /api/settings, /api/secrets, /api/system, /api/llm,
+  /api/avatar, /avatar/editor (auch GET); /harmony bleibt offen (Fernbedienung
+  für LAN-Gäste). Avatar-Editor als dritter Header-Tab im Dashboard.
+- Lücken adressiert:
+  L1 (VPN single point of failure), L2 (lesende Endpoints offen),
+  L3 (Browser kennt Settings-Token nicht → Editieren via UI scheitert)
+- TTL 12h sliding, konfigurierbar via Setting dashboard_session_hours
+- bcrypt cost factor 12, Hash in SecretStore
+- Setup-Wizard erweitert um PW-Step (Pflicht vor Abschluss)
+- scripts/set_dashboard_password.py als Reset-Tool
+
+## Abgeschlossen: Phase 58 – Dashboard-Login + Avatar-Tab (2026-04-16)
+- Konzept: docs/concepts/phase-58-dashboard-login-avatar.md
+- Branch: feature/phase-58-dashboard-login-avatar
+- Login-Layer (bcrypt + HMAC-Cookie, sliding 12 h Default, konfigurierbar)
+- Schützt /api/settings, /api/secrets, /api/system, /api/llm, /api/avatar,
+  /avatar/editor – auch GET. /harmony bleibt offen (Fernbedienung).
+- SettingsTokenMiddleware akzeptiert ENTWEDER Cookie ODER Token →
+  löst Pain-Point "Editieren via UI scheitert mit 401"
+- Setup-Wizard: PW-Step ist Pflicht vor /api/setup/complete
+- Reset-Tool: scripts/set_dashboard_password.py (--rotate-secret optional)
+- Avatar-Editor als dritter Header-Tab (echtes Modul, kein iframe);
+  Re-Implementierung der Sprite-Auswahl + Live-Preview mit Layer-Stacking
+- Logout-Button im Header (rechts), nur sichtbar wenn eingeloggt
+- Frontend: apiFetch sendet credentials und triggert Login-Modal bei 401
+- Neue Dateien:
+  * src/elder_berry/web/dashboard_auth.py (DashboardAuthManager)
+  * src/elder_berry/web/dashboard_auth_middleware.py
+  * src/elder_berry/web/dashboard_auth_routes.py (4 Endpoints)
+  * src/elder_berry/webapp/dashboard/modules/auth.js
+  * src/elder_berry/webapp/dashboard/modules/avatar.js
+  * scripts/set_dashboard_password.py
+  * docs/concepts/phase-58-dashboard-login-avatar.md
+  * tests/test_dashboard_auth.py (27 Tests)
+  * tests/test_dashboard_auth_middleware.py (19 Tests)
+  * tests/test_dashboard_auth_routes.py (16 Tests)
+- Geänderte Dateien:
+  * src/elder_berry/web/settings_token_middleware.py (Cookie-OR-Token)
+  * src/elder_berry/web/settings_dashboard.py (Konstruktor + Middleware-Stack)
+  * src/elder_berry/web/setup_wizard.py (PW-Endpoint + complete-Gate)
+  * src/elder_berry/web/templates/setup_wizard.html (Step 8 PW-Block)
+  * src/elder_berry/webapp/dashboard/index.html (Avatar-Tab + Login-Modal + Logout)
+  * src/elder_berry/webapp/dashboard/modules/base.js (apiFetch credentials+401)
+  * src/elder_berry/webapp/dashboard/modules/loader.js (auth-Init + View-Gating)
+  * src/elder_berry/webapp/dashboard/style.css (Modal/Logout/Avatar-Styles)
+  * scripts/start_saleria.py (require_dashboard_login=True)
+  * pyproject.toml (bcrypt in windows-Gruppe)
+  * tests/test_settings_token.py (4 neue Tests Cookie-OR-Token)
+  * tests/test_setup_wizard_api.py (4 neue Tests PW-Gate)
+  * tests/test_start_saleria_bind.py (PW vor complete in 2 Tests)
+- Regression: 4558 passed, 2 skipped
+- Sicherheitsmodell:
+  Schicht 1 = VPN, Schicht 2 = DashboardAuthMiddleware (NEU), Schicht 3 =
+  SettingsTokenMiddleware (jetzt Cookie ODER Token)
+- Out of Scope: Multi-User, TOTP/2FA, Audit-Log, Brute-Force-Limit

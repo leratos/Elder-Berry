@@ -17,12 +17,33 @@
         <span class="header-title">Saleria</span>
         <nav class="header-nav" id="header-nav">
             <button class="nav-tab active" data-view="remote">Fernbedienung</button>
-            <button class="nav-tab" data-view="settings">Einstellungen</button>
+            <button class="nav-tab" data-view="settings" style="display:none;">Einstellungen</button>
+            <button class="nav-tab" data-view="avatar" style="display:none;">Avatar</button>
         </nav>
-        <span id="connection-status" class="status-dot"></span>
+        <div class="header-right">
+            <button id="logout-btn" class="logout-btn" title="Logout" style="display:none;">⏻</button>
+            <span id="connection-status" class="status-dot"></span>
+        </div>
     </header>
 
     <main id="module-container"></main>
+
+    <!-- Phase 58: Login-Modal -->
+    <div id="login-modal" class="login-modal">
+        <div class="login-card">
+            <h2>Dashboard-Login</h2>
+            <p class="login-subtitle">
+                Geschützter Bereich. Fernbedienung ist ohne Login nutzbar.
+            </p>
+            <form id="login-form">
+                <input type="password" id="login-password"
+                       placeholder="Dashboard-Passwort"
+                       autocomplete="current-password" required>
+                <div id="login-error" class="login-error"></div>
+                <button type="submit" class="login-submit">Anmelden</button>
+            </form>
+        </div>
+    </div>
 
     <script>
         // Server: tower_url relativ (Nginx-Proxy), rpi5_url bleibt LAN-IP (nur aus Heimnetz erreichbar)
@@ -32,7 +53,8 @@
             tower_url: _isServer ? "" : "http://192.168.50.100:8090",
             views: {
                 remote:   ["harmony"],
-                settings: ["system", "settings"]
+                settings: ["system", "settings"],
+                avatar:   ["avatar"]
             },
             defaultView: "remote"
         };
