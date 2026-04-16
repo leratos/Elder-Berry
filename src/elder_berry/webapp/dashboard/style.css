@@ -842,3 +842,129 @@ textarea.setting-input {
     font-weight: 500;
 }
 .login-btn-header:hover { background: #6d28d9; }
+
+/* Phase 58: Avatar – can_blink + Animation-Sektionen */
+.avatar-emotion-flags {
+    margin: 0.75rem 0 0.5rem 0;
+    padding: 0.5rem 0;
+    border-top: 1px solid rgba(124, 58, 237, 0.3);
+    border-bottom: 1px solid rgba(124, 58, 237, 0.3);
+}
+.avatar-flag-row {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-size: 0.85rem;
+    color: #d8b4fe;
+    cursor: pointer;
+}
+.avatar-flag-row input { cursor: pointer; }
+
+.avatar-anim-section {
+    background: rgba(15, 10, 42, 0.5);
+    border-radius: 6px;
+    padding: 0.5rem 0.75rem;
+    margin-bottom: 0.5rem;
+}
+.avatar-anim-section summary {
+    cursor: pointer;
+    font-size: 0.85rem;
+    color: #c4b5fd;
+    padding: 0.25rem 0;
+    user-select: none;
+}
+.avatar-anim-section[open] summary { margin-bottom: 0.5rem; }
+
+.avatar-anim-grid {
+    display: grid;
+    grid-template-columns: 1fr 90px;
+    gap: 0.4rem 0.6rem;
+    align-items: center;
+    margin-bottom: 0.5rem;
+}
+.avatar-anim-grid label {
+    font-size: 0.8rem;
+    color: #a78bfa;
+}
+.avatar-anim-grid input[type="number"] {
+    background: #0f0a2a;
+    color: #fff;
+    border: 1px solid #4c1d95;
+    border-radius: 4px;
+    padding: 0.3rem 0.4rem;
+    font-size: 0.85rem;
+    width: 100%;
+}
+.avatar-anim-checkbox-label {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    cursor: pointer;
+}
+
+.avatar-anim-hint {
+    font-size: 0.75rem;
+    color: #888;
+    margin: 0.25rem 0;
+}
+
+.avatar-frames {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+    margin-bottom: 0.5rem;
+}
+.avatar-frame-row {
+    display: grid;
+    grid-template-columns: 1fr 70px 28px;
+    gap: 0.4rem;
+    align-items: center;
+}
+.avatar-frame-name {
+    font-size: 0.8rem;
+    color: #d8b4fe;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.avatar-frame-row input {
+    background: #0f0a2a;
+    color: #fff;
+    border: 1px solid #4c1d95;
+    border-radius: 4px;
+    padding: 0.25rem 0.3rem;
+    font-size: 0.8rem;
+    width: 100%;
+}
+.avatar-frame-remove {
+    background: transparent;
+    color: #fca5a5;
+    border: 1px solid #7f1d1d;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 0.75rem;
+    padding: 0.2rem 0;
+}
+.avatar-frame-remove:hover {
+    background: #7f1d1d;
+    color: #fff;
+}
+
+.avatar-frame-add {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: 0.4rem;
+    margin-top: 0.4rem;
+}
+.avatar-frame-add select {
+    background: #0f0a2a;
+    color: #fff;
+    border: 1px solid #4c1d95;
+    border-radius: 4px;
+    padding: 0.3rem 0.4rem;
+    font-size: 0.8rem;
+}
+.avatar-frame-add button {
+    padding: 0.3rem 0.6rem;
+    font-size: 0.8rem;
+}
