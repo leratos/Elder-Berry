@@ -473,12 +473,17 @@ class SelfcheckCommandHandler(CommandHandler):
         try:
             # TowerAgent: synchroner HTTP-Check (async heartbeat geht nicht
             # wenn der Event-Loop bereits läuft, z.B. unter Matrix Bridge)
+            # Phase 57.3: Token-Header mitsenden, sonst 401.
             if key == "tower_agent" and hasattr(svc, "host"):
                 try:
                     host = getattr(svc, "host", "")
+                    headers = {}
+                    if hasattr(svc, "_auth_headers"):
+                        headers = svc._auth_headers()
                     r = httpx.get(
                         f"http://{host}/status",
                         timeout=3.0,
+                        headers=headers,
                     )
                     if r.status_code == 200:
                         return True, host
