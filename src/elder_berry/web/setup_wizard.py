@@ -206,7 +206,21 @@ def register_setup_wizard_routes(
                 "<h1>Setup-Wizard Template fehlt</h1>",
                 status_code=500,
             )
-        return HTMLResponse(template_path.read_text(encoding="utf-8"))
+        html = template_path.read_text(encoding="utf-8")
+        # Phase 57.1a: Compat-Banner injizieren wenn Grace-Period aktiv
+        if getattr(app.state, "compat_mode", False):
+            _banner = (
+                '<div style="background:#fff3cd;color:#856404;padding:12px 16px;'
+                "border:1px solid #ffc107;border-radius:6px;margin:16px;"
+                'font-size:14px;text-align:center">'
+                "Dieser Setup-Wizard l&auml;uft einmalig im "
+                "LAN-Kompatibilit&auml;tsmodus. Ab dem n&auml;chsten "
+                "Neustart bindet er auf 127.0.0.1 (Loopback). Setze "
+                "<code>ELDER_BERRY_SETUP_BIND=0.0.0.0</code> wenn du "
+                "den LAN-Zugriff dauerhaft brauchst.</div>"
+            )
+            html = html.replace("<body>", f"<body>{_banner}", 1)
+        return HTMLResponse(html)
 
     @app.get("/api/setup/status")
     async def setup_status():
@@ -307,6 +321,27 @@ def register_setup_wizard_routes(
         """Markiert das Setup als abgeschlossen."""
         secret_store.set(SETUP_COMPLETE_KEY, "true")
         logger.info("Setup-Wizard abgeschlossen")
+
+        # Phase 57.2: Cache der SettingsTokenMiddleware invalidieren,
+        # damit der Wechsel des First-Run-Markers sofort greift und
+        # /api/setup/* ab dem nächsten Request den Token verlangt.
+        from elder_berry.web.settings_token_middleware import (
+            invalidate_setup_completion_cache,
+        )
+        invalidate_setup_completion_cache()
+
+        # Phase 57.1a: Marker-Datei schreiben, damit die Grace-Period
+        # beim nächsten Start nicht mehr greift.
+        marker = getattr(app.state, "migration_marker", None)
+        if marker:
+            try:
+                marker.parent.mkdir(parents=True, exist_ok=True)
+                marker.write_text("done", encoding="utf-8")
+                logger.info("Phase-57-Migration-Marker angelegt: %s", marker)
+            except OSError as exc:
+                logger.warning(
+                    "Migration-Marker konnte nicht geschrieben werden: %s", exc,
+                )
 
         # Im Standalone-Modus Server nach kurzer Verzögerung beenden
         if getattr(app.state, "standalone", False):
@@ -454,17 +489,37 @@ async def _run_single_test(
     raise ValueError(f"Unbekannter Service: {service}")
 
 
-def run_setup_wizard(secret_store: SecretStore, port: int = 8090) -> None:
+def run_setup_wizard(
+    secret_store: SecretStore,
+    port: int = 8090,
+    bind: str = "127.0.0.1",
+    compat_mode: bool = False,
+    migration_marker: Path | None = None,
+) -> None:
     """Startet den Setup-Wizard als Standalone-Server (blockierend).
 
     Wird von start_saleria.py aufgerufen wenn kein Matrix-Token vorhanden ist.
     Beendet sich automatisch nach Abschluss des Setups.
+
+    Parameters
+    ----------
+    bind
+        Bind-Adresse (Phase 57.1, Default ``127.0.0.1``).
+    compat_mode
+        Phase 57.1a: Wenn True, rendert der Wizard ein gelbes Banner
+        im UI, das auf den einmaligen LAN-Kompatibilitätsmodus hinweist.
+    migration_marker
+        Phase 57.1a: Pfad zur Marker-Datei. Wird nach Wizard-Abschluss
+        geschrieben, damit die Grace-Period beim nächsten Start inaktiv ist.
     """
     import uvicorn
+    from fastapi import FastAPI
 
     app = FastAPI(title="Elder-Berry Setup-Wizard")
     app.state.standalone = True
+    app.state.compat_mode = compat_mode
+    app.state.migration_marker = migration_marker
     register_setup_wizard_routes(app, secret_store)
 
-    logger.info("Setup-Wizard gestartet auf http://localhost:%d/setup", port)
-    uvicorn.run(app, host="0.0.0.0", port=port)
+    logger.info("Setup-Wizard gestartet auf http://%s:%d/setup", bind, port)
+    uvicorn.run(app, host=bind, port=port)

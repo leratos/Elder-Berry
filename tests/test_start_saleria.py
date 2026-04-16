@@ -132,7 +132,10 @@ class TestRunAgent:
         source = inspect.getsource(run_agent)
         assert "uvicorn.run" in source
         assert "tower.tower_server:app" in source
-        assert "0.0.0.0" in source
+        # Phase 57.1: Default-Bind ist jetzt 127.0.0.1 (Loopback),
+        # gesteuert über ELDER_BERRY_TOWER_BIND.
+        assert "ELDER_BERRY_TOWER_BIND" in source
+        assert '"127.0.0.1"' in source
         assert "8090" in source or "port" in source
 
     def test_run_agent_imports_tower_server(self):

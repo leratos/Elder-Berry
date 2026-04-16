@@ -4296,3 +4296,297 @@ User: "Lies meine Mails und trag den Zahnarzttermin ein"
   test_startup_summary.py, journal.txt
 - Meine Commits bleiben in der git-Historie, der Merge-Commit macht ihre
   Additions zurück. Die PR bleibt sauber.
+
+## In Arbeit: Phase 53 – Install-Script Härtung & Avatar-Editor UX (2026-04-15)
+- Branch: feature/phase-53-install-and-avatar-ux (von main)
+- Scope (53.1 + 53.2 – 53.3 wird gestrichen, da SECRET_REGISTRY durch
+  Phase 52.0 bereits Single Source of Truth ist und YAML-Auslagerung
+  das Problem nochmal lösen würde)
+- Reihenfolge:
+  1. 53.1 Install-Scripts (install.ps1 + install.sh):
+     - --quiet aus pip install entfernen
+     - Exit-Code nach pip explizit prüfen (redundant wegen set -e, aber
+       explizite Meldung statt Abbruch mitten im Script)
+     - Ollama-Check mit Erklärung (kostenpflichtig-Hinweis)
+     - Post-Install-Smoke-Test: python -c "import elder_berry"
+  2. 53.2 Avatar-Editor Onboarding:
+     - Intro-Modal bei erstem Aufruf (localStorage-Flag)
+     - 3-Layer-Erklärung, Emotion-Maps, Reset-Button
+     - Smoke-Tests dass Modal im HTML präsent ist
+- Nächster Schritt: 53.1 – scripts/install.ps1 patchen
+
+## Zwischenstand: Phase 53.1 – Install-Scripts gehärtet (2026-04-15)
+- install.ps1 + install.sh: --quiet aus pip install entfernt,
+  $LASTEXITCODE / bash `if !` Guard für pip install, Smoke-Test
+  `python -c "import elder_berry"` als neuer Schritt [5/6], Ollama-Block
+  mit Kostenhinweis auf die Anthropic Cloud-API.
+- Counter durchgängig auf [n/6] aktualisiert.
+- tests/test_install_scripts.py: 16 neue Assertions (TestPipNotQuiet,
+  TestExplicitErrorHandling, TestPostInstallSmokeTest, TestOllamaHint,
+  TestStepCounterConsistent). 21 passed, 1 skipped (Windows ohne bash).
+- Commit: 9bb0e8f
+- Nächster Schritt: 53.2 – Avatar-Editor Onboarding-Modal
+
+## Zwischenstand: Phase 53.2 – Avatar-Editor Onboarding (2026-04-15)
+- src/elder_berry/web/templates/avatar_editor.html:
+  - Neues Onboarding-Overlay mit 4 Erklärungs-Punkten (Layer & Assets,
+    Emotionen, Lip-Sync & Breathing, Speichern & Hot-Reload)
+  - CSS-Block am Ende von <style> (display:none Default, .active zeigt)
+  - "ⓘ Hilfe"-Button in der Topbar, um das Modal manuell zu öffnen
+  - localStorage-Key 'elderberry.avatar.onboarding.seen' zum Merken
+  - ESC und Backdrop-Click schließen (ohne Merken), Dismiss-Button
+    ("Verstanden, nicht mehr anzeigen") setzt Flag
+  - initOnboarding auf DOMContentLoaded; Abfrage localStorage → öffnet
+    Modal beim allerersten Besuch
+  - a11y: role="dialog", aria-modal, aria-labelledby="onboardingTitle"
+- tests/test_avatar_editor_onboarding.py NEU: 17 Tests grün
+  (Struktur, Aktionen, JavaScript, CSS)
+- Keine Regressionen in test_avatar_editor.py (52 Tests bleiben grün)
+
+## Zu 53.3 – obsolet durch Phase 52.0 (2026-04-15)
+- Die Roadmap beschreibt 53.3 als "Settings aus YAML laden statt
+  hardcode". Phase 52.0 hat SECRET_REGISTRY in secrets_api.py bereits
+  zur Single Source of Truth gemacht (mit behavior, risk_level,
+  placeholder, select_options, 3 Behavior-Keys). _setting_definitions()
+  wird via _registry_to_setting_definition() daraus abgeleitet. YAML-
+  Auslagerung würde das Problem nochmal lösen ohne Mehrwert.
+- Aktion: Roadmap auf "ERLEDIGT DURCH 52.0" markieren, keinen Code.
+
+## Abgeschlossen: Phase 53 – Install-Script Härtung & Avatar-Editor UX (2026-04-15)
+- 53.1 Install-Scripts (Commit 9bb0e8f)
+- 53.2 Avatar-Editor Onboarding
+- 53.3 obsolet durch Phase 52.0
+- Roadmap: Phase 53 auf ABGESCHLOSSEN, 53.3 auf "ERLEDIGT DURCH 52.0"
+- Branch: feature/phase-53-install-and-avatar-ux
+
+## Planung: Phase 56 – Nextcloud Tasks als Todo-Backend (2026-04-15)
+- Konzept erstellt: docs/concepts/phase-56-nextcloud-tasks.md
+- Roadmap-Eintrag: Phase 56 mit 5 Subphasen (56.1–56.5) angelegt
+- Hintergrund: TodoStore (SQLite) hat kein Fälligkeitsdatum, keine
+  Handy-Sync. Nextcloud Tasks (CalDAV VTODO) wird Single Source of Truth.
+- CalDAVTaskClient folgt dem Muster von CalDAVCalendarClient
+  (gleiche Credentials, gleiche Library, Lazy-Init + Retry)
+- Offene Design-Frage: UUID-Handling für Chat-Interaktion
+  → Empfehlung: Session-basierter Index (#1, #2, #3 pro Abfrage)
+
+## In Arbeit: Phase 55 – audioop/pydub Migration (2026-04-15)
+- Branch: feature/phase-55-audioop-migration (von main)
+- Ziel: pydub aus audio_converter.py entfernen, weil pydub unconditional
+  `audioop` importiert und Python 3.13 das Modul entfernt hat (PEP 594).
+  RPi5 Bookworm läuft auf Python 3.13 System-Python → ImportError-Risiko
+  bei Upgrade. Aktuell nur DeprecationWarning auf Tower/Laptop (3.12).
+- Scope (laut docs/concepts/phase-55-audioop-migration.md, Option B):
+  - to_ogg_opus(): direkt subprocess.run([ffmpeg, -i, ..., -c:a libopus, ...])
+  - get_duration_ms(): subprocess.run([ffprobe, ...]) + JSON-Parse
+  - _ffprobe_available Check in __init__
+  - pydub aus pyproject.toml [matrix]- und [server]-Gruppe entfernen
+  - Tests: TestToOggOpusMocked / TestGetDurationMocked auf subprocess-Mock
+    umstellen; Live-Tests mit echtem ffmpeg bleiben unverändert (ffmpeg
+    ist weiterhin Pflicht-Dependency)
+- Nächster Schritt: audio_converter.py auf subprocess umstellen
+
+## Abgeschlossen: Phase 55 – pydub entfernt + Screenshot-Hänger gefixt (2026-04-15)
+- 55.1 audio_converter.py komplett auf ffmpeg/ffprobe Subprocess umgestellt:
+  - to_ogg_opus(): subprocess.run(['ffmpeg', ..., '-c:a', 'libopus', ...]) mit
+    Exit-Code-Check + Timeout (60s) + FileNotFoundError-Handling
+  - _probe_duration_ms(): subprocess.run(['ffprobe', ..., '-of', 'json']) +
+    JSON-Parse mit Timeout (15s). Neue _ffprobe_available-Property im ctor.
+  - get_duration_ms() delegiert an _probe_duration_ms
+  - Fehlerpfade: ffmpeg/ffprobe nonzero, TimeoutExpired, FileNotFound,
+    unlesbares JSON, fehlender format.duration-Key – jeweils als
+    AudioConverterError
+- test_audio_converter.py: Mock-Tests von pydub auf subprocess umgestellt,
+  7 bestehende Mock-Tests ersetzt durch 15 subprocess-Mock-Tests (inkl.
+  Timeout-, FileNotFound-, ffprobe-Fehler-, BadJson-, MissingKey-Pfaden).
+  Laufzeit: 1.06s statt ~30s (kein echter ffmpeg-Subprozess mehr in Mocks)
+- pydub aus pyproject.toml [matrix] + [server] entfernt
+- start_saleria.py Log-Text "pydub nicht installiert" → "Modul nicht
+  importierbar" (generischer, weil pydub weg ist)
+- Lokal: `pip uninstall pydub` ausgeführt, alle 32 Tests weiterhin grün
+- 55.2 Screenshot-Hänger gefixt:
+  - Root Cause: system_commands._wake_monitor() nutzte SendMessageW mit
+    HWND_BROADCAST, was blockiert wenn irgendein System-Fenster einen
+    hängenden Message-Loop hat. Ersetzt durch SendMessageTimeoutW mit
+    SMTO_ABORTIFHUNG + 2000ms Timeout. Echtes Bugfix in Prod-Code.
+  - TestCmdScreenshot: 2 bisher deselektierte Tests (test_screenshot_
+    result_shape, test_screenshot_via_execute) mocken jetzt mss komplett
+    und patchen _wake_monitor zur No-Op. Laufzeit: 0.37s.
+- pytest-timeout als [dev]-Gruppe in pyproject.toml + globales
+  `timeout = 60` / `timeout_method = "thread"` in [tool.pytest.ini_options].
+  Verhindert zukünftige Hänger im Fullrun.
+- Fullrun: 4344 passed, 2 skipped, 1 warning (nur noch pygame/
+  pkg_resources Deprecation – pydub/audioop ist weg)
+- Roadmap: Phase 55 auf ABGESCHLOSSEN
+- Branch: feature/phase-55-audioop-migration
+
+## In Arbeit: Phase 57 – Security-Härtung: Loopback, First-Run-Gate, Tower-Auth (2026-04-15)
+- Ausgelöst durch Sicherheits-Analyse (Code-Review 2026-04-15): 4 offene Lücken
+  * K1: setup_wizard.py:470 bindet standalone auf 0.0.0.0
+  * K2: tower/tower_server.py ohne jegliche Auth, start_saleria.py:538 auf 0.0.0.0
+  * K3: SettingsTokenMiddleware /api/setup-Exemption dauerhaft. Der First-Run-
+    Marker setup_wizard_completed existiert, wird aber nicht ausgewertet.
+    Phase 52.3 war genau diese Arbeit, wurde aber irrtümlich als "erledigt
+    durch 52.0" gestrichen – die YAML-Umstellung war gestrichen, nicht
+    die Middleware-Verschärfung.
+  * K4: matrix_allowed_senders fail-closed/fail-open unklar
+- Phase 54/55/56 sind belegt (Bull-Berry extern, 55 abgeschlossen, 56 geplant).
+  Phase 57 ist die nächste freie Nummer.
+- Nicht-Ziele: kein OAuth, kein mTLS, kein Reverse-Proxy, keine Token-Rotation,
+  kein strukturierter Audit-Log
+- Reihenfolge der Sub-Phasen: 57.4 Audit zuerst (entscheidet über Hotfix-
+  Eskalation), dann 57.2 First-Run-Gate (kleinster Scope), 57.1 Loopback-
+  Default (mittlerer BC), 57.3 Tower-Token (größter BC, Auto-Migration nötig)
+- Env-Variablen: ELDER_BERRY_SETUP_BIND + ELDER_BERRY_TOWER_BIND (getrennt,
+  Default 127.0.0.1, konsistent zu ELDER_BERRY_SETTINGS_BIND aus Phase 52)
+- Tower-Token-Header: X-Saleria-Tower-Token (konsistent zu X-Saleria-Settings-
+  Token), Quelle in Reihenfolge: Env → SecretStore, Fail-closed beim Start
+- Konzeptdatei: docs/concepts/phase-57-security-haertung.md geschrieben
+- Roadmap-Eintrag für Phase 57 ergänzt
+
+## Zwischenstand: Phase 57 – Konzept verfeinert (Grace-Mode + Host-Discovery) (2026-04-15)
+- Nach Diskussion Scope von 57.1 und 57.3 erweitert:
+- 57.1a Kompatibilitäts-Grace-Period:
+  * Marker-Datei ~/.elder-berry/.phase57_migration_done entscheidet
+    über Einmal-Binding auf 0.0.0.0 beim Upgrade
+  * Template-Variable compat_mode: bool → gelbes Banner im Wizard-UI
+  * Fette Log-Warnmeldung beim Start
+  * Nach Wizard-Finish wird Marker geschrieben, zweiter Start ist
+    Loopback-Default
+  * Frische Neuinstallationen nutzen Kompat-Modus mit (bewusst
+    akzeptiert, Alternative im Review-Termin diskutieren)
+  * HART: 57.2 MUSS vor 57.1 gemerged sein, sonst doppeltes Risiko
+    (LAN-Bind + offene Middleware-Exemption gleichzeitig)
+- 57.3 Host-Discovery zusätzlich zum Tower-Token:
+  * Neue Registry-Key tower_advertised_host (non-sensitive, low risk)
+  * Fallback-Kette: Env ELDER_BERRY_TOWER_ADVERTISED_HOST →
+    UDP-Route-Heuristik (connect 8.8.8.8:80 + getsockname) →
+    socket.gethostbyname(socket.gethostname()) → 127.0.0.1 (mit Warn-Log)
+  * RobotClient Constructor bekommt tower_host + tower_token als
+    optionale Parameter (None = Fetch aus SecretStore)
+  * Auto-Migration legt beim ersten Upgrade-Start Token UND Host ab
+  * User pflegt Host und Token nicht mehr an zwei verschiedenen Stellen
+- Konzept und Roadmap entsprechend aktualisiert
+- Nächster Schritt: Go für die Implementierungs-Phase abwarten (neuer
+  Branch feature/phase-57-security-haertung wird dann erstellt)
+
+## Zwischenstand: Phase 57.4 – Design-Umkehrung matrix_allowed_senders (2026-04-15)
+- Branch erstellt: feature/phase-57-security-haertung (vom Worktree aus)
+- Audit-Ergebnis: Fall B (fail-open), ABER keine unbemerkte Lücke
+  * bridge.py:332 `if self._allowed_senders and ...` ist falsy-anfällig
+  * None und frozenset() werden beide nicht gefiltert → alles durch
+  * start_saleria.py hat bisher nur gewarnt und ist weitergelaufen
+  * journal.txt:2530 (Phase 32) dokumentiert das explizit als
+    "Design-Entscheidung, kein Bug" – d.h. die alten Autoren wussten
+    es. Deshalb kein Hotfix-Eskalationspfad (weil es nie als Bug galt),
+    sondern bewusste Design-Umkehrung in 57.4 selbst.
+- Entscheidung: Variante A (strikt fail-closed), Nutzer bestätigt.
+  None UND frozenset() blocken alles. Tests setzen bei Bedarf
+  explizit ein populated Set.
+- Code-Änderungen:
+  * src/elder_berry/comms/bridge.py:332 – Filter zweistufig (not whitelist
+    → reject, sender nicht drin → reject), mit klaren Log-Warnungen
+  * src/elder_berry/comms/allowed_senders.py NEU – load_allowed_senders
+    (secret_store) → frozenset[str], wirft ValueError bei missing/
+    empty/whitespace/comma-only/kombi
+  * scripts/start_saleria.py – Die Inline-Variante wurde nach einem
+    Test-Pollution-Problem (siehe unten) wieder entfernt, stattdessen
+    Import aus comms/allowed_senders.py
+  * scripts/start_saleria.py:1070ff – Warnung → logger.error +
+    sys.exit(1) bei leerer/fehlender Whitelist
+- Test-Änderungen:
+  * tests/test_bridge.py: test_no_whitelist_allows_all umbenannt zu
+    test_no_whitelist_rejects_all, Assertion invertiert + neuer
+    test_empty_whitelist_rejects_all
+  * _make_bridge() bekam einen _UNSET-Sentinel, damit Tests explizit
+    None reinreichen können; Default ist jetzt frozenset({"@user:x",
+    "@admin:x"})
+  * tests/test_comms.py: Subclass-Shadow
+    `class MatrixBridge(_RealMatrixBridge)` + _DEFAULT_TEST_SENDERS
+    mit allen in den Tests vorkommenden Sendern (ohne @unknown:test,
+    damit der existierende Block-Test funktioniert). Subclass statt
+    Funktions-Wrapper, damit TestExtractClaudeMessage weiter
+    MatrixBridge.extract_claude_message direkt aufrufen kann.
+  * tests/test_allowed_senders_fail_closed.py NEU: 12 Tests
+    (8× TestLoadAllowedSenders, 4× TestBridgeFailClosed), alle grün
+- Regression:
+  * test_bridge.py + test_comms.py + test_allowed_senders_fail_closed.py:
+    131/131 grün
+  * Zwischenfall: Anfangs scheiterte
+    TestErrorAlerting::test_setup_with_collector_handler, weil mein
+    erster Ansatz (Inline-Funktion _load_allowed_senders in
+    start_saleria.py) beim Test-Import die LOGGING_CONFIG triggerte.
+    Die dort angelegte dictConfig hängt einen ErrorCollectorHandler
+    an den Root-Logger, der zwischen Tests liegen bleibt und
+    _setup_error_alerting() dazu bringt, DESSEN Callback zu setzen
+    statt dem des Test-eigenen Handlers. Nach Extraktion in das
+    saubere comms/allowed_senders.py-Modul verschwand die Kollision.
+- Die alte Notiz in journal.txt:2530 ("Design-Entscheidung, kein Bug")
+  bleibt historisch korrekt stehen und wird nicht editiert. Dieser
+  Zwischenstand nimmt sie explizit zurück.
+- Konzeptdatei Abschnitt 3.4 entsprechend umgeschrieben (Audit →
+  Design-Umkehrung mit konkreter Umsetzung)
+- Nächster Schritt: 57.2 First-Run-Gate (Middleware + Cache-Invalidation)
+
+## Zwischenstand: Phase 57.2 – First-Run-Gate für Wizard-Exemption (2026-04-16)
+- Code-Änderungen:
+  * src/elder_berry/web/settings_token_middleware.py – komplett umgeschrieben:
+    - Constructor bekommt optionalen secret_store-Parameter (None =
+      Phase-52.1a-Verhalten, Backwards-kompatibel)
+    - _is_setup_done() liest setup_wizard_completed aus SecretStore (cached)
+    - Dispatch-Logik: /api/setup ist nur exempt solange _is_setup_done()=False
+    - invalidate_completion_cache() Instanzmethode + Modul-Level
+      invalidate_setup_completion_cache() über WeakSet-Registry
+    - WeakSet statt Klassen-Level-Liste: Memory-Leak-sicher in Tests
+  * src/elder_berry/web/setup_wizard.py:305 – /api/setup/complete Handler
+    ruft nach secret_store.set(SETUP_COMPLETE_KEY, "true") jetzt auch
+    invalidate_setup_completion_cache() auf (Lazy-Import im Handler)
+  * src/elder_berry/web/settings_dashboard.py:179 – Middleware-Registration
+    bekommt jetzt secret_store=secret_store durchgereicht
+- Test-Änderungen:
+  * tests/test_settings_token.py – 8 neue Tests in TestFirstRunGate:
+    - test_setup_exempt_when_marker_not_set
+    - test_setup_exempt_when_marker_false
+    - test_setup_requires_token_when_marker_true
+    - test_setup_accepts_valid_token_when_marker_true
+    - test_cache_invalidation_after_marker_change (simuliert den
+      Complete-Flow: vor Finish → exempt, nach Finish+Invalidation → 401)
+    - test_without_secret_store_exemption_remains (Backwards-Kompat)
+    - test_marker_cached_between_requests (Store nur 1x gelesen)
+    - test_protected_endpoint_not_affected_by_gate (Protected ≠ Exempt)
+- Regression: 136 passed, 1 skipped (POSIX chmod) über
+  test_settings_token + test_settings_dashboard + test_setup_wizard_api
+  + test_settings_panel + test_start_saleria + test_allowed_senders_fail_closed
+- Bestehende 23 Tests in test_settings_token weiter grün (die nutzen
+  _make_app ohne SecretStore → Middleware fällt auf Phase-52.1a-Verhalten
+  zurück, Exemption permanent)
+- Nächster Schritt: 57.1 Loopback-Default + Grace-Period
+
+## Zwischenstand: Phase 57.1 – Loopback-Default + Grace-Period (2026-04-16)
+- Code-Änderungen:
+  * src/elder_berry/web/setup_wizard.py:
+    - run_setup_wizard() bekommt bind, compat_mode, migration_marker Parameter
+    - Default bind="127.0.0.1" (vorher hardcoded 0.0.0.0)
+    - Setup-Page injiziert gelbes Compat-Banner wenn compat_mode=True
+    - /api/setup/complete schreibt Marker-Datei wenn migration_marker gesetzt
+    - Bugfix: FastAPI-Import in run_setup_wizard() war unter TYPE_CHECKING
+      (fehlte zur Laufzeit → NameError). Lokal importiert.
+  * scripts/start_saleria.py:
+    - Wizard-Aufruf: ELDER_BERRY_SETUP_BIND + Grace-Period-Logik
+      (Marker-Datei + setup_wizard_completed prüfen, einmalig 0.0.0.0
+      bei Upgrade, Warn-Log)
+    - Tower-Agent: ELDER_BERRY_TOWER_BIND (Default 127.0.0.1), Warn-Log
+      bei LAN-Bind. Alte hardcoded 0.0.0.0 entfernt.
+  * tests/test_start_saleria.py: bestehender Test "assert 0.0.0.0 in source"
+    angepasst → "assert ELDER_BERRY_TOWER_BIND" + "127.0.0.1" in source
+- Neue Tests (tests/test_start_saleria_bind.py):
+  * TestSetupWizardBind: 4 Tests (Default loopback, bind forwarded, compat
+    mode in app.state, migration marker in app.state)
+  * TestCompatBanner: 2 Tests (Banner present/absent)
+  * TestMigrationMarker: 2 Tests (Marker written/not-written when path None)
+  * TestTowerAgentBind: 4 Tests (Env-Ref in source, Default loopback,
+    Setup-Bind-Ref, Setup-Bind-Default)
+- Regression: 233 passed + 1 skipped über alle relevanten Module
+  (1 pre-existing Failure: TestErrorAlerting im Batch mit test_start_saleria
+  wegen Root-Logger-Pollution – nicht Phase-57-verursacht, identisch mit
+  dem in 57.4 beschriebenen Problem)
+- Nächster Schritt: 57.3 Tower-Token + Host-Discovery

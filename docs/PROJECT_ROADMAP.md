@@ -3,6 +3,7 @@
 ---
 
 ## Phase 1 – Software Basic (Windows Tower) ✅ ABGESCHLOSSEN
+
 - PC-Steuerung (Maus, Tastatur, Fenster, Lautstärke) – WindowsActionController
 - Systemdaten auslesen (CPU, RAM, GPU, laufende Prozesse) – SystemMonitor
 - LLM-Anbindung: Anthropic Sonnet 4.6 (primär) + Ollama phi4:14b (Offline-Fallback) – LLMRouter
@@ -12,6 +13,7 @@
 - Konsistentes Pattern: ABC + plattformspezifische Implementierung + DI
 
 ## Phase 2 – RPi5 Anbindung ✅ SOFTWARE ABGESCHLOSSEN
+
 - Kommunikationsprotokoll Tower ↔ RPi5: REST via FastAPI (Port 8000)
 - Protocol DTOs, RobotServer (FastAPI), RobotClient (httpx)
 - Simulator für lokale Entwicklung ohne Hardware
@@ -22,6 +24,7 @@
 - **Offen:** Sensor-Integration (Kamera, BME280, APDS-9960)
 
 ## Phase 3 – Charakter / V-Tuber ✅ ABGESCHLOSSEN
+
 - Charakter: Saleria Berry – "Charmant und melodisch mit spielerischer Gefahr"
 - CharacterEngine (ABC) + SaleriaEngine (10 Emotionen, YAML-Persönlichkeit)
 - Coqui XTTS v2 Voice Cloning – CoquiTTSEngine (pro Emotion ein Speaker-WAV)
@@ -31,6 +34,7 @@
 - Display-Hardware: RPi Touch Display 2 (5", 720×1280, DSI, Portrait)
 
 ## Phase 4 – Gehäuse + Drehteller 🔧 IN ARBEIT (Hardware)
+
 - Gehäuse: Holunder-Baumstamm (Resin-Druck, segmentiert)
   - Spec: docs/concepts/gehaeuse-baumstamm-spec.md
   - CAD: hardware/enclosure/ (Inventor)
@@ -44,6 +48,7 @@
 - **Offen:** Standort (Schreibtisch, Regal, Sideboard)
 
 ## Phase 5 – Software Advance ✅ GRÖSSTENTEILS ABGESCHLOSSEN
+
 - AnthropicClient (Sonnet 4.6 primär, Ollama Offline-Fallback)
 - RAG Memory: ChromaDB + OllamaEmbeddingClient (nomic-embed-text, 768-dim)
 - STT: FasterWhisperEngine (GPU-beschleunigt, VAD-Filter, Lazy-Load)
@@ -53,6 +58,7 @@
 - **Offen:** Feinschliff Aktions-Logik (komplexe Verkettungen)
 
 ## Phase 6 – Matrix-Integration ✅ ABGESCHLOSSEN
+
 - Synapse Matrix-Server auf Plesk-Server (matrix.last-strawberry.com)
 - Element-Client auf Handy → Saleria erreichbar von unterwegs
 - SecretStore (Fernet-verschlüsselte Credentials)
@@ -63,6 +69,7 @@
 - Live-getestet: Text + Sprachnachricht funktional
 
 ## Phase 7 – Remote-Features + ClaudeAgent ✅ ABGESCHLOSSEN
+
 - RemoteCommandHandler: 20+ direkte Commands ohne LLM
   - Tier 1: status, screenshot, medien, lautstärke, avatar/selfie, hilfe
   - Tier 2: clipboard, send_file, start/kill prozess, WoL
@@ -78,6 +85,7 @@
 Saleria als echte Alltagsassistentin – Kalender, E-Mail, Fitness, Wetter, Smart Home.
 
 ### ✅ Google Calendar (abgeschlossen)
+
 - GoogleCalendarClient: Termine lesen, erstellen, löschen, suchen
 - OAuth2-Setup via Setup-Script
 - Natürliche Sprache: "termine morgen", "erstelle termin Zahnarzt morgen 14:00",
@@ -85,36 +93,44 @@ Saleria als echte Alltagsassistentin – Kalender, E-Mail, Fitness, Wetter, Smar
 - Event-IDs für kontextbasiertes Löschen nach Abfrage
 
 ### ✅ E-Mail / IMAP (abgeschlossen)
+
 - IMAPEmailClient: Ungelesen, Suche, Anhänge senden
 - IMAP UIDs, Body-Preview in Chat-History (LLM kann zusammenfassen)
 - "mail suche Rechnung" → "fasse die mail zusammen" → "schick mir den anhang"
 
 ### ✅ Berry-Gym Fitness (abgeschlossen)
+
 - GymDataClient: Training, Details, Woche, PRs
 
 ### ✅ Multi-Turn Chat-History (abgeschlossen)
+
 - ChatHistory: Sliding Window pro User (10 Nachrichten)
 - Ersetzt Quick-Fix (_last_command_result)
 - Ermöglicht Rückfragen, Kontext-Bezug, "mach das nochmal"
 
 ### ✅ Wetter (abgeschlossen)
+
 - WeatherClient (Open-Meteo API, kostenlos, kein API-Key)
 - Commands: "wetter", "wetter morgen", "wetter woche"
 - Keywords: "regnet es", "brauche ich schirm", "wie warm"
 
 ### ✅ Timer & Erinnerungen (abgeschlossen)
+
 - ReminderStore (SQLite, neustart-sicher, UTC)
 - ReminderScheduler (Daemon-Thread, 15s Poll)
 - Commands: "timer 20 min", "erinnere mich um 18 uhr: Wäsche", "erinnerungen"
 
 ### ✅ Daily Briefing (abgeschlossen)
+
 - BriefingScheduler (Daemon-Thread, täglich 07:30)
 - Wetter + Termine + Erinnerungen kombiniert
 - Manuell: "briefing", Keywords: "guten morgen"
 
 ### ⏸️ ZURÜCKGESTELLT: Home Assistant Client
+
 > Zurückgestellt wegen Umzug – HA-Setup wird am neuen Standort komplett neu aufgebaut.
 > Nur Logitech Harmony Hub bleibt bestehen.
+
 - HomeAssistantClient: REST API, Long-lived Token in SecretStore
 - Harmony Hub über HA (kein direkter API-Zugriff nötig)
 - Commands: "licht wohnzimmer an/aus", "heizung 21 grad", "szene film", "harmony tv an"
@@ -127,15 +143,18 @@ Saleria als echte Alltagsassistentin – Kalender, E-Mail, Fitness, Wetter, Smar
 ## Phase 9 – Multimodal + Autonomie 🔭 VISION
 
 ### ~~Kamera-Integration (Multimodal)~~ → Phase 26 ✅
+
 - Umgesetzt als Phase 26 mit RPi Camera Module 3 + Anthropic Vision API
 
 ### Emotion Recognition (Voice)
+
 - Audio-basierte Emotionserkennung → Saleria passt Antwortton an
 - Analyse-Dokument: `docs/concepts/emotion-recognition-voice.md`
 - Empfehlung: Hybrid-Ansatz (Audio-Features + LLM-Textanalyse, kein ML-Modell)
 - Niedrige Priorität – erst wenn Sprachnachrichten regelmäßig genutzt werden
 
 ### ~~Multi-Channel~~ GESTRICHEN
+
 > Eigener Matrix-Server = volle Kontrolle über eigene Daten.
 > Discord/Telegram würde Daten an Dritte geben → widerspricht dem Projektprinzip.
 
@@ -190,6 +209,7 @@ Saleria kann auf Anweisung des Nutzers auf Bildschirmelemente klicken –
 gesteuert über Anthropic Computer Use (Sonnet 4.6 Vision).
 
 ### Flow
+
 1. Nutzer: "schick mir einen screenshot"
 2. Saleria: Screenshot via mss → Matrix
 3. Nutzer: "klick auf [Element]"
@@ -199,6 +219,7 @@ gesteuert über Anthropic Computer Use (Sonnet 4.6 Vision).
 7. Saleria: 3s warten → neuer Screenshot → Matrix (Verification)
 
 ### Technisch
+
 - **Anthropic Computer Use Tool**: `computer_20250124` Tool-Typ im API-Call
   - Strukturierte Ausgabe (click, type, key, scroll) statt freies Koordinaten-Raten
   - Kalibriert auf exakte Pixel-Koordinaten
@@ -212,10 +233,12 @@ gesteuert über Anthropic Computer Use (Sonnet 4.6 Vision).
 - **DPI-Kompensation**: Windows-Skalierung (125%/150%) muss berücksichtigt werden
 
 ### Kosten
+
 - ~4-5 Cent pro Klick-Aktion (Screenshot-Bild ~6.000 Tokens + Koordinaten-Antwort)
 - Bei gelegentlicher Nutzung (5-10x/Tag) vernachlässigbar
 
 ### Entscheidungen (gelöst)
+
 - Multi-Monitor: Monitor-Index konfigurierbar (Setter + Web-Dashboard http://localhost:8090)
 - Loop-Modus: Nein – jeder Schritt einzeln per Befehl (User bestätigt)
 - Sicherheit: Keine Whitelist nötig – User muss jeden Klick explizit anweisen
@@ -225,6 +248,7 @@ gesteuert über Anthropic Computer Use (Sonnet 4.6 Vision).
 Saleria kann auf Anfrage im Internet suchen und die Ergebnisse aufbereitet zurückgeben.
 
 ### Flow
+
 1. Nutzer: "Suche Dachdecker in der Nähe von Plattenburg"
 2. Saleria → Claude: extrahiert Suchbegriff + Ort ("Dachdecker Plattenburg Brandenburg")
 3. Saleria → Brave Search API: REST-Query
@@ -234,6 +258,7 @@ Saleria kann auf Anfrage im Internet suchen und die Ergebnisse aufbereitet zurü
 7. Saleria → Matrix: Aufbereitete Antwort
 
 ### Technisch
+
 - **Brave Search API**: 2000 Queries/Monat kostenlos, einfache REST-API, kein Google-Account
 - **Claude als Doppelrolle**: Intent-Erkennung ("was will der User suchen") + Aufbereitung ("mach JSON lesbar")
 - **Neue Klasse**: `tools/brave_search_client.py` (BraveSearchClient)
@@ -242,10 +267,12 @@ Saleria kann auf Anfrage im Internet suchen und die Ergebnisse aufbereitet zurü
 - **Abhängigkeit**: nur `httpx` (bereits vorhanden)
 
 ### Kosten
+
 - Brave API: $5/1000 Req, aber $5 monatliches Guthaben → effektiv kostenlos unter 1000 Req/Monat
 - Claude Intent + Aufbereitung: ~500 Input + ~300 Output Tokens → ~0.5 Cent pro Suche
 
 ### Entscheidungen (gelöst)
+
 - Auto-Erkennung: Nein – explizit ("suche ...") + LLM-Fallback über Saleria-Prompt reicht
 - Lokale Ergebnisse: Nein – Standard-Web-Suche, Brave liefert beides implizit
 - Ergebnis-Caching: Nein – bei effektiv kostenlosem Free-Tier nicht nötig
@@ -429,12 +456,14 @@ Hardware bereits getestet (test_stepper.py, test_hall.py).
 ## Projektgrenzen (ehrliche Einschätzung)
 
 ### Was dieses Projekt ist
+
 - **Persönlicher Single-User Assistent** – für eine Person, kein Multi-Tenant
 - **Zunehmend proaktives System** – Saleria antwortet auf Eingaben und wird schrittweise proaktiver (Kalender-Watcher, Kontext-Verknüpfung)
 - **Lokale KI-Pipeline** – Daten bleiben auf eigenem Server/Tower; kein Cloud-Zwang
 - **Hobby-Projekt mit echtem Nutzen** – kein kommerzielles Produkt
 
 ### Technische Eigenschaften (keine Einschränkungen für den Use-Case)
+
 | Bereich | Eigenschaft | Kontext |
 |---|---|---|
 | Antwortzeit | 3–8s pro Turn | Für einen Assistenten völlig akzeptabel – kein Gesprächsersatz, sondern Hilfe |
@@ -446,13 +475,16 @@ Hardware bereits getestet (test_stepper.py, test_hall.py).
 | Kamera-Reasoning | Cloud-LLM nötig | Vision-Modelle lokal noch nicht ausgereift; OpenRouter ist sinnvoll |
 
 ### Was absichtlich nicht implementiert wird
+
 - **Sicherheits-Infrastruktur für mehrere User** – nicht der Use-Case
 - **Mobile App** – Element ist der Client, keine eigene App geplant
 - **Emotionale Manipulation / Dark Patterns** – Saleria soll helfen, nicht abhängig machen
 - **Autonome Code-Änderungen** – ClaudeAgent darf Docs schreiben, aber nicht `src/` ändern (Sicherheit)
 
 ### Realistisches Endprodukt
+
 Ein physischer Assistent auf dem Schreibtisch (Holunder-Hologramm), erreichbar via Handy (Element) und Sprache, der:
+
 - Fragen beantwortet und Gespräche führt (Saleria-Persönlichkeit)
 - Kalender, Wetter, Erinnerungen managed
 - Proaktiv vor Terminen erinnert (Kalender-Watcher)
@@ -517,7 +549,6 @@ To-Do-Liste mit Prioritäten, Kategorien und Briefing-Integration.
 - ✅ **Tests**: 74 Tests (TodoStore + TodoCommandHandler)
 - **Konzept**: `docs/concepts/phase-30-todo-liste.md`
 
-
 ## Phase 31 – Bridge Refactoring (Technische Schulden) ✅ ABGESCHLOSSEN
 
 Große Dateien aufgeteilt und Verantwortlichkeiten sauber getrennt.
@@ -576,6 +607,7 @@ Personalisiertes Morgenbriefing mit Geburtstagen, offenen E-Mails,
 Self-Hosted Nextcloud als Backend für Dateien, Kalender und Kontakte.
 
 ### Unterphasen
+
 - **36.1** ✅ Nextcloud Setup + WebDAV Files (NextcloudFilesClient)
   → Dateien hoch-/runterladen, Verzeichnisse listen, Share-Links
 - **36.2** ✅ CalDAV Kalender (CalDAVCalendarClient → GoogleCalendarClient ersetzen)
@@ -607,18 +639,21 @@ Logitech-Cloud wurde abgelöst. Dashboard als modulare Kommandozentrale.
 | 37.6 | Alexa-Integration (Emulated Hue) | offen (nach Umzug + HA) |
 
 ### 37.1 ✅ Harmony Hub – Vollständige Logitech-Ablösung
+
 - HarmonyAdapter auf RPi5 (WebSocket :8088, Backup-Config)
 - Config-Mock-Server auf Rootserver (POST-Endpoints, SSL, DNS-Override)
 - PWA Harmony Remote (Standalone, mobile-first)
 - 5 Server-Endpoints, Matrix-Commands (fernsehen an, lauter, leiser etc.)
 
 ### 37.2 ✅ Harmony Remote – Erweiterte Steuerung & Szenen
+
 - Layout-System (HarmonyLayoutManager, auto-generiert + kuratiert)
 - PWA-Rewrite: Aktivitäts-Modus + Geräte-Modus + Szenen-Tab
 - Szenen-Engine (HarmonySceneManager, CRUD + sequenzielle Ausführung)
 - Saleria-Anbindung: "starte szene Gaming" → RPi5 → Szenen-Engine
 
 ### 37.3 ✅ Dashboard 2.0 – Modulare Smart Home PWA
+
 Mobile-first PWA auf dem Rootserver als modulare Kommandozentrale (fern.last-strawberry.com).
 
 - ✅ PWA: installierbar, HTTPS, Service Worker, Offline-Cache
@@ -700,7 +735,6 @@ Setzt Phase 37.2 (Szenen-Engine) voraus und physischen Zugang zum Hub.
 - **Konzept**: `docs/concepts/harmony-remote-erweitert.md` (Teil 2)
 - **Abhängigkeit**: 37.2 ✅
 
-
 ## Phase 42 – Dokument-Ablage (Cloud Aufräumen) 📂 ✅ ABGESCHLOSSEN
 
 Saleria analysiert Dokumente im `/Eingang/`-Ordner auf Nextcloud, schlägt
@@ -715,7 +749,6 @@ einen Namen und Zielordner vor, und verschiebt nach Bestätigung.
   - Nur PDF erlaubt (exe, docx, xlsx abgelehnt – Sicherheit), Bitdefender-Validierung
 - ✅ **Tests**: 68 neue Tests (23 Classifier + 21 Filing + 8 Move + 5 Vision + 11 Mail-Anhang)
 - **Konzept**: `docs/concepts/phase-42-dokument-ablage.md`
-
 
 ## Phase 43 – Routenplanung (Google Maps Directions) 🗺️ ✅ ABGESCHLOSSEN
 
@@ -732,7 +765,6 @@ Kontakten, Fahrtdauer via Google Maps API, Abfahrtszeit, klickbarer Link.
 - ✅ **Google Maps Link**: Deep-Link öffnet App auf Android (kompatibel mit Android Auto)
 - ✅ **Tests**: 62 neue Tests (19 RoutePlanner + 43 RouteCommandHandler)
 - **Konzept**: `docs/concepts/phase-43-routenplanung.md`
-
 
 ## Phase 44 – Server-Migration & Audio-Router 🚀 ✅ ABGESCHLOSSEN
 
@@ -764,7 +796,6 @@ lokales Whisper Fallback. Tower wird optionaler Agent für PC-Steuerung.
 - **Kosten**: ~€20-25/Monat Mehrkosten (ElevenLabs Creator $22)
 - **Konzept**: `docs/concepts/phase-44-server-migration.md`
 
-
 ## Phase 45 – Settings Dashboard Erweiterung ⚙️ ✅ ABGESCHLOSSEN
 
 Bestehendes Dashboard (localhost:8090) um API-Verwaltung, LLM-Umschalter,
@@ -788,7 +819,6 @@ Grundeinstellungen und Sicherheitshärtung erweitert.
 - **Tier 2 (nicht in Phase 45)**: Memory-Browser, Service-Health, Log-Viewer
 - **Konzept**: `docs/concepts/phase-45-settings-dashboard.md`
 
-
 ## Phase 46 – Setup-Wizard (Installationsassistent) 🧙 ✅ ABGESCHLOSSEN
 
 Neuer Nutzer kann Elder-Berry von Null aufsetzen: Bootstrap-Script +
@@ -808,7 +838,6 @@ Web-Wizard der Schritt für Schritt alle Dienste konfiguriert und testet.
 - ✅ **FastAPI in Core-Dependencies**: Wizard funktioniert auf frischem System nach `pip install -e .`
 - ✅ **Tests**: 50 Tests (19 SetupTests + 21 Wizard-API + 10 Install-Scripts)
 - **Konzept**: `docs/concepts/phase-46-setup-wizard.md`
-
 
 ## Phase 47 – Befehlsmuster-Stabilisierung 🔧 ✅ ABGESCHLOSSEN
 
@@ -832,7 +861,6 @@ Fehlende Keywords, verbesserte Fehlermeldungen und universeller "bitte"-Prefix.
 - ✅ **"bitte"-Prefix**: Universell in 4 Handlern ergänzt (mail, calendar, todo, note)
 - ✅ Alle 3.939 Tests grün
 
-
 ## Phase 48 – Technische Schulden / Qualität 🔧 ✅ ABGESCHLOSSEN
 
 Refactoring der zwei größten Dateien und Roadmap-Aktualisierung.
@@ -846,7 +874,6 @@ Refactoring der zwei größten Dateien und Roadmap-Aktualisierung.
 - ✅ **Weitere 700+-Zeilen-Dateien geprüft**: Größe durch Pattern-Daten oder kohärente
   Domänenlogik begründet – kein Split nötig
 - ✅ **Tests**: 206 betroffene Tests grün, keine Regressionen
-
 
 ## Phase 49 – Anhang-Aktionsmenü ✅ ABGESCHLOSSEN
 
@@ -866,7 +893,6 @@ Nach Mail-Anhang-Upload bietet Saleria ein Aktionsmenü an (nur PDFs).
   (MOVE statt Upload)
 - ✅ **Tests**: 96 betroffene Tests grün
 
-
 ---
 
 ## UX-Verbesserungen (Phase 50–53)
@@ -882,6 +908,7 @@ hilfreich machen.
 Fehlermeldungen humanisieren und destruktive Commands absichern.
 
 ### 50.1 – Fehler-Wrapper für Command-Handler
+
 - **Problem**: 30+ `except Exception as e` geben Raw-Exceptions an Matrix weiter
   ("ConnectionRefusedError", "401 Unauthorized") – nicht hilfreich für den Nutzer
 - **Lösung**: `user_friendly_error(e)` Utility in `comms/commands/base.py`
@@ -894,12 +921,14 @@ Fehlermeldungen humanisieren und destruktive Commands absichern.
 - **Tests**: Wrapper-Unit-Tests + Stichproben-Tests pro Handler
 
 ### 50.2 – "Nicht konfiguriert"-Meldungen mit Setup-Link
+
 - **Problem**: "E-Mail nicht konfiguriert." sagt nicht WAS der Nutzer tun soll
 - **Lösung**: Jede "nicht konfiguriert"-Meldung ergänzen:
   "E-Mail nicht konfiguriert. Einrichten unter http://localhost:8090/setup (Schritt 5)."
 - **Scope**: Alle Handler die optionale Dienste nutzen (Mail, Cloud, Brave, Gym, Kamera, Harmony)
 
 ### 50.3 – Bestätigungsdialoge für destruktive Commands
+
 - **Problem**: `restart`, `lösche alle termine`, `lösche alle erinnerungen`,
   `todos aufräumen`, `update` führen sofort aus ohne Rückfrage
 - **Lösung**: `pending_confirmation` nutzen (Mechanismus existiert bereits)
@@ -908,6 +937,7 @@ Fehlermeldungen humanisieren und destruktive Commands absichern.
 - **Scope**: 5 Commands in 3 Handlern (weather, calendar, process/update)
 
 ### 50.4 – Konsistentes Fehlerformat
+
 - **Problem**: Manche Handler sagen "nicht konfiguriert", andere "Fehler: ...",
   andere "Exception: ..."
 - **Lösung**: Einheitliches Format für alle Fehler-Rückgaben:
@@ -915,13 +945,13 @@ Fehlermeldungen humanisieren und destruktive Commands absichern.
   - Aktion fehlgeschlagen: "❌ [Was schiefging]. [Was der Nutzer tun kann]."
   - Teilerfolg: "⚠ [Was geklappt hat], aber [was fehlgeschlagen ist]."
 
-
 ## Phase 51 – Kontextsensitive Hilfe & Command-Discovery 📖 ✅ ABGESCHLOSSEN
 
 Hilfesystem überarbeiten: vom monolithischen Textblock zu kategorisierter,
 durchsuchbarer Hilfe.
 
 ### 51.1 – Kategorisierte Hilfe
+
 - **Problem**: `hilfe` gibt ~190 Zeilen auf einmal aus – in Matrix unlesbar
 - **Lösung**: `hilfe` zeigt nur Kategorien-Übersicht (10 Zeilen):
   ```
@@ -942,6 +972,7 @@ durchsuchbarer Hilfe.
 - **Scope**: `remote_commands.py` (HELP_TEXT + parse_command/execute)
 
 ### 51.2 – Tippfehler-Erkennung (Did-you-mean)
+
 - **Problem**: "volumen 50", "statsu", "screnshot" → keine Erkennung, geht ans LLM
 - **Lösung**: Levenshtein-Distanz auf `simple_commands` aller Handler
   - Distanz ≤ 2 → "Meintest du 'volume'? Versuche: volume 50"
@@ -949,6 +980,7 @@ durchsuchbarer Hilfe.
 - **Scope**: `remote_commands.py` (nach fehlgeschlagenem parse_command)
 
 ### 51.3 – Keyword-Erweiterung für natürliche Sprache
+
 - **Problem**: "Zeig mir meine Termine" oder "Kannst du den Status checken" werden
   nicht erkannt, weil Keywords zu eng definiert sind
 - **Lösung**: Systematische Erweiterung der Keyword-Listen um Varianten mit
@@ -956,13 +988,13 @@ durchsuchbarer Hilfe.
 - **Scope**: Alle 18 Handler in `comms/commands/`, aufbauend auf Phase 47b
 - **Risiko**: Mehr Keywords = mehr Kollisionen → Cross-Handler-Konflikttests erweitern
 
-
 ## Phase 52 – Unified Settings & Startup-Feedback ⚙️ ✅ ABGESCHLOSSEN
 
 Konfiguration an einem Ort statt über 3 Oberflächen verteilt.
 Startup gibt klares Feedback was funktioniert und was fehlt.
 
 ### 52.1 – Unified Settings-Panel
+
 - **Problem**: Secrets in Setup-Wizard, 4 Settings im Dashboard, Rest nur per API
   oder Terminal → fragmentiert und verwirrend
 - **Lösung**: Settings-Dashboard (`/settings`) als zentrale Konfigurations-Oberfläche
@@ -975,6 +1007,7 @@ Startup gibt klares Feedback was funktioniert und was fehlt.
 - **Scope**: `web/settings_dashboard.py`, neues Template `settings_panel.html`
 
 ### 52.2 – Startup-Summary
+
 - **Problem**: `start_saleria.py` loggt einzelne Komponenten, aber zeigt nie eine
   Gesamtübersicht. Nutzer sieht nicht was fehlt.
 - **Lösung**: Nach dem Startup eine Summary ausgeben + optional an Matrix senden:
@@ -995,18 +1028,19 @@ Startup gibt klares Feedback was funktioniert und was fehlt.
 - **Scope**: `scripts/start_saleria.py` (neue Funktion `_print_startup_summary()`)
 
 ### 52.3 – Setup-Wizard → Settings-Migration
+
 - **Problem**: Re-Setup-Button im Dashboard öffnet den 8-Schritte-Wizard –
   Wizard-Metapher ist unpassend wenn man nur einen API-Key ändern will
 - **Lösung**: Re-Setup-Button entfernen, stattdessen Link zu `/settings`
   mit Deep-Link zur richtigen Kategorie (z.B. `/settings#llm`)
 - **Scope**: `web/templates/audio_dashboard.html`, `settings_dashboard.py`
 
-
-## Phase 53 – Install-Script Härtung & Avatar-Editor UX 🔧 GEPLANT
+## Phase 53 – Install-Script Härtung & Avatar-Editor UX 🔧 ✅ ABGESCHLOSSEN
 
 Kleinere UX-Verbesserungen für Installation und Avatar-Konfiguration.
 
 ### 53.1 – Install-Script Fehlerhandling
+
 - **Problem**: `pip install --quiet` verschluckt Fehler, Nutzer sieht erst
   beim Start dass Dependencies fehlen
 - **Lösung**:
@@ -1017,6 +1051,7 @@ Kleinere UX-Verbesserungen für Installation und Avatar-Konfiguration.
 - **Scope**: `scripts/install.ps1`, `scripts/install.sh`
 
 ### 53.2 – Avatar-Editor Onboarding
+
 - **Problem**: Avatar-Editor hat kein Onboarding, Nutzer versteht nicht was
   Assets, Layers und Emotion-Maps bedeuten
 - **Lösung**: Intro-Modal beim ersten Aufruf:
@@ -1026,10 +1061,172 @@ Kleinere UX-Verbesserungen für Installation und Avatar-Konfiguration.
   - "Zurücksetzen auf Standard" Button
 - **Scope**: `web/templates/avatar_editor.html`
 
-### 53.3 – Settings aus Config-Datei statt Hardcode
-- **Problem**: SettingDefinitions sind als Python-Klassen in `settings_dashboard.py`
-  hardcoded – neue Settings erfordern Code-Änderungen
-- **Lösung**: Settings-Definitionen in `config/settings.yaml` auslagern,
-  SettingsDashboard lädt dynamisch
-- **Vorteil**: Neue Settings per YAML hinzufügen ohne Python-Code zu ändern
-- **Scope**: `web/settings_dashboard.py`, neues `config/settings.yaml`
+### 53.3 – Settings aus Config-Datei statt Hardcode ✅ ERLEDIGT DURCH 52.0
+
+- **Status**: Phase 52.0 hat `SECRET_REGISTRY` in `secrets_api.py` zur Single
+  Source of Truth ausgebaut (inkl. `behavior`, `risk_level`, `placeholder`,
+  `select_options`). `_setting_definitions()` wird via
+  `_registry_to_setting_definition()` daraus abgeleitet. Neue Settings
+  brauchen nur noch einen Registry-Eintrag, kein Code-Change in
+  settings_dashboard.py. YAML-Auslagerung würde das Problem nochmal lösen
+  ohne Mehrwert.
+
+
+## Phase 55 – pydub/audioop Migration 🐍 ✅ ABGESCHLOSSEN
+
+Python 3.13 entfernt das `audioop`-Stdlib-Modul (PEP 594). `pydub`
+importiert es unconditional → ImportError beim RPi5-Upgrade auf
+Bookworm/Python 3.13.
+
+Konzept: `docs/concepts/phase-55-audioop-migration.md`
+
+### 55.1 – audio_converter.py auf direkten ffmpeg-Subprozess umgestellt
+
+- `to_ogg_opus()` ruft jetzt `subprocess.run(['ffmpeg', -c:a, libopus, ...])`
+  mit Exit-Code-Check und Timeout direkt auf
+- `get_duration_ms()` nutzt `ffprobe -show_entries format=duration -of json`
+- pydub aus `[matrix]` und `[server]` in `pyproject.toml` entfernt
+- 32 Tests grün, Laufzeit von ~30s auf 1s (kein echter ffmpeg-Call mehr
+  in Mocks)
+
+### 55.2 – Screenshot-Hänger + pytest-timeout
+
+- `system_commands._wake_monitor()` nutzt jetzt `SendMessageTimeoutW` mit
+  `SMTO_ABORTIFHUNG`, statt des blockierenden `SendMessageW`-Broadcasts.
+  Echtes Prod-Bugfix: ein Broadcast zu HWND_BROADCAST hing, sobald ein
+  beliebiges System-Fenster einen kaputten Message-Loop hatte.
+- `TestCmdScreenshot`: mss + `_wake_monitor` in den beiden Live-Tests
+  gemockt, keine deselect-Liste mehr nötig
+- `pytest-timeout>=2.3` als neue `[dev]`-Gruppe in `pyproject.toml`
+- Globales `timeout = 60` in `[tool.pytest.ini_options]`, damit
+  zukünftige Hänger nach 60s zwangsweise abgebrochen werden
+
+## Phase 56 – Nextcloud Tasks als Todo-Backend 📋 GEPLANT
+
+Nextcloud Tasks (CalDAV VTODO) ersetzt den lokalen SQLite-TodoStore.
+Aufgaben werden über DAVx5 aufs Handy synchronisiert. Fälligkeitsdaten
+werden unterstützt ("aufgaben morgen", "todo: Arzt, morgen").
+
+Konzept: `docs/concepts/phase-56-nextcloud-tasks.md`
+
+### 56.1 – CalDAVTaskClient
+
+- **Neue Klasse** `tools/caldav_tasks.py`: TaskItem-Dataclass + CalDAVTaskClient
+- Gleicher Pattern wie CalDAVCalendarClient: Lazy-Init, retry, graceful degradation
+- Liest/schreibt VTODOs via `caldav` + `icalendar` Library
+- Fälligkeitsdatum (DUE), Priorität, Kategorie
+
+### 56.2 – TodoCommandHandler umverdrahten
+
+- TodoStore-Referenzen durch CalDAVTaskClient ersetzen
+- user_id-Parameter entfernen (CalDAV hat keine User-ID)
+- ID-Typ von int auf str (UUID), mit Session-Index für Chat-Usability
+
+### 56.3 – Due-Date-Support in Commands
+
+- Neue Patterns: "todo: X, morgen", "aufgaben morgen/heute/überfällig"
+- Date-Parsing: heute, morgen, Wochentage, DD.MM(.YYYY)
+- Filter-Erweiterung in _cmd_filter
+
+### 56.4 – SmartContext + BriefingScheduler umstellen
+
+- smart_context._query_todos → task_client.format_for_briefing()
+- briefing_scheduler._build_todo_section → task_client
+- Constructor-Parameter und Imports anpassen
+
+### 56.5 – Migration & Deprecation
+
+- Migrations-Script: SQLite-Todos → Nextcloud Tasks (einmalig)
+- TodoStore aus allen Imports entfernen, Datei deprecaten
+
+
+## Phase 57 – Security-Härtung: Loopback, First-Run-Gate, Tower-Auth 🛡️ GEPLANT
+
+Schließt 4 Sicherheitslücken, die ein Code-Review nach Phase 52 aufgedeckt
+hat. Phase 52 hat die Basis gelegt (Loopback + Token fürs Settings-Panel),
+57 zieht das gleiche Muster durch für Setup-Wizard, TowerServer und die
+Wizard-Exemption der Middleware.
+
+Konzept: `docs/concepts/phase-57-security-haertung.md`
+
+### 57.1 – Loopback-Default + Grace-Period für Setup-Wizard und TowerAgent
+
+- **Problem**: `setup_wizard.py:470` und `start_saleria.py:538` binden
+  standalone auf `0.0.0.0`. Secrets (API-Keys, Matrix-Tokens) sind
+  während des First-Run im LAN mitlesbar, Tower-Steuerung ist direkt
+  exponiert.
+- **Lösung**: Default-Bind `127.0.0.1`. Zwei neue Env-Variablen
+  `ELDER_BERRY_SETUP_BIND` und `ELDER_BERRY_TOWER_BIND` (konsistent zu
+  `ELDER_BERRY_SETTINGS_BIND` aus Phase 52). Bei LAN-Bind Warn-Log.
+- **Grace-Period (57.1a)**: Beim ersten Upgrade-Start bindet der
+  Wizard einmalig auf `0.0.0.0`, damit headless Installationen nicht
+  ausgesperrt werden. Marker-Datei `~/.elder-berry/.phase57_migration_done`
+  + gelbes Banner im Wizard-UI. Ab dem zweiten Start (oder wenn der
+  Marker existiert) gilt Loopback-Default.
+- **Scope**: `scripts/start_saleria.py`, `src/elder_berry/web/setup_wizard.py`
+- **Breaking Change**: Dauerhaft-headless-Installationen müssen die
+  Env-Variable explizit setzen. Grace-Period fängt den einmaligen
+  Upgrade-Fall ab.
+- **Abhängigkeit**: Muss **nach 57.2** gemerged werden, sonst ist das
+  Grace-Period-Fenster doppelt riskant (LAN + offene Middleware-
+  Exemption).
+
+### 57.2 – First-Run-Gate für Wizard-Exemption
+
+- **Problem**: `SettingsTokenMiddleware` exempted `/api/setup` dauerhaft.
+  Der First-Run-Marker `setup_wizard_completed` existiert, wird aber
+  nicht ausgewertet. Phase 52.3 war genau diese Arbeit, wurde irrtümlich
+  gestrichen.
+- **Lösung**: Middleware bekommt `SecretStore`-Dependency, prüft
+  `setup_wizard_completed`. Nach Abschluss entfällt die Exemption und
+  `/api/setup` verlangt den Settings-Token. Cache-Invalidation im
+  Finish-Endpoint.
+- **Scope**: `src/elder_berry/web/settings_token_middleware.py`,
+  Cache-Invalidation in `setup_wizard.py`
+
+### 57.3 – Tower-Token + Host-Discovery
+
+- **Problem**: `tower/tower_server.py` hat keinerlei Auth. `/action`
+  erlaubt beliebige PC-Steuerung, sobald der Server direkt im LAN
+  erreichbar ist.
+- **Lösung**: Header `X-Saleria-Tower-Token`, Quelle (Priorität):
+  Env `ELDER_BERRY_TOWER_TOKEN` → `SecretStore.get("tower_auth_token")`.
+  Fail-closed beim Start (kein Token → Server verweigert Start).
+- **Auto-Migration (Token + Host)**: `start_saleria.py` generiert beim
+  ersten Upgrade einen neuen Token (`secrets.token_hex(32)`) **und**
+  ermittelt den lokalen `tower_advertised_host` über eine Fallback-
+  Kette (Env `ELDER_BERRY_TOWER_ADVERTISED_HOST` → UDP-Route-
+  Heuristik → `gethostbyname` → `127.0.0.1`). Beide Werte werden im
+  `SecretStore` abgelegt und einmalig geloggt.
+- **RobotClient zieht beides gemeinsam** aus dem `SecretStore` – ein
+  Eintrag weniger im Dashboard, keine doppelte Pflege von Host und
+  Token.
+- **Scope**: `tower/tower_server.py`, `scripts/start_saleria.py`,
+  `src/elder_berry/robot/client.py` (Header + Host-Lookup),
+  `SECRET_REGISTRY` (zwei neue Einträge `tower_auth_token` +
+  `tower_advertised_host`, Kategorie "Tower & Agent")
+- **Breaking Change**: Bestehende Installationen erhalten automatisch
+  Token und Host beim ersten Upgrade-Start, User muss im Normalfall
+  nichts manuell eintragen.
+
+### 57.4 – `matrix_allowed_senders` Fail-Closed-Audit
+
+- **Problem**: Unklar, wie Bridge und MessageHandler auf leere
+  `allowed_senders`-Liste reagieren (fail-closed vs. fail-open).
+- **Lösung**: Audit zuerst (vor 57.1–57.3). Fall A (fail-closed): neuer
+  Regression-Test. Fall B (fail-open): Phase 57 pausiert, Hotfix auf
+  separatem Branch, danach 57 wieder aufnehmen.
+- **Scope**: `src/elder_berry/comms/bridge.py`,
+  `src/elder_berry/comms/message_handlers.py`,
+  `tests/test_allowed_senders_fail_closed.py` (neu)
+
+### Reihenfolge
+
+1. **57.4 Audit** (Go/No-Go für die Phase)
+2. **57.2 First-Run-Gate** – **muss vor 57.1** gemerged sein, sonst
+   ist das Grace-Period-Fenster in 57.1 doppelt riskant (LAN-Bind
+   plus offene Middleware-Exemption gleichzeitig). Nicht verhandelbar.
+3. **57.1 Loopback-Default + Grace-Period** (Einmal-BC für Upgrade-User,
+   dauerhafter BC nur für LAN-Dauer-Nutzer)
+4. **57.3 Tower-Token + Host-Discovery** (größter BC, Auto-Migration
+   für Token **und** Host)

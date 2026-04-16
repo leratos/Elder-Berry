@@ -7,10 +7,36 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from elder_berry.comms.message_channel import IncomingMessage, MessageChannel
-from elder_berry.comms.bridge import MatrixBridge
+from elder_berry.comms.bridge import MatrixBridge as _RealMatrixBridge
 from elder_berry.comms.claude_agent import AgentResult
 from elder_berry.comms.remote_commands import CommandResult, RemoteCommandHandler
 from elder_berry.core.assistant import AssistantResult
+
+
+# Phase 57.4: Die MatrixBridge ist strikt fail-closed. Die Bestands-Tests
+# in diesem Modul sind zu zahlreich, um jeden MatrixBridge-Aufruf einzeln
+# um einen ``allowed_senders``-Parameter zu erweitern. Stattdessen shadowt
+# dieser Wrapper den Klassennamen im Test-Modul und setzt eine Default-
+# Whitelist mit allen Sendern, die in den Tests hier vorkommen. Tests,
+# die explizit eine andere Whitelist prüfen (z.B. Block-Verhalten für
+# ``@unknown:test``), überschreiben den Default per Keyword-Argument –
+# ``dict.setdefault`` lässt vorhandene Werte unangetastet.
+_DEFAULT_TEST_SENDERS = frozenset({
+    "@a:x",
+    "@b:x",
+    "@u:x",
+    "@user:example.com",
+    "@user:test",
+    "@user:x",
+})
+
+
+class MatrixBridge(_RealMatrixBridge):
+    """Test-Subclass: erbt alle Methoden/Statics, setzt nur Default-Whitelist."""
+
+    def __init__(self, *args, **kwargs):
+        kwargs.setdefault("allowed_senders", _DEFAULT_TEST_SENDERS)
+        super().__init__(*args, **kwargs)
 
 
 # ---------------------------------------------------------------------------
