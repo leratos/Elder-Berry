@@ -4643,3 +4643,68 @@ User: "Lies meine Mails und trag den Zahnarzttermin ein"
   test_start_saleria_bind.py, test_tower_auth.py, phase-57 Konzept)
 - Geänderte Dateien: 14
 - Branch: feature/phase-57-security-haertung
+
+## In Arbeit: Phase 56.1 – CalDAVTaskClient (2026-04-16)
+- nächster Schritt: src/elder_berry/tools/caldav_tasks.py / TaskItem + CalDAVTaskClient
+- Konzept: docs/concepts/phase-56-nextcloud-tasks.md
+- Neue Datei: src/elder_berry/tools/caldav_tasks.py (~370 Zeilen)
+  * TaskItem (frozen dataclass): uid, text, priority, category, done, due,
+    description, created_at, completed_at, format_short()
+  * CalDAVTaskClient:
+    - Constructor: secret_store (gleiche Credentials wie CalDAVCalendarClient)
+    - Lazy-Init: _get_task_list() findet VTODO-Collection
+      (bevorzugt "Aufgaben"/"Tasks"/"Todos", sonst erste mit VTODO-Support)
+    - _call_with_retry(): identisches Pattern wie CalDAVCalendarClient
+    - _parse_todo(): VTODO → TaskItem (Prioritäts-Mapping iCal↔Saleria)
+    - Lesen: get_open(), get_open_by_due(), get_open_by_due_range(),
+      get_overdue(), get_done(), count_open(), format_for_briefing()
+    - Schreiben: add(), complete(), reopen(), update_priority(), delete(),
+      delete_all_done()
+    - is_available(): Credentials + Erreichbarkeit prüfen
+  * Prioritäts-Mapping: iCal 1-4→hoch, 5→mittel, 6-9/0→niedrig
+    Rückrichtung: hoch→1, mittel→5, niedrig→0
+  * format_for_briefing(): mit Überfällig-Warnung (⚠)
+  * kein user_id-Parameter (CalDAV kennt nur einen User pro Verbindung)
+- Neue Test-Datei: tests/test_caldav_tasks.py – 67 Tests
+  * TestTaskItem: 7 Tests (format_short Varianten + frozen)
+  * TestPriorityMapping: 5 Tests (hin/rück/roundtrip)
+  * TestCredentialsAndAvailability: 5 Tests
+  * TestGetTaskList: 5 Tests (by name, fallback, no vtodo, no collections, cache)
+  * TestParseTodo: 10 Tests (basic, completed, priorities, category, due,
+    description, created_at, no-vtodo)
+  * TestGetOpen: 5 Tests (basic, excludes done, limit, sort, empty)
+  * TestGetByDue: 3 Tests (by date, overdue, range)
+  * TestGetDone: 2 Tests (basic, fallback ohne include_completed)
+  * TestCountAndBriefing: 4 Tests (count, briefing empty/few/many/overdue)
+  * TestAdd: 6 Tests (basic, priority, category, due, invalid, niedrig→kein PRIORITY)
+  * TestComplete: 2 Tests (success, not found)
+  * TestReopen: 2 Tests (success, not found)
+  * TestUpdatePriority: 3 Tests (success, invalid, not found)
+  * TestDelete: 3 Tests (success, idempotent, server error)
+  * TestDeleteAllDone: 1 Test
+  * TestConnectionRecovery: 3 Tests (retry, reset, timeout)
+- Regression: 67 passed, 0 failed, 0 skipped
+
+## In Arbeit: Phase 56.2 – TodoCommandHandler umverdrahten (2026-04-16)
+- nächster Schritt: src/elder_berry/comms/commands/todo_commands.py /
+  Constructor + alle Commands auf CalDAVTaskClient umstellen + Session-Index
+- Geänderte Datei: src/elder_berry/comms/commands/todo_commands.py
+  * Constructor: todo_store: TodoStore → task_client: CalDAVTaskClient
+  * default_user_id entfällt (CalDAV braucht keinen)
+  * Session-Index implementiert: _build_index(), _resolve_index(),
+    _format_items() – bei jeder Auflistung werden Items mit #1, #2, ...
+    nummeriert, intern wird Index→UUID aufgelöst
+  * Alle Commands (add, complete, reopen, priority, delete, list, filter,
+    done, cleanup) auf CalDAVTaskClient umgestellt
+  * Import: PRIORITIES kommt jetzt aus caldav_tasks statt todo_store
+  * Fehlermeldung bei ungültigem Index: "nicht im Index, zeige zuerst
+    die Liste mit 'todos'"
+  * Terminology: "Todo" → "Aufgabe" durchgängig in Meldungen
+- Geänderte Test-Datei: tests/test_todo_commands.py
+  * TodoStore-Fixture durch MagicMock-CalDAVTaskClient ersetzt
+  * _make_task() Helper für TaskItem-Erzeugung
+  * Neue Testklasse: TestSessionIndex (3 Tests: build_and_resolve,
+    index_resets_on_new_list, format_items_includes_numbers)
+  * Alle Command-Tests umgestellt: erst auflisten, dann Index verwenden
+  * 45 Tests, alle grün (vorher 32 Tests mit echtem SQLite-TodoStore)
+- Regression: 142 passed (caldav_tasks + todo_commands + caldav_calendar)
