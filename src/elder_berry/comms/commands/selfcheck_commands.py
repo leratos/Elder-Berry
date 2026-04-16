@@ -445,6 +445,13 @@ class SelfcheckCommandHandler(CommandHandler):
             svc = self._services.get(key)
 
             if svc is None:
+                # Avatar ist auf dem Server oft nicht lokal verfügbar
+                # (kein pygame), läuft aber über den TowerAgent remote.
+                if key == "avatar":
+                    tower = self._services.get("tower_agent")
+                    if tower and getattr(tower, "is_online", False):
+                        checks.append(f"✅ {label}: via Tower")
+                        continue
                 checks.append(f"➖ {label}: nicht konfiguriert")
                 continue
 
