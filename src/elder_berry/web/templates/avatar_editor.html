@@ -231,12 +231,165 @@
         ::-webkit-scrollbar-track { background: transparent; }
         ::-webkit-scrollbar-thumb { background: #2a2a4a; border-radius: 3px; }
         ::-webkit-scrollbar-thumb:hover { background: #3a3a5a; }
+
+        /* Phase 53.2 – Onboarding-Modal */
+        .onboarding-overlay {
+            position: fixed;
+            inset: 0;
+            background: rgba(5, 5, 15, 0.82);
+            display: none;
+            align-items: center;
+            justify-content: center;
+            z-index: 1000;
+            padding: 1.5rem;
+        }
+        .onboarding-overlay.active { display: flex; }
+        .onboarding-card {
+            background: #16213e;
+            border: 1px solid #2a3550;
+            border-radius: 14px;
+            max-width: 520px;
+            width: 100%;
+            padding: 1.8rem 2rem 1.6rem;
+            box-shadow: 0 12px 48px rgba(0, 0, 0, 0.55);
+        }
+        .onboarding-card h2 {
+            color: #ff6b8a;
+            font-size: 1.25rem;
+            margin-bottom: 0.4rem;
+        }
+        .onboarding-card .subtitle {
+            color: #9090b0;
+            font-size: 0.9rem;
+            margin-bottom: 1.1rem;
+        }
+        .onboarding-card ul {
+            list-style: none;
+            padding: 0;
+            margin: 0 0 1.2rem;
+        }
+        .onboarding-card li {
+            display: flex;
+            gap: 0.7rem;
+            padding: 0.55rem 0;
+            border-bottom: 1px solid #22304a;
+            color: #d0d0e0;
+            font-size: 0.88rem;
+            line-height: 1.4;
+        }
+        .onboarding-card li:last-child { border-bottom: none; }
+        .onboarding-card li .glyph {
+            flex-shrink: 0;
+            width: 1.6rem;
+            text-align: center;
+            color: #a8d5a2;
+            font-size: 1rem;
+        }
+        .onboarding-card li strong { color: #fff; }
+        .onboarding-actions {
+            display: flex;
+            gap: 0.6rem;
+            margin-top: 1rem;
+        }
+        .onboarding-actions button {
+            flex: 1;
+            padding: 0.7rem 1rem;
+            border-radius: 8px;
+            border: none;
+            cursor: pointer;
+            font-size: 0.9rem;
+            font-weight: 600;
+        }
+        .onboarding-actions .primary {
+            background: #ff6b8a;
+            color: #1a1a2e;
+        }
+        .onboarding-actions .primary:hover { background: #ff8aa3; }
+        .onboarding-actions .secondary {
+            background: #2a3550;
+            color: #d0d0e0;
+        }
+        .onboarding-actions .secondary:hover { background: #3a4560; }
+
+        .topbar .onboarding-help {
+            color: #8888cc;
+            font-size: 13px;
+            background: none;
+            border: none;
+            cursor: pointer;
+            padding: 0 0.6rem;
+        }
+        .topbar .onboarding-help:hover { color: #aaaaee; }
     </style>
 </head>
 <body>
+    <!-- Phase 53.2 – Onboarding-Modal (erster Aufruf oder via "Hilfe"-Button) -->
+    <div class="onboarding-overlay" id="onboardingOverlay" role="dialog"
+         aria-modal="true" aria-labelledby="onboardingTitle">
+        <div class="onboarding-card">
+            <h2 id="onboardingTitle">Willkommen im Avatar-Editor</h2>
+            <p class="subtitle">
+                Salerias Gesicht setzt sich aus einzelnen Layern zusammen.
+                Hier änderst du welches Asset pro Emotion verwendet wird.
+            </p>
+            <ul>
+                <li>
+                    <span class="glyph">①</span>
+                    <div>
+                        <strong>Layer &amp; Assets</strong> – Die Figur besteht
+                        aus mehreren Layern (Körper, Kopf, Augen, Mund, Haare,
+                        Extras). Im linken Panel wählst du ein Asset pro Layer.
+                    </div>
+                </li>
+                <li>
+                    <span class="glyph">②</span>
+                    <div>
+                        <strong>Emotionen</strong> – Jede Emotion
+                        (neutral, happy, sad, …) hat eine eigene
+                        Asset-Kombination. Oben im Emotion-Dropdown wählst du
+                        welche du gerade bearbeitest, die Vorschau mittig
+                        zeigt das Ergebnis in Echtzeit.
+                    </div>
+                </li>
+                <li>
+                    <span class="glyph">③</span>
+                    <div>
+                        <strong>Lip-Sync &amp; Breathing</strong> – Im rechten
+                        Panel stimmst du Timing-Parameter für die Mund-
+                        Animation und subtile Atembewegung ab. Die Werte
+                        gelten global für alle Emotionen.
+                    </div>
+                </li>
+                <li>
+                    <span class="glyph">④</span>
+                    <div>
+                        <strong>Speichern &amp; Hot-Reload</strong> – Nach
+                        Änderungen auf <em>Speichern</em> klicken und dann
+                        <em>Hot-Reload</em>, damit der laufende Avatar sie
+                        übernimmt – ohne Saleria neu zu starten.
+                    </div>
+                </li>
+            </ul>
+            <div class="onboarding-actions">
+                <button class="primary" type="button" id="onboardingDismiss">
+                    Verstanden, nicht mehr anzeigen
+                </button>
+                <button class="secondary" type="button" id="onboardingLater">
+                    Später wieder einblenden
+                </button>
+            </div>
+        </div>
+    </div>
+
     <div class="topbar">
         <h1>Avatar-Editor</h1>
-        <a href="/">&#8592; Dashboard</a>
+        <div style="display:flex; gap:1rem; align-items:center;">
+            <button class="onboarding-help" type="button" id="onboardingShow"
+                    title="Einführung erneut anzeigen">
+                &#9432; Hilfe
+            </button>
+            <a href="/">&#8592; Dashboard</a>
+        </div>
     </div>
 
     <div class="layout">
@@ -309,6 +462,44 @@
     </div>
 
 <script>
+// ===== Phase 53.2 – Onboarding =====
+const ONBOARDING_KEY = "elderberry.avatar.onboarding.seen";
+
+function showOnboarding() {
+    const overlay = document.getElementById("onboardingOverlay");
+    if (overlay) overlay.classList.add("active");
+}
+function hideOnboarding(markSeen) {
+    const overlay = document.getElementById("onboardingOverlay");
+    if (overlay) overlay.classList.remove("active");
+    if (markSeen) {
+        try { localStorage.setItem(ONBOARDING_KEY, "1"); } catch (e) { /* ignore */ }
+    }
+}
+function initOnboarding() {
+    const dismiss = document.getElementById("onboardingDismiss");
+    const later = document.getElementById("onboardingLater");
+    const show = document.getElementById("onboardingShow");
+    const overlay = document.getElementById("onboardingOverlay");
+
+    if (dismiss) dismiss.addEventListener("click", () => hideOnboarding(true));
+    if (later) later.addEventListener("click", () => hideOnboarding(false));
+    if (show) show.addEventListener("click", () => showOnboarding());
+    if (overlay) overlay.addEventListener("click", (ev) => {
+        if (ev.target === overlay) hideOnboarding(false);
+    });
+    document.addEventListener("keydown", (ev) => {
+        if (ev.key === "Escape" && overlay && overlay.classList.contains("active")) {
+            hideOnboarding(false);
+        }
+    });
+
+    let seen = false;
+    try { seen = localStorage.getItem(ONBOARDING_KEY) === "1"; } catch (e) { /* ignore */ }
+    if (!seen) showOnboarding();
+}
+document.addEventListener("DOMContentLoaded", initOnboarding);
+
 // ===== State =====
 let assets = {};       // {body: [...], eye: [...], mouth: [...], effect: [...]}
 let config = null;     // raw YAML config as object

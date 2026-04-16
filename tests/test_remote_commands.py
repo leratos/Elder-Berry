@@ -355,29 +355,71 @@ class TestCmdStatus:
 # ---------------------------------------------------------------------------
 
 class TestCmdScreenshot:
+    """Phase 55.2: Screenshot-Tests dürfen nicht die echte mss-API
+    aufrufen, weil SendMessageTimeoutW-Broadcasts und Display-State auf
+    manchen Windows-Systemen hängen oder minuten-lange Delays erzeugen.
+    Wir mocken mss komplett.
+    """
+
+    def _make_mss_module(self, png_bytes: bytes = b"\x89PNG"):
+        """Liefert ein Mock-mss-Modul mit grab/to_png-Stubs."""
+        sct = MagicMock()
+        screenshot = MagicMock()
+        screenshot.rgb = b"\x00" * 12
+        screenshot.size = (2, 2)
+        sct.monitors = [{"top": 0, "left": 0}, {"top": 0, "left": 0, "width": 100, "height": 100}]
+        sct.grab.return_value = screenshot
+
+        cm = MagicMock()
+        cm.__enter__ = MagicMock(return_value=sct)
+        cm.__exit__ = MagicMock(return_value=False)
+
+        mss_mod = MagicMock()
+        mss_mod.mss = MagicMock(return_value=cm)
+
+        def _to_png(rgb, size, output=None):
+            if output:
+                Path(output).write_bytes(png_bytes)
+        mss_tools = MagicMock()
+        mss_tools.to_png.side_effect = _to_png
+        mss_mod.tools = mss_tools
+        return mss_mod, mss_tools
+
     def test_screenshot_result_shape(self):
-        """Screenshot liefert immer ein gültiges CommandResult (Erfolg oder Fehler)."""
+        """Screenshot liefert ein erfolgreiches CommandResult (mss gemockt)."""
+        mss_mod, mss_tools = self._make_mss_module()
+
         handler = RemoteCommandHandler()
-        result = handler.execute("screenshot", "screenshot")
+        with patch.dict("sys.modules", {"mss": mss_mod, "mss.tools": mss_tools}):
+            with patch.object(
+                type(handler._handlers[0]) if handler._handlers else object,
+                "_wake_monitor", lambda *a, **kw: None, create=True,
+            ):
+                # Simpler: direkt _wake_monitor auf dem SystemCommandHandler mocken
+                from elder_berry.comms.commands.system_commands import SystemCommandHandler
+                with patch.object(SystemCommandHandler, "_wake_monitor", lambda *a, **kw: None):
+                    result = handler.execute("screenshot", "screenshot")
 
         assert result.command == "screenshot"
-        # Entweder Erfolg (mss installiert) oder graceful Fehler
-        if result.success:
-            assert result.image_path is not None
-            assert result.image_path.exists()
-            result.image_path.unlink(missing_ok=True)
-        else:
-            assert result.text is not None
+        assert result.success is True
+        assert result.image_path is not None
+        assert result.image_path.exists()
+        result.image_path.unlink(missing_ok=True)
 
     def test_screenshot_via_execute(self):
-        """execute('screenshot', ...) ruft _cmd_screenshot auf."""
+        """execute('screenshot', ...) ruft _cmd_screenshot auf (mss gemockt)."""
+        mss_mod, mss_tools = self._make_mss_module()
+
         handler = RemoteCommandHandler()
-        result = handler.execute("screenshot", "screenshot")
+        from elder_berry.comms.commands.system_commands import SystemCommandHandler
+        with patch.dict("sys.modules", {"mss": mss_mod, "mss.tools": mss_tools}):
+            with patch.object(SystemCommandHandler, "_wake_monitor", lambda *a, **kw: None):
+                result = handler.execute("screenshot", "screenshot")
 
         assert result.command == "screenshot"
-        if result.success:
-            assert result.image_path is not None
-            result.image_path.unlink(missing_ok=True)
+        assert result.success is True
+        assert result.image_path is not None
+        result.image_path.unlink(missing_ok=True)
 
     def test_screenshot_no_mss(self):
         """Screenshot wenn mss nicht importierbar ist."""
