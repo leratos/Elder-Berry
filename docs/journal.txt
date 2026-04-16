@@ -4643,6 +4643,7 @@ User: "Lies meine Mails und trag den Zahnarzttermin ein"
   test_start_saleria_bind.py, test_tower_auth.py, phase-57 Konzept)
 - Geänderte Dateien: 14
 - Branch: feature/phase-57-security-haertung
+<<<<<<< feature/phase-57-security-haertung
 - Nachbesserungen nach PR-Merge (auf demselben Branch):
   * fix: Selfcheck sendet Tower-Token bei /status-Check mit (c792b08)
   * fix: system_commands.py 3× direkter httpx-Call ohne Token
@@ -4654,3 +4655,165 @@ User: "Lies meine Mails und trag den Zahnarzttermin ein"
     Heartbeat (3866a8d, f772112)
   * fix: dictConfig Guard in start_saleria.py verhindert
     Test-Pollution durch ErrorCollectorHandler (a704de7)
+=======
+
+## In Arbeit: Phase 56.1 – CalDAVTaskClient (2026-04-16)
+- nächster Schritt: src/elder_berry/tools/caldav_tasks.py / TaskItem + CalDAVTaskClient
+- Konzept: docs/concepts/phase-56-nextcloud-tasks.md
+- Neue Datei: src/elder_berry/tools/caldav_tasks.py (~370 Zeilen)
+  * TaskItem (frozen dataclass): uid, text, priority, category, done, due,
+    description, created_at, completed_at, format_short()
+  * CalDAVTaskClient:
+    - Constructor: secret_store (gleiche Credentials wie CalDAVCalendarClient)
+    - Lazy-Init: _get_task_list() findet VTODO-Collection
+      (bevorzugt "Aufgaben"/"Tasks"/"Todos", sonst erste mit VTODO-Support)
+    - _call_with_retry(): identisches Pattern wie CalDAVCalendarClient
+    - _parse_todo(): VTODO → TaskItem (Prioritäts-Mapping iCal↔Saleria)
+    - Lesen: get_open(), get_open_by_due(), get_open_by_due_range(),
+      get_overdue(), get_done(), count_open(), format_for_briefing()
+    - Schreiben: add(), complete(), reopen(), update_priority(), delete(),
+      delete_all_done()
+    - is_available(): Credentials + Erreichbarkeit prüfen
+  * Prioritäts-Mapping: iCal 1-4→hoch, 5→mittel, 6-9/0→niedrig
+    Rückrichtung: hoch→1, mittel→5, niedrig→0
+  * format_for_briefing(): mit Überfällig-Warnung (⚠)
+  * kein user_id-Parameter (CalDAV kennt nur einen User pro Verbindung)
+- Neue Test-Datei: tests/test_caldav_tasks.py – 67 Tests
+  * TestTaskItem: 7 Tests (format_short Varianten + frozen)
+  * TestPriorityMapping: 5 Tests (hin/rück/roundtrip)
+  * TestCredentialsAndAvailability: 5 Tests
+  * TestGetTaskList: 5 Tests (by name, fallback, no vtodo, no collections, cache)
+  * TestParseTodo: 10 Tests (basic, completed, priorities, category, due,
+    description, created_at, no-vtodo)
+  * TestGetOpen: 5 Tests (basic, excludes done, limit, sort, empty)
+  * TestGetByDue: 3 Tests (by date, overdue, range)
+  * TestGetDone: 2 Tests (basic, fallback ohne include_completed)
+  * TestCountAndBriefing: 4 Tests (count, briefing empty/few/many/overdue)
+  * TestAdd: 6 Tests (basic, priority, category, due, invalid, niedrig→kein PRIORITY)
+  * TestComplete: 2 Tests (success, not found)
+  * TestReopen: 2 Tests (success, not found)
+  * TestUpdatePriority: 3 Tests (success, invalid, not found)
+  * TestDelete: 3 Tests (success, idempotent, server error)
+  * TestDeleteAllDone: 1 Test
+  * TestConnectionRecovery: 3 Tests (retry, reset, timeout)
+- Regression: 67 passed, 0 failed, 0 skipped
+
+## In Arbeit: Phase 56.2 – TodoCommandHandler umverdrahten (2026-04-16)
+- nächster Schritt: src/elder_berry/comms/commands/todo_commands.py /
+  Constructor + alle Commands auf CalDAVTaskClient umstellen + Session-Index
+- Geänderte Datei: src/elder_berry/comms/commands/todo_commands.py
+  * Constructor: todo_store: TodoStore → task_client: CalDAVTaskClient
+  * default_user_id entfällt (CalDAV braucht keinen)
+  * Session-Index implementiert: _build_index(), _resolve_index(),
+    _format_items() – bei jeder Auflistung werden Items mit #1, #2, ...
+    nummeriert, intern wird Index→UUID aufgelöst
+  * Alle Commands (add, complete, reopen, priority, delete, list, filter,
+    done, cleanup) auf CalDAVTaskClient umgestellt
+  * Import: PRIORITIES kommt jetzt aus caldav_tasks statt todo_store
+  * Fehlermeldung bei ungültigem Index: "nicht im Index, zeige zuerst
+    die Liste mit 'todos'"
+  * Terminology: "Todo" → "Aufgabe" durchgängig in Meldungen
+- Geänderte Test-Datei: tests/test_todo_commands.py
+  * TodoStore-Fixture durch MagicMock-CalDAVTaskClient ersetzt
+  * _make_task() Helper für TaskItem-Erzeugung
+  * Neue Testklasse: TestSessionIndex (3 Tests: build_and_resolve,
+    index_resets_on_new_list, format_items_includes_numbers)
+  * Alle Command-Tests umgestellt: erst auflisten, dann Index verwenden
+  * 45 Tests, alle grün (vorher 32 Tests mit echtem SQLite-TodoStore)
+- Regression: 142 passed (caldav_tasks + todo_commands + caldav_calendar)
+
+## In Arbeit: Phase 56.3 – Due-Date-Support in Commands (2026-04-16)
+- nächster Schritt: todo_commands.py / _parse_todo_fields + _cmd_filter
+  erweitern um Datums-Parsing und Fälligkeits-Filter
+- Geänderte Datei: src/elder_berry/comms/commands/todo_commands.py
+  * Neue Funktion _parse_date_token(): parst Datums-Tokens
+    (heute/morgen/übermorgen, Wochentage, DD.MM./DD.MM.YYYY)
+  * _parse_todo_fields(): Return-Type dict[str, str] → dict (wegen date-Feld),
+    neues "due"-Feld, Date-Tokens werden automatisch erkannt
+  * _cmd_add(): reicht due an client.add() durch
+  * _cmd_filter(): neue Datums-Keywords:
+    - heute/today → get_open_by_due(date.today())
+    - morgen/tomorrow → get_open_by_due(date.today()+1)
+    - überfällig/overdue → get_overdue()
+    - woche/diese woche → get_open_by_due_range(Mo-So)
+  * Neue Methoden: _cmd_due_date(), _cmd_overdue(), _cmd_due_week()
+  * Wochentag-Mapping: montag-sonntag → nächster Wochentag
+  * DD.MM. ohne Jahr: wenn Vergangenheit → nächstes Jahr
+- Geänderte Test-Datei: tests/test_todo_commands.py
+  * TestParseDateToken: 13 Tests (heute/morgen/übermorgen, Wochentage,
+    DD.MM., DD.MM.YYYY, wrap-to-next-year, invalid, unknown)
+  * TestParseTodoFieldsWithDate: 4 Tests (morgen, prio+datum, alle Felder,
+    nur text)
+  * TestCmdAddWithDue: 1 Test
+  * TestCmdFilterDueDate: 7 Tests (heute, morgen, empty, überfällig,
+    überfällig-empty, woche, diese-woche)
+  * Bestehende add-Tests um due=None erweitert
+  * 70 Tests gesamt, alle grün (vorher 45)
+- Regression: 227 passed (caldav_tasks + todo_commands + pattern_stabilisierung)
+
+## In Arbeit: Phase 56.4 – SmartContext + BriefingScheduler umstellen (2026-04-16)
+- nächster Schritt: smart_context.py, briefing_scheduler.py, remote_commands.py,
+  start_saleria.py / todo_store → task_client
+- Geänderte Datei: src/elder_berry/core/smart_context.py
+  * Constructor: todo_store: TodoStore → task_client: CalDAVTaskClient
+  * _query_todos(): braucht keinen default_user_id mehr, ruft
+    task_client.format_for_briefing() direkt auf
+  * _filter_available(): TODOS mappt auf _task_client statt _todo_store
+  * TYPE_CHECKING Import: TodoStore → CalDAVTaskClient
+- Geänderte Datei: src/elder_berry/comms/briefing_scheduler.py
+  * Constructor: todo_store: TodoStore → task_client: CalDAVTaskClient
+  * _build_todo_section(): task_client.format_for_briefing() ohne user_id,
+    Prüfung nur noch auf task_client (kein default_user_id nötig)
+  * TYPE_CHECKING Import: TodoStore → CalDAVTaskClient
+- Geänderte Datei: src/elder_berry/comms/remote_commands.py
+  * Constructor: todo_store: TodoStore → task_client: CalDAVTaskClient
+  * TodoCommandHandler-Instanziierung: task_client=task_client (ohne
+    default_user_id)
+  * Selfcheck-Services: todo_store → task_client
+  * TYPE_CHECKING Import: TodoStore → CalDAVTaskClient
+- Geänderte Datei: scripts/start_saleria.py
+  * TodoStore-Instanziierung → CalDAVTaskClient(secret_store=secrets)
+  * svc["todo_store"] → svc["task_client"] an allen 5 Stellen
+  * Service-Summary: "Todos" → "Aufgaben"
+- Geänderte Test-Dateien:
+  * tests/test_smart_context.py: mock_todo_store → mock_task_client,
+    todo_store= → task_client=, test_no_user_id_returns_empty →
+    test_no_task_client_not_available
+  * tests/test_briefing_scheduler.py: todo_store/TodoStore →
+    task_client, default_user_id entfernt, "Todos" → "Aufgaben" in Assertions
+- Regression: 217 passed (smart_context + briefing + caldav_tasks + todo_commands)
+
+## In Arbeit: Phase 56.5 – Migration & Deprecation (2026-04-16)
+- nächster Schritt: scripts/migrate_todos_to_nextcloud.py + TodoStore deprecaten
+- Neue Datei: scripts/migrate_todos_to_nextcloud.py (~130 Zeilen)
+  * Liest alle offenen Todos aus ~/.elder-berry/todos.db
+  * Erstellt je ein VTODO in Nextcloud Tasks via CalDAVTaskClient
+  * Mapping: text→SUMMARY, priority→PRIORITY, category→CATEGORIES
+    (kein DUE – alte Todos hatten keins)
+  * Idempotent: prüft per SUMMARY-Match ob bereits migriert
+  * Stoppt bei Fehler, loggt jede Migration
+  * --dry-run Flag für Vorschau ohne Änderungen
+  * --db-path für alternativen DB-Pfad
+- Geänderte Datei: src/elder_berry/tools/todo_store.py
+  * Deprecation-Hinweis im Docstring (ersetzt durch CalDAVTaskClient)
+  * Klasse bleibt im Repo für Migrations-Script und Referenz
+- Keine produktiven Imports von TodoStore mehr in src/
+  (nur tests/ und scripts/migrate_todos_to_nextcloud.py)
+- Regression: 338 passed
+
+## Abgeschlossen: Phase 56 – Nextcloud Tasks als Todo-Backend (2026-04-16)
+- Alle 5 Sub-Phasen implementiert:
+  * 56.1: CalDAVTaskClient + TaskItem (caldav_tasks.py)
+  * 56.2: TodoCommandHandler umverdrahtet + Session-Index
+  * 56.3: Due-Date-Support (Date-Parsing, Fälligkeits-Filter)
+  * 56.4: SmartContext + BriefingScheduler + RemoteCommands + start_saleria
+  * 56.5: Migrations-Script + TodoStore deprecated
+- Neue Dateien: 3 (caldav_tasks.py, test_caldav_tasks.py,
+  migrate_todos_to_nextcloud.py)
+- Geänderte Dateien: 9 (todo_commands.py, test_todo_commands.py,
+  smart_context.py, test_smart_context.py, briefing_scheduler.py,
+  test_briefing_scheduler.py, remote_commands.py, start_saleria.py,
+  todo_store.py)
+- Gesamte Tests: 67 (caldav_tasks) + 70 (todo_commands) = 137 neue/geänderte
+- Branch: feature/phase-56-nextcloud-tasks
+>>>>>>> main

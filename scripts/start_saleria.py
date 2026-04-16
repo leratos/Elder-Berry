@@ -453,7 +453,7 @@ def init_audio_converter():
         logger.warning("AudioConverter: ffmpeg nicht gefunden – keine Sprachantworten")
         return None
     except ImportError:
-        logger.debug("AudioConverter: pydub nicht installiert")
+        logger.debug("AudioConverter: Modul nicht importierbar")
         return None
 
 
@@ -769,13 +769,13 @@ def _init_productivity_services(secrets, default_user_id):
     except Exception as e:
         logger.warning("ContactStore nicht verfügbar: %s", e)
 
-    # TodoStore
+    # CalDAVTaskClient (Nextcloud Tasks – ersetzt TodoStore)
     try:
-        from elder_berry.tools.todo_store import TodoStore
-        svc["todo_store"] = TodoStore()
-        logger.info("TodoStore initialisiert: %s", svc["todo_store"]._db_path)
+        from elder_berry.tools.caldav_tasks import CalDAVTaskClient
+        svc["task_client"] = CalDAVTaskClient(secret_store=secrets)
+        logger.info("CalDAVTaskClient initialisiert")
     except Exception as e:
-        logger.warning("TodoStore nicht verfügbar: %s", e)
+        logger.warning("CalDAVTaskClient nicht verfügbar: %s", e)
 
     # Berry-Gym
     if secrets.get_or_none("berry_gym_api_token"):
@@ -875,7 +875,7 @@ def _init_productivity_services(secrets, default_user_id):
             calendar=svc.get("calendar"),
             weather=svc.get("weather"),
             reminder_store=svc.get("reminder_store"),
-            todo_store=svc.get("todo_store"),
+            task_client=svc.get("task_client"),
             email_client=svc.get("email_client"),
             contact_store=svc.get("contact_store"),
             note_store=svc.get("note_store"),
@@ -902,7 +902,7 @@ def _init_context_and_tools(secrets, assistant, svc):
         from elder_berry.core.smart_context import SmartContextProvider
         tools["smart_context_provider"] = SmartContextProvider(
             calendar=svc.get("calendar"),
-            todo_store=svc.get("todo_store"),
+            task_client=svc.get("task_client"),
             note_store=svc.get("note_store"),
             contact_store=svc.get("contact_store"),
             reminder_store=svc.get("reminder_store"),
@@ -911,7 +911,7 @@ def _init_context_and_tools(secrets, assistant, svc):
         )
         smart_sources = [s for s, v in [
             ("Calendar", svc.get("calendar")),
-            ("Todos", svc.get("todo_store")),
+            ("Tasks", svc.get("task_client")),
             ("Notes", svc.get("note_store")),
             ("Contacts", svc.get("contact_store")),
             ("Reminders", svc.get("reminder_store")),
@@ -1083,7 +1083,7 @@ def run_matrix(assistant, stt=None, avatar=None, audio_converter=None, robot=Non
         web_fetcher=tools.get("web_fetcher"),
         note_store=svc.get("note_store"),
         contact_store=svc.get("contact_store"),
-        todo_store=svc.get("todo_store"),
+        task_client=svc.get("task_client"),
         robot_client=robot,
         anthropic_client=tools.get("vision_client"),
         nextcloud_files=svc.get("nextcloud_files"),
@@ -1298,7 +1298,7 @@ def _build_startup_summary(
     _add_service(summary, "Wetter", svc.get("weather"))
     _add_service(summary, "Notizen", svc.get("note_store"))
     _add_service(summary, "Kontakte", svc.get("contact_store"))
-    _add_service(summary, "Todos", svc.get("todo_store"))
+    _add_service(summary, "Aufgaben", svc.get("task_client"))
     _add_service(summary, "Erinnerungen", svc.get("reminder_store"))
     _add_service(summary, "Nextcloud Files", svc.get("nextcloud_files"))
     _add_service(summary, "Stirling-PDF", svc.get("stirling_pdf"))

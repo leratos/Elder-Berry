@@ -85,7 +85,7 @@ if TYPE_CHECKING:
     from elder_berry.comms.briefing_scheduler import BriefingScheduler
     from elder_berry.tools.note_store import NoteStore
     from elder_berry.tools.contact_store import ContactStore
-    from elder_berry.tools.todo_store import TodoStore
+    from elder_berry.tools.caldav_tasks import CalDAVTaskClient
     from elder_berry.tools.reminder_store import ReminderStore
     from elder_berry.tools.weather_client import WeatherClient
     from elder_berry.tools.carddav_sync import CardDAVSyncClient
@@ -227,7 +227,7 @@ class RemoteCommandHandler:
         web_fetcher: WebFetcher | None = None,
         note_store: NoteStore | None = None,
         contact_store: ContactStore | None = None,
-        todo_store: TodoStore | None = None,
+        task_client: CalDAVTaskClient | None = None,
         robot_client: RobotClient | None = None,
         anthropic_client: AnthropicClient | None = None,
         nextcloud_files: NextcloudFilesClient | None = None,
@@ -281,7 +281,7 @@ class RemoteCommandHandler:
                 "robot_client": robot_client,
                 "note_store": note_store,
                 "contact_store": contact_store,
-                "todo_store": todo_store,
+                "task_client": task_client,
                 "reminder_store": reminder_store,
                 "gym_client": gym_client,
                 "computer_use": computer_use,
@@ -345,12 +345,11 @@ class RemoteCommandHandler:
                 carddav_sync=carddav_sync,
             )
 
-        # TodoCommandHandler: nur wenn TodoStore vorhanden
+        # TodoCommandHandler: nur wenn CalDAVTaskClient vorhanden
         self._todos: TodoCommandHandler | None = None
-        if todo_store is not None:
+        if task_client is not None:
             self._todos = TodoCommandHandler(
-                todo_store=todo_store,
-                default_user_id=default_user_id,
+                task_client=task_client,
             )
 
         # RouteCommandHandler: nur wenn RoutePlanner + ContactStore vorhanden
