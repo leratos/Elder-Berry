@@ -329,6 +329,10 @@ def _init_tts_router(event_loop=None, local_tts=None):
 def _init_tower_agent(store=None):
     """Erstellt TowerAgent wenn tower_host konfiguriert ist.
 
+    Phase 57.3: Token wird aus dem SecretStore gelesen und an den
+    TowerAgent durchgereicht. Ohne Token funktionieren die Requests
+    zum Tower-Server nicht (401).
+
     Returns:
         TowerAgent oder None.
     """
@@ -343,7 +347,19 @@ def _init_tower_agent(store=None):
         if not tower_host:
             return None
 
-        agent = TowerAgent(tower_host=tower_host)
+        # Phase 57.3: Token für den Tower-Server
+        tower_token = (
+            os.environ.get("ELDER_BERRY_TOWER_TOKEN")
+            or store.get_or_none("tower_auth_token")
+        )
+        if not tower_token:
+            logger.warning(
+                "TowerAgent: kein Tower-Token konfiguriert – Requests "
+                "werden mit 401 abgelehnt. Setze tower_auth_token im "
+                "SecretStore oder ELDER_BERRY_TOWER_TOKEN als Env.",
+            )
+
+        agent = TowerAgent(tower_host=tower_host, tower_token=tower_token)
         logger.info("TowerAgent: konfiguriert für %s", tower_host)
         return agent
     except Exception as e:
@@ -528,6 +544,27 @@ def run_agent(port: int = 8090):
     # tower/ Package muss importierbar sein
     sys.path.insert(0, str(_PROJECT_ROOT))
 
+    # Phase 57.3: Token laden oder Auto-Generieren
+    tower_token = os.environ.get("ELDER_BERRY_TOWER_TOKEN")
+    if not tower_token:
+        try:
+            from elder_berry.core.secret_store import SecretStore
+            store = SecretStore()
+            tower_token = store.get_or_none("tower_auth_token")
+            if not tower_token:
+                import secrets as _sec
+                tower_token = _sec.token_hex(32)
+                store.set("tower_auth_token", tower_token)
+                logger.info("Tower-Token automatisch generiert und gespeichert")
+                logger.info(
+                    "Tower-Token (für X-Saleria-Tower-Token Header): %s",
+                    tower_token,
+                )
+        except Exception as exc:
+            logger.error("Tower-Token konnte nicht geladen/generiert werden: %s", exc)
+            sys.exit(1)
+    os.environ["ELDER_BERRY_TOWER_TOKEN"] = tower_token
+
     try:
         from tower.tower_server import app  # noqa: F401
     except ImportError as e:
@@ -537,6 +574,7 @@ def run_agent(port: int = 8090):
     print("\n─── Saleria Agent-Modus (TowerServer) ───")
     print(f"  Endpunkte: /status, /tts, /stt, /action, /screenshot")
     print(f"  Port: {port}")
+    print(f"  Token: {'aus Env' if os.environ.get('ELDER_BERRY_TOWER_TOKEN') == tower_token else 'aus SecretStore'}")
     print("  Ctrl+C zum Beenden\n")
 
     # Phase 57.1: Loopback-Default

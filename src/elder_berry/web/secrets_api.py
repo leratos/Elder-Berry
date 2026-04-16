@@ -190,7 +190,15 @@ SECRET_REGISTRY: list[SecretRegistryEntry] = [
     {
         "key": "tower_host", "label": "Tower Host", "category": "Infrastruktur",
         "sensitive": False, "requires_restart": False,
-        "description": "IP/Hostname des Towers.",
+        "description": "IP/Hostname des Towers (z.B. 127.0.0.1:12769 via SSH-Tunnel).",
+    },
+    {
+        "key": "tower_auth_token", "label": "Tower-Token", "category": "Infrastruktur",
+        "sensitive": True, "requires_restart": True,
+        "risk_level": "high",
+        "description":
+            "Auth-Token für den Tower-Server (Header X-Saleria-Tower-Token). "
+            "Wird beim ersten Agent-Start automatisch generiert.",
     },
     # --- Wetter & Standort ---
     {

@@ -4590,3 +4590,56 @@ User: "Lies meine Mails und trag den Zahnarzttermin ein"
   wegen Root-Logger-Pollution – nicht Phase-57-verursacht, identisch mit
   dem in 57.4 beschriebenen Problem)
 - Nächster Schritt: 57.3 Tower-Token + Host-Discovery
+
+## Abgeschlossen: Phase 57.3 – Tower-Token (ohne Host-Discovery) (2026-04-16)
+- Scope-Reduktion: Host-Discovery aus dem Konzept gestrichen. Begründung:
+  Bei SSH-Tunnel-Architektur ist der Tower-Host vom Server immer
+  127.0.0.1:12769 (Tunnel-Port). Eine automatische IP-Ermittlung auf dem
+  Tower-PC hätte keinen Nutzer-Mehrwert, weil der Server die IP nie
+  direkt nutzt. Das Konzept (3.3) wird mit einer Streichungs-Notiz versehen.
+- Code-Änderungen:
+  * tower/tower_server.py:
+    - TowerTokenMiddleware (BaseHTTPMiddleware): prüft X-Saleria-Tower-Token
+      Header auf allen Endpoints, constant-time mit secrets.compare_digest
+    - _load_tower_token(): Env ELDER_BERRY_TOWER_TOKEN → SecretStore
+      tower_auth_token → RuntimeError (fail-closed)
+    - Lifespan: Token beim Start laden, sys.exit(1) wenn fehlt
+    - app.add_middleware(TowerTokenMiddleware) nach App-Erzeugung
+  * src/elder_berry/core/tower_agent.py:
+    - Constructor: neuer tower_token-Parameter
+    - _auth_headers() → Dict mit X-Saleria-Tower-Token wenn Token gesetzt
+    - Alle 8 httpx.AsyncClient-Aufrufe: headers=self._auth_headers()
+  * scripts/start_saleria.py:
+    - Agent-Mode (run_agent): Token auto-generieren wenn nicht vorhanden
+      (token_hex(32)), in SecretStore speichern, einmalig loggen, in
+      os.environ setzen damit tower_server.py ihn findet
+    - Matrix-Mode (_init_tower_agent): Token aus Env/SecretStore lesen
+      und an TowerAgent durchreichen, Warnung wenn kein Token
+  * src/elder_berry/web/secrets_api.py: Neuer Registry-Eintrag
+    tower_auth_token (sensitive=True, risk_level=high, Kategorie
+    Infrastruktur)
+- Neue Tests (tests/test_tower_auth.py): 15 Tests
+  * TestTowerTokenMiddleware: rejects missing, rejects wrong, accepts
+    correct, 500 when unconfigured, constant-time compare
+  * TestLoadTowerToken: env priority, store fallback, raises when nothing,
+    env beats store
+  * TestTowerAgentAuth: headers present/absent, httpx uses headers
+  * TestAutoMigration: source analysis, registry entry present+sensitive
+- Regression: 264 passed, 1 skipped, 1 pre-existing Failure
+  (TestErrorAlerting Root-Logger-Pollution, nicht Phase-57-verursacht)
+
+## Abgeschlossen: Phase 57 – Security-Härtung (2026-04-16)
+- Alle 4 Sub-Phasen implementiert:
+  * 57.4: matrix_allowed_senders strikt fail-closed (Design-Umkehrung)
+  * 57.2: First-Run-Gate für /api/setup-Exemption
+  * 57.1: Loopback-Default + Grace-Period für Wizard + Tower
+  * 57.3: Tower-Token-Auth (X-Saleria-Tower-Token)
+- Scope-Änderungen gegenüber Konzept:
+  * 57.4 war als Audit geplant, wurde zur Design-Umkehrung erweitert
+    (Fall B gefunden, aber dokumentierte Design-Entscheidung)
+  * 57.3 Host-Discovery gestrichen (SSH-Tunnel macht es unnötig)
+- Gesamte neue Tests: 47 (12+8+12+15)
+- Neue Dateien: 5 (allowed_senders.py, test_allowed_senders_fail_closed.py,
+  test_start_saleria_bind.py, test_tower_auth.py, phase-57 Konzept)
+- Geänderte Dateien: 14
+- Branch: feature/phase-57-security-haertung
