@@ -11,7 +11,7 @@ Graceful Degradation: fehlende oder fehlerhafte Quellen werden übersprungen.
 Verwendung:
     provider = SmartContextProvider(
         calendar=calendar_client,
-        todo_store=todo_store,
+        task_client=task_client,
         note_store=note_store,
         contact_store=contact_store,
         reminder_store=reminder_store,
@@ -36,7 +36,7 @@ if TYPE_CHECKING:
     from elder_berry.tools.google_calendar import GoogleCalendarClient
     from elder_berry.tools.note_store import NoteStore
     from elder_berry.tools.reminder_store import ReminderStore
-    from elder_berry.tools.todo_store import TodoStore
+    from elder_berry.tools.caldav_tasks import CalDAVTaskClient
     from elder_berry.tools.weather_client import WeatherClient
 
 logger = logging.getLogger(__name__)
@@ -143,7 +143,7 @@ class SmartContextProvider:
     def __init__(
         self,
         calendar: GoogleCalendarClient | None = None,
-        todo_store: TodoStore | None = None,
+        task_client: CalDAVTaskClient | None = None,
         note_store: NoteStore | None = None,
         contact_store: ContactStore | None = None,
         reminder_store: ReminderStore | None = None,
@@ -151,7 +151,7 @@ class SmartContextProvider:
         default_user_id: str = "",
     ) -> None:
         self._calendar = calendar
-        self._todo_store = todo_store
+        self._task_client = task_client
         self._note_store = note_store
         self._contact_store = contact_store
         self._reminder_store = reminder_store
@@ -206,7 +206,7 @@ class SmartContextProvider:
         """Filtert auf Quellen, für die ein Store konfiguriert ist."""
         store_map = {
             ContextSource.CALENDAR: self._calendar,
-            ContextSource.TODOS: self._todo_store,
+            ContextSource.TODOS: self._task_client,
             ContextSource.REMINDERS: self._reminder_store,
             ContextSource.NOTES: self._note_store,
             ContextSource.CONTACTS: self._contact_store,
@@ -284,10 +284,8 @@ class SmartContextProvider:
         return "\n".join(lines)
 
     def _query_todos(self) -> str:
-        """Holt offene Todos als Briefing-Text."""
-        if not self._default_user_id:
-            return ""
-        return self._todo_store.format_for_briefing(self._default_user_id)
+        """Holt offene Aufgaben als Briefing-Text."""
+        return self._task_client.format_for_briefing()
 
     def _query_reminders(self) -> str:
         """Holt heutige und überfällige Erinnerungen."""

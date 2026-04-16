@@ -33,7 +33,7 @@ if TYPE_CHECKING:
     from elder_berry.tools.google_calendar import GoogleCalendarClient
     from elder_berry.tools.note_store import NoteStore
     from elder_berry.tools.reminder_store import ReminderStore
-    from elder_berry.tools.todo_store import TodoStore
+    from elder_berry.tools.caldav_tasks import CalDAVTaskClient
     from elder_berry.tools.weather_client import WeatherClient
 
 logger = logging.getLogger(__name__)
@@ -52,7 +52,7 @@ class BriefingScheduler:
         calendar: GoogleCalendarClient | None = None,
         weather: WeatherClient | None = None,
         reminder_store: ReminderStore | None = None,
-        todo_store: TodoStore | None = None,
+        task_client: CalDAVTaskClient | None = None,
         email_client: IMAPEmailClient | None = None,
         contact_store: ContactStore | None = None,
         note_store: NoteStore | None = None,
@@ -67,12 +67,12 @@ class BriefingScheduler:
             calendar: GoogleCalendarClient (optional).
             weather: WeatherClient (optional).
             reminder_store: ReminderStore (optional).
-            todo_store: TodoStore (optional, Phase 30).
+            task_client: CalDAVTaskClient (optional, Phase 56).
             email_client: IMAPEmailClient (optional, Phase 34).
             contact_store: ContactStore (optional, Phase 34 – Geburtstage).
             note_store: NoteStore (optional, Phase 34 – Vor einem Jahr).
             carddav_sync: CardDAVSyncClient (optional, Phase 38 – Auto-Sync).
-            default_user_id: Matrix-User-ID für TodoStore-/ContactStore-Abfrage.
+            default_user_id: Matrix-User-ID für ContactStore-Abfrage.
             briefing_hour: Stunde des Briefings (0-23, Lokalzeit).
             briefing_minute: Minute des Briefings (0-59).
         """
@@ -80,7 +80,7 @@ class BriefingScheduler:
         self._calendar = calendar
         self._weather = weather
         self._reminder_store = reminder_store
-        self._todo_store = todo_store
+        self._task_client = task_client
         self._email_client = email_client
         self._contact_store = contact_store
         self._note_store = note_store
@@ -397,17 +397,15 @@ class BriefingScheduler:
             return []
 
     def _build_todo_section(self) -> list[str]:
-        if not self._todo_store or not self._default_user_id:
+        if not self._task_client:
             return []
         try:
-            todo_text = self._todo_store.format_for_briefing(
-                self._default_user_id,
-            )
+            todo_text = self._task_client.format_for_briefing()
             if todo_text:
                 return [todo_text]
             return []
         except Exception as e:
-            logger.debug("Briefing: Todos fehlgeschlagen: %s", e)
+            logger.debug("Briefing: Aufgaben fehlgeschlagen: %s", e)
             return []
 
     def _build_email_section(self) -> list[str]:

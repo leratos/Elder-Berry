@@ -25,7 +25,7 @@ def mock_calendar():
 
 
 @pytest.fixture
-def mock_todo_store():
+def mock_task_client():
     store = MagicMock()
     store.format_for_briefing.return_value = (
         "📋 Offene Todos:\n  - Einkaufen [high]"
@@ -84,12 +84,12 @@ def mock_weather():
 
 @pytest.fixture
 def provider_all(
-    mock_calendar, mock_todo_store, mock_note_store,
+    mock_calendar, mock_task_client, mock_note_store,
     mock_contact_store, mock_reminder_store, mock_weather,
 ):
     return SmartContextProvider(
         calendar=mock_calendar,
-        todo_store=mock_todo_store,
+        task_client=mock_task_client,
         note_store=mock_note_store,
         contact_store=mock_contact_store,
         reminder_store=mock_reminder_store,
@@ -253,11 +253,10 @@ class TestQueryTodos:
         assert "Offene Todos" in result
         assert "Einkaufen" in result
 
-    def test_no_user_id_returns_empty(self, mock_todo_store):
-        provider = SmartContextProvider(
-            todo_store=mock_todo_store, default_user_id="",
-        )
-        assert provider._query_todos() == ""
+    def test_no_task_client_not_available(self):
+        provider = SmartContextProvider(default_user_id="@user:test")
+        available = provider._filter_available({ContextSource.TODOS})
+        assert ContextSource.TODOS not in available
 
 
 class TestQueryReminders:
@@ -412,14 +411,14 @@ class TestGetContext:
         assert isinstance(result, str)
         assert "Connection failed" not in result
 
-    def test_store_timeout_graceful(self, mock_todo_store):
+    def test_store_timeout_graceful(self, mock_task_client):
         def slow_store(*args, **kwargs):
             time.sleep(2)
             return "should not appear"
 
-        mock_todo_store.format_for_briefing = slow_store
+        mock_task_client.format_for_briefing = slow_store
         provider = SmartContextProvider(
-            todo_store=mock_todo_store,
+            task_client=mock_task_client,
             default_user_id="@user:test",
         )
         with patch("elder_berry.core.smart_context.SOURCE_TIMEOUT_SECONDS", 0.5):
@@ -474,12 +473,12 @@ class TestEdgeCases:
         assert fn is not None
 
     def test_multiple_stores_one_fails(
-        self, mock_calendar, mock_todo_store, mock_weather,
+        self, mock_calendar, mock_task_client, mock_weather,
     ):
-        mock_todo_store.format_for_briefing.side_effect = RuntimeError("DB locked")
+        mock_task_client.format_for_briefing.side_effect = RuntimeError("DB locked")
         provider = SmartContextProvider(
             calendar=mock_calendar,
-            todo_store=mock_todo_store,
+            task_client=mock_task_client,
             weather_client=mock_weather,
             default_user_id="@user:test",
         )
