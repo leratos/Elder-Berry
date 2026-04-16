@@ -79,8 +79,14 @@ LOGGING_CONFIG = {
     },
 }
 
-logging.config.dictConfig(LOGGING_CONFIG)
 logger = logging.getLogger("saleria")
+
+# dictConfig nur bei direkter Ausführung – nicht beim Import aus Tests.
+# Ein Test-Import von ``from start_saleria import run_agent`` würde sonst
+# einen ErrorCollectorHandler permanent an den Root-Logger hängen und
+# test_bridge.py::TestErrorAlerting im Batch-Lauf stören.
+if __name__ == "__main__":
+    logging.config.dictConfig(LOGGING_CONFIG)
 
 # ---------------------------------------------------------------------------
 # Argument-Parser
