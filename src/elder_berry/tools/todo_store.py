@@ -1,15 +1,14 @@
 """TodoStore – Persistente Aufgabenliste (SQLite).
 
+.. deprecated:: Phase 56
+    Ersetzt durch CalDAVTaskClient (tools/caldav_tasks.py).
+    Nextcloud Tasks ist die Single Source of Truth für Aufgaben.
+    Diese Klasse wird nur noch vom Migrations-Script
+    (scripts/migrate_todos_to_nextcloud.py) verwendet.
+    Wird in einer zukünftigen Version entfernt.
+
 Speichert Aufgaben ohne feste Zeitbindung mit optionaler Priorität
 und Kategorie. Neustart-sicher, Multi-User-fähig (Matrix User-IDs).
-
-Verwendung:
-    store = TodoStore()
-    t = store.add("@user:matrix.org", "Milch kaufen")
-    t = store.add("@user:matrix.org", "Dachdecker anrufen",
-                   priority="hoch", category="Arbeit")
-    todos = store.get_open("@user:matrix.org")
-    store.complete(t.id)
 """
 from __future__ import annotations
 

@@ -4769,3 +4769,37 @@ User: "Lies meine Mails und trag den Zahnarzttermin ein"
   * tests/test_briefing_scheduler.py: todo_store/TodoStore →
     task_client, default_user_id entfernt, "Todos" → "Aufgaben" in Assertions
 - Regression: 217 passed (smart_context + briefing + caldav_tasks + todo_commands)
+
+## In Arbeit: Phase 56.5 – Migration & Deprecation (2026-04-16)
+- nächster Schritt: scripts/migrate_todos_to_nextcloud.py + TodoStore deprecaten
+- Neue Datei: scripts/migrate_todos_to_nextcloud.py (~130 Zeilen)
+  * Liest alle offenen Todos aus ~/.elder-berry/todos.db
+  * Erstellt je ein VTODO in Nextcloud Tasks via CalDAVTaskClient
+  * Mapping: text→SUMMARY, priority→PRIORITY, category→CATEGORIES
+    (kein DUE – alte Todos hatten keins)
+  * Idempotent: prüft per SUMMARY-Match ob bereits migriert
+  * Stoppt bei Fehler, loggt jede Migration
+  * --dry-run Flag für Vorschau ohne Änderungen
+  * --db-path für alternativen DB-Pfad
+- Geänderte Datei: src/elder_berry/tools/todo_store.py
+  * Deprecation-Hinweis im Docstring (ersetzt durch CalDAVTaskClient)
+  * Klasse bleibt im Repo für Migrations-Script und Referenz
+- Keine produktiven Imports von TodoStore mehr in src/
+  (nur tests/ und scripts/migrate_todos_to_nextcloud.py)
+- Regression: 338 passed
+
+## Abgeschlossen: Phase 56 – Nextcloud Tasks als Todo-Backend (2026-04-16)
+- Alle 5 Sub-Phasen implementiert:
+  * 56.1: CalDAVTaskClient + TaskItem (caldav_tasks.py)
+  * 56.2: TodoCommandHandler umverdrahtet + Session-Index
+  * 56.3: Due-Date-Support (Date-Parsing, Fälligkeits-Filter)
+  * 56.4: SmartContext + BriefingScheduler + RemoteCommands + start_saleria
+  * 56.5: Migrations-Script + TodoStore deprecated
+- Neue Dateien: 3 (caldav_tasks.py, test_caldav_tasks.py,
+  migrate_todos_to_nextcloud.py)
+- Geänderte Dateien: 9 (todo_commands.py, test_todo_commands.py,
+  smart_context.py, test_smart_context.py, briefing_scheduler.py,
+  test_briefing_scheduler.py, remote_commands.py, start_saleria.py,
+  todo_store.py)
+- Gesamte Tests: 67 (caldav_tasks) + 70 (todo_commands) = 137 neue/geänderte
+- Branch: feature/phase-56-nextcloud-tasks
