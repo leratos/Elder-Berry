@@ -68,9 +68,27 @@ LOGGING_CONFIG = {
             "backupCount": 3,
             "encoding": "utf-8",
         },
+        # Phase 59: Separates Audit-Log für Security-Events (Lockouts, Blocks).
+        "security_file": {
+            "class": "logging.handlers.RotatingFileHandler",
+            "filename": str(_LOG_DIR / "security.log"),
+            "formatter": "file",
+            "level": "DEBUG",
+            "maxBytes": 2_000_000,
+            "backupCount": 5,
+            "encoding": "utf-8",
+        },
         "error_collector": {
             "class": "elder_berry.core.error_collector.ErrorCollectorHandler",
             "level": "ERROR",
+        },
+    },
+    "loggers": {
+        # Phase 59: elder_berry.security schreibt in security.log + console.
+        "elder_berry.security": {
+            "handlers": ["security_file", "console"],
+            "level": "DEBUG",
+            "propagate": False,
         },
     },
     "root": {

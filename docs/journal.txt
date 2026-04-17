@@ -4877,3 +4877,41 @@ User: "Lies meine Mails und trag den Zahnarzttermin ein"
   Schicht 1 = VPN, Schicht 2 = DashboardAuthMiddleware (NEU), Schicht 3 =
   SettingsTokenMiddleware (jetzt Cookie ODER Token)
 - Out of Scope: Multi-User, TOTP/2FA, Audit-Log, Brute-Force-Limit
+
+## In Arbeit: Phase 59 – Rate-Limiting & Brute-Force-Schutz (2026-04-17)
+- Branch: feature/phase-59-rate-limiting
+- Scope:
+  1. RateLimiter (Sliding-Window, in-memory, asyncio-safe)
+  2. Dashboard-Login: 5 Versuche / 5 min → 15 min Lockout
+  3. TowerTokenMiddleware: 10 Versuche / 1 min → 10 min Lockout
+  4. RobotServer /system/update: Token-Auth (ELDER_BERRY_ROBOT_TOKEN)
+  5. Security-Audit-Log: logs/security.log via logger "elder_berry.security"
+- Neue Dateien:
+  * src/elder_berry/web/rate_limiter.py (RateLimiter)
+  * tests/test_rate_limiter.py
+- Geänderte Dateien:
+  * src/elder_berry/web/dashboard_auth_routes.py (Login-Throttling)
+  * tower/tower_server.py (TowerTokenMiddleware + Rate-Limit)
+  * src/elder_berry/robot/server.py (RobotTokenMiddleware)
+  * src/elder_berry/robot/client.py (Robot-Token-Header)
+  * scripts/start_saleria.py (security.log Handler)
+
+## Abgeschlossen: Phase 59 – Rate-Limiting & Brute-Force-Schutz (2026-04-17)
+- Neue Dateien:
+  * src/elder_berry/web/rate_limiter.py (RateLimiter – Sliding-Window, asyncio-safe)
+  * tests/test_rate_limiter.py (14 Tests)
+- Geänderte Dateien:
+  * src/elder_berry/web/dashboard_auth_routes.py (5 Fehlversuche/5min → 15min Lockout)
+  * tower/tower_server.py (TowerTokenMiddleware + 10 Fehlversuche/1min → 10min Lockout)
+  * src/elder_berry/robot/server.py (RobotTokenMiddleware optional, Rate-Limit)
+  * src/elder_berry/robot/client.py (robot_token-Parameter, X-Saleria-Robot-Token)
+  * scripts/start_saleria.py (security.log Handler für elder_berry.security Logger)
+- Konfigurierbare Defaults:
+  * Dashboard-Login: max_attempts=5, window=300s, lockout=900s
+  * Tower-Token: max_attempts=10, window=60s, lockout=600s
+  * Robot-Token: max_attempts=10, window=60s, lockout=600s
+- Audit-Events: logger "elder_berry.security" → logs/security.log (+ console)
+- Robot-Token: Backwards-kompatibel (kein Token = keine Auth), konfigurierbar
+  via robot_token-Parameter in RobotServer/RobotClient
+- Regression: 4572 passed, 2 skipped (keine Regression)
+- Branch: feature/phase-59-rate-limiting

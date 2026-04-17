@@ -7,11 +7,16 @@ Stellt REST-Endpoints bereit über die der Tower den Roboter steuert:
 - Drehteller (Rotation, Homing)
 - System (Update, Health)
 
+Phase 59: Optionale Token-Auth via ``ELDER_BERRY_ROBOT_TOKEN`` / Konstruktor-
+Parameter ``robot_token``. Wenn gesetzt, verlangen alle Endpoints den Header
+``X-Saleria-Robot-Token``. Ohne Token: keine Auth (Backwards-Compat / Tests).
+
 Plattformhinweis: Läuft auf RPi5 (Linux) und Windows (Simulator).
 """
 from __future__ import annotations
 
 import logging
+import secrets as _secrets
 import subprocess
 import sys
 import time
@@ -25,6 +30,9 @@ from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
+from starlette.middleware.base import BaseHTTPMiddleware
+
+from elder_berry.web.rate_limiter import RateLimiter
 
 from elder_berry.robot.alexa_skill_handler import (
     AlexaResult,
@@ -153,6 +161,59 @@ class SensorManager(ABC):
 
 
 # ---------------------------------------------------------------------------
+# Phase 59: Robot-Token-Middleware
+# ---------------------------------------------------------------------------
+
+ROBOT_TOKEN_HEADER = "X-Saleria-Robot-Token"
+
+# Rate-Limit für fehlgeschlagene Robot-Token-Versuche: 10 / 1 min → 10 min Lockout.
+_robot_token_limiter = RateLimiter(
+    max_attempts=10,
+    window_seconds=60,
+    lockout_seconds=600,
+    name="robot_token",
+)
+
+
+class RobotTokenMiddleware(BaseHTTPMiddleware):
+    """Schützt alle RobotServer-Endpoints mit ``X-Saleria-Robot-Token``.
+
+    Wenn kein Token konfiguriert ist (``None``), wird die Middleware
+    übersprungen (Backwards-Compat für Tests und Token-freie Deployments).
+    """
+
+    def __init__(self, app, robot_token: str | None) -> None:
+        super().__init__(app)
+        self._token = robot_token
+
+    async def dispatch(self, request: Request, call_next):
+        if not self._token:
+            return await call_next(request)
+
+        client_ip = request.client.host if request.client else "unknown"
+        token = request.headers.get(ROBOT_TOKEN_HEADER)
+        if not token or not _secrets.compare_digest(token, self._token):
+            allowed = await _robot_token_limiter.check_and_record(client_ip)
+            if not allowed:
+                return JSONResponse(
+                    {
+                        "error": "Zu viele fehlgeschlagene Versuche. Temporär gesperrt.",
+                        "header": ROBOT_TOKEN_HEADER,
+                    },
+                    status_code=429,
+                )
+            return JSONResponse(
+                {
+                    "error": "Robot-Token erforderlich oder ungültig.",
+                    "header": ROBOT_TOKEN_HEADER,
+                },
+                status_code=401,
+            )
+        await _robot_token_limiter.reset(client_ip)
+        return await call_next(request)
+
+
+# ---------------------------------------------------------------------------
 # Server-Klasse
 # ---------------------------------------------------------------------------
 
@@ -163,6 +224,13 @@ class RobotServer:
     Alle Hardware-Abhängigkeiten werden per DI übergeben (Konstruktor).
     Im Simulator: Mock-Implementierungen.
     Auf dem RPi5: Echte Hardware-Klassen.
+
+    Parameters
+    ----------
+    robot_token : str | None
+        Phase 59: Wenn gesetzt, verlangt der Server den Header
+        ``X-Saleria-Robot-Token`` bei jedem Request. Ohne Token:
+        keine Auth (Backwards-Compat für Tests).
     """
 
     def __init__(
@@ -179,6 +247,7 @@ class RobotServer:
         project_root: Path | None = None,
         service_name: str = "elder-berry-rpi",
         alexa_verifier: AlexaRequestVerifier | None = None,
+        robot_token: str | None = None,
     ) -> None:
         self._motors = motors
         self._avatar = avatar
@@ -192,6 +261,7 @@ class RobotServer:
         self._project_root = project_root
         self._service_name = service_name
         self._alexa_verifier = alexa_verifier
+        self._robot_token = robot_token
         self._alexa = AlexaSkillHandler(
             harmony=harmony,
             harmony_scenes=harmony_scenes,
@@ -220,6 +290,8 @@ class RobotServer:
             title="Elder-Berry Robot API", version="0.1.0",
             lifespan=lifespan,
         )
+        # Phase 59: Robot-Token-Auth (optional, konfigurierbar).
+        self.app.add_middleware(RobotTokenMiddleware, robot_token=robot_token)
         self.app.add_middleware(
             CORSMiddleware,
             allow_origins=["*"],

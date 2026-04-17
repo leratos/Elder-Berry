@@ -17,6 +17,9 @@ logger = logging.getLogger(__name__)
 DEFAULT_TIMEOUT = 5.0
 
 
+ROBOT_TOKEN_HEADER = "X-Saleria-Robot-Token"
+
+
 class RobotClient:
     """
     HTTP-Client für die Kommunikation Tower → RPi5.
@@ -27,18 +30,26 @@ class RobotClient:
     Args:
         base_url: URL des RobotServers (z.B. "http://192.168.1.50:8000").
         timeout: Timeout für HTTP-Requests in Sekunden.
+        robot_token: Phase 59 – Token für ``X-Saleria-Robot-Token`` Header.
+            Ohne Token werden Requests ohne Auth-Header gesendet
+            (kompatibel mit Token-freien Deployments).
     """
 
     def __init__(
         self,
         base_url: str = "http://localhost:8000",
         timeout: float = DEFAULT_TIMEOUT,
+        robot_token: str | None = None,
     ) -> None:
         self._base_url = base_url.rstrip("/")
         self._timeout = timeout
+        headers = {}
+        if robot_token:
+            headers[ROBOT_TOKEN_HEADER] = robot_token
         self._client = httpx.Client(
             base_url=self._base_url,
             timeout=timeout,
+            headers=headers,
         )
         logger.info("RobotClient verbunden: %s", self._base_url)
 
