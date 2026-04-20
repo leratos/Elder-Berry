@@ -7,6 +7,9 @@ Phase 57.3: Alle Endpoints sind mit ``X-Saleria-Tower-Token`` geschützt.
 Token-Quelle (Priorität): Env ``ELDER_BERRY_TOWER_TOKEN`` → SecretStore
 ``tower_auth_token``. Ohne Token verweigert der Server den Start.
 
+Phase 59: ``TowerTokenMiddleware`` hat Rate-Limiting.
+10 Fehlversuche / 1 min → 10 min Lockout per Client-IP.
+
 Starten:
     ELDER_BERRY_TOWER_TOKEN=<token> uvicorn tower.tower_server:app --port 8090
 """
@@ -17,6 +20,7 @@ import logging
 import os
 import secrets as _secrets
 import socket
+import sys
 import tempfile
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -25,6 +29,14 @@ from fastapi import FastAPI, HTTPException, UploadFile
 from fastapi.responses import JSONResponse, Response
 from pydantic import BaseModel
 from starlette.middleware.base import BaseHTTPMiddleware
+
+# Phase 59: RateLimiter – Pfad relativ zu diesem File ins sys.path eintragen,
+# falls elder_berry nicht installiert ist (z.B. direkte uvicorn-Invokation).
+_SRC = Path(__file__).resolve().parent.parent / "src"
+if str(_SRC) not in sys.path:
+    sys.path.insert(0, str(_SRC))
+
+from elder_berry.web.rate_limiter import RateLimiter  # noqa: E402
 
 logger = logging.getLogger(__name__)
 
@@ -115,12 +127,24 @@ engines = _Engines()
 
 
 # ---------------------------------------------------------------------------
-# Phase 57.3: Tower-Token-Middleware
+# Phase 57.3 + 59: Tower-Token-Middleware mit Rate-Limiting
 # ---------------------------------------------------------------------------
+
+# Phase 59: 10 Fehlversuche pro Minute → 10 min Lockout.
+_tower_token_limiter = RateLimiter(
+    max_attempts=10,
+    window_seconds=60,
+    lockout_seconds=600,
+    name="tower_token",
+)
 
 
 class TowerTokenMiddleware(BaseHTTPMiddleware):
-    """Schützt alle Endpoints mit ``X-Saleria-Tower-Token``."""
+    """Schützt alle Endpoints mit ``X-Saleria-Tower-Token``.
+
+    Phase 59: Zusätzlich Sliding-Window-Rate-Limiting pro Client-IP.
+    10 Fehlversuche / 1 min → 10 min Lockout.
+    """
 
     HEADER_NAME = "X-Saleria-Tower-Token"
 
@@ -131,8 +155,21 @@ class TowerTokenMiddleware(BaseHTTPMiddleware):
                 {"error": "Tower-Token nicht konfiguriert (Serverfehler)."},
                 status_code=500,
             )
+
+        client_ip = request.client.host if request.client else "unknown"
+
         token = request.headers.get(self.HEADER_NAME)
         if not token or not _secrets.compare_digest(token, expected):
+            # Phase 59: Fehlversuch zählen und ggf. blockieren.
+            allowed = await _tower_token_limiter.check_and_record(client_ip)
+            if not allowed:
+                return JSONResponse(
+                    {
+                        "error": "Zu viele fehlgeschlagene Versuche. Temporär gesperrt.",
+                        "header": self.HEADER_NAME,
+                    },
+                    status_code=429,
+                )
             return JSONResponse(
                 {
                     "error": "Tower-Token erforderlich oder ungültig.",
@@ -140,6 +177,10 @@ class TowerTokenMiddleware(BaseHTTPMiddleware):
                 },
                 status_code=401,
             )
+
+        # Erfolgreiche Auth: Counter zurücksetzen (keine Strafe für Fehlversuche
+        # aus vorherigen Requests mit falschem Token nach Rotation).
+        await _tower_token_limiter.reset(client_ip)
         return await call_next(request)
 
 

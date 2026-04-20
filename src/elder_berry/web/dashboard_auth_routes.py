@@ -1,4 +1,4 @@
-"""Auth-Endpoints für das Dashboard (Phase 58).
+"""Auth-Endpoints für das Dashboard (Phase 58 + Phase 59 Rate-Limiting).
 
 Stellt 4 Endpoints bereit:
 
@@ -7,6 +7,9 @@ Stellt 4 Endpoints bereit:
 - ``GET  /api/dashboard/auth/status`` – ist eingeloggt? PW gesetzt? Expiry?
 - ``POST /api/dashboard/password``   – PW ändern (verlangt aktuelles PW
   oder gültiges Login-Cookie)
+
+Phase 59: ``POST /api/dashboard/login`` ist mit einem ``RateLimiter``
+(5 Fehlversuche / 5 min → 15 min Lockout by default) abgesichert.
 """
 
 from __future__ import annotations
@@ -22,18 +25,39 @@ from elder_berry.web.dashboard_auth import (
     InvalidSessionError,
     PasswordNotSetError,
 )
+from elder_berry.web.rate_limiter import RateLimiter
 
 if TYPE_CHECKING:
     from elder_berry.web.dashboard_auth import DashboardAuthManager
 
 logger = logging.getLogger(__name__)
 
+# Default-Limits (Phase 59): 5 Versuche / 5 min → 15 min Lockout.
+_DEFAULT_LOGIN_LIMITER = RateLimiter(
+    max_attempts=5,
+    window_seconds=300,
+    lockout_seconds=900,
+    name="dashboard_login",
+)
+
 
 def register_dashboard_auth_routes(
     app: FastAPI,
     auth_manager: DashboardAuthManager,
+    login_limiter: RateLimiter | None = None,
 ) -> None:
-    """Registriert alle 4 Dashboard-Auth-Endpoints."""
+    """Registriert alle 4 Dashboard-Auth-Endpoints.
+
+    Parameters
+    ----------
+    login_limiter
+        Optionaler ``RateLimiter`` für ``POST /api/dashboard/login``.
+        Wenn ``None``, wird der Default-Limiter verwendet
+        (5 Versuche / 5 min → 15 min Lockout).
+        Zum Deaktivieren (z.B. in Tests): Eigene Instanz mit großem
+        Limit übergeben.
+    """
+    _limiter = login_limiter if login_limiter is not None else _DEFAULT_LOGIN_LIMITER
 
     def _set_session_cookie(
         response: JSONResponse, cookie: str, request: Request,
@@ -50,6 +74,19 @@ def register_dashboard_auth_routes(
 
     @app.post("/api/dashboard/login")
     async def login(request: Request) -> JSONResponse:
+        client_host = request.client.host if request.client else "unknown"
+
+        # Phase 59: Rate-Limit-Check vor dem teuren bcrypt-Aufruf.
+        allowed = await _limiter.check_and_record(client_host)
+        if not allowed:
+            return JSONResponse(
+                {
+                    "error": "Zu viele Fehlversuche. Bitte warte und versuche es später.",
+                    "code": "rate_limited",
+                },
+                status_code=429,
+            )
+
         try:
             body = await request.json()
         except ValueError:
@@ -71,16 +108,17 @@ def register_dashboard_auth_routes(
                 status_code=409,
             )
         if not valid:
-            client_host = request.client.host if request.client else "unbekannt"
             logger.warning("Dashboard-Login fehlgeschlagen von %s", client_host)
             return JSONResponse(
                 {"error": "Falsches Passwort", "code": "invalid_password"},
                 status_code=401,
             )
+        # Erfolgreicher Login: Fehlversuchs-Counter zurücksetzen.
+        await _limiter.reset(client_host)
         cookie, exp = auth_manager.issue_session()
         response = JSONResponse({"ok": True, "expires_at": exp})
         _set_session_cookie(response, cookie, request)
-        logger.info("Dashboard-Login erfolgreich")
+        logger.info("Dashboard-Login erfolgreich von %s", client_host)
         return response
 
     @app.post("/api/dashboard/logout")
