@@ -4933,3 +4933,26 @@ User: "Lies meine Mails und trag den Zahnarzttermin ein"
   * RobotClient(base_url=robot_host, robot_token=robot_token)
 - Keine neuen Dependencies, keine neuen Dateien, keine API-Änderung
 - Regression: 12 Tests test_start_saleria_bind.py + 122 robot-Tests grün
+
+## Abgeschlossen: Phase 59.1b – Robot-Token-Fix auch auf dem RPi (2026-04-20)
+- Kritischer Befund: In Phase 59 galt das Feature "Robot-Token-Auth" als
+  ausgeliefert, aber scripts/start_rpi5.py hat den Parameter nie an
+  RobotServer durchgereicht. Die RobotTokenMiddleware war dauerhaft
+  im Bypass -> alle Endpoints (inkl. /system/update = RCE) waren im
+  LAN ungeprueft erreichbar. VPN schuetzt den RPi5:8000 nicht.
+- User hat via curl http://localhost:8000/system/update ohne Header
+  HTTP 200 bekommen -> Bug bestaetigt.
+- Fix scripts/start_rpi5.py:
+  * Neue Helper-Funktion _resolve_robot_token() – liest Env, strippt
+    Whitespace, None bei leer/whitespace (keine stille False-Security)
+  * main() ruft Helper auf und gibt Token an RobotServer weiter
+  * Warn-Log wenn Token fehlt (mit Sicherheitshinweis auf /system/update)
+- Neuer Test tests/test_start_rpi5_token.py (6 Tests):
+  * Unit-Tests _resolve_robot_token (Env, None, leer, Whitespace)
+  * AST-Regression-Test: RobotServer(...) im Script MUSS das
+    robot_token-kwarg haben – verhindert stille Rueckfall-Regression
+  * Gegenprobe: Test failt korrekt wenn kwarg entfernt wird
+- Keine neuen Dependencies.
+- Regression: 210 Tests (robot/rpi5/saleria_bind) passed.
+- Action Item Nutzer: ELDER_BERRY_ROBOT_TOKEN in systemd-Unit eintragen
+  und Service neu starten, dann curl-Test ohne Header muss 401 liefern.

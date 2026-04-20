@@ -16,12 +16,28 @@ from __future__ import annotations
 
 import argparse
 import logging
+import os
 import signal
 import sys
 import threading
 from pathlib import Path
 
 logger = logging.getLogger("elder_berry.rpi5")
+
+
+# Phase 59.1: Token-Auslesen ist eine eigene Funktion, damit der Regression-
+# Test verhindert, dass sie still wegfällt (davor wurde der Token nie gelesen
+# und die RobotTokenMiddleware blieb dauerhaft im Bypass).
+def _resolve_robot_token() -> str | None:
+    """Liest ``ELDER_BERRY_ROBOT_TOKEN`` aus der Env.
+
+    Returns:
+        Token-String wenn gesetzt und nicht-leer, sonst None.
+    """
+    token = os.environ.get("ELDER_BERRY_ROBOT_TOKEN")
+    if token and token.strip():
+        return token.strip()
+    return None
 
 
 def parse_args() -> argparse.Namespace:
@@ -142,6 +158,19 @@ def main() -> None:
     # Projekt-Root ermitteln (scripts/ ist ein Unterverzeichnis)
     project_root = Path(__file__).resolve().parent.parent
 
+    # Phase 59.1: Token muss hier gelesen und durchgereicht werden, sonst ist
+    # die RobotTokenMiddleware dauerhaft ein No-Op (Endpoints 0.0.0.0:8000
+    # wären im LAN ungeprüft – inkl. /system/update = RCE).
+    robot_token = _resolve_robot_token()
+    if robot_token:
+        logger.info("Robot-Token aktiv – Requests erfordern X-Saleria-Robot-Token")
+    else:
+        logger.warning(
+            "Robot-Token NICHT konfiguriert – alle Endpoints (inkl. "
+            "/system/update) sind im LAN ungeprüft erreichbar. Setze "
+            "ELDER_BERRY_ROBOT_TOKEN in der systemd-Unit oder Env.",
+        )
+
     server = RobotServer(
         motors=motors,
         avatar=avatar,
@@ -153,6 +182,7 @@ def main() -> None:
         project_root=project_root,
         service_name="elder-berry",
         alexa_verifier=alexa_verifier,
+        robot_token=robot_token,
     )
 
     # -- Graceful Shutdown -----------------------------------------------------
