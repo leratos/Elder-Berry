@@ -4915,3 +4915,21 @@ User: "Lies meine Mails und trag den Zahnarzttermin ein"
   via robot_token-Parameter in RobotServer/RobotClient
 - Regression: 4572 passed, 2 skipped (keine Regression)
 - Branch: feature/phase-59-rate-limiting
+
+## In Arbeit: Phase 59.1 – RobotClient-Token in start_saleria wiring (2026-04-20)
+- Fix: RobotClient wurde in main() ohne robot_token instanziiert – Requests an
+  einen Token-geschützten RobotServer liefen leer in 401.
+- Datei: scripts/start_saleria.py (RobotClient-Instantiierung ~Z.1454)
+- Token-Quelle analog zu TowerAgent: ELDER_BERRY_ROBOT_TOKEN (Env) ODER
+  robot_auth_token (SecretStore). Warn-Log wenn robot_host gesetzt, Token fehlt.
+- update_commands.py braucht keine Änderung: _cmd_update_tower adressiert den
+  Tower (korrekt mit Tower-Token), _cmd_update_rpi geht über self._robot
+  (RobotClient trägt Token via default-headers automatisch mit).
+
+## Abgeschlossen: Phase 59.1 – RobotClient-Token in start_saleria wiring (2026-04-20)
+- Geänderte Datei: scripts/start_saleria.py
+  * Token-Loading analog zu _init_tower_agent (Env → SecretStore)
+  * Warn-Log wenn robot_host gesetzt aber kein Token konfiguriert
+  * RobotClient(base_url=robot_host, robot_token=robot_token)
+- Keine neuen Dependencies, keine neuen Dateien, keine API-Änderung
+- Regression: 12 Tests test_start_saleria_bind.py + 122 robot-Tests grün

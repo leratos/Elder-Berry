@@ -1459,7 +1459,19 @@ def main():
         _secrets = SecretStore()
         robot_host = _secrets.get_or_none("robot_host")
         if robot_host:
-            robot = RobotClient(base_url=robot_host)
+            # Phase 59: Robot-Token analog zu Tower-Token – erst Env, dann Store.
+            robot_token = (
+                os.environ.get("ELDER_BERRY_ROBOT_TOKEN")
+                or _secrets.get_or_none("robot_auth_token")
+            )
+            if not robot_token:
+                logger.warning(
+                    "RobotClient: kein Robot-Token konfiguriert – Requests "
+                    "werden mit 401 abgelehnt, falls der RobotServer einen "
+                    "Token erwartet. Setze robot_auth_token im SecretStore "
+                    "oder ELDER_BERRY_ROBOT_TOKEN als Env.",
+                )
+            robot = RobotClient(base_url=robot_host, robot_token=robot_token)
             if robot.is_online():
                 logger.info("RobotClient: verbunden mit %s", robot_host)
             else:
