@@ -125,6 +125,8 @@ class TestSendReply:
         )
         assert result.success is True
         assert result.to == "r@b.com"
+        assert len(result.raw_msg) > 0
+        assert b"Re: Test" in result.raw_msg
         mock_conn.send_message.assert_called_once()
         mock_conn.quit.assert_called_once()
 

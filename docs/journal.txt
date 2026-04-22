@@ -4956,3 +4956,35 @@ User: "Lies meine Mails und trag den Zahnarzttermin ein"
 - Regression: 210 Tests (robot/rpi5/saleria_bind) passed.
 - Action Item Nutzer: ELDER_BERRY_ROBOT_TOKEN in systemd-Unit eintragen
   und Service neu starten, dann curl-Test ohne Header muss 401 liefern.
+
+
+## In Arbeit: Phase 60 – Gesendete E-Mails in IMAP Gesendet-Ordner kopieren (2026-04-22)
+- Branch: feature/phase-60-sent-folder-copy
+- Problem: Nach SMTP-Versand wird die Mail nicht in den IMAP Gesendet-Ordner kopiert,
+  User kann gesendete Mails nicht im E-Mail-Client nachvollziehen.
+- Scope:
+  1. IMAPEmailClient.copy_to_sent_folder() – IMAP APPEND in Sent-Ordner
+  2. SentEmail.raw_msg – gebaute Nachricht als Bytes zurückgeben
+  3. BridgeMessageHandler + ConfirmationHandler – IMAP-Copy nach erfolgreichem Send
+  4. Wiring in start_saleria.py
+  5. Tests
+- Best-Effort: Fehler beim Kopieren blockiert nicht die Erfolgs-Meldung
+
+## Abgeschlossen: Phase 60 – Gesendete E-Mails in IMAP Gesendet-Ordner kopieren (2026-04-22)
+- Branch: feature/phase-60-sent-folder-copy
+- Neue Methoden:
+  * IMAPEmailClient.copy_to_sent_folder(msg_bytes, sent_folder) – IMAP APPEND mit \Seen-Flag
+  * IMAPEmailClient._detect_sent_folder(conn) – erkennt Sent-Ordner via \Sent-Attribut
+    oder Fallback auf bekannte Namen (Sent, INBOX.Sent, Gesendet, Sent Items, Sent Messages)
+- Geänderte Dateien:
+  * src/elder_berry/tools/email_client.py (copy_to_sent_folder, _detect_sent_folder)
+  * src/elder_berry/tools/email_sender.py (SentEmail.raw_msg, send_reply gibt Bytes zurück)
+  * src/elder_berry/comms/message_handlers.py (email_client Parameter)
+  * src/elder_berry/comms/bridge.py (email_client Parameter durchreichen)
+  * src/elder_berry/comms/confirmation_handlers.py (IMAP-Copy nach erfolgreichem Send)
+  * scripts/start_saleria.py (email_client an Bridge gewired)
+- Neue Testdatei: tests/test_email_client_sent.py (11 Tests)
+- Geänderte Tests: tests/test_email_sender.py (raw_msg Assertion)
+- Best-Effort: Fehler beim Kopieren wird nur geloggt (Warning), blockiert nicht die Erfolgs-Meldung
+- Keine neuen Dependencies
+- Regression: 147 Tests passed (22 email + 125 betroffene Module), keine Regression

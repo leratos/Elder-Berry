@@ -1196,6 +1196,7 @@ def run_matrix(assistant, stt=None, avatar=None, audio_converter=None, robot=Non
         audio_router=tools.get("audio_router"),
         summarizer=summarizer,
         email_sender=svc.get("email_sender"),
+        email_client=svc.get("email_client"),
         nextcloud_files=svc.get("nextcloud_files"),
     )
 

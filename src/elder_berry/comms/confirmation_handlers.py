@@ -228,6 +228,18 @@ class ConfirmationHandler:
                     f"Email-Antwort gesendet an {result.to}: "
                     f"{action.data['subject']}",
                 )
+                # Best-effort: Kopie in IMAP Gesendet-Ordner
+                if self._p._email_client and result.raw_msg:
+                    try:
+                        await loop.run_in_executor(
+                            None,
+                            self._p._email_client.copy_to_sent_folder,
+                            result.raw_msg,
+                        )
+                    except Exception as e:
+                        logger.warning(
+                            "Kopie in Gesendet-Ordner fehlgeschlagen: %s", e,
+                        )
             else:
                 await self._p._channel.send_text(
                     msg.room_id,
