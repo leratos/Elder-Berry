@@ -32,6 +32,7 @@ if TYPE_CHECKING:
     from elder_berry.core.assistant import Assistant
     from elder_berry.core.task_chain import TaskChainRunner
     from elder_berry.comms.claude_agent import ClaudeAgent
+    from elder_berry.tools.email_client import IMAPEmailClient
     from elder_berry.tools.email_sender import EmailSender
     from elder_berry.tools.nextcloud_files import NextcloudFilesClient
 
@@ -59,6 +60,7 @@ class BridgeMessageHandler:
         claude_agent: ClaudeAgent | None = None,
         task_chain: TaskChainRunner | None = None,
         email_sender: EmailSender | None = None,
+        email_client: IMAPEmailClient | None = None,
         nextcloud_files: NextcloudFilesClient | None = None,
     ) -> None:
         self._channel = channel
@@ -70,6 +72,7 @@ class BridgeMessageHandler:
         self._claude_agent = claude_agent
         self._task_chain = task_chain
         self._email_sender = email_sender
+        self._email_client = email_client
         self._nc_files = nextcloud_files
         # Mutable State (gesetzt von Bridge)
         self.restart_cooldown_until: float = 0.0

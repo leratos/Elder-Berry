@@ -349,6 +349,102 @@ class IMAPEmailClient:
             logger.error("Mail UID %s löschen fehlgeschlagen: %s", msg_id, e)
             raise RuntimeError(f"Mail löschen fehlgeschlagen: {e}") from e
 
+    def copy_to_sent_folder(
+        self, msg_bytes: bytes, sent_folder: str = "",
+    ) -> bool:
+        """Kopiert eine gesendete E-Mail in den IMAP Gesendet-Ordner.
+
+        Nutzt IMAP APPEND um die Nachricht mit \\Seen-Flag abzulegen.
+        Wenn kein sent_folder angegeben wird, wird der Ordner automatisch
+        über XLIST/LIST mit \\Sent-Attribut ermittelt.
+
+        Args:
+            msg_bytes: Die vollständige RFC822-Nachricht als Bytes.
+            sent_folder: IMAP-Ordnername (z.B. "Sent", "INBOX.Sent").
+                         Leer = automatische Erkennung.
+
+        Returns:
+            True wenn erfolgreich kopiert.
+        """
+        try:
+            conn = self._connect()
+
+            folder = sent_folder or self._detect_sent_folder(conn)
+            if not folder:
+                logger.warning(
+                    "Gesendet-Ordner nicht gefunden – "
+                    "Mail wird nicht in Sent kopiert"
+                )
+                conn.logout()
+                return False
+
+            result, _ = conn.append(
+                folder, "\\Seen", None, msg_bytes,
+            )
+            conn.logout()
+
+            if result == "OK":
+                logger.info(
+                    "Mail in Gesendet-Ordner '%s' kopiert", folder,
+                )
+                return True
+
+            logger.warning(
+                "IMAP APPEND in '%s' fehlgeschlagen: %s",
+                folder, result,
+            )
+            return False
+
+        except Exception as e:
+            logger.warning(
+                "Kopie in Gesendet-Ordner fehlgeschlagen: %s", e,
+            )
+            return False
+
+    @staticmethod
+    def _detect_sent_folder(
+        conn: imaplib.IMAP4_SSL | imaplib.IMAP4,
+    ) -> str:
+        """Erkennt den Gesendet-Ordner über IMAP LIST-Attribute.
+
+        Sucht nach Ordnern mit \\Sent-Attribut (RFC 6154 / SPECIAL-USE).
+        Fallback auf bekannte Namen: Sent, INBOX.Sent, Gesendet.
+
+        Returns:
+            Ordnername oder leerer String wenn nicht gefunden.
+        """
+        # Versuch 1: XLIST / LIST mit Special-Use-Attributen
+        try:
+            _, data = conn.list()
+            if data:
+                for item in data:
+                    if not item:
+                        continue
+                    line = item.decode("utf-8", errors="replace") if isinstance(
+                        item, bytes,
+                    ) else str(item)
+                    if "\\Sent" in line:
+                        # Format: '(\\Sent \\HasNoChildren) "/" "Sent"'
+                        # Ordnername ist das letzte Element in Anführungszeichen
+                        parts = line.rsplit('"', 2)
+                        if len(parts) >= 2:
+                            return parts[-2]
+        except Exception as e:
+            logger.debug("IMAP LIST für Sent-Erkennung fehlgeschlagen: %s", e)
+
+        # Versuch 2: Bekannte Ordnernamen direkt prüfen
+        for candidate in ("Sent", "INBOX.Sent", "Gesendet", "Sent Items",
+                          "Sent Messages"):
+            try:
+                result, _ = conn.select(candidate, readonly=True)
+                if result == "OK":
+                    conn.close()
+                    return candidate
+            except Exception:
+                continue
+
+        return ""
+
     # ------------------------------------------------------------------
     # Interne Methoden
     # ------------------------------------------------------------------

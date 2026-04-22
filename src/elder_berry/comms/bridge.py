@@ -52,6 +52,7 @@ if TYPE_CHECKING:
     from elder_berry.core.task_chain import TaskChainRunner
     from elder_berry.stt.base import STTEngine
     from elder_berry.tools.document_reader import DocumentReader
+    from elder_berry.tools.email_client import IMAPEmailClient
     from elder_berry.tools.email_sender import EmailSender
     from elder_berry.tools.nextcloud_files import NextcloudFilesClient
 
@@ -89,6 +90,7 @@ class MatrixBridge:
         task_chain: TaskChainRunner | None = None,
         summarizer: Summarizer | None = None,
         email_sender: EmailSender | None = None,
+        email_client: IMAPEmailClient | None = None,
         pending_store: PendingConfirmationStore | None = None,
         nextcloud_files: NextcloudFilesClient | None = None,
     ) -> None:
@@ -139,6 +141,7 @@ class MatrixBridge:
             claude_agent=claude_agent,
             task_chain=task_chain,
             email_sender=email_sender,
+            email_client=email_client,
             nextcloud_files=nextcloud_files,
         )
 

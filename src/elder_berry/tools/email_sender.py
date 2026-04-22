@@ -25,6 +25,7 @@ class SentEmail:
     subject: str
     success: bool
     error: str = ""
+    raw_msg: bytes = b""
 
 
 class EmailSender:
@@ -109,7 +110,10 @@ class EmailSender:
             conn.send_message(msg)
             conn.quit()
             logger.info("Email gesendet an %s: %s", to, subject)
-            return SentEmail(to=to, subject=subject, success=True)
+            return SentEmail(
+                to=to, subject=subject, success=True,
+                raw_msg=msg.as_bytes(),
+            )
         except smtplib.SMTPAuthenticationError as e:
             logger.error("SMTP Auth-Fehler: %s", e)
             return SentEmail(
