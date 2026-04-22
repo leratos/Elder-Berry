@@ -54,7 +54,10 @@ class CalendarEvent:
         if self.all_day:
             time_str = "ganztags"
         else:
-            time_str = f"{self.start.strftime('%H:%M')}-{self.end.strftime('%H:%M')}"
+            # astimezone() konvertiert in System-Lokalzeit (Europe/Berlin)
+            start_local = self.start.astimezone()
+            end_local = self.end.astimezone()
+            time_str = f"{start_local.strftime('%H:%M')}-{end_local.strftime('%H:%M')}"
 
         text = f"{time_str} {self.summary}"
         if self.location:

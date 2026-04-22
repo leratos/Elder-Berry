@@ -206,8 +206,7 @@ class BriefingScheduler:
                 try:
                     mon_start = datetime(
                         monday.year, monday.month, monday.day,
-                        tzinfo=timezone.utc,
-                    )
+                    ).astimezone()
                     mon_end = mon_start + timedelta(days=1)
                     monday_events = self._calendar.get_events_range(
                         mon_start, mon_end,
