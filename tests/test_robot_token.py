@@ -5,21 +5,20 @@ import pytest
 
 try:
     from fastapi.testclient import TestClient
+    from elder_berry.robot.simulator import (
+        SimulatedAvatar,
+        SimulatedMotors,
+        SimulatedSensors,
+    )
+    from elder_berry.robot.server import RobotServer
     HAS_FASTAPI = True
 except ImportError:
     HAS_FASTAPI = False
 
-from elder_berry.robot.simulator import (
-    SimulatedAvatar,
-    SimulatedMotors,
-    SimulatedSensors,
-)
-from elder_berry.robot.server import RobotServer
-
 pytestmark = pytest.mark.skipif(not HAS_FASTAPI, reason="fastapi nicht installiert")
 
 
-def _create_server(**kwargs) -> RobotServer:
+def _create_server(**kwargs):
     return RobotServer(
         motors=SimulatedMotors(),
         avatar=SimulatedAvatar(),
