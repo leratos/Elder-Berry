@@ -461,12 +461,16 @@ class SystemCommandHandler(CommandHandler):
                 return None
             rgb, size = grabbed
 
-        tmp = tempfile.NamedTemporaryFile(
-            suffix=".png", prefix="screenshot_", delete=False,
-        )
-        tmp_path = Path(tmp.name)
-        tmp.close()
-        mss.tools.to_png(rgb, size, output=str(tmp_path))
+        try:
+            tmp = tempfile.NamedTemporaryFile(
+                suffix=".png", prefix="screenshot_", delete=False,
+            )
+            tmp_path = Path(tmp.name)
+            tmp.close()
+            mss.tools.to_png(rgb, size, output=str(tmp_path))
+        except Exception as e:
+            logger.error("Screenshot PNG-Schreiben fehlgeschlagen: %s", e)
+            return None
 
         status = " (PC gesperrt)" if locked else ""
         return CommandResult(

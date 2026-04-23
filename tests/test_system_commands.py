@@ -318,35 +318,52 @@ class TestIsLocked:
 
 
 class TestScreenshotLockStatus:
-    """Screenshot-Text enthält den Sperrbildschirm-Hinweis wenn PC gesperrt."""
+    """Screenshot-Text enthält den Sperrbildschirm-Hinweis wenn PC gesperrt.
 
-    def _make_fake_rgb(self, brightness: int = 128) -> bytes:
-        """Erzeugt Fake-RGB-Bytes mit gegebener Helligkeit."""
-        return bytes([brightness] * 3000)
+    mss ist ein optionales Extra und muss nicht installiert sein.
+    Beide Tests injizieren fake mss-Module via patch.dict(sys.modules)
+    damit kein echter mss-Import stattfindet.
+    """
 
-    @patch("elder_berry.comms.commands.system_commands.SystemCommandHandler._wake_monitor")
-    @patch("elder_berry.comms.commands.system_commands.SystemCommandHandler._is_locked",
-           return_value=True)
-    def test_locked_status_in_text(self, mock_locked, mock_wake, tmp_path):
-        """Wenn PC gesperrt: Text enthält '(PC gesperrt)'."""
-        from elder_berry.comms.commands.system_commands import SystemCommandHandler
-        import mss as mss_module
-
-        handler = SystemCommandHandler()
-        fake_rgb = self._make_fake_rgb(128)
+    def _fake_mss_modules(self, brightness: int = 128):
+        """Erzeugt gemockte mss/mss.tools ohne echtes mss zu importieren."""
+        fake_rgb = bytes([brightness] * 3000)
 
         mock_shot = MagicMock()
         mock_shot.rgb = fake_rgb
         mock_shot.size = (100, 100)
 
-        with patch("mss.mss") as mock_mss_ctx:
-            mock_sct = MagicMock()
-            mock_sct.monitors = [None, {"left": 0, "top": 0, "width": 100, "height": 100}]
-            mock_sct.grab.return_value = mock_shot
-            mock_mss_ctx.return_value.__enter__ = MagicMock(return_value=mock_sct)
-            mock_mss_ctx.return_value.__exit__ = MagicMock(return_value=False)
-            with patch("mss.tools.to_png"):
-                result = handler._screenshot_local()
+        mock_sct = MagicMock()
+        mock_sct.monitors = [None, {}]
+        mock_sct.grab.return_value = mock_shot
+
+        ctx_mgr = MagicMock()
+        ctx_mgr.__enter__ = MagicMock(return_value=mock_sct)
+        ctx_mgr.__exit__ = MagicMock(return_value=False)
+
+        fake_mss = MagicMock()
+        fake_mss.mss.return_value = ctx_mgr
+
+        fake_tools = MagicMock()   # to_png ist ein No-op MagicMock
+        # Wichtig: fake_mss.tools auf fake_tools setzen, damit
+        # `mss.tools.to_png` im Produktionscode auf fake_tools zeigt.
+        fake_mss.tools = fake_tools
+
+        return fake_mss, fake_tools
+
+    @patch("elder_berry.comms.commands.system_commands.SystemCommandHandler._wake_monitor")
+    @patch("elder_berry.comms.commands.system_commands.SystemCommandHandler._is_locked",
+           return_value=True)
+    def test_locked_status_in_text(self, mock_locked, mock_wake):
+        """Wenn PC gesperrt: Text enthält '(PC gesperrt)'."""
+        import sys
+        from elder_berry.comms.commands.system_commands import SystemCommandHandler
+
+        handler = SystemCommandHandler()
+        fake_mss, fake_tools = self._fake_mss_modules(brightness=128)
+
+        with patch.dict(sys.modules, {"mss": fake_mss, "mss.tools": fake_tools}):
+            result = handler._screenshot_local()
 
         assert result is not None
         assert result.success is True
@@ -357,27 +374,35 @@ class TestScreenshotLockStatus:
            return_value=False)
     def test_unlocked_no_lock_hint(self, mock_locked, mock_wake):
         """Wenn PC nicht gesperrt: kein Sperrhinweis im Text."""
+        import sys
         from elder_berry.comms.commands.system_commands import SystemCommandHandler
 
         handler = SystemCommandHandler()
-        fake_rgb = self._make_fake_rgb(128)
+        fake_mss, fake_tools = self._fake_mss_modules(brightness=128)
 
-        mock_shot = MagicMock()
-        mock_shot.rgb = fake_rgb
-        mock_shot.size = (100, 100)
-
-        with patch("mss.mss") as mock_mss_ctx:
-            mock_sct = MagicMock()
-            mock_sct.monitors = [None, {"left": 0, "top": 0, "width": 100, "height": 100}]
-            mock_sct.grab.return_value = mock_shot
-            mock_mss_ctx.return_value.__enter__ = MagicMock(return_value=mock_sct)
-            mock_mss_ctx.return_value.__exit__ = MagicMock(return_value=False)
-            with patch("mss.tools.to_png"):
-                result = handler._screenshot_local()
+        with patch.dict(sys.modules, {"mss": fake_mss, "mss.tools": fake_tools}):
+            result = handler._screenshot_local()
 
         assert result is not None
         assert result.success is True
         assert "gesperrt" not in result.text
+
+    @patch("elder_berry.comms.commands.system_commands.SystemCommandHandler._wake_monitor")
+    @patch("elder_berry.comms.commands.system_commands.SystemCommandHandler._is_locked",
+           return_value=False)
+    def test_png_write_error_returns_none(self, mock_locked, mock_wake):
+        """PNG-Schreibfehler → None (Tower-Fallback statt harter Ausnahme)."""
+        import sys
+        from elder_berry.comms.commands.system_commands import SystemCommandHandler
+
+        handler = SystemCommandHandler()
+        fake_mss, fake_tools = self._fake_mss_modules(brightness=128)
+        fake_tools.to_png.side_effect = OSError("disk full")
+
+        with patch.dict(sys.modules, {"mss": fake_mss, "mss.tools": fake_tools}):
+            result = handler._screenshot_local()
+
+        assert result is None
 
 
 # ---------------------------------------------------------------------------
