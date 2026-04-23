@@ -288,7 +288,20 @@ class TestIsBlack:
 
 
 class TestIsLocked:
-    """_is_locked gibt auf Nicht-Windows-Plattformen False zurück."""
+    """_is_locked gibt auf Nicht-Windows-Plattformen False zurück.
+
+    ctypes.windll existiert nur auf Windows. Statt patch.object auf dem
+    echten ctypes.windll (AttributeError auf Linux) wird ctypes komplett
+    via patch.dict(sys.modules) durch ein MagicMock ersetzt. Damit sieht
+    ``import ctypes`` in _is_locked() nur das Stub-Objekt und der Test
+    läuft auf jedem Betriebssystem.
+    """
+
+    def _fake_ctypes(self, open_desktop_retval: int) -> MagicMock:
+        """Erzeugt einen ctypes-Stub mit konfiguriertem OpenInputDesktop."""
+        stub = MagicMock()
+        stub.windll.user32.OpenInputDesktop.return_value = open_desktop_retval
+        return stub
 
     def test_non_windows_returns_false(self):
         from elder_berry.comms.commands.system_commands import SystemCommandHandler
@@ -296,25 +309,21 @@ class TestIsLocked:
             assert SystemCommandHandler._is_locked() is False
 
     def test_windows_unlocked_returns_false(self):
+        import sys
         from elder_berry.comms.commands.system_commands import SystemCommandHandler
-        import ctypes
-        with patch("sys.platform", "win32"):
-            # OpenInputDesktop gibt validen Handle zurück → nicht gesperrt
-            with patch.object(
-                ctypes.windll.user32, "OpenInputDesktop", return_value=1,
-            ):
-                with patch.object(ctypes.windll.user32, "CloseDesktop"):
-                    assert SystemCommandHandler._is_locked() is False
+        stub = self._fake_ctypes(open_desktop_retval=1)  # valider Handle → entsperrt
+        with patch("sys.platform", "win32"), \
+             patch.dict(sys.modules, {"ctypes": stub}):
+            assert SystemCommandHandler._is_locked() is False
+        stub.windll.user32.CloseDesktop.assert_called_once_with(1)
 
     def test_windows_locked_returns_true(self):
+        import sys
         from elder_berry.comms.commands.system_commands import SystemCommandHandler
-        import ctypes
-        with patch("sys.platform", "win32"):
-            # OpenInputDesktop gibt NULL zurück → gesperrt
-            with patch.object(
-                ctypes.windll.user32, "OpenInputDesktop", return_value=0,
-            ):
-                assert SystemCommandHandler._is_locked() is True
+        stub = self._fake_ctypes(open_desktop_retval=0)  # NULL → gesperrt
+        with patch("sys.platform", "win32"), \
+             patch.dict(sys.modules, {"ctypes": stub}):
+            assert SystemCommandHandler._is_locked() is True
 
 
 class TestScreenshotLockStatus:
