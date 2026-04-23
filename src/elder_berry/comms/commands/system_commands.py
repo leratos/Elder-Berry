@@ -299,14 +299,46 @@ class SystemCommandHandler(CommandHandler):
             )
 
     @staticmethod
+    def _is_locked() -> bool:
+        """Gibt True zurück wenn der Windows-Sperrbildschirm aktiv ist.
+
+        Nutzt ``OpenInputDesktop``: gibt unter dem Benutzer-Kontext einen
+        gültigen Handle zurück wenn der interaktive Desktop zugänglich ist.
+        Wenn der Sperrbildschirm aktiv ist, ist der Winlogon-Desktop der
+        Input-Desktop und der Benutzer-Desktop ist nicht zugänglich → NULL.
+        Auf Nicht-Windows-Plattformen wird immer False zurückgegeben.
+        """
+        import sys
+        if sys.platform != "win32":
+            return False
+        try:
+            import ctypes
+            DESKTOP_READOBJECTS = 0x0001
+            hdesk = ctypes.windll.user32.OpenInputDesktop(
+                0, False, DESKTOP_READOBJECTS,
+            )
+            if hdesk:
+                ctypes.windll.user32.CloseDesktop(hdesk)
+                return False
+            return True
+        except Exception:
+            return False
+
+    @staticmethod
     def _wake_monitor() -> None:
-        """Weckt den Monitor auf (Windows: SC_MONITORPOWER).
+        """Weckt den Monitor auf (Windows: SC_MONITORPOWER + Mouse-Jiggle).
 
         Nutzt ``SendMessageTimeoutW`` mit ``SMTO_ABORTIFHUNG``, damit ein
         hängendes Top-Level-Fenster den Broadcast nicht blockiert –
         ``SendMessageW`` mit ``HWND_BROADCAST`` hängt sonst indefinit,
         wenn irgendein Prozess im System seinen Message-Loop nicht
         bedient (Phase 55.2).
+
+        Zusätzlich wird der Cursor minimal bewegt und sofort zurückgesetzt
+        (Mouse-Jiggle). Das ist ein zuverlässigerer Weck-Trigger als
+        SC_MONITORPOWER allein, da er den Display-Stack des Compositors
+        aktiv anstößt. Sleep danach 2s statt 1s, da manche Monitore
+        länger zum Rendern der ersten vollen Frame brauchen.
         """
         import sys
         if sys.platform != "win32":
@@ -314,6 +346,7 @@ class SystemCommandHandler(CommandHandler):
         try:
             import ctypes
             import ctypes.wintypes
+            import time
 
             HWND_BROADCAST = 0xFFFF
             WM_SYSCOMMAND = 0x0112
@@ -332,8 +365,16 @@ class SystemCommandHandler(CommandHandler):
                 TIMEOUT_MS,
                 ctypes.byref(result),
             )
-            import time
-            time.sleep(1)  # Monitor braucht ~1s zum Aufwachen
+
+            # Mouse-Jiggle: Cursor +1 Pixel und sofort zurück.
+            # Stößt den Display-Compositor zuverlässiger an als das
+            # SC_MONITORPOWER-Signal allein.
+            pt = ctypes.wintypes.POINT()
+            ctypes.windll.user32.GetCursorPos(ctypes.byref(pt))
+            ctypes.windll.user32.SetCursorPos(pt.x + 1, pt.y)
+            ctypes.windll.user32.SetCursorPos(pt.x, pt.y)
+
+            time.sleep(2)  # Monitor braucht bis zu 2s zum vollständigen Aufwachen
         except Exception as e:
             logger.debug("Monitor-Aufwecken fehlgeschlagen (ignoriert): %s", e)
 
@@ -360,8 +401,32 @@ class SystemCommandHandler(CommandHandler):
             text="Screenshot nicht möglich: weder mss noch TowerAgent verfügbar.",
         )
 
+    @staticmethod
+    def _is_black(rgb_bytes: bytes) -> bool:
+        """Gibt True zurück wenn der Screenshot überwiegend schwarz ist.
+
+        Samplet jeden 300. Byte (= jeden 100. R-Kanal-Wert) und prüft ob
+        die Durchschnittshelligkeit unter dem Schwellwert liegt. Ein echter
+        schwarzer Bildschirm hat Durchschnitt ~0; ein aufgewachter Monitor
+        mit dunklem Hintergrund typischerweise > 15.
+        """
+        if not rgb_bytes:
+            return True
+        sample = rgb_bytes[::300]
+        avg = sum(sample) / len(sample)
+        return avg < 8
+
     def _screenshot_local(self) -> CommandResult | None:
-        """Screenshot via lokales mss. Gibt None zurück wenn nicht verfügbar."""
+        """Screenshot via lokales mss. Gibt None zurück wenn nicht verfügbar.
+
+        Ablauf:
+        1. Monitor wecken (_wake_monitor)
+        2. Sperrbildschirm-Status ermitteln (_is_locked)
+        3. Screenshot aufnehmen
+        4. Falls Screenshot überwiegend schwarz: 1,5s warten und einmal
+           wiederholen (Monitor war noch nicht vollständig aufgewacht)
+        5. Lock-Status im Rückgabetext vermerken
+        """
         try:
             import mss
             import mss.tools
@@ -369,29 +434,51 @@ class SystemCommandHandler(CommandHandler):
             return None
 
         self._wake_monitor()
+        locked = self._is_locked()
+
+        def _grab() -> tuple[bytes, tuple[int, int]] | None:
+            try:
+                with mss.mss() as sct:
+                    shot = sct.grab(sct.monitors[1])
+                    return shot.rgb, shot.size
+            except Exception as e:
+                logger.error("Lokaler Screenshot fehlgeschlagen: %s", e)
+                return None
+
+        grabbed = _grab()
+        if grabbed is None:
+            return None
+
+        rgb, size = grabbed
+
+        # Schwarzbild-Erkennung: einmaliger Retry nach 1,5s
+        if self._is_black(rgb):
+            logger.debug("Screenshot schwarz – warte 1,5s und wiederhole")
+            import time
+            time.sleep(1.5)
+            grabbed = _grab()
+            if grabbed is None:
+                return None
+            rgb, size = grabbed
 
         try:
-            with mss.mss() as sct:
-                monitor = sct.monitors[1]
-                screenshot = sct.grab(monitor)
-
-                tmp = tempfile.NamedTemporaryFile(
-                    suffix=".png", prefix="screenshot_", delete=False,
-                )
-                tmp_path = Path(tmp.name)
-                tmp.close()
-
-                mss.tools.to_png(screenshot.rgb, screenshot.size, output=str(tmp_path))
-
-            return CommandResult(
-                command="screenshot",
-                success=True,
-                text="Screenshot aufgenommen.",
-                image_path=tmp_path,
+            tmp = tempfile.NamedTemporaryFile(
+                suffix=".png", prefix="screenshot_", delete=False,
             )
+            tmp_path = Path(tmp.name)
+            tmp.close()
+            mss.tools.to_png(rgb, size, output=str(tmp_path))
         except Exception as e:
-            logger.error("Lokaler Screenshot fehlgeschlagen: %s", e)
+            logger.error("Screenshot PNG-Schreiben fehlgeschlagen: %s", e)
             return None
+
+        status = " (PC gesperrt)" if locked else ""
+        return CommandResult(
+            command="screenshot",
+            success=True,
+            text=f"Screenshot aufgenommen{status}.",
+            image_path=tmp_path,
+        )
 
     def _screenshot_tower(self) -> CommandResult | None:
         """Screenshot via TowerAgent (synchroner HTTP-Call).

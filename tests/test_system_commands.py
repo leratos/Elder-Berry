@@ -260,6 +260,160 @@ class TestScreenshotCommand:
             assert "weder mss noch TowerAgent" in result.text
 
 
+class TestIsBlack:
+    """_is_black erkennt schwarze und nicht-schwarze Screenshots korrekt."""
+
+    def test_empty_bytes_is_black(self):
+        from elder_berry.comms.commands.system_commands import SystemCommandHandler
+        assert SystemCommandHandler._is_black(b"") is True
+
+    def test_all_zero_is_black(self):
+        from elder_berry.comms.commands.system_commands import SystemCommandHandler
+        assert SystemCommandHandler._is_black(bytes(3000)) is True
+
+    def test_bright_pixels_not_black(self):
+        from elder_berry.comms.commands.system_commands import SystemCommandHandler
+        # Weißes Bild: alle Bytes = 255
+        assert SystemCommandHandler._is_black(bytes([255] * 3000)) is False
+
+    def test_dark_but_not_black_not_black(self):
+        from elder_berry.comms.commands.system_commands import SystemCommandHandler
+        # Dunkelgrau (30/255 ≈ 12% Helligkeit) → über Schwelle → kein Schwarz
+        assert SystemCommandHandler._is_black(bytes([30] * 3000)) is False
+
+    def test_nearly_black_is_black(self):
+        from elder_berry.comms.commands.system_commands import SystemCommandHandler
+        # Sehr dunkler Wert (5/255) → unter Schwelle → gilt als schwarz
+        assert SystemCommandHandler._is_black(bytes([5] * 3000)) is True
+
+
+class TestIsLocked:
+    """_is_locked gibt auf Nicht-Windows-Plattformen False zurück.
+
+    ctypes.windll existiert nur auf Windows. Statt patch.object auf dem
+    echten ctypes.windll (AttributeError auf Linux) wird ctypes komplett
+    via patch.dict(sys.modules) durch ein MagicMock ersetzt. Damit sieht
+    ``import ctypes`` in _is_locked() nur das Stub-Objekt und der Test
+    läuft auf jedem Betriebssystem.
+    """
+
+    def _fake_ctypes(self, open_desktop_retval: int) -> MagicMock:
+        """Erzeugt einen ctypes-Stub mit konfiguriertem OpenInputDesktop."""
+        stub = MagicMock()
+        stub.windll.user32.OpenInputDesktop.return_value = open_desktop_retval
+        return stub
+
+    def test_non_windows_returns_false(self):
+        from elder_berry.comms.commands.system_commands import SystemCommandHandler
+        with patch("sys.platform", "linux"):
+            assert SystemCommandHandler._is_locked() is False
+
+    def test_windows_unlocked_returns_false(self):
+        import sys
+        from elder_berry.comms.commands.system_commands import SystemCommandHandler
+        stub = self._fake_ctypes(open_desktop_retval=1)  # valider Handle → entsperrt
+        with patch("sys.platform", "win32"), \
+             patch.dict(sys.modules, {"ctypes": stub}):
+            assert SystemCommandHandler._is_locked() is False
+        stub.windll.user32.CloseDesktop.assert_called_once_with(1)
+
+    def test_windows_locked_returns_true(self):
+        import sys
+        from elder_berry.comms.commands.system_commands import SystemCommandHandler
+        stub = self._fake_ctypes(open_desktop_retval=0)  # NULL → gesperrt
+        with patch("sys.platform", "win32"), \
+             patch.dict(sys.modules, {"ctypes": stub}):
+            assert SystemCommandHandler._is_locked() is True
+
+
+class TestScreenshotLockStatus:
+    """Screenshot-Text enthält den Sperrbildschirm-Hinweis wenn PC gesperrt.
+
+    mss ist ein optionales Extra und muss nicht installiert sein.
+    Beide Tests injizieren fake mss-Module via patch.dict(sys.modules)
+    damit kein echter mss-Import stattfindet.
+    """
+
+    def _fake_mss_modules(self, brightness: int = 128):
+        """Erzeugt gemockte mss/mss.tools ohne echtes mss zu importieren."""
+        fake_rgb = bytes([brightness] * 3000)
+
+        mock_shot = MagicMock()
+        mock_shot.rgb = fake_rgb
+        mock_shot.size = (100, 100)
+
+        mock_sct = MagicMock()
+        mock_sct.monitors = [None, {}]
+        mock_sct.grab.return_value = mock_shot
+
+        ctx_mgr = MagicMock()
+        ctx_mgr.__enter__ = MagicMock(return_value=mock_sct)
+        ctx_mgr.__exit__ = MagicMock(return_value=False)
+
+        fake_mss = MagicMock()
+        fake_mss.mss.return_value = ctx_mgr
+
+        fake_tools = MagicMock()   # to_png ist ein No-op MagicMock
+        # Wichtig: fake_mss.tools auf fake_tools setzen, damit
+        # `mss.tools.to_png` im Produktionscode auf fake_tools zeigt.
+        fake_mss.tools = fake_tools
+
+        return fake_mss, fake_tools
+
+    @patch("elder_berry.comms.commands.system_commands.SystemCommandHandler._wake_monitor")
+    @patch("elder_berry.comms.commands.system_commands.SystemCommandHandler._is_locked",
+           return_value=True)
+    def test_locked_status_in_text(self, mock_locked, mock_wake):
+        """Wenn PC gesperrt: Text enthält '(PC gesperrt)'."""
+        import sys
+        from elder_berry.comms.commands.system_commands import SystemCommandHandler
+
+        handler = SystemCommandHandler()
+        fake_mss, fake_tools = self._fake_mss_modules(brightness=128)
+
+        with patch.dict(sys.modules, {"mss": fake_mss, "mss.tools": fake_tools}):
+            result = handler._screenshot_local()
+
+        assert result is not None
+        assert result.success is True
+        assert "gesperrt" in result.text
+
+    @patch("elder_berry.comms.commands.system_commands.SystemCommandHandler._wake_monitor")
+    @patch("elder_berry.comms.commands.system_commands.SystemCommandHandler._is_locked",
+           return_value=False)
+    def test_unlocked_no_lock_hint(self, mock_locked, mock_wake):
+        """Wenn PC nicht gesperrt: kein Sperrhinweis im Text."""
+        import sys
+        from elder_berry.comms.commands.system_commands import SystemCommandHandler
+
+        handler = SystemCommandHandler()
+        fake_mss, fake_tools = self._fake_mss_modules(brightness=128)
+
+        with patch.dict(sys.modules, {"mss": fake_mss, "mss.tools": fake_tools}):
+            result = handler._screenshot_local()
+
+        assert result is not None
+        assert result.success is True
+        assert "gesperrt" not in result.text
+
+    @patch("elder_berry.comms.commands.system_commands.SystemCommandHandler._wake_monitor")
+    @patch("elder_berry.comms.commands.system_commands.SystemCommandHandler._is_locked",
+           return_value=False)
+    def test_png_write_error_returns_none(self, mock_locked, mock_wake):
+        """PNG-Schreibfehler → None (Tower-Fallback statt harter Ausnahme)."""
+        import sys
+        from elder_berry.comms.commands.system_commands import SystemCommandHandler
+
+        handler = SystemCommandHandler()
+        fake_mss, fake_tools = self._fake_mss_modules(brightness=128)
+        fake_tools.to_png.side_effect = OSError("disk full")
+
+        with patch.dict(sys.modules, {"mss": fake_mss, "mss.tools": fake_tools}):
+            result = handler._screenshot_local()
+
+        assert result is None
+
+
 # ---------------------------------------------------------------------------
 # Avatar Command
 # ---------------------------------------------------------------------------
