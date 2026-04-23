@@ -81,6 +81,8 @@ harmony = [
     "aioharmony>=0.5.0",
 ]
 tower = [
+    "matrix-nio>=0.24",
+    "aiofiles>=23.0",
     "python-multipart>=0.0.18",
     "coqui-tts>=0.27",
     "sounddevice>=0.4",

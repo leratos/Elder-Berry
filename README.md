@@ -56,12 +56,12 @@ Hologramm-Display in einem 3D-gedruckten Holunder-Baumstamm-Gehäuse.
 
 ## 4-Tier-System
 
-| Tier | Gerät | Rolle |
-|---|---|---|
-| Rootserver | Hetzner (Plesk, 24/7) | Bot-Host: Matrix-Bridge, LLM-Routing, Cloud-TTS/STT |
-| Tower | Windows-PC (RTX 4070 Ti Super, 16 GB VRAM) | Agent: lokale TTS/STT, PC-Steuerung, Screenshots |
-| Laptop | Windows-PC (RTX 4070, 8 GB VRAM) | Client: PC-Steuerung + Audio |
-| RPi5 | Raspberry Pi 5 (4 GB) | Körper: Avatar-Display, Sensoren, Harmony Hub, Kamera |
+| Tier | Gerät | Rolle | Verbindung |
+|---|---|---|---|
+| Rootserver | Hetzner (Plesk, Ubuntu 24.04, 24/7) | Matrix-Server (Synapse), Alexa-Endpoint, Nginx-Proxy | Öffentliches Internet |
+| Tower | Windows-PC (RTX 4070 Ti Super, 16 GB VRAM) | Haupthirn: LLM, TTS/STT, Orchestrierung, PC-Steuerung | Matrix → SecretStore |
+| Laptop | Windows-PC (RTX 4070, 8 GB VRAM) | Client: AgentServer, PC-Steuerung, Audio-Empfänger | AgentServer (FastAPI) |
+| RPi5 | Raspberry Pi 5 (4 GB) | Körper: Avatar-Display, Kamera, Drehteller, Harmony Hub | RobotServer (FastAPI :8000) |
 
 ## Schnellstart
 
@@ -75,9 +75,10 @@ py -3.12 -m venv .venv
 .venv\Scripts\activate  # Windows
 
 # Vollinstallation (empfohlen für Tower)
-pip install -e ".[windows,tts-neural,avatar,matrix,remote,memory,stt]"  # Tower
-# oder:
-pip install -e ".[server]"  # Rootserver (ohne Tower-spezifisches)
+pip install -e ".[windows,tts-neural,avatar,matrix,remote,memory,stt,nextcloud,harmony]"
+# Oder als Paketgruppe:
+pip install -e ".[server]"  # Rootserver (Matrix + Cloud-Tools ohne Windows-Extras)
+pip install -e ".[tower]"   # Tower (Windows-Extras + TTS/STT + Matrix, Vollinstallation)
 ```
 
 Mindestens benötigt: ein Anthropic API-Key und Matrix-Zugangsdaten.
@@ -108,9 +109,11 @@ siehe **[docs/INSTALLATION.md](docs/INSTALLATION.md)**.
 |---|---|
 | **[INSTALLATION.md](docs/INSTALLATION.md)** | Installation, API-Keys, Secrets, Voraussetzungen |
 | **[USAGE.md](docs/USAGE.md)** | Alle Commands, Workflows, Beispiele |
-| **[ARCHITECTURE.md](docs/ARCHITECTURE.md)** | System-Design, Klassen, Patterns, Projektstruktur |
-| **[RPI5_SETUP.md](docs/RPI5_SETUP.md)** | RPi5-spezifische Einrichtung (Avatar, Drehteller, Kamera) |
-| **[PROJECT_ROADMAP.md](docs/PROJECT_ROADMAP.md)** | Vollständige Roadmap (Phase 1–48) |
+| **[architecture.md](docs/architecture.md)** | System-Design, Klassen, Patterns, Projektstruktur |
+| **[rpi5_setup.md](docs/rpi5_setup.md)** | RPi5-spezifische Einrichtung (Avatar, Drehteller, Kamera) |
+| **[matrix_setup.md](docs/matrix_setup.md)** | Synapse Matrix-Server Setup (Plesk/Docker) |
+| **[ssh-tunnel.md](docs/ssh-tunnel.md)** | SSH Reverse Tunnels (Tower + RPi5 → Rootserver) |
+| **[PROJECT_ROADMAP.md](docs/PROJECT_ROADMAP.md)** | Vollständige Roadmap (Phase 1–61) |
 
 ## Architektur (Kurzfassung)
 
@@ -119,10 +122,10 @@ siehe **[docs/INSTALLATION.md](docs/INSTALLATION.md)**.
        |                      |                      |
        v                      v                      v
 [MatrixBridge]        [SettingsDashboard]   [RPi5: /saleria Endpoint]
-       |                                         |
-       ├── Command-Router                        └─> HarmonyAdapter ─> Hub ─> IR
+       |               [SetupWizard]              |
+       ├── Command-Router                   └─> HarmonyAdapter ─> Hub ─> IR
        |
-       ├─ Sprachnachricht?  ──> STTRouter (Groq / Whisper) ──> Text
+       ├─ Sprachnachricht?  ──> STTRouter (Groq / FasterWhisper) ──> Text
        ├─ Direkter Command? ──> RemoteCommandHandler (Orchestrator)
        │                         ├─ SystemCommands     (Status, Screenshot, Medien)
        │                         ├─ CalendarCommands   (Termine CRUD + Suche)
@@ -131,12 +134,20 @@ siehe **[docs/INSTALLATION.md](docs/INSTALLATION.md)**.
        │                         ├─ NoteCommands       (Notizen + Wissensdatenbank)
        │                         ├─ ContactCommands    (Kontaktbuch + CardDAV)
        │                         ├─ TodoCommands       (Aufgabenliste)
+       │                         ├─ FileCommands       (Clipboard, Dateien, Download)
+       │                         ├─ CloudCommands      (Nextcloud + Ablage + PDF)
        │                         ├─ RouteCommands      (Routenplanung)
-       │                         ├─ FilingCommands     (Dokument-Ablage)
+       │                         ├─ HarmonyCommands    (Smart Home, Szenen)
        │                         ├─ CameraCommands     (Foto, Vision-Beschreibung)
        │                         ├─ TurntableCommands  (Drehteller-Steuerung)
+       │                         ├─ ProcessCommands    (Start/Kill, WoL)
+       │                         ├─ GitCommands        (Status, Pull, Log)
+       │                         ├─ DockerCommands     (PS, Restart, Logs)
+       │                         ├─ UpdateCommands     (Self-Update Tower + RPi5)
+       │                         ├─ SelfcheckCommands  (Gesundheitsprüfung)
+       │                         ├─ LogCommands        (Remote Log-Zugriff)
        │                         └─ AdvancedCommands   (Computer Use, Web-Suche, Docs)
-       ├─ Bestätigung?      ──> ConfirmationHandler (Mail, Filing, Restart)
+       ├─ Bestätigung?      ──> ConfirmationHandler (Mail, Filing, Restart, Cloud)
        ├─ "claude" + "..."? ──> ClaudeAgent (Anthropic API)
        └─ Alles andere      ──> Assistant (LLM + TTS + Avatar)
                                       |
@@ -146,7 +157,7 @@ siehe **[docs/INSTALLATION.md](docs/INSTALLATION.md)**.
                    (PC via SSH)  (11Labs/XTTS) (ChromaDB)
 ```
 
-Detaillierte Architektur mit allen Klassen und Patterns: **[ARCHITECTURE.md](docs/ARCHITECTURE.md)**
+Detaillierte Architektur mit allen Klassen und Patterns: **[architecture.md](docs/architecture.md)**
 
 ## Charakter: Saleria Berry
 
@@ -162,7 +173,7 @@ Detaillierte Architektur mit allen Klassen und Patterns: **[ARCHITECTURE.md](doc
 pytest tests/ -q
 ```
 
-3.900+ Tests.
+4.000+ Tests (141 Testdateien).
 
 ## Roadmap (Auszug)
 
@@ -180,13 +191,15 @@ pytest tests/ -q
 | 36–39 | Nextcloud (CalDAV, CardDAV, Datei-Hub), Kontakte Vollintegration | ✅ Fertig |
 | 40.1 | Sprachsteuerung via Alexa Custom Skill | ✅ Fertig |
 | 41 | IR-Learning & Geräteverwaltung | 📡 Geplant |
-| 42 | Dokument-Ablage (Cloud Aufräumen) | ✅ Fertig |
-| 43 | Routenplanung (Google Maps) | ✅ Fertig |
-| 44 | Server-Migration (ElevenLabs, Groq STT, TowerAgent) | ✅ Fertig |
-| 45 | Settings Dashboard (Secrets-API, LLM, Security) | ✅ Fertig |
-| 46 | Setup-Wizard (Installationsassistent) | 🧙 Geplant |
-| 47 | Befehlsmuster-Stabilisierung + UX-Polish | ✅ Fertig |
-| 48 | Technische Schulden / Qualität (Refactoring) | ✅ Fertig |
+| 42–43 | Dokument-Ablage (Cloud Aufräumen), Routenplanung (Google Maps) | ✅ Fertig |
+| 44–48 | Server-Migration, Settings Dashboard, Setup-Wizard, UX-Polish, Refactoring | ✅ Fertig |
+| 49–51 | Anhang-Aktionsmenü, Fehler-UX, Kontextsensitive Hilfe | ✅ Fertig |
+| 52–53 | Unified Settings, Install-Script Härtung, Avatar-Editor UX | ✅ Fertig |
+| 55 | pydub/audioop Migration (Python 3.13-Kompatibilität) | ✅ Fertig |
+| 56 | Nextcloud Tasks als Todo-Backend | 📋 Geplant |
+| 57–58 | Security-Härtung (CORS, CSP, Dashboard-Login) | ✅ Fertig |
+| 59–60 | Alexa Request-Verifikation, Tower-Auth | ✅ Fertig |
+| 61 | Remote Log-Zugriff via Matrix | ✅ Fertig |
 
 Vollständige Roadmap mit Details: **[PROJECT_ROADMAP.md](docs/PROJECT_ROADMAP.md)**
 

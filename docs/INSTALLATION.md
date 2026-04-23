@@ -57,27 +57,32 @@ py -3.12 -m venv .venv
 Elder-Berry nutzt optionale Dependency-Gruppen. Für den Tower empfiehlt sich die Vollinstallation:
 
 ```bash
-# Vollinstallation (Tower)
-pip install -e ".[windows,tts-neural,avatar,matrix,remote,memory,stt]"
-pip install chromadb faster-whisper
+# Vollinstallation (Tower) – enthält Matrix, TTS/STT, Windows-Extras
+pip install -e ".[tower]"
 ```
 
 #### Einzelne Gruppen
 
 ```bash
-pip install -e "."                # Kern (LLM, Aktions-DB)
+pip install -e "."                # Kern (LLM, FastAPI, SecretStore)
 pip install -e ".[windows]"      # PC-Steuerung (pyautogui, pycaw)
 pip install -e ".[tts-neural]"   # XTTS v2 Voice Cloning (coqui-tts, CUDA)
 pip install -e ".[avatar]"       # Avatar-Display (pygame)
-pip install -e ".[matrix]"       # Matrix-Integration (matrix-nio, pydub)
-pip install -e ".[remote]"       # Remote-Features (anthropic, mss, pyperclip)
+pip install -e ".[matrix]"       # Matrix-Integration (matrix-nio, aiofiles)
+pip install -e ".[remote]"       # Remote-Features (mss, pyperclip)
 pip install -e ".[memory]"       # RAG-Gedächtnis (chromadb)
-pip install -e ".[stt]"          # Spracherkennung (faster-whisper)
-pip install -e ".[tools]"        # Assistent-Tools (google-api, oauthlib)
+pip install -e ".[stt]"          # Spracherkennung lokal (faster-whisper)
+pip install -e ".[tools]"        # Assistent-Tools (Google Calendar OAuth2)
 pip install -e ".[documents]"    # Dokument-Zusammenfassung (pymupdf)
 pip install -e ".[computer-use]" # Computer Use Vision (Pillow, mss)
-pip install -e ".[robot]"        # RPi5-Kommunikation (fastapi, uvicorn)
-pip install -e ".[agent]"        # Laptop-Agent-Server (fastapi, audio)
+pip install -e ".[web]"          # Web-Zusammenfassung (trafilatura, bs4)
+pip install -e ".[nextcloud]"    # CalDAV + CardDAV (caldav, vobject)
+pip install -e ".[harmony]"      # Harmony Hub (aioharmony)
+pip install -e ".[robot]"        # RPi5-Kommunikation (kein Extra-Paket nötig)
+pip install -e ".[agent]"        # Laptop-Agent-Server (multipart, sounddevice)
+# Metapaket-Gruppen:
+pip install -e ".[tower]"        # Vollinstallation Tower (Windows + TTS/STT + Matrix + Remote)
+pip install -e ".[server]"       # Vollinstallation Server (Matrix + Cloud-Tools)
 ```
 
 ### 4. Ollama (optionaler Offline-Fallback)
@@ -95,7 +100,10 @@ ollama pull nomic-embed-text   # Embedding-Modell für RAG-Memory
 |---|---|---|---|
 | **Anthropic** | Ja (primäres LLM) | [console.anthropic.com](https://console.anthropic.com) | Pay-per-use (~$3/MTok Sonnet) |
 | **Matrix-Server** | Ja (Remote-Features) | Selbst-gehostet (Synapse) oder öffentlich | Kostenlos (self-hosted) |
-| **Google Calendar** | Optional | [console.cloud.google.com](https://console.cloud.google.com) (OAuth2) | Kostenlos |
+| **ElevenLabs** | Optional (Cloud-TTS) | [elevenlabs.io](https://elevenlabs.io) | Freies Kontingent, dann ~€22/Monat |
+| **Groq** | Optional (Cloud-STT) | [console.groq.com](https://console.groq.com) | Kostenlos (großzügiges Limit) |
+| **Nextcloud** | Optional (CalDAV, CardDAV, Dateien) | Selbst-gehostet | Kostenlos (self-hosted) |
+| **Google Calendar** | Optional (Fallback-Kalender) | [console.cloud.google.com](https://console.cloud.google.com) (OAuth2) | Kostenlos |
 | **Brave Search** | Optional | [brave.com/search/api](https://brave.com/search/api/) | $5 monatliches Guthaben |
 | **E-Mail (IMAP/SMTP)** | Optional | Beliebiger Anbieter (Strato, GMX, Gmail, ...) | Kostenlos |
 | **Berry-Gym** | Optional | Interne REST API | Kostenlos |
@@ -138,6 +146,18 @@ store.set("matrix_allowed_senders", "@dein-user:matrix.example.com")
 # ══════════════════════════════════════
 # OPTIONAL
 # ══════════════════════════════════════
+
+# ElevenLabs (Cloud-TTS, primäre Sprachausgabe)
+store.set("elevenlabs_api_key", "sk_...")
+store.set("elevenlabs_voice_id", "...")  # Voice-ID aus ElevenLabs Dashboard
+
+# Groq (Cloud-STT, primäre Spracherkennung)
+store.set("groq_api_key", "gsk_...")
+
+# Nextcloud (CalDAV, CardDAV, Datei-Hub)
+store.set("nextcloud_url", "https://nextcloud.example.com")
+store.set("nextcloud_user", "dein-user")
+store.set("nextcloud_app_password", "xxxx-xxxx-xxxx-xxxx")  # App-Passwort aus Nextcloud-Einstellungen
 
 # Brave Search (Web-Suche)
 store.set("brave_api_key", "BSA...")
@@ -291,6 +311,21 @@ wird weiterhin durchgelassen.
 
 | Modus | Modell | Einsatz |
 |---|---|---|
-| Primär | Anthropic Sonnet 4.6 | Gespräch, PC-Steuerung, alle Aufgaben |
+| Primär | Anthropic Claude Sonnet 4.5 | Gespräch, PC-Steuerung, alle Aufgaben |
 | Fallback | Ollama phi4:14b | Offline-Modus, kein Internet nötig |
-| Agent | Anthropic Sonnet 4.6 | Komplexe Aufgaben via Matrix (Journal, Docs, Tests) |
+| Agent | Anthropic Claude Sonnet 4.5 | Komplexe Aufgaben via Matrix (Journal, Docs, Tests) |
+
+### TTS-Strategie
+
+| Modus | Backend | Einsatz |
+|---|---|---|
+| Primär | ElevenLabs Cloud-TTS | Qualitätsstimme, `elevenlabs_api_key` + `elevenlabs_voice_id` erforderlich |
+| Fallback | Coqui XTTS v2 | Lokales Voice Cloning, CUDA empfohlen, `[tts-neural]` erforderlich |
+| Notfall | Windows SAPI | Immer verfügbar (keine Extras), schlechteste Qualität |
+
+### STT-Strategie
+
+| Modus | Backend | Einsatz |
+|---|---|---|
+| Primär | Groq Whisper API | Schnell, kostenlos im großzügigen Limit, `groq_api_key` erforderlich |
+| Fallback | Faster Whisper lokal | GPU-beschleunigt, `[stt]` erforderlich |

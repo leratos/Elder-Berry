@@ -334,17 +334,32 @@ Checkliste – alles muss grün sein:
 [ ] Element Login funktioniert (Handy)
 [ ] Raum erstellt + Saleria eingeladen
 [ ] Raum-ID notiert
-[ ] Bot-Passwort sicher gespeichert (für .env auf Tower)
+[ ] Bot-Passwort sicher gespeichert (für SecretStore auf Tower)
 ```
 
-## Schritt 11 – Bot-Invite akzeptieren (später, nach TS2)
+## Schritt 11 – Bot verbinden
 
-Der Bot-Account (`@saleria`) wird erst aktiv wenn der MatrixChannel-Code
-in Elder-Berry fertig ist (Phase 6, TS2). Dann verbindet sich der Bot,
-akzeptiert den Raum-Invite automatisch und beginnt zu lauschen.
+Nach dem Server-Setup verbindet sich Elder-Berry automatisch mit dem Matrix-Server.
+Im SecretStore die Zugangsdaten des Bot-Accounts hinterlegen:
 
-Bis dahin: Du kannst den Bot-Account testweise in Element einloggen
-(zweites Gerät oder Element Web) um zu prüfen ob der Account funktioniert.
+```python
+from elder_berry.core.secret_store import SecretStore
+store = SecretStore()
+store.set("matrix_homeserver", "https://matrix.last-strawberry.com")
+store.set("matrix_user_id", "@saleria:matrix.last-strawberry.com")
+store.set("matrix_access_token", "syt_...")  # via /_matrix/client/v3/login
+store.set("matrix_room_id", "!roomid:matrix.last-strawberry.com")
+store.set("matrix_allowed_senders", "@dein_username:matrix.last-strawberry.com")
+```
+
+Den Access-Token erhältst du via:
+```bash
+curl -X POST https://matrix.last-strawberry.com/_matrix/client/v3/login \
+  -H "Content-Type: application/json" \
+  -d '{"type":"m.login.password","user":"saleria","password":"SICHERES_BOT_PASSWORT"}'
+```
+
+Dann Elder-Berry starten – der Bot verbindet sich automatisch und akzeptiert den Raum-Invite:
 
 ---
 
@@ -411,9 +426,13 @@ docker volume ls | grep postgres    # PostgreSQL Volume
 
 ---
 
-## Nächste Schritte (nach Server-Setup)
+## Nächste Schritte
 
-Wenn alles funktioniert, geht es weiter mit **Phase 6, TS2** in Claude Code:
-→ `MatrixChannel`-Klasse in Elder-Berry implementieren
-→ Bot verbindet sich automatisch zum Server
-→ Siehe `docs/concepts/phase-6-matrix-integration.md`
+Wenn der Server läuft:
+
+1. **Elder-Berry Secrets setzen** (Schritt 11)
+2. **Bot starten**: `python scripts/start_saleria.py`
+3. **Test in Element**: `status` → Saleria antwortet mit System-Info
+4. **Weitere Konfiguration**: `http://localhost:8090` (Settings Dashboard)
+
+Vollständige Installations-Dokumentation: **[INSTALLATION.md](INSTALLATION.md)**

@@ -5072,3 +5072,17 @@ User: "Lies meine Mails und trag den Zahnarzttermin ein"
   * tests/test_turntable_server.py (+4 Tests)
 - Neue Dependencies: keine
 - Regression: 65/65 betroffene Tests passed
+
+## In Arbeit: Dokumentations-Update – README, INSTALLATION, USAGE, architecture.md (2026-04-23)
+
+
+## Abgeschlossen: Dokumentations-Update (2026-04-23)
+- Branch: copilot/update-complete-documentation
+- Geänderte Dateien:
+  * README.md: 4-Tier, alle 20+ Handler im Diagram, Roadmap Phase 49-61, Testanzahl 4000+, Links korrigiert
+  * docs/INSTALLATION.md: ElevenLabs/Groq/Nextcloud in API-Keys; neue Secrets; aktualisierte Dependency-Gruppen; TTS/STT-Tabellen
+  * docs/USAGE.md: Log-Commands (Ph.61), Harmony/Szenen, termine monat, Web-URL-Summary, lösche mail, Routenplanung, Dokument-Ablage, PDF-Commands, Dashboard-Details
+  * docs/architecture.md: 4-Tier mit Rootserver, STTRouter/TTSRouter, 22 Handler, neue Klassen (ElevenLabs, CloudSTT, CalDAV, CardDAV, StirlingPDF, etc.), Security-Klassen, Projektstruktur aktualisiert
+  * docs/matrix_setup.md: Schritt 11 auf aktuellem Stand (kein TS2-Verweis mehr, echte SecretStore-Befehle)
+- docs/concepts/*, docs/prompts/* nicht betrachtet (außer Scope)
+- docs/rpi5_setup.md, docs/ssh-tunnel.md: aktuell, keine Änderungen nötig
