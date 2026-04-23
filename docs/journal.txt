@@ -5086,3 +5086,12 @@ User: "Lies meine Mails und trag den Zahnarzttermin ein"
   * docs/matrix_setup.md: Schritt 11 auf aktuellem Stand (kein TS2-Verweis mehr, echte SecretStore-Befehle)
 - docs/concepts/*, docs/prompts/* nicht betrachtet (außer Scope)
 - docs/rpi5_setup.md, docs/ssh-tunnel.md: aktuell, keine Änderungen nötig
+
+## Abgeschlossen: Security H-1 Fix – RobotServer Token-Warning + H-2 Konzept (2026-04-23)
+- Branch: feature/security-h1-fix-robot-token-warning
+- H-1: src/elder_berry/robot/server.py – logger.warning wenn robot_token=None (5 Zeilen)
+- H-2: docs/concepts/security-h2-csp-unsafe-inline.md – vollständiges Konzept mit
+  Umsetzungsplan, Risikoanalyse, Aufwandschätzung (~10–12 h, empfohlen als Phase 63)
+- Neuer Testfile: tests/test_robot_token.py (6 Tests: Warning-Log, Token-Auth, Backwards-Compat)
+- Tests: 6/6 grün (neu) + 60/60 bestehend
+- Keine neuen Dependencies
