@@ -11,6 +11,11 @@ Phase 59: Optionale Token-Auth via ``ELDER_BERRY_ROBOT_TOKEN`` / Konstruktor-
 Parameter ``robot_token``. Wenn gesetzt, verlangen alle Endpoints den Header
 ``X-Saleria-Robot-Token``. Ohne Token: keine Auth (Backwards-Compat / Tests).
 
+CORS-Hinweis: Der RobotServer ist ausschließlich für Server-zu-Server-Aufrufe
+(Tower → RPi5, i.d.R. via SSH-Tunnel) vorgesehen. Browser-Direktzugriff ist
+nicht beabsichtigt. CORS ist daher standardmäßig auf Loopback eingeschränkt.
+Explizite Origins können per ``cors_origins``-Parameter hinzugefügt werden.
+
 Plattformhinweis: Läuft auf RPi5 (Linux) und Windows (Simulator).
 """
 from __future__ import annotations
@@ -231,6 +236,12 @@ class RobotServer:
         Phase 59: Wenn gesetzt, verlangt der Server den Header
         ``X-Saleria-Robot-Token`` bei jedem Request. Ohne Token:
         keine Auth (Backwards-Compat für Tests).
+    cors_origins : list[str] | None
+        Erlaubte CORS-Origins für Browser-Anfragen. Default (None):
+        nur Loopback (``http://localhost``, ``http://127.0.0.1``).
+        Für reine Server-zu-Server-Calls (Tower → RPi5) hat CORS
+        ohnehin keine Wirkung; diese Einschränkung ist daher
+        ausschließlich als Defense-in-Depth gedacht.
     """
 
     def __init__(
@@ -248,6 +259,7 @@ class RobotServer:
         service_name: str = "elder-berry-rpi",
         alexa_verifier: AlexaRequestVerifier | None = None,
         robot_token: str | None = None,
+        cors_origins: list[str] | None = None,
     ) -> None:
         self._motors = motors
         self._avatar = avatar
@@ -292,11 +304,18 @@ class RobotServer:
         )
         # Phase 59: Robot-Token-Auth (optional, konfigurierbar).
         self.app.add_middleware(RobotTokenMiddleware, robot_token=robot_token)
+        # CORS: standardmäßig nur Loopback. Der RobotServer ist ausschließlich
+        # für Server-zu-Server-Aufrufe gedacht (Tower → RPi5 via SSH-Tunnel).
+        # Browser-Direktzugriff ist nicht vorgesehen, daher kein wildcard.
+        _allowed_origins = cors_origins if cors_origins is not None else [
+            "http://localhost",
+            "http://127.0.0.1",
+        ]
         self.app.add_middleware(
             CORSMiddleware,
-            allow_origins=["*"],
-            allow_methods=["*"],
-            allow_headers=["*"],
+            allow_origins=_allowed_origins,
+            allow_methods=["GET", "POST", "DELETE"],
+            allow_headers=["Content-Type", ROBOT_TOKEN_HEADER],
         )
         self._register_routes()
 

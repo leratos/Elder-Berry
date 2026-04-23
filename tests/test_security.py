@@ -79,6 +79,21 @@ class TestSecurityHeaders:
         assert csp is not None
         assert "default-src 'self'" in csp
 
+    def test_permissions_policy_present(self, client):
+        """Permissions-Policy-Header deaktiviert ungenutzte APIs."""
+        r = client.get("/health")
+        pp = r.headers.get("Permissions-Policy")
+        assert pp is not None
+        assert "camera=()" in pp
+        assert "microphone=()" in pp
+        assert "geolocation=()" in pp
+
+    def test_permissions_policy_on_api_endpoint(self, client):
+        """Permissions-Policy auch auf API-Endpoints."""
+        r = client.get("/api/audio")
+        pp = r.headers.get("Permissions-Policy")
+        assert pp is not None
+
     def test_headers_on_api_endpoint(self, client):
         """Security-Header auch auf API-Endpoints."""
         r = client.get("/api/audio")

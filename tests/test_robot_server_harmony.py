@@ -300,6 +300,26 @@ class TestHarmonyScenes:
         assert r.status_code == 503
 
 
+class TestCORSDeletePreflight:
+    """DELETE muss im CORS allow_methods stehen, sonst scheitert Browser-Preflight."""
+
+    def test_delete_in_cors_allowed_methods(self, client_with_harmony):
+        """OPTIONS-Preflight fuer DELETE /harmony/scene/{name} muss Allow-DELETE zurueckgeben."""
+        r = client_with_harmony.options(
+            "/harmony/scene/Gaming",
+            headers={
+                "Origin": "http://localhost",
+                "Access-Control-Request-Method": "DELETE",
+            },
+        )
+        # FastAPI/Starlette gibt 200 oder 204 zurueck wenn der Origin erlaubt ist
+        assert r.status_code in (200, 204)
+        allowed = r.headers.get("access-control-allow-methods", "")
+        assert "DELETE" in allowed, (
+            f"DELETE fehlt in Access-Control-Allow-Methods: {allowed!r}"
+        )
+
+
 class TestHarmony503:
     def test_status_503_when_not_configured(self, client_without_harmony):
         r = client_without_harmony.get("/harmony/status")
