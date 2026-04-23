@@ -314,7 +314,7 @@ class RobotServer:
         self.app.add_middleware(
             CORSMiddleware,
             allow_origins=_allowed_origins,
-            allow_methods=["GET", "POST"],
+            allow_methods=["GET", "POST", "DELETE"],
             allow_headers=["Content-Type", ROBOT_TOKEN_HEADER],
         )
         self._register_routes()
