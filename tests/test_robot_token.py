@@ -40,6 +40,15 @@ class TestRobotTokenWarning:
             f"Erwartetes Token-Warning nicht gefunden. Logs: {messages}"
         )
 
+    def test_warning_logged_when_empty_string(self, caplog):
+        with caplog.at_level(logging.WARNING, logger="elder_berry.robot.server"):
+            _create_server(robot_token="")
+        messages = [r.message for r in caplog.records if r.levelno == logging.WARNING]
+        assert any("robot_token" in m.lower() or "elder_berry_robot_token" in m.lower()
+                   for m in messages), (
+            f"Erwartetes Token-Warning für leeren String nicht gefunden. Logs: {messages}"
+        )
+
     def test_no_warning_when_token_set(self, caplog):
         with caplog.at_level(logging.WARNING, logger="elder_berry.robot.server"):
             _create_server(robot_token="supersecrettoken123")
