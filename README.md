@@ -78,7 +78,7 @@ py -3.12 -m venv .venv
 pip install -e ".[windows,tts-neural,avatar,matrix,remote,memory,stt,nextcloud,harmony]"
 # Oder als Paketgruppe:
 pip install -e ".[server]"  # Rootserver (Matrix + Cloud-Tools ohne Windows-Extras)
-pip install -e ".[tower]"   # Tower (Windows-Extras + TTS/STT, ohne Matrix-Server)
+pip install -e ".[tower]"   # Tower (Windows-Extras + TTS/STT + Matrix, Vollinstallation)
 ```
 
 Mindestens benötigt: ein Anthropic API-Key und Matrix-Zugangsdaten.

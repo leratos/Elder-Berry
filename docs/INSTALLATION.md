@@ -57,9 +57,8 @@ py -3.12 -m venv .venv
 Elder-Berry nutzt optionale Dependency-Gruppen. Für den Tower empfiehlt sich die Vollinstallation:
 
 ```bash
-# Vollinstallation (Tower)
-pip install -e ".[windows,tts-neural,avatar,matrix,remote,memory,stt]"
-pip install chromadb faster-whisper
+# Vollinstallation (Tower) – enthält Matrix, TTS/STT, Windows-Extras
+pip install -e ".[tower]"
 ```
 
 #### Einzelne Gruppen
@@ -82,7 +81,7 @@ pip install -e ".[harmony]"      # Harmony Hub (aioharmony)
 pip install -e ".[robot]"        # RPi5-Kommunikation (kein Extra-Paket nötig)
 pip install -e ".[agent]"        # Laptop-Agent-Server (multipart, sounddevice)
 # Metapaket-Gruppen:
-pip install -e ".[tower]"        # Vollinstallation Tower (Windows + TTS/STT + Remote)
+pip install -e ".[tower]"        # Vollinstallation Tower (Windows + TTS/STT + Matrix + Remote)
 pip install -e ".[server]"       # Vollinstallation Server (Matrix + Cloud-Tools)
 ```
 
