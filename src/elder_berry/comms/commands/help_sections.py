@@ -23,6 +23,7 @@ CATEGORY_LABELS: dict[str, str] = {
     "smart-home": "Harmony Hub, Drehteller",
     "web": "Web-Suche, Dokumente, Computer Use, Routen",
     "system": "Prozesse, Git, Docker, Update, Selfcheck",
+    "diagnose": "Log-Zugriff für Remote-Debugging",
 }
 
 HELP_SECTIONS: dict[str, str] = {
@@ -243,6 +244,18 @@ System:
   alles ok? – Kurzform für Systemcheck
   Prüft: Git, Python, Disk, RAM, Ollama, SecretStore, Imports, Dependencies
   + Fähigkeiten: LLM, Kalender, Mail, Nextcloud, Wetter, TTS, STT, Memory, ...""",
+
+    "diagnose": """📋 Log-Zugriff (Remote-Debugging):
+  log [n] – Letzte N Einträge aus elder_berry.log (default 10, max 50)
+  log errors [n] – Nur ERROR/CRITICAL-Einträge
+  log warnings [n] – Nur WARNING und höher
+  log security [n] – Aus security.log (Login-Versuche, Rate-Limits)
+
+  Beispiele:
+    log – Letzte 10 Zeilen
+    log 30 – Letzte 30 Zeilen
+    log errors – Letzte 10 Fehler
+    log errors 20 – Letzte 20 Fehler""",
 }
 
 

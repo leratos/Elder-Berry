@@ -4988,3 +4988,39 @@ User: "Lies meine Mails und trag den Zahnarzttermin ein"
 - Best-Effort: Fehler beim Kopieren wird nur geloggt (Warning), blockiert nicht die Erfolgs-Meldung
 - Keine neuen Dependencies
 - Regression: 147 Tests passed (22 email + 125 betroffene Module), keine Regression
+
+## In Arbeit: Phase 61 – Remote Log-Zugriff via Matrix (2026-04-23)
+- Branch: feature/phase-61-remote-log-access
+- Problem: User muss per SSH auf den Server um Logs zu lesen
+- Scope:
+  1. LogCommandHandler (src/elder_berry/comms/commands/log_commands.py)
+     - log [n]: Letzte N Einträge aus elder_berry.log (default 10, max 50)
+     - log errors: Nur ERROR/CRITICAL (letzte 10)
+     - log warnings: Nur WARNING+ (letzte 10)
+     - log security: Letzte 10 aus security.log
+  2. Handler in remote_commands.py registrieren
+  3. Neue Hilfe-Kategorie "diagnose"
+  4. Tests
+- Sicherheit: Nur lesen, max 50 Einträge, nur aus logs/-Verzeichnis
+
+## Abgeschlossen: Phase 61 – Remote Log-Zugriff via Matrix (2026-04-23)
+- Branch: feature/phase-61-remote-log-access
+- Neue Datei: src/elder_berry/comms/commands/log_commands.py (LogCommandHandler)
+- Commands:
+  * log [n] – Letzte N Einträge aus elder_berry.log (default 10, max 50)
+  * log errors [n] – Nur ERROR/CRITICAL
+  * log warnings [n] – Nur WARNING+
+  * log security [n] – Aus security.log
+- Geänderte Dateien:
+  * src/elder_berry/comms/remote_commands.py (Handler registriert)
+  * src/elder_berry/comms/commands/help_sections.py (Kategorie "diagnose")
+- Neue Testdatei: tests/test_log_commands.py (26 Tests)
+- Sicherheit:
+  * Nur lesen, kein Schreiben
+  * Hart limitiert auf MAX_ENTRIES=50
+  * Nur aus log_dir (default logs/), kein Path-Traversal
+  * Response auf MAX_RESPONSE_CHARS=3800 gekürzt (Matrix-Limit)
+  * Zugriff nur für allowed_senders (bestehende Matrix-Whitelist)
+- End-to-end mit echter Log-Datei getestet: funktioniert
+- Regression: 311 passed, 1 skipped (remote_commands + help_sections)
+- Keine neuen Dependencies
