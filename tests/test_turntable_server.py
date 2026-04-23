@@ -18,13 +18,14 @@ from elder_berry.robot.server import RobotServer
 pytestmark = pytest.mark.skipif(not HAS_FASTAPI, reason="fastapi nicht installiert")
 
 
-def _create_server(turntable=None):
+def _create_server(turntable=None, **kwargs):
     return RobotServer(
         motors=SimulatedMotors(),
         avatar=SimulatedAvatar(),
         sensors=SimulatedSensors(),
         turntable=turntable,
         hostname="test",
+        **kwargs,
     )
 
 
@@ -37,6 +38,63 @@ class TestSystemUpdateEndpoint:
         assert r.status_code == 200
         assert r.json()["success"] is False
         assert "nicht konfiguriert" in r.json()["message"].lower()
+
+
+# ---------------------------------------------------------------------------
+# CORS-Defaults: kein Wildcard-Origin
+# ---------------------------------------------------------------------------
+
+class TestRobotServerCORS:
+    """RobotServer darf standardmäßig keinen Wildcard-CORS zurückgeben."""
+
+    def test_default_cors_does_not_allow_wildcard(self):
+        """Ohne cors_origins-Parameter darf allow_origins NICHT '*' sein."""
+        server = _create_server()
+        # Zugriff auf die Middleware-Liste der FastAPI-App
+        for middleware in server.app.user_middleware:
+            cls_name = getattr(getattr(middleware, "cls", None), "__name__", "")
+            if cls_name == "CORSMiddleware":
+                options = middleware.kwargs
+                origins = options.get("allow_origins", [])
+                assert "*" not in origins, (
+                    "RobotServer CORSMiddleware erlaubt '*' (Wildcard) – "
+                    "das öffnet die API für beliebige Browser-Origins. "
+                    "cors_origins auf explizite Origins beschränken."
+                )
+                break
+
+    def test_default_cors_loopback_present(self):
+        """Loopback-Origins müssen im Default enthalten sein."""
+        server = _create_server()
+        for middleware in server.app.user_middleware:
+            cls_name = getattr(getattr(middleware, "cls", None), "__name__", "")
+            if cls_name == "CORSMiddleware":
+                origins = middleware.kwargs.get("allow_origins", [])
+                assert any("localhost" in o or "127.0.0.1" in o for o in origins), (
+                    "Loopback nicht in Default-CORS-Origins"
+                )
+                break
+
+    def test_custom_cors_origins_accepted(self):
+        """Über cors_origins übergebene Origins werden übernommen."""
+        extra = ["http://tower.local:8080"]
+        server = _create_server(cors_origins=extra)
+        for middleware in server.app.user_middleware:
+            cls_name = getattr(getattr(middleware, "cls", None), "__name__", "")
+            if cls_name == "CORSMiddleware":
+                origins = middleware.kwargs.get("allow_origins", [])
+                assert origins == extra
+                break
+
+    def test_default_allowed_methods_restricted(self):
+        """Nur GET und POST sind standardmäßig erlaubt, kein Wildcard."""
+        server = _create_server()
+        for middleware in server.app.user_middleware:
+            cls_name = getattr(getattr(middleware, "cls", None), "__name__", "")
+            if cls_name == "CORSMiddleware":
+                methods = middleware.kwargs.get("allow_methods", [])
+                assert "*" not in methods, "Wildcard-Methoden nicht erlaubt"
+                break
 
 
 class TestTurntableEndpoints:

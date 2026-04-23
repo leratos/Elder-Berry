@@ -103,6 +103,28 @@ class TestSettingsTokenManager:
         with pytest.raises(SettingsTokenError):
             SettingsTokenManager(tmp_path / "token", token_length=8)
 
+    def test_full_token_not_logged_on_create(self, tmp_path, caplog):
+        """Regression: Token darf niemals im Klartext in die Logs geschrieben
+        werden. Nur die ersten 8 Zeichen (Fingerprint) sind erlaubt."""
+        import logging
+        path = tmp_path / "settings_token"
+        manager = SettingsTokenManager(path)
+        with caplog.at_level(logging.DEBUG):
+            token = manager.load_or_create()
+        # Gesamter Token (64 Hex-Zeichen) darf in keiner Log-Zeile auftauchen.
+        # Da der Fingerprint (erste 8 Zeichen) ein Präfix des vollen Tokens ist,
+        # prüfen wir explizit, ob die vollständige 64-Zeichen-Zeichenkette vorkommt.
+        for record in caplog.records:
+            assert token not in record.message, (
+                f"Der Settings-Token wurde im Klartext geloggt in: {record.message!r}. "
+                "Nur der Fingerprint (erste 8 Zeichen) darf erscheinen."
+            )
+        # Fingerprint muss in mindestens einer Log-Zeile auftauchen
+        assert any(
+            record.message.startswith(token[:8]) or f": {token[:8]}" in record.message
+            for record in caplog.records
+        ), "Fingerprint nicht im Log gefunden"
+
 
 # ---------------------------------------------------------------------------
 # SettingsTokenMiddleware

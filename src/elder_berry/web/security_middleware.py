@@ -28,10 +28,21 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         response.headers["X-Content-Type-Options"] = "nosniff"
         response.headers["X-Frame-Options"] = "DENY"
         response.headers["Referrer-Policy"] = "no-referrer"
+        # CSP-Hinweis: 'unsafe-inline' ist derzeit erforderlich, da die
+        # Dashboard-Templates inline <style>- und <script>-Blöcke sowie
+        # HTML-Event-Handler (onclick, onchange) nutzen.
+        # Langfristig: Templates auf externe CSS/JS umstellen und diese
+        # Direktive durch 'nonce-{random}' oder Hashes ersetzen (TODO).
         response.headers["Content-Security-Policy"] = (
             "default-src 'self'; "
             "script-src 'self' 'unsafe-inline'; "
             "style-src 'self' 'unsafe-inline';"
+        )
+        # Permissions-Policy: Geräte- und Sensor-APIs deaktivieren, die
+        # das Dashboard nicht benötigt.
+        response.headers["Permissions-Policy"] = (
+            "camera=(), microphone=(), geolocation=(), "
+            "payment=(), usb=(), fullscreen=(self)"
         )
         return response
 

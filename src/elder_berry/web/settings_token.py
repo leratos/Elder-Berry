@@ -65,9 +65,10 @@ class SettingsTokenManager:
     def load_or_create(self) -> str:
         """Liest den Token aus der Datei oder erzeugt einen neuen.
 
-        Gibt den Token zurück. Logged eine Info-Zeile mit dem Pfad. Wenn
-        ein neuer Token erzeugt wurde, wird er zusätzlich in voller Länge
-        in die Konsole geloggt (Single-User-Setup).
+        Gibt den Token zurück. Logged eine Info-Zeile mit dem Pfad und dem
+        Fingerprint (erste 8 Zeichen). Der vollständige Token wird nicht in
+        Logs geschrieben – er steht in der Token-Datei und muss einmalig aus
+        dieser ausgelesen werden.
         """
         if self._path.exists():
             try:
@@ -111,9 +112,13 @@ class SettingsTokenManager:
         logger.info(
             "Settings-Token erzeugt und gespeichert: %s", self._path,
         )
+        # Sicherheit: Token niemals im Klartext loggen. Nur die ersten 8 Zeichen
+        # (Fingerprint) werden ausgegeben – das reicht zur Identifikation im Log
+        # ohne den gesamten Token preiszugeben.
         logger.info(
-            "Settings-Token (für 'X-Saleria-Settings-Token' Header): %s",
-            token,
+            "Settings-Token Fingerprint: %s… (vollständiger Token in %s)",
+            token[:8],
+            self._path,
         )
         return token
 

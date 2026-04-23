@@ -5024,3 +5024,51 @@ User: "Lies meine Mails und trag den Zahnarzttermin ein"
 - End-to-end mit echter Log-Datei getestet: funktioniert
 - Regression: 311 passed, 1 skipped (remote_commands + help_sections)
 - Keine neuen Dependencies
+
+## In Arbeit: Security-Härtung Prio A/B/C – Token-Log, CORS, CSP, CI (2026-04-23)
+- Branch: copilot/analyse-projekt-nutzen-stand-sicherheit-codequalit
+- Ausgangspunkt: Security-Analyse (7.8/10) mit vier Prio-A-Schwachstellen
+
+## Abgeschlossen: Security-Härtung Prio A/B/C (2026-04-23)
+
+### Prio A.1 – Token-Fingerprint (settings_token.py)
+- Problem: SettingsTokenManager loggte den vollen 64-Zeichen-Token im Klartext
+- Fix: Nur noch Fingerprint (erste 8 Zeichen) wird geloggt, vollständiger Token
+  steht ausschließlich in der Token-Datei (chmod 600 auf POSIX)
+- Docstring von load_or_create() aktualisiert
+- Neuer Regressionstest: test_full_token_not_logged_on_create (caplog-Prüfung)
+
+### Prio A.2+A.3 – RobotServer CORS-Härtung (robot/server.py)
+- Problem: allow_origins=["*"], allow_methods=["*"], allow_headers=["*"]
+  → beliebige Browser-Origins + Methoden erlaubt
+- Fix: Default-Origins = [http://localhost, http://127.0.0.1]
+- Neuer Konstruktor-Parameter cors_origins: list[str] | None = None
+  → None = Loopback-Default, explizite Liste = custom Origins
+- allow_methods eingeschränkt auf ["GET", "POST"]
+- allow_headers eingeschränkt auf ["Content-Type", ROBOT_TOKEN_HEADER]
+- Docstring der Klasse und des Parameters ergänzt
+- 4 neue Regressionstests: TestRobotServerCORS (Wildcard, Loopback, Custom, Methods)
+
+### Prio A.4 – CSP: Permissions-Policy + Limitation-Kommentar (security_middleware.py)
+- Neuer Response-Header: Permissions-Policy deaktiviert camera, microphone,
+  geolocation, payment, usb (alles, was das Dashboard nicht braucht)
+- 'unsafe-inline' bleibt vorerst (Templates nutzen inline <style>/<script>/
+  onClick-Handler) – TODO-Kommentar dokumentiert den bekannten Limitation
+- 2 neue Tests: test_permissions_policy_present, test_permissions_policy_on_api_endpoint
+
+### Prio C.8 – CI-Erweiterung (.github/workflows/ci.yml)
+- Neuer Job 'lint': ruff E9+W605 (Syntaxfehler + ungültige Escape-Sequences)
+  → bestehender Code ist clean (0 Befunde)
+  → F401/B-Rules als Issue für spätere Bereinigung geplant
+- Neuer Job 'security': pip-audit auf [robot,agent]-Dependencies
+
+- Geänderte Dateien:
+  * src/elder_berry/web/settings_token.py
+  * src/elder_berry/robot/server.py
+  * src/elder_berry/web/security_middleware.py
+  * .github/workflows/ci.yml
+  * tests/test_settings_token.py (+1 Test)
+  * tests/test_security.py (+2 Tests)
+  * tests/test_turntable_server.py (+4 Tests)
+- Neue Dependencies: keine
+- Regression: 65/65 betroffene Tests passed
