@@ -196,7 +196,7 @@ pytest tests/ -q
 | 49–51 | Anhang-Aktionsmenü, Fehler-UX, Kontextsensitive Hilfe | ✅ Fertig |
 | 52–53 | Unified Settings, Install-Script Härtung, Avatar-Editor UX | ✅ Fertig |
 | 55 | pydub/audioop Migration (Python 3.13-Kompatibilität) | ✅ Fertig |
-| 56 | Nextcloud Tasks als Todo-Backend | 📋 Geplant |
+| 56 | Nextcloud Tasks als Todo-Backend | ✅ Fertig |
 | 57–58 | Security-Härtung (CORS, CSP, Dashboard-Login) | ✅ Fertig |
 | 59–60 | Alexa Request-Verifikation, Tower-Auth | ✅ Fertig |
 | 61 | Remote Log-Zugriff via Matrix | ✅ Fertig |
