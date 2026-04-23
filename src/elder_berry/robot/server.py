@@ -274,6 +274,12 @@ class RobotServer:
         self._service_name = service_name
         self._alexa_verifier = alexa_verifier
         self._robot_token = robot_token
+        if not robot_token:
+            logger.warning(
+                "RobotServer: kein robot_token konfiguriert – "
+                "alle Endpoints sind ohne Authentifizierung erreichbar. "
+                "Für Produktionsbetrieb ELDER_BERRY_ROBOT_TOKEN setzen."
+            )
         self._alexa = AlexaSkillHandler(
             harmony=harmony,
             harmony_scenes=harmony_scenes,
