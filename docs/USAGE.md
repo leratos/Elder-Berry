@@ -37,6 +37,7 @@ Tipp: `hilfe` zeigt alle verfügbaren Commands direkt in Element an.
 | `termine` | Termine heute |
 | `termine morgen` | Termine morgen |
 | `termine woche` | Nächste 7 Tage |
+| `termine monat` | Bis Monatsende |
 | `termin suche <Begriff>` | Termin suchen (nächste 90 Tage) |
 | `termin: Titel morgen 14:00` | Termin erstellen |
 | `erstelle termin Zahnarzt 30.03 10:00` | Natürliche Sprache |
@@ -55,6 +56,8 @@ Tipp: `hilfe` zeigt alle verfügbaren Commands direkt in Element an.
 | `mail anhang <ID>` | Anhänge senden |
 | `mail zusammenfassung` | LLM-Zusammenfassung ungelesener Mails |
 | `antworte auf #<ID> <Anweisung>` | Antwort-Entwurf generieren |
+| `lösche mail #<ID>` | Mail löschen |
+| `lösche die mail` | Zuletzt abgerufene Mail löschen |
 
 ### E-Mail-Antwort-Workflow (Phase 28)
 
@@ -77,6 +80,7 @@ Wenn ein Kontakt zum Absender existiert (Phase 29), wird dessen Kontext
 | `kontakt löschen #<ID>` | Kontakt löschen |
 | `kontakte sync` | Nextcloud CardDAV Sync (bidirektional) |
 | `kontakte sync pull` | Nur Nextcloud → lokal |
+| `kontakte sync push` | Nur lokal → Nextcloud |
 | `kontakte sync reset` | Alles löschen + frischer Pull |
 | `wann hat <Name> Geburtstag?` | Geburtstag abfragen |
 | `was ist die Adresse von <Name>?` | Adresse abfragen |
@@ -173,13 +177,15 @@ Kontakte werden vor jedem Briefing automatisch von Nextcloud gesynct.
 | `training woche` | Trainings der letzten 7 Tage |
 | `prs` | Personal Records (letzte 30 Tage) |
 
-## Web-Suche (Brave Search)
+## Web-Suche & Web-Zusammenfassung (Brave Search)
 
 | Command | Beschreibung |
 |---|---|
 | `suche <Begriff>` | Im Internet suchen |
 | `such mal <Begriff>` | Alias |
 | `google <Begriff>` | Alias |
+| `fasse <URL> zusammen` | Webseite zusammenfassen (LLM-aufbereitet) |
+| `zusammenfassung von <URL>` | Alias |
 
 ## Dateien & Clipboard
 
@@ -210,6 +216,25 @@ Varianten für Setup: "nextcloud setup", "nextcloud-setup", "cloud einrichten".
 Der Befehl zeigt erst eine Vorschau (was gelöscht/erstellt wird) und wartet auf
 Bestätigung ("ja"/"nein") bevor Änderungen vorgenommen werden.
 
+### Dokument-Ablage
+
+| Command | Beschreibung |
+|---|---|
+| `cloud aufräumen` | Dateien im Eingang klassifizieren und ablegen |
+| `anhang ablegen #<ID>` | PDF-Anhänge aus Mail klassifizieren und ablegen |
+
+### PDF-Verarbeitung (Stirling-PDF)
+
+| Command | Beschreibung |
+|---|---|
+| `pdf zusammenfügen <a.pdf> <b.pdf>` | PDFs zusammenfügen |
+| `pdf aufteilen <datei> seiten 1-3` | Seiten extrahieren |
+| `pdf komprimieren <datei> [stufe 1-9]` | Dateigröße reduzieren |
+| `pdf ocr <datei>` | Text erkennen (Deutsch + Englisch) |
+| `pdf zu word <datei>` | PDF → Word konvertieren |
+| `zu pdf <datei>` | Word/Bild → PDF konvertieren |
+| `pdf bilder <datei>` | Bilder aus PDF extrahieren |
+
 ## Prozesse & System
 
 | Command | Beschreibung |
@@ -226,9 +251,20 @@ Bestätigung ("ja"/"nein") bevor Änderungen vorgenommen werden.
 | Command | Beschreibung |
 |---|---|
 | `update` / `update dich` | Git Pull + Dependencies + Neustart (Tower) |
+| `update tower` | Tower-PC aktualisieren |
 | `update rpi` | RPi5 aktualisieren |
-| `update alles` | Tower + RPi5 nacheinander |
+| `update alles` | Server + Tower + RPi5 nacheinander |
 | `rollback` | Auf Stand vor letztem Update zurücksetzen |
+
+## Routenplanung (Phase 43)
+
+| Command | Beschreibung |
+|---|---|
+| `plane fahrt zu <Name>` | Route von Zuhause zu Kontakt |
+| `fahrt von <Name> zu <Name>` | Route zwischen zwei Kontakten |
+| `wie komme ich zu <Name>` | Route von Zuhause |
+
+Optional: `"morgen um 16 uhr"`, `"übermorgen 10 uhr"` → Abfahrtszeit berechnen
 
 ## Computer Use (Phase 13)
 
@@ -246,6 +282,22 @@ Bestätigung ("ja"/"nein") bevor Änderungen vorgenommen werden.
 | `foto` / `kamera` | Foto aufnehmen und senden |
 | `was siehst du [kontext]` | Kamerabild + KI-Beschreibung |
 
+## Smart Home – Harmony Hub (Phase 37)
+
+| Command | Beschreibung |
+|---|---|
+| `<aktivität> an` | Aktivität starten (z.B. `fernsehen an`, `musik an`) |
+| `alles aus` / `harmony aus` | Alle Geräte ausschalten |
+| `lauter` / `mach lauter` | Lautstärke erhöhen (Receiver) |
+| `leiser` / `mach leiser` | Lautstärke senken (Receiver) |
+| `stummschalten` / `stumm` | Receiver stummschalten |
+| `was läuft` / `harmony status` | Aktuelle Aktivität anzeigen |
+| `harmony aktivitäten` | Alle konfigurierten Aktivitäten auflisten |
+| `harmony geräte` | Alle Geräte im Hub auflisten |
+| `harmony befehle <gerät>` | Verfügbare Befehle für ein Gerät |
+| `starte szene <name>` / `szene <name>` | Harmony-Szene starten |
+| `szenen` / `szenen liste` | Alle Szenen auflisten |
+
 ## Drehteller (Phase 27)
 
 | Command | Beschreibung |
@@ -253,6 +305,7 @@ Bestätigung ("ja"/"nein") bevor Änderungen vorgenommen werden.
 | `drehteller home` | Home-Position anfahren |
 | `dreh dich um <grad>` | Relativ drehen |
 | `dreh dich nach links/rechts` | 90° in Richtung |
+| `dreh dich auf <grad>` | Absolute Position anfahren |
 | `schau nach links/rechts` | Drehteller in Richtung |
 | `drehteller stopp` | Rotation abbrechen |
 | `drehteller status` | Aktuelle Position |
@@ -264,6 +317,17 @@ Bestätigung ("ja"/"nein") bevor Änderungen vorgenommen werden.
 | `audio` | Audio-Modus anzeigen |
 | `audio lokal an` | Lokale Wiedergabe aktivieren (Matrix + PC) |
 | `audio lokal aus` | Nur Matrix (Standard) |
+
+## Log-Zugriff / Remote-Debugging (Phase 61)
+
+| Command | Beschreibung |
+|---|---|
+| `log` / `log <n>` | Letzte N Einträge aus `elder_berry.log` (default 10, max 50) |
+| `log errors [n]` | Nur ERROR/CRITICAL-Einträge |
+| `log warnings [n]` | Nur WARNING und höher |
+| `log security [n]` | Aus `security.log` (Login-Versuche, Rate-Limits) |
+
+Beispiele: `log 30` · `log errors` · `log errors 20`
 
 ## Spezial
 
@@ -310,6 +374,9 @@ Kette: Echo → Amazon Cloud → Rootserver (HTTPS) → SSH-Tunnel → RPi5 → 
 
 Unter `http://localhost:8090` läuft ein Web-Interface (FastAPI) mit:
 
-- Audio-Routing Toggle (Matrix only / Matrix + lokal)
-- Monitor-Auswahl für Computer Use
-- Secret-Verwaltung
+- **Audio-Routing** Toggle (Matrix only / Matrix + lokal)
+- **Monitor-Auswahl** für Computer Use
+- **Secret-Verwaltung** (API-Keys, Zugangsdaten verschlüsselt)
+- **LLM-Konfiguration** (Primär-Modell, Ollama-Host)
+- **Setup-Wizard** (Ersteinrichtung, `/setup`)
+- **Dashboard-Login** (Passwort-Schutz, `scripts/set_dashboard_password.py`)

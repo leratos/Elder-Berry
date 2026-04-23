@@ -5072,3 +5072,5 @@ User: "Lies meine Mails und trag den Zahnarzttermin ein"
   * tests/test_turntable_server.py (+4 Tests)
 - Neue Dependencies: keine
 - Regression: 65/65 betroffene Tests passed
+
+## In Arbeit: Dokumentations-Update – README, INSTALLATION, USAGE, architecture.md (2026-04-23)
