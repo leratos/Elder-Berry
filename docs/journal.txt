@@ -5086,3 +5086,18 @@ User: "Lies meine Mails und trag den Zahnarzttermin ein"
   * docs/matrix_setup.md: Schritt 11 auf aktuellem Stand (kein TS2-Verweis mehr, echte SecretStore-Befehle)
 - docs/concepts/*, docs/prompts/* nicht betrachtet (außer Scope)
 - docs/rpi5_setup.md, docs/ssh-tunnel.md: aktuell, keine Änderungen nötig
+
+## In Arbeit: Screenshot – Monitor-Wake + Sperrbildschirm-Erkennung (2026-04-23)
+- Branch: feature/screenshot-wake-lockdetect
+- Nächster Schritt: system_commands.py / _wake_monitor + _is_locked + _screenshot_local
+
+## Abgeschlossen: Screenshot – Monitor-Wake + Sperrbildschirm-Erkennung (2026-04-23)
+- Branch: feature/screenshot-wake-lockdetect
+- _wake_monitor: Mouse-Jiggle (GetCursorPos/SetCursorPos ±1px) + Sleep 1s → 2s
+- _is_locked: neu, via OpenInputDesktop (NULL = gesperrt), non-Windows → False
+- _is_black: neu, Helligkeit-Sampling alle 300 Bytes, Schwelle < 8/255
+- _screenshot_local: Schwarzbild-Erkennung mit einmaligem Retry (1,5s),
+  Lock-Status im Rückgabetext "(PC gesperrt)" wenn Sperrbildschirm aktiv
+- Neue Tests: TestIsBlack (5), TestIsLocked (3), TestScreenshotLockStatus (2)
+- Tests: 51/51 grün (10 neu + 41 bestehend)
+- Keine neuen Dependencies

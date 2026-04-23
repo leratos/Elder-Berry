@@ -260,6 +260,126 @@ class TestScreenshotCommand:
             assert "weder mss noch TowerAgent" in result.text
 
 
+class TestIsBlack:
+    """_is_black erkennt schwarze und nicht-schwarze Screenshots korrekt."""
+
+    def test_empty_bytes_is_black(self):
+        from elder_berry.comms.commands.system_commands import SystemCommandHandler
+        assert SystemCommandHandler._is_black(b"") is True
+
+    def test_all_zero_is_black(self):
+        from elder_berry.comms.commands.system_commands import SystemCommandHandler
+        assert SystemCommandHandler._is_black(bytes(3000)) is True
+
+    def test_bright_pixels_not_black(self):
+        from elder_berry.comms.commands.system_commands import SystemCommandHandler
+        # Weißes Bild: alle Bytes = 255
+        assert SystemCommandHandler._is_black(bytes([255] * 3000)) is False
+
+    def test_dark_but_not_black_not_black(self):
+        from elder_berry.comms.commands.system_commands import SystemCommandHandler
+        # Dunkelgrau (30/255 ≈ 12% Helligkeit) → über Schwelle → kein Schwarz
+        assert SystemCommandHandler._is_black(bytes([30] * 3000)) is False
+
+    def test_nearly_black_is_black(self):
+        from elder_berry.comms.commands.system_commands import SystemCommandHandler
+        # Sehr dunkler Wert (5/255) → unter Schwelle → gilt als schwarz
+        assert SystemCommandHandler._is_black(bytes([5] * 3000)) is True
+
+
+class TestIsLocked:
+    """_is_locked gibt auf Nicht-Windows-Plattformen False zurück."""
+
+    def test_non_windows_returns_false(self):
+        from elder_berry.comms.commands.system_commands import SystemCommandHandler
+        with patch("sys.platform", "linux"):
+            assert SystemCommandHandler._is_locked() is False
+
+    def test_windows_unlocked_returns_false(self):
+        from elder_berry.comms.commands.system_commands import SystemCommandHandler
+        import ctypes
+        with patch("sys.platform", "win32"):
+            # OpenInputDesktop gibt validen Handle zurück → nicht gesperrt
+            with patch.object(
+                ctypes.windll.user32, "OpenInputDesktop", return_value=1,
+            ):
+                with patch.object(ctypes.windll.user32, "CloseDesktop"):
+                    assert SystemCommandHandler._is_locked() is False
+
+    def test_windows_locked_returns_true(self):
+        from elder_berry.comms.commands.system_commands import SystemCommandHandler
+        import ctypes
+        with patch("sys.platform", "win32"):
+            # OpenInputDesktop gibt NULL zurück → gesperrt
+            with patch.object(
+                ctypes.windll.user32, "OpenInputDesktop", return_value=0,
+            ):
+                assert SystemCommandHandler._is_locked() is True
+
+
+class TestScreenshotLockStatus:
+    """Screenshot-Text enthält den Sperrbildschirm-Hinweis wenn PC gesperrt."""
+
+    def _make_fake_rgb(self, brightness: int = 128) -> bytes:
+        """Erzeugt Fake-RGB-Bytes mit gegebener Helligkeit."""
+        return bytes([brightness] * 3000)
+
+    @patch("elder_berry.comms.commands.system_commands.SystemCommandHandler._wake_monitor")
+    @patch("elder_berry.comms.commands.system_commands.SystemCommandHandler._is_locked",
+           return_value=True)
+    def test_locked_status_in_text(self, mock_locked, mock_wake, tmp_path):
+        """Wenn PC gesperrt: Text enthält '(PC gesperrt)'."""
+        from elder_berry.comms.commands.system_commands import SystemCommandHandler
+        import mss as mss_module
+
+        handler = SystemCommandHandler()
+        fake_rgb = self._make_fake_rgb(128)
+
+        mock_shot = MagicMock()
+        mock_shot.rgb = fake_rgb
+        mock_shot.size = (100, 100)
+
+        with patch("mss.mss") as mock_mss_ctx:
+            mock_sct = MagicMock()
+            mock_sct.monitors = [None, {"left": 0, "top": 0, "width": 100, "height": 100}]
+            mock_sct.grab.return_value = mock_shot
+            mock_mss_ctx.return_value.__enter__ = MagicMock(return_value=mock_sct)
+            mock_mss_ctx.return_value.__exit__ = MagicMock(return_value=False)
+            with patch("mss.tools.to_png"):
+                result = handler._screenshot_local()
+
+        assert result is not None
+        assert result.success is True
+        assert "gesperrt" in result.text
+
+    @patch("elder_berry.comms.commands.system_commands.SystemCommandHandler._wake_monitor")
+    @patch("elder_berry.comms.commands.system_commands.SystemCommandHandler._is_locked",
+           return_value=False)
+    def test_unlocked_no_lock_hint(self, mock_locked, mock_wake):
+        """Wenn PC nicht gesperrt: kein Sperrhinweis im Text."""
+        from elder_berry.comms.commands.system_commands import SystemCommandHandler
+
+        handler = SystemCommandHandler()
+        fake_rgb = self._make_fake_rgb(128)
+
+        mock_shot = MagicMock()
+        mock_shot.rgb = fake_rgb
+        mock_shot.size = (100, 100)
+
+        with patch("mss.mss") as mock_mss_ctx:
+            mock_sct = MagicMock()
+            mock_sct.monitors = [None, {"left": 0, "top": 0, "width": 100, "height": 100}]
+            mock_sct.grab.return_value = mock_shot
+            mock_mss_ctx.return_value.__enter__ = MagicMock(return_value=mock_sct)
+            mock_mss_ctx.return_value.__exit__ = MagicMock(return_value=False)
+            with patch("mss.tools.to_png"):
+                result = handler._screenshot_local()
+
+        assert result is not None
+        assert result.success is True
+        assert "gesperrt" not in result.text
+
+
 # ---------------------------------------------------------------------------
 # Avatar Command
 # ---------------------------------------------------------------------------
