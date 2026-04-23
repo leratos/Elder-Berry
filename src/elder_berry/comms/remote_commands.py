@@ -66,6 +66,7 @@ from elder_berry.comms.commands.cloud_commands import CloudCommandHandler
 from elder_berry.comms.commands.pdf_commands import PDFCommandHandler
 from elder_berry.comms.commands.filing_commands import FilingCommandHandler
 from elder_berry.comms.commands.harmony_commands import HarmonyCommandHandler
+from elder_berry.comms.commands.log_commands import LogCommandHandler
 from elder_berry.comms.commands.route_commands import RouteCommandHandler
 
 if TYPE_CHECKING:
@@ -320,6 +321,9 @@ class RemoteCommandHandler:
         self._harmony = HarmonyCommandHandler(
             robot_client=robot_client,
         )
+        self._log = LogCommandHandler(
+            log_dir=(project_root / "logs") if project_root else None,
+        )
         self._advanced = AdvancedCommandHandler(
             computer_use=computer_use,
             search_client=search_client,
@@ -385,6 +389,7 @@ class RemoteCommandHandler:
             self._turntable,
             self._harmony,
             self._camera,
+            self._log,
         ]
         if self._notes is not None:
             self._handlers.append(self._notes)
