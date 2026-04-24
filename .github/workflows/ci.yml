@@ -85,4 +85,9 @@ jobs:
           pip install -e ".[robot,agent,matrix,remote,memory,tools,documents,nextcloud,web,harmony]"
 
       - name: Audit dependencies for known vulnerabilities
-        run: pip-audit --desc on
+        # CVE-2026-3219: pip verarbeitet concatenated tar/ZIP-Archive
+        # mehrdeutig. Betrifft nur Installation aus lokal praeparierten
+        # Archiven; pip install von PyPI ist nicht angreifbar. Kein Fix
+        # released (Fix Versions leer im Advisory). Wiederbewerten sobald
+        # eine gepatchte pip-Version verfuegbar ist.
+        run: pip-audit --desc on --ignore-vuln CVE-2026-3219

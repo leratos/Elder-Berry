@@ -1,5 +1,7 @@
 """Tests: SecretStore – Verschlüsselte Credential-Verwaltung."""
+import hashlib
 import json
+from pathlib import Path
 from unittest.mock import MagicMock
 
 import pytest
@@ -7,12 +9,25 @@ from cryptography.fernet import Fernet
 
 from elder_berry.core.secret_store import (
     KEYRING_SERVICE,
-    KEYRING_USERNAME,
+    KEYRING_USERNAME_PREFIX,
     KeyringUnavailableError,
     SecretNotFoundError,
     SecretStore,
     SecretStoreError,
 )
+
+
+def _username_for(base_dir) -> str:
+    """Berechnet den erwarteten Keyring-Username fuer einen base_dir.
+
+    Spiegelt die Logik in ``SecretStore._keyring_username`` (sha256-16
+    des absoluten Pfads, mit Prefix). Wir reimplementieren sie hier,
+    damit die Tests die Invariante unabhaengig vom Produktionscode
+    ueberwachen.
+    """
+    resolved = str(Path(base_dir).resolve())
+    digest = hashlib.sha256(resolved.encode("utf-8")).hexdigest()[:16]
+    return f"{KEYRING_USERNAME_PREFIX}:{digest}"
 
 
 # ---------------------------------------------------------------------------
@@ -285,7 +300,7 @@ class TestKeyringAvailability:
         store = SecretStore(base_dir=tmp_path)
         # Triggert _get_fernet() -> Key landet im Fake-Keyring, KEINE Datei
         store.set("x", "y")
-        assert fake_keyring.get_password(KEYRING_SERVICE, KEYRING_USERNAME)
+        assert fake_keyring.get_password(KEYRING_SERVICE, _username_for(tmp_path))
         assert not (tmp_path / "secret.key").exists()
 
     def test_auto_falls_back_when_unavailable(self, tmp_path, monkeypatch):
@@ -302,7 +317,7 @@ class TestKeyringAvailability:
         store.set("x", "y")
         assert (tmp_path / "secret.key").exists()
         # Keyring wurde NICHT angefasst
-        assert fake_keyring.get_password(KEYRING_SERVICE, KEYRING_USERNAME) is None
+        assert fake_keyring.get_password(KEYRING_SERVICE, _username_for(tmp_path)) is None
 
     def test_explicit_true_raises_when_unavailable(self, tmp_path, monkeypatch):
         monkeypatch.setattr(
@@ -373,7 +388,7 @@ class TestKeyringMigration:
             store.set("x", "y")
 
         # Keyring hat den Key
-        stored = fake_keyring.get_password(KEYRING_SERVICE, KEYRING_USERNAME)
+        stored = fake_keyring.get_password(KEYRING_SERVICE, _username_for(tmp_path))
         assert stored == old_key.decode("ascii")
         # Alte Datei ist weg
         assert not (tmp_path / "secret.key").exists()
@@ -404,14 +419,14 @@ class TestKeyringMigration:
         """Gruene Wiese: weder Datei noch Keyring -> neuer Key im Keyring."""
         store = SecretStore(base_dir=tmp_path)
         store.set("x", "y")
-        assert fake_keyring.get_password(KEYRING_SERVICE, KEYRING_USERNAME)
+        assert fake_keyring.get_password(KEYRING_SERVICE, _username_for(tmp_path))
         assert not (tmp_path / "secret.key").exists()
 
     def test_existing_keyring_entry_used_directly(self, tmp_path, fake_keyring):
         """Key ist schon im Keyring -> direkt nutzen, keine Migration."""
         existing = Fernet.generate_key()
         fake_keyring.set_password(
-            KEYRING_SERVICE, KEYRING_USERNAME, existing.decode("ascii"),
+            KEYRING_SERVICE, _username_for(tmp_path), existing.decode("ascii"),
         )
 
         store = SecretStore(base_dir=tmp_path)
@@ -419,8 +434,86 @@ class TestKeyringMigration:
 
         # Kein Neuanlegen im Keyring (Wert unveraendert)
         assert fake_keyring.get_password(
-            KEYRING_SERVICE, KEYRING_USERNAME,
+            KEYRING_SERVICE, _username_for(tmp_path),
         ) == existing.decode("ascii")
+
+    def test_different_base_dirs_get_independent_keys(
+        self, tmp_path, fake_keyring,
+    ):
+        """PR #113 Review (P1): Zwei Stores mit verschiedenen base_dirs
+        duerfen sich NICHT den gleichen Keyring-Eintrag teilen.
+
+        Szenario: Instance A migriert seine secret.key in den Keyring.
+        Ohne per-base_dir-Scope wuerde Instance B (eigene secret.key +
+        secrets.enc in einem anderen Verzeichnis) den Keyring-Eintrag
+        von A abholen, seine eigene Migration ueberspringen und seine
+        secrets.enc nicht mehr dekodieren koennen.
+        """
+        dir_a = tmp_path / "profile_a"
+        dir_b = tmp_path / "profile_b"
+        dir_a.mkdir()
+        dir_b.mkdir()
+
+        # A legt Secrets an (auto-mode -> landet im Keyring unter user_a)
+        store_a = SecretStore(base_dir=dir_a)
+        store_a.set("token", "value_from_a")
+
+        # B hat einen anderen base_dir. Auto-mode -> eigener Keyring-
+        # Eintrag unter user_b. B setzt dort ein anderes Secret.
+        store_b = SecretStore(base_dir=dir_b)
+        store_b.set("token", "value_from_b")
+
+        # Zwei verschiedene Eintraege im Keyring, beide unabhaengig
+        user_a = _username_for(dir_a)
+        user_b = _username_for(dir_b)
+        assert user_a != user_b
+        assert fake_keyring.get_password(KEYRING_SERVICE, user_a)
+        assert fake_keyring.get_password(KEYRING_SERVICE, user_b)
+        # Die Keys sind tatsaechlich verschieden (verschluesseln mit
+        # unterschiedlichem Fernet-Key)
+        assert fake_keyring.get_password(KEYRING_SERVICE, user_a) != \
+               fake_keyring.get_password(KEYRING_SERVICE, user_b)
+
+        # Beide Stores koennen ihre eigenen Werte lesen
+        assert SecretStore(base_dir=dir_a).get("token") == "value_from_a"
+        assert SecretStore(base_dir=dir_b).get("token") == "value_from_b"
+
+    def test_second_base_dir_does_not_skip_its_own_migration(
+        self, tmp_path, fake_keyring,
+    ):
+        """PR #113 Review (P1): Regression der urspruenglichen Phase-65-
+        Implementierung -- A migriert, B findet faelschlicherweise A's
+        Keyring-Entry und ueberspringt die Migration seiner eigenen
+        secret.key -> secrets.enc nicht mehr entschluesselbar.
+
+        Mit per-base_dir-Scope sehen wir das nicht -- B muss seine
+        eigene Migration durchlaufen.
+        """
+        dir_a = tmp_path / "A"
+        dir_b = tmp_path / "B"
+        dir_a.mkdir()
+        dir_b.mkdir()
+
+        # A macht seinen Store komplett (Datei + Keyring-Migration)
+        SecretStore(base_dir=dir_a).set("x", "from-A")
+
+        # B kommt aus File-Mode (hat eigene secret.key + secrets.enc)
+        file_b = SecretStore(base_dir=dir_b, use_keyring=False)
+        file_b.set("x", "from-B")
+        assert (dir_b / "secret.key").exists()
+        key_b_before = (dir_b / "secret.key").read_bytes()
+
+        # Jetzt B mit auto-mode -- MUSS seine eigene Datei migrieren,
+        # nicht A's Keyring-Entry uebernehmen.
+        kr_b = SecretStore(base_dir=dir_b)
+        assert kr_b.get("x") == "from-B"  # Die eigenen Secrets, nicht A's!
+        assert not (dir_b / "secret.key").exists()  # Datei weg nach Migration
+
+        # Der im Keyring fuer B gelandete Key ist der aus B's secret.key,
+        # NICHT der aus A's Migration.
+        user_b = _username_for(dir_b)
+        assert fake_keyring.get_password(KEYRING_SERVICE, user_b) == \
+               key_b_before.decode("ascii")
 
     def test_verify_mismatch_aborts_migration(self, tmp_path, fake_keyring):
         """Wenn Re-Read vom Keyring etwas anderes liefert als geschrieben,
@@ -433,9 +526,11 @@ class TestKeyringMigration:
         # was anderes (Simulation eines broken Backends).
         original_get = fake_keyring.get_password
 
+        expected_user = _username_for(tmp_path)
+
         def broken_get(service, username):
             # Fuer den Master-Key liefern wir einen falschen Wert zurueck.
-            if (service, username) == (KEYRING_SERVICE, KEYRING_USERNAME):
+            if (service, username) == (KEYRING_SERVICE, expected_user):
                 val = original_get(service, username)
                 if val is None:
                     return None

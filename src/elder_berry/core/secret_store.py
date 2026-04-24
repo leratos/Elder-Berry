@@ -18,6 +18,7 @@ Verwendung:
 """
 from __future__ import annotations
 
+import hashlib
 import json
 import logging
 from pathlib import Path
@@ -30,9 +31,13 @@ DEFAULT_BASE_DIR = Path.home() / ".elder-berry"
 DEFAULT_KEY_FILE = "secret.key"
 DEFAULT_SECRETS_FILE = "secrets.enc"
 
-# Phase 65 (M-1): Keyring-Service/User fuer den Fernet-Masterkey.
+# Phase 65 (M-1): Keyring-Service/User-Prefix fuer den Fernet-Masterkey.
+# Der tatsaechliche Username wird pro SecretStore-Instanz aus dem absoluten
+# base_dir-Pfad abgeleitet (siehe ``SecretStore._keyring_username``), damit
+# mehrere Stores mit unterschiedlichen base_dirs (Tests mit tmp_path,
+# Multi-Profile) NICHT den gleichen Keyring-Eintrag teilen.
 KEYRING_SERVICE = "elder-berry"
-KEYRING_USERNAME = "master-key"
+KEYRING_USERNAME_PREFIX = "master-key"
 
 
 # Lazy-safe Import von keyring: wenn die Lib fehlt, operieren wir
@@ -163,9 +168,27 @@ class SecretStore:
             )
         return available
 
+    def _keyring_username(self) -> str:
+        """Keyring-Username, eindeutig pro ``base_dir``.
+
+        Zwei SecretStore-Instanzen mit unterschiedlichen ``base_dir``
+        muessen unabhaengige Masterkeys haben -- sonst wuerde ein Store
+        mit seiner eigenen ``secrets.enc`` im OS-Keyring den Key einer
+        *anderen* Instanz finden und seine eigene Datei nicht mehr
+        dekodieren koennen.
+
+        Wir haengen einen kurzen sha256-Hash des absoluten base_dir-Pfads
+        an den festen Prefix an. Beispiel:
+            base_dir=/home/me/.elder-berry
+            -> "master-key:7f3a9c1e4b2d5a8f"
+        """
+        resolved = str(self._base_dir.resolve())
+        digest = hashlib.sha256(resolved.encode("utf-8")).hexdigest()[:16]
+        return f"{KEYRING_USERNAME_PREFIX}:{digest}"
+
     def _load_key_from_keyring(self) -> bytes | None:
         """Liest den Fernet-Key aus dem OS-Keyring. None wenn nicht gesetzt."""
-        value = keyring.get_password(KEYRING_SERVICE, KEYRING_USERNAME)
+        value = keyring.get_password(KEYRING_SERVICE, self._keyring_username())
         if value:
             return value.encode("ascii")
         return None
@@ -177,9 +200,10 @@ class SecretStore:
         Original zurueckliefert -- dann ist die Migration abgebrochen
         und die Aufruf-Seite loescht die alte Datei *nicht*.
         """
+        username = self._keyring_username()
         key_str = key.decode("ascii")
-        keyring.set_password(KEYRING_SERVICE, KEYRING_USERNAME, key_str)
-        verify = keyring.get_password(KEYRING_SERVICE, KEYRING_USERNAME)
+        keyring.set_password(KEYRING_SERVICE, username, key_str)
+        verify = keyring.get_password(KEYRING_SERVICE, username)
         if verify != key_str:
             raise SecretStoreError(
                 "Keyring-Write konnte nicht verifiziert werden. "
@@ -246,7 +270,7 @@ class SecretStore:
                     logger.info(
                         "Neuer Master-Key im OS-Keyring erzeugt "
                         "(service=%s, user=%s).",
-                        KEYRING_SERVICE, KEYRING_USERNAME,
+                        KEYRING_SERVICE, self._keyring_username(),
                     )
         else:
             key = self._load_key_from_file()
