@@ -40,7 +40,10 @@ def _default_origin_for_testclient(request, monkeypatch):
 
     def patched_request(self, method, url, **kwargs):
         headers = dict(kwargs.get("headers") or {})
-        if not any(k.lower() == "origin" for k in headers):
+        if (
+            str(method).upper() in {"POST", "PUT", "PATCH", "DELETE"}
+            and not any(k.lower() == "origin" for k in headers)
+        ):
             headers["origin"] = _DEFAULT_TEST_ORIGIN
         kwargs["headers"] = headers
         return original_request(self, method, url, **kwargs)
