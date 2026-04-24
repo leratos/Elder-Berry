@@ -1,6 +1,6 @@
 """Tests: SecretStore – Verschlüsselte Credential-Verwaltung."""
 import json
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 import pytest
 from cryptography.fernet import Fernet
@@ -329,6 +329,34 @@ class TestKeyringAvailability:
         store.set("x", "y")
         # Fallback -> Datei
         assert (tmp_path / "secret.key").exists()
+
+    def test_get_keyring_raising_counts_as_unavailable(
+        self, tmp_path, monkeypatch, caplog,
+    ):
+        """Backend-Discovery kann selbst raisen -- z.B. libsecret
+        installiert aber keine DBus-Session, oder macOS Keychain-
+        Dienst unerreichbar. Auto-Mode MUSS robust auf File-Fallback
+        gehen statt den Start zu crashen.
+        """
+        import logging
+
+        fake = MagicMock()
+        fake.get_keyring.side_effect = RuntimeError(
+            "DBus session bus not available",
+        )
+        monkeypatch.setattr("elder_berry.core.secret_store.keyring", fake)
+        monkeypatch.setattr("elder_berry.core.secret_store._HAS_KEYRING", True)
+
+        with caplog.at_level(logging.WARNING, logger="elder_berry.core.secret_store"):
+            store = SecretStore(base_dir=tmp_path)
+            store.set("x", "y")
+
+        # Auto-Mode fiel sauber auf Datei zurueck
+        assert (tmp_path / "secret.key").exists()
+        # Die Ursache wurde als WARNING geloggt (damit ops weiss, warum
+        # der Keyring nicht genutzt wurde).
+        messages = " ".join(r.message for r in caplog.records)
+        assert "Backend-Discovery fehlgeschlagen" in messages
 
 
 class TestKeyringMigration:

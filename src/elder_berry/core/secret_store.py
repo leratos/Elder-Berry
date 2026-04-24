@@ -120,10 +120,23 @@ class SecretStore:
         pruefen wir, ob das Default-Backend *nicht* der Fail-Keyring ist
         -- der ist die neutrale Variante von ``keyring``, die bei jedem
         Schreibversuch raised.
+
+        Robustheit: ``keyring.get_keyring()`` selbst kann schon raisen,
+        z.B. wenn libsecret installiert ist aber der DBus-Session-Agent
+        gesperrt/abwesend ist. Jede Exception hier -> "nicht verfuegbar",
+        damit der Auto-Mode sauber auf den File-Fallback geht statt den
+        Start zu crashen.
         """
         if not _HAS_KEYRING:
             return False
-        backend = keyring.get_keyring()
+        try:
+            backend = keyring.get_keyring()
+        except Exception as exc:  # noqa: BLE001 -- defensiv, jeder Fehler = unavailable
+            logger.warning(
+                "Keyring-Backend-Discovery fehlgeschlagen (%s): %s",
+                type(exc).__name__, exc,
+            )
+            return False
         if _FailKeyring is not None and isinstance(backend, _FailKeyring):
             return False
         return True
