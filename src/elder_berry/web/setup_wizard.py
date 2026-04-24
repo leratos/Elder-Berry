@@ -10,10 +10,16 @@ import logging
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
+import httpx
 from fastapi import Body
 from fastapi.responses import HTMLResponse, JSONResponse
 
 from elder_berry.web.setup_tests import EMAIL_PROVIDERS, SetupTests
+
+# Phase 63: Nominatim-User-Agent ist gemaess Nutzungsbedingungen Pflicht.
+_NOMINATIM_USER_AGENT = "Elder-Berry/1.0 (self-hosted home assistant)"
+_NOMINATIM_URL = "https://nominatim.openstreetmap.org/search"
+_GEOCODE_MAX_QUERY_LEN = 200
 
 if TYPE_CHECKING:
     from fastapi import FastAPI
@@ -420,6 +426,75 @@ def register_setup_wizard_routes(
                 "smtp_port": smtp_port,
             }
         return JSONResponse(result)
+
+    @app.get("/api/setup/geocode")
+    async def setup_geocode(q: str = ""):
+        """Phase 63: Server-seitiger Nominatim-Proxy.
+
+        Der Setup-Wizard hatte frueher direkt im Browser Nominatim angefragt.
+        Mit der strikten CSP (``connect-src 'self'``) ist externer fetch()
+        blockiert -- der Proxy liefert dasselbe Ergebnis in einem schlanken
+        Format.
+        """
+        query = q.strip()
+        if not query:
+            return JSONResponse(
+                {"success": False, "error": "Bitte Stadt eingeben."},
+                status_code=400,
+            )
+        if len(query) > _GEOCODE_MAX_QUERY_LEN:
+            return JSONResponse(
+                {"success": False, "error": "Stadt-Name zu lang."},
+                status_code=400,
+            )
+        try:
+            async with httpx.AsyncClient(timeout=10) as client:
+                resp = await client.get(
+                    _NOMINATIM_URL,
+                    params={"format": "json", "limit": 1, "q": query},
+                    headers={
+                        "Accept-Language": "de",
+                        "User-Agent": _NOMINATIM_USER_AGENT,
+                    },
+                )
+        except httpx.HTTPError as exc:
+            logger.warning("Geocoding-Netzwerkfehler: %s", exc)
+            return JSONResponse(
+                {"success": False, "error": f"Netzwerkfehler: {exc}"},
+                status_code=502,
+            )
+        if resp.status_code != 200:
+            return JSONResponse(
+                {
+                    "success": False,
+                    "error": f"Geocoding-API: HTTP {resp.status_code}",
+                },
+                status_code=502,
+            )
+        try:
+            data = resp.json()
+        except ValueError as exc:
+            logger.warning("Geocoding-Antwort nicht JSON: %s", exc)
+            return JSONResponse(
+                {"success": False, "error": "Ungueltige API-Antwort."},
+                status_code=502,
+            )
+        if not isinstance(data, list) or not data:
+            return JSONResponse({"success": False, "error": "Ort nicht gefunden."})
+        hit = data[0]
+        try:
+            return JSONResponse({
+                "success": True,
+                "lat": float(hit["lat"]),
+                "lon": float(hit["lon"]),
+                "display_name": str(hit.get("display_name", "")),
+            })
+        except (KeyError, TypeError, ValueError) as exc:
+            logger.warning("Geocoding-Antwortformat unerwartet: %s", exc)
+            return JSONResponse(
+                {"success": False, "error": "Unerwartetes API-Format."},
+                status_code=502,
+            )
 
 
 async def _run_llm_tests(secret_store: SecretStore) -> dict[str, Any]:
