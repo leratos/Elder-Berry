@@ -74,7 +74,7 @@ class OriginCheckMiddleware(BaseHTTPMiddleware):
                 if ":" in host and not host.startswith("["):
                     host = f"[{host}]"
 
-                default_port = 80 if scheme == "http" else 443 if scheme == "https" else None
+                default_port = {"http": 80, "https": 443}.get(scheme)
                 if port is not None and port != default_port:
                     host = f"{host}:{port}"
 
