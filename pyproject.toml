@@ -114,6 +114,11 @@ dev = [
 [tool.setuptools.packages.find]
 where = ["src"]
 
+[tool.ruff.lint]
+# B008: FastAPI nutzt File(...)/Form(...)/Body(...) als Argument-Default –
+# das ist das offizielle FastAPI-Pattern, kein echter Bug.
+ignore = ["B008"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["src", "."]

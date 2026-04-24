@@ -1,7 +1,6 @@
 """Tests für EmotionTracker – Emotionales Kurzzeitgedächtnis."""
 from datetime import datetime, timedelta
 
-import pytest
 
 from elder_berry.character.base import Emotion
 from elder_berry.character.emotion_tracker import EmotionTracker, EmotionEntry
@@ -280,7 +279,7 @@ class TestAssistantIntegration:
 
     def test_mood_context_in_system_prompt(self):
         """Prüft dass mood_context im generierten System-Prompt auftaucht."""
-        from unittest.mock import MagicMock, patch
+        from unittest.mock import MagicMock
         from elder_berry.character.saleria import SaleriaEngine
         from elder_berry.core.assistant import Assistant
 

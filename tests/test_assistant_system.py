@@ -6,7 +6,7 @@ import pytest
 
 from elder_berry.actions.base import ActionController
 from elder_berry.actions.db import ActionsDB
-from elder_berry.core.assistant import Assistant, AssistantResult
+from elder_berry.core.assistant import Assistant
 from elder_berry.llm.base import LLMClient
 from elder_berry.system.info import (
     CpuInfo,

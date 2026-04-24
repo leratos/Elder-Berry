@@ -1,7 +1,7 @@
 """Tests fuer Harmony-Methoden in RobotClient."""
 from __future__ import annotations
 
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 import httpx
 import pytest

@@ -3,7 +3,6 @@
 Inkl. Rolling Summary (Phase 23).
 """
 import time
-import threading
 
 import pytest
 

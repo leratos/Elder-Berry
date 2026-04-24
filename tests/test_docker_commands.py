@@ -6,7 +6,6 @@ import pytest
 
 from elder_berry.comms.commands.docker_commands import (
     DOCKER_PATTERN,
-    DOCKER_WHITELIST,
     DockerCommandHandler,
 )
 

@@ -7,7 +7,6 @@ Credentials are read from SecretStore:
 from __future__ import annotations
 
 import logging
-import shutil
 import tempfile
 import zipfile
 from dataclasses import dataclass, field

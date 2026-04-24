@@ -5,7 +5,6 @@ import logging
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Callable
 
 from .base import MemoryEntry, MemoryStore
 from .embedding import EmbeddingClient

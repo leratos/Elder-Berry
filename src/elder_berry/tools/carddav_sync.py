@@ -19,7 +19,6 @@ import json
 import logging
 import xml.etree.ElementTree as ET
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
 from typing import TYPE_CHECKING
 
 import re

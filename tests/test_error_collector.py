@@ -3,7 +3,6 @@ import logging
 import time
 from unittest.mock import MagicMock
 
-import pytest
 
 from elder_berry.core.error_collector import ErrorCollectorHandler
 

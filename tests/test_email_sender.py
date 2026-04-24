@@ -1,12 +1,11 @@
 """Tests für EmailSender (SMTP-Client)."""
 from __future__ import annotations
 
-import email.message
 from unittest.mock import MagicMock, patch
 
 import pytest
 
-from elder_berry.tools.email_sender import EmailSender, SentEmail
+from elder_berry.tools.email_sender import EmailSender
 
 
 # ---------------------------------------------------------------------------

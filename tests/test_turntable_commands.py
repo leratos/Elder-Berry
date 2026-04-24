@@ -1,7 +1,6 @@
 """Tests fuer TurntableCommandHandler (Patterns, Keywords, Execute)."""
 from unittest.mock import MagicMock
 
-import pytest
 
 from elder_berry.comms.commands.turntable_commands import (
     DEFAULT_ROTATION_DEGREES,

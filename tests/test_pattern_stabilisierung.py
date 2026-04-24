@@ -3,9 +3,7 @@
 Reine Pattern-Tests (keine Mocks, kein Netzwerk).
 Prueft sowohl neue Varianten als auch Rueckwaertskompatibilitaet.
 """
-import re
 
-import pytest
 
 # ---------------------------------------------------------------------------
 # system_commands – VOLUME_PATTERN

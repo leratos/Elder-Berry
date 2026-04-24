@@ -6,8 +6,6 @@ import pytest
 from elder_berry.comms.commands.process_commands import (
     START_PROCESS_PATTERN,
     KILL_PROCESS_PATTERN,
-    START_WHITELIST,
-    KILL_WHITELIST,
     ProcessCommandHandler,
 )
 

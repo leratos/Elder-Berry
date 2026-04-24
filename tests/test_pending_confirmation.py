@@ -2,9 +2,7 @@
 from __future__ import annotations
 
 import time
-from unittest.mock import patch
 
-import pytest
 
 from elder_berry.comms.pending_confirmation import (
     DEFAULT_TTL_SECONDS,

@@ -1,16 +1,12 @@
 """Tests fuer TurntableController ABC + SimulatedTurntable + Hilfsfunktionen."""
 import math
 import threading
-import time
-from unittest.mock import MagicMock, patch, call
+from unittest.mock import MagicMock, patch
 
 import pytest
 
 from elder_berry.robot.turntable_controller import (
-    HALF_STEP_SEQ,
-    HOMING_STEP_LIMIT,
     MAX_DEGREES,
-    STEPS_PER_REV,
     degrees_to_steps,
     steps_to_degrees,
 )
@@ -130,7 +126,6 @@ class TestRPi5TurntableInit:
         from elder_berry.robot.turntable_controller import (
             RPi5TurntableController,
             STEPPER_PINS,
-            HALL_PIN,
         )
 
         with patch.dict("sys.modules", {"lgpio": lgpio_mock}):

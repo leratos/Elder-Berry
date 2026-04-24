@@ -9,13 +9,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from elder_berry.tools.document_classifier import (
-    CATEGORY_FOLDER_MAP,
-    IMAGE_EXTENSIONS,
-    MANUAL_SUBFOLDERS,
-    MAX_CLASSIFY_CHARS,
-    VALID_CATEGORIES,
     DocumentClassifier,
-    FilingSuggestion,
     _clean_description,
 )
 

@@ -10,7 +10,6 @@ from elder_berry.core.context_enricher import (
     ContextEnricher,
     EnrichmentResult,
     ENRICHMENT_SYSTEM_PROMPT,
-    SOURCE_TIMEOUT_SECONDS,
 )
 
 

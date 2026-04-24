@@ -1,7 +1,6 @@
 """Tests: GymDataClient – Berry-Gym API Integration."""
 from unittest.mock import MagicMock, patch
 
-import pytest
 
 from elder_berry.tools.gym_data import GymDataClient
 

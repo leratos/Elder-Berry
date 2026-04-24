@@ -5,7 +5,7 @@ import asyncio
 import base64
 import json
 from datetime import datetime, timezone, timedelta
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 

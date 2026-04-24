@@ -2,7 +2,6 @@
 from unittest.mock import MagicMock, patch
 import subprocess
 
-import pytest
 
 from elder_berry.comms.commands.cmd_utils import CmdResult, run_cmd
 

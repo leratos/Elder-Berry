@@ -2,7 +2,6 @@
 import time
 from unittest.mock import MagicMock, patch
 
-import pytest
 
 from elder_berry.comms.alert_monitor import AlertConfig, AlertMonitor
 

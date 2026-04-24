@@ -6,8 +6,8 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from elder_berry.memory.base import MemoryContext, MemoryEntry, MemoryStore
-from elder_berry.memory.embedding import EmbeddingClient, OllamaEmbeddingClient
+from elder_berry.memory.base import MemoryContext, MemoryEntry
+from elder_berry.memory.embedding import OllamaEmbeddingClient
 
 _chroma_installed = importlib.util.find_spec("chromadb") is not None
 requires_chroma = pytest.mark.skipif(
@@ -184,7 +184,7 @@ class TestChromaMemoryStore:
 
     def test_init_requires_chromadb(self):
         """Import-Fehler wenn chromadb nicht installiert."""
-        from elder_berry.memory.chroma_memory import ChromaMemoryStore, _CHROMA_AVAILABLE
+        from elder_berry.memory.chroma_memory import _CHROMA_AVAILABLE
         assert _CHROMA_AVAILABLE is True  # Sonst wäre der Test geskippt
 
     def test_new_session_returns_uuid(self, tmp_path):

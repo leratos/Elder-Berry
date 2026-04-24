@@ -1,0 +1,40 @@
+# Elder-Berry – Git Line-Ending Normalization
+#
+# Alle Textdateien werden im Repository mit LF gespeichert.
+# Auf Windows-Checkouts konvertiert Git automatisch zu CRLF
+# (core.autocrlf = true/input), sodass Editoren korrekt arbeiten.
+# Verhindert "~300 modified files" durch CRLF-Drift im Working-Tree.
+
+* text=auto
+
+# Quellcode + Config immer LF
+*.py        text eol=lf
+*.toml      text eol=lf
+*.yml       text eol=lf
+*.yaml      text eol=lf
+*.json      text eol=lf
+*.md        text eol=lf
+*.txt       text eol=lf
+*.html      text eol=lf
+*.css       text eol=lf
+*.js        text eol=lf
+*.sh        text eol=lf
+
+# Windows-Batch: CRLF erzwingen
+*.bat       text eol=crlf
+*.cmd       text eol=crlf
+*.ps1       text eol=crlf
+
+# Binärdateien: keine Konvertierung
+*.png       binary
+*.jpg       binary
+*.jpeg      binary
+*.gif       binary
+*.ico       binary
+*.wav       binary
+*.mp3       binary
+*.ogg       binary
+*.pdf       binary
+*.pkl       binary
+*.db        binary
+*.sqlite    binary

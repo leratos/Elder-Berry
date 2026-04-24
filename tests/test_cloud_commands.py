@@ -1,8 +1,7 @@
 """Tests for CloudCommandHandler (Nextcloud commands via Matrix)."""
 from __future__ import annotations
 
-from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 import pytest
 
@@ -14,7 +13,6 @@ from elder_berry.comms.commands.cloud_commands import (
     CLOUD_UPLOAD_PATTERN,
     NEXTCLOUD_SETUP_PATTERN,
     CloudCommandHandler,
-    _NC_DEFAULT_ITEMS,
     _NC_TARGET_DIRS,
 )
 from elder_berry.tools.nextcloud_files import NextcloudFile

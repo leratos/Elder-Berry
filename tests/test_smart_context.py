@@ -9,7 +9,6 @@ from elder_berry.core.smart_context import (
     ContextSource,
     SmartContextProvider,
     _META_PHRASES,
-    _SOURCE_KEYWORDS,
 )
 
 

@@ -1,7 +1,5 @@
 """Tests: ReminderStore – SQLite-basierte Erinnerungen."""
-import tempfile
 from datetime import datetime, timezone, timedelta
-from pathlib import Path
 
 import pytest
 

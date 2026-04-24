@@ -9,7 +9,6 @@ try:
     from elder_berry.web.settings_dashboard import (
         SettingsDashboard,
         SECRET_REGISTRY,
-        _REGISTRY_BY_KEY,
     )
 
     HAS_FASTAPI = True

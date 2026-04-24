@@ -53,11 +53,11 @@ jobs:
         run: pip install ruff
 
       - name: Lint with ruff (blockierende Rules)
-        # E9:  Syntaxfehler – immer blockierend
+        # E9:   Syntaxfehler – immer blockierend
         # W605: Ungültige Escape-Sequences (\n in r-Strings etc.)
-        # Erweiterung auf F401/B-Regeln ist als Issue geplant, nachdem
-        # die bestehenden F401-Warnings im Produktivcode bereinigt wurden.
-        run: ruff check src/ tests/ --select E9,W605
+        # F401: Unused imports (bereinigt in Phase CI-Qualität)
+        # B:    Bugbear-Regeln; B008 ignoriert (FastAPI File/Form/Body-Pattern)
+        run: ruff check src/ tests/ --select E9,W605,F401,B --ignore B008
 
   security:
     runs-on: ubuntu-latest
@@ -76,9 +76,13 @@ jobs:
         run: pip install pip-audit
 
       - name: Install project dependencies
+        # Alle sicheren optionalen Gruppen installieren, damit pip-audit
+        # möglichst viele transitive Dependencies prüfen kann.
+        # Gruppen mit System-Abhängigkeiten (windows, tts-neural, stt,
+        # avatar, tower) werden explizit ausgelassen.
         run: |
           python -m pip install --upgrade pip
-          pip install -e ".[robot,agent]"
+          pip install -e ".[robot,agent,matrix,remote,memory,tools,documents,nextcloud,web,harmony]"
 
       - name: Audit dependencies for known vulnerabilities
         run: pip-audit --desc on

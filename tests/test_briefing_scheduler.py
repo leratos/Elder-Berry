@@ -1,9 +1,7 @@
 """Tests: BriefingScheduler – Tägliches Morgen-Briefing."""
-import time
 from datetime import date, datetime, timedelta, timezone
-from unittest.mock import MagicMock, PropertyMock, patch
+from unittest.mock import MagicMock, patch
 
-import pytest
 
 from elder_berry.comms.briefing_scheduler import BriefingScheduler
 from elder_berry.tools.contact_store import Contact

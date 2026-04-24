@@ -18,7 +18,7 @@ from __future__ import annotations
 import logging
 import uuid
 from dataclasses import dataclass
-from datetime import date, datetime, timedelta, timezone
+from datetime import date, datetime, timezone
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:

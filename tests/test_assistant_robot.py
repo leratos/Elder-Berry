@@ -1,13 +1,13 @@
 """Tests: Assistant + RobotClient Integration."""
 import json
-from unittest.mock import MagicMock, PropertyMock
+from unittest.mock import MagicMock
 
 import pytest
 
 from elder_berry.actions.base import ActionController
 from elder_berry.actions.db import ActionsDB
 from elder_berry.character.saleria import SaleriaEngine
-from elder_berry.core.assistant import Assistant, AssistantResult
+from elder_berry.core.assistant import Assistant
 from elder_berry.llm.base import LLMClient
 from elder_berry.robot.client import RobotClient
 from elder_berry.robot.protocol import ApiResponse, BatteryStatus

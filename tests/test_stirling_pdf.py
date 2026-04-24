@@ -9,10 +9,7 @@ import httpx
 import pytest
 
 from elder_berry.tools.stirling_pdf import (
-    PDFResult,
     StirlingPDFClient,
-    StirlingPDFConnectionError,
-    StirlingPDFError,
 )
 
 

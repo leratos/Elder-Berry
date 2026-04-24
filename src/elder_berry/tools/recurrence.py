@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import calendar
 import re
-from datetime import datetime, time, timedelta, timezone
+from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 
 # -------------------------------------------------------------------------

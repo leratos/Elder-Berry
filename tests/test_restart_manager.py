@@ -1,12 +1,9 @@
 """Tests: restart_manager – Restart-Flag, Notification, Lock-Release, Restart."""
 import asyncio
-from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
-import pytest
 
 from elder_berry.comms.restart_manager import (
-    RESTART_FLAG_FILE,
     _is_systemd_managed,
     read_restart_timestamp,
     release_instance_lock,

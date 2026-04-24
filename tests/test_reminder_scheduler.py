@@ -1,7 +1,6 @@
 """Tests: ReminderScheduler – Periodischer Check fälliger Erinnerungen."""
 import time
 from datetime import datetime, timezone, timedelta
-from pathlib import Path
 from unittest.mock import MagicMock
 
 import pytest

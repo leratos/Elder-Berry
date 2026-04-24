@@ -1,6 +1,5 @@
 """Tests: AudioConverter – WAV/MP3 → OGG/Opus Konvertierung."""
 import json
-import struct
 import subprocess
 import wave
 from pathlib import Path

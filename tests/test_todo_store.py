@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from elder_berry.tools.todo_store import PRIORITIES, Todo, TodoStore
+from elder_berry.tools.todo_store import TodoStore
 
 USER = "@test:matrix.org"
 USER_B = "@other:matrix.org"

@@ -1,4 +1,6 @@
 """Tests für ActionsDB."""
+import sqlite3
+
 import pytest
 
 from elder_berry.actions.db import ActionsDB
@@ -60,5 +62,5 @@ class TestActionsDB:
 
     def test_duplicate_trigger_raises(self, db):
         db.add("doppelt", "tts", "")
-        with pytest.raises(Exception):  # sqlite3.IntegrityError
+        with pytest.raises(sqlite3.IntegrityError):
             db.add("doppelt", "open_app", "")

@@ -1,13 +1,12 @@
 """Tests für STT – TranscriptionResult, STTEngine ABC, FasterWhisperEngine."""
 import importlib
-import struct
 import wave
 from pathlib import Path
-from unittest.mock import MagicMock, patch, PropertyMock
+from unittest.mock import MagicMock, patch
 
 import pytest
 
-from elder_berry.stt.base import STTEngine, TranscriptionResult, TranscriptionSegment
+from elder_berry.stt.base import TranscriptionResult, TranscriptionSegment
 
 _faster_whisper_installed = importlib.util.find_spec("faster_whisper") is not None
 requires_faster_whisper = pytest.mark.skipif(

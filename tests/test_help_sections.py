@@ -1,7 +1,6 @@
 """Tests für Phase 51.1 – Kategorisierte Hilfe (help_sections.py)."""
 from __future__ import annotations
 
-import pytest
 
 from elder_berry.comms.commands.help_sections import (
     CATEGORY_LABELS,
