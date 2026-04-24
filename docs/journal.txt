@@ -4966,18 +4966,65 @@ User: "Lies meine Mails und trag den Zahnarzttermin ein"
 - Tests: 4615 bestanden, 28 skipped -- keine Regression
 - Commits: 05b5705 (.gitattributes), 16decd6 (renormalize), d370cc4 (ruff+CI)
 
-## In Arbeit: Phase 63 -- CSP-Hardening (unsafe-inline entfernen) (2026-04-24)
+## Abgeschlossen: Phase 63 -- CSP-Hardening (unsafe-inline entfernt) (2026-04-24)
 - Branch: feature/phase-63-csp-hardening
 - Konzept: docs/concepts/security-h2-csp-unsafe-inline.md
-- Ziel: script-src 'self' + style-src 'self' ohne 'unsafe-inline', connect-src 'self'
-- Geplante Schritte:
-  1. StaticFiles-Mount + web/static/{css,js}/-Verzeichnisse
-  2. Negativ-Test (unsafe-inline not in CSP) -- TDD, rot
-  3. settings_panel.html (Pilot, nur script/style-Split)
-  4. audio_dashboard.html (7 Handler + 7 inline-styles)
-  5. avatar_editor.html (5 Handler + 5 inline-styles, data:-URI pruefen)
-  6a. /api/geocode Proxy fuer Nominatim (ersetzt externen Browser-Call)
-  6b. setup_wizard.html (25 Handler + 19 inline-styles)
-  7. CSP in security_middleware.py verschaerfen -- Test wird gruen
-  8. Browser-Test pro Template (keine CSP-Violations in Konsole)
-- Naechster Schritt: Schritt 1 -- web/static/-Verzeichnis + StaticFiles-Mount in settings_dashboard.py
+- Ergebnis: CSP jetzt
+    default-src 'self';
+    script-src 'self';
+    style-src 'self';
+    img-src 'self' data:;
+    connect-src 'self';
+  (vorher: 'self' 'unsafe-inline' bei script/style)
+
+- Umsetzung in 7 Commits auf diesem Branch:
+  * 4dea818 -- Schritt 1+2: StaticFiles-Mount + 3 CSP-Negativtests (TDD)
+  * 05a7e25 -- Schritt 3:   settings_panel.html (Pilot, nur script+style-Split)
+  * a869d54 -- Schritt 4:   audio_dashboard.html (7 Handler + 7 inline-styles)
+  * f391bf9 -- Schritt 5:   avatar_editor.html (5 Handler + 5 inline-styles)
+  * 69b542b -- Schritt 6a:  /api/setup/geocode Nominatim-Proxy + 12 Tests
+  * a3d2e14 -- Schritt 6b:  setup_wizard.html (25 Handler + 19 inline-styles)
+  * 3f097e8 -- Schritt 7:   CSP verschaerft, unsafe-inline entfernt
+
+- Neue Dateien:
+  * src/elder_berry/web/static/css/{settings_panel,audio_dashboard,
+    avatar_editor,setup_wizard}.css
+  * src/elder_berry/web/static/js/{settings_panel,audio_dashboard,
+    avatar_editor,setup_wizard}.js
+  * tests/test_setup_geocode.py (12 neue Tests)
+
+- Geaenderte Dateien:
+  * src/elder_berry/web/security_middleware.py -- strikte CSP
+  * src/elder_berry/web/settings_dashboard.py  -- StaticFiles-Mount
+  * src/elder_berry/web/setup_wizard.py        -- /api/setup/geocode
+  * src/elder_berry/web/templates/*.html       -- inline-free, CSP-konform
+  * tests/test_security.py                     -- 3 Negativtests
+  * tests/test_settings_panel.py               -- html+js-Bundle-Fixture
+  * tests/test_avatar_editor_onboarding.py     -- html+css+js-Bundle-Fixture
+
+- Abweichungen vom Konzept (docs/concepts/security-h2-csp-unsafe-inline.md):
+  * Konzept erwaehnte nur <style>/<script>-Bloecke und Event-Handler --
+    zusaetzlich 31 inline style="..."-Attribute (19 im setup_wizard)
+    musste ich in CSS-Klassen ueberfuehren, sonst haette CSP sie
+    weiterhin geblockt.
+  * Setup-Wizard rief direkt nominatim.openstreetmap.org -- statt
+    connect-src zu lockern, wurde ein Server-Proxy /api/setup/geocode
+    gebaut (entscheidung: Proxy schlagen, Browser bleibt 'self'-only).
+  * avatar_editor.html: 1 onclick lag INNERHALB einer innerHTML-
+    Template-String-Generierung (onclick="toggleEmotion(this)"); CSP
+    blockiert inline-Handler auch dann, wenn sie via innerHTML injiziert
+    werden -- ersetzt durch container.querySelectorAll + addEventListener
+    nach dem Rendern.
+
+- Tests: 165 gruene web-Tests (security/settings*/setup*/avatar*/secrets/
+  llm), 62 skipped. Lokale Fehler in test_dashboard_auth* / TestSetupComplete
+  sind pre-existing (bcrypt fehlt im Codespace, in CI regulaer gruen).
+  Andere pre-existing Fehler (test_tts_router etc) sind von Phase 63
+  unabhaengig -- per git stash verifiziert.
+
+- Offen: manueller Browser-Test auf Windows (devcontainer hat keinen
+  Browser). Dort zu pruefen:
+  * GET /, /settings, /avatar/editor, /setup rendern korrekt
+  * Browser-Konsole zeigt KEINE CSP-Violations
+  * Setup-Wizard Geocoding liefert lat/lon (Proxy funktioniert)
+  * Alle Buttons, Selects, Slider funktionieren identisch zu vorher
