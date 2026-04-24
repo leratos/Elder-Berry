@@ -381,5 +381,38 @@ async function testService(key, msg) {
     }
 }
 
+// Phase 65 (M-4): Globales Logout-Button im Header.
+const logoutAllBtn = document.getElementById("logoutAllBtn");
+if (logoutAllBtn) {
+    logoutAllBtn.addEventListener("click", async () => {
+        const ok = confirm(
+            "Alle anderen Sessions abmelden?\n\n" +
+            "Deine aktuelle Session bleibt aktiv, aber alle anderen " +
+            "Geraete/Browser werden beim naechsten Request ausgeloggt."
+        );
+        if (!ok) return;
+        logoutAllBtn.disabled = true;
+        try {
+            const r = await fetch("/api/dashboard/logout-all", {
+                method: "POST",
+                credentials: "same-origin",
+                headers: { "Content-Type": "application/json" },
+            });
+            if (r.ok) {
+                alert("Alle anderen Sessions wurden abgemeldet.");
+            } else if (r.status === 401) {
+                alert("Login abgelaufen. Bitte neu einloggen.");
+                window.location.href = "/login";
+            } else {
+                alert("Fehler (" + r.status + ") beim Abmelden.");
+            }
+        } catch (e) {
+            alert("Netzwerkfehler: " + e);
+        } finally {
+            logoutAllBtn.disabled = false;
+        }
+    });
+}
+
 if (token) setTokenStatus("ok");
 loadAll();

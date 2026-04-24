@@ -1,11 +1,14 @@
 """Auth-Endpoints für das Dashboard (Phase 58 + Phase 59 Rate-Limiting).
 
-Stellt 4 Endpoints bereit:
+Stellt 5 Endpoints bereit:
 
-- ``POST /api/dashboard/login``      – PW prüfen, Cookie setzen
-- ``POST /api/dashboard/logout``     – Cookie löschen
+- ``POST /api/dashboard/login``       – PW prüfen, Cookie setzen
+- ``POST /api/dashboard/logout``      – Cookie löschen (nur dieser Client)
+- ``POST /api/dashboard/logout-all``  – Session-Secret rotieren -> alle
+  Sessions (auch auf anderen Geraeten) sind ungueltig. Aufrufer bekommt
+  frisches Cookie und bleibt eingeloggt. Phase 65 (M-4).
 - ``GET  /api/dashboard/auth/status`` – ist eingeloggt? PW gesetzt? Expiry?
-- ``POST /api/dashboard/password``   – PW ändern (verlangt aktuelles PW
+- ``POST /api/dashboard/password``    – PW ändern (verlangt aktuelles PW
   oder gültiges Login-Cookie)
 
 Phase 59: ``POST /api/dashboard/login`` ist mit einem ``RateLimiter``
@@ -128,6 +131,45 @@ def register_dashboard_auth_routes(
     async def logout(request: Request) -> JSONResponse:
         response = JSONResponse({"ok": True})
         response.delete_cookie(COOKIE_NAME, path="/")
+        return response
+
+    @app.post("/api/dashboard/logout-all")
+    async def logout_all(request: Request) -> JSONResponse:
+        """Rotiert das Session-Secret -- alle Cookies werden ungueltig.
+
+        Der aufrufende Client bekommt unmittelbar ein frisches Cookie
+        (mit dem neuen Secret signiert) und bleibt eingeloggt. Alle
+        anderen Geraete werden beim naechsten Request mit 401 rausgeworfen.
+
+        Nur fuer eingeloggte User. Wird nicht durch die
+        DashboardAuthMiddleware geschuetzt (der Pfad liegt ausserhalb
+        ihrer PROTECTED_PREFIXES), deshalb prueft der Endpoint das Cookie
+        selbst.
+        """
+        cookie = request.cookies.get(COOKIE_NAME)
+        try:
+            auth_manager.verify_session(cookie)
+        except InvalidSessionError:
+            return JSONResponse(
+                {"error": "Login erforderlich.", "code": "auth_required"},
+                status_code=401,
+            )
+
+        client_host = request.client.host if request.client else "unknown"
+        auth_manager.rotate_session_secret()
+
+        # Frisches Cookie fuer den aufrufenden Client (neu signiert mit
+        # dem frisch rotierten Secret). Alle anderen bestehenden Cookies
+        # tragen eine ungueltige Signatur und fallen beim naechsten
+        # Request aus der Middleware-Session-Pruefung.
+        new_cookie, exp = auth_manager.issue_session()
+        response = JSONResponse({"ok": True, "expires_at": exp})
+        _set_session_cookie(response, new_cookie, request)
+        logger.warning(
+            "Logout-all ausgeloest von %s -- alle anderen Sessions sind "
+            "jetzt ungueltig.",
+            client_host,
+        )
         return response
 
     @app.get("/api/dashboard/auth/status")

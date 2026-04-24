@@ -5161,3 +5161,130 @@ User: "Lies meine Mails und trag den Zahnarzttermin ein"
 - M-4 Globales Logout
 - M-5 Simulator 0.0.0.0 ist durch H-2 mitgeloest
 - L-1..L-4, L-6
+
+## In Arbeit: Phase 65 -- Mittlere Security-Fixes (2026-04-24)
+- Branch: feature/phase-65-medium-security
+- Ausloeser: Sicherheitsanalyse 2026-04-24, mittlere Findings (4 Stueck)
+- Reihenfolge: M-2 (klein) -> M-4 (UI) -> M-1 (Migration) -> M-3 (Lockfile)
+
+### Scope
+- M-2: Git-Command extra_args.split() durch Whitelist ersetzen
+- M-4: UI-Button "Alle Sessions abmelden" + POST-Endpoint
+- M-1: SecretStore-Masterkey aus Plaintext-Datei in OS-Keyring (keyring-lib)
+  * Cross-platform: Windows Credential Manager (DPAPI), macOS Keychain,
+    Linux Secret Service
+  * Migration: lazy beim naechsten Start, mit Verify-before-delete
+  * Fallback wenn kein Backend: bisheriges Verhalten + Warning
+- M-3: 3 Lockfiles via pip-tools (tower/rpi5/dev) + Dependabot + CI-Check
+
+### Neue Dependencies
+- keyring>=24.0  -> [project.dependencies]
+- pip-tools>=7.0 -> [project.optional-dependencies].dev
+
+- Naechster Schritt: M-2 -- git_commands.py Whitelist + tests/test_git_commands.py
+
+## Abgeschlossen: Phase 65 -- Mittlere Security-Fixes (2026-04-24)
+- Branch: feature/phase-65-medium-security
+- Vier Findings M-1..M-4 aus der Analyse 2026-04-24 umgesetzt.
+
+### M-2: Git-Command extra_args Whitelist
+- src/elder_berry/comms/commands/git_commands.py:
+  * Neu: MAX_EXTRA_ARGS=10, _GIT_LOG_ARG_PATTERNS (19 Patterns),
+    _GIT_DIFF_ARG_PATTERNS (8 Patterns), _validate_extra_args().
+  * Statt ``extra_args.split()`` -> Whitelist-Validierung pro Token.
+    Erlaubt: --oneline, --stat, --graph, -n N, --since=..., --author=...,
+    --grep=..., Commit-Hashes, HEAD/HEAD~N. Alles andere -> 400er.
+- tests/test_git_commands.py:
+  * TestValidateExtraArgsLog (19 parametrized -- allowed + blocked)
+  * TestValidateExtraArgsDiff, TestValidateExtraArgsOther, TestGitExecuteExtraArgs.
+  * Restrisiko: subprocess laeuft mit shell=False, klassisches
+    Command-Injection war ohnehin ausgeschlossen. Whitelist blockt
+    git-eigene Flags mit Schreibeffekten (--output, -o, --exec,
+    -c core.pager=...).
+
+### M-4: Globales Logout (alle Sessions abmelden)
+- Backend:
+  * src/elder_berry/web/dashboard_auth_routes.py: neuer POST
+    /api/dashboard/logout-all.
+  * Prueft Cookie selbst (der Pfad liegt ausserhalb der Middleware-
+    PROTECTED_PREFIXES), rotiert Session-Secret, gibt dem Aufrufer ein
+    frisches Cookie -> er bleibt eingeloggt, alle anderen Cookies fallen
+    beim naechsten Request mit 401.
+- UI:
+  * src/elder_berry/web/templates/settings_panel.html: Button
+    "Alle anderen Sessions abmelden" im Header.
+  * src/elder_berry/web/static/css/settings_panel.css:
+    .header-actions + .logout-all-btn Styles (rote Outline, hover-Fill).
+  * src/elder_berry/web/static/js/settings_panel.js: addEventListener
+    mit confirm()-Bestaetigung, POST, Error-Handling (401 -> /login).
+- Tests:
+  * test_dashboard_auth_routes.py::TestLogoutAll (6 Tests):
+    auth_required ohne Cookie, Rotation invalidiert alle Sessions inkl.
+    der alten, neuer Cookie funktioniert, Device-B-Szenario.
+  * test_settings_panel.py::test_logout_all_button_in_html +
+    test_logout_all_calls_correct_endpoint.
+
+### M-1: SecretStore Master-Key in OS-Keyring
+- Entscheidung: ``keyring``-Lib (cross-platform) statt pywin32 direkt.
+  Windows -> Credential Manager (DPAPI), macOS -> Keychain,
+  Linux -> Secret Service.
+- src/elder_berry/core/secret_store.py:
+  * Neue Exception ``KeyringUnavailableError``.
+  * Neuer Ctor-Param ``use_keyring: bool | None`` (None=auto, True=strict,
+    False=file-fallback).
+  * _keyring_available() probt via get_keyring() gegen _FailKeyring.
+  * _save_key_to_keyring() macht set + re-read + byte-compare; bei
+    Verify-Fehler raised ``SecretStoreError`` BEVOR die alte Datei
+    angefasst wird (no data loss guarantee).
+  * Auto-Migration: wenn ~/.elder-berry/secret.key existiert und
+    Keyring ok -> Schluessel wandert in Keyring, Datei wird nach
+    Verify geloescht, mit WARNING-Log ueber Binding an OS-User.
+- tests/test_secret_store.py:
+  * _FakeKeyring In-Memory-Klasse + fake_keyring Fixture (monkeypatch
+    auf keyring-Modul + _HAS_KEYRING + _FailKeyring).
+  * TestKeyringAvailability (5 Tests: auto-use, auto-fallback, explicit
+    false, explicit true raises, fail-backend-detected).
+  * TestKeyringMigration (5 Tests: migriert Datei, secrets bleiben lesbar
+    nach Migration, fresh install, existing keyring entry used,
+    verify-mismatch abortet Migration ohne Datei-Loeschung).
+  * Bestehende Tests: store-Fixture jetzt mit use_keyring=False, damit
+    sie im Fallback-Modus laufen und nichts am Test-System-Keyring
+    anfassen.
+- pyproject.toml: ``keyring>=24.0`` in [project.dependencies].
+
+### M-3: Dependencies-Pinning + Lockfiles + Dependabot
+- pyproject.toml: ``pip-tools>=7.0`` in [dev].
+- Zwei Lockfiles auf Windows generiert:
+  * requirements-tower.lock  (core + windows + tower = 437 Zeilen,
+    enthaelt pyautogui/pycaw/comtypes + ganzer ML-Stack).
+  * requirements-dev.lock    (core + robot + agent + dev = 156 Zeilen,
+    kleinstmoegliches Set fuer Tests/CI auf Windows-Dev).
+- Regeneration via:
+  * scripts/update-lockfiles.ps1  (Windows -> tower + dev)
+  * scripts/update-lockfiles.sh   (dev | rpi5 | all)
+- Dependabot: .github/dependabot.yml, weekly, Gruppen:
+  * "security" -> individuelle PRs fuer cryptography/bcrypt/keyring/
+    httpx/fastapi/uvicorn
+  * "non-security-minor" -> gebuendelt (minor + patch)
+  * github-actions separat monthly.
+- pyproject.toml bleibt mit ``>=``; Lockfiles reproduzieren Stand.
+- Nicht in diesem PR: requirements-rpi5.lock (muss auf RPi5 selbst
+  generiert werden, weil pip-compile Platform-abhaengig resolved und
+  keyring-Backend auf Linux andere Transitives zieht als auf Windows).
+
+### Tests
+- 4780 passed, 28 skipped, 0 failed (Laufzeit 175s).
+- Plus gegen Phase 64: +68 Tests.
+
+### Neue Dependencies
+- keyring>=24.0 (runtime, cross-platform)
+- pip-tools>=7.0 (dev only)
+Transitive (via keyring auf Windows): pywin32-ctypes, jaraco.*
+
+### Bewusst NICHT umgesetzt (follow-ups)
+- RPi5-Lockfile (siehe oben).
+- Lockfile-Enforcement im CI (koennte in Follow-up als eigener Job
+  hinzukommen: ``pip-compile --dry-run | diff requirements-*.lock``).
+- CLI-Entrypoint ``python -m elder_berry.core.secret_store --re-migrate``
+  fuer manuelle Re-Migration (aktuell nicht gebraucht; Auto-Migration
+  greift).

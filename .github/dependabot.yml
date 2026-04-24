@@ -1,0 +1,52 @@
+# Phase 65 (M-3): Automatische Dependency-Updates.
+#
+# Scope: pyproject.toml (primaere Quelle der Minimum-Versions) + GitHub
+# Actions. Die Lockfiles (requirements-*.lock) werden NICHT direkt von
+# Dependabot gepflegt, weil pip-compile-Regenerierung Platform-spezifisch
+# ist. Nach einem Dependabot-PR auf pyproject.toml entscheidet der
+# Maintainer, ob Lockfiles via scripts/update-lockfiles.* neu gebaut
+# werden muessen.
+version: 2
+updates:
+  - package-ecosystem: "pip"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "06:00"
+      timezone: "Europe/Berlin"
+    open-pull-requests-limit: 5
+    labels:
+      - "dependencies"
+    groups:
+      # Security-kritische Libs: individuelle PRs (schnelles Review).
+      security:
+        patterns:
+          - "cryptography"
+          - "bcrypt"
+          - "keyring"
+          - "httpx"
+          - "fastapi"
+          - "uvicorn"
+      # Alles andere gebuendelt nach Major/Minor.
+      non-security-minor:
+        patterns:
+          - "*"
+        exclude-patterns:
+          - "cryptography"
+          - "bcrypt"
+          - "keyring"
+          - "httpx"
+          - "fastapi"
+          - "uvicorn"
+        update-types:
+          - "minor"
+          - "patch"
+
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "monthly"
+    labels:
+      - "dependencies"
+      - "ci"
