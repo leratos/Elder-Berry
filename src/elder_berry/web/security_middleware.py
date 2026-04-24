@@ -12,6 +12,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from starlette.middleware.base import BaseHTTPMiddleware
 
+from elder_berry.web.origin_check_middleware import OriginCheckMiddleware
+
 if TYPE_CHECKING:
     from fastapi import FastAPI, Request
 
@@ -61,8 +63,11 @@ def setup_security(
     ]
     if secret_store:
         dashboard_origin = secret_store.get_or_none("dashboard_origin")
-        if dashboard_origin:
-            allowed_origins.append(dashboard_origin)
+        # Phase 64 (H-1): strict Typ-Check, damit die neue
+        # OriginCheckMiddleware nicht mit Non-Strings (z.B. MagicMock
+        # aus Tests) in urlparse crasht.
+        if isinstance(dashboard_origin, str) and dashboard_origin.strip():
+            allowed_origins.append(dashboard_origin.strip())
     app.add_middleware(
         CORSMiddleware,
         allow_origins=allowed_origins,
@@ -73,6 +78,15 @@ def setup_security(
 
     # --- Security Response Headers ---
     app.add_middleware(SecurityHeadersMiddleware)
+
+    # --- Phase 64 (H-1): CSRF-Schutz via Origin/Referer-Validierung ---
+    # Wird ZULETZT hinzugefuegt -> laeuft als erstes auf dem Request.
+    # Blockt state-changing Requests (POST/PUT/DELETE/PATCH) ohne
+    # passenden Origin-Header.
+    app.add_middleware(
+        OriginCheckMiddleware,
+        allowed_origins=allowed_origins,
+    )
 
     # --- Globaler Exception-Handler ---
     @app.exception_handler(Exception)

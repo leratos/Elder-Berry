@@ -1,10 +1,19 @@
-"""WebFetcher -- Webseiten abrufen und Klartext extrahieren."""
+"""WebFetcher -- Webseiten abrufen und Klartext extrahieren.
+
+Phase 64 (H-3): URL-Validierung via ``ensure_public_url`` blockiert SSRF-
+Versuche auf private/loopback/metadata-IPs. Aufrufer erhalten ``ValueError``
+(UnsafeUrlError-Subklasse), wenn eine URL nicht oeffentlich aufloesbar ist --
+insbesondere relevant fuer URLs aus Matrix-Nachrichten (advanced_commands
+"fasse <url> zusammen").
+"""
 from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
 
 import httpx
+
+from elder_berry.core.url_validator import ensure_public_url
 
 logger = logging.getLogger(__name__)
 
@@ -48,9 +57,12 @@ class WebFetcher:
         if not url or not url.strip():
             raise ValueError("Keine URL angegeben.")
 
-        url = url.strip()
-        if not url.startswith(("http://", "https://")):
-            raise ValueError("Ungueltige URL (muss mit http:// oder https:// beginnen).")
+        # SSRF-Schutz: blockiert http/https-only, private, loopback,
+        # link-local (169.254/16 -- AWS/Azure-Metadata), multicast.
+        # UnsafeUrlError ist ValueError-Subklasse, damit der Aufrufer
+        # (advanced_commands._cmd_web_summary) weiterhin mit einem
+        # einzigen `except ValueError` reagieren kann.
+        url = ensure_public_url(url)
 
         html = self._download(url)
         title, text = self._extract(html, url)

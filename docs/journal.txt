@@ -5047,3 +5047,117 @@ User: "Lies meine Mails und trag den Zahnarzttermin ein"
   * X-Frame-Options, X-Content-Type-Options gesetzt
   * app.state.standalone / compat_mode stabil
 - Tests: 39/39 gruen (Standalone + Geocode + Security).
+
+## In Arbeit: Phase 64 -- Security-Fixes H-1/H-2/H-3 (2026-04-24)
+- Branch: feature/phase-64-security-fixes
+- Ausloeser: Sicherheitsanalyse 2026-04-24 (siehe Chat); 3 "Hohe" Findings:
+  * H-1: Kein CSRF-Schutz auf state-changing Dashboard-Routen
+         (nur SameSite=lax, kein Origin-Check)
+  * H-2: RobotServer per Default ohne Token --> Harmony, /system/update,
+         Motoren im LAN offen, nur Warning statt Hard-Fail
+  * H-3: SSRF-Schutz nur via startswith("http://") --> private IPs,
+         loopback, cloud-metadata (169.254.169.254) nicht blockiert
+- Naechster Schritt: H-3 zuerst (kleinster Blast Radius) --
+  src/elder_berry/core/url_validator.py + tests/test_url_validator.py,
+  dann web_fetcher + secrets_api umstellen.
+
+## Abgeschlossen: Phase 64 -- Security-Fixes H-1/H-2/H-3 (2026-04-24)
+- Branch: feature/phase-64-security-fixes
+- Ziel: 3 "Hohe" Findings aus der Sicherheitsanalyse 2026-04-24
+  umsetzen. Kein Scope-Creep; kritische (0) und mittlere Findings
+  bleiben fuer spaeter.
+
+### H-3: SSRF-Schutz fuer WebFetcher (zuerst, kleinster Blast Radius)
+- Neu: src/elder_berry/core/url_validator.py
+  * ensure_public_url() + UnsafeUrlError(ValueError)
+  * Blockt: nicht-http(s)-Schemata, private/loopback/link-local/
+    multicast/reserved/unspecified-IPs, IPv4-mapped IPv6 auf privat,
+    DNS-Resolver-Fehler, leere Addrinfo.
+  * TOCTOU-Hinweis dokumentiert (pragmatisch akzeptiert).
+  * allow_loopback=True als Opt-in fuer Tests/Dev.
+- Neu: tests/test_url_validator.py (28 Tests)
+- Geaendert: src/elder_berry/tools/web_fetcher.py -- ensure_public_url
+  ersetzt den startswith("http")-Check.
+- Geaendert: tests/test_web_fetcher.py
+  * autouse-Fixture _patch_dns_to_public mockt socket.getaddrinfo
+    auf 93.184.216.34 (public), damit bestehende Tests offline-CI-
+    tauglich bleiben.
+  * test_fetch_invalid_url_raises_value_error: match="Schema" statt
+    "Ungueltige URL" (UnsafeUrlError ist ValueError-Subklasse).
+  * Neue Klasse TestWebFetcherSSRFProtection: 7 Tests (loopback,
+    AWS-Metadata, 10/8, 192.168/16, file://, gopher://, DNS-rebinding).
+- Scope bewusst eingegrenzt: secrets_api.py NICHT angefasst --
+  nextcloud_url / stirling_pdf_url sind legitim self-hosted (LAN).
+- Aufrufkette: Matrix-User schickt "fasse http://169.254.169.254
+  zusammen" --> advanced_commands._cmd_web_summary --> WebFetcher.fetch
+  --> ensure_public_url --> UnsafeUrlError --> ValueError an User.
+
+### H-1: CSRF-Schutz per SameSite=strict + OriginCheckMiddleware
+- Neu: src/elder_berry/web/origin_check_middleware.py
+  * Prueft Origin-Header (Referer als Fallback) gegen allowed_origins
+    fuer POST/PUT/DELETE/PATCH. GET/HEAD/OPTIONS passieren durch.
+  * Normalisierung: scheme://host[:port], urlparse lowercased scheme,
+    trailing slashes entfernt.
+- Neu: tests/test_origin_check_middleware.py (19 Tests):
+  * Safe methods pass, foreign origin blocks, referer fallback,
+    multi-origin, empty allowed-list blocks everything.
+- Neu: tests/conftest.py
+  * autouse-Fixture _default_origin_for_testclient patcht
+    TestClient.request so, dass state-changing Requests automatisch
+    einen "http://localhost:8090" Origin bekommen.
+  * Marker no_default_origin als Opt-out (fuer
+    test_origin_check_middleware selbst, die das "ohne Origin"-
+    Verhalten pruefen muss).
+  * markers-Eintrag via pytest_configure registriert.
+- Geaendert: src/elder_berry/web/security_middleware.py
+  * OriginCheckMiddleware wird ZULETZT hinzugefuegt (laeuft als
+    erstes auf dem Request).
+  * dashboard_origin aus SecretStore: jetzt isinstance(str) +
+    strip()-Check, damit MagicMock-SecretStores in Tests urlparse
+    nicht crashen.
+- Geaendert: src/elder_berry/web/dashboard_auth_routes.py +
+  dashboard_auth_middleware.py: samesite="lax" --> "strict" (beide
+  set_cookie-Aufrufe fuer die Session).
+- Bekannter Side-Effect: Bookmarks/externe Links aufs Dashboard
+  triggern erneuten Login (strict-Cookie fehlt bei Cross-Site-Nav).
+  Fuer internes Tool vertretbar -- Trade-off wurde im Plan
+  ausdruecklich abgenickt.
+
+### H-2: Hard-Fail statt Warning wenn Token fehlt und Bind != Loopback
+- Geaendert: scripts/start_rpi5.py
+  * Neue Helpers _is_loopback_host() und _enforce_robot_token_policy().
+  * Policy: Token gesetzt --> ok. Kein Token + Loopback --> Warning.
+    Kein Token + non-Loopback --> logger.error + sys.exit(2).
+  * Exit-Code 2, damit systemd den Unterschied zu regulaeren Fehlern
+    (1) sieht. Log-Meldung gibt konkrete Fix-Hinweise
+    (ELDER_BERRY_ROBOT_TOKEN setzen ODER --host 127.0.0.1).
+  * Aufruf direkt nach _resolve_robot_token(), VOR Hardware-Init.
+- Geaendert: src/elder_berry/robot/simulator.py
+  * create_simulator: Default-Host von 0.0.0.0 --> 127.0.0.1
+  * __main__: argparse mit --bind (default 127.0.0.1) und --port.
+    Warnung wenn --bind 0.0.0.0 explizit gesetzt ist.
+- Geaendert: tests/test_start_rpi5_token.py (+20 Tests)
+  * TestIsLoopbackHost: 11 Tests (localhost, 127.x/8, ::1, [::1],
+    0.0.0.0, ::, LAN, public, garbage).
+  * TestEnforceRobotTokenPolicy: 9 Tests (token+public ok,
+    no-token+loopback warns, no-token+public exits(2), fix-hint
+    im Log, empty-token = no-token).
+- RobotServer-Klasse selbst NICHT geaendert -- die bleibt test-/dev-
+  freundlich, Policy-Enforcement ist in den Startup-Scripts, wo auch
+  der Bind-Host bekannt ist.
+
+### Tests
+- 4712 passed, 28 skipped, 0 failed (vorher 4693 -- 19 Netto-Anstieg
+  durch die drei neuen Testklassen, die 20 vorhandenen Tests brauchten
+  teilweise Origin-Header-Anpassung, was die conftest.py-Fixture
+  transparent erledigt).
+- Laufzeit der vollen Suite: 169s.
+
+### Bewusst NICHT umgesetzt (bleiben offen)
+- M-1 SecretStore-Key Plaintext (DPAPI-Migration waere eigener Scope)
+- M-2 Git-Command extra_args.split() (niedriges Restrisiko)
+- M-3 Dependencies-Pinning (M-2/M-3 passen eher in ein
+  Maintenance-Ticket)
+- M-4 Globales Logout
+- M-5 Simulator 0.0.0.0 ist durch H-2 mitgeloest
+- L-1..L-4, L-6
