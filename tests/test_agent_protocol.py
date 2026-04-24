@@ -1,6 +1,5 @@
 """Tests für Agent-Kommunikation: Protocol, Server, Client."""
 import io
-import struct
 import wave
 from dataclasses import asdict
 from unittest.mock import MagicMock, patch
@@ -425,7 +424,6 @@ class TestAgentClient:
         mock_http.close.assert_called_once()
 
     def test_health_success(self):
-        from elder_berry.agent.client import AgentClient
         mock_http = MagicMock()
         mock_resp = MagicMock()
         mock_resp.json.return_value = {

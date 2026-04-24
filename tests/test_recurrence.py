@@ -1,5 +1,5 @@
 """Tests: recurrence – Berechnung und Parsing wiederkehrender Erinnerungen."""
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timezone
 
 import pytest
 from zoneinfo import ZoneInfo

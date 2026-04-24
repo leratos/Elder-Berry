@@ -12,7 +12,6 @@ from elder_berry.tools.nextcloud_files import (
     NextcloudAuthError,
     NextcloudConnectionError,
     NextcloudError,
-    NextcloudFile,
     NextcloudFilesClient,
 )
 

@@ -1,13 +1,11 @@
 """Tests: TTSRouter – TTS-Routing mit ElevenLabs + Tower-Fallback."""
-import asyncio
-from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import httpx
 import pytest
 
 from elder_berry.core.tts_router import TTSRouter, TTSUnavailableError
-from elder_berry.tts.base import TTSEngine, VoiceInfo
+from elder_berry.tts.base import TTSEngine
 from elder_berry.tools.elevenlabs_client import ElevenLabsError
 
 

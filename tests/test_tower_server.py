@@ -4,10 +4,10 @@ from __future__ import annotations
 import io
 from contextlib import asynccontextmanager
 from pathlib import Path
-from unittest.mock import MagicMock, patch, AsyncMock
+from unittest.mock import MagicMock, patch
 
 import pytest
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from fastapi.testclient import TestClient
 
 from tower.tower_server import engines, _Engines, _dispatch_action
@@ -340,7 +340,6 @@ class TestScreenshot:
     def test_screenshot_happy_path(self, mock_mss_import, client):
         """Screenshot-Endpoint mit gemocktem mss."""
         # Wir patchen den Import im screenshot-Endpoint
-        import importlib
         mock_mss = MagicMock()
         mock_sct = MagicMock()
         mock_sct.monitors = [
@@ -410,7 +409,7 @@ class TestEngines:
 class TestDispatchAction:
     def test_unknown_action_raises(self):
         ctrl = MagicMock()
-        with pytest.raises(Exception):
+        with pytest.raises(HTTPException):
             _dispatch_action(ctrl, "delete_system32", {})
 
     def test_returns_bool_result(self):

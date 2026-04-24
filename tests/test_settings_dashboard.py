@@ -2,7 +2,7 @@
 
 import pytest
 
-from elder_berry.core.audio_router import AudioOutputMode, AudioRouter
+from elder_berry.core.audio_router import AudioRouter
 
 try:
     from fastapi.testclient import TestClient

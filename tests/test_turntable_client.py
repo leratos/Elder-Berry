@@ -1,11 +1,8 @@
 """Tests fuer RobotClient Drehteller-Methoden mit MockTransport."""
-import json
 
 import httpx
-import pytest
 
 from elder_berry.robot.client import RobotClient
-from elder_berry.robot.protocol import ApiResponse
 
 
 def _mock_transport(responses: dict):

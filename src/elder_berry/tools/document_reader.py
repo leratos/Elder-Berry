@@ -110,7 +110,7 @@ class DocumentReader:
             raise RuntimeError(
                 "pymupdf ist nicht installiert. "
                 "Installiere es mit: pip install pymupdf"
-            )
+            ) from None
 
         try:
             doc = fitz.open(str(path))

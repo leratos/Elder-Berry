@@ -1,6 +1,6 @@
 """Tests für TaskChainRunner – Multi-Step Task Chaining."""
 import json
-from unittest.mock import MagicMock, call
+from unittest.mock import MagicMock
 
 import pytest
 

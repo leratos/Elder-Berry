@@ -354,7 +354,7 @@ class WeatherCommandHandler(CommandHandler):
             )
 
         try:
-            from datetime import timedelta, timezone
+            from datetime import timezone
             match = TIMER_PATTERN.match(raw_text.strip().lower())
             if not match:
                 return CommandResult(
@@ -524,10 +524,8 @@ class WeatherCommandHandler(CommandHandler):
             )
 
         try:
-            from datetime import date as date_cls, timezone
             from zoneinfo import ZoneInfo
             from elder_berry.tools.recurrence import (
-                format_recurrence,
                 parse_recurrence,
             )
 

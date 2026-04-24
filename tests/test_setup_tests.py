@@ -2,7 +2,6 @@
 import asyncio
 from unittest.mock import AsyncMock, MagicMock, patch
 
-import pytest
 
 from elder_berry.web.setup_tests import EMAIL_PROVIDERS, SetupTests
 

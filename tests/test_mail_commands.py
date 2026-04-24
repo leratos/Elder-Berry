@@ -4,8 +4,7 @@ Ergänzt test_mail_reply_commands.py und test_mail_delete_commands.py
 um Tests für: mails, mail_search, mail_attachment, mail_by_id,
 plus Interface und Pattern-Matching.
 """
-from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 import pytest
 

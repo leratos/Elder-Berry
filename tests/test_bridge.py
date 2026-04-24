@@ -22,7 +22,6 @@ import time
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
-import pytest
 
 from elder_berry.comms.bridge import MatrixBridge
 from elder_berry.comms.message_channel import IncomingMessage, MessageChannel

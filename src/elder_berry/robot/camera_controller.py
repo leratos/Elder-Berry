@@ -77,9 +77,9 @@ class RPi5Camera(CameraController):
             raise RuntimeError(
                 "picamera2 nicht installiert. "
                 "Installiere es mit: sudo apt install python3-picamera2"
-            )
+            ) from None
         except Exception as e:
-            raise RuntimeError(f"Kamera-Initialisierung fehlgeschlagen: {e}")
+            raise RuntimeError(f"Kamera-Initialisierung fehlgeschlagen: {e}") from e
 
     def is_available(self) -> bool:
         """Prüft ob picamera2 importierbar und Kamera erkannt."""

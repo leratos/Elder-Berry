@@ -102,7 +102,7 @@ def main() -> None:
     print("=" * 60)
     print("Zusammenfassung")
     print("=" * 60)
-    for emotion, original, transcribed, overlap in results:
+    for emotion, _original, transcribed, overlap in results:
         status = "PASS" if overlap >= 50 else "FAIL"
         print(f"  [{status}] {emotion:12s} | Überlappung: {overlap:5.1f}% | \"{transcribed[:50]}\"")
 

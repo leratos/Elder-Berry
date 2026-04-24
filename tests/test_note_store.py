@@ -2,10 +2,9 @@
 from __future__ import annotations
 
 import pytest
-from datetime import datetime, timezone
-from pathlib import Path
+from datetime import datetime
 
-from elder_berry.tools.note_store import Note, NoteStore
+from elder_berry.tools.note_store import NoteStore
 
 USER_A = "@alice:matrix.org"
 USER_B = "@bob:matrix.org"

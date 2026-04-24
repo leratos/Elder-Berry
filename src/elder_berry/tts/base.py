@@ -34,14 +34,14 @@ class TTSEngine(ABC):
         """
         ...
 
-    def load(self) -> None:
+    def load(self) -> None:  # noqa: B027
         """Lädt das TTS-Modell in den Speicher (GPU/RAM).
 
         Standard-Implementierung: No-Op. Wird von Engines überschrieben
         die explizites VRAM-Management benötigen (z.B. CoquiTTSEngine).
         """
 
-    def unload(self) -> None:
+    def unload(self) -> None:  # noqa: B027
         """Entlädt das TTS-Modell aus dem Speicher.
 
         Standard-Implementierung: No-Op. Wird von Engines überschrieben

@@ -21,7 +21,6 @@ from elder_berry.comms.commands.base import CommandHandler, CommandResult, user_
 from elder_berry.comms.commands.cmd_utils import CmdResult, run_cmd
 
 if TYPE_CHECKING:
-    from elder_berry.core.secret_store import SecretStore
     from elder_berry.core.tower_agent import TowerAgent
     from elder_berry.robot.client import RobotClient
 

@@ -1,6 +1,5 @@
 """Tests: AdvancedCommandHandler – Computer Use, Web Search, Document Summary, Audio."""
-from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 import pytest
 

@@ -6,12 +6,10 @@ Tests für:
 3. Retry-Logik: LLM-Korrektur bei Parse-Fehler
 """
 import asyncio
-from pathlib import Path
-from unittest.mock import MagicMock, AsyncMock, patch
+from unittest.mock import MagicMock, AsyncMock
 
 import pytest
 
-from elder_berry.comms.commands.base import CommandHandler, CommandResult
 from elder_berry.comms.remote_commands import RemoteCommandHandler
 
 
@@ -347,7 +345,6 @@ class TestRetryLogic:
     def _make_bridge(self):
         """Erstellt eine MatrixBridge mit Mocks für Tests."""
         from elder_berry.comms.bridge import MatrixBridge
-        from elder_berry.comms.message_channel import IncomingMessage
 
         channel = MagicMock()
         channel.send_text = AsyncMock()

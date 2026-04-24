@@ -195,7 +195,7 @@ class LayeredSpriteRenderer(AvatarRenderer):
         subdirs = {"body": "body", "eye": "eye", "mouth": "mouth", "effect": "effect"}
         total = 0
 
-        for subdir_name, subdir_key in subdirs.items():
+        for subdir_name, _subdir_key in subdirs.items():
             subdir = self._assets_dir / subdir_name
             if not subdir.exists():
                 logger.warning("Assets-Unterordner nicht gefunden: %s", subdir)

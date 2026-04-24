@@ -1,5 +1,4 @@
 """Tests: GitCommandHandler – Git-Befehle via Matrix (Whitelist)."""
-from pathlib import Path
 from unittest.mock import MagicMock, patch
 import subprocess
 
@@ -7,7 +6,6 @@ import pytest
 
 from elder_berry.comms.commands.git_commands import (
     GIT_PATTERN,
-    GIT_WHITELIST,
     GitCommandHandler,
 )
 

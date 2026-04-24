@@ -1,13 +1,11 @@
 """Tests für CameraCommandHandler – Parsing und Ausführung."""
 from __future__ import annotations
 
-from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 import pytest
 
 from elder_berry.comms.commands.camera_commands import (
-    CAMERA_DESCRIBE_PATTERN,
     CameraCommandHandler,
 )
 from elder_berry.comms.remote_commands import RemoteCommandHandler

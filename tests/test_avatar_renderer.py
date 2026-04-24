@@ -1,6 +1,5 @@
 """Tests für AvatarRenderer ABC und SpriteRenderer – PyGame gemockt."""
-from pathlib import Path
-from unittest.mock import MagicMock, patch, PropertyMock
+from unittest.mock import MagicMock, patch
 
 import pytest
 

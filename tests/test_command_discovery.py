@@ -1,7 +1,6 @@
 """Tests für Phase 51.2 (Did-you-mean) und 51.3 (Füllwort-Stripping)."""
 from __future__ import annotations
 
-import pytest
 
 from elder_berry.comms.remote_commands import RemoteCommandHandler
 

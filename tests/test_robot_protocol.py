@@ -1,9 +1,6 @@
 """Tests für Robot-Kommunikation: Protocol, Server, Client, Simulator."""
-import threading
-import time
 from dataclasses import asdict
 
-import httpx
 import pytest
 
 from elder_berry.robot.protocol import (
@@ -22,7 +19,6 @@ from elder_berry.robot.protocol import (
 # Server + Simulator brauchen fastapi (optional dependency)
 fastapi = pytest.importorskip("fastapi", reason="fastapi nicht installiert")
 
-from elder_berry.robot.server import RobotServer  # noqa: E402
 from elder_berry.robot.simulator import (  # noqa: E402
     SimulatedAvatar,
     SimulatedMotors,

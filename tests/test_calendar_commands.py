@@ -1,6 +1,6 @@
 """Tests: CalendarCommandHandler – Termin CRUD, Pattern-Matching."""
 from datetime import datetime, date, timedelta
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 import pytest
 

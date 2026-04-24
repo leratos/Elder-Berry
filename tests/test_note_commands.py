@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import pytest
-from pathlib import Path
 
 from elder_berry.tools.note_store import NoteStore
 from elder_berry.comms.commands.note_commands import (

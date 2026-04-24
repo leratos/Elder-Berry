@@ -1,7 +1,7 @@
 """Tests: Assistant + AgentClient Integration."""
 import json
 from pathlib import Path
-from unittest.mock import MagicMock, call, patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -10,7 +10,7 @@ from elder_berry.actions.db import ActionsDB
 from elder_berry.agent.client import AgentClient
 from elder_berry.agent.protocol import ActionResult, ApiResponse
 from elder_berry.character.saleria import SaleriaEngine
-from elder_berry.core.assistant import Assistant, AssistantResult
+from elder_berry.core.assistant import Assistant
 from elder_berry.llm.base import LLMClient
 from elder_berry.tts.base import TTSEngine
 

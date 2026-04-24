@@ -7,7 +7,7 @@ import pytest
 # Server/Simulator brauchen fastapi (optional dependency)
 fastapi = pytest.importorskip("fastapi", reason="fastapi nicht installiert")
 
-from elder_berry.robot.camera_controller import CameraController, RPi5Camera  # noqa: E402
+from elder_berry.robot.camera_controller import RPi5Camera  # noqa: E402
 from elder_berry.robot.simulator import (  # noqa: E402
     SimulatedAvatar,
     SimulatedCamera,
@@ -162,7 +162,6 @@ class TestRPi5CameraIsAvailable:
 
 class TestRPi5CameraCaptureJpeg:
     def test_capture_returns_jpeg_bytes(self) -> None:
-        import io
         picamera2_mock, cam_instance = _make_picamera2_mock()
 
         # Mock PIL.Image so capture_jpeg works without Pillow installed

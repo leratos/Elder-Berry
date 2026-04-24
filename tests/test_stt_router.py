@@ -1,6 +1,5 @@
 """Tests: STTRouter – STT-Routing mit Cloud-STT + Tower-Fallback."""
-from pathlib import Path
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock
 
 import pytest
 

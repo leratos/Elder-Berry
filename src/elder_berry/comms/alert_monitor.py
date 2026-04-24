@@ -18,7 +18,6 @@ Verwendung:
 """
 from __future__ import annotations
 
-import asyncio
 import logging
 import threading
 import time
@@ -138,7 +137,7 @@ class AlertMonitor:
             return
 
         try:
-            import psutil
+            import psutil  # noqa: F401
             running = self._get_running_process_names()
             for proc_name in self._config.watch_processes:
                 if proc_name.lower() in running:
@@ -187,7 +186,7 @@ class AlertMonitor:
             return
 
         try:
-            import psutil
+            import psutil  # noqa: F401
         except ImportError:
             return
 

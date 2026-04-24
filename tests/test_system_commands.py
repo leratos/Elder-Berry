@@ -6,7 +6,6 @@ import pytest
 
 from elder_berry.comms.commands.system_commands import (
     AVATAR_EMOTION_PATTERN,
-    AVATAR_EMOTIONS,
     MEDIA_KEYS,
     VOLUME_PATTERN,
     SystemCommandHandler,

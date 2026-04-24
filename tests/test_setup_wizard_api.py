@@ -1,5 +1,5 @@
 """Tests: Setup-Wizard API – FastAPI-Endpoints."""
-from unittest.mock import MagicMock, patch, AsyncMock
+from unittest.mock import patch
 
 import pytest
 from fastapi import FastAPI
@@ -7,7 +7,6 @@ from fastapi.testclient import TestClient
 
 from elder_berry.web.setup_wizard import (
     SETUP_COMPLETE_KEY,
-    WIZARD_STEPS,
     register_setup_wizard_routes,
 )
 

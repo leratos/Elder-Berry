@@ -18,7 +18,6 @@ from __future__ import annotations
 
 import asyncio
 import logging
-import time
 from pathlib import Path
 from typing import Any
 
@@ -26,16 +25,13 @@ import aiofiles
 from nio import (
     AsyncClient,
     DownloadError,
-    DownloadResponse,
     JoinError,
     LoginError,
-    LoginResponse,
     RoomMessageAudio,
     RoomMessageFile,
     RoomMessageText,
     RoomSendError,
     UploadError,
-    UploadResponse,
 )
 
 from elder_berry.comms.message_channel import (

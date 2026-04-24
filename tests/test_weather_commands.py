@@ -1,6 +1,5 @@
 """Tests: WeatherCommandHandler – Patterns für wiederkehrende Erinnerungen."""
 from datetime import datetime, timezone, timedelta
-from pathlib import Path
 from unittest.mock import MagicMock
 
 import pytest

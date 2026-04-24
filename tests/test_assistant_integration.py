@@ -7,7 +7,7 @@ import pytest
 from elder_berry.actions.base import ActionController
 from elder_berry.actions.db import ActionsDB
 from elder_berry.avatar.base import AvatarRenderer
-from elder_berry.character.base import CharacterEngine, Emotion
+from elder_berry.character.base import Emotion
 from elder_berry.character.saleria import SaleriaEngine
 from elder_berry.core.assistant import Assistant, AssistantResult
 from elder_berry.llm.base import LLMClient

@@ -24,7 +24,7 @@ import base64
 import logging
 import time as _time
 from dataclasses import dataclass
-from datetime import datetime as _dt, timezone, timedelta
+from datetime import datetime as _dt, timezone
 from typing import TYPE_CHECKING, Any
 from urllib.parse import urlparse
 
@@ -193,7 +193,7 @@ class AlexaRequestVerifier:
             )
             dns_names = san_ext.value.get_values_for_type(cx509.DNSName)
         except cx509.ExtensionNotFound:
-            raise AlexaVerificationError("Zertifikat enthält keine SAN-Extension")
+            raise AlexaVerificationError("Zertifikat enthält keine SAN-Extension") from None
 
         if _CERT_ALEXA_SAN not in dns_names:
             raise AlexaVerificationError(

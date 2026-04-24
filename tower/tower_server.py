@@ -15,7 +15,6 @@ Starten:
 """
 from __future__ import annotations
 
-import io
 import logging
 import os
 import secrets as _secrets
@@ -396,7 +395,7 @@ async def avatar(emotion: str = "neutral"):
         raise HTTPException(
             status_code=503,
             detail="Avatar-Renderer nicht verfügbar (pygame fehlt)",
-        )
+        ) from None
 
     try:
         emo = Emotion(emotion)
@@ -543,14 +542,14 @@ async def set_monitor(body: dict | None = None):
     try:
         index = int(body["index"])
     except (ValueError, TypeError):
-        raise HTTPException(status_code=400, detail="Ungültiger Monitor-Index.")
+        raise HTTPException(status_code=400, detail="Ungültiger Monitor-Index.") from None
 
     try:
         import mss
         with mss.mss() as sct:
             valid = set(range(1, len(sct.monitors)))
     except ImportError:
-        raise HTTPException(status_code=503, detail="mss nicht installiert.")
+        raise HTTPException(status_code=503, detail="mss nicht installiert.") from None
 
     if index not in valid:
         raise HTTPException(
@@ -573,7 +572,7 @@ async def screenshot():
         raise HTTPException(
             status_code=503,
             detail="mss nicht installiert (pip install mss)",
-        )
+        ) from None
 
     try:
         with mss.mss() as sct:

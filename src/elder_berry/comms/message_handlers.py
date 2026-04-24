@@ -27,7 +27,6 @@ if TYPE_CHECKING:
     from elder_berry.comms.message_channel import IncomingMessage, MessageChannel
     from elder_berry.comms.pending_confirmation import PendingConfirmationStore
     from elder_berry.comms.remote_commands import RemoteCommandHandler
-    from elder_berry.comms.restart_manager import perform_restart
     from elder_berry.comms.scheduler_manager import SchedulerManager
     from elder_berry.core.assistant import Assistant
     from elder_berry.core.task_chain import TaskChainRunner

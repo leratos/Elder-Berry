@@ -19,7 +19,7 @@ from __future__ import annotations
 import json
 import logging
 import re
-from datetime import date, datetime
+from datetime import date
 from typing import TYPE_CHECKING
 
 from elder_berry.comms.commands.base import CommandHandler, CommandResult

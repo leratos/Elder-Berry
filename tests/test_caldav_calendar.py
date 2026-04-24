@@ -1,8 +1,8 @@
 """Tests für CalDAVCalendarClient – CalDAV komplett gemockt."""
 from __future__ import annotations
 
-from datetime import date, datetime, timedelta, timezone
-from unittest.mock import MagicMock, patch, PropertyMock
+from datetime import datetime, timedelta, timezone
+from unittest.mock import MagicMock, patch
 
 import pytest
 

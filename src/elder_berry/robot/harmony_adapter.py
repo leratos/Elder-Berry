@@ -61,7 +61,7 @@ class HarmonyAdapter:
             return True
 
         try:
-            from aioharmony.harmonyapi import HarmonyAPI, SendCommandDevice
+            from aioharmony.harmonyapi import HarmonyAPI
 
             client = HarmonyAPI(self.hub_ip)
             connected = await client.connect()

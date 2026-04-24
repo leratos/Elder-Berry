@@ -1,1 +1,1 @@
-from .info import SystemMonitor
+from .info import SystemMonitor as SystemMonitor

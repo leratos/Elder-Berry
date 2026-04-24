@@ -407,8 +407,6 @@ class GoogleCalendarClient:
     def _get_local_timezone() -> str:
         """Ermittelt den lokalen Timezone-Namen."""
         try:
-            from zoneinfo import ZoneInfo
-            import time
             # Windows: tzname gibt z.B. ('Mitteleuropäische Zeit', 'Mitteleuropäische Sommerzeit')
             # Wir brauchen den IANA-Namen
             local_tz = datetime.now().astimezone().tzinfo

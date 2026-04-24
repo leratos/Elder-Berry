@@ -1,9 +1,7 @@
 """FasterWhisperEngine – lokale STT via faster-whisper (GPU-beschleunigt)."""
 from __future__ import annotations
 
-import io
 import logging
-import struct
 import tempfile
 import wave
 from pathlib import Path

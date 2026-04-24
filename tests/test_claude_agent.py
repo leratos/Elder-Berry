@@ -5,15 +5,12 @@ Alle Tests Mock-basiert (kein echter API-Call).
 from __future__ import annotations
 
 import json
-from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
 
 from elder_berry.comms.claude_agent import (
     ALLOWED_ACTIONS,
-    APPENDABLE_FILES,
-    WRITABLE_DIRS,
     AgentResult,
     ClaudeAgent,
 )

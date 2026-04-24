@@ -1,7 +1,6 @@
 """Tests für CoquiTTSEngine – Coqui TTS und Audio-Playback gemockt."""
-import tempfile
 from pathlib import Path
-from unittest.mock import MagicMock, patch, PropertyMock
+from unittest.mock import MagicMock, patch
 
 import pytest
 

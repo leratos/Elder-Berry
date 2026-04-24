@@ -32,7 +32,6 @@ from fastapi.responses import HTMLResponse, JSONResponse
 
 # Re-Exports für Rückwärtskompatibilität (Tests importieren diese von hier)
 from elder_berry.web.secrets_api import (
-    SECRET_REGISTRY,
     SecretRegistryEntry,
     _REGISTRY_BY_KEY,
     validate_secret,

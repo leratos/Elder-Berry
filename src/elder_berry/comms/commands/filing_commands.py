@@ -13,7 +13,6 @@ from typing import TYPE_CHECKING
 
 from elder_berry.comms.commands.base import CommandHandler, CommandResult
 from elder_berry.comms.pending_confirmation import PendingAction
-from elder_berry.tools.document_classifier import VALID_CATEGORIES
 
 if TYPE_CHECKING:
     from elder_berry.comms.pending_confirmation import PendingConfirmationStore

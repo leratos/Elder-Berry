@@ -240,7 +240,6 @@ class TestDownload:
 
     def test_download_filename_path_traversal_sanitized(self, handler, tmp_path):
         """Path-Traversal im URL-Dateinamen wird bereinigt."""
-        import httpx
         from unittest.mock import MagicMock, patch as _patch
 
         # URL mit encoded path-traversal im Dateinamen
@@ -272,7 +271,6 @@ class TestDownload:
         # Auf Windows würde %5C einen Backslash erzeugen
         url = "https://example.com/files/..%5C..%5C.bashrc"
 
-        import httpx
         from unittest.mock import MagicMock, patch as _patch
 
         mock_response = MagicMock()

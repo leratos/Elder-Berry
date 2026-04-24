@@ -1,7 +1,5 @@
 """Tests: RemoteCommandHandler – Direkte Befehle via Matrix."""
-import asyncio
 import subprocess
-import time
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -9,9 +7,7 @@ import pytest
 
 from elder_berry.comms.commands.advanced_commands import (
     AUDIO_LOCAL_PATTERN,
-    COMPUTER_USE_PATTERN,
     DOCUMENT_SUMMARY_PATTERN,
-    WEB_SEARCH_PATTERN,
 )
 from elder_berry.comms.commands.base import CommandResult
 from elder_berry.comms.commands.file_commands import (
@@ -24,13 +20,10 @@ from elder_berry.comms.commands.docker_commands import DOCKER_PATTERN
 from elder_berry.comms.commands.git_commands import GIT_PATTERN
 from elder_berry.comms.commands.process_commands import (
     KILL_PROCESS_PATTERN,
-    KILL_WHITELIST,
     START_PROCESS_PATTERN,
-    START_WHITELIST,
 )
 from elder_berry.comms.commands.system_commands import (
     AVATAR_EMOTION_PATTERN,
-    AVATAR_EMOTIONS,
     MEDIA_KEYS,
     VOLUME_PATTERN,
 )
@@ -1755,8 +1748,6 @@ class TestTerminDeleteCommand:
 
     def test_termine_stores_last_events(self):
         """termine-Command speichert Events für späteres Löschen."""
-        from elder_berry.tools.google_calendar import CalendarEvent
-        from datetime import datetime
 
         mock_cal = MagicMock()
         events = self._make_events(2)

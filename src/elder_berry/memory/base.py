@@ -5,7 +5,6 @@ import uuid
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
-from typing import Sequence
 
 
 @dataclass(frozen=True)

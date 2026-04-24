@@ -1,6 +1,5 @@
 """Tests: SecretStore – Verschlüsselte Credential-Verwaltung."""
 import json
-from pathlib import Path
 
 import pytest
 from cryptography.fernet import Fernet

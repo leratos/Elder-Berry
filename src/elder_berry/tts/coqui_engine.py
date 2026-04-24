@@ -287,7 +287,6 @@ class CoquiTTSEngine(TTSEngine):
     ) -> None:
         """Generiert pro Satz ein WAV und fügt sie zusammen."""
         import wave
-        import struct
 
         parts: list[Path] = []
         try:
@@ -378,7 +377,7 @@ class CoquiTTSEngine(TTSEngine):
     def get_voices(self) -> list[VoiceInfo]:
         """Gibt verfügbare Voice-Samples als VoiceInfo zurück."""
         voices = []
-        for emotion_name, path in sorted(self._voice_map.items()):
+        for emotion_name, _path in sorted(self._voice_map.items()):
             voices.append(VoiceInfo(
                 id=emotion_name,
                 name=f"Saleria ({emotion_name})",

@@ -2,12 +2,12 @@
 from __future__ import annotations
 
 import json
-from datetime import date, timedelta
+from datetime import date
 from pathlib import Path
 
 import pytest
 
-from elder_berry.tools.contact_store import Contact, ContactStore
+from elder_berry.tools.contact_store import ContactStore
 
 USER = "@test:matrix.org"
 USER_B = "@other:matrix.org"

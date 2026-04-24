@@ -1,6 +1,5 @@
 """Tests für user_friendly_error() und not_configured() aus base.py."""
 
-import pytest
 
 from elder_berry.comms.commands.base import (
     SETUP_STEPS,
