@@ -4965,3 +4965,19 @@ User: "Lies meine Mails und trag den Zahnarzttermin ein"
   documents,nextcloud,web,harmony
 - Tests: 4615 bestanden, 28 skipped -- keine Regression
 - Commits: 05b5705 (.gitattributes), 16decd6 (renormalize), d370cc4 (ruff+CI)
+
+## In Arbeit: Phase 63 -- CSP-Hardening (unsafe-inline entfernen) (2026-04-24)
+- Branch: feature/phase-63-csp-hardening
+- Konzept: docs/concepts/security-h2-csp-unsafe-inline.md
+- Ziel: script-src 'self' + style-src 'self' ohne 'unsafe-inline', connect-src 'self'
+- Geplante Schritte:
+  1. StaticFiles-Mount + web/static/{css,js}/-Verzeichnisse
+  2. Negativ-Test (unsafe-inline not in CSP) -- TDD, rot
+  3. settings_panel.html (Pilot, nur script/style-Split)
+  4. audio_dashboard.html (7 Handler + 7 inline-styles)
+  5. avatar_editor.html (5 Handler + 5 inline-styles, data:-URI pruefen)
+  6a. /api/geocode Proxy fuer Nominatim (ersetzt externen Browser-Call)
+  6b. setup_wizard.html (25 Handler + 19 inline-styles)
+  7. CSP in security_middleware.py verschaerfen -- Test wird gruen
+  8. Browser-Test pro Template (keine CSP-Violations in Konsole)
+- Naechster Schritt: Schritt 1 -- web/static/-Verzeichnis + StaticFiles-Mount in settings_dashboard.py

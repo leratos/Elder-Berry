@@ -79,6 +79,26 @@ class TestSecurityHeaders:
         assert csp is not None
         assert "default-src 'self'" in csp
 
+    def test_csp_no_unsafe_inline(self, client):
+        """Phase 63: 'unsafe-inline' darf nicht mehr im CSP auftauchen."""
+        r = client.get("/health")
+        csp = r.headers.get("Content-Security-Policy", "")
+        assert "'unsafe-inline'" not in csp, (
+            f"CSP enthaelt noch 'unsafe-inline' (XSS-Schutz neutralisiert): {csp}"
+        )
+
+    def test_csp_no_unsafe_eval(self, client):
+        """'unsafe-eval' darf ebenfalls nicht gesetzt sein."""
+        r = client.get("/health")
+        csp = r.headers.get("Content-Security-Policy", "")
+        assert "'unsafe-eval'" not in csp
+
+    def test_csp_connect_src_self(self, client):
+        """connect-src muss auf 'self' beschraenkt sein (kein externer fetch)."""
+        r = client.get("/health")
+        csp = r.headers.get("Content-Security-Policy", "")
+        assert "connect-src 'self'" in csp
+
     def test_permissions_policy_present(self, client):
         """Permissions-Policy-Header deaktiviert ungenutzte APIs."""
         r = client.get("/health")
