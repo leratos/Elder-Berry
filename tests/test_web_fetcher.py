@@ -276,6 +276,33 @@ class TestWebFetcherSSRFProtection:
         with pytest.raises(UnsafeUrlError, match="nicht-oeffentliche"):
             fetcher.fetch("http://rebinding.example/")
 
+    def test_fetch_blocks_ssrf_via_open_redirect(self, fetcher, monkeypatch):
+        """SSRF via Open-Redirect: Location-Header auf private IP muss blockiert werden.
+
+        Szenario: oeffentliche URL leitet auf interne Adresse um. Ohne
+        manuelle Redirect-Validierung wuerde follow_redirects=True den
+        SSRF-Check umgehen.
+        """
+        from unittest.mock import MagicMock, patch
+
+        def selective_resolver(host, *args, **kwargs):
+            if host == "trusted.example.com":
+                return [(None, None, None, None, ("93.184.216.34", 0))]
+            return [(None, None, None, None, ("10.0.0.1", 0))]
+
+        monkeypatch.setattr(
+            "elder_berry.core.url_validator.socket.getaddrinfo",
+            selective_resolver,
+        )
+
+        redirect_response = MagicMock()
+        redirect_response.is_redirect = True
+        redirect_response.headers = {"location": "http://internal.corp/secret"}
+
+        with patch("httpx.get", return_value=redirect_response):
+            with pytest.raises(UnsafeUrlError, match="nicht-oeffentliche"):
+                fetcher.fetch("https://trusted.example.com/page")
+
 
 # ---------------------------------------------------------------------------
 # Handler Tests (mock WebFetcher)
