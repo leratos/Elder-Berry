@@ -4,190 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Elder-Berry Setup-Wizard</title>
-    <style>
-        * { margin: 0; padding: 0; box-sizing: border-box; }
-        body {
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-            background: #1a1a2e;
-            color: #e0e0e0;
-            display: flex;
-            justify-content: center;
-            align-items: flex-start;
-            padding: 2rem;
-            min-height: 100vh;
-        }
-        .wizard-container {
-            width: 560px;
-            max-width: 100%;
-        }
-        .card {
-            background: #16213e;
-            border-radius: 16px;
-            padding: 2rem;
-            box-shadow: 0 8px 32px rgba(0,0,0,0.3);
-            margin-bottom: 1.5rem;
-        }
-        h1 { font-size: 1.4rem; color: #a8d5a2; margin-bottom: 0.3rem; }
-        h2 { font-size: 1.15rem; color: #a8d5a2; margin-bottom: 1rem; }
-        .subtitle { font-size: 0.85rem; color: #888; margin-bottom: 1.5rem; }
-
-        /* Progress bar */
-        .progress-bar {
-            display: flex;
-            gap: 4px;
-            margin-bottom: 2rem;
-        }
-        .progress-step {
-            flex: 1;
-            height: 6px;
-            border-radius: 3px;
-            background: #0f3460;
-            transition: background 0.3s;
-        }
-        .progress-step.done { background: #a8d5a2; }
-        .progress-step.active { background: #533483; }
-
-        /* Form elements */
-        .form-group {
-            margin-bottom: 1rem;
-            text-align: left;
-        }
-        .form-group label {
-            display: block;
-            font-size: 0.85rem;
-            color: #aaa;
-            margin-bottom: 0.3rem;
-        }
-        .form-group label .help-link {
-            color: #533483;
-            text-decoration: none;
-            font-weight: 600;
-            margin-left: 0.3rem;
-        }
-        .form-group label .help-link:hover { color: #6c4ab6; }
-        .form-group input, .form-group select {
-            width: 100%;
-            padding: 0.7rem 0.9rem;
-            border-radius: 8px;
-            border: 1px solid #2a2a4a;
-            background: #0f3460;
-            color: #e0e0e0;
-            font-size: 0.95rem;
-            outline: none;
-            transition: border-color 0.2s;
-        }
-        .form-group input:focus, .form-group select:focus {
-            border-color: #533483;
-        }
-        .form-group input::placeholder { color: #555; }
-        .form-row {
-            display: flex;
-            gap: 1rem;
-        }
-        .form-row .form-group { flex: 1; }
-
-        /* Buttons */
-        .btn {
-            display: inline-block;
-            padding: 0.75rem 1.5rem;
-            font-size: 0.95rem;
-            border: none;
-            border-radius: 10px;
-            cursor: pointer;
-            color: #fff;
-            transition: background 0.2s, transform 0.1s;
-        }
-        .btn:active { transform: scale(0.97); }
-        .btn:disabled { background: #333; color: #666; cursor: not-allowed; }
-        .btn-primary { background: #533483; }
-        .btn-primary:hover:not(:disabled) { background: #6c4ab6; }
-        .btn-secondary { background: #2a2a4a; }
-        .btn-secondary:hover:not(:disabled) { background: #3a3a5a; }
-        .btn-success { background: #1b4332; }
-        .btn-success:hover:not(:disabled) { background: #2d6a4f; }
-        .btn-test {
-            background: #0f3460;
-            padding: 0.5rem 1rem;
-            font-size: 0.85rem;
-            border-radius: 8px;
-        }
-        .btn-test:hover:not(:disabled) { background: #1a4a7a; }
-        .btn-row {
-            display: flex;
-            justify-content: space-between;
-            margin-top: 1.5rem;
-            gap: 1rem;
-        }
-
-        /* Test results */
-        .test-result {
-            margin-top: 0.5rem;
-            padding: 0.6rem 0.9rem;
-            border-radius: 8px;
-            font-size: 0.85rem;
-            display: none;
-        }
-        .test-result.success { display: block; background: #1b4332; color: #a8d5a2; }
-        .test-result.error { display: block; background: #3d1111; color: #e57373; }
-        .test-result.loading { display: block; background: #2a2a4a; color: #aaa; }
-
-        /* Checklist */
-        .checklist { list-style: none; text-align: left; }
-        .checklist li {
-            padding: 0.5rem 0;
-            font-size: 0.95rem;
-            display: flex;
-            align-items: center;
-            gap: 0.5rem;
-        }
-        .checklist .check { color: #a8d5a2; font-weight: bold; }
-        .checklist .uncheck { color: #555; }
-        .checklist .fail { color: #e57373; font-weight: bold; }
-
-        /* Summary */
-        .summary-list { list-style: none; text-align: left; }
-        .summary-list li {
-            padding: 0.4rem 0;
-            font-size: 0.9rem;
-            display: flex;
-            align-items: center;
-            gap: 0.5rem;
-        }
-        .summary-list .configured { color: #a8d5a2; }
-        .summary-list .not-configured { color: #666; }
-
-        /* Step content */
-        .step { display: none; }
-        .step.active { display: block; }
-
-        /* Optional badge */
-        .badge-optional {
-            display: inline-block;
-            font-size: 0.7rem;
-            background: #2a2a4a;
-            color: #888;
-            padding: 0.15rem 0.5rem;
-            border-radius: 4px;
-            margin-left: 0.3rem;
-            vertical-align: middle;
-        }
-        .section-divider {
-            border: none;
-            border-top: 1px solid #2a2a4a;
-            margin: 1.2rem 0;
-        }
-        .inline-test {
-            display: flex;
-            gap: 0.5rem;
-            align-items: flex-start;
-        }
-        .inline-test input { flex: 1; }
-        .hint {
-            font-size: 0.8rem;
-            color: #666;
-            margin-top: 0.3rem;
-        }
-    </style>
+    <link rel="stylesheet" href="/static/css/setup_wizard.css">
 </head>
 <body>
 <div class="wizard-container">
@@ -199,7 +16,7 @@
         <!-- Step 1: Willkommen -->
         <div class="step" id="step1" data-step="1">
             <h2>Willkommen!</h2>
-            <p style="margin-bottom:1rem; font-size:0.95rem;">
+            <p class="step-intro-large">
                 Dieser Assistent richtet Saleria Berry Schritt für Schritt ein.
                 Bevor wir starten, prüfe bitte die Voraussetzungen:
             </p>
@@ -216,39 +33,41 @@
             </ul>
             <div class="btn-row">
                 <span></span>
-                <button class="btn btn-primary" onclick="goToStep(2)">Weiter &rarr;</button>
+                <button class="btn btn-primary">Weiter &rarr;</button>
             </div>
         </div>
 
         <!-- Step 2: LLM -->
         <div class="step" id="step2" data-step="2">
             <h2>LLM-Backend</h2>
-            <p style="margin-bottom:1rem; font-size:0.9rem;">Wie soll Saleria denken?</p>
+            <p class="step-intro">Wie soll Saleria denken?</p>
             <div class="form-group">
                 <label>API-Key für Claude (Anthropic)
                     <a class="help-link" href="https://console.anthropic.com/" target="_blank">[?]</a>
                 </label>
                 <div class="inline-test">
                     <input type="password" id="anthropic_api_key" placeholder="sk-ant-...">
-                    <button class="btn btn-test" onclick="testService('anthropic',{api_key:v('anthropic_api_key')})">Testen</button>
+                    <button class="btn btn-test"
+                            data-test-service="anthropic"
+                            data-test-params="api_key=anthropic_api_key">Testen</button>
                 </div>
                 <div class="test-result" id="test-anthropic"></div>
             </div>
             <hr class="section-divider">
             <div class="form-group">
                 <label>Ollama (lokales LLM) <span class="badge-optional">optional</span></label>
-                <div class="test-result" id="test-ollama" style="display:block; background:#2a2a4a; color:#aaa;">Wird geprüft...</div>
+                <div class="test-result loading" id="test-ollama">Wird geprüft...</div>
             </div>
             <div class="btn-row">
-                <button class="btn btn-secondary" onclick="goToStep(1)">&larr; Zurück</button>
-                <button class="btn btn-primary" onclick="saveStep(2)">Weiter &rarr;</button>
+                <button class="btn btn-secondary">&larr; Zurück</button>
+                <button class="btn btn-primary">Weiter &rarr;</button>
             </div>
         </div>
 
         <!-- Step 3: Matrix -->
         <div class="step" id="step3" data-step="3">
             <h2>Matrix-Verbindung</h2>
-            <p style="margin-bottom:1rem; font-size:0.9rem;">Saleria kommuniziert über Matrix.</p>
+            <p class="step-intro">Saleria kommuniziert über Matrix.</p>
             <div class="form-group">
                 <label>Homeserver-URL</label>
                 <input type="url" id="matrix_homeserver" placeholder="https://matrix.example.com">
@@ -259,7 +78,7 @@
             </div>
             <div class="form-group">
                 <label>Access-Token
-                    <a class="help-link" href="#" onclick="alert('Element: Settings → Help & About → Access Token kopieren');return false;">[?]</a>
+                    <a class="help-link" href="#" id="matrixTokenHelp">[?]</a>
                 </label>
                 <input type="password" id="matrix_access_token" placeholder="syt_...">
             </div>
@@ -272,18 +91,20 @@
                 <input type="text" id="matrix_allowed_senders" placeholder="@dein_user:example.com">
                 <p class="hint">Mehrere Sender kommagetrennt.</p>
             </div>
-            <button class="btn btn-test" onclick="testService('matrix',{homeserver:v('matrix_homeserver'),user_id:v('matrix_user_id'),token:v('matrix_access_token'),room_id:v('matrix_room_id')})">Verbindung testen</button>
+            <button class="btn btn-test"
+                    data-test-service="matrix"
+                    data-test-params="homeserver=matrix_homeserver,user_id=matrix_user_id,token=matrix_access_token,room_id=matrix_room_id">Verbindung testen</button>
             <div class="test-result" id="test-matrix"></div>
             <div class="btn-row">
-                <button class="btn btn-secondary" onclick="goToStep(2)">&larr; Zurück</button>
-                <button class="btn btn-primary" onclick="saveStep(3)">Weiter &rarr;</button>
+                <button class="btn btn-secondary">&larr; Zurück</button>
+                <button class="btn btn-primary">Weiter &rarr;</button>
             </div>
         </div>
 
         <!-- Step 4: Nextcloud -->
         <div class="step" id="step4" data-step="4">
             <h2>Nextcloud <span class="badge-optional">optional</span></h2>
-            <p style="margin-bottom:1rem; font-size:0.9rem;">Dateien, Kalender, Kontakte.</p>
+            <p class="step-intro">Dateien, Kalender, Kontakte.</p>
             <div class="form-group">
                 <label>Server-URL</label>
                 <input type="url" id="nextcloud_url" placeholder="https://cloud.example.com">
@@ -298,21 +119,23 @@
                 </label>
                 <input type="password" id="nextcloud_app_password" placeholder="App-Passwort">
             </div>
-            <button class="btn btn-test" onclick="testService('nextcloud',{url:v('nextcloud_url'),user:v('nextcloud_user'),password:v('nextcloud_app_password')})">Verbindung testen</button>
+            <button class="btn btn-test"
+                    data-test-service="nextcloud"
+                    data-test-params="url=nextcloud_url,user=nextcloud_user,password=nextcloud_app_password">Verbindung testen</button>
             <div class="test-result" id="test-nextcloud"></div>
             <div class="btn-row">
-                <button class="btn btn-secondary" onclick="goToStep(3)">&larr; Zurück</button>
-                <button class="btn btn-primary" onclick="saveStep(4)">Weiter &rarr;</button>
+                <button class="btn btn-secondary">&larr; Zurück</button>
+                <button class="btn btn-primary">Weiter &rarr;</button>
             </div>
         </div>
 
         <!-- Step 5: E-Mail -->
         <div class="step" id="step5" data-step="5">
             <h2>E-Mail <span class="badge-optional">optional</span></h2>
-            <p style="margin-bottom:1rem; font-size:0.9rem;">Saleria kann Mails lesen und beantworten.</p>
+            <p class="step-intro">Saleria kann Mails lesen und beantworten.</p>
             <div class="form-group">
                 <label>Provider</label>
-                <select id="emailProvider" onchange="fillEmailProvider()">
+                <select id="emailProvider">
                     <option value="">-- Manuell --</option>
                 </select>
             </div>
@@ -344,23 +167,25 @@
                 <label>Passwort</label>
                 <input type="password" id="email_password" placeholder="Passwort">
             </div>
-            <button class="btn btn-test" onclick="testService('email',{imap_host:v('email_imap_host'),imap_port:v('email_imap_port'),smtp_host:v('smtp_host'),smtp_port:v('smtp_port'),user:v('email_user'),password:v('email_password')})">Verbindung testen</button>
+            <button class="btn btn-test"
+                    data-test-service="email"
+                    data-test-params="imap_host=email_imap_host,imap_port=email_imap_port,smtp_host=smtp_host,smtp_port=smtp_port,user=email_user,password=email_password">Verbindung testen</button>
             <div class="test-result" id="test-email"></div>
             <div class="btn-row">
-                <button class="btn btn-secondary" onclick="goToStep(4)">&larr; Zurück</button>
-                <button class="btn btn-primary" onclick="saveStep(5)">Weiter &rarr;</button>
+                <button class="btn btn-secondary">&larr; Zurück</button>
+                <button class="btn btn-primary">Weiter &rarr;</button>
             </div>
         </div>
 
         <!-- Step 6: Standort & Wetter -->
         <div class="step" id="step6" data-step="6">
-            <h2>Standort & Wetter <span class="badge-optional">optional</span></h2>
-            <p style="margin-bottom:1rem; font-size:0.9rem;">Für Wetter, Briefing, Routenplanung.</p>
+            <h2>Standort &amp; Wetter <span class="badge-optional">optional</span></h2>
+            <p class="step-intro">Für Wetter, Briefing, Routenplanung.</p>
             <div class="form-group">
                 <label>Stadt</label>
                 <div class="inline-test">
                     <input type="text" id="weather_city" placeholder="Berlin">
-                    <button class="btn btn-test" onclick="geocodeCity()">Suchen</button>
+                    <button class="btn btn-test" id="btnGeocode">Suchen</button>
                 </div>
                 <div class="test-result" id="geocode-result"></div>
                 <p class="hint">Koordinaten werden automatisch aus dem Stadtnamen ermittelt.</p>
@@ -398,15 +223,15 @@
                 </select>
             </div>
             <div class="btn-row">
-                <button class="btn btn-secondary" onclick="goToStep(5)">&larr; Zurück</button>
-                <button class="btn btn-primary" onclick="saveStep(6)">Weiter &rarr;</button>
+                <button class="btn btn-secondary">&larr; Zurück</button>
+                <button class="btn btn-primary">Weiter &rarr;</button>
             </div>
         </div>
 
         <!-- Step 7: Optionale Dienste -->
         <div class="step" id="step7" data-step="7">
             <h2>Optionale Dienste</h2>
-            <p style="margin-bottom:1rem; font-size:0.9rem;">Du kannst diese jetzt oder später einrichten.</p>
+            <p class="step-intro">Du kannst diese jetzt oder später einrichten.</p>
 
             <div class="form-group">
                 <label>Web-Suche (Brave Search)
@@ -414,7 +239,9 @@
                 </label>
                 <div class="inline-test">
                     <input type="password" id="brave_api_key" placeholder="API-Key">
-                    <button class="btn btn-test" onclick="testService('brave',{api_key:v('brave_api_key')})">Testen</button>
+                    <button class="btn btn-test"
+                            data-test-service="brave"
+                            data-test-params="api_key=brave_api_key">Testen</button>
                 </div>
                 <div class="test-result" id="test-brave"></div>
                 <p class="hint">Kostenlos bis 2000 Anfragen/Monat.</p>
@@ -440,7 +267,9 @@
                 </label>
                 <div class="inline-test">
                     <input type="password" id="groq_api_key" placeholder="API-Key">
-                    <button class="btn btn-test" onclick="testService('groq',{api_key:v('groq_api_key')})">Testen</button>
+                    <button class="btn btn-test"
+                            data-test-service="groq"
+                            data-test-params="api_key=groq_api_key">Testen</button>
                 </div>
                 <div class="test-result" id="test-groq"></div>
                 <p class="hint">Schneller als lokales Whisper.</p>
@@ -460,7 +289,9 @@
                 </label>
                 <div class="inline-test">
                     <input type="password" id="google_maps_api_key" placeholder="API-Key">
-                    <button class="btn btn-test" onclick="testService('google_maps',{api_key:v('google_maps_api_key')})">Testen</button>
+                    <button class="btn btn-test"
+                            data-test-service="google_maps"
+                            data-test-params="api_key=google_maps_api_key">Testen</button>
                 </div>
                 <div class="test-result" id="test-google_maps"></div>
             </div>
@@ -473,18 +304,18 @@
             </div>
 
             <div class="btn-row">
-                <button class="btn btn-secondary" onclick="goToStep(6)">&larr; Zurück</button>
-                <button class="btn btn-primary" onclick="saveStep(7)">Weiter &rarr;</button>
+                <button class="btn btn-secondary">&larr; Zurück</button>
+                <button class="btn btn-primary">Weiter &rarr;</button>
             </div>
         </div>
 
         <!-- Step 8: Zusammenfassung -->
         <div class="step" id="step8" data-step="8">
             <h2>Saleria ist bereit!</h2>
-            <p style="margin-bottom:1rem; font-size:0.9rem;">Konfigurierte Dienste:</p>
+            <p class="step-intro">Konfigurierte Dienste:</p>
             <ul class="summary-list" id="summaryList"></ul>
             <hr class="section-divider">
-            <h2 style="margin-top:1rem;">Dashboard-Login</h2>
+            <h2 class="step-heading-gap">Dashboard-Login</h2>
             <p class="subtitle">
                 Pflicht: Setze ein Passwort für das Dashboard. Schützt
                 Settings &amp; Avatar-Editor zusätzlich zur VPN/IP-Absicherung.
@@ -498,375 +329,22 @@
                 <label for="dashboardPasswordConfirm">Passwort bestätigen</label>
                 <input type="password" id="dashboardPasswordConfirm" autocomplete="new-password">
             </div>
-            <div id="dashboardPasswordError" style="color:#ff6b6b; font-size:0.85rem; margin-bottom:0.5rem;"></div>
+            <div id="dashboardPasswordError" class="password-error"></div>
             <hr class="section-divider">
-            <p style="font-size:0.9rem; margin-bottom:0.5rem;">Nächste Schritte:</p>
-            <ol style="text-align:left; font-size:0.85rem; padding-left:1.5rem; color:#aaa; line-height:1.8;">
+            <p class="next-steps-intro">Nächste Schritte:</p>
+            <ol class="next-steps-list">
                 <li>Starte Saleria: <code>python scripts/start_saleria.py</code></li>
                 <li>Öffne Element und schreibe "hallo" an Saleria</li>
-                <li>Einstellungen: <a href="/" style="color:#a8d5a2;">Dashboard</a> (Login mit obigem Passwort)</li>
+                <li>Einstellungen: <a href="/" class="dashboard-link">Dashboard</a> (Login mit obigem Passwort)</li>
             </ol>
             <div class="btn-row">
-                <button class="btn btn-secondary" onclick="goToStep(7)">&larr; Zurück</button>
-                <button class="btn btn-success" onclick="completeSetup()">Setup abschließen</button>
+                <button class="btn btn-secondary">&larr; Zurück</button>
+                <button class="btn btn-success">Setup abschließen</button>
             </div>
         </div>
     </div>
 </div>
 
-<script>
-const TOTAL_STEPS = 8;
-let currentStep = 1;
-let providers = {};
-
-// Helper: get value from input
-function v(id) { return document.getElementById(id)?.value || ''; }
-
-// Initialize
-document.addEventListener('DOMContentLoaded', async () => {
-    buildProgressBar();
-    await loadPrerequisites();
-    await loadProviders();
-    await loadStatus();
-});
-
-function buildProgressBar() {
-    const bar = document.getElementById('progressBar');
-    bar.innerHTML = '';
-    for (let i = 1; i <= TOTAL_STEPS; i++) {
-        const s = document.createElement('div');
-        s.className = 'progress-step';
-        s.dataset.step = i;
-        bar.appendChild(s);
-    }
-}
-
-function updateProgressBar() {
-    document.querySelectorAll('.progress-step').forEach(el => {
-        const s = parseInt(el.dataset.step);
-        el.className = 'progress-step';
-        if (s < currentStep) el.classList.add('done');
-        else if (s === currentStep) el.classList.add('active');
-    });
-}
-
-function goToStep(n) {
-    currentStep = n;
-    document.querySelectorAll('.step').forEach(el => el.classList.remove('active'));
-    const step = document.getElementById('step' + n);
-    if (step) step.classList.add('active');
-    updateProgressBar();
-    if (n === 2) checkOllama();
-    if (n === 8) loadSummary();
-    loadStepValues(n);
-}
-
-async function loadStatus() {
-    try {
-        const r = await fetch('/api/setup/status');
-        const data = await r.json();
-        goToStep(data.current_step || 1);
-    } catch {
-        goToStep(1);
-    }
-}
-
-async function loadPrerequisites() {
-    try {
-        const r = await fetch('/api/setup/prerequisites');
-        const data = await r.json();
-        const pyEl = document.getElementById('prereqPython');
-        const pyOk = data.python && data.python.startsWith('3.1');
-        pyEl.textContent = pyOk ? '\u2611' : '\u2610';
-        pyEl.className = pyOk ? 'check' : 'fail';
-        pyEl.parentElement.innerHTML = pyEl.outerHTML + ' Python ' + (data.python || '?');
-
-        const gitEl = document.getElementById('prereqGit');
-        gitEl.textContent = data.git ? '\u2611' : '\u2610';
-        gitEl.className = data.git ? 'check' : 'fail';
-
-        const ollamaEl = document.getElementById('prereqOllama');
-        if (data.ollama?.available) {
-            ollamaEl.textContent = '\u2611';
-            ollamaEl.className = 'check';
-            const models = data.ollama.models?.join(', ') || '';
-            ollamaEl.parentElement.innerHTML = ollamaEl.outerHTML + ' Ollama' + (models ? ' (' + models + ')' : '');
-        } else {
-            ollamaEl.textContent = '\u2610';
-            ollamaEl.className = 'uncheck';
-        }
-    } catch { /* ignore */ }
-}
-
-async function loadProviders() {
-    try {
-        const r = await fetch('/api/setup/providers');
-        providers = await r.json();
-        const sel = document.getElementById('emailProvider');
-        for (const name of Object.keys(providers)) {
-            const opt = document.createElement('option');
-            opt.value = name;
-            opt.textContent = name.charAt(0).toUpperCase() + name.slice(1);
-            sel.appendChild(opt);
-        }
-    } catch { /* ignore */ }
-}
-
-function fillEmailProvider() {
-    const name = document.getElementById('emailProvider').value;
-    if (!name || !providers[name]) return;
-    const p = providers[name];
-    document.getElementById('email_imap_host').value = p.imap_host;
-    document.getElementById('email_imap_port').value = p.imap_port;
-    document.getElementById('smtp_host').value = p.smtp_host;
-    document.getElementById('smtp_port').value = p.smtp_port;
-}
-
-async function loadStepValues(n) {
-    try {
-        const r = await fetch('/api/setup/step/' + n);
-        const data = await r.json();
-        if (!data.values) return;
-        for (const [key, info] of Object.entries(data.values)) {
-            const el = document.getElementById(key);
-            if (!el) continue;
-            if (info.value !== undefined && info.value !== null) {
-                // Nicht-sensitiver Wert → direkt setzen
-                el.value = info.value;
-            } else if (info.is_set && el.type === 'password') {
-                // Sensitiver Wert gesetzt → Platzhalter zeigen, Feld nicht überschreiben
-                el.placeholder = '(bereits gesetzt)';
-            }
-        }
-    } catch { /* ignore */ }
-}
-
-// Collect step field IDs
-const stepFields = {
-    2: ['anthropic_api_key'],
-    3: ['matrix_homeserver', 'matrix_user_id', 'matrix_access_token', 'matrix_room_id', 'matrix_allowed_senders'],
-    4: ['nextcloud_url', 'nextcloud_user', 'nextcloud_app_password'],
-    5: ['email_user', 'email_password', 'email_imap_host', 'email_imap_port', 'smtp_host', 'smtp_port'],
-    6: ['weather_city', 'weather_latitude', 'weather_longitude', 'user_timezone'],
-    7: ['brave_api_key', 'elevenlabs_api_key', 'elevenlabs_voice_id', 'groq_api_key', 'berry_gym_api_token', 'google_maps_api_key', 'robot_host'],
-};
-
-async function saveStep(n) {
-    const fields = stepFields[n] || [];
-    const body = {};
-    let hasValue = false;
-    for (const id of fields) {
-        const val = v(id);
-        if (val) { body[id] = val; hasValue = true; }
-    }
-    // Optionale Schritte dürfen leer weitergehen
-    const optionalSteps = [4, 5, 6, 7];
-    if (!hasValue && optionalSteps.includes(n)) {
-        goToStep(n + 1);
-        return;
-    }
-    try {
-        const r = await fetch('/api/setup/step/' + n, {
-            method: 'POST',
-            headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify(body),
-        });
-        const data = await r.json();
-        if (!r.ok) {
-            alert(data.error || 'Fehler beim Speichern');
-            return;
-        }
-        // Test-Ergebnisse anzeigen
-        if (data.tests) {
-            for (const [service, result] of Object.entries(data.tests)) {
-                showTestResult(service, result);
-            }
-            // Bei fehlgeschlagenen Tests nicht weiter
-            const anyFailed = Object.values(data.tests).some(t => !t.success);
-            if (anyFailed) return;
-        }
-        goToStep(n + 1);
-    } catch (e) {
-        alert('Netzwerkfehler: ' + e.message);
-    }
-}
-
-async function testService(service, params) {
-    const el = document.getElementById('test-' + service);
-    if (el) {
-        el.className = 'test-result loading';
-        el.style.display = 'block';
-        el.textContent = 'Teste...';
-    }
-    try {
-        const r = await fetch('/api/setup/test/' + service, {
-            method: 'POST',
-            headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify(params),
-        });
-        const data = await r.json();
-        showTestResult(service, data);
-    } catch (e) {
-        if (el) {
-            el.className = 'test-result error';
-            el.textContent = 'Netzwerkfehler: ' + e.message;
-        }
-    }
-}
-
-function showTestResult(service, result) {
-    const el = document.getElementById('test-' + service);
-    if (!el) return;
-    el.style.display = 'block';
-    if (result.success) {
-        el.className = 'test-result success';
-        let msg = '\u2705 Verbindung erfolgreich';
-        if (result.model) msg += ' (' + result.model + ')';
-        if (result.user_id) msg += ' – ' + result.user_id;
-        if (result.room_joined) msg += ', Raum OK';
-        if (result.webdav !== undefined) {
-            msg = '\u2705 WebDAV: ' + (result.webdav ? 'OK' : 'FAIL') +
-                  ', CalDAV: ' + (result.caldav ? 'OK' : 'FAIL') +
-                  ', CardDAV: ' + (result.carddav ? 'OK' : 'FAIL');
-        }
-        if (result.imap !== undefined) {
-            msg = '\u2705 IMAP: ' + (result.imap ? 'OK' : 'FAIL') +
-                  ', SMTP: ' + (result.smtp ? 'OK' : 'FAIL');
-            if (result.unread > 0) msg += ' (' + result.unread + ' ungelesen)';
-        }
-        if (result.models) msg += ' – Modelle: ' + result.models.join(', ');
-        el.textContent = msg;
-    } else {
-        el.className = 'test-result error';
-        el.textContent = '\u274C ' + (result.error || 'Test fehlgeschlagen');
-    }
-}
-
-async function checkOllama() {
-    const el = document.getElementById('test-ollama');
-    try {
-        const r = await fetch('/api/setup/test/ollama', {
-            method: 'POST',
-            headers: {'Content-Type': 'application/json'},
-            body: '{}',
-        });
-        const data = await r.json();
-        showTestResult('ollama', data);
-    } catch {
-        if (el) {
-            el.className = 'test-result error';
-            el.textContent = '\u274C Nicht erreichbar';
-        }
-    }
-}
-
-async function loadSummary() {
-    try {
-        const r = await fetch('/api/setup/status');
-        const data = await r.json();
-        const list = document.getElementById('summaryList');
-        list.innerHTML = '';
-        const labels = {
-            anthropic: 'LLM (Claude API)',
-            matrix: 'Matrix',
-            nextcloud: 'Nextcloud',
-            email: 'E-Mail',
-            weather: 'Wetter & Standort',
-            brave: 'Brave Search',
-            elevenlabs: 'ElevenLabs TTS',
-            groq: 'Groq STT',
-            google_maps: 'Google Maps',
-            rpi5: 'RPi5 Hardware',
-        };
-        const all = [...(data.configured || []), ...(data.missing || [])];
-        for (const svc of all) {
-            const li = document.createElement('li');
-            const ok = (data.configured || []).includes(svc);
-            li.innerHTML = '<span class="' + (ok ? 'configured' : 'not-configured') + '">' +
-                (ok ? '\u2705' : '\u274C') + '</span> ' + (labels[svc] || svc) +
-                (ok ? '' : ' <span style="color:#555;">(nicht konfiguriert)</span>');
-            list.appendChild(li);
-        }
-    } catch { /* ignore */ }
-}
-
-async function geocodeCity() {
-    const city = v('weather_city');
-    const el = document.getElementById('geocode-result');
-    if (!city) { el.className = 'test-result error'; el.textContent = 'Bitte Stadt eingeben.'; return; }
-    el.className = 'test-result loading'; el.style.display = 'block'; el.textContent = 'Suche...';
-    try {
-        const r = await fetch('https://nominatim.openstreetmap.org/search?format=json&limit=1&q=' + encodeURIComponent(city), {
-            headers: {'Accept-Language': 'de'}
-        });
-        const data = await r.json();
-        if (data.length > 0) {
-            document.getElementById('weather_latitude').value = parseFloat(data[0].lat).toFixed(4);
-            document.getElementById('weather_longitude').value = parseFloat(data[0].lon).toFixed(4);
-            el.className = 'test-result success';
-            el.textContent = '\u2705 ' + data[0].display_name;
-        } else {
-            el.className = 'test-result error';
-            el.textContent = '\u274C Ort nicht gefunden. Koordinaten bitte manuell eingeben.';
-        }
-    } catch (e) {
-        el.className = 'test-result error';
-        el.textContent = '\u274C Geocoding fehlgeschlagen: ' + e.message;
-    }
-}
-
-async function completeSetup() {
-    const btn = document.querySelector('#step8 .btn-success');
-    const errEl = document.getElementById('dashboardPasswordError');
-    errEl.textContent = '';
-
-    // Phase 58: Dashboard-Passwort ist Pflicht
-    const pw = document.getElementById('dashboardPassword').value;
-    const pw2 = document.getElementById('dashboardPasswordConfirm').value;
-    if (!pw || pw.length < 8) {
-        errEl.textContent = 'Passwort muss mindestens 8 Zeichen lang sein.';
-        return;
-    }
-    if (pw !== pw2) {
-        errEl.textContent = 'Passwörter stimmen nicht überein.';
-        return;
-    }
-
-    if (btn) { btn.disabled = true; btn.textContent = 'Wird abgeschlossen...'; }
-    try {
-        // 1) PW setzen
-        const rPw = await fetch('/api/setup/dashboard-password', {
-            method: 'POST',
-            headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({password: pw}),
-        });
-        if (!rPw.ok) {
-            const dPw = await rPw.json();
-            errEl.textContent = dPw.error || 'Passwort konnte nicht gesetzt werden.';
-            if (btn) { btn.disabled = false; btn.textContent = 'Setup abschließen'; }
-            return;
-        }
-        // 2) Setup abschließen
-        const r = await fetch('/api/setup/complete', {method: 'POST'});
-        const data = await r.json();
-        if (data.standalone) {
-            // Standalone-Modus: Server beendet sich, Saleria muss neu gestartet werden
-            document.getElementById('step8').innerHTML =
-                '<h2>Setup abgeschlossen!</h2>' +
-                '<p style="margin-top:1rem; font-size:0.95rem; color:#a8d5a2;">' +
-                'Die Konfiguration wurde gespeichert.</p>' +
-                '<p style="margin-top:1rem; font-size:0.9rem;">Starte Saleria jetzt mit:</p>' +
-                '<code style="display:block; margin:1rem 0; padding:0.8rem; background:#0f3460; border-radius:8px; font-size:0.9rem;">' +
-                'python scripts/start_saleria.py</code>' +
-                '<p style="font-size:0.85rem; color:#888;">Dieses Fenster kann geschlossen werden.</p>';
-        } else if (data.redirect) {
-            window.location.href = data.redirect;
-        }
-    } catch (e) {
-        alert('Fehler: ' + e.message);
-        if (btn) { btn.disabled = false; btn.textContent = 'Setup abschließen'; }
-    }
-}
-</script>
+<script src="/static/js/setup_wizard.js" defer></script>
 </body>
 </html>
