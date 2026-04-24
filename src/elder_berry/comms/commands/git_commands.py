@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import logging
 import re
+import shlex
 import subprocess
 from pathlib import Path
 
@@ -79,6 +80,15 @@ _GIT_DIFF_ARG_PATTERNS: tuple[re.Pattern[str], ...] = (
     _COMMIT_HASH_RE,
     _HEAD_REF_RE,
 )
+
+
+def _error_examples(subcmd: str) -> str:
+    """Subcommand-spezifische Beispiele fuer erlaubte Argumente."""
+    if subcmd == "log":
+        return "--oneline, -n 5, --since=yesterday, --author=marcus, <commit-hash>, HEAD~3"
+    if subcmd == "diff":
+        return "--stat, --name-only, --cached, <commit-hash>, HEAD~3"
+    return "(keine zusaetzlichen Argumente erlaubt)"
 
 
 def _validate_extra_args(
@@ -161,9 +171,17 @@ class GitCommandHandler(CommandHandler):
         if subcmd == "log":
             cmd.extend(["--oneline", "-20"])
 
-        # Phase 65 (M-2): Whitelist-Validierung statt blindem split().
-        if extra_args and subcmd in ("log", "diff"):
-            tokens = extra_args.split()
+        # Phase 65 (M-2): Whitelist-Validierung fuer ALLE Subcommands.
+        # shlex.split() unterstuetzt gequotete Argumente (z.B. --grep="fix bug").
+        if extra_args:
+            try:
+                tokens = shlex.split(extra_args)
+            except ValueError as exc:
+                return CommandResult(
+                    command="git",
+                    success=False,
+                    text=f"Ungueltige Anführungszeichen in Argumenten: {exc}",
+                )
             ok, bad = _validate_extra_args(subcmd, tokens)
             if not ok:
                 logger.warning(
@@ -174,11 +192,11 @@ class GitCommandHandler(CommandHandler):
                     success=False,
                     text=(
                         f"Argument '{bad}' nicht erlaubt fuer git {subcmd}. "
-                        f"Erlaubte Beispiele: --oneline, -n 5, --since=yesterday, "
-                        f"--author=marcus, <commit-hash>, HEAD~3."
+                        f"Erlaubte Beispiele: {_error_examples(subcmd)}"
                     ),
                 )
-            cmd.extend(tokens)
+            if subcmd in ("log", "diff"):
+                cmd.extend(tokens)
 
         cwd = self._project_root or Path.cwd()
 

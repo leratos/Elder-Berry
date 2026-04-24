@@ -241,38 +241,58 @@ class SecretStore:
 
         self._ensure_base_dir()
         use_keyring = self._decide_use_keyring()
+        key: bytes | None = None
 
         if use_keyring:
-            key = self._load_key_from_keyring()
-            if key is None:
-                # Migration von alter Plaintext-Datei, oder Neuanlage.
-                if self._key_path.exists():
-                    logger.info(
-                        "Migriere Master-Key aus %s in den OS-Keyring...",
-                        self._key_path,
-                    )
-                    key = self._key_path.read_bytes().strip()
-                    self._save_key_to_keyring(key)  # raised on verify-fail
-                    # Erst jetzt loeschen -- wir haben den Keyring-Write
-                    # erfolgreich verifiziert.
-                    self._key_path.unlink()
-                    logger.warning(
-                        "Master-Key erfolgreich in den OS-Keyring migriert, "
-                        "alte Datei %s geloescht. Secrets sind jetzt an den "
-                        "OS-Benutzer gebunden -- bei User-/Maschinenwechsel "
-                        "wird der Store unbenutzbar. Backup von %s + Export "
-                        "der Secret-Werte empfohlen.",
-                        self._key_path, self._secrets_path,
-                    )
-                else:
-                    key = Fernet.generate_key()
-                    self._save_key_to_keyring(key)
-                    logger.info(
-                        "Neuer Master-Key im OS-Keyring erzeugt "
-                        "(service=%s, user=%s).",
-                        KEYRING_SERVICE, self._keyring_username(),
-                    )
-        else:
+            try:
+                key = self._load_key_from_keyring()
+                if key is None:
+                    # Migration von alter Plaintext-Datei, oder Neuanlage.
+                    if self._key_path.exists():
+                        logger.info(
+                            "Migriere Master-Key aus %s in den OS-Keyring...",
+                            self._key_path,
+                        )
+                        key = self._key_path.read_bytes().strip()
+                        self._save_key_to_keyring(key)  # raised on verify-fail
+                        # Erst jetzt loeschen -- wir haben den Keyring-Write
+                        # erfolgreich verifiziert.
+                        self._key_path.unlink()
+                        logger.warning(
+                            "Master-Key erfolgreich in den OS-Keyring migriert, "
+                            "alte Datei %s geloescht. Secrets sind jetzt an den "
+                            "OS-Benutzer gebunden -- bei User-/Maschinenwechsel "
+                            "wird der Store unbenutzbar. Backup von %s + Export "
+                            "der Secret-Werte empfohlen.",
+                            self._key_path, self._secrets_path,
+                        )
+                    else:
+                        key = Fernet.generate_key()
+                        self._save_key_to_keyring(key)
+                        logger.info(
+                            "Neuer Master-Key im OS-Keyring erzeugt "
+                            "(service=%s, user=%s).",
+                            KEYRING_SERVICE, self._keyring_username(),
+                        )
+            except SecretStoreError:
+                # Verify-Mismatch bei Migration oder expliziter Keyring-Fehler
+                # -- immer re-raisen, unabhaengig vom use_keyring-Modus.
+                raise
+            except Exception as exc:  # noqa: BLE001
+                if self._use_keyring is True:
+                    # Strikt-Mode: Keyring-Fehler ist ein Hard-Error.
+                    raise SecretStoreError(
+                        f"Keyring-Zugriff fehlgeschlagen (use_keyring=True): {exc}"
+                    ) from exc
+                # Auto-Mode: Warnen und auf Datei-Fallback wechseln.
+                logger.warning(
+                    "Keyring-Operation fehlgeschlagen (%s: %s) -- "
+                    "Fallback auf Plaintext-Datei.",
+                    type(exc).__name__, exc,
+                )
+                key = None  # Fallthrough zum File-Pfad
+
+        if key is None:
             key = self._load_key_from_file()
 
         self._fernet = Fernet(key)

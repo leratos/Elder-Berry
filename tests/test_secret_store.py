@@ -546,3 +546,88 @@ class TestKeyringMigration:
         # Alte Datei MUSS noch da sein -- Datenverlust darf nicht passieren.
         assert (tmp_path / "secret.key").exists()
         assert (tmp_path / "secret.key").read_bytes() == old_key
+
+
+class TestKeyringOpExceptionFallback:
+    """Auto-Mode faellt auf Datei zurueck wenn get/set_password eine Exception wirft.
+
+    PR #113 Review-Feedback: Nur ``get_keyring()`` war defensiv behandelt.
+    ``get_password``/``set_password`` koennen aber ebenfalls raisen
+    (gesperrter Keychain, fehlende Session). Im Auto-Mode muss der Store
+    robust auf File-Fallback wechseln.
+    """
+
+    def test_get_password_exception_auto_falls_back_to_file(
+        self, tmp_path, monkeypatch, caplog,
+    ):
+        """get_password wirft im Auto-Mode -> Fallback auf Datei, kein Crash."""
+        import logging
+
+        fake = MagicMock()
+        # get_keyring() gibt ein gueltiges (non-Fail) Backend zurueck
+        fake.get_keyring.return_value = object()
+        # aber get_password wirft
+        fake.get_password.side_effect = RuntimeError("Keychain locked")
+        monkeypatch.setattr("elder_berry.core.secret_store.keyring", fake)
+        monkeypatch.setattr("elder_berry.core.secret_store._HAS_KEYRING", True)
+        monkeypatch.setattr(
+            "elder_berry.core.secret_store._FailKeyring",
+            type("_NotFail", (), {}),
+        )
+
+        with caplog.at_level(logging.WARNING, logger="elder_berry.core.secret_store"):
+            store = SecretStore(base_dir=tmp_path)  # auto-mode
+            store.set("k", "v")
+            assert store.get("k") == "v"
+
+        # Fallback -> secret.key existiert
+        assert (tmp_path / "secret.key").exists()
+        # Warning wurde geloggt
+        messages = " ".join(r.message for r in caplog.records)
+        assert "Keyring-Operation fehlgeschlagen" in messages
+        assert "Fallback" in messages
+
+    def test_set_password_exception_auto_falls_back_to_file(
+        self, tmp_path, monkeypatch, caplog,
+    ):
+        """set_password wirft im Auto-Mode (neue Key-Anlage) -> Fallback auf Datei."""
+        import logging
+
+        fake = MagicMock()
+        fake.get_keyring.return_value = object()
+        fake.get_password.return_value = None   # kein existierender Key
+        fake.set_password.side_effect = OSError("D-Bus unavailable")
+        monkeypatch.setattr("elder_berry.core.secret_store.keyring", fake)
+        monkeypatch.setattr("elder_berry.core.secret_store._HAS_KEYRING", True)
+        monkeypatch.setattr(
+            "elder_berry.core.secret_store._FailKeyring",
+            type("_NotFail", (), {}),
+        )
+
+        with caplog.at_level(logging.WARNING, logger="elder_berry.core.secret_store"):
+            store = SecretStore(base_dir=tmp_path)
+            store.set("k", "v")
+
+        assert (tmp_path / "secret.key").exists()
+        messages = " ".join(r.message for r in caplog.records)
+        assert "Keyring-Operation fehlgeschlagen" in messages
+
+    def test_get_password_exception_strict_raises(
+        self, tmp_path, monkeypatch,
+    ):
+        """use_keyring=True + get_password-Exception -> SecretStoreError (kein Fallback)."""
+        fake = MagicMock()
+        fake.get_keyring.return_value = object()
+        fake.get_password.side_effect = RuntimeError("Keychain locked")
+        monkeypatch.setattr("elder_berry.core.secret_store.keyring", fake)
+        monkeypatch.setattr("elder_berry.core.secret_store._HAS_KEYRING", True)
+        monkeypatch.setattr(
+            "elder_berry.core.secret_store._FailKeyring",
+            type("_NotFail", (), {}),
+        )
+
+        store = SecretStore(base_dir=tmp_path, use_keyring=True)
+        with pytest.raises(SecretStoreError, match="use_keyring=True"):
+            store.set("k", "v")
+        # Im Strikt-Mode darf keine Datei angelegt werden
+        assert not (tmp_path / "secret.key").exists()

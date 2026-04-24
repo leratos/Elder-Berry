@@ -173,7 +173,7 @@ class TestValidateExtraArgsLog:
         ["--since=2024-01-01"],
         ["--author=marcus"],
         ["--author=marcus@sfi-kohtz.de"],
-        ["--grep=fix bug"],
+        ["--grep=fix bug"],   # reachable via shlex: --grep="fix bug"
         ["abc1234"],
         ["deadbeef1234567890abcdef1234567890abcdef"],  # 40 hex
         ["HEAD"],
@@ -283,6 +283,33 @@ class TestGitExecuteExtraArgs:
         mock_run.assert_not_called()
 
     @patch("elder_berry.comms.commands.git_commands.subprocess.run")
+    def test_diff_error_message_uses_diff_examples(self, mock_run, handler):
+        """Fehlermeldung fuer diff darf --author= nicht als Beispiel nennen."""
+        result = handler.execute("git", "git diff --author=marcus")
+        assert result.success is False
+        # Der Beispiel-Teil muss diff-spezifisch sein, kein --author=
+        examples_part = result.text.split("Erlaubte Beispiele:")[-1]
+        assert "--author" not in examples_part
+        assert "--stat" in examples_part or "--cached" in examples_part
+        mock_run.assert_not_called()
+
+    @patch("elder_berry.comms.commands.git_commands.subprocess.run")
+    def test_status_with_extra_args_rejected_not_silently_ignored(self, mock_run, handler):
+        """git status --short muss mit Fehlermeldung abgelehnt werden."""
+        result = handler.execute("git", "git status --short")
+        assert result.success is False
+        assert "--short" in result.text
+        mock_run.assert_not_called()
+
+    @patch("elder_berry.comms.commands.git_commands.subprocess.run")
+    def test_pull_with_extra_args_rejected(self, mock_run, handler):
+        """git pull --rebase muss abgelehnt werden."""
+        result = handler.execute("git", "git pull --rebase")
+        assert result.success is False
+        assert "--rebase" in result.text
+        mock_run.assert_not_called()
+
+    @patch("elder_berry.comms.commands.git_commands.subprocess.run")
     def test_mixed_allowed_blocked_rejects_whole(self, mock_run, handler):
         # Erste Arg OK, zweite verboten -- darf nicht durchrutschen.
         result = handler.execute("git", "git log --oneline --exec=cmd")
@@ -292,5 +319,21 @@ class TestGitExecuteExtraArgs:
     @patch("elder_berry.comms.commands.git_commands.subprocess.run")
     def test_diff_blocks_log_only_flag(self, mock_run, handler):
         result = handler.execute("git", "git diff --author=marcus")
+        assert result.success is False
+        mock_run.assert_not_called()
+
+    @patch("elder_berry.comms.commands.git_commands.subprocess.run")
+    def test_quoted_grep_arg_via_shlex(self, mock_run, handler):
+        """--grep=\"fix bug\" wird via shlex.split als ein Token erkannt."""
+        mock_run.return_value = MagicMock(returncode=0, stdout="ok", stderr="")
+        result = handler.execute("git", 'git log --grep="fix bug"')
+        assert result.success is True
+        cmd = mock_run.call_args[0][0]
+        assert "--grep=fix bug" in cmd
+
+    @patch("elder_berry.comms.commands.git_commands.subprocess.run")
+    def test_malformed_quotes_rejected(self, mock_run, handler):
+        """Nicht geschlossene Quotes werden abgelehnt."""
+        result = handler.execute("git", "git log --grep='unclosed")
         assert result.success is False
         mock_run.assert_not_called()
