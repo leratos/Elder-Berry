@@ -36,7 +36,7 @@ tts-neural = [
     "numpy>=1.26",
 ]
 avatar = [
-    "pygame>=2.5",
+    "pygame>=2.6.1",
 ]
 robot = []
 agent = [
