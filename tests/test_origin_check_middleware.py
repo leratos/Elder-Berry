@@ -203,6 +203,15 @@ class TestNormalization:
         # urlparse("HTTP://...") liefert scheme="http" -- also Match.
         assert r.status_code == 200
 
+    def test_hostname_uppercase_matches_lowercase_allowed(self):
+        client = TestClient(_build_app(["http://localhost:8090"]))
+        r = client.post(
+            "/write",
+            headers={"origin": "http://LOCALHOST:8090"},
+        )
+        # Hostname wird kanonisiert (lowercase) --> Match.
+        assert r.status_code == 200
+
     def test_trailing_slash_in_allowed_ignored(self):
         client = TestClient(_build_app(["http://localhost:8090/"]))
         r = client.post(

@@ -81,6 +81,7 @@ class OriginCheckMiddleware(BaseHTTPMiddleware):
                 return f"{scheme}://{host}"
 
         return stripped.rstrip("/")
+
     async def dispatch(self, request: Request, call_next):
         method = request.method.upper()
         if method not in _STATE_CHANGING_METHODS:

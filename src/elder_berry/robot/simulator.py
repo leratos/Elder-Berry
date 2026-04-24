@@ -250,6 +250,12 @@ if __name__ == "__main__":
             "Simulator bindet auf 0.0.0.0 ohne Auth -- jeder im LAN "
             "kann Motoren/Harmony steuern.",
         )
+    elif args.bind in ("::", "0:0:0:0:0:0:0:0", "::0"):
+        logger.warning(
+            "Simulator bindet auf %s (IPv6-any) ohne Auth -- jeder im "
+            "Netzwerk kann Motoren/Harmony steuern.",
+            args.bind,
+        )
 
     sim = create_simulator(host=args.bind, port=args.port)
     uvicorn.run(sim.app, host=args.bind, port=args.port)
