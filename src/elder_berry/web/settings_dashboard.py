@@ -29,6 +29,7 @@ from typing import TYPE_CHECKING, Any, Literal
 
 from fastapi import Body, FastAPI
 from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.staticfiles import StaticFiles
 
 # Re-Exports für Rückwärtskompatibilität (Tests importieren diese von hier)
 from elder_berry.web.secrets_api import (
@@ -76,6 +77,7 @@ class SettingDefinition:
 
 
 _TEMPLATE_DIR = Path(__file__).parent / "templates"
+_STATIC_DIR = Path(__file__).parent / "static"
 
 
 class SettingsDashboard:
@@ -163,6 +165,15 @@ class SettingsDashboard:
         self._host = host
         self._port = port
         self._app = FastAPI(title="Elder-Berry Settings Dashboard")
+
+        # Phase 63: Static-Files fuer CSP-Hardening (externe CSS/JS statt inline).
+        # Mount vor den Auth-Middlewares -- /static/* bleibt oeffentlich, damit
+        # CSS/JS auch fuer Login- und Setup-Wizard-Seiten verfuegbar sind.
+        self._app.mount(
+            "/static",
+            StaticFiles(directory=_STATIC_DIR),
+            name="static",
+        )
 
         # Security: CORS, Headers, Exception-Handler
         setup_security(self._app, port, secret_store)

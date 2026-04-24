@@ -22,6 +22,18 @@ def client():
     return TestClient(dashboard.app)
 
 
+def _panel_bundle(client) -> str:
+    """HTML + ausgelagerte JS-Datei als kombinierter String.
+
+    Phase 63: Das Unified Panel-Template referenziert jetzt
+    /static/js/settings_panel.js. Die folgenden Assertions pruefen
+    unabhaengig davon, in welcher Datei die Zeichenfolge steht.
+    """
+    html = client.get("/settings").text
+    js = client.get("/static/js/settings_panel.js").text
+    return html + "\n" + js
+
+
 class TestSettingsPanelRoute:
     """GET /settings rendert das Unified Settings-Panel."""
 
@@ -37,22 +49,19 @@ class TestSettingsPanelRoute:
         assert 'id="tokenModal"' in r.text
 
     def test_has_token_header_constant(self, client):
-        r = client.get("/settings")
-        assert "X-Saleria-Settings-Token" in r.text
+        assert "X-Saleria-Settings-Token" in _panel_bundle(client)
 
     def test_calls_secrets_status_and_settings_schema(self, client):
-        r = client.get("/settings")
-        assert "/api/secrets/status" in r.text
-        assert "/api/settings/schema" in r.text
-        assert "/api/settings/values" in r.text
+        body = _panel_bundle(client)
+        assert "/api/secrets/status" in body
+        assert "/api/settings/schema" in body
+        assert "/api/settings/values" in body
 
     def test_calls_setup_test_endpoint(self, client):
-        r = client.get("/settings")
-        assert "/api/setup/test/" in r.text
+        assert "/api/setup/test/" in _panel_bundle(client)
 
     def test_high_risk_confirm_present(self, client):
-        r = client.get("/settings")
-        assert "kritisch" in r.text
+        assert "kritisch" in _panel_bundle(client)
 
 
 class TestSettingsPanelData:

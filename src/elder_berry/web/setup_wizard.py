@@ -10,10 +10,16 @@ import logging
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
+import httpx
 from fastapi import Body
 from fastapi.responses import HTMLResponse, JSONResponse
 
 from elder_berry.web.setup_tests import EMAIL_PROVIDERS, SetupTests
+
+# Phase 63: Nominatim-User-Agent ist gemaess Nutzungsbedingungen Pflicht.
+_NOMINATIM_USER_AGENT = "Elder-Berry/1.0 (self-hosted home assistant)"
+_NOMINATIM_URL = "https://nominatim.openstreetmap.org/search"
+_GEOCODE_MAX_QUERY_LEN = 200
 
 if TYPE_CHECKING:
     from fastapi import FastAPI
@@ -421,6 +427,75 @@ def register_setup_wizard_routes(
             }
         return JSONResponse(result)
 
+    @app.get("/api/setup/geocode")
+    async def setup_geocode(q: str = ""):
+        """Phase 63: Server-seitiger Nominatim-Proxy.
+
+        Der Setup-Wizard hatte frueher direkt im Browser Nominatim angefragt.
+        Mit der strikten CSP (``connect-src 'self'``) ist externer fetch()
+        blockiert -- der Proxy liefert dasselbe Ergebnis in einem schlanken
+        Format.
+        """
+        query = q.strip()
+        if not query:
+            return JSONResponse(
+                {"success": False, "error": "Bitte Stadt eingeben."},
+                status_code=400,
+            )
+        if len(query) > _GEOCODE_MAX_QUERY_LEN:
+            return JSONResponse(
+                {"success": False, "error": "Stadt-Name zu lang."},
+                status_code=400,
+            )
+        try:
+            async with httpx.AsyncClient(timeout=10) as client:
+                resp = await client.get(
+                    _NOMINATIM_URL,
+                    params={"format": "json", "limit": 1, "q": query},
+                    headers={
+                        "Accept-Language": "de",
+                        "User-Agent": _NOMINATIM_USER_AGENT,
+                    },
+                )
+        except httpx.HTTPError as exc:
+            logger.warning("Geocoding-Netzwerkfehler: %s", exc)
+            return JSONResponse(
+                {"success": False, "error": f"Netzwerkfehler: {exc}"},
+                status_code=502,
+            )
+        if resp.status_code != 200:
+            return JSONResponse(
+                {
+                    "success": False,
+                    "error": f"Geocoding-API: HTTP {resp.status_code}",
+                },
+                status_code=502,
+            )
+        try:
+            data = resp.json()
+        except ValueError as exc:
+            logger.warning("Geocoding-Antwort nicht JSON: %s", exc)
+            return JSONResponse(
+                {"success": False, "error": "Ungueltige API-Antwort."},
+                status_code=502,
+            )
+        if not isinstance(data, list) or not data:
+            return JSONResponse({"success": False, "error": "Ort nicht gefunden."})
+        hit = data[0]
+        try:
+            return JSONResponse({
+                "success": True,
+                "lat": float(hit["lat"]),
+                "lon": float(hit["lon"]),
+                "display_name": str(hit.get("display_name", "")),
+            })
+        except (KeyError, TypeError, ValueError) as exc:
+            logger.warning("Geocoding-Antwortformat unerwartet: %s", exc)
+            return JSONResponse(
+                {"success": False, "error": "Unerwartetes API-Format."},
+                status_code=502,
+            )
+
 
 async def _run_llm_tests(secret_store: SecretStore) -> dict[str, Any]:
     """Führt LLM-Verbindungstests aus."""
@@ -537,6 +612,38 @@ async def _run_single_test(
     raise ValueError(f"Unbekannter Service: {service}")
 
 
+def build_standalone_wizard_app(
+    secret_store: SecretStore,
+    port: int = 8090,
+    compat_mode: bool = False,
+    migration_marker: Path | None = None,
+):
+    """Baut die FastAPI-App fuer den Standalone-Setup-Wizard (ohne uvicorn).
+
+    Phase 63: Der Standalone-Wizard muss dieselben Static-Assets liefern
+    wie das eingebettete Dashboard (CSS/JS unter /static/*), sonst laeuft
+    keine Interaktivitaet (Navigation, Tests, Geocoding, Completion). Die
+    Security-Middleware setzt zusaetzlich die strikte CSP auch im Erst-
+    Setup durch.
+    """
+    from fastapi import FastAPI
+    from fastapi.staticfiles import StaticFiles
+
+    from elder_berry.web.security_middleware import setup_security
+
+    app = FastAPI(title="Elder-Berry Setup-Wizard")
+    app.state.standalone = True
+    app.state.compat_mode = compat_mode
+    app.state.migration_marker = migration_marker
+
+    static_dir = Path(__file__).parent / "static"
+    app.mount("/static", StaticFiles(directory=static_dir), name="static")
+    setup_security(app, port, secret_store)
+
+    register_setup_wizard_routes(app, secret_store)
+    return app
+
+
 def run_setup_wizard(
     secret_store: SecretStore,
     port: int = 8090,
@@ -561,13 +668,12 @@ def run_setup_wizard(
         geschrieben, damit die Grace-Period beim nächsten Start inaktiv ist.
     """
     import uvicorn
-    from fastapi import FastAPI
 
-    app = FastAPI(title="Elder-Berry Setup-Wizard")
-    app.state.standalone = True
-    app.state.compat_mode = compat_mode
-    app.state.migration_marker = migration_marker
-    register_setup_wizard_routes(app, secret_store)
-
+    app = build_standalone_wizard_app(
+        secret_store,
+        port=port,
+        compat_mode=compat_mode,
+        migration_marker=migration_marker,
+    )
     logger.info("Setup-Wizard gestartet auf http://%s:%d/setup", bind, port)
     uvicorn.run(app, host=bind, port=port)

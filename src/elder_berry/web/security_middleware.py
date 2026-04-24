@@ -28,15 +28,15 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         response.headers["X-Content-Type-Options"] = "nosniff"
         response.headers["X-Frame-Options"] = "DENY"
         response.headers["Referrer-Policy"] = "no-referrer"
-        # CSP-Hinweis: 'unsafe-inline' ist derzeit erforderlich, da die
-        # Dashboard-Templates inline <style>- und <script>-Blöcke sowie
-        # HTML-Event-Handler (onclick, onchange) nutzen.
-        # Langfristig: Templates auf externe CSS/JS umstellen und diese
-        # Direktive durch 'nonce-{random}' oder Hashes ersetzen (TODO).
+        # Phase 63: 'unsafe-inline' entfernt. Alle Templates nutzen jetzt
+        # externe CSS/JS aus /static/. Externe Requests (frueher direkt
+        # zu nominatim.openstreetmap.org) laufen ueber Server-Proxies.
         response.headers["Content-Security-Policy"] = (
             "default-src 'self'; "
-            "script-src 'self' 'unsafe-inline'; "
-            "style-src 'self' 'unsafe-inline';"
+            "script-src 'self'; "
+            "style-src 'self'; "
+            "img-src 'self' data:; "
+            "connect-src 'self';"
         )
         # Permissions-Policy: Geräte- und Sensor-APIs deaktivieren, die
         # das Dashboard nicht benötigt.

@@ -4,157 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Elder-Berry Settings</title>
-    <style>
-        * { margin: 0; padding: 0; box-sizing: border-box; }
-        body {
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-            background: #1a1a2e;
-            color: #e0e0e0;
-            display: flex;
-            justify-content: center;
-            align-items: flex-start;
-            padding: 2rem;
-            min-height: 100vh;
-        }
-        .container {
-            display: flex;
-            flex-direction: column;
-            gap: 1.5rem;
-            width: 380px;
-        }
-        .card {
-            background: #16213e;
-            border-radius: 16px;
-            padding: 2rem;
-            box-shadow: 0 8px 32px rgba(0,0,0,0.3);
-            text-align: center;
-        }
-        h1 {
-            font-size: 1.3rem;
-            margin-bottom: 0.3rem;
-            color: #a8d5a2;
-        }
-        h2 {
-            font-size: 1.1rem;
-            margin-bottom: 0.3rem;
-            color: #a8d5a2;
-        }
-        .subtitle {
-            font-size: 0.85rem;
-            color: #888;
-            margin-bottom: 1.5rem;
-        }
-        .status {
-            font-size: 1.1rem;
-            margin-bottom: 1.5rem;
-            padding: 0.8rem;
-            border-radius: 8px;
-            background: #0f3460;
-            transition: background 0.3s;
-        }
-        .status.local { background: #1b4332; }
-        .status .mode-label { font-weight: 600; }
-        .toggle-btn {
-            display: inline-block;
-            padding: 0.9rem 2rem;
-            font-size: 1rem;
-            border: none;
-            border-radius: 10px;
-            cursor: pointer;
-            background: #533483;
-            color: #fff;
-            transition: background 0.2s, transform 0.1s;
-            width: 100%;
-        }
-        .toggle-btn:hover { background: #6c4ab6; }
-        .toggle-btn:active { transform: scale(0.97); }
-        .toggle-btn:disabled {
-            background: #333;
-            color: #666;
-            cursor: not-allowed;
-        }
-        .info {
-            margin-top: 1rem;
-            font-size: 0.8rem;
-            color: #666;
-        }
-        select {
-            width: 100%;
-            padding: 0.8rem;
-            font-size: 1rem;
-            border: 1px solid #333;
-            border-radius: 10px;
-            background: #0f3460;
-            color: #e0e0e0;
-            cursor: pointer;
-            appearance: auto;
-        }
-        select:focus {
-            outline: 2px solid #533483;
-        }
-        .monitor-info {
-            font-size: 0.85rem;
-            color: #999;
-            margin-top: 0.5rem;
-        }
-        .unavailable {
-            color: #666;
-            font-style: italic;
-        }
-        input[type="text"] {
-            width: 100%;
-            padding: 0.8rem;
-            font-size: 0.95rem;
-            border: 1px solid #333;
-            border-radius: 10px;
-            background: #0f3460;
-            color: #e0e0e0;
-        }
-        input[type="text"]:focus {
-            outline: 2px solid #533483;
-        }
-        .btn-row {
-            display: flex;
-            gap: 0.5rem;
-            margin-top: 0.8rem;
-        }
-        .btn-row button {
-            flex: 1;
-        }
-        .btn-danger {
-            display: inline-block;
-            padding: 0.9rem 2rem;
-            font-size: 1rem;
-            border: none;
-            border-radius: 10px;
-            cursor: pointer;
-            background: #6b2038;
-            color: #fff;
-            transition: background 0.2s, transform 0.1s;
-        }
-        .btn-danger:hover { background: #8b2a4a; }
-        .btn-danger:active { transform: scale(0.97); }
-        .btn-danger:disabled {
-            background: #333;
-            color: #666;
-            cursor: not-allowed;
-        }
-        .status-badge {
-            display: inline-block;
-            padding: 0.3rem 0.8rem;
-            border-radius: 20px;
-            font-size: 0.85rem;
-            font-weight: 600;
-            margin-bottom: 1rem;
-        }
-        .status-badge.active { background: #1b4332; color: #a8d5a2; }
-        .status-badge.inactive { background: #4a1525; color: #e88; }
-        .sender-info {
-            font-size: 0.8rem;
-            color: #666;
-            margin-top: 0.5rem;
-        }
-    </style>
+    <link rel="stylesheet" href="/static/css/audio_dashboard.css">
 </head>
 <body>
     <div class="container">
@@ -167,7 +17,7 @@
                 <span class="mode-label" id="modeLabel">Lade...</span>
             </div>
 
-            <button class="toggle-btn" id="toggleBtn" onclick="toggleAudio()" disabled>
+            <button class="toggle-btn" id="toggleBtn" disabled>
                 Lade...
             </button>
 
@@ -179,7 +29,7 @@
             <h2>Computer Use Monitor</h2>
             <p class="subtitle">Bildschirm für Vision-Steuerung</p>
 
-            <select id="monitorSelect" onchange="setMonitor(this.value)">
+            <select id="monitorSelect">
                 <option value="">Lade...</option>
             </select>
 
@@ -199,10 +49,10 @@
             <p class="sender-info">Mehrere IDs kommagetrennt. Leer lassen = alle erlaubt.</p>
 
             <div class="btn-row">
-                <button class="toggle-btn" id="senderSaveBtn" onclick="saveSenders()">
+                <button class="toggle-btn" id="senderSaveBtn">
                     Speichern
                 </button>
-                <button class="btn-danger" id="senderRemoveBtn" onclick="removeSenders()" disabled>
+                <button class="btn-danger" id="senderRemoveBtn" disabled>
                     Entfernen
                 </button>
             </div>
@@ -215,7 +65,7 @@
             <h2>Zeitzone</h2>
             <p class="subtitle">Für Erinnerungen & Kalender</p>
 
-            <select id="timezoneSelect" onchange="setTimezone(this.value)">
+            <select id="timezoneSelect">
                 <option value="">Lade...</option>
             </select>
 
@@ -227,13 +77,11 @@
             <h2>STT-Timeout</h2>
             <p class="subtitle">Maximale Wartezeit für Spracherkennung</p>
 
-            <div style="display: flex; align-items: center; gap: 0.8rem;">
+            <div class="stt-row">
                 <input type="range" id="sttTimeoutSlider"
-                       min="5" max="600" step="5" value="120"
-                       oninput="sttTimeoutValue.textContent = this.value + 's'"
-                       onchange="setSttTimeout(this.value)"
-                       style="flex: 1; accent-color: #533483;">
-                <span id="sttTimeoutValue" style="min-width: 3.5rem; text-align: right; font-weight: 600;">120s</span>
+                       class="stt-slider"
+                       min="5" max="600" step="5" value="120">
+                <span id="sttTimeoutValue" class="stt-value">120s</span>
             </div>
 
             <p class="monitor-info" id="sttTimeoutInfo"></p>
@@ -243,315 +91,20 @@
         <div class="card">
             <h2>Avatar-Editor</h2>
             <p class="subtitle">Sprites, Emotionen & Animationen</p>
-            <a href="/avatar/editor" style="
-                display: inline-block;
-                margin-top: 0.8rem;
-                padding: 0.7rem 1.5rem;
-                background: #ff6b8a;
-                color: #fff;
-                border-radius: 8px;
-                text-decoration: none;
-                font-weight: 600;
-                font-size: 0.95rem;
-                transition: background 0.2s;
-            " onmouseover="this.style.background='#ff4d73'"
-               onmouseout="this.style.background='#ff6b8a'">Editor öffnen</a>
+            <a href="/avatar/editor" class="card-link pink">Editor öffnen</a>
         </div>
 
         <div class="card">
             <h2>Einstellungen</h2>
             <p class="subtitle">Dienste, API-Keys und Verhalten</p>
-            <a href="/settings" style="
-                display: inline-block;
-                margin-top: 0.8rem;
-                padding: 0.7rem 1.5rem;
-                background: #533483;
-                color: #fff;
-                border-radius: 8px;
-                text-decoration: none;
-                font-weight: 600;
-                font-size: 0.95rem;
-                transition: background 0.2s;
-            " onmouseover="this.style.background='#6c4ab6'"
-               onmouseout="this.style.background='#533483'">Settings öffnen</a>
-            <p class="info" style="margin-top: 0.6rem;">
+            <a href="/settings" class="card-link purple">Settings öffnen</a>
+            <p class="info setup-hint">
                 Erst-Einrichtung über
-                <a href="/setup?force=1" style="color: #888;">Setup-Wizard</a>
+                <a href="/setup?force=1">Setup-Wizard</a>
             </p>
         </div>
     </div>
 
-    <script>
-        // --- Audio ---
-        const statusEl = document.getElementById("status");
-        const labelEl = document.getElementById("modeLabel");
-        const btnEl = document.getElementById("toggleBtn");
-        const audioInfoEl = document.getElementById("audioInfo");
-
-        function updateAudioUI(data) {
-            const isLocal = data.mode === "matrix_and_local";
-            labelEl.textContent = isLocal ? "Matrix + Lokal" : "Nur Matrix";
-            statusEl.className = "status" + (isLocal ? " local" : "");
-            btnEl.disabled = !data.local_available;
-
-            if (!data.local_available) {
-                btnEl.textContent = "Lokale Wiedergabe nicht verfügbar";
-                audioInfoEl.textContent = "sounddevice/AgentClient nicht erkannt";
-            } else {
-                btnEl.textContent = isLocal
-                    ? "Lokale Wiedergabe deaktivieren"
-                    : "Lokale Wiedergabe aktivieren";
-                audioInfoEl.textContent = "";
-            }
-        }
-
-        async function fetchAudioStatus() {
-            try {
-                const r = await fetch("/api/audio");
-                updateAudioUI(await r.json());
-            } catch (e) {
-                labelEl.textContent = "Verbindungsfehler";
-            }
-        }
-
-        async function toggleAudio() {
-            btnEl.disabled = true;
-            try {
-                const r = await fetch("/api/audio", { method: "POST" });
-                updateAudioUI(await r.json());
-            } catch (e) {
-                labelEl.textContent = "Fehler";
-            }
-        }
-
-        // --- Monitor ---
-        const monitorSelect = document.getElementById("monitorSelect");
-        const monitorInfo = document.getElementById("monitorInfo");
-        const monitorCard = document.getElementById("monitorCard");
-
-        async function fetchMonitors() {
-            try {
-                const r = await fetch("/api/monitors");
-                const data = await r.json();
-
-                if (!data.available) {
-                    monitorSelect.innerHTML = '<option value="">Computer Use nicht aktiv</option>';
-                    monitorSelect.disabled = true;
-                    monitorInfo.textContent = "ComputerUseController nicht konfiguriert";
-                    return;
-                }
-
-                monitorSelect.innerHTML = "";
-                data.monitors.forEach(m => {
-                    const opt = document.createElement("option");
-                    opt.value = m.index;
-                    opt.textContent = `Monitor ${m.index}: ${m.width}x${m.height}`;
-                    if (m.index === data.selected) opt.selected = true;
-                    monitorSelect.appendChild(opt);
-                });
-
-                const sel = data.monitors.find(m => m.index === data.selected);
-                if (sel) {
-                    monitorInfo.textContent = `Aktiv: ${sel.width}x${sel.height} (Position: ${sel.left}, ${sel.top})`;
-                }
-            } catch (e) {
-                monitorInfo.textContent = "Verbindungsfehler";
-            }
-        }
-
-        async function setMonitor(index) {
-            if (!index) return;
-            try {
-                const r = await fetch("/api/monitor", {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({ index: parseInt(index) }),
-                });
-                const data = await r.json();
-                if (data.error) {
-                    monitorInfo.textContent = data.error;
-                } else {
-                    const sel = data.monitors.find(m => m.index === data.selected);
-                    if (sel) {
-                        monitorInfo.textContent = `Aktiv: ${sel.width}x${sel.height} (Position: ${sel.left}, ${sel.top})`;
-                    }
-                }
-            } catch (e) {
-                monitorInfo.textContent = "Fehler beim Setzen";
-            }
-        }
-
-        // --- Allowed Senders ---
-        const senderBadge = document.getElementById("senderBadge");
-        const senderInput = document.getElementById("senderInput");
-        const senderSaveBtn = document.getElementById("senderSaveBtn");
-        const senderRemoveBtn = document.getElementById("senderRemoveBtn");
-        const senderMsg = document.getElementById("senderMsg");
-
-        function updateSenderUI(data) {
-            if (!data.available) {
-                senderBadge.textContent = "Nicht verfügbar";
-                senderBadge.className = "status-badge inactive";
-                senderInput.disabled = true;
-                senderSaveBtn.disabled = true;
-                senderRemoveBtn.disabled = true;
-                senderMsg.textContent = "SecretStore nicht konfiguriert";
-                return;
-            }
-            senderInput.disabled = false;
-            senderSaveBtn.disabled = false;
-            if (data.configured) {
-                senderBadge.textContent = data.count + " Sender konfiguriert";
-                senderBadge.className = "status-badge active";
-                senderRemoveBtn.disabled = false;
-            } else {
-                senderBadge.textContent = "Nicht konfiguriert";
-                senderBadge.className = "status-badge inactive";
-                senderRemoveBtn.disabled = true;
-            }
-        }
-
-        async function fetchSenders() {
-            try {
-                const r = await fetch("/api/allowed-senders");
-                updateSenderUI(await r.json());
-            } catch (e) {
-                senderMsg.textContent = "Verbindungsfehler";
-            }
-        }
-
-        async function saveSenders() {
-            const val = senderInput.value.trim();
-            if (!val) {
-                senderMsg.textContent = "Bitte mindestens eine Matrix-ID eingeben.";
-                return;
-            }
-            senderSaveBtn.disabled = true;
-            senderMsg.textContent = "";
-            try {
-                const r = await fetch("/api/allowed-senders", {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({ senders: val }),
-                });
-                const data = await r.json();
-                if (data.error) {
-                    senderMsg.textContent = data.error;
-                } else {
-                    updateSenderUI(data);
-                    senderInput.value = "";
-                    senderMsg.textContent = "Gespeichert! Neustart erforderlich.";
-                }
-            } catch (e) {
-                senderMsg.textContent = "Fehler beim Speichern";
-            }
-            senderSaveBtn.disabled = false;
-        }
-
-        async function removeSenders() {
-            senderRemoveBtn.disabled = true;
-            senderMsg.textContent = "";
-            try {
-                const r = await fetch("/api/allowed-senders", {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({ action: "remove" }),
-                });
-                const data = await r.json();
-                updateSenderUI(data);
-                senderMsg.textContent = "Entfernt! Neustart erforderlich.";
-            } catch (e) {
-                senderMsg.textContent = "Fehler beim Entfernen";
-            }
-        }
-
-        // --- Timezone ---
-        const timezoneSelect = document.getElementById("timezoneSelect");
-        const timezoneInfo = document.getElementById("timezoneInfo");
-
-        async function fetchTimezone() {
-            try {
-                const r = await fetch("/api/timezone");
-                const data = await r.json();
-
-                timezoneSelect.innerHTML = "";
-                data.available.forEach(tz => {
-                    const opt = document.createElement("option");
-                    opt.value = tz;
-                    opt.textContent = tz;
-                    if (tz === data.timezone) opt.selected = true;
-                    timezoneSelect.appendChild(opt);
-                });
-
-                timezoneInfo.textContent = "Aktiv: " + data.timezone;
-            } catch (e) {
-                timezoneInfo.textContent = "Verbindungsfehler";
-            }
-        }
-
-        async function setTimezone(tz) {
-            if (!tz) return;
-            try {
-                const r = await fetch("/api/timezone", {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({ timezone: tz }),
-                });
-                const data = await r.json();
-                if (data.error) {
-                    timezoneInfo.textContent = data.error;
-                } else {
-                    timezoneInfo.textContent = "Aktiv: " + data.timezone;
-                }
-            } catch (e) {
-                timezoneInfo.textContent = "Fehler beim Setzen";
-            }
-        }
-
-        // --- STT Timeout ---
-        const sttTimeoutSlider = document.getElementById("sttTimeoutSlider");
-        const sttTimeoutValue = document.getElementById("sttTimeoutValue");
-        const sttTimeoutInfo = document.getElementById("sttTimeoutInfo");
-
-        async function fetchSttTimeout() {
-            try {
-                const r = await fetch("/api/stt-timeout");
-                const data = await r.json();
-                sttTimeoutSlider.value = data.timeout;
-                sttTimeoutValue.textContent = data.timeout + "s";
-                sttTimeoutInfo.textContent = "Aktiv: " + data.timeout + "s";
-                if (!data.available) {
-                    sttTimeoutInfo.textContent += " (nur gespeichert, Pipeline nicht verbunden)";
-                }
-            } catch (e) {
-                sttTimeoutInfo.textContent = "Verbindungsfehler";
-            }
-        }
-
-        async function setSttTimeout(value) {
-            try {
-                const r = await fetch("/api/stt-timeout", {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({ timeout: parseFloat(value) }),
-                });
-                const data = await r.json();
-                if (data.error) {
-                    sttTimeoutInfo.textContent = data.error;
-                } else {
-                    sttTimeoutInfo.textContent = "Aktiv: " + data.timeout + "s";
-                }
-            } catch (e) {
-                sttTimeoutInfo.textContent = "Fehler beim Setzen";
-            }
-        }
-
-        // Init
-        fetchAudioStatus();
-        fetchMonitors();
-        fetchSenders();
-        fetchTimezone();
-        fetchSttTimeout();
-    </script>
+    <script src="/static/js/audio_dashboard.js" defer></script>
 </body>
 </html>
