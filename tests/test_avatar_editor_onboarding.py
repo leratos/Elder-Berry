@@ -9,15 +9,22 @@ from pathlib import Path
 
 import pytest
 
-_TEMPLATE = (
-    Path(__file__).resolve().parents[1]
-    / "src" / "elder_berry" / "web" / "templates" / "avatar_editor.html"
-)
+_WEB = Path(__file__).resolve().parents[1] / "src" / "elder_berry" / "web"
+_TEMPLATE = _WEB / "templates" / "avatar_editor.html"
+_CSS = _WEB / "static" / "css" / "avatar_editor.css"
+_JS = _WEB / "static" / "js" / "avatar_editor.js"
 
 
 @pytest.fixture(scope="module")
 def html() -> str:
-    return _TEMPLATE.read_text(encoding="utf-8")
+    """HTML-Template + externes CSS + externes JS (Phase 63: Code ausgelagert).
+
+    Alle Assertions pruefen weiterhin die Zeichenfolgen unabhaengig davon,
+    in welcher Datei sie letztendlich stehen.
+    """
+    return "\n".join(
+        p.read_text(encoding="utf-8") for p in (_TEMPLATE, _CSS, _JS)
+    )
 
 
 # ---------------------------------------------------------------------------
