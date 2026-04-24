@@ -8,16 +8,16 @@ version = "0.1.0"
 requires-python = ">=3.12"
 dependencies = [
     "psutil>=5.9",
-    "httpx>=0.27",
+    "httpx>=0.28.1",
     "python-dotenv>=1.0",
     "PyYAML>=6.0",
-    "cryptography>=42.0",
+    "cryptography>=47.0.0",
     "anthropic>=0.40",
     "tzdata>=2024.1",
-    "fastapi>=0.115",
-    "uvicorn[standard]>=0.32",
-    "bcrypt>=4.0",    # Phase 58: Dashboard-Login (PW-Hash, Tower + CI)
-    "keyring>=24.0",  # Phase 65 (M-1): Fernet-Masterkey im OS-Keyring
+    "fastapi>=0.136.1",
+    "uvicorn[standard]>=0.46.0",
+    "bcrypt>=5.0.0",    # Phase 58: Dashboard-Login (PW-Hash, Tower + CI)
+    "keyring>=25.7.0",  # Phase 65 (M-1): Fernet-Masterkey im OS-Keyring
                       # (Windows DPAPI / macOS Keychain / Linux Secret Service).
                       # Fallback auf Plaintext-Datei wenn kein Backend da.
 ]
