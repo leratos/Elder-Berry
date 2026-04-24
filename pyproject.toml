@@ -16,7 +16,10 @@ dependencies = [
     "tzdata>=2024.1",
     "fastapi>=0.115",
     "uvicorn[standard]>=0.32",
-    "bcrypt>=4.0",  # Phase 58: Dashboard-Login (PW-Hash, Tower + CI)
+    "bcrypt>=4.0",    # Phase 58: Dashboard-Login (PW-Hash, Tower + CI)
+    "keyring>=24.0",  # Phase 65 (M-1): Fernet-Masterkey im OS-Keyring
+                      # (Windows DPAPI / macOS Keychain / Linux Secret Service).
+                      # Fallback auf Plaintext-Datei wenn kein Backend da.
 ]
 
 [project.optional-dependencies]
@@ -109,6 +112,7 @@ server = [
 ]
 dev = [
     "pytest-timeout>=2.3",
+    "pip-tools>=7.0",  # Phase 65 (M-3): Lockfile-Generierung via pip-compile
 ]
 
 [tool.setuptools.packages.find]

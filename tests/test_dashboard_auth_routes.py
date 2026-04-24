@@ -232,3 +232,95 @@ class TestChangePassword:
             json={"current_password": "oldsecret123"},
         )
         assert r.status_code == 400
+
+
+# ---------------------------------------------------------------------------
+# Phase 65 (M-4): /api/dashboard/logout-all
+# ---------------------------------------------------------------------------
+
+
+class TestLogoutAll:
+    """Globales Logout -- rotiert das Session-Secret."""
+
+    def test_requires_login_cookie(
+        self, client: TestClient
+    ) -> None:
+        r = client.post("/api/dashboard/logout-all")
+        assert r.status_code == 401
+        assert r.json()["code"] == "auth_required"
+
+    def test_rejects_invalid_cookie(
+        self, client: TestClient
+    ) -> None:
+        client.cookies.set(COOKIE_NAME, "not.a.valid.cookie")
+        r = client.post("/api/dashboard/logout-all")
+        assert r.status_code == 401
+
+    def test_rotates_secret(
+        self, client: TestClient, auth: DashboardAuthManager
+    ) -> None:
+        auth.set_password("supersecret123")
+        old_cookie, _ = auth.issue_session()
+        client.cookies.set(COOKIE_NAME, old_cookie)
+
+        # Vor Rotation: altes Cookie ist gueltig
+        auth.verify_session(old_cookie)
+
+        r = client.post("/api/dashboard/logout-all")
+        assert r.status_code == 200
+        assert r.json()["ok"] is True
+
+        # Nach Rotation: altes Cookie wird mit InvalidSessionError abgelehnt
+        from elder_berry.web.dashboard_auth import InvalidSessionError
+        with pytest.raises(InvalidSessionError):
+            auth.verify_session(old_cookie)
+
+    def test_returns_fresh_cookie_for_caller(
+        self, client: TestClient, auth: DashboardAuthManager
+    ) -> None:
+        auth.set_password("supersecret123")
+        old_cookie, _ = auth.issue_session()
+        client.cookies.set(COOKIE_NAME, old_cookie)
+
+        r = client.post("/api/dashboard/logout-all")
+        assert r.status_code == 200
+        assert COOKIE_NAME in r.cookies
+
+        new_cookie = r.cookies[COOKIE_NAME]
+        assert new_cookie != old_cookie
+        # Neues Cookie muss mit rotiertem Secret verifizierbar sein
+        auth.verify_session(new_cookie)
+
+    def test_other_sessions_become_invalid(
+        self, client: TestClient, auth: DashboardAuthManager
+    ) -> None:
+        """Szenario: zwei Geraete mit je eigenem Cookie. Device A
+        triggert logout-all. Device B's Cookie ist danach ungueltig."""
+        auth.set_password("supersecret123")
+        cookie_a, _ = auth.issue_session()
+        cookie_b, _ = auth.issue_session()
+
+        # Verify beide gueltig initial
+        auth.verify_session(cookie_a)
+        auth.verify_session(cookie_b)
+
+        # Device A ruft logout-all
+        client.cookies.set(COOKIE_NAME, cookie_a)
+        r = client.post("/api/dashboard/logout-all")
+        assert r.status_code == 200
+
+        # Device B's Cookie ist jetzt tot
+        from elder_berry.web.dashboard_auth import InvalidSessionError
+        with pytest.raises(InvalidSessionError):
+            auth.verify_session(cookie_b)
+
+    def test_returns_new_expiry(
+        self, client: TestClient, auth: DashboardAuthManager
+    ) -> None:
+        auth.set_password("supersecret123")
+        cookie, _ = auth.issue_session()
+        client.cookies.set(COOKIE_NAME, cookie)
+
+        r = client.post("/api/dashboard/logout-all")
+        assert "expires_at" in r.json()
+        assert isinstance(r.json()["expires_at"], int)

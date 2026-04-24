@@ -63,6 +63,15 @@ class TestSettingsPanelRoute:
     def test_high_risk_confirm_present(self, client):
         assert "kritisch" in _panel_bundle(client)
 
+    def test_logout_all_button_in_html(self, client):
+        """Phase 65 (M-4): Button fuer globales Logout im Header."""
+        html = client.get("/settings").text
+        assert 'id="logoutAllBtn"' in html
+
+    def test_logout_all_calls_correct_endpoint(self, client):
+        """JS muss tatsaechlich /api/dashboard/logout-all aufrufen."""
+        assert "/api/dashboard/logout-all" in _panel_bundle(client)
+
 
 class TestSettingsPanelData:
     """Stellt sicher, dass die vom Panel benötigten Endpoints vorhanden sind."""

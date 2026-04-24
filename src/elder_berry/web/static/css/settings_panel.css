@@ -57,12 +57,35 @@ body {
     font-size: 1.4rem;
     color: #a8d5a2;
 }
+.header-actions {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+}
 .token-status {
     font-size: 0.85rem;
     color: #888;
 }
 .token-status.ok { color: #a8d5a2; }
 .token-status.fail { color: #e07b7b; }
+.logout-all-btn {
+    background: transparent;
+    color: #e07b7b;
+    border: 1px solid #e07b7b;
+    border-radius: 6px;
+    padding: 0.4rem 0.8rem;
+    font-size: 0.85rem;
+    cursor: pointer;
+    transition: background 0.15s, color 0.15s;
+}
+.logout-all-btn:hover {
+    background: #e07b7b;
+    color: #1a1a2e;
+}
+.logout-all-btn:disabled {
+    opacity: 0.5;
+    cursor: wait;
+}
 .field {
     background: #16213e;
     border-radius: 10px;

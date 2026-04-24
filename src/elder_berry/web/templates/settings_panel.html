@@ -28,7 +28,13 @@
         <main class="main">
             <div class="header-bar">
                 <h2 id="currentTab">Lade …</h2>
-                <span class="token-status" id="tokenStatus">Token: nicht gesetzt</span>
+                <div class="header-actions">
+                    <button id="logoutAllBtn" class="logout-all-btn"
+                            title="Rotiert das Session-Secret. Deine aktuelle Session bleibt aktiv, alle anderen Geräte werden abgemeldet.">
+                        Alle anderen Sessions abmelden
+                    </button>
+                    <span class="token-status" id="tokenStatus">Token: nicht gesetzt</span>
+                </div>
             </div>
             <div id="fieldContainer">
                 <div class="empty-tab">Lade Konfiguration …</div>
