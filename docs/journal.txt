@@ -4949,3 +4949,19 @@ User: "Lies meine Mails und trag den Zahnarzttermin ein"
 ## In Arbeit: CI-Qualität – CRLF + ruff F401/B + pip-audit (2026-04-24)
 - Branch: feature/ci-quality-improvements
 - Schritte: .gitattributes, ruff F401 (220) + B (18), CI-Erweiterung
+
+## Abgeschlossen: CI-Qualitaet -- CRLF + ruff F401/B + pip-audit (2026-04-23)
+- Branch: feature/ci-quality-improvements
+- .gitattributes: LF-Normalisierung fuer alle Textdateien, CRLF nur fuer .bat/.cmd/.ps1
+- git add --renormalize: nur journal.txt war CRLF, korrigiert
+- ruff F401: 215 Violations auto-gefixed, 6 manuell behoben
+  (psutil-Guards mit noqa, SendCommandDevice-Duplikat entfernt,
+   system/__init__.py als explizites Re-Export, 2 Dead-Imports in Tests)
+- ruff B007/B017/B027/B904: 16 Violations behoben (Loop-Vars, Exception-Typen,
+  raise-from, noqa fuer TTSEngine-No-Ops)
+- pyproject.toml: [tool.ruff.lint] ignore = ["B008"] fuer FastAPI-Pattern
+- ci.yml: ruff-Regel auf E9,W605,F401,B --ignore B008 erweitert
+- ci.yml: pip-audit Gruppen: robot,agent,matrix,remote,memory,tools,
+  documents,nextcloud,web,harmony
+- Tests: 4615 bestanden, 28 skipped -- keine Regression
+- Commits: 05b5705 (.gitattributes), 16decd6 (renormalize), d370cc4 (ruff+CI)
