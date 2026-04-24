@@ -48,21 +48,39 @@ class OriginCheckMiddleware(BaseHTTPMiddleware):
         # nicht den Pfad. Das deckt sich mit dem Browser-Verhalten beim
         # Origin-Header.
         self._allowed: frozenset[str] = frozenset(
-            self._normalize(o) for o in allowed_origins if o
+            self._normalize(o) for o in allowed_origins if o and o.strip()
         )
 
     @staticmethod
     def _normalize(origin: str) -> str:
         """Normalisiert auf ``scheme://host[:port]``.
 
-        urlparse lowercased das Schema; wir strippen Trailing-Slashes
-        und Pfade.
+        Schema und Hostname werden kanonisiert; bei HTTP/HTTPS wird der
+        jeweilige Default-Port entfernt. Trailing-Slashes und Pfade werden
+        ignoriert.
         """
-        parsed = urlparse(origin.strip())
+        stripped = origin.strip()
+        parsed = urlparse(stripped)
         if parsed.scheme and parsed.netloc:
-            return f"{parsed.scheme}://{parsed.netloc}"
-        return origin.strip().rstrip("/")
+            try:
+                hostname = parsed.hostname
+                port = parsed.port
+            except ValueError:
+                return stripped.rstrip("/")
 
+            if hostname:
+                scheme = parsed.scheme.lower()
+                host = hostname.lower()
+                if ":" in host and not host.startswith("["):
+                    host = f"[{host}]"
+
+                default_port = 80 if scheme == "http" else 443 if scheme == "https" else None
+                if port is not None and port != default_port:
+                    host = f"{host}:{port}"
+
+                return f"{scheme}://{host}"
+
+        return stripped.rstrip("/")
     async def dispatch(self, request: Request, call_next):
         method = request.method.upper()
         if method not in _STATE_CHANGING_METHODS:
