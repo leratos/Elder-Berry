@@ -99,34 +99,29 @@ class WebFetcher:
         blockieren.
         """
         current_url = url
-        for _ in range(_MAX_REDIRECTS + 1):
-            try:
-                response = httpx.get(
-                    current_url,
-                    headers={"User-Agent": _USER_AGENT},
-                    timeout=_TIMEOUT,
-                    follow_redirects=False,
+        redirects = 0
+        while True:
+            response = httpx.get(
+                current_url,
+                headers={"User-Agent": _USER_AGENT},
+                timeout=_TIMEOUT,
+                follow_redirects=False,
+            )
+            if not response.is_redirect:
+                response.raise_for_status()
+                return response.text
+
+            redirects += 1
+            if redirects > _MAX_REDIRECTS:
+                raise httpx.TooManyRedirects(
+                    f"Zu viele Weiterleitungen (> {_MAX_REDIRECTS}) fuer {url}"
                 )
-            except httpx.TimeoutException:
-                raise
-            except httpx.RequestError:
-                raise
-
-            if response.is_redirect:
-                location = response.headers.get("location", "")
-                if not location:
-                    raise httpx.RequestError(
-                        f"Redirect ohne Location-Header von {current_url}"
-                    )
-                current_url = ensure_public_url(urljoin(current_url, location))
-                continue
-
-            response.raise_for_status()
-            return response.text
-
-        raise httpx.TooManyRedirects(
-            f"Zu viele Weiterleitungen (> {_MAX_REDIRECTS}) fuer {url}"
-        )
+            location = response.headers.get("location", "")
+            if not location:
+                raise httpx.RequestError(
+                    f"Redirect ohne Location-Header von {current_url}"
+                )
+            current_url = ensure_public_url(urljoin(current_url, location))
 
     def _extract(self, html: str, url: str) -> tuple[str, str]:
         """Text und Titel aus HTML extrahieren.

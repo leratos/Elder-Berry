@@ -283,8 +283,6 @@ class TestWebFetcherSSRFProtection:
         manuelle Redirect-Validierung wuerde follow_redirects=True den
         SSRF-Check umgehen.
         """
-        from unittest.mock import MagicMock, patch
-
         def selective_resolver(host, *args, **kwargs):
             if host == "trusted.example.com":
                 return [(None, None, None, None, ("93.184.216.34", 0))]
