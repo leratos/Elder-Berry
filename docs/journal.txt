@@ -5028,3 +5028,22 @@ User: "Lies meine Mails und trag den Zahnarzttermin ein"
   * Browser-Konsole zeigt KEINE CSP-Violations
   * Setup-Wizard Geocoding liefert lat/lon (Proxy funktioniert)
   * Alle Buttons, Selects, Slider funktionieren identisch zu vorher
+
+## Abgeschlossen: Phase 63 Nachtrag -- Standalone-Wizard Static-Mount (2026-04-24)
+- Gemeldet: Standalone-Wizard (run_setup_wizard via scripts/start_saleria.py
+  bzw. scripts/setup_wizard.py) hatte keinen /static-Mount -> CSS/JS 404 ->
+  keine Interaktivitaet im Erst-Setup. Templates referenzieren seit Phase 63
+  zwingend /static/js/setup_wizard.js + /static/css/setup_wizard.css.
+- Fix: src/elder_berry/web/setup_wizard.py
+  * build_standalone_wizard_app() extrahiert (testbare App-Konstruktion).
+  * Mountet /static und zieht die Security-Middleware ein -- CSP wirkt
+    auch im Erst-Setup strikt.
+  * run_setup_wizard() delegiert an build_standalone_wizard_app() +
+    uvicorn.run (blockierend wie bisher).
+- Neuer Testfile: tests/test_setup_wizard_standalone.py (9 Tests)
+  * /static/js + /static/css beide 200
+  * /setup-Template referenziert /static-Pfade
+  * CSP im Standalone-Modus hat KEIN 'unsafe-inline'
+  * X-Frame-Options, X-Content-Type-Options gesetzt
+  * app.state.standalone / compat_mode stabil
+- Tests: 39/39 gruen (Standalone + Geocode + Security).

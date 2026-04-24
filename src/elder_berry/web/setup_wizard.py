@@ -612,6 +612,38 @@ async def _run_single_test(
     raise ValueError(f"Unbekannter Service: {service}")
 
 
+def build_standalone_wizard_app(
+    secret_store: SecretStore,
+    port: int = 8090,
+    compat_mode: bool = False,
+    migration_marker: Path | None = None,
+):
+    """Baut die FastAPI-App fuer den Standalone-Setup-Wizard (ohne uvicorn).
+
+    Phase 63: Der Standalone-Wizard muss dieselben Static-Assets liefern
+    wie das eingebettete Dashboard (CSS/JS unter /static/*), sonst laeuft
+    keine Interaktivitaet (Navigation, Tests, Geocoding, Completion). Die
+    Security-Middleware setzt zusaetzlich die strikte CSP auch im Erst-
+    Setup durch.
+    """
+    from fastapi import FastAPI
+    from fastapi.staticfiles import StaticFiles
+
+    from elder_berry.web.security_middleware import setup_security
+
+    app = FastAPI(title="Elder-Berry Setup-Wizard")
+    app.state.standalone = True
+    app.state.compat_mode = compat_mode
+    app.state.migration_marker = migration_marker
+
+    static_dir = Path(__file__).parent / "static"
+    app.mount("/static", StaticFiles(directory=static_dir), name="static")
+    setup_security(app, port, secret_store)
+
+    register_setup_wizard_routes(app, secret_store)
+    return app
+
+
 def run_setup_wizard(
     secret_store: SecretStore,
     port: int = 8090,
@@ -636,13 +668,12 @@ def run_setup_wizard(
         geschrieben, damit die Grace-Period beim nächsten Start inaktiv ist.
     """
     import uvicorn
-    from fastapi import FastAPI
 
-    app = FastAPI(title="Elder-Berry Setup-Wizard")
-    app.state.standalone = True
-    app.state.compat_mode = compat_mode
-    app.state.migration_marker = migration_marker
-    register_setup_wizard_routes(app, secret_store)
-
+    app = build_standalone_wizard_app(
+        secret_store,
+        port=port,
+        compat_mode=compat_mode,
+        migration_marker=migration_marker,
+    )
     logger.info("Setup-Wizard gestartet auf http://%s:%d/setup", bind, port)
     uvicorn.run(app, host=bind, port=port)
