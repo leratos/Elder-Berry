@@ -8,12 +8,31 @@ from elder_berry.comms.commands.advanced_commands import (
     WEB_SUMMARY_PATTERN,
     AdvancedCommandHandler,
 )
+from elder_berry.core.url_validator import UnsafeUrlError
 from elder_berry.tools.web_fetcher import WebContent, WebFetcher
 
 
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
+
+@pytest.fixture(autouse=True)
+def _patch_dns_to_public(monkeypatch):
+    """Mockt socket.getaddrinfo so, dass Hostnames in Tests auf eine
+    oeffentliche IP (93.184.216.34 == example.com) aufgeloest werden.
+
+    Phase 64: WebFetcher.fetch() ruft jetzt ensure_public_url(), das
+    echte DNS-Resolution nutzt. Ohne Mock waeren alle Tests von DNS
+    abhaengig (langsam, offline-CI-feindlich). Tests, die explizit
+    private IPs testen wollen, ueberschreiben diesen Mock lokal.
+    """
+    def resolver(host, *args, **kwargs):
+        return [(None, None, None, None, ("93.184.216.34", 0))]
+    monkeypatch.setattr(
+        "elder_berry.core.url_validator.socket.getaddrinfo",
+        resolver,
+    )
+
 
 @pytest.fixture
 def fetcher():
@@ -186,7 +205,9 @@ class TestWebFetcherFetch:
                 fetcher.fetch("https://example.com")
 
     def test_fetch_invalid_url_raises_value_error(self, fetcher):
-        with pytest.raises(ValueError, match="Ungueltige URL"):
+        # "not-a-url" hat kein Schema --> UnsafeUrlError("Schema ... nicht erlaubt.")
+        # UnsafeUrlError ist ValueError-Subklasse.
+        with pytest.raises(ValueError, match="Schema"):
             fetcher.fetch("not-a-url")
 
     def test_fetch_empty_url_raises_value_error(self, fetcher):
@@ -198,6 +219,87 @@ class TestWebFetcherFetch:
              patch.object(fetcher, "_extract", return_value=("Title", "")):
             with pytest.raises(RuntimeError, match="Kein Text"):
                 fetcher.fetch("https://example.com")
+
+
+class TestWebFetcherSSRFProtection:
+    """Phase 64 (H-3): SSRF-Schutz ueber ensure_public_url."""
+
+    def test_fetch_blocks_loopback(self, fetcher, monkeypatch):
+        monkeypatch.setattr(
+            "elder_berry.core.url_validator.socket.getaddrinfo",
+            lambda *a, **kw: [(None, None, None, None, ("127.0.0.1", 0))],
+        )
+        with pytest.raises(UnsafeUrlError, match="nicht-oeffentliche"):
+            fetcher.fetch("http://localhost/")
+
+    def test_fetch_blocks_aws_metadata(self, fetcher, monkeypatch):
+        monkeypatch.setattr(
+            "elder_berry.core.url_validator.socket.getaddrinfo",
+            lambda *a, **kw: [(None, None, None, None, ("169.254.169.254", 0))],
+        )
+        with pytest.raises(UnsafeUrlError, match="nicht-oeffentliche"):
+            fetcher.fetch("http://169.254.169.254/latest/meta-data/")
+
+    def test_fetch_blocks_private_10(self, fetcher, monkeypatch):
+        monkeypatch.setattr(
+            "elder_berry.core.url_validator.socket.getaddrinfo",
+            lambda *a, **kw: [(None, None, None, None, ("10.0.0.1", 0))],
+        )
+        with pytest.raises(UnsafeUrlError, match="nicht-oeffentliche"):
+            fetcher.fetch("http://internal-service.lan/")
+
+    def test_fetch_blocks_private_192_168(self, fetcher, monkeypatch):
+        monkeypatch.setattr(
+            "elder_berry.core.url_validator.socket.getaddrinfo",
+            lambda *a, **kw: [(None, None, None, None, ("192.168.1.1", 0))],
+        )
+        with pytest.raises(UnsafeUrlError, match="nicht-oeffentliche"):
+            fetcher.fetch("http://router.home/")
+
+    def test_fetch_blocks_file_scheme(self, fetcher):
+        with pytest.raises(UnsafeUrlError, match="Schema"):
+            fetcher.fetch("file:///etc/passwd")
+
+    def test_fetch_blocks_gopher_scheme(self, fetcher):
+        with pytest.raises(UnsafeUrlError, match="Schema"):
+            fetcher.fetch("gopher://example.com/")
+
+    def test_fetch_dns_rebinding_any_private_blocks(self, fetcher, monkeypatch):
+        # Public + private gemischt --> blockieren (TOCTOU/rebinding-Schutz).
+        monkeypatch.setattr(
+            "elder_berry.core.url_validator.socket.getaddrinfo",
+            lambda *a, **kw: [
+                (None, None, None, None, ("8.8.8.8", 0)),
+                (None, None, None, None, ("10.0.0.1", 0)),
+            ],
+        )
+        with pytest.raises(UnsafeUrlError, match="nicht-oeffentliche"):
+            fetcher.fetch("http://rebinding.example/")
+
+    def test_fetch_blocks_ssrf_via_open_redirect(self, fetcher, monkeypatch):
+        """SSRF via Open-Redirect: Location-Header auf private IP muss blockiert werden.
+
+        Szenario: oeffentliche URL leitet auf interne Adresse um. Ohne
+        manuelle Redirect-Validierung wuerde follow_redirects=True den
+        SSRF-Check umgehen.
+        """
+        def selective_resolver(host, *args, **kwargs):
+            if host == "trusted.example.com":
+                return [(None, None, None, None, ("93.184.216.34", 0))]
+            return [(None, None, None, None, ("10.0.0.1", 0))]
+
+        monkeypatch.setattr(
+            "elder_berry.core.url_validator.socket.getaddrinfo",
+            selective_resolver,
+        )
+
+        redirect_response = MagicMock()
+        redirect_response.is_redirect = True
+        redirect_response.headers = {"location": "http://internal.corp/secret"}
+
+        with patch("httpx.get", return_value=redirect_response):
+            with pytest.raises(UnsafeUrlError, match="nicht-oeffentliche"):
+                fetcher.fetch("https://trusted.example.com/page")
 
 
 # ---------------------------------------------------------------------------

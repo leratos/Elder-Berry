@@ -67,7 +67,10 @@ def register_dashboard_auth_routes(
             cookie,
             max_age=auth_manager.ttl_seconds,
             httponly=True,
-            samesite="lax",
+            # Phase 64 (H-1): strict statt lax -- Cookie wird bei
+            # Cross-Site-Navigation NICHT mitgeschickt. Konsequenz:
+            # Bookmarks/externe Links triggern erneuten Login.
+            samesite="strict",
             secure=request.url.scheme == "https",
             path="/",
         )

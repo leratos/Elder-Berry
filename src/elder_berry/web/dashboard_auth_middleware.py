@@ -148,7 +148,8 @@ class DashboardAuthMiddleware(BaseHTTPMiddleware):
                 new_cookie,
                 max_age=self._auth.ttl_seconds,
                 httponly=True,
-                samesite="lax",
+                # Phase 64 (H-1): strict, konsistent mit Login-Route.
+                samesite="strict",
                 secure=request.url.scheme == "https",
                 path="/",
             )

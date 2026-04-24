@@ -202,10 +202,16 @@ class SimulatedCamera(CameraController):
 
 
 def create_simulator(
-    host: str = "0.0.0.0",
+    host: str = "127.0.0.1",
     port: int = 8000,
 ) -> RobotServer:
-    """Erstellt einen RobotServer mit simulierter Hardware."""
+    """Erstellt einen RobotServer mit simulierter Hardware.
+
+    Phase 64 (H-2): Default-Host auf ``127.0.0.1`` geaendert. Der
+    Simulator laeuft per Default OHNE Robot-Token-Auth, also darf er
+    nicht auf allen Interfaces binden. Fuer LAN-Zugriff (manuelle Tests
+    vom Laptop) explizit ``--bind 0.0.0.0`` setzen.
+    """
     server = RobotServer(
         motors=SimulatedMotors(),
         avatar=SimulatedAvatar(),
@@ -218,6 +224,8 @@ def create_simulator(
 
 
 if __name__ == "__main__":
+    import argparse
+
     import uvicorn
 
     logging.basicConfig(
@@ -225,5 +233,29 @@ if __name__ == "__main__":
         format="%(asctime)s [%(name)s] %(levelname)s: %(message)s",
     )
 
-    sim = create_simulator()
-    uvicorn.run(sim.app, host="0.0.0.0", port=8000)
+    parser = argparse.ArgumentParser(
+        description="Elder-Berry Robot-Simulator (FastAPI)",
+    )
+    parser.add_argument(
+        "--bind", default="127.0.0.1",
+        help="Bind-Host (default: 127.0.0.1 = Loopback). "
+             "Fuer LAN-Zugriff explizit '--bind 0.0.0.0' -- der Simulator "
+             "hat keine Auth, das LAN muss vertrauenswuerdig sein.",
+    )
+    parser.add_argument("--port", type=int, default=8000)
+    args = parser.parse_args()
+
+    if args.bind == "0.0.0.0":
+        logger.warning(
+            "Simulator bindet auf 0.0.0.0 ohne Auth -- jeder im LAN "
+            "kann Motoren/Harmony steuern.",
+        )
+    elif args.bind in ("::", "0:0:0:0:0:0:0:0", "::0"):
+        logger.warning(
+            "Simulator bindet auf %s (IPv6-any) ohne Auth -- jeder im "
+            "Netzwerk kann Motoren/Harmony steuern.",
+            args.bind,
+        )
+
+    sim = create_simulator(host=args.bind, port=args.port)
+    uvicorn.run(sim.app, host=args.bind, port=args.port)

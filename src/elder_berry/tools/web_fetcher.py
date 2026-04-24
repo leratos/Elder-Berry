@@ -1,15 +1,26 @@
-"""WebFetcher -- Webseiten abrufen und Klartext extrahieren."""
+"""WebFetcher -- Webseiten abrufen und Klartext extrahieren.
+
+Phase 64 (H-3): URL-Validierung via ``ensure_public_url`` blockiert SSRF-
+Versuche auf private/loopback/metadata-IPs. Aufrufer erhalten ``ValueError``
+(UnsafeUrlError-Subklasse), wenn eine URL nicht oeffentlich aufloesbar ist --
+insbesondere relevant fuer URLs aus Matrix-Nachrichten (advanced_commands
+"fasse <url> zusammen").
+"""
 from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
+from urllib.parse import urljoin
 
 import httpx
+
+from elder_berry.core.url_validator import ensure_public_url
 
 logger = logging.getLogger(__name__)
 
 _USER_AGENT = "Mozilla/5.0 (compatible; Elder-Berry/1.0)"
 _TIMEOUT = 10.0
+_MAX_REDIRECTS = 10
 
 
 @dataclass(frozen=True)
@@ -48,9 +59,12 @@ class WebFetcher:
         if not url or not url.strip():
             raise ValueError("Keine URL angegeben.")
 
-        url = url.strip()
-        if not url.startswith(("http://", "https://")):
-            raise ValueError("Ungueltige URL (muss mit http:// oder https:// beginnen).")
+        # SSRF-Schutz: blockiert http/https-only, private, loopback,
+        # link-local (169.254/16 -- AWS/Azure-Metadata), multicast.
+        # UnsafeUrlError ist ValueError-Subklasse, damit der Aufrufer
+        # (advanced_commands._cmd_web_summary) weiterhin mit einem
+        # einzigen `except ValueError` reagieren kann.
+        url = ensure_public_url(url)
 
         html = self._download(url)
         title, text = self._extract(html, url)
@@ -77,20 +91,37 @@ class WebFetcher:
     # ------------------------------------------------------------------
 
     def _download(self, url: str) -> str:
-        """HTML per httpx herunterladen."""
-        try:
+        """HTML per httpx herunterladen.
+
+        Redirects werden manuell verfolgt; jede Location-URL wird erneut
+        mit ``ensure_public_url()`` validiert, um SSRF via Open-Redirect
+        (oeffentliche URL leitet auf 169.254.x.x / 10.x.x.x weiter) zu
+        blockieren.
+        """
+        current_url = url
+        redirects = 0
+        while True:
             response = httpx.get(
-                url,
+                current_url,
                 headers={"User-Agent": _USER_AGENT},
                 timeout=_TIMEOUT,
-                follow_redirects=True,
+                follow_redirects=False,
             )
-            response.raise_for_status()
-            return response.text
-        except httpx.TimeoutException:
-            raise
-        except httpx.RequestError:
-            raise
+            if not response.is_redirect:
+                response.raise_for_status()
+                return response.text
+
+            redirects += 1
+            if redirects > _MAX_REDIRECTS:
+                raise httpx.TooManyRedirects(
+                    f"Zu viele Weiterleitungen (> {_MAX_REDIRECTS}) fuer {url}"
+                )
+            location = response.headers.get("location", "")
+            if not location:
+                raise httpx.RequestError(
+                    f"Redirect ohne Location-Header von {current_url}"
+                )
+            current_url = ensure_public_url(urljoin(current_url, location))
 
     def _extract(self, html: str, url: str) -> tuple[str, str]:
         """Text und Titel aus HTML extrahieren.

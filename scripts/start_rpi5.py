@@ -15,6 +15,7 @@ Kann zum Testen auch auf Windows laufen (--windowed).
 from __future__ import annotations
 
 import argparse
+import ipaddress
 import logging
 import os
 import signal
@@ -38,6 +39,63 @@ def _resolve_robot_token() -> str | None:
     if token and token.strip():
         return token.strip()
     return None
+
+
+# Phase 64 (H-2): Policy-Enforcement. Der Warning-Only-Ansatz aus Phase 59
+# hat in der Praxis mehr als einmal dazu gefuehrt, dass RPi5 im LAN ohne
+# Token lief (Warning im Systemd-Log wurde uebersehen). Jetzt: Hard-Fail,
+# wenn der Server auf einem nicht-Loopback-Interface binden soll UND kein
+# Token gesetzt ist.
+_LOOPBACK_NAMES = frozenset({"localhost"})
+
+
+def _is_loopback_host(host: str) -> bool:
+    """True wenn ``host`` nur ueber Loopback erreichbar ist.
+
+    Akzeptiert ``localhost``, ``127.0.0.0/8``, ``::1``. ``0.0.0.0`` und
+    ``::`` gelten NICHT als Loopback (binden auf alle Interfaces).
+    """
+    stripped = host.strip().lower().strip("[]")
+    if stripped in _LOOPBACK_NAMES:
+        return True
+    try:
+        return ipaddress.ip_address(stripped).is_loopback
+    except ValueError:
+        return False
+
+
+def _enforce_robot_token_policy(token: str | None, host: str) -> None:
+    """Bricht den Start ab, wenn Token fehlt UND Bind nicht Loopback ist.
+
+    Raises:
+        SystemExit(2): wenn kein Token gesetzt UND Host auf nicht-Loopback-
+        Interface bindet. Exit-Code 2, damit systemd den Unterschied zu
+        regulaeren Fehlern (1) sieht.
+    """
+    if token:
+        return
+    if _is_loopback_host(host):
+        logger.warning(
+            "Robot-Token NICHT konfiguriert -- Server bindet nur auf "
+            "Loopback (%s). Fuer Dev/Tests OK, fuer Produktion bitte "
+            "ELDER_BERRY_ROBOT_TOKEN setzen.",
+            host,
+        )
+        return
+    logger.error(
+        "Robot-Token NICHT konfiguriert, aber Server soll auf %s "
+        "(nicht-Loopback) binden.",
+        host,
+    )
+    logger.error(
+        "Alle Endpoints (inkl. /system/update = RCE, /harmony/*, "
+        "/drive) waeren im LAN ungeprueft erreichbar. Abbruch.",
+    )
+    logger.error(
+        "Fix: ELDER_BERRY_ROBOT_TOKEN in der systemd-Unit setzen, oder "
+        "explizit mit '--host 127.0.0.1' starten.",
+    )
+    sys.exit(2)
 
 
 def parse_args() -> argparse.Namespace:
@@ -162,14 +220,11 @@ def main() -> None:
     # die RobotTokenMiddleware dauerhaft ein No-Op (Endpoints 0.0.0.0:8000
     # wären im LAN ungeprüft – inkl. /system/update = RCE).
     robot_token = _resolve_robot_token()
+    # Phase 64 (H-2): Hard-Fail, wenn Token fehlt UND Bind non-loopback.
+    # Wirft SystemExit(2), bevor ueberhaupt Hardware initialisiert wird.
+    _enforce_robot_token_policy(robot_token, args.host)
     if robot_token:
         logger.info("Robot-Token aktiv – Requests erfordern X-Saleria-Robot-Token")
-    else:
-        logger.warning(
-            "Robot-Token NICHT konfiguriert – alle Endpoints (inkl. "
-            "/system/update) sind im LAN ungeprüft erreichbar. Setze "
-            "ELDER_BERRY_ROBOT_TOKEN in der systemd-Unit oder Env.",
-        )
 
     server = RobotServer(
         motors=motors,
