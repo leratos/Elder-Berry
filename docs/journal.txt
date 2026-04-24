@@ -4945,3 +4945,7 @@ User: "Lies meine Mails und trag den Zahnarzttermin ein"
 - Neuer Testfile: tests/test_robot_token.py (6 Tests: Warning-Log, Token-Auth, Backwards-Compat)
 - Tests: 6/6 grün (neu) + 60/60 bestehend
 - Keine neuen Dependencies
+
+## In Arbeit: CI-Qualität – CRLF + ruff F401/B + pip-audit (2026-04-24)
+- Branch: feature/ci-quality-improvements
+- Schritte: .gitattributes, ruff F401 (220) + B (18), CI-Erweiterung
