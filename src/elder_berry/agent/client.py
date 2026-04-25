@@ -12,6 +12,7 @@ from elder_berry.agent.protocol import (
     ApiResponse,
     HealthResponse,
 )
+from elder_berry.agent.server import AGENT_TOKEN_HEADER
 
 logger = logging.getLogger(__name__)
 
@@ -29,18 +30,25 @@ class AgentClient:
     Args:
         base_url: URL des AgentServers (z.B. "http://192.168.1.51:8001").
         timeout: Timeout für HTTP-Requests in Sekunden.
+        agent_token: Optionaler Agent-Token für die Token-Auth. Wird als
+            ``X-Saleria-Agent-Token``-Header bei jedem Request gesendet.
     """
 
     def __init__(
         self,
         base_url: str = "http://localhost:8001",
         timeout: float = DEFAULT_TIMEOUT,
+        agent_token: str | None = None,
     ) -> None:
         self._base_url = base_url.rstrip("/")
         self._timeout = timeout
+        headers = {}
+        if agent_token:
+            headers[AGENT_TOKEN_HEADER] = agent_token
         self._client = httpx.Client(
             base_url=self._base_url,
             timeout=timeout,
+            headers=headers,
         )
         logger.info("AgentClient verbunden: %s", self._base_url)
 

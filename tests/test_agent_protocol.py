@@ -368,7 +368,104 @@ class TestAgentServerAudio:
             data={"emotion": "neutral"},
         )
         assert r.status_code == 200
-        assert r.json()["success"] is False
+        data = r.json()
+        assert data["success"] is False
+        # Exception-Details dürfen NICHT in der Response auftauchen
+        assert "Bad WAV" not in data.get("message", "")
+
+
+# ---------------------------------------------------------------------------
+# Server: Token-Auth (Security-Fix)
+# ---------------------------------------------------------------------------
+
+class TestAgentServerTokenAuth:
+    """AgentServer schützt Endpoints mit Token-Auth wenn agent_token gesetzt."""
+
+    def _make_server_with_token(self, token: str | None):
+        return AgentServer(
+            controller=MockActionController(),
+            hostname="test-laptop",
+            agent_token=token,
+        )
+
+    def test_no_token_configured_allows_all(self):
+        """Backwards-Compat: ohne Token-Konfiguration kein Auth-Check."""
+        server = self._make_server_with_token(None)
+        from fastapi.testclient import TestClient
+        c = TestClient(server.app, raise_server_exceptions=False)
+        r = c.get("/health")
+        assert r.status_code == 200
+
+    def test_token_required_when_configured(self):
+        """Mit konfiguriertem Token wird jeder Request ohne Token abgelehnt."""
+        server = self._make_server_with_token("geheimtoken123")
+        from fastapi.testclient import TestClient
+        c = TestClient(server.app, raise_server_exceptions=False)
+        r = c.get("/health")
+        assert r.status_code == 401
+
+    def test_correct_token_grants_access(self):
+        server = self._make_server_with_token("geheimtoken123")
+        from fastapi.testclient import TestClient
+        c = TestClient(server.app, raise_server_exceptions=False)
+        r = c.get("/health", headers={"X-Saleria-Agent-Token": "geheimtoken123"})
+        assert r.status_code == 200
+
+    def test_wrong_token_rejected(self):
+        server = self._make_server_with_token("geheimtoken123")
+        from fastapi.testclient import TestClient
+        c = TestClient(server.app, raise_server_exceptions=False)
+        r = c.get("/health", headers={"X-Saleria-Agent-Token": "falsch"})
+        assert r.status_code == 401
+
+    def test_post_action_protected_with_token(self):
+        server = self._make_server_with_token("tok")
+        from fastapi.testclient import TestClient
+        c = TestClient(server.app, raise_server_exceptions=False)
+        r = c.post(
+            "/action/execute",
+            json={"action_type": "press_key", "params": {"key": "enter"}},
+        )
+        assert r.status_code == 401
+
+    def test_warning_logged_when_no_token(self, caplog):
+        import logging
+        with caplog.at_level(logging.WARNING, logger="elder_berry.agent.server"):
+            self._make_server_with_token(None)
+        messages = [r.message for r in caplog.records if r.levelno == logging.WARNING]
+        assert any("agent_token" in m.lower() or "elder_berry_agent_token" in m.lower()
+                   for m in messages), f"Token-Warning erwartet. Logs: {messages}"
+
+    def test_no_warning_when_token_set(self, caplog):
+        import logging
+        with caplog.at_level(logging.WARNING, logger="elder_berry.agent.server"):
+            self._make_server_with_token("supersecret")
+        warning_messages = [
+            r.message for r in caplog.records
+            if r.levelno == logging.WARNING and "agent_token" in r.message.lower()
+        ]
+        assert warning_messages == []
+
+
+class TestAgentClientToken:
+    """AgentClient sendet Token-Header wenn agent_token gesetzt."""
+
+    def test_token_sent_in_header(self):
+        from elder_berry.agent.client import AgentClient
+        from elder_berry.agent.server import AGENT_TOKEN_HEADER
+        with patch("elder_berry.agent.client.httpx.Client") as mock_cls:
+            AgentClient(base_url="http://localhost:8001", agent_token="mytoken")
+        call_kwargs = mock_cls.call_args[1]
+        assert call_kwargs["headers"][AGENT_TOKEN_HEADER] == "mytoken"
+
+    def test_no_header_when_no_token(self):
+        from elder_berry.agent.client import AgentClient
+        from elder_berry.agent.server import AGENT_TOKEN_HEADER
+        with patch("elder_berry.agent.client.httpx.Client") as mock_cls:
+            AgentClient(base_url="http://localhost:8001", agent_token=None)
+        call_kwargs = mock_cls.call_args[1]
+        headers = call_kwargs.get("headers", {})
+        assert AGENT_TOKEN_HEADER not in headers
 
 
 # ---------------------------------------------------------------------------

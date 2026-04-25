@@ -232,6 +232,11 @@ class AdvancedCommandHandler(CommandHandler):
         finally:
             if nc_temp_path:
                 nc_temp_path.unlink(missing_ok=True)
+                # Auch das übergeordnete Temp-Verzeichnis aufräumen
+                try:
+                    nc_temp_path.parent.rmdir()
+                except OSError:
+                    pass  # Verzeichnis nicht leer oder bereits gelöscht
 
     @staticmethod
     def _is_readable(path: Path) -> bool:
@@ -251,10 +256,17 @@ class AdvancedCommandHandler(CommandHandler):
         Returns:
             Lokaler Pfad zur heruntergeladenen Datei oder None bei Fehler.
         """
+        import shutil
         import tempfile
 
         nc_path = path_str.lstrip("/")
         if not nc_path:
+            return None
+
+        # Dateinamen-Check vor mkdtemp(): verhindert Temp-Dir-Leak wenn
+        # der Pfad mit "/" endet (leerer Dateiname).
+        filename = nc_path.rsplit("/", 1)[-1]
+        if not filename:
             return None
 
         tmp_dir = Path(tempfile.mkdtemp(prefix="nc_summary_"))
@@ -268,10 +280,6 @@ class AdvancedCommandHandler(CommandHandler):
             logger.debug("NC exakter Pfad fehlgeschlagen '%s': %s", nc_path, exc)
 
         # 2. Fallback: Dateiname suchen
-        filename = nc_path.rsplit("/", 1)[-1]
-        if not filename:
-            return None
-
         try:
             results = self._nc_files.search(filename)
             # Exakten Treffer bevorzugen
@@ -289,6 +297,8 @@ class AdvancedCommandHandler(CommandHandler):
         except Exception as exc:
             logger.debug("NC-Suche fehlgeschlagen für '%s': %s", filename, exc)
 
+        # Beide Strategien fehlgeschlagen – Temp-Dir aufräumen
+        shutil.rmtree(tmp_dir, ignore_errors=True)
         return None
 
     # ------------------------------------------------------------------
