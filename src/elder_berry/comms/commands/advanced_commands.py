@@ -235,8 +235,8 @@ class AdvancedCommandHandler(CommandHandler):
                 # Auch das übergeordnete Temp-Verzeichnis aufräumen
                 try:
                     nc_temp_path.parent.rmdir()
-                except OSError:
-                    pass  # Verzeichnis nicht leer oder bereits gelöscht
+                except OSError as e:
+                    logger.debug("Temp-Dir konnte nicht entfernt werden: %s", e)
 
     @staticmethod
     def _is_readable(path: Path) -> bool:

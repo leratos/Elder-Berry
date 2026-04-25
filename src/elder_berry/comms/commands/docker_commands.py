@@ -28,7 +28,7 @@ DOCKER_WHITELIST = {"ps", "restart", "logs"}
 
 # Erlaubt nur sichere Container-Namen: alphanumerisch, Bindestrich, Unterstrich, Punkt.
 # Verhindert Flag-Injection wie --all, --no-trunc, --follow, --since=... usw.
-_CONTAINER_NAME_RE = re.compile(r"^[a-zA-Z0-9][a-zA-Z0-9_\-\.]{0,127}$")
+_CONTAINER_NAME_RE = re.compile(r"^[a-zA-Z0-9][a-zA-Z0-9_.-]{0,127}$")
 
 
 class DockerCommandHandler(CommandHandler):

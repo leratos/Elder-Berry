@@ -17,7 +17,7 @@ from __future__ import annotations
 import io
 import logging
 import platform
-import secrets as _secrets
+import secrets
 import time
 from dataclasses import asdict
 
@@ -69,7 +69,7 @@ class AgentTokenMiddleware(BaseHTTPMiddleware):
 
         client_ip = request.client.host if request.client else "unknown"
         token = request.headers.get(AGENT_TOKEN_HEADER)
-        if not token or not _secrets.compare_digest(token, self._token):
+        if not token or not secrets.compare_digest(token, self._token):
             allowed = await _agent_token_limiter.check_and_record(client_ip)
             if not allowed:
                 return JSONResponse(
