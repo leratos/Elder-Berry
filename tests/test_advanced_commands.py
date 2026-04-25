@@ -317,7 +317,6 @@ class TestDownloadFromNcTempDir:
 
     def _make_handler_with_nc(self, nc_mock):
         from elder_berry.comms.commands.advanced_commands import AdvancedCommandHandler
-        from unittest.mock import MagicMock
         handler = AdvancedCommandHandler.__new__(AdvancedCommandHandler)
         handler._nc_files = nc_mock
         return handler
@@ -325,12 +324,10 @@ class TestDownloadFromNcTempDir:
     def test_empty_filename_no_tmpdir_created(self, tmp_path):
         """Pfad mit abschließendem Slash: kein Temp-Dir wird angelegt."""
         from unittest.mock import MagicMock
-        import tempfile
 
         nc = MagicMock()
         handler = self._make_handler_with_nc(nc)
 
-        tmpdir_before = set(p.name for p in tmp_path.iterdir())
         result = handler._download_from_nc("/Dokumente/")
         assert result is None
         # nc.download wurde NICHT aufgerufen (kein mkdtemp nötig gewesen)
