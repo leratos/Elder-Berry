@@ -26,6 +26,10 @@ DOCKER_PATTERN = re.compile(
 
 DOCKER_WHITELIST = {"ps", "restart", "logs"}
 
+# Erlaubt nur sichere Container-Namen: alphanumerisch, Bindestrich, Unterstrich, Punkt.
+# Verhindert Flag-Injection wie --all, --no-trunc, --follow, --since=... usw.
+_CONTAINER_NAME_RE = re.compile(r"^[a-zA-Z0-9][a-zA-Z0-9_.-]{0,127}$")
+
 
 class DockerCommandHandler(CommandHandler):
     """Handler für Docker-Befehle (nur Whitelist)."""
@@ -78,6 +82,14 @@ class DockerCommandHandler(CommandHandler):
                 command="docker",
                 success=False,
                 text=f"Container-Name fehlt. Beispiel: docker {subcmd} synapse",
+            )
+
+        if subcmd in ("restart", "logs") and not _CONTAINER_NAME_RE.match(container):
+            return CommandResult(
+                command="docker",
+                success=False,
+                text=f"Ungültiger Container-Name '{container}'. "
+                     "Erlaubt: Buchstaben, Ziffern, Bindestrich, Unterstrich, Punkt.",
             )
 
         cmd = ["docker", subcmd]

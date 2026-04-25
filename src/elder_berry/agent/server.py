@@ -5,6 +5,11 @@ Empfängt Befehle vom Tower und führt sie lokal aus:
 - Audio-Playback (WAV-Dateien vom Tower, via multipart Upload)
 - Health / Status
 
+Authentifizierung: Optionaler statischer Token via ``ELDER_BERRY_AGENT_TOKEN``
+Env-Var oder Konstruktor-Parameter ``agent_token``. Wenn gesetzt, verlangt der
+Server den Header ``X-Saleria-Agent-Token`` bei jedem Request. Ohne Token:
+keine Auth (Backwards-Compat / Tests), aber Startup-Warning.
+
 Plattformhinweis: Läuft auf Windows (Laptop).
 """
 from __future__ import annotations
@@ -12,11 +17,14 @@ from __future__ import annotations
 import io
 import logging
 import platform
+import secrets
 import time
 from dataclasses import asdict
 
-from fastapi import FastAPI, File, Form, UploadFile
+from fastapi import FastAPI, File, Form, Request, UploadFile
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel
+from starlette.middleware.base import BaseHTTPMiddleware
 
 from elder_berry.actions.base import ActionController
 from elder_berry.agent.protocol import (
@@ -25,8 +33,62 @@ from elder_berry.agent.protocol import (
     ApiResponse,
     HealthResponse,
 )
+from elder_berry.web.rate_limiter import RateLimiter
 
 logger = logging.getLogger(__name__)
+
+# ---------------------------------------------------------------------------
+# Agent-Token-Auth (Phase Security-Fix)
+# ---------------------------------------------------------------------------
+
+AGENT_TOKEN_HEADER = "X-Saleria-Agent-Token"
+
+# Rate-Limit für fehlgeschlagene Agent-Token-Versuche: 10 / 1 min → 10 min Lockout.
+_agent_token_limiter = RateLimiter(
+    max_attempts=10,
+    window_seconds=60,
+    lockout_seconds=600,
+    name="agent_token",
+)
+
+
+class AgentTokenMiddleware(BaseHTTPMiddleware):
+    """Schützt alle AgentServer-Endpoints mit ``X-Saleria-Agent-Token``.
+
+    Wenn kein Token konfiguriert ist (``None``), wird die Middleware
+    übersprungen (Backwards-Compat für Tests und Token-freie Deployments).
+    """
+
+    def __init__(self, app, agent_token: str | None) -> None:
+        super().__init__(app)
+        self._token = agent_token
+
+    async def dispatch(self, request: Request, call_next):
+        if not self._token:
+            return await call_next(request)
+
+        client_ip = request.client.host if request.client else "unknown"
+        token = request.headers.get(AGENT_TOKEN_HEADER)
+        if not token or not secrets.compare_digest(token, self._token):
+            allowed = await _agent_token_limiter.check_and_record(client_ip)
+            if not allowed:
+                return JSONResponse(
+                    {
+                        "error": "Zu viele fehlgeschlagene Versuche. Temporär gesperrt.",
+                        "header": AGENT_TOKEN_HEADER,
+                    },
+                    status_code=429,
+                )
+            return JSONResponse(
+                {
+                    "error": "Agent-Token erforderlich oder ungültig.",
+                    "header": AGENT_TOKEN_HEADER,
+                },
+                status_code=401,
+            )
+        await _agent_token_limiter.reset(client_ip)
+        return await call_next(request)
+
 
 # Alle Aktionen die der ActionController unterstützt
 SUPPORTED_ACTIONS = [
@@ -57,19 +119,36 @@ class AgentServer:
 
     Der ActionController wird per DI übergeben (Konstruktor).
     Audio-Playback nutzt sounddevice + numpy.
+
+    Parameters
+    ----------
+    agent_token : str | None
+        Wenn gesetzt, verlangt der Server den Header
+        ``X-Saleria-Agent-Token`` bei jedem Request. Ohne Token:
+        keine Auth (Backwards-Compat für Tests). Kann über die
+        Env-Var ``ELDER_BERRY_AGENT_TOKEN`` konfiguriert werden.
     """
 
     def __init__(
         self,
         controller: ActionController,
         hostname: str | None = None,
+        agent_token: str | None = None,
     ) -> None:
         self._controller = controller
         self._hostname = hostname or platform.node()
         self._start_time = time.monotonic()
 
         self.app = FastAPI(title="Elder-Berry Agent API", version="0.1.0")
+        self.app.add_middleware(AgentTokenMiddleware, agent_token=agent_token)
         self._register_routes()
+
+        if not agent_token:
+            logger.warning(
+                "AgentServer: kein agent_token konfiguriert – "
+                "alle Endpoints sind ohne Authentifizierung erreichbar. "
+                "Für Produktionsbetrieb ELDER_BERRY_AGENT_TOKEN setzen."
+            )
 
         logger.info("AgentServer initialisiert: %s", self._hostname)
 
@@ -116,7 +195,7 @@ class AgentServer:
                 )
             except Exception as e:
                 logger.error("Audio-Playback fehlgeschlagen: %s", e)
-                resp = ApiResponse(success=False, message=str(e))
+                resp = ApiResponse(success=False, message="Audio-Fehler – Details im Log.")
             return asdict(resp)
 
     def _execute(self, action_type: str, params: dict) -> ActionResult:

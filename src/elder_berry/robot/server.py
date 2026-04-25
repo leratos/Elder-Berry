@@ -414,9 +414,17 @@ class RobotServer:
                     success=False,
                     message="Kamera nicht erkannt",
                 ))
+            # Bounds-Check: ungültige Werte außerhalb [1, 100] abfangen
+            quality = max(1, min(100, quality))
             try:
                 import base64
                 jpeg_bytes = self._camera.capture_jpeg(quality=quality)
+                if not jpeg_bytes:
+                    logger.error("Kamera-Capture: leeres JPEG erhalten")
+                    return asdict(ApiResponse(
+                        success=False,
+                        message="Kamera-Fehler – Details im Log.",
+                    ))
                 b64 = base64.b64encode(jpeg_bytes).decode("ascii")
                 width, height = self._camera.get_resolution()
                 return {
@@ -431,7 +439,7 @@ class RobotServer:
                 logger.error("Kamera-Capture fehlgeschlagen: %s", e)
                 return asdict(ApiResponse(
                     success=False,
-                    message=f"Capture fehlgeschlagen: {e}",
+                    message="Kamera-Fehler – Details im Log.",
                 ))
 
         @self.app.get("/camera/status")
@@ -468,7 +476,8 @@ class RobotServer:
                     msg = f"Rotation um {request.relative_degrees} Grad gestartet"
                 return asdict(ApiResponse(success=True, message=msg))
             except RuntimeError as e:
-                return asdict(ApiResponse(success=False, message=str(e)))
+                logger.error("Drehteller-Rotation fehlgeschlagen: %s", e)
+                return asdict(ApiResponse(success=False, message="Drehteller-Fehler – Details im Log."))
 
         @self.app.post("/turntable/home")
         def turntable_home() -> dict:
@@ -482,7 +491,8 @@ class RobotServer:
                     success=True, message="Homing gestartet",
                 ))
             except RuntimeError as e:
-                return asdict(ApiResponse(success=False, message=str(e)))
+                logger.error("Drehteller-Homing fehlgeschlagen: %s", e)
+                return asdict(ApiResponse(success=False, message="Drehteller-Fehler – Details im Log."))
 
         @self.app.post("/turntable/stop")
         def turntable_stop() -> dict:
@@ -531,13 +541,15 @@ class RobotServer:
                     timeout=30, cwd=cwd,
                 )
                 if r.returncode != 0:
+                    logger.error("Git Fetch fehlgeschlagen: %s", r.stderr)
                     return asdict(ApiResponse(
                         success=False,
-                        message=f"Git Fetch fehlgeschlagen: {r.stderr}",
+                        message="Git Fetch fehlgeschlagen – Details im Log.",
                     ))
             except Exception as e:
+                logger.error("Git Fetch Fehler: %s", e)
                 return asdict(ApiResponse(
-                    success=False, message=f"Git Fetch Fehler: {e}",
+                    success=False, message="Git Fetch Fehler – Details im Log.",
                 ))
 
             # 2. Commits behind?
@@ -567,14 +579,16 @@ class RobotServer:
                     timeout=60, cwd=cwd,
                 )
                 if r.returncode != 0:
+                    logger.error("Git Pull fehlgeschlagen: %s", r.stderr)
                     return asdict(ApiResponse(
                         success=False,
-                        message=f"Git Pull fehlgeschlagen: {r.stderr}",
+                        message="Git Pull fehlgeschlagen – Details im Log.",
                     ))
                 steps.append("Code aktualisiert")
             except Exception as e:
+                logger.error("Git Pull Fehler: %s", e)
                 return asdict(ApiResponse(
-                    success=False, message=f"Git Pull Fehler: {e}",
+                    success=False, message="Git Pull Fehler – Details im Log.",
                 ))
 
             # 4. pip install (immer, RPi hat weniger extras)

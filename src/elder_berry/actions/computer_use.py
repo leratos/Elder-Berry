@@ -315,7 +315,11 @@ class ComputerUseController:
                     self._monitor_index = 1
                 monitor = monitors[self._monitor_index]
                 screenshot = sct.grab(monitor)
-                tmp_path = Path(tempfile.mktemp(suffix=".png", prefix="cu_verify_"))
+                # NamedTemporaryFile statt mktemp() – verhindert TOCTOU-Race-Condition
+                with tempfile.NamedTemporaryFile(
+                    suffix=".png", prefix="cu_verify_", delete=False,
+                ) as tmp:
+                    tmp_path = Path(tmp.name)
                 mss.tools.to_png(
                     screenshot.rgb, screenshot.size, output=str(tmp_path)
                 )

@@ -145,3 +145,49 @@ class TestDockerExecute:
         )
         result = handler.execute("docker", "docker ps")
         assert result.success is False
+
+
+# ---------------------------------------------------------------------------
+# Container-Name-Validierung (Security-Fix: Flag-Injection verhindern)
+# ---------------------------------------------------------------------------
+
+class TestDockerContainerNameValidation:
+    """Container-Namen mit Flag-artigen Werten werden abgelehnt."""
+
+    @pytest.mark.parametrize("name", [
+        "--all",
+        "--no-trunc",
+        "--follow",
+        "--since=0",
+        "-f",
+        "--format={{.ID}}",
+        "--tail=100",
+    ])
+    def test_flag_injection_rejected_for_restart(self, handler, name):
+        result = handler.execute("docker", f"docker restart {name}")
+        assert result.success is False
+        assert "Ungültiger Container-Name" in result.text
+
+    @pytest.mark.parametrize("name", [
+        "--all",
+        "--no-trunc",
+        "--follow",
+        "--since=0",
+    ])
+    def test_flag_injection_rejected_for_logs(self, handler, name):
+        result = handler.execute("docker", f"docker logs {name}")
+        assert result.success is False
+        assert "Ungültiger Container-Name" in result.text
+
+    @pytest.mark.parametrize("name", [
+        "synapse",
+        "my-container",
+        "container_1",
+        "nginx.prod",
+        "A1b2C3",
+    ])
+    @patch("elder_berry.comms.commands.docker_commands.subprocess.run")
+    def test_valid_container_names_accepted(self, mock_run, handler, name):
+        mock_run.return_value = MagicMock(returncode=0, stdout="ok", stderr="")
+        result = handler.execute("docker", f"docker restart {name}")
+        assert result.success is True

@@ -306,3 +306,57 @@ class TestUnknownCommand:
     def test_unknown(self, handler):
         result = handler.execute("unknown", "unknown")
         assert result.success is False
+
+
+# ---------------------------------------------------------------------------
+# _download_from_nc: Temp-Dir-Leak Fixes (Security-Fix)
+# ---------------------------------------------------------------------------
+
+class TestDownloadFromNcTempDir:
+    """Temp-Verzeichnisse werden in allen Fehlerpfaden korrekt aufgeräumt."""
+
+    def _make_handler_with_nc(self, nc_mock):
+        from elder_berry.comms.commands.advanced_commands import AdvancedCommandHandler
+        handler = AdvancedCommandHandler.__new__(AdvancedCommandHandler)
+        handler._nc_files = nc_mock
+        return handler
+
+    def test_empty_filename_no_tmpdir_created(self, tmp_path):
+        """Pfad mit abschließendem Slash: kein Temp-Dir wird angelegt."""
+        from unittest.mock import MagicMock
+
+        nc = MagicMock()
+        handler = self._make_handler_with_nc(nc)
+
+        result = handler._download_from_nc("/Dokumente/")
+        assert result is None
+        # nc.download wurde NICHT aufgerufen (kein mkdtemp nötig gewesen)
+        nc.download.assert_not_called()
+
+    def test_both_strategies_fail_cleans_tmpdir(self, monkeypatch):
+        """Wenn beide Download-Strategien scheitern, wird das Temp-Dir bereinigt."""
+        from unittest.mock import MagicMock, patch
+        import tempfile
+        import os
+
+        created_dirs: list[str] = []
+        original_mkdtemp = tempfile.mkdtemp
+
+        def tracking_mkdtemp(**kwargs):
+            d = original_mkdtemp(**kwargs)
+            created_dirs.append(d)
+            return d
+
+        nc = MagicMock()
+        nc.download.side_effect = Exception("Download fehlgeschlagen")
+        nc.search.side_effect = Exception("Suche fehlgeschlagen")
+
+        handler = self._make_handler_with_nc(nc)
+
+        with patch("tempfile.mkdtemp", side_effect=tracking_mkdtemp):
+            result = handler._download_from_nc("/Dokumente/datei.pdf")
+
+        assert result is None
+        # Alle angelegten Temp-Dirs wurden gelöscht
+        for d in created_dirs:
+            assert not os.path.exists(d), f"Temp-Dir {d!r} wurde nicht gelöscht"
