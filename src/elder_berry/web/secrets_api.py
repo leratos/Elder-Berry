@@ -168,9 +168,19 @@ SECRET_REGISTRY: list[SecretRegistryEntry] = [
     },
     # --- Dienste ---
     {
-        "key": "berry_gym_api_token", "label": "API Token", "category": "Dienste",
+        "key": "berry_gym_url", "label": "Berry-Gym URL", "category": "Dienste",
+        "sensitive": False, "requires_restart": False, "type": "url",
+        "description":
+            "URL der Berry-Gym Instanz (z.B. https://gym.example.com). "
+            "Phase 67: ohne URL bleibt die Gym-Integration deaktiviert.",
+    },
+    {
+        "key": "berry_gym_api_token", "label": "Berry-Gym API Token",
+        "category": "Dienste",
         "sensitive": True, "requires_restart": False,
-        "description": "Fitness-Tracker API Token.",
+        "description":
+            "Fitness-Tracker API Token. Aktiv nur in Kombination mit "
+            "'berry_gym_url'.",
     },
     {
         "key": "stirling_pdf_url", "label": "URL", "category": "Dienste",

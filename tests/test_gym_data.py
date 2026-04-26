@@ -1,8 +1,13 @@
 """Tests: GymDataClient – Berry-Gym API Integration."""
 from unittest.mock import MagicMock, patch
 
+import pytest
 
 from elder_berry.tools.gym_data import GymDataClient
+
+
+# Phase 67: base_url ist Pflicht, kein hardcoded Default mehr.
+TEST_BASE_URL = "https://gym.example.com"
 
 
 # ---------------------------------------------------------------------------
@@ -69,11 +74,15 @@ MOCK_PRS = {
 
 class TestGymDataInit:
     def test_is_available_with_token(self):
-        client = GymDataClient(secret_store=_make_store(True))
+        client = GymDataClient(
+            secret_store=_make_store(True), base_url=TEST_BASE_URL,
+        )
         assert client.is_available() is True
 
     def test_is_available_without_token(self):
-        client = GymDataClient(secret_store=_make_store(False))
+        client = GymDataClient(
+            secret_store=_make_store(False), base_url=TEST_BASE_URL,
+        )
         assert client.is_available() is False
 
     def test_custom_base_url(self):
@@ -90,6 +99,20 @@ class TestGymDataInit:
         )
         assert client._base_url == "https://gym.example.com"
 
+    def test_empty_base_url_raises(self):
+        """Phase 67: Default fiel weg, base_url ist Pflicht."""
+        with pytest.raises(ValueError, match="base_url"):
+            GymDataClient(secret_store=_make_store(), base_url="")
+
+    def test_whitespace_base_url_raises(self):
+        with pytest.raises(ValueError, match="base_url"):
+            GymDataClient(secret_store=_make_store(), base_url="   ")
+
+    def test_none_base_url_raises(self):
+        with pytest.raises((ValueError, AttributeError, TypeError)):
+            # type: ignore[arg-type]  -- absichtlich invalide
+            GymDataClient(secret_store=_make_store(), base_url=None)
+
 
 # ---------------------------------------------------------------------------
 # API Calls (mocked httpx)
@@ -99,7 +122,7 @@ class TestGymDataAPICalls:
     @patch("elder_berry.tools.gym_data.GymDataClient._get")
     def test_get_summary(self, mock_get):
         mock_get.return_value = MOCK_SUMMARY
-        client = GymDataClient(secret_store=_make_store())
+        client = GymDataClient(secret_store=_make_store(), base_url=TEST_BASE_URL)
         result = client.get_summary()
         assert result == MOCK_SUMMARY
         mock_get.assert_called_once_with("/api/saleria/summary/")
@@ -107,7 +130,7 @@ class TestGymDataAPICalls:
     @patch("elder_berry.tools.gym_data.GymDataClient._get")
     def test_get_last_training(self, mock_get):
         mock_get.return_value = MOCK_LAST_TRAINING
-        client = GymDataClient(secret_store=_make_store())
+        client = GymDataClient(secret_store=_make_store(), base_url=TEST_BASE_URL)
         result = client.get_last_training()
         assert result["datum"] == "2026-03-15T18:00:00Z"
         assert len(result["saetze"]) == 3
@@ -115,26 +138,26 @@ class TestGymDataAPICalls:
     @patch("elder_berry.tools.gym_data.GymDataClient._get")
     def test_get_last_training_none(self, mock_get):
         mock_get.return_value = {"training": None}
-        client = GymDataClient(secret_store=_make_store())
+        client = GymDataClient(secret_store=_make_store(), base_url=TEST_BASE_URL)
         assert client.get_last_training() is None
 
     @patch("elder_berry.tools.gym_data.GymDataClient._get")
     def test_get_week(self, mock_get):
         mock_get.return_value = MOCK_WEEK
-        client = GymDataClient(secret_store=_make_store())
+        client = GymDataClient(secret_store=_make_store(), base_url=TEST_BASE_URL)
         result = client.get_week()
         assert len(result) == 2
 
     @patch("elder_berry.tools.gym_data.GymDataClient._get")
     def test_get_week_api_error(self, mock_get):
         mock_get.return_value = None
-        client = GymDataClient(secret_store=_make_store())
+        client = GymDataClient(secret_store=_make_store(), base_url=TEST_BASE_URL)
         assert client.get_week() == []
 
     @patch("elder_berry.tools.gym_data.GymDataClient._get")
     def test_get_prs(self, mock_get):
         mock_get.return_value = MOCK_PRS
-        client = GymDataClient(secret_store=_make_store())
+        client = GymDataClient(secret_store=_make_store(), base_url=TEST_BASE_URL)
         result = client.get_prs()
         assert len(result) == 2
         assert result[0]["uebung"] == "Kreuzheben"
@@ -146,7 +169,7 @@ class TestGymDataAPICalls:
 
 class TestGymDataFormat:
     def test_format_summary(self):
-        client = GymDataClient(secret_store=_make_store())
+        client = GymDataClient(secret_store=_make_store(), base_url=TEST_BASE_URL)
         text = client.format_summary(MOCK_SUMMARY)
         assert "2026-03-15" in text
         assert "60 Min" in text
@@ -154,7 +177,7 @@ class TestGymDataFormat:
         assert "82.5 kg" in text
 
     def test_format_summary_no_training(self):
-        client = GymDataClient(secret_store=_make_store())
+        client = GymDataClient(secret_store=_make_store(), base_url=TEST_BASE_URL)
         text = client.format_summary({
             "letztes_training": None,
             "trainings_diese_woche": 0,
@@ -163,7 +186,7 @@ class TestGymDataFormat:
         assert "keins" in text.lower()
 
     def test_format_last_training(self):
-        client = GymDataClient(secret_store=_make_store())
+        client = GymDataClient(secret_store=_make_store(), base_url=TEST_BASE_URL)
         text = client.format_last_training(MOCK_LAST_TRAINING["training"])
         assert "Bankdrücken" in text
         assert "80.0kg" in text
@@ -172,31 +195,31 @@ class TestGymDataFormat:
         assert "Satz 1" in text
 
     def test_format_last_training_deload(self):
-        client = GymDataClient(secret_store=_make_store())
+        client = GymDataClient(secret_store=_make_store(), base_url=TEST_BASE_URL)
         training = {**MOCK_LAST_TRAINING["training"], "ist_deload": True}
         text = client.format_last_training(training)
         assert "Deload" in text
 
     def test_format_week(self):
-        client = GymDataClient(secret_store=_make_store())
+        client = GymDataClient(secret_store=_make_store(), base_url=TEST_BASE_URL)
         text = client.format_week(MOCK_WEEK["trainings"])
         assert "2" in text
         assert "2026-03-15" in text
 
     def test_format_week_empty(self):
-        client = GymDataClient(secret_store=_make_store())
+        client = GymDataClient(secret_store=_make_store(), base_url=TEST_BASE_URL)
         text = client.format_week([])
         assert "keine" in text.lower()
 
     def test_format_prs(self):
-        client = GymDataClient(secret_store=_make_store())
+        client = GymDataClient(secret_store=_make_store(), base_url=TEST_BASE_URL)
         text = client.format_prs(MOCK_PRS["prs"])
         assert "Kreuzheben" in text
         assert "163.3" in text
         assert "1RM" in text
 
     def test_format_prs_empty(self):
-        client = GymDataClient(secret_store=_make_store())
+        client = GymDataClient(secret_store=_make_store(), base_url=TEST_BASE_URL)
         text = client.format_prs([])
         assert "Keine" in text
 
@@ -247,7 +270,7 @@ class TestGymCommands:
     def test_execute_training_summary(self, mock_get):
         from elder_berry.comms.remote_commands import RemoteCommandHandler
         mock_get.return_value = MOCK_SUMMARY
-        client = GymDataClient(secret_store=_make_store())
+        client = GymDataClient(secret_store=_make_store(), base_url=TEST_BASE_URL)
         handler = RemoteCommandHandler(gym_client=client)
         result = handler.execute("training", "training")
         assert result.success is True
@@ -257,7 +280,7 @@ class TestGymCommands:
     def test_execute_training_details(self, mock_get):
         from elder_berry.comms.remote_commands import RemoteCommandHandler
         mock_get.return_value = MOCK_LAST_TRAINING
-        client = GymDataClient(secret_store=_make_store())
+        client = GymDataClient(secret_store=_make_store(), base_url=TEST_BASE_URL)
         handler = RemoteCommandHandler(gym_client=client)
         result = handler.execute("training", "training details")
         assert result.success is True
@@ -267,7 +290,7 @@ class TestGymCommands:
     def test_execute_prs(self, mock_get):
         from elder_berry.comms.remote_commands import RemoteCommandHandler
         mock_get.return_value = MOCK_PRS
-        client = GymDataClient(secret_store=_make_store())
+        client = GymDataClient(secret_store=_make_store(), base_url=TEST_BASE_URL)
         handler = RemoteCommandHandler(gym_client=client)
         result = handler.execute("prs", "prs")
         assert result.success is True

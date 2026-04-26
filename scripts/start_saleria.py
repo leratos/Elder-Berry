@@ -693,14 +693,17 @@ def _init_matrix_channel(secrets):
     """Initialisiert MatrixChannel mit Credentials aus SecretStore."""
     from elder_berry.comms.matrix_channel import MatrixChannel
 
-    homeserver = secrets.get_or_none("matrix_homeserver") or os.environ.get(
-        "MATRIX_HOMESERVER", "https://matrix.example.com"
+    # Phase 67: kein Phantasie-Default mehr -- wenn der Homeserver fehlt,
+    # bricht der Start sauber ab statt gegen matrix.example.com zu reden.
+    homeserver = (
+        secrets.get_or_none("matrix_homeserver")
+        or os.environ.get("MATRIX_HOMESERVER")
     )
     user_id = secrets.get_or_none("matrix_user_id") or os.environ.get("MATRIX_USER_ID")
     token = secrets.get_or_none("matrix_access_token") or os.environ.get("MATRIX_ACCESS_TOKEN")
     room_id = secrets.get_or_none("matrix_room_id") or os.environ.get("MATRIX_ROOM_ID")
 
-    if not user_id or not token:
+    if not homeserver or not user_id or not token:
         logger.error(
             "Matrix-Credentials fehlen. Setze via SecretStore:\n"
             "  from elder_berry.core.secret_store import SecretStore\n"
@@ -797,12 +800,25 @@ def _init_productivity_services(secrets, default_user_id):
 
     # Berry-Gym
     if secrets.get_or_none("berry_gym_api_token"):
-        try:
-            from elder_berry.tools.gym_data import GymDataClient
-            svc["gym_client"] = GymDataClient(secret_store=secrets)
-            logger.info("Berry-Gym: aktiv (%s)", svc["gym_client"]._base_url)
-        except Exception as e:
-            logger.warning("Berry-Gym nicht verfügbar: %s", e)
+        # Phase 67: berry_gym_url ist Pflicht. Ohne URL waere der Default
+        # nicht erreichbar -- besser sauber abschalten als Phantasie-Calls.
+        gym_url = secrets.get_or_none("berry_gym_url")
+        if not gym_url:
+            logger.warning(
+                "Berry-Gym: 'berry_gym_api_token' gesetzt, aber "
+                "'berry_gym_url' fehlt im SecretStore. Integration "
+                "deaktiviert. URL im Dashboard unter 'Dienste' nachtragen.",
+            )
+        else:
+            try:
+                from elder_berry.tools.gym_data import GymDataClient
+                svc["gym_client"] = GymDataClient(
+                    secret_store=secrets,
+                    base_url=gym_url,
+                )
+                logger.info("Berry-Gym: aktiv (%s)", svc["gym_client"]._base_url)
+            except Exception as e:
+                logger.warning("Berry-Gym nicht verfügbar: %s", e)
 
     # Weather
     try:
