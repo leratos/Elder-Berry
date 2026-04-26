@@ -83,6 +83,15 @@ def _build_app(
     async def harmony_command():
         return {"ok": True}
 
+    # Phase 66: Robot-Proxy unter /api/robot/*
+    @app.get("/api/robot/harmony/status")
+    async def robot_proxy_status():
+        return {"ok": True}
+
+    @app.post("/api/robot/harmony/command")
+    async def robot_proxy_command():
+        return {"ok": True}
+
     @app.get("/static/style.css")
     async def static_css():
         return {"ok": True}
@@ -104,6 +113,11 @@ class TestProtectedWithoutCookie:
         ("get", "/api/system/health"),
         ("get", "/api/avatar/assets"),
         ("get", "/avatar/editor"),
+        # Phase 66: Robot-Proxy darf nur eingeloggt erreicht werden,
+        # sonst koennte ein nicht-authentifizierter Browser den RPi5
+        # ueber die Saleria-Bruecke steuern.
+        ("get", "/api/robot/harmony/status"),
+        ("post", "/api/robot/harmony/command"),
     ])
     def test_blocks_without_cookie(
         self, method: str, path: str

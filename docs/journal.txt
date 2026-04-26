@@ -5288,3 +5288,105 @@ Transitive (via keyring auf Windows): pywin32-ctypes, jaraco.*
 - CLI-Entrypoint ``python -m elder_berry.core.secret_store --re-migrate``
   fuer manuelle Re-Migration (aktuell nicht gebraucht; Auto-Migration
   greift).
+
+## In Arbeit: Phase 66 -- RPi5 Reverse-Proxy ueber Saleria (2026-04-26)
+- Branch: feature/phase-66-robot-proxy
+- Ausloeser: Browser auf https://fern.last-strawberry.com kann
+  http://192.168.50.220:8000 (RPi5) nicht erreichen.
+  Mixed Content (HTTPS->HTTP) + LAN-Routing (192.168.x ueber Internet
+  unerreichbar) + CORS (RobotServer-allow_origins nur Loopback)
+  blocken den Direktzugriff.
+- Loesung: Saleria proxxt /api/robot/* zum RPi5 ueber den bereits
+  bestehenden SSH-Tunnel (127.0.0.1:12800), fuegt den Robot-Token
+  aus dem SecretStore hinzu. Frontend nutzt same-origin URLs ->
+  kein CORS, kein Mixed Content, Token bleibt im Backend.
+
+### Geplante Aenderungen
+- src/elder_berry/web/robot_proxy.py (neu)
+- settings_dashboard.py: register_robot_proxy_routes() einbinden
+- dashboard_auth_middleware.py: /api/robot zu PROTECTED_PREFIXES
+- webapp/dashboard/index.html: rpi5_url im Server-Modus -> "/api/robot"
+- tests/test_robot_proxy.py (neu)
+- test_dashboard_auth_middleware.py: /api/robot Schutz pruefen
+
+- Naechster Schritt: robot_proxy.py + Tests.
+
+## Abgeschlossen: Phase 66 -- RPi5 Reverse-Proxy ueber Saleria (2026-04-26)
+- Branch: feature/phase-66-robot-proxy
+- Loest das Problem: Browser auf https://fern.last-strawberry.com kann
+  http://192.168.50.220:8000 (RPi5) nicht erreichen wegen
+  Mixed-Content-Block + LAN-Routing + RobotServer-CORS-allow_origins
+  nur Loopback. Frontend ruft jetzt same-origin /api/robot/*, Saleria
+  proxxt zum SSH-Tunnel-Endpoint 127.0.0.1:12800.
+
+### Neu/geaendert
+- src/elder_berry/web/robot_proxy.py (neu, ~190 Zeilen):
+  * register_robot_proxy_routes(app, secret_store) registriert
+    /api/robot/{path:path} fuer GET/POST/PUT/DELETE/PATCH.
+  * Liest robot_host + robot_auth_token aus dem SecretStore. Faellt
+    auf 503 ("no_robot_host") zurueck wenn nicht konfiguriert.
+  * Fuegt http:// zum Host hinzu falls Schema fehlt.
+  * Filtert Hop-by-hop-Header, Cookie, Host und ueberschreibt einen
+    moeglicherweise vom Client mitgesendeten Robot-Token-Header
+    (Defense gegen Token-Leak ueber das Frontend).
+  * Filtert response-CORS-Header weg, damit Saleria's eigene
+    CORS-Middleware die Quelle der CORS-Header bleibt.
+  * Mappt httpx.ConnectError -> 502, TimeoutException -> 504,
+    sonstige RequestError -> 502.
+- src/elder_berry/web/settings_dashboard.py:
+  * register_robot_proxy_routes() im Constructor aufrufen (nur wenn
+    secret_store gesetzt -- wie beim setup_wizard).
+- src/elder_berry/web/dashboard_auth_middleware.py:
+  * /api/robot zu PROTECTED_PREFIXES hinzugefuegt.
+- src/elder_berry/webapp/dashboard/index.html:
+  * rpi5_url: _isServer ? "/api/robot" : "http://192.168.50.220:8000"
+  * Kommentar erweitert um Phase-66-Erklaerung.
+- tests/test_robot_proxy.py (neu, 21 Tests):
+  * TestRobotHostMissing (4): kein Host -> 503; leerer Host -> 503;
+    Schema-Auto-Prefix; HTTPS-Schema bleibt.
+  * TestProxyMethods (6): GET/POST/DELETE/PUT/PATCH + Query-String
+    durchgereicht.
+  * TestHeaderHandling (6): Token aus SecretStore wird gesetzt;
+    fehlender Token = kein Header; Client-mitgesendeter Token
+    wird ueberschrieben; Cookie + Host gestrippt; CORS-Antwort-Header
+    nicht durchgereicht.
+  * TestErrorPaths (5): ConnectError -> 502, Timeout -> 504,
+    generic RequestError -> 502, Upstream-401 + 500 durchgereicht.
+- tests/test_dashboard_auth_middleware.py:
+  * 2 Routen + parametrize-Eintraege fuer /api/robot/harmony/status
+    (GET) und /api/robot/harmony/command (POST) -- pruefen, dass
+    die DashboardAuthMiddleware sie ohne Cookie mit 401 abweist.
+
+### Tests
+- 4845 passed, 28 skipped, 0 failed.
+- ruff check (E9, W605, F401, B, ohne B008): All checks passed.
+
+### Architektur danach
+
+    Browser (https://fern.last-strawberry.com)
+       │
+       │  fetch /api/robot/harmony/status   (same-origin)
+       ▼
+    nginx ──HTTPS->HTTP── Saleria (localhost:8090)
+                            │
+                            │  DashboardAuthMiddleware (Cookie ok?)
+                            │  robot_proxy.py (httpx.AsyncClient)
+                            │  Header: X-Saleria-Robot-Token (aus SecretStore)
+                            ▼
+                          127.0.0.1:12800   (SSH-Reverse-Tunnel)
+                            │
+                            ▼
+                          RPi5 (LAN, hinter Tunnel)
+
+- Vorher: Browser-Direktzugriff auf 192.168.50.220:8000 -- ging nur
+  im LAN/VPN, blockierte bei HTTPS-Page wegen Mixed Content.
+- Jetzt: Browser sieht nur Saleria, sieht keinen Robot-Token, kein
+  Mixed Content, kein LAN-Zwang.
+
+### Operativ
+- Voraussetzung: SSH-Reverse-Tunnel von RPi5 zum Server muss laufen
+  (12800 -> 8000), und ``robot_host=127.0.0.1:12800`` im SecretStore.
+  Beides war im Selfcheck bereits gruen.
+- Im Browser muss kein Robot-Token mehr eingegeben werden.
+- LAN-Modus (Browser direkt im Heimnetz, ohne Server) funktioniert
+  weiterhin: rpi5_url bleibt http://192.168.50.220:8000.

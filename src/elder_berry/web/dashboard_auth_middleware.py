@@ -67,6 +67,9 @@ class DashboardAuthMiddleware(BaseHTTPMiddleware):
         "/api/allowed-senders",
         "/api/avatar",
         "/avatar/",
+        # Phase 66: Robot-Proxy zum RPi5 -- nur eingeloggte User duerfen
+        # ueber den Server-Tunnel auf den RPi5 zugreifen.
+        "/api/robot",
     )
     # Endpoints, die innerhalb der geschützten Präfixe trotzdem offen
     # bleiben müssen (Login-Endpoints selbst).

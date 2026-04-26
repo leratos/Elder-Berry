@@ -258,6 +258,13 @@ class SettingsDashboard:
             from elder_berry.web.setup_wizard import register_setup_wizard_routes
             register_setup_wizard_routes(self._app, self._secret_store)
 
+        # Phase 66: Reverse-Proxy /api/robot/* zum RPi5 (durch SSH-Tunnel),
+        # damit der Browser auf fern.last-strawberry.com nicht direkt die
+        # LAN-IP ansprechen muss (Mixed-Content + LAN-Routing-Probleme).
+        if self._secret_store:
+            from elder_berry.web.robot_proxy import register_robot_proxy_routes
+            register_robot_proxy_routes(self._app, self._secret_store)
+
     @property
     def app(self) -> FastAPI:
         """FastAPI-App-Instanz (für Tests oder externe Einbindung)."""
