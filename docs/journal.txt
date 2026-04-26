@@ -5390,3 +5390,21 @@ Transitive (via keyring auf Windows): pywin32-ctypes, jaraco.*
 - Im Browser muss kein Robot-Token mehr eingegeben werden.
 - LAN-Modus (Browser direkt im Heimnetz, ohne Server) funktioniert
   weiterhin: rpi5_url bleibt http://192.168.50.220:8000.
+
+## In Arbeit: Phase 67 -- Public-Readiness Audit (2026-04-26)
+- Branch: feature/phase-67-public-readiness-audit
+- Ziel (Stufe 1 von 2): Code so vorbereiten, dass das Repo *koennte*
+  oeffentlich gemacht werden -- ohne Rueckschluesse auf die echte
+  Infrastruktur. Ob/wann tatsaechlich public, wird spaeter entschieden.
+- Vorgehen:
+  1. Audit-Skript scripts/check-public-readiness.py
+     -- listet hardcoded Domains, LAN-IPs, PII, absolute Pfade,
+        SSH-User-Spuren, Hostnames pro Datei.
+  2. Bericht ueberblicken, mit Maintainer durchsprechen.
+  3. Pro Kategorie entscheiden (entfernen / extern konfigurierbar /
+     Beispielwert / drinlassen).
+  4. Refactor in einem zweiten Schritt -- separat reviewbar.
+- KEIN Production-Code-Refactor in diesem Branch -- nur Skript +
+  Bericht. Refactor wird Phase 67.x oder 68.
+
+- Naechster Schritt: scripts/check-public-readiness.py.

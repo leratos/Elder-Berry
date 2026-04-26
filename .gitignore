@@ -217,3 +217,8 @@ server/borg-backup.sh
 scripts/Install-SshTunnelTask.ps1
 scripts/ssh-tunnel.ps1
 .claude/worktrees/
+
+# Phase 67: Public-Readiness-Audit-Output (regenerierbar via
+# scripts/check_public_readiness.py).
+docs/public-readiness-audit.md
+audit-tmp.json
