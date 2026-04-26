@@ -242,7 +242,7 @@ class TestHeaderHandling:
         with patch("httpx.AsyncClient", return_value=upstream):
             client.get("/api/robot/health")
         sent = upstream.request.call_args.kwargs["headers"]
-        # Host-Header wuerde sonst fern.last-strawberry.com ausweisen.
+        # Host-Header wuerde sonst fern.example.com ausweisen.
         assert "host" not in {k.lower() for k in sent}
 
     def test_response_cors_headers_stripped(self):
