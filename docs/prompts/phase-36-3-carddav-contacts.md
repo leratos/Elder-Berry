@@ -10,7 +10,7 @@ verfügbar sind.
 **Wichtig:** SQLite bleibt die primäre Datenquelle. CardDAV ist nur
 ein Sync-Kanal — kein Echtzeit-Sync, kein Ersetzen von ContactStore.
 
-Nextcloud 33 läuft auf `cloud.last-strawberry.com`. Credentials sind
+Nextcloud 33 läuft auf `cloud.example.com`. Credentials sind
 seit Phase 36.1 im SecretStore (nextcloud_url, nextcloud_user, nextcloud_app_password).
 
 ## Vorbereitung
@@ -59,7 +59,7 @@ Seite hinzugefügt, nicht überschrieben.
 Klasse `CardDAVSyncClient` — CardDAV-Sync für Nextcloud Contacts.
 
 **Credentials aus SecretStore (identisch mit Files + CalDAV):**
-- `nextcloud_url` → `https://cloud.last-strawberry.com`
+- `nextcloud_url` → `https://cloud.example.com`
 - `nextcloud_user` → Nextcloud-Benutzername
 - `nextcloud_app_password` → App-Passwort
 

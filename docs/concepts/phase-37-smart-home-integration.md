@@ -94,7 +94,7 @@ Nutzer: "fernsehen an"
 Saleria → HarmonyAdapter.start_activity("Fernsehen") → Hub
 
 [Fernbedienung verlegt]
-→ PWA auf Handy (remote.last-strawberry.com) → Tap "Fernsehen" → Hub
+→ PWA auf Handy (remote.example.com) → Tap "Fernsehen" → Hub
 
 [neue Komponente hinzufügen, Logitech-Server tot]
 → Config-Mock-Server liefert gespeichertes JSON zurück
@@ -287,7 +287,7 @@ _DEFAULT_CONFIG_PATH = Path.home() / ".elder-berry" / "harmony_config.json"
 **Ziel**: Der Hub kann weiterhin Konfigurationsänderungen vornehmen (neue Geräte,
 Aktivitäten ändern) — ohne dass Logitechs Server erreichbar sein muss.
 
-**Deployment**: Rootserver (`matrix.last-strawberry.com`) — nicht RPi5.
+**Deployment**: Rootserver (`matrix.example.com`) — nicht RPi5.
 Der Rootserver ist stabiler als RPi5 (kein Strom-Ausfall durch Neustart,
 öffentlich erreichbar für HTTPS-Zertifikat, unabhängig vom Heimnetz).
 
@@ -299,7 +299,7 @@ Harmony-App → HTTPS POST → setup.myharmony.com/account/getConfig
 
 **Ersatz**:
 ```
-Harmony-App → HTTPS POST → config.last-strawberry.com (dein Rootserver)
+Harmony-App → HTTPS POST → config.example.com (dein Rootserver)
             ← JSON ← gespeichertes harmony_config_backup.json
 ```
 
@@ -548,7 +548,7 @@ POST http://rpi5-ip:8001/harmony/off
 
 Tower umgehen wenn er aus ist — PWA spricht direkt mit RPi5.
 
-**Hosting**: `remote.last-strawberry.com` (Rootserver, hinter Nginx + HTTPS)
+**Hosting**: `remote.example.com` (Rootserver, hinter Nginx + HTTPS)
 **Datei**: `src/elder_berry/webapp/harmony_remote/index.html` (Single-File PWA)
 
 ### Anforderungen
@@ -638,7 +638,7 @@ Schritt 4 – Config-Mock-Server (Rootserver):
 
 Schritt 5 – PWA (Rootserver):
   NEU:     src/elder_berry/webapp/harmony_remote/index.html
-  Deploy:  Rootserver, Nginx vhost remote.last-strawberry.com
+  Deploy:  Rootserver, Nginx vhost remote.example.com
   API:     Spricht gegen RPi5 :8001/harmony/* (Tower nicht nötig)
 ```
 

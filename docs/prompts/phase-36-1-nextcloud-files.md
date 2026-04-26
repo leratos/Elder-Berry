@@ -2,7 +2,7 @@
 
 ## Kontext
 
-Nextcloud 33 läuft auf `cloud.last-strawberry.com` (eigener Rootserver).
+Nextcloud 33 läuft auf `cloud.example.com` (eigener Rootserver).
 Saleria soll über Matrix-Commands Dateien hoch-/runterladen, auflisten,
 suchen und Share-Links erstellen können.
 
@@ -22,7 +22,7 @@ Server-Setup ist abgeschlossen. Dieser Chat implementiert den Code-Teil.
 Klasse `NextcloudFilesClient` — WebDAV-Client für Nextcloud.
 
 **Credentials aus SecretStore:**
-- `nextcloud_url` → z.B. `https://cloud.last-strawberry.com`
+- `nextcloud_url` → z.B. `https://cloud.example.com`
 - `nextcloud_user` → Nextcloud-Benutzername
 - `nextcloud_app_password` → App-Passwort (nicht Haupt-Passwort!)
 
@@ -91,7 +91,7 @@ Klasse `CloudCommandHandler(CommandHandler)` — neuer Handler für Cloud-Befehl
 
 **Patterns:**
 ```python
-# cloud upload C:\Users\lera\Documents\report.pdf [Ziel/ordner]
+# cloud upload C:\Users\user\Documents\report.pdf [Ziel/ordner]
 CLOUD_UPLOAD_PATTERN = re.compile(
     r"^cloud\s+upload\s+([a-zA-Z]:\\[^\s]+|/[^\s]+)(?:\s+(.+))?$",
     re.IGNORECASE,
@@ -277,7 +277,7 @@ Für den manuellen Test nach Implementierung:
 ```python
 from elder_berry.core.secret_store import SecretStore
 s = SecretStore()
-s.set("nextcloud_url", "https://cloud.last-strawberry.com")
+s.set("nextcloud_url", "https://cloud.example.com")
 s.set("nextcloud_user", "<username>")
 s.set("nextcloud_app_password", "<app-passwort>")
 ```

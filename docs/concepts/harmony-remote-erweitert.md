@@ -424,13 +424,13 @@ Vollbild ohne Browser-Leiste, Offline-fähig.
 **Installation (einmalig):**
 
 **Android (Chrome):**
-1. `fern.last-strawberry.com` im Browser öffnen
+1. `fern.example.com` im Browser öffnen
 2. Chrome zeigt automatisch "Zum Startbildschirm hinzufügen" Banner
 3. Falls nicht: Drei-Punkte-Menü (⋮) → "App installieren" / "Zum Startbildschirm"
 4. Icon erscheint auf dem Homescreen
 
 **iOS (Safari):**
-1. `fern.last-strawberry.com` in Safari öffnen (muss Safari sein, kein Chrome)
+1. `fern.example.com` in Safari öffnen (muss Safari sein, kein Chrome)
 2. Teilen-Button (□↑) → "Zum Home-Bildschirm"
 3. Name bestätigen → "Hinzufügen"
 4. Icon erscheint auf dem Homescreen
@@ -480,7 +480,7 @@ self.addEventListener("fetch", e => {
 Harmony-Steuerung bereit. Kein Browser, kein Tippen von URLs.
 
 **HTTPS-Pflicht:** PWA-Installation erfordert HTTPS. Läuft bereits
-über `fern.last-strawberry.com` mit Let's Encrypt auf dem Rootserver.
+über `fern.example.com` mit Let's Encrypt auf dem Rootserver.
 
 ---
 

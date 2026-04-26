@@ -259,7 +259,7 @@ class SettingsDashboard:
             register_setup_wizard_routes(self._app, self._secret_store)
 
         # Phase 66: Reverse-Proxy /api/robot/* zum RPi5 (durch SSH-Tunnel),
-        # damit der Browser auf fern.last-strawberry.com nicht direkt die
+        # damit der Browser auf der Dashboard-Domain nicht direkt die
         # LAN-IP ansprechen muss (Mixed-Content + LAN-Routing-Probleme).
         if self._secret_store:
             from elder_berry.web.robot_proxy import register_robot_proxy_routes

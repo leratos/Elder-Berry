@@ -20,7 +20,7 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-DEFAULT_BASE_URL = "https://gym.last-strawberry.com"
+DEFAULT_BASE_URL = "https://gym.example.com"
 REQUEST_TIMEOUT = 10
 
 

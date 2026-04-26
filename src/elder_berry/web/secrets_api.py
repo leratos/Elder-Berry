@@ -123,7 +123,7 @@ SECRET_REGISTRY: list[SecretRegistryEntry] = [
         "key": "matrix_allowed_senders", "label": "Erlaubte Sender", "category": "Matrix",
         "sensitive": False, "requires_restart": True, "type": "textarea",
         "risk_level": "high",
-        "placeholder": "@lera:matrix.example.com\n@kollege:matrix.example.com",
+        "placeholder": "@user:matrix.example.com\n@admin:matrix.example.com",
         "description": "Eine Matrix-ID pro Zeile. Nur diese Sender dürfen Saleria steuern.",
     },
     # --- E-Mail ---

@@ -5,10 +5,10 @@ sendet Text + Audio (OGG/Opus Sprachnachrichten) zurück.
 
 Verwendung:
     channel = MatrixChannel(
-        homeserver="https://matrix.last-strawberry.com",
-        user_id="@saleria:matrix.last-strawberry.com",
+        homeserver="https://matrix.example.com",
+        user_id="@saleria:matrix.example.com",
         password="geheim",
-        allowed_rooms=["!roomid:matrix.last-strawberry.com"],
+        allowed_rooms=["!roomid:matrix.example.com"],
     )
     await channel.connect()
     channel.on_message(my_callback)

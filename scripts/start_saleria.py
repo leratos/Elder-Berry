@@ -694,7 +694,7 @@ def _init_matrix_channel(secrets):
     from elder_berry.comms.matrix_channel import MatrixChannel
 
     homeserver = secrets.get_or_none("matrix_homeserver") or os.environ.get(
-        "MATRIX_HOMESERVER", "https://matrix.last-strawberry.com"
+        "MATRIX_HOMESERVER", "https://matrix.example.com"
     )
     user_id = secrets.get_or_none("matrix_user_id") or os.environ.get("MATRIX_USER_ID")
     token = secrets.get_or_none("matrix_access_token") or os.environ.get("MATRIX_ACCESS_TOKEN")
@@ -705,8 +705,8 @@ def _init_matrix_channel(secrets):
             "Matrix-Credentials fehlen. Setze via SecretStore:\n"
             "  from elder_berry.core.secret_store import SecretStore\n"
             "  s = SecretStore()\n"
-            "  s.set('matrix_homeserver', 'https://matrix.last-strawberry.com')\n"
-            "  s.set('matrix_user_id', '@saleria:matrix.last-strawberry.com')\n"
+            "  s.set('matrix_homeserver', 'https://matrix.example.com')\n"
+            "  s.set('matrix_user_id', '@saleria:matrix.example.com')\n"
             "  s.set('matrix_access_token', 'syt_...')"
         )
         sys.exit(1)

@@ -211,7 +211,7 @@ Die Config wurde vom Tower aus dem Hub exportiert und liegt im Repo unter
 ```bash
 mkdir -p /home/pi/.elder-berry
 # Vom Tower kopieren (einmalig):
-scp lera@<tower-ip>:/c/Dev/Elder-Berry/config/harmony_config_backup.json \
+scp user@<tower-ip>:/c/Dev/Elder-Berry/config/harmony_config_backup.json \
     /home/pi/.elder-berry/harmony_config.json
 ```
 

@@ -29,6 +29,7 @@ from __future__ import annotations
 import argparse
 import json
 import re
+import subprocess
 import sys
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -240,13 +241,53 @@ def _is_text_file(path: Path) -> bool:
     return path.suffix.lower() in _TEXT_EXTENSIONS
 
 
-def _walk_repo(root: Path):
+def _gitignored_paths(root: Path) -> set[Path]:
+    """Listet alle Pfade, die laut Git ignoriert werden.
+
+    Public-Readiness ist nur fuer Dateien relevant, die wirklich im
+    Git-Repo landen. Lokale Backup-Skripte oder das gitignored
+    journal.txt sollen NICHT als Treffer erscheinen, selbst wenn sie
+    auf der Festplatte liegen.
+
+    Wenn kein Git-Repo da ist (oder ``git`` fehlt), wird leeres Set
+    zurueckgegeben -- dann verhaelt sich das Tool wie vorher.
+    """
+    try:
+        result = subprocess.run(
+            ["git", "ls-files", "--others", "--ignored",
+             "--exclude-standard", "--directory"],
+            cwd=root,
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=15,
+        )
+    except (FileNotFoundError, subprocess.TimeoutExpired):
+        return set()
+    if result.returncode != 0:
+        return set()
+    paths: set[Path] = set()
+    for line in result.stdout.splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        # ls-files liefert relative Pfade mit /-Separator, ggf. mit
+        # Trailing-/ fuer Verzeichnisse.
+        paths.add((root / line.rstrip("/")).resolve())
+    return paths
+
+
+def _walk_repo(root: Path, ignored: set[Path] | None = None):
     """Yield alle Text-Dateien im Repo (rekursiv, mit Skip-Dir-Filter)."""
+    ignored = ignored or set()
     for entry in sorted(root.iterdir()):
+        resolved = entry.resolve()
+        if resolved in ignored:
+            continue
         if entry.is_dir():
             if entry.name in _SKIP_DIRS:
                 continue
-            yield from _walk_repo(entry)
+            yield from _walk_repo(entry, ignored)
         elif entry.is_file():
             if entry.name in _SKIP_FILES:
                 continue
@@ -418,8 +459,9 @@ def main() -> int:
         for cat in CATEGORIES
     }
 
+    ignored = _gitignored_paths(repo_root)
     files_scanned = 0
-    for path in _walk_repo(repo_root):
+    for path in _walk_repo(repo_root, ignored=ignored):
         _scan_file(path, repo_root, results)
         files_scanned += 1
 
