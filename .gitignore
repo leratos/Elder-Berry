@@ -222,3 +222,6 @@ scripts/ssh-tunnel.ps1
 # scripts/check_public_readiness.py).
 docs/public-readiness-audit.md
 audit-tmp.json
+
+# Phase 67: deployment-spezifisches Backup-Skript bleibt lokal.
+server/borg-backup.sh
