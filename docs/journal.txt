@@ -5408,3 +5408,59 @@ Transitive (via keyring auf Windows): pywin32-ctypes, jaraco.*
   Bericht. Refactor wird Phase 67.x oder 68.
 
 - Naechster Schritt: scripts/check-public-readiness.py.
+
+## Abgeschlossen: Phase 67 -- Public-Readiness (2026-04-26)
+- Branch: feature/phase-67-public-readiness
+- Audit + Sanitization fuer eine eventuelle Open-Source-Veroeffentlichung.
+
+### Audit
+- scripts/check_public_readiness.py liest das Repo und meldet Treffer
+  in 7 Kategorien: Domain, LAN-IP, PII, Matrix-ID, Hostname,
+  Server-Pfad, SSH-User. Als Markdown- oder JSON-Bericht.
+- Erster Lauf: 432 Dateien, 539 Treffer.
+- Bericht-Output (docs/public-readiness-audit.md) ist gitignored,
+  jederzeit regenerierbar.
+
+### Sanitization-Entscheidungen
+- journal.txt: gitignored (Option A, kuratierter Ersatz: docs/CHANGELOG.md).
+- Concept-Doc phase-44-server-migration.md: geloescht (Migrations-
+  Walkthrough, Zweck erfuellt).
+- Setup-Prompt setup-borgbackup-hetzner.md: geloescht (Hosting-
+  spezifisch).
+- Tests: Matrix-IDs und PII sed-replace (last-strawberry.com ->
+  example.com, @lera: -> @user:, marcus@ -> user@, sfi-kohtz.de ->
+  example.com). 4845 Tests bleiben gruen.
+- Service-Files (elder-berry*.service): konkrete User/Pfade durch
+  Platzhalter __DEPLOY_USER__, __APP_DIR__ ersetzt mit Header-
+  Anleitung.
+- Deploy-Script (deploy_dashboard.sh): User/Host/Pfad als
+  ENV-Variablen mit example.com-Defaults.
+- Backup-Script (server/borg-backup.sh): deployment-spezifisch ->
+  in .gitignore, bleibt lokal in Verwendung.
+- README: Hetzner/Plesk-Erwaehnung -> "Cloud-Server (Linux)";
+  License- und Python-Version-Badge oben; Personal-project-
+  Hinweis im Header. Marke "Last-Strawberry Projektfamilie" und
+  GitHub-URL bleiben (oeffentliche Identitaet).
+
+### Drinlassen (false positives bzw. gewollt)
+- tests/test_url_validator.py + test_start_rpi5_token.py:
+  generische LAN-IPs zum Pruefen der SSRF-Validation -- gewollt.
+- README "Last-Strawberry Projektfamilie": Marke, kein Geheimnis.
+- GitHub-URL "leratos/Elder-Berry": Repo-Pfad selbst, nicht zu
+  verstecken.
+- @saleria als Bot-Name in Tests: Charakter-Identitaet, ist auch
+  in der Architektur fest verankert.
+
+### Was noch offen waere fuer Stufe 2 (eigentlicher Public-Schalt)
+- README-Refactoring: Setup-Anleitung fuer Externe schreiben
+  (aktuell stark auf eigenes Setup zugeschnitten).
+- Setup-Skript / Docker-Compose, das ohne RPi5-Hardware lauffaehig
+  ist (--no-robot Flag pruefen).
+- CONTRIBUTING.md / CODE_OF_CONDUCT.md.
+- CodeQL aktivieren in den GitHub-Settings.
+
+### journal.txt
+- Wird mit diesem Eintrag in .gitignore aufgenommen und aus
+  zukuenftigen Commits ausgeschlossen. Datei bleibt lokal auf
+  Tower in Verwendung als Cross-Session-Memory mit Claude.
+- Letzter Commit auf Public-GitHub: dieser Eintrag.

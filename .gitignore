@@ -225,3 +225,8 @@ audit-tmp.json
 
 # Phase 67: deployment-spezifisches Backup-Skript bleibt lokal.
 server/borg-backup.sh
+
+# Phase 67: journal.txt bleibt lokal als Workflow-Tool, ist ab
+# diesem Commit nicht mehr im oeffentlichen Repo. Siehe
+# docs/CHANGELOG.md fuer die kuratierte Phasen-Story.
+docs/journal.txt
