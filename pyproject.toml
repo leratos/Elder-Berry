@@ -73,7 +73,7 @@ computer-use = [
     "mss>=9.0",
 ]
 web = [
-    "trafilatura>=1.6",
+    "trafilatura>=2.0.0",
     "beautifulsoup4>=4.12",
 ]
 nextcloud = [
@@ -105,7 +105,7 @@ server = [
     "google-auth-oauthlib>=1.0",
     "google-auth-httplib2>=0.2",
     "pymupdf>=1.23",
-    "trafilatura>=1.6",
+    "trafilatura>=2.0.0",
     "beautifulsoup4>=4.12",
     "caldav>=1.0",
     "vobject>=0.9",
