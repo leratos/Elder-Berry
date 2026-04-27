@@ -337,3 +337,60 @@ class TestErrorPaths:
         with patch("httpx.AsyncClient", return_value=upstream):
             r = client.get("/api/robot/health")
         assert r.status_code == 500
+
+
+# ---------------------------------------------------------------------------
+# SSRF Defense-in-Depth (CodeQL py/partial-ssrf)
+# ---------------------------------------------------------------------------
+
+class TestSSRFDefenseInDepth:
+    """robot_host und upstream_path werden Format-validiert bevor httpx.request."""
+
+    @pytest.mark.parametrize("bad_host", [
+        "file:///etc/passwd",
+        "gopher://internal:70/",
+        "ftp://example.com",
+        "javascript:alert(1)",
+        "http://",
+        "https://",
+        "http://bad_host.example.com",  # underscore
+    ])
+    def test_invalid_host_returns_503_without_request(self, bad_host):
+        store = _FakeStore({ROBOT_HOST_KEY: bad_host})
+        app = _make_app(store)
+        client = TestClient(app)
+        upstream = _mock_upstream()
+        with patch("httpx.AsyncClient", return_value=upstream):
+            r = client.get("/api/robot/health")
+        assert r.status_code == 503
+        assert r.json()["code"] == "invalid_robot_host"
+        # KEIN HTTP-Request darf abgesetzt worden sein
+        upstream.request.assert_not_called()
+
+    @pytest.mark.parametrize("good_host", [
+        "192.168.1.10:8001",
+        "rpi5.local:8001",
+        "http://192.168.1.10:8001",
+        "https://rpi5.example.com",
+    ])
+    def test_valid_host_passes_validation(self, good_host):
+        store = _FakeStore({ROBOT_HOST_KEY: good_host})
+        app = _make_app(store)
+        client = TestClient(app)
+        upstream = _mock_upstream()
+        with patch("httpx.AsyncClient", return_value=upstream):
+            r = client.get("/api/robot/health")
+        assert r.status_code == 200
+        upstream.request.assert_called_once()
+
+    def test_path_with_scheme_injection_blocked(self):
+        store = _FakeStore({ROBOT_HOST_KEY: "192.168.1.10:8001"})
+        app = _make_app(store)
+        client = TestClient(app)
+        upstream = _mock_upstream()
+        # Pfad enthaelt ``://`` -> Scheme-Injection-Versuch
+        with patch("httpx.AsyncClient", return_value=upstream):
+            r = client.get("/api/robot/foo/http://attacker.com/bar")
+        assert r.status_code == 400
+        assert r.json()["code"] == "invalid_path"
+        upstream.request.assert_not_called()

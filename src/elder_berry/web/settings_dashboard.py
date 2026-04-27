@@ -38,6 +38,7 @@ from elder_berry.web.secrets_api import (
     validate_secret,
     register_secrets_routes,
 )
+from elder_berry.core.log_sanitize import safe_log
 from elder_berry.web.llm_api import register_llm_routes
 from elder_berry.web.security_middleware import setup_security
 
@@ -728,7 +729,7 @@ class SettingsDashboard:
                 )
 
             self._secret_store.set(self.TIMEZONE_KEY, tz_name)
-            logger.info("Zeitzone geändert: %s", tz_name)
+            logger.info("Zeitzone geändert: %s", safe_log(tz_name))
             return JSONResponse({
                 "timezone": tz_name,
                 "available": sorted(self.AVAILABLE_TIMEZONES),
@@ -839,8 +840,10 @@ class SettingsDashboard:
                     self._store_setting_value(definition, validated)
             except ValueError as exc:
                 return JSONResponse({"error": str(exc)}, status_code=400)
-            except Exception as exc:
-                logger.error("Settings-Update fehlgeschlagen (%s): %s", key, exc)
+            except Exception:
+                logger.exception(
+                    "Settings-Update fehlgeschlagen (%s)", safe_log(key),
+                )
                 return JSONResponse({"error": "Setting konnte nicht gespeichert werden"}, status_code=500)
 
             return JSONResponse({

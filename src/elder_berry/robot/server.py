@@ -30,6 +30,7 @@ from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 from dataclasses import asdict
 from pathlib import Path
+from typing import Literal
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -37,6 +38,7 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 from starlette.middleware.base import BaseHTTPMiddleware
 
+from elder_berry.core.log_sanitize import safe_log
 from elder_berry.web.rate_limiter import RateLimiter
 
 from elder_berry.robot.alexa_skill_handler import (
@@ -75,8 +77,15 @@ class AvatarRequest(BaseModel):
 
 
 class DriveRequest(BaseModel):
-    """Request: Fahrbefehl."""
-    direction: str
+    """Request: Fahrbefehl.
+
+    ``direction`` ist auf eine feste Liste eingeschraenkt. Pydantic
+    weist alles andere mit 422 ab, bevor es zum MotorController kommt
+    -- das ist sowohl Defense-in-Depth (kein freier String aus dem
+    Internet steuert die Hardware) als auch log-injection-Mitigation
+    (CodeQL erkennt Literal-Constraints als Sanitizer).
+    """
+    direction: Literal["forward", "backward", "left", "right", "stop"]
     speed: float = 0.5
     duration: float | None = None
 
@@ -362,11 +371,13 @@ class RobotServer:
         def set_avatar(request: AvatarRequest) -> dict:
             if request.emotion is not None:
                 self._avatar.set_emotion(request.emotion)
-                logger.info("Avatar Emotion: %s", request.emotion)
+                logger.info("Avatar Emotion: %s", safe_log(request.emotion))
 
             if request.is_speaking is not None:
                 self._avatar.set_speaking(request.is_speaking)
-                logger.info("Avatar Speaking: %s", request.is_speaking)
+                logger.info(
+                    "Avatar Speaking: %s", safe_log(request.is_speaking),
+                )
 
             resp = ApiResponse(success=True, message="Avatar aktualisiert")
             return asdict(resp)
@@ -374,8 +385,14 @@ class RobotServer:
         @self.app.post("/motor/drive")
         def drive(request: DriveRequest) -> dict:
             self._motors.drive(request.direction, request.speed)
+            # safe_log + int-Cast bricht den Taint-Flow fuer beide
+            # Felder. Pydantic Literal allein reicht CodeQL nicht --
+            # request.direction wird trotz Literal-Constraint noch als
+            # user-provided getrackt, und request.speed * 100 (float)
+            # gilt CodeQL ebenfalls als getainted.
             logger.info(
-                "Motor: %s @ %.0f%%", request.direction, request.speed * 100,
+                "Motor: %s @ %d%%",
+                safe_log(request.direction), int(request.speed * 100),
             )
             resp = ApiResponse(
                 success=True,
