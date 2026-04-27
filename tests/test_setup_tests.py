@@ -2,8 +2,14 @@
 import asyncio
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import pytest
 
-from elder_berry.web.setup_tests import EMAIL_PROVIDERS, SetupTests
+from elder_berry.web.setup_tests import (
+    EMAIL_PROVIDERS,
+    InvalidExternalURLError,
+    SetupTests,
+    _validate_external_url,
+)
 
 
 def _run(coro):
@@ -326,3 +332,77 @@ class TestPrerequisites:
             result = SetupTests.check_prerequisites()
         assert result["ollama"]["available"] is False
         assert result["ollama"]["models"] == []
+
+
+# ---------------------------------------------------------------------------
+# URL-Validator (SSRF-Schutz)
+# ---------------------------------------------------------------------------
+
+class TestValidateExternalURL:
+    @pytest.mark.parametrize("url", [
+        "https://cloud.example.com",
+        "http://nextcloud.local",
+        "https://192.168.1.10",
+        "https://nc.example.com:8443/sub/path",
+        "  https://example.com  ",  # wird getrimmt
+    ])
+    def test_accepts_valid_http_urls(self, url):
+        result = _validate_external_url(url)
+        assert result == url.strip()
+
+    @pytest.mark.parametrize("url", [
+        "file:///etc/passwd",
+        "gopher://internal:70/",
+        "ftp://example.com",
+        "javascript:alert(1)",
+        "data:text/plain,hello",
+    ])
+    def test_rejects_non_http_schemes(self, url):
+        with pytest.raises(InvalidExternalURLError):
+            _validate_external_url(url)
+
+    def test_rejects_userinfo(self):
+        with pytest.raises(InvalidExternalURLError):
+            _validate_external_url("https://attacker:x@cloud.example.com")
+
+    @pytest.mark.parametrize("url", [
+        "",
+        "   ",
+        "https://",
+        "http:///path",
+        "not-a-url",
+    ])
+    def test_rejects_empty_or_malformed(self, url):
+        with pytest.raises(InvalidExternalURLError):
+            _validate_external_url(url)
+
+    def test_rejects_non_string(self):
+        with pytest.raises(InvalidExternalURLError):
+            _validate_external_url(None)  # type: ignore[arg-type]
+
+    def test_rejects_invalid_hostname(self):
+        # Underscore ist im Hostname laut RFC 1035 nicht zulaessig
+        with pytest.raises(InvalidExternalURLError):
+            _validate_external_url("https://bad_host.example.com")
+
+
+class TestNextcloudRejectsBadURL:
+    """test_nextcloud darf bei boesartigen URLs gar keinen Request machen."""
+
+    def test_file_scheme_blocked_without_request(self):
+        mock_client = AsyncMock()
+        mock_ctx = MagicMock()
+        mock_ctx.__aenter__.return_value = mock_client
+        mock_ctx.__aexit__.return_value = False
+        with patch(
+            "elder_berry.web.setup_tests.httpx.AsyncClient",
+            return_value=mock_ctx,
+        ) as mocked:
+            result = asyncio.new_event_loop().run_until_complete(
+                SetupTests.test_nextcloud("file:///etc/passwd", "u", "p")
+            )
+        assert result["success"] is False
+        assert "Schema" in result.get("error", "")
+        # KEIN HTTP-Request darf abgesetzt worden sein
+        mocked.assert_not_called()
+        mock_client.request.assert_not_called()
