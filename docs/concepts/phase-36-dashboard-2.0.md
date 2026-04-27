@@ -71,7 +71,7 @@ src/elder_berry/webapp/dashboard/
 ```
 
 Deployment: Rootserver unter `/dashboard/`
-Nginx vhost: `dashboard.last-strawberry.com` oder Unterverzeichnis
+Nginx vhost: `dashboard.example.com` oder Unterverzeichnis
 
 ---
 
@@ -507,10 +507,10 @@ self.addEventListener("fetch", e => {
 # /etc/nginx/sites-available/saleria-dashboard
 server {
     listen 443 ssl;
-    server_name dashboard.last-strawberry.com;
+    server_name dashboard.example.com;
 
-    ssl_certificate     /etc/letsencrypt/live/last-strawberry.com/fullchain.pem;
-    ssl_certificate_key /etc/letsencrypt/live/last-strawberry.com/privkey.pem;
+    ssl_certificate     /etc/letsencrypt/live/example.com/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/example.com/privkey.pem;
 
     # Nur Heimnetz (Änderung wenn VPN eingerichtet)
     allow 192.168.50.0/24;
@@ -585,7 +585,7 @@ Automatisierbare Tests (Playwright, optional):
 
 | Punkt | Optionen | Empfehlung |
 |-------|---------|-----------|
-| Subdomain | dashboard.last-strawberry.com vs. Unterverzeichnis | Subdomain (sauberere URLs) |
-| CORS | RPi5 muss Dashboard-Origin erlauben | `allow_origins=["https://dashboard.last-strawberry.com"]` in FastAPI |
+| Subdomain | dashboard.example.com vs. Unterverzeichnis | Subdomain (sauberere URLs) |
+| CORS | RPi5 muss Dashboard-Origin erlauben | `allow_origins=["https://dashboard.example.com"]` in FastAPI |
 | Icon | eigenes Saleria-Icon | 192x192 + 512x512 PNG aus Avatar-Assets extrahieren |
 | VPN-Zugang | Nur Heimnetz jetzt, VPN später | WireGuard auf Rootserver (eigene Phase) |

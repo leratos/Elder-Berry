@@ -59,7 +59,7 @@
 
 ## Phase 6 – Matrix-Integration ✅ ABGESCHLOSSEN
 
-- Synapse Matrix-Server auf Plesk-Server (matrix.last-strawberry.com)
+- Synapse Matrix-Server auf Plesk-Server (matrix.example.com)
 - Element-Client auf Handy → Saleria erreichbar von unterwegs
 - SecretStore (Fernet-verschlüsselte Credentials)
 - MessageChannel (ABC) + MatrixChannel (matrix-nio, async)
@@ -654,7 +654,7 @@ Logitech-Cloud wurde abgelöst. Dashboard als modulare Kommandozentrale.
 
 ### 37.3 ✅ Dashboard 2.0 – Modulare Smart Home PWA
 
-Mobile-first PWA auf dem Rootserver als modulare Kommandozentrale (fern.last-strawberry.com).
+Mobile-first PWA auf dem Rootserver als modulare Kommandozentrale (fern.example.com).
 
 - ✅ PWA: installierbar, HTTPS, Service Worker, Offline-Cache
 - ✅ Modul-Architektur: DashboardModule ABC, dynamischer Module-Loader

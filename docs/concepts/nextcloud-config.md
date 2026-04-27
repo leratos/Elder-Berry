@@ -2,7 +2,7 @@
 
 **Dokument:** `docs/concepts/nextcloud-config.md`  
 **Stand:** 2026-03-31  
-**Scope:** Nextcloud-Setup auf `cloud.last-strawberry.com`, Saleria-Synergien, Sicherheit
+**Scope:** Nextcloud-Setup auf `cloud.example.com`, Saleria-Synergien, Sicherheit
 
 ---
 
@@ -15,7 +15,7 @@ Ein professionelles, selbst-gehostetes Arbeitsumfeld auf Basis von Nextcloud 33,
 - Datensouveränität wahrt (keine Telemetrie, keine unnötigen externen API-Calls)
 
 **Zugriffswege:**
-- Browser: `https://cloud.last-strawberry.com`
+- Browser: `https://cloud.example.com`
 - Nextcloud Mobile App (iOS/Android)
 - Nextcloud Desktop-Sync-Client (Tower, Windows)
 
@@ -136,7 +136,7 @@ Stattdessen: ein dediziertes App-Passwort für alle Saleria-Zugriffe.
 
 ### 4.2 App-Passwort anlegen
 
-Unter: `cloud.last-strawberry.com` → Einstellungen → Sicherheit → App-Passwörter
+Unter: `cloud.example.com` → Einstellungen → Sicherheit → App-Passwörter
 
 | Token-Name | Verwendet für |
 |------------|---------------|
@@ -160,8 +160,8 @@ Schlüssel-Namen im SecretStore (Konvention: `nextcloud_*`):
 
 | Schlüssel | Inhalt |
 |-----------|--------|
-| `nextcloud_url` | `https://cloud.last-strawberry.com` |
-| `nextcloud_user` | `lera` |
+| `nextcloud_url` | `https://cloud.example.com` |
+| `nextcloud_user` | `user` |
 | `nextcloud_app_password` | App-Passwort (für alle Protokolle) |
 
 **Hinweis für neue Clients:** Jeder neue Nextcloud-Client bezieht seine Credentials ausschließlich über `SecretStore` mit denselben drei Keys — nie hardcoded, nie als Konstruktor-Parameter.
@@ -204,7 +204,7 @@ Diese werden in Plesk über nginx-Direktiven in der vHost-Konfiguration gesetzt.
 
 **Noch nicht definiert.** Mindestanforderung:
 - Nextcloud Datenbank (MariaDB `cloud`): tägliches Dump
-- Dateiverzeichnis `/var/www/vhosts/last-strawberry.com/nextcloud-data/`
+- Dateiverzeichnis `/var/www/vhosts/example.com/nextcloud-data/`
 - `config/config.php`
 
 → Separate Entscheidung: wo und wie gebackupt wird.

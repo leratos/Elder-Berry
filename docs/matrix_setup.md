@@ -1,7 +1,7 @@
 # Matrix Synapse Server – Setup-Anleitung
 
 > **Server:** Plesk (Ubuntu 24.04, Xeon E-2276G, 32GB RAM)
-> **Domain:** `matrix.last-strawberry.com`
+> **Domain:** `matrix.example.com`
 > **Zweck:** Privater Matrix-Server für Elder-Berry / Saleria Bot
 > **Federation:** Deaktiviert (privater Server)
 > **E2EE:** Deaktiviert (Phase 1)
@@ -22,19 +22,19 @@
 - SSH-Zugang zum Plesk-Server (root oder sudo)
 - Docker + Docker Compose installiert (prüfen: `docker --version` und `docker compose version`)
 - Plesk Docker Extension installiert (Plesk Panel → Extensions → Docker)
-- Domain `matrix.last-strawberry.com` als Subdomain in Plesk angelegt
+- Domain `matrix.example.com` als Subdomain in Plesk angelegt
 
 ---
 
 ## Schritt 1 – Subdomain in Plesk anlegen
 
 1. Plesk Panel öffnen → **Websites & Domains**
-2. **Add Subdomain** → `matrix` (ergibt `matrix.last-strawberry.com`)
-3. **Document Root:** `/var/www/vhosts/last-strawberry.com/matrix.last-strawberry.com`
+2. **Add Subdomain** → `matrix` (ergibt `matrix.example.com`)
+3. **Document Root:** `/var/www/vhosts/example.com/matrix.example.com`
 4. **SSL/TLS:** Let's Encrypt aktivieren
    - Unter der Subdomain → **SSL/TLS Certificates** → **Install** (Let's Encrypt)
    - Haken bei "Redirect from http to https"
-5. **Testen:** `https://matrix.last-strawberry.com` sollte eine leere Plesk-Seite zeigen
+5. **Testen:** `https://matrix.example.com` sollte eine leere Plesk-Seite zeigen
 
 ## Schritt 2 – Docker Compose Verzeichnis vorbereiten
 
@@ -121,7 +121,7 @@ cd /opt/matrix
 
 docker run -it --rm \
   -v "$(pwd)/synapse-data:/data" \
-  -e SYNAPSE_SERVER_NAME=matrix.last-strawberry.com \
+  -e SYNAPSE_SERVER_NAME=matrix.example.com \
   -e SYNAPSE_REPORT_STATS=no \
   matrixdotorg/synapse:latest generate
 ```
@@ -230,7 +230,7 @@ Jetzt verbinden wir die Subdomain mit dem Synapse Container.
 
 **Option A – Über Plesk Docker Proxy Rules (bevorzugt):**
 
-1. Plesk Panel → **Websites & Domains** → `matrix.last-strawberry.com`
+1. Plesk Panel → **Websites & Domains** → `matrix.example.com`
 2. → **Docker Proxy Rules** → **Add Rule**
 3. Einstellungen:
    - **URL:** (leer lassen = Root der Subdomain)
@@ -240,7 +240,7 @@ Jetzt verbinden wir die Subdomain mit dem Synapse Container.
 
 **Option B – Manuelle Nginx-Direktiven (falls Docker Proxy Rules nicht funktioniert):**
 
-1. Plesk Panel → **Websites & Domains** → `matrix.last-strawberry.com`
+1. Plesk Panel → **Websites & Domains** → `matrix.example.com`
 2. → **Apache & nginx Settings**
 3. Unter **Additional nginx directives** einfügen:
 
@@ -268,7 +268,7 @@ location /_synapse/client {
 
 ```bash
 # Extern (vom eigenen PC):
-curl -s https://matrix.last-strawberry.com/_matrix/client/versions
+curl -s https://matrix.example.com/_matrix/client/versions
 # Sollte JSON mit Versionen zurückgeben
 
 # Wenn Fehler: Plesk Nginx Logs prüfen
@@ -299,21 +299,21 @@ docker exec -it synapse register_new_matrix_user \
 > Elder-Berry Config (`.env`).
 
 Ergebnis:
-- `@saleria:matrix.last-strawberry.com` (Bot, kein Admin)
-- `@dein_username:matrix.last-strawberry.com` (Du, Admin)
+- `@saleria:matrix.example.com` (Bot, kein Admin)
+- `@dein_username:matrix.example.com` (Du, Admin)
 
 ## Schritt 9 – Element Client einrichten
 
 ### Handy (Android / iOS):
 1. Element aus App Store / Play Store installieren
 2. **Sign In** → **Edit Homeserver**
-3. Homeserver URL: `https://matrix.last-strawberry.com`
+3. Homeserver URL: `https://matrix.example.com`
 4. Login mit deinem User-Account (`dein_username` + Passwort)
 5. Raum erstellen: **+** → **New Room**
    - Name: z.B. "Saleria" oder "Elder-Berry"
    - Privat (Invite Only)
    - E2EE: **AUS** (wichtig! Sonst kann der Bot nicht lesen)
-6. In den Raum gehen → **Invite** → `@saleria:matrix.last-strawberry.com`
+6. In den Raum gehen → **Invite** → `@saleria:matrix.example.com`
 
 ### Desktop (optional):
 - Element Desktop: https://element.io/download
@@ -322,15 +322,15 @@ Ergebnis:
 ### Raum-ID notieren:
 Die Raum-ID brauchst du für die Bot-Config. Du findest sie in Element unter:
 **Room Settings → Advanced → Internal Room ID**
-Format: `!xxxxxxxxxxxx:matrix.last-strawberry.com`
+Format: `!xxxxxxxxxxxx:matrix.example.com`
 
 ## Schritt 10 – Verifizierung
 
 Checkliste – alles muss grün sein:
 
 ```
-[ ] curl https://matrix.last-strawberry.com/_matrix/client/versions → JSON
-[ ] curl https://matrix.last-strawberry.com/health → "OK" (oder 404, je nach Proxy)
+[ ] curl https://matrix.example.com/_matrix/client/versions → JSON
+[ ] curl https://matrix.example.com/health → "OK" (oder 404, je nach Proxy)
 [ ] Element Login funktioniert (Handy)
 [ ] Raum erstellt + Saleria eingeladen
 [ ] Raum-ID notiert
@@ -345,16 +345,16 @@ Im SecretStore die Zugangsdaten des Bot-Accounts hinterlegen:
 ```python
 from elder_berry.core.secret_store import SecretStore
 store = SecretStore()
-store.set("matrix_homeserver", "https://matrix.last-strawberry.com")
-store.set("matrix_user_id", "@saleria:matrix.last-strawberry.com")
+store.set("matrix_homeserver", "https://matrix.example.com")
+store.set("matrix_user_id", "@saleria:matrix.example.com")
 store.set("matrix_access_token", "syt_...")  # via /_matrix/client/v3/login
-store.set("matrix_room_id", "!roomid:matrix.last-strawberry.com")
-store.set("matrix_allowed_senders", "@dein_username:matrix.last-strawberry.com")
+store.set("matrix_room_id", "!roomid:matrix.example.com")
+store.set("matrix_allowed_senders", "@dein_username:matrix.example.com")
 ```
 
 Den Access-Token erhältst du via:
 ```bash
-curl -X POST https://matrix.last-strawberry.com/_matrix/client/v3/login \
+curl -X POST https://matrix.example.com/_matrix/client/v3/login \
   -H "Content-Type: application/json" \
   -d '{"type":"m.login.password","user":"saleria","password":"SICHERES_BOT_PASSWORT"}'
 ```
@@ -372,7 +372,7 @@ docker compose logs synapse --tail 100  # Fehler in Logs?
 ```
 
 ### Element zeigt "Can't reach homeserver"
-- SSL-Zertifikat gültig? `curl -v https://matrix.last-strawberry.com` prüfen
+- SSL-Zertifikat gültig? `curl -v https://matrix.example.com` prüfen
 - Proxy Rule aktiv? Plesk → Subdomain → Docker Proxy Rules prüfen
 - Nginx läuft? `systemctl status nginx`
 

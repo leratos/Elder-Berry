@@ -47,13 +47,14 @@
     </div>
 
     <script>
-        // Server (fern.last-strawberry.com): beide URLs relativ -- die
+        // Server-Modus (Dashboard-Domain): beide URLs relativ -- die
         // Calls laufen ueber Saleria-Backend-Proxies. tower_url geht per
         // nginx-Reverse-Proxy, rpi5_url seit Phase 66 ueber Saleria's
         // /api/robot-Proxy (durch SSH-Tunnel auf 127.0.0.1:12800 zum
         // RPi5). Vorteile: kein Mixed Content, kein CORS-Problem, kein
         // LAN-Zwang fuer den Client, Robot-Token bleibt im Backend.
         // LAN-Modus (Browser direkt im Heimnetz): hardcoded LAN-IPs.
+        // Adjust this hostname-pattern to your own deployment domain.
         const _isServer = location.hostname.includes("last-strawberry.com");
         window.DASHBOARD_CONFIG = {
             rpi5_url:  _isServer ? "/api/robot" : "http://192.168.50.220:8000",

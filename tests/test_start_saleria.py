@@ -219,7 +219,7 @@ class TestServiceFiles:
         assert "ExecStart=" in content
         assert "--mode matrix" in content
         assert "ELDER_BERRY_HOME=" in content
-        assert "User=lera" in content
+        assert "User=" in content
         assert "Restart=always" in content
 
     def test_tower_service_exists(self):
@@ -229,7 +229,9 @@ class TestServiceFiles:
     def test_tower_service_content(self):
         content = (_PROJECT_ROOT / "server" / "elder-berry-tower.service").read_text()
         assert "--mode agent" in content
-        assert "ELDER_BERRY_HOME=/opt/elder-berry" in content
+        # Phase 67: konkreter Pfad durch Template-Platzhalter ersetzt;
+        # Test prueft jetzt nur noch dass die Env-Variable existiert.
+        assert "ELDER_BERRY_HOME=" in content
 
     def test_server_service_security_hardening(self):
         content = (_PROJECT_ROOT / "server" / "elder-berry.service").read_text()

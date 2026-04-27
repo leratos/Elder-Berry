@@ -63,7 +63,7 @@ Gleiche Credentials (email_user, email_password), anderer Server (SMTP statt IMA
 ### SecretStore-Keys
 
 Bestehend (schon für IMAP konfiguriert):
-- `email_user` → Absender-Adresse (z.B. `saleria@last-strawberry.com`)
+- `email_user` → Absender-Adresse (z.B. `saleria@example.com`)
 - `email_password` → Passwort
 
 Neu:

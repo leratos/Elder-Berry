@@ -40,15 +40,15 @@ def handler_no_nc():
 
 
 def test_cloud_upload_pattern_windows():
-    m = CLOUD_UPLOAD_PATTERN.match("cloud upload C:\\Users\\lera\\report.pdf")
+    m = CLOUD_UPLOAD_PATTERN.match("cloud upload C:\\Users\\user\\report.pdf")
     assert m is not None
-    assert m.group(1) == "C:\\Users\\lera\\report.pdf"
+    assert m.group(1) == "C:\\Users\\user\\report.pdf"
 
 
 def test_cloud_upload_pattern_linux():
-    m = CLOUD_UPLOAD_PATTERN.match("cloud upload /home/lera/report.pdf")
+    m = CLOUD_UPLOAD_PATTERN.match("cloud upload /home/user/report.pdf")
     assert m is not None
-    assert m.group(1) == "/home/lera/report.pdf"
+    assert m.group(1) == "/home/user/report.pdf"
 
 
 def test_cloud_upload_pattern_with_dest():

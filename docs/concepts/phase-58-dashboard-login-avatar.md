@@ -6,7 +6,7 @@
 
 ## 1. Ausgangslage
 
-Das Dashboard ist über `fern.last-strawberry.com` öffentlich erreichbar
+Das Dashboard ist über `fern.example.com` öffentlich erreichbar
 (per dedizierter VPN-IP zugriffsbeschränkt). Phase 52 hat einen
 statischen `X-Saleria-Settings-Token` als Schutz für *schreibende*
 Endpoints eingeführt, Phase 57 hat den Setup-Wizard hinter den

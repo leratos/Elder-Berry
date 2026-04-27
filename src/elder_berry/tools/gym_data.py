@@ -4,11 +4,20 @@ Liest Trainings-Zusammenfassungen, letzte Sessions, Wochen-Übersicht und
 Personal Records über die Berry-Gym REST-API (Token-Auth).
 
 Verwendung:
-    client = GymDataClient(secret_store=store)
+    client = GymDataClient(
+        secret_store=store,
+        base_url="https://gym.example.com",
+    )
     summary = client.get_summary()
     last = client.get_last_training()
     week = client.get_week()
     prs = client.get_prs()
+
+Phase 67 (M-Fix): ``base_url`` ist Pflicht-Argument. Frueher gab es
+einen hardcoded Default auf die eigene Berry-Gym-Instanz; das war fuer
+ein Public-Repo problematisch und unter ``gym.example.com`` nicht
+erreichbar. Aufrufer muessen ``base_url`` explizit setzen (in der
+Regel aus ``SecretStore.get_or_none("berry_gym_url")``).
 """
 from __future__ import annotations
 
@@ -20,7 +29,6 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-DEFAULT_BASE_URL = "https://gym.last-strawberry.com"
 REQUEST_TIMEOUT = 10
 
 
@@ -28,16 +36,24 @@ class GymDataClient:
     """Berry-Gym API Client (read-only, Token-Auth).
 
     Lazy-Init: httpx.Client wird erst beim ersten Request erstellt.
-    Token aus SecretStore: "berry_gym_api_token".
+    Token aus SecretStore: ``berry_gym_api_token``.
+    URL muss vom Aufrufer kommen (z.B. SecretStore-Key
+    ``berry_gym_url``) -- es gibt absichtlich keinen Default mehr.
     """
 
     def __init__(
         self,
         secret_store: SecretStore,
-        base_url: str = DEFAULT_BASE_URL,
+        base_url: str,
     ) -> None:
+        if not base_url or not base_url.strip():
+            raise ValueError(
+                "GymDataClient: base_url ist leer. "
+                "Setze 'berry_gym_url' im SecretStore oder uebergib base_url "
+                "explizit (z.B. 'https://gym.example.com')."
+            )
         self._store = secret_store
-        self._base_url = base_url.rstrip("/")
+        self._base_url = base_url.strip().rstrip("/")
         self._client = None
 
     def _get_client(self):

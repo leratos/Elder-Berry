@@ -3,7 +3,7 @@
 ## Kontext
 
 Stirling-PDF läuft als Docker-Container auf dem Rootserver unter
-`pdf.last-strawberry.com`. Saleria soll über Matrix-Commands PDFs
+`pdf.example.com`. Saleria soll über Matrix-Commands PDFs
 verarbeiten können: zusammenfügen, aufteilen, komprimieren, OCR,
 konvertieren. Die PDFs liegen in Nextcloud.
 
@@ -24,7 +24,7 @@ Stirling-PDF API → lädt Ergebnis zurück nach Nextcloud.
 
 ## Stirling-PDF API Details
 
-**Base-URL:** `https://pdf.last-strawberry.com/api/v1/`
+**Base-URL:** `https://pdf.example.com/api/v1/`
 **Auth:** Header `X-API-Key: <key>` (aus SecretStore: `stirling_pdf_api_key`)
 **Format:** Alle Endpoints: `POST`, `Content-Type: multipart/form-data`
 **Response:** Verarbeitete PDF als Binary (application/pdf)
@@ -45,7 +45,7 @@ Stirling-PDF API → lädt Ergebnis zurück nach Nextcloud.
 
 **Beispiel-Request (curl):**
 ```bash
-curl -X POST "https://pdf.last-strawberry.com/api/v1/misc/compress-pdf" \
+curl -X POST "https://pdf.example.com/api/v1/misc/compress-pdf" \
   -H "X-API-Key: <key>" \
   -F "fileInput=@dokument.pdf" \
   -F "optimizeLevel=5" \
@@ -59,7 +59,7 @@ curl -X POST "https://pdf.last-strawberry.com/api/v1/misc/compress-pdf" \
 Klasse `StirlingPDFClient` — REST-Client für Stirling-PDF.
 
 **Credentials aus SecretStore:**
-- `stirling_pdf_url` → `https://pdf.last-strawberry.com`
+- `stirling_pdf_url` → `https://pdf.example.com`
 - `stirling_pdf_api_key` → API-Key aus Stirling-PDF Settings
 
 **Klasse:**
@@ -388,7 +388,7 @@ Keine Änderung nötig — `httpx` und `zipfile` (stdlib) reichen aus.
 ```python
 from elder_berry.core.secret_store import SecretStore
 s = SecretStore()
-s.set("stirling_pdf_url", "https://pdf.last-strawberry.com")
+s.set("stirling_pdf_url", "https://pdf.example.com")
 s.set("stirling_pdf_api_key", "<dein-api-key>")
 ```
 

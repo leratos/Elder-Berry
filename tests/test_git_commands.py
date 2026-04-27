@@ -172,7 +172,7 @@ class TestValidateExtraArgsLog:
         ["--since=yesterday"],
         ["--since=2024-01-01"],
         ["--author=marcus"],
-        ["--author=marcus@sfi-kohtz.de"],
+        ["--author=user@example.com"],
         ["--grep=fix bug"],   # reachable via shlex: --grep="fix bug"
         ["abc1234"],
         ["deadbeef1234567890abcdef1234567890abcdef"],  # 40 hex

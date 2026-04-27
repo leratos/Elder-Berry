@@ -99,6 +99,7 @@ WIZARD_STEPS: list[dict[str, Any]] = [
             "elevenlabs_api_key",
             "elevenlabs_voice_id",
             "groq_api_key",
+            "berry_gym_url",
             "berry_gym_api_token",
             "google_maps_api_key",
             "robot_host",

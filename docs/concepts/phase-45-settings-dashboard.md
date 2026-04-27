@@ -437,8 +437,8 @@ Alternativ: nur Klasse umbenennen, Dateinamen lassen (weniger Churn).
 ## Sicherheit (Deployment auf Rootserver)
 
 Das Dashboard wird vom Tower (localhost:8090) über den Rootserver per Nginx
-Reverse Proxy erreichbar gemacht – z.B. als `settings.last-strawberry.com`
-oder als Pfad unter `fern.last-strawberry.com/settings/`.
+Reverse Proxy erreichbar gemacht – z.B. als `settings.example.com`
+oder als Pfad unter `fern.example.com/settings/`.
 
 ### Zwei Schichten: IP-Whitelist + Basic Auth
 
@@ -463,7 +463,7 @@ auth_basic_user_file /etc/nginx/.htpasswd_settings;
 Passwort-Datei erstellen:
 ```bash
 sudo apt install apache2-utils  # falls nicht vorhanden
-sudo htpasswd -c /etc/nginx/.htpasswd_settings lera
+sudo htpasswd -c /etc/nginx/.htpasswd_settings user
 # Passwort eingeben
 sudo chmod 640 /etc/nginx/.htpasswd_settings
 sudo chown root:www-data /etc/nginx/.htpasswd_settings
@@ -535,7 +535,7 @@ Rootserver (oder aus dem lokalen Netz).
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
 
 # Optional: nur bekannte Hosts akzeptieren
-ALLOWED_HOSTS = ["settings.last-strawberry.com", "fern.last-strawberry.com",
+ALLOWED_HOSTS = ["settings.example.com", "fern.example.com",
                  "localhost", "127.0.0.1"]
 ```
 
@@ -544,11 +544,11 @@ erlaubt Port 8090 nur von Rootserver-IP und lokalem Netz.
 
 ### Deployment-Varianten
 
-**Option A: Eigene Subdomain** `settings.last-strawberry.com`
+**Option A: Eigene Subdomain** `settings.example.com`
 - Pro: Saubere Trennung, eigenes SSL-Zertifikat
 - Contra: DNS-Eintrag + Let's Encrypt Setup nötig
 
-**Option B: Pfad unter Dashboard 2.0** `fern.last-strawberry.com/settings/`
+**Option B: Pfad unter Dashboard 2.0** `fern.example.com/settings/`
 - Pro: Kein neuer DNS-Eintrag, nutzt bestehendes SSL
 - Contra: CORS-Konfiguration nötig, muss mit Dashboard 2.0 koexistieren
 
@@ -732,7 +732,7 @@ eingeschränkt werden:
 ```python
 ALLOWED_ORIGINS_LOCAL  = ["http://localhost:8090", "http://127.0.0.1:8090"]
 # ALLOWED_ORIGINS_SERVER wird aus SecretStore gelesen (Key: "dashboard_origin")
-# Beispiel: "https://fern.last-strawberry.com" – kein Hardcode im Code.
+# Beispiel: "https://fern.example.com" – kein Hardcode im Code.
 ALLOWED_ORIGINS_SERVER = [secret_store.get_or_none("dashboard_origin") or ""]
 
 self._app.add_middleware(
