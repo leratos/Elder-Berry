@@ -85,7 +85,7 @@ _GIT_DIFF_ARG_PATTERNS: tuple[re.Pattern[str], ...] = (
 def _error_examples(subcmd: str) -> str:
     """Subcommand-spezifische Beispiele fuer erlaubte Argumente."""
     if subcmd == "log":
-        return "--oneline, -n 5, --since=yesterday, --author=marcus, <commit-hash>, HEAD~3"
+        return "--oneline, -n 5, --since=yesterday, --author=user, <commit-hash>, HEAD~3"
     if subcmd == "diff":
         return "--stat, --name-only, --cached, <commit-hash>, HEAD~3"
     return "(keine zusaetzlichen Argumente erlaubt)"
