@@ -1,0 +1,66 @@
+# =============================================================================
+# Public-Readiness Blocklist -- Beispiel
+# =============================================================================
+#
+# Diese Datei zeigt den Stil. Kopiere sie nach
+# `.public-readiness-blocklist.txt` (gitignored) und passe die Patterns an
+# DEINE Maintainer-Daten an. Das Skript `scripts/check_public_readiness.py`
+# laedt die Datei automatisch und meldet jeden Treffer als "Custom Blocklist".
+#
+# Format
+# ------
+# - Eine Zeile = ein **Regex-Pattern**, case-insensitive.
+# - Leerzeilen und Zeilen mit `#` werden ignoriert (auch Inline-Kommentare).
+# - Punkte in Domains MUESSEN escaped werden, sonst matcht `.` jedes Zeichen.
+# - `\b` setzt Wortgrenzen. Ohne `\b` matcht das Pattern als Substring.
+# - Bei Sonderzeichen wie `/`, `@` keine `\b` -- Wort-Boundary funktioniert nur
+#   zwischen Wort- und Nicht-Wort-Zeichen.
+#
+# Was hier rein gehoert
+# ---------------------
+# - Eigene Domains und Subdomains (production-Domains, nicht example.com)
+# - Eigener Vorname, Nachname, User-IDs
+# - Konkrete Hostnames aus dem Heimnetz / der Server-Infrastruktur
+# - Server-Pfade, die auf den Hosting-Anbieter schliessen lassen
+# - Eigene SSH-User-Spuren
+#
+# Was hier NICHT rein muss
+# ------------------------
+# - LAN-IPs (192.168/10/172) und Matrix-IDs (@user:server) -- das sind
+#   generische Kategorien, die sind im Tool fest verdrahtet.
+# - example.com, your-domain.tld -- das sind Doku-Defaults, kein Leak.
+
+# -----------------------------------------------------------------------------
+# Eigene Domains -- jeder Maintainer hat seine eigenen.
+# -----------------------------------------------------------------------------
+\b(?:[\w-]+\.)*last-strawberry\.com\b
+\bsfi-kohtz\.de\b
+
+# -----------------------------------------------------------------------------
+# Persoenliche Namen / E-Mail-User -- nur als Wort matchen, nicht als Substring
+# (sonst wird "lera" in "general" gefunden).
+# -----------------------------------------------------------------------------
+\bmarcus(?:@|\b\.\w+@)
+(?<![a-zA-Z])lera(?![a-zA-Z])
+[\w.-]+@[\w.-]*last-strawberry\.com
+
+# -----------------------------------------------------------------------------
+# Konkrete Hostnames -- Maintainer-spezifische Server / Geraete.
+# -----------------------------------------------------------------------------
+\bh2724315\b
+# 'elderberry' nur in System-Konfig-Kontexten matchen -- als Projekt-Name
+# steht es ueberall im Code legit drin.
+\belderberry\b(?:\s*systemd|@elderberry)
+
+# -----------------------------------------------------------------------------
+# Absolute Server-Pfade -- verraten Hosting-Anbieter und User-Layout.
+# -----------------------------------------------------------------------------
+/var/www/vhosts/[\w.-]+/[\w./-]*
+/home/lera(?:/[\w./-]*)?
+/opt/Elder-Berry(?:/[\w./-]*)?
+
+# -----------------------------------------------------------------------------
+# SSH-User-Spuren -- "lera@host", "ssh -i ... lera@..."
+# -----------------------------------------------------------------------------
+\blera@[\w.-]+\b
+\bssh\s+(?:[-\w]+\s+)*lera@

@@ -1288,6 +1288,59 @@ Tranche ist scharf abgegrenzt und kommt als eigener PR.
   `tests/test_pdf_commands.py` (4). Suite: 4872 passed, 29 skipped.
 - **Branch**: `fix/path-traversal-document-pdf-commands`.
 
+## Phase 71 – Public-Release-Hygiene Runde 2 🧹 ✅ ABGESCHLOSSEN
+
+Vier unabhängige Public-Release-Verbesserungen in einem PR. Parallel
+zu Phase 70 (Session-Härtung), berührt keine Auth-/Web-Dateien — nur
+Repo-Hygiene, Audit-Tools und Doku.
+
+- **E2 — Hardware-OldVersions explizit ausgeschlossen**: `.gitignore`
+  bekommt einen expliziten Eintrag `hardware/enclosure/OldVersions/`
+  (zusätzlich zum bereits vorhandenen generischen `OldVersions/`-
+  Pattern). Inventor-Backup-Versionen (.0001.ipt, .0002.iam, ~129 MB
+  lokal) sollen niemals ins Public-Repo. Doppelt gehalten als Schutz,
+  falls jemand das generische Pattern später entfernt. Kein
+  `git rm --cached` nötig — die Dateien waren nie im Tracking.
+  Zusätzlich: `.claude/settings.local.json` zu `.gitignore` ergänzt
+  (war ein Loch — harness-spezifische Permissions sollen nicht ins
+  Repo).
+- **E3 — Issue-/PR-Templates**:
+  - `.github/ISSUE_TEMPLATE/bug_report.md` (Plattform-Auswahl Tower /
+    Laptop / RPi5, Stack-Trace-Block, Sicherheits-Hinweis).
+  - `.github/ISSUE_TEMPLATE/feature_request.md` (Use-Case + Alternativen
+    + "selbst bauen?"-Checkbox).
+  - `.github/ISSUE_TEMPLATE/config.yml` mit `contact_links` auf
+    Security-Advisory + Issue-mit-Label-question (Discussions sind
+    deaktiviert).
+  - `.github/PULL_REQUEST_TEMPLATE.md` (Was/Warum, Test-Plan,
+    Plattform-Impact, Checkliste inkl. Journal/Roadmap).
+- **E6 — `scripts/check_public_readiness.py` konfigurierbar**:
+  - Maintainer-spezifische Patterns (last-strawberry.com, marcus,
+    sfi-kohtz, lera, h2724315, /home/lera, /opt/Elder-Berry, ...)
+    raus aus dem hardcoded `CATEGORIES`-Tupel.
+  - Neue Funktion `_load_blocklist_patterns()` lädt Patterns aus
+    optionaler `.public-readiness-blocklist.txt` (gitignored, ein
+    Regex pro Zeile, `#`-Kommentare).
+  - Default-Fallback: `example.com`, `your-domain.tld` — Forks
+    bekommen "alles ok" und sehen das Tool als Skeleton.
+  - `.public-readiness-blocklist.example.txt` (getrackt) zeigt
+    den Stil mit allen Original-Patterns + Kommentaren.
+  - Generische Kategorien (`lan_ip`, `matrix_id`) bleiben als
+    konstantes `_CATEGORY_*`.
+  - Tests: `tests/test_check_public_readiness.py` (neu, 21 Tests:
+    Loader-Logik, Default-Fallback, Compile-Robustheit für ungültige
+    Regex, End-to-End-Scan).
+- **SECURITY.md — Bekannte Einschränkungen / Known Limitations**:
+  Neuer Abschnitt mit M1-M5 aus dem internen Security-Review:
+  - **M1** `allowed_rooms` fail-open ohne explizite Konfiguration.
+  - **M2** Setup-Wizard unauthenticated (by design, mitigation: VPN-only).
+  - **M3** Robot-/Settings-Token ohne Auto-Rotation (manuell via
+    Dashboard / SecretStore).
+  - **M4** LLM-Provider-Sichtbarkeit (Matrix-Inhalte gehen 1:1 an
+    Anthropic/OpenRouter; Mitigation: lokales Ollama).
+  - **M5** CSRF: SameSite=strict + Origin-Check, kein expliziter
+    CSRF-Token (Real-Risk in modernen Browsern minimal).
+- **Branch**: `chore/public-release-hygiene-round-2`.
 ## Phase 70 – Session- + Web-Hardening 🛡️ ✅ ABGESCHLOSSEN
 
 - **Trigger**: Security-Review hat vier "Hoch"-Findings ergeben, die
