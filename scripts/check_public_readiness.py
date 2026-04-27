@@ -56,7 +56,7 @@ _TEXT_EXTENSIONS: frozenset[str] = frozenset({
     ".scss", ".sass", ".yml", ".yaml", ".toml", ".ini", ".cfg",
     ".conf", ".json", ".md", ".rst", ".txt", ".sh", ".bash", ".zsh",
     ".ps1", ".psm1", ".env", ".example", ".service", ".dockerfile",
-    ".docker", ".lock", ".sql", ".jinja", ".jinja2", ".j2",
+    ".docker", ".sql", ".jinja", ".jinja2", ".j2",
 })
 
 # Dateien ohne Endung, die wir trotzdem als Text behandeln.

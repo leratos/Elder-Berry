@@ -109,7 +109,7 @@ class TestGymDataInit:
             GymDataClient(secret_store=_make_store(), base_url="   ")
 
     def test_none_base_url_raises(self):
-        with pytest.raises((ValueError, AttributeError, TypeError)):
+        with pytest.raises(ValueError):
             # type: ignore[arg-type]  -- absichtlich invalide
             GymDataClient(secret_store=_make_store(), base_url=None)
 

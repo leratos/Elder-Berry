@@ -7,7 +7,7 @@
 #   ELDER_BERRY_DEPLOY_PATH=/var/www/example.com/dashboard/ \
 #       bash scripts/deploy_dashboard.sh
 #
-# Voraussetzungen: SSH-Key fuer ${USER}@${HOST}, rsync installiert.
+# Voraussetzungen: SSH-Key fuer ${ELDER_BERRY_DEPLOY_USER}@${ELDER_BERRY_DEPLOY_HOST}, rsync installiert.
 
 set -euo pipefail
 
