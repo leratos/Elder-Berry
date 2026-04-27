@@ -49,7 +49,7 @@ def client():
 def client_with_origin():
     """TestClient mit dashboard_origin gesetzt."""
     router = AudioRouter(local_available=False)
-    store = FakeSecretStore({"dashboard_origin": "https://fern.last-strawberry.com"})
+    store = FakeSecretStore({"dashboard_origin": "https://fern.example.com"})
     dashboard = SettingsDashboard(audio_router=router, secret_store=store)
     return TestClient(dashboard.app)
 
@@ -172,13 +172,13 @@ class TestCORS:
         r = client_with_origin.options(
             "/api/audio",
             headers={
-                "Origin": "https://fern.last-strawberry.com",
+                "Origin": "https://fern.example.com",
                 "Access-Control-Request-Method": "GET",
             },
         )
         assert (
             r.headers.get("access-control-allow-origin")
-            == "https://fern.last-strawberry.com"
+            == "https://fern.example.com"
         )
 
     def test_cors_methods_restricted(self, client):

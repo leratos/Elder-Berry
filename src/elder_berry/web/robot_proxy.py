@@ -1,6 +1,6 @@
 """Robot-Proxy -- Reverse-Proxy von ``/api/robot/*`` zum RPi5-RobotServer.
 
-Phase 66: Browser auf ``https://fern.last-strawberry.com`` kann den
+Phase 66: Browser auf ``https://fern.example.com`` kann den
 RPi5 nicht direkt unter seiner LAN-IP ansprechen
 (Mixed-Content-Block, kein LAN-Routing aus dem Internet, CORS auf dem
 RobotServer nur Loopback). Saleria reicht die Calls deshalb gleicher
@@ -51,7 +51,7 @@ DEFAULT_TIMEOUT = httpx.Timeout(connect=3.0, read=20.0, write=10.0, pool=5.0)
 
 # Header die NICHT vom Client durchgereicht werden duerfen.
 # - Hop-by-hop-Header (RFC 7230): Verbindungs-spezifisch
-# - host: Sonst sieht der RPi5 fern.last-strawberry.com statt 127.0.0.1
+# - host: Sonst sieht der RPi5 fern.example.com statt 127.0.0.1
 # - cookie: Saleria-Session-Cookie hat auf dem RPi5 nichts zu suchen
 # - x-saleria-robot-token: Wird vom Proxy selbst gesetzt (aus SecretStore)
 # - content-length: Wird von httpx aus dem Body neu errechnet

@@ -75,7 +75,7 @@ SAMPLE_SHARE_RESPONSE = """\
 <?xml version="1.0"?>
 <ocs>
   <data>
-    <url>https://cloud.last-strawberry.com/s/abc123XYZ</url>
+    <url>https://cloud.example.com/s/abc123XYZ</url>
   </data>
 </ocs>"""
 
@@ -84,7 +84,7 @@ SAMPLE_SHARE_RESPONSE = """\
 def secret_store():
     store = MagicMock()
     store.get_or_none.side_effect = lambda key: {
-        "nextcloud_url": "https://cloud.last-strawberry.com",
+        "nextcloud_url": "https://cloud.example.com",
         "nextcloud_user": "saleria",
         "nextcloud_app_password": "secret-app-pw",
     }.get(key)
@@ -107,7 +107,7 @@ def no_creds_store():
 
 
 def test_init_from_secret_store(client):
-    assert client._url == "https://cloud.last-strawberry.com"
+    assert client._url == "https://cloud.example.com"
     assert client._user == "saleria"
     assert client._password == "secret-app-pw"
 
@@ -402,7 +402,7 @@ def test_share_link_success(mock_request, client):
 
     url = client.share_link("report.pdf")
 
-    assert url == "https://cloud.last-strawberry.com/f/12345"
+    assert url == "https://cloud.example.com/f/12345"
 
 
 @patch("elder_berry.tools.nextcloud_files.httpx.request")

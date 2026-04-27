@@ -132,7 +132,7 @@ const stepFields = {
     4: ['nextcloud_url', 'nextcloud_user', 'nextcloud_app_password'],
     5: ['email_user', 'email_password', 'email_imap_host', 'email_imap_port', 'smtp_host', 'smtp_port'],
     6: ['weather_city', 'weather_latitude', 'weather_longitude', 'user_timezone'],
-    7: ['brave_api_key', 'elevenlabs_api_key', 'elevenlabs_voice_id', 'groq_api_key', 'berry_gym_api_token', 'google_maps_api_key', 'robot_host'],
+    7: ['brave_api_key', 'elevenlabs_api_key', 'elevenlabs_voice_id', 'groq_api_key', 'berry_gym_url', 'berry_gym_api_token', 'google_maps_api_key', 'robot_host'],
 };
 
 async function saveStep(n) {

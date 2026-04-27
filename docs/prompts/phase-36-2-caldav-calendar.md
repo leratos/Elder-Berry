@@ -2,7 +2,7 @@
 
 ## Kontext
 
-Nextcloud 33 läuft auf `cloud.last-strawberry.com`. Saleria nutzt derzeit
+Nextcloud 33 läuft auf `cloud.example.com`. Saleria nutzt derzeit
 `GoogleCalendarClient` für Termine. Dieser soll durch einen `CalDAVCalendarClient`
 ersetzt werden, der gegen die Nextcloud-CalDAV-API arbeitet.
 
@@ -72,7 +72,7 @@ class CalDAVCalendarClient:
 Klasse `CalDAVCalendarClient` — CalDAV-Client für Nextcloud Calendar.
 
 **Credentials aus SecretStore:**
-- `nextcloud_url` → z.B. `https://cloud.last-strawberry.com` (gleich wie Files-Client!)
+- `nextcloud_url` → z.B. `https://cloud.example.com` (gleich wie Files-Client!)
 - `nextcloud_user` → Nextcloud-Benutzername
 - `nextcloud_app_password` → App-Passwort (gleich wie Files-Client!)
 
@@ -388,7 +388,7 @@ Keine neuen Secrets nötig — die Nextcloud-Credentials aus Phase 36.1 reichen:
 from elder_berry.core.secret_store import SecretStore
 s = SecretStore()
 # Bereits gesetzt seit Phase 36.1:
-# s.set("nextcloud_url", "https://cloud.last-strawberry.com")
+# s.set("nextcloud_url", "https://cloud.example.com")
 # s.set("nextcloud_user", "<username>")
 # s.set("nextcloud_app_password", "<app-passwort>")
 ```

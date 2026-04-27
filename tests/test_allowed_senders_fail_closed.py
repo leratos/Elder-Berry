@@ -38,17 +38,17 @@ class TestLoadAllowedSenders:
         return store
 
     def test_valid_single_sender_returns_frozenset(self):
-        store = self._store_with("@lera:matrix.example.com")
+        store = self._store_with("@user:matrix.example.com")
         result = load_allowed_senders(store)
-        assert result == frozenset({"@lera:matrix.example.com"})
+        assert result == frozenset({"@user:matrix.example.com"})
 
     def test_valid_multiple_senders_split_and_stripped(self):
         store = self._store_with(
-            " @lera:matrix.example.com , @kollege:matrix.example.com ",
+            " @user:matrix.example.com , @kollege:matrix.example.com ",
         )
         result = load_allowed_senders(store)
         assert result == frozenset(
-            {"@lera:matrix.example.com", "@kollege:matrix.example.com"},
+            {"@user:matrix.example.com", "@kollege:matrix.example.com"},
         )
 
     def test_missing_key_raises_value_error(self):
@@ -77,10 +77,10 @@ class TestLoadAllowedSenders:
             load_allowed_senders(store)
 
     def test_mixed_valid_and_empty_keeps_valid(self):
-        store = self._store_with("@lera:matrix.example.com,, ,@kollege:x")
+        store = self._store_with("@user:matrix.example.com,, ,@kollege:x")
         result = load_allowed_senders(store)
         assert result == frozenset(
-            {"@lera:matrix.example.com", "@kollege:x"},
+            {"@user:matrix.example.com", "@kollege:x"},
         )
 
 
@@ -185,10 +185,10 @@ class TestBridgeFailClosed:
     def test_listed_sender_passes(self):
         async def _test():
             channel, bridge = _make_bridge(
-                allowed_senders=frozenset({"@lera:matrix.example.com"}),
+                allowed_senders=frozenset({"@user:matrix.example.com"}),
             )
             await bridge._handle_message(
-                _make_msg("@lera:matrix.example.com"),
+                _make_msg("@user:matrix.example.com"),
             )
             assert len(channel._sent_texts) == 1
 
@@ -197,7 +197,7 @@ class TestBridgeFailClosed:
     def test_unlisted_sender_rejected_even_with_populated_whitelist(self):
         async def _test():
             channel, bridge = _make_bridge(
-                allowed_senders=frozenset({"@lera:matrix.example.com"}),
+                allowed_senders=frozenset({"@user:matrix.example.com"}),
             )
             await bridge._handle_message(_make_msg("@hacker:evil.com"))
             assert channel._sent_texts == []

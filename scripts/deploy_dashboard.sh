@@ -1,17 +1,25 @@
 #!/bin/bash
-# Deploy Dashboard PWA zu fern.last-strawberry.com
-# Voraussetzung: SSH-Key für lera@last-strawberry.com konfiguriert
+# Deploy Dashboard PWA zu einem Remote-Server.
 #
-# Zielverzeichnis: /var/www/vhosts/last-strawberry.com/fern/
-# (Plesk-Subdomain, Document Root)
+# Nutzung:
+#   ELDER_BERRY_DEPLOY_USER=user \
+#   ELDER_BERRY_DEPLOY_HOST=example.com \
+#   ELDER_BERRY_DEPLOY_PATH=/var/www/example.com/dashboard/ \
+#       bash scripts/deploy_dashboard.sh
+#
+# Voraussetzungen: SSH-Key fuer ${ELDER_BERRY_DEPLOY_USER}@${ELDER_BERRY_DEPLOY_HOST}, rsync installiert.
 
 set -euo pipefail
 
+DEPLOY_USER="${ELDER_BERRY_DEPLOY_USER:-user}"
+DEPLOY_HOST="${ELDER_BERRY_DEPLOY_HOST:-example.com}"
+DEPLOY_PATH="${ELDER_BERRY_DEPLOY_PATH:-/var/www/example.com/dashboard/}"
+
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 SRC="$SCRIPT_DIR/../src/elder_berry/webapp/dashboard/"
-DEST="lera@last-strawberry.com:/var/www/vhosts/last-strawberry.com/fern/"
+DEST="${DEPLOY_USER}@${DEPLOY_HOST}:${DEPLOY_PATH}"
 
-echo "Deploying Dashboard to fern.last-strawberry.com ..."
+echo "Deploying Dashboard to ${DEPLOY_HOST}:${DEPLOY_PATH} ..."
 rsync -avz \
     --exclude='*.md' \
     --exclude='.php-ini' \

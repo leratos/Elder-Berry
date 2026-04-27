@@ -1,14 +1,20 @@
+# ============================================================================
+# Beispiel-systemd-Unit fuer den Tower-Agent (TTS/STT/Actions).
+# Vor `systemctl enable` Platzhalter ersetzen:
+#   __DEPLOY_USER__  -> dein systemd-User
+#   __APP_DIR__      -> Installationspfad (z.B. /opt/elder-berry)
+# ============================================================================
 [Unit]
 Description=Elder-Berry Tower Agent (TTS/STT/Actions)
 After=network.target
 
 [Service]
 Type=simple
-User=lera
-WorkingDirectory=/opt/elder-berry
-Environment="PATH=/opt/elder-berry/.venv/bin:/usr/local/bin:/usr/bin"
-Environment="ELDER_BERRY_HOME=/opt/elder-berry"
-ExecStart=/opt/elder-berry/.venv/bin/python scripts/start_saleria.py --mode agent
+User=__DEPLOY_USER__
+WorkingDirectory=__APP_DIR__
+Environment="PATH=__APP_DIR__/.venv/bin:/usr/local/bin:/usr/bin"
+Environment="ELDER_BERRY_HOME=__APP_DIR__"
+ExecStart=__APP_DIR__/.venv/bin/python scripts/start_saleria.py --mode agent
 Restart=always
 RestartSec=10
 StandardOutput=journal

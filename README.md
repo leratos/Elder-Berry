@@ -1,7 +1,14 @@
 # Elder-Berry
 
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![Python 3.12+](https://img.shields.io/badge/python-3.12%2B-blue.svg)](https://www.python.org/)
+
 > Virtueller KI-Assistent mit V-Tuber-Charakter, Voice Cloning und Fernsteuerung.
 > Teil der [Last-Strawberry](https://last-strawberry.com) Projektfamilie.
+
+> **Personal project.** Aktiv entwickelt fuer mein eigenes Setup. Forks und
+> Issues sind willkommen, aber ich rekrutiere nicht aktiv und kann keine
+> Garantien fuer Bug-Fixes auf fremder Hardware geben.
 
 ## Was ist Elder-Berry?
 
@@ -58,7 +65,7 @@ Hologramm-Display in einem 3D-gedruckten Holunder-Baumstamm-Gehäuse.
 
 | Tier | Gerät | Rolle | Verbindung |
 |---|---|---|---|
-| Rootserver | Hetzner (Plesk, Ubuntu 24.04, 24/7) | Matrix-Server (Synapse), Alexa-Endpoint, Nginx-Proxy | Öffentliches Internet |
+| Rootserver | Cloud-Server (Linux, 24/7) | Matrix-Server (Synapse), Alexa-Endpoint, Nginx-Proxy | Öffentliches Internet |
 | Tower | Windows-PC (RTX 4070 Ti Super, 16 GB VRAM) | Haupthirn: LLM, TTS/STT, Orchestrierung, PC-Steuerung | Matrix → SecretStore |
 | Laptop | Windows-PC (RTX 4070, 8 GB VRAM) | Client: AgentServer, PC-Steuerung, Audio-Empfänger | AgentServer (FastAPI) |
 | RPi5 | Raspberry Pi 5 (4 GB) | Körper: Avatar-Display, Kamera, Drehteller, Harmony Hub | RobotServer (FastAPI :8000) |

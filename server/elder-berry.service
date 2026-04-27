@@ -1,3 +1,10 @@
+# ============================================================================
+# Beispiel-systemd-Unit fuer den Saleria-Bot (Rootserver-Modus, Matrix).
+# Vor `systemctl enable` Platzhalter ersetzen:
+#   __DEPLOY_USER__   -> dein systemd-User (z.B. "elder-berry")
+#   __DEPLOY_GROUP__  -> dein Group (oft gleich __DEPLOY_USER__)
+#   __APP_DIR__       -> Installationspfad (z.B. /opt/Elder-Berry)
+# ============================================================================
 [Unit]
 Description=Elder-Berry Saleria Bot
 After=network.target
@@ -5,12 +12,12 @@ Wants=network-online.target
 
 [Service]
 Type=simple
-User=lera
-Group=psacln
-WorkingDirectory=/opt/Elder-Berry
-Environment="PATH=/opt/Elder-Berry/.venv/bin:/usr/local/bin:/usr/bin"
-Environment="ELDER_BERRY_HOME=/opt/Elder-Berry"
-ExecStart=/opt/Elder-Berry/.venv/bin/python scripts/start_saleria.py --mode matrix
+User=__DEPLOY_USER__
+Group=__DEPLOY_GROUP__
+WorkingDirectory=__APP_DIR__
+Environment="PATH=__APP_DIR__/.venv/bin:/usr/local/bin:/usr/bin"
+Environment="ELDER_BERRY_HOME=__APP_DIR__"
+ExecStart=__APP_DIR__/.venv/bin/python scripts/start_saleria.py --mode matrix
 Restart=always
 RestartSec=10
 StandardOutput=journal

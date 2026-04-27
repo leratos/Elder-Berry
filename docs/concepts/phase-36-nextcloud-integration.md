@@ -15,7 +15,7 @@ Passt zur Projektphilosophie: eigene Daten auf eigenem Server (wie Matrix).
 | Server | Rootserver (Xeon E-2276G, 32 GB RAM, Ubuntu 24.04 LTS) |
 | Webserver | Plesk Obsidian v18 |
 | SSL | Vorhanden |
-| Domain | z.B. `cloud.last-strawberry.com` (Subdomain) |
+| Domain | z.B. `cloud.example.com` (Subdomain) |
 | Datenbank | MariaDB via Plesk |
 | Auslastung | CPU 0.13 (15 Min), RAM 9.6% belegt – massiv Reserven |
 
@@ -67,7 +67,7 @@ Nextcloud läuft auf demselben Server wie Matrix-Synapse.
   - `create_event(title, start, end, description)`
   - `delete_event(event_id)`
   - `search_events(query)`
-- CalDAV-URL: `https://cloud.last-strawberry.com/remote.php/dav/calendars/<user>/`
+- CalDAV-URL: `https://cloud.example.com/remote.php/dav/calendars/<user>/`
 - Credentials: SecretStore (`caldav_url`, `caldav_user`, `caldav_password`)
 - Migration: bestehende Google-Termine exportieren (ICS) → Nextcloud importieren
 

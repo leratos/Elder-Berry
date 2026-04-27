@@ -42,11 +42,11 @@ Text + Audio (TTS) und antwortet über Matrix.
   - Grund: Referenz-Implementierung, beste Kompatibilität mit matrix-nio
   - RAM-Verbrauch ~300-500MB – bei 27GB frei irrelevant
   - Speicher: ~390GB frei – mehr als genug
-- **Domain:** `matrix.last-strawberry.com`
+- **Domain:** `matrix.example.com`
 - **SSL:** Let's Encrypt über Plesk
-- **Accounts:** 1× Bot-Account (`@saleria:matrix.last-strawberry.com`), 1× User-Account
-  - Hinweis: server_name = `matrix.last-strawberry.com` → User-IDs enthalten `matrix.`
-  - Kürzere IDs (`@saleria:last-strawberry.com`) wären möglich mit .well-known Delegation,
+- **Accounts:** 1× Bot-Account (`@saleria:matrix.example.com`), 1× User-Account
+  - Hinweis: server_name = `matrix.example.com` → User-IDs enthalten `matrix.`
+  - Kürzere IDs (`@saleria:example.com`) wären möglich mit .well-known Delegation,
     aber unnötig da Federation deaktiviert ist
 - **Federation:** DEAKTIVIERT (privater Server, kein Grund nach außen zu föderieren)
 - **E2EE:** Phase 1 OHNE Verschlüsselung (vereinfacht Bot-Entwicklung massiv)
@@ -125,8 +125,8 @@ class MatrixChannel(MessageChannel):
 
     def __init__(
         self,
-        homeserver: str,       # "https://matrix.last-strawberry.com"
-        user_id: str,          # "@saleria:matrix.last-strawberry.com"
+        homeserver: str,       # "https://matrix.example.com"
+        user_id: str,          # "@saleria:matrix.example.com"
         password: str,         # oder access_token
         allowed_rooms: list[str] | None = None,  # Whitelist
     ): ...
@@ -213,11 +213,11 @@ anhand der Config welchen Endpoint er nutzt. Kein Extra-Code nötig.
 **Config-Ansatz:** `config.yaml` oder `.env` mit:
 ```yaml
 matrix:
-  homeserver: "https://matrix.last-strawberry.com"
-  user_id: "@saleria:matrix.last-strawberry.com"
+  homeserver: "https://matrix.example.com"
+  user_id: "@saleria:matrix.example.com"
   password: "${MATRIX_BOT_PASSWORD}"  # oder access_token
   allowed_rooms:
-    - "!roomid:matrix.last-strawberry.com"
+    - "!roomid:matrix.example.com"
 ```
 
 ## 7. Teilschritte (Umsetzungsreihenfolge)
@@ -230,7 +230,7 @@ matrix:
   2. Synapse Container starten (+ PostgreSQL)
   3. Subdomain in Plesk anlegen + SSL
   4. Nginx Reverse Proxy konfigurieren (Plesk oder manuell)
-  5. Bot-Account registrieren: `@saleria:matrix.last-strawberry.com`
+  5. Bot-Account registrieren: `@saleria:matrix.example.com`
   6. User-Account registrieren
   7. Raum erstellen, beide Accounts einladen
   8. Element-Client auf Handy einrichten + einloggen
