@@ -46,7 +46,8 @@ class TestAnthropic:
         with patch.dict("sys.modules", {"anthropic": mock_mod}):
             result = _run(SetupTests.test_anthropic("sk-invalid"))
         assert result["success"] is False
-        assert "Invalid API key" in result["error"]
+        # Fehlerdetails werden nur geloggt, nicht in der Response (stack-trace-exposure)
+        assert "Details im Log" in result["error"]
 
 
 # ---------------------------------------------------------------------------
@@ -107,7 +108,8 @@ class TestMatrix:
                 "syt_invalid",
             ))
         assert result["success"] is False
-        assert "Invalid token" in result["error"]
+        # Fehlerdetails werden nur geloggt, nicht in der Response (stack-trace-exposure)
+        assert "Details im Log" in result["error"]
 
 
 # ---------------------------------------------------------------------------

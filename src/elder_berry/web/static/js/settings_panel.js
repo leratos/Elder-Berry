@@ -72,8 +72,11 @@ async function loadAll() {
         behaviorValues = values.values || {};
         renderTabs();
     } catch (e) {
-        document.getElementById("fieldContainer").innerHTML =
-            `<div class="empty-tab">Fehler beim Laden: ${e}</div>`;
+        const container = document.getElementById("fieldContainer");
+        const div = document.createElement("div");
+        div.className = "empty-tab";
+        div.textContent = "Fehler beim Laden: " + e.message;
+        container.replaceChildren(div);
     }
 }
 

@@ -468,7 +468,6 @@ class SettingsDashboard:
                     "monitorCount": 0,
                     "monitors": [],
                     "source": "tower",
-                    "error": str(e),
                 }
         if self._computer_use:
             monitors = self._computer_use.get_available_monitors()

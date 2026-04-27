@@ -383,7 +383,7 @@ async def system_info():
         }
     except Exception as e:
         logger.error("System-Info Fehler: %s", e)
-        raise HTTPException(status_code=500, detail=f"System-Info Fehler: {e}") from e
+        raise HTTPException(status_code=500, detail="System-Info Fehler") from e
 
 
 @app.get("/avatar")
@@ -415,7 +415,7 @@ async def avatar(emotion: str = "neutral"):
         return Response(content=png_bytes, media_type="image/png")
     except Exception as e:
         logger.error("Avatar-Render Fehler: %s", e)
-        raise HTTPException(status_code=500, detail=f"Avatar-Fehler: {e}") from e
+        raise HTTPException(status_code=500, detail="Avatar-Fehler") from e
     finally:
         if tmp_path.exists():
             tmp_path.unlink()
@@ -442,7 +442,7 @@ async def tts(request: TTSRequest):
         return Response(content=wav_bytes, media_type="audio/wav")
     except Exception as e:
         logger.error("TTS-Fehler: %s", e)
-        raise HTTPException(status_code=500, detail=f"TTS-Fehler: {e}") from e
+        raise HTTPException(status_code=500, detail="TTS-Fehler") from e
     finally:
         if tmp_path.exists():
             tmp_path.unlink()
@@ -475,7 +475,7 @@ async def stt(file: UploadFile):
         }
     except Exception as e:
         logger.error("STT-Fehler: %s", e)
-        raise HTTPException(status_code=500, detail=f"STT-Fehler: {e}") from e
+        raise HTTPException(status_code=500, detail="STT-Fehler") from e
     finally:
         if tmp_path.exists():
             tmp_path.unlink()
@@ -587,7 +587,7 @@ async def screenshot():
     except Exception as e:
         logger.error("Screenshot-Fehler: %s", e)
         raise HTTPException(
-            status_code=500, detail=f"Screenshot-Fehler: {e}",
+            status_code=500, detail="Screenshot-Fehler",
         ) from e
 
 

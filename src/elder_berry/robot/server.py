@@ -404,8 +404,9 @@ class RobotServer:
         def stop(request: StopRequest | None = None) -> dict:
             reason = request.reason if request else "manual"
             self._motors.stop()
-            logger.info("Motor STOP: %s", reason)
-            resp = ApiResponse(success=True, message=f"Gestoppt: {reason}")
+            safe_reason = safe_log(reason)
+            logger.info("Motor STOP: %s", safe_reason)
+            resp = ApiResponse(success=True, message=f"Gestoppt: {safe_reason}")
             return asdict(resp)
 
         @self.app.get("/sensor/battery")

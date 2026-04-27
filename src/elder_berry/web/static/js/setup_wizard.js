@@ -5,6 +5,16 @@ let providers = {};
 // Helper: get value from input
 function v(id) { return document.getElementById(id)?.value || ''; }
 
+// Helper: escape HTML to prevent XSS when inserting server data into innerHTML
+function escHtml(s) {
+    return String(s)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+}
+
 // Initialize
 document.addEventListener('DOMContentLoaded', async () => {
     buildProgressBar();
@@ -65,7 +75,7 @@ async function loadPrerequisites() {
         const pyOk = data.python && data.python.startsWith('3.1');
         pyEl.textContent = pyOk ? '☑' : '☐';
         pyEl.className = pyOk ? 'check' : 'fail';
-        pyEl.parentElement.innerHTML = pyEl.outerHTML + ' Python ' + (data.python || '?');
+        pyEl.parentElement.innerHTML = pyEl.outerHTML + ' Python ' + escHtml(data.python || '?');
 
         const gitEl = document.getElementById('prereqGit');
         gitEl.textContent = data.git ? '☑' : '☐';
@@ -76,7 +86,7 @@ async function loadPrerequisites() {
             ollamaEl.textContent = '☑';
             ollamaEl.className = 'check';
             const models = data.ollama.models?.join(', ') || '';
-            ollamaEl.parentElement.innerHTML = ollamaEl.outerHTML + ' Ollama' + (models ? ' (' + models + ')' : '');
+            ollamaEl.parentElement.innerHTML = ollamaEl.outerHTML + ' Ollama' + (models ? ' (' + escHtml(models) + ')' : '');
         } else {
             ollamaEl.textContent = '☐';
             ollamaEl.className = 'uncheck';
@@ -341,7 +351,11 @@ async function completeSetup() {
         if (data.standalone) {
             renderStandaloneCompletion();
         } else if (data.redirect) {
-            window.location.href = data.redirect;
+            // Nur relative Pfade erlauben (verhindert Open Redirect)
+            const redirect = String(data.redirect);
+            if (/^\/[^/\\]/.test(redirect) || redirect === '/') {
+                window.location.href = redirect;
+            }
         }
     } catch (e) {
         alert('Fehler: ' + e.message);
