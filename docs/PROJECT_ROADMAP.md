@@ -1230,3 +1230,22 @@ Konzept: `docs/concepts/phase-57-security-haertung.md`
    dauerhafter BC nur für LAN-Dauer-Nutzer)
 4. **57.3 Tower-Token + Host-Discovery** (größter BC, Auto-Migration
    für Token **und** Host)
+
+## Phase 68 – Public-Release-Vorbereitung (laufend)
+
+Vorbereitung des Repos für Public-Release. In kleinen Tranchen, parallel
+zu den laufenden Sicherheits-Fixes (Phase 69, Path-Traversal). Jede
+Tranche ist scharf abgegrenzt und kommt als eigener PR.
+
+### Tranche C – Trivial-Cleanup ✅ ABGESCHLOSSEN
+- **B2**: `--author=marcus` aus `git_commands.py` Hilfetext + Tests durch
+  generisches `--author=user` ersetzt.
+- **B3**: `last-strawberry.com` aus `webapp/dashboard/index.html`
+  entfernt; jetzt parametrisiert über `<meta name="elderberry-server-host">`
+  + JS-Override `window.ELDERBERRY_SERVER_HOST`. Default `example.com`,
+  d.h. LAN-Modus ist im öffentlichen Source der Default.
+- **E5**: `pyproject.toml` `[project]` um `license = "MIT"` und
+  `license-files = ["LICENSE"]` ergänzt (PEP 639, kompatibel mit
+  setuptools>=82, sdist-PKG-INFO bekommt `License-Expression: MIT`).
+- **Branch**: `chore/public-release-cleanup`.
+- **Tests**: 4848 passed, 28 skipped, keine Architektur-Änderungen.
