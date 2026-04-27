@@ -360,3 +360,76 @@ class TestDownloadFromNcTempDir:
         # Alle angelegten Temp-Dirs wurden gelöscht
         for d in created_dirs:
             assert not os.path.exists(d), f"Temp-Dir {d!r} wurde nicht gelöscht"
+
+
+# ---------------------------------------------------------------------------
+# Path-Traversal-Schutz (Phase 69 Security-Fix)
+# ---------------------------------------------------------------------------
+
+class TestDocumentSummaryPathTraversal:
+    """PathGuard verhindert, dass Matrix-Sender beliebige Dateien lesen."""
+
+    def _make_handler(self, document_reader, allowed_base):
+        """Handler mit PathGuard auf eine Test-Base eingeschraenkt."""
+        from elder_berry.comms.commands.advanced_commands import AdvancedCommandHandler
+        from elder_berry.core.path_guard import PathGuard
+        return AdvancedCommandHandler(
+            document_reader=document_reader,
+            path_guard=PathGuard([allowed_base]),
+        )
+
+    def test_traversal_outside_base_blocked(self, tmp_path, document_reader):
+        """Datei *ausserhalb* der erlaubten Base wird abgewiesen."""
+        # Erlaubte Base: tmp_path/safe. Datei liegt im Eltern-Verzeichnis.
+        safe_base = tmp_path / "safe"
+        safe_base.mkdir()
+        outside_file = tmp_path / "outside.pdf"
+        outside_file.write_bytes(b"%PDF outside")
+
+        handler = self._make_handler(document_reader, safe_base)
+        result = handler.execute(
+            "document_summary",
+            f"zusammenfassung {outside_file}",
+        )
+
+        assert result.success is False
+        assert "Zugriff verweigert" in result.text
+        # Pfad darf NICHT in der Antwort echoed werden
+        assert str(outside_file) not in result.text
+        # DocumentReader darf gar nicht angefasst worden sein
+        document_reader.read_file.assert_not_called()
+
+    def test_traversal_dotdot_blocked(self, tmp_path, document_reader):
+        """`../`-Traversal aus einer Sub-Base heraus wird abgewiesen."""
+        safe_base = tmp_path / "safe"
+        safe_base.mkdir()
+        secret = tmp_path / "secret.pdf"
+        secret.write_bytes(b"%PDF secret")
+
+        handler = self._make_handler(document_reader, safe_base)
+        # Pfad konstruieren: safe/../secret.pdf -> tmp_path/secret.pdf
+        traversal_path = safe_base / ".." / "secret.pdf"
+        result = handler.execute(
+            "document_summary",
+            f"zusammenfassung {traversal_path}",
+        )
+
+        assert result.success is False
+        assert "Zugriff verweigert" in result.text
+        document_reader.read_file.assert_not_called()
+
+    def test_inside_base_allowed(self, tmp_path, document_reader):
+        """Datei *innerhalb* der erlaubten Base wird normal verarbeitet."""
+        safe_base = tmp_path / "safe"
+        safe_base.mkdir()
+        ok_file = safe_base / "ok.pdf"
+        ok_file.write_bytes(b"%PDF ok")
+
+        handler = self._make_handler(document_reader, safe_base)
+        result = handler.execute(
+            "document_summary",
+            f"zusammenfassung {ok_file}",
+        )
+
+        assert result.success is True
+        document_reader.read_file.assert_called_once()

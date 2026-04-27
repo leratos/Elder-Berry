@@ -5,12 +5,12 @@ Extrahiert aus remote_commands.py (Refactoring).
 from __future__ import annotations
 
 import logging
-import os
 import re
 from pathlib import Path
 from typing import TYPE_CHECKING
 
 from elder_berry.comms.commands.base import CommandHandler, CommandResult, user_friendly_error
+from elder_berry.core.path_guard import PathGuard
 
 if TYPE_CHECKING:
     from elder_berry.actions.computer_use import ComputerUseController
@@ -77,6 +77,7 @@ class AdvancedCommandHandler(CommandHandler):
         audio_router: AudioRouter | None = None,
         web_fetcher: WebFetcher | None = None,
         nextcloud_files: NextcloudFilesClient | None = None,
+        path_guard: PathGuard | None = None,
     ) -> None:
         self._computer_use = computer_use
         self._search_client = search_client
@@ -84,6 +85,7 @@ class AdvancedCommandHandler(CommandHandler):
         self._audio_router = audio_router
         self._web_fetcher = web_fetcher
         self._nc_files = nextcloud_files
+        self._path_guard = path_guard or PathGuard.default()
 
     @property
     def simple_commands(self) -> set[str]:
@@ -186,7 +188,25 @@ class AdvancedCommandHandler(CommandHandler):
         file_path_str = match.group(1) or match.group(2)
         file_path = Path(file_path_str)
 
-        # Pr\u00fcfe ob Datei unterst\u00fctzt wird
+        # Pfad-Validierung (Path-Traversal-Schutz, Phase 69).
+        # PermissionError -> Abbruch ohne Pfad-Echo.
+        # FileNotFoundError -> Datei lokal nicht vorhanden, NC-Fallback OK.
+        path_validated = False
+        try:
+            file_path = self._path_guard.validate(file_path_str)
+            path_validated = True
+        except PermissionError:
+            return CommandResult(
+                command="document_summary", success=False,
+                text="Zugriff verweigert. Datei liegt ausserhalb erlaubter "
+                     "Verzeichnisse (z.B. Documents, Downloads).",
+            )
+        except FileNotFoundError:
+            # Datei lokal nicht vorhanden -- NC-Fallback weiter unten.
+            pass
+
+        # Pr\u00fcfe ob Datei unterst\u00fctzt wird (Suffix-Check
+        # nach Pfad-Validierung)
         if not self._document_reader.is_supported(file_path):
             return CommandResult(
                 command="document_summary", success=False,
@@ -194,9 +214,10 @@ class AdvancedCommandHandler(CommandHandler):
                      f"Erlaubt: PDF, TXT.",
             )
 
-        # Datei nicht lokal lesbar → Nextcloud-Download versuchen
+        # Datei nicht lokal lesbar -> Nextcloud-Download versuchen.
+        # NC-Cache lebt in tempfile.gettempdir() -- bereits in PathGuard-Bases.
         nc_temp_path: Path | None = None
-        if self._nc_files and not self._is_readable(file_path):
+        if self._nc_files and not path_validated:
             nc_temp_path = self._download_from_nc(file_path_str)
             if nc_temp_path:
                 file_path = nc_temp_path
@@ -237,14 +258,6 @@ class AdvancedCommandHandler(CommandHandler):
                     nc_temp_path.parent.rmdir()
                 except OSError as e:
                     logger.debug("Temp-Dir konnte nicht entfernt werden: %s", e)
-
-    @staticmethod
-    def _is_readable(path: Path) -> bool:
-        """Prüft ob eine Datei existiert und lesbar ist."""
-        try:
-            return path.exists() and os.access(path, os.R_OK)
-        except (OSError, ValueError):
-            return False
 
     def _download_from_nc(self, path_str: str) -> Path | None:
         """Versucht eine Datei von Nextcloud herunterzuladen.
