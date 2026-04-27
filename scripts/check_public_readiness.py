@@ -1,14 +1,12 @@
-"""Phase 67 -- Public-Readiness-Audit.
+"""Phase 67/71 -- Public-Readiness-Audit.
 
 Sucht im Repo nach Daten, die einer Veroeffentlichung im Weg stehen
 oder Rueckschluesse auf die echte Infrastruktur geben:
 
-  * Eigene Domains (last-strawberry.com und Subdomains)
+  * Custom Blocklist (eigene Domains, Hostnames, Namen, Pfade) -- aus
+    optionaler Datei ``.public-readiness-blocklist.txt`` im Repo-Root.
   * LAN-IPs (192.168.0.0/16, 10.0.0.0/8, 172.16.0.0/12)
-  * Persoenliche IDs (E-Mail, Vornamen, Matrix-User-IDs)
-  * Hostnames (h2724315, elderberry)
-  * Absolute Server-Pfade (/var/www/vhosts/, /home/lera/, /opt/Elder-Berry/)
-  * SSH-User-Spuren (lera@host, ssh-Befehle)
+  * Matrix-User-/Room-IDs (@user:server, !room:server)
 
 Ausgabe: Markdown-Bericht ``docs/public-readiness-audit.md`` (kann via
 ``--out`` umgeleitet werden). Skript ist read-only -- aendert nichts.
@@ -19,10 +17,20 @@ Aufruf::
     .venv/Scripts/python.exe scripts/check_public_readiness.py --out -        # stdout
     .venv/Scripts/python.exe scripts/check_public_readiness.py --json        # maschinenlesbar
 
-Die Patterns sind bewusst eng -- generische Internet-IPs (8.8.8.8) und
-RFC-Beispiele (example.com) werden nicht gemeldet. Wenn du etwas neues
-hinzufuegst, das im Repo gefunden werden soll, ergaenze die
-``CATEGORIES``-Liste unten.
+Konfigurationsdatei
+-------------------
+
+Phase 71 hat das Tool generisch gemacht. Maintainer-spezifische
+Patterns (eigene Domain, Vorname, Hostname, Server-Pfade) wandern in
+``.public-readiness-blocklist.txt`` (gitignored). Format: ein
+**Regex-Pattern pro Zeile**, ``#``-Kommentare und Leerzeilen werden
+ignoriert. Beispiele und Stil siehe
+``.public-readiness-blocklist.example.txt`` (getrackt).
+
+Wenn die Datei fehlt, fallen wir auf zwei generische Default-Patterns
+zurueck (``example.com``, ``your-domain.tld``) -- Forks bekommen so
+"alles ok" und sehen das Tool als Skeleton. Wer das Tool ernsthaft
+nutzt, kopiert die ``.example.txt`` und passt sie an.
 """
 from __future__ import annotations
 
@@ -66,12 +74,25 @@ _TEXT_FILENAMES: frozenset[str] = frozenset({
 })
 
 # Dateien, die wir komplett ueberspringen (z.B. dieses Skript selbst,
-# der Audit-Output, Lockfiles -- die sind nur Pinning-Snapshots).
+# der Audit-Output, die Blocklist selbst).
 _SKIP_FILES: frozenset[str] = frozenset({
     Path(__file__).name,
     "public-readiness-audit.md",
     "public-readiness-audit.json",
+    ".public-readiness-blocklist.txt",
+    ".public-readiness-blocklist.example.txt",
 })
+
+# Custom-Blocklist-Datei im Repo-Root.
+BLOCKLIST_FILENAME: str = ".public-readiness-blocklist.txt"
+
+# Generische Default-Patterns, wenn keine Blocklist existiert.
+# Die sollen in einem frischen Fork "nichts finden", aber das Tool
+# als Skeleton sichtbar machen.
+DEFAULT_BLOCKLIST_PATTERNS: tuple[str, ...] = (
+    r"example\.com",
+    r"your-domain\.tld",
+)
 
 
 # ---------------------------------------------------------------------------
@@ -95,119 +116,130 @@ def _ci(pattern: str) -> re.Pattern[str]:
     return re.compile(pattern, re.IGNORECASE)
 
 
-CATEGORIES: tuple[Category, ...] = (
-    Category(
-        key="domain",
-        label="Eigene Domain",
-        description="last-strawberry.com und Subdomains",
-        # Negative-Lookbehind verhindert dass "fakelast-strawberry.com"
-        # matchen wuerde -- die Domain muss am Wort beginnen.
-        patterns=(_ci(r"\b(?:[\w-]+\.)*last-strawberry\.com\b"),),
-        severity="high",
-        recommendation=(
-            "Konstanten extrahieren -> als Beispiel-Default ('example.com') "
-            "oder via SecretStore/ENV. Tests sollten Beispieldomain nutzen."
+# Generische Kategorien -- gelten fuer jeden Fork ohne Konfiguration.
+_CATEGORY_LAN_IP: Category = Category(
+    key="lan_ip",
+    label="LAN-IP",
+    description="Private IPv4-Bereiche (192.168/16, 10/8, 172.16/12)",
+    patterns=(
+        re.compile(
+            # 192.168.x.x (Heimnetz). 192.168.1.1 / 192.168.0.1 sind
+            # gaengige Doku-Defaults und werden ausgespart.
+            r"\b192\.168\.(?!1\.1\b|0\.1\b)\d{1,3}\.\d{1,3}\b"
         ),
+        re.compile(r"\b10\.\d{1,3}\.\d{1,3}\.\d{1,3}\b"),
+        re.compile(r"\b172\.(?:1[6-9]|2\d|3[01])\.\d{1,3}\.\d{1,3}\b"),
     ),
-    Category(
-        key="lan_ip",
-        label="LAN-IP",
-        description="Private IPv4-Bereiche (192.168/16, 10/8, 172.16/12)",
-        patterns=(
-            re.compile(
-                # 192.168.x.x (Heimnetz)
-                r"\b192\.168\.(?!1\.1\b|0\.1\b)\d{1,3}\.\d{1,3}\b"
-            ),
-            re.compile(r"\b10\.\d{1,3}\.\d{1,3}\.\d{1,3}\b"),
-            re.compile(r"\b172\.(?:1[6-9]|2\d|3[01])\.\d{1,3}\.\d{1,3}\b"),
-        ),
-        severity="medium",
-        recommendation=(
-            "Konkrete IPs durch Beispiel-Defaults (192.168.1.x) oder "
-            "Konfiguration ersetzen."
-        ),
-    ),
-    Category(
-        key="email_pii",
-        label="Persoenliche E-Mail / Namen",
-        description="E-Mail-Adressen, Vornamen, identifizierbare User-IDs",
-        patterns=(
-            _ci(r"\bmarcus(?:@|\b\.\w+@)"),
-            _ci(r"\bsfi-kohtz\b"),
-            # "lera" als Wort, nicht als Substring von "general" o.ae.
-            _ci(r"(?<![a-zA-Z])lera(?![a-zA-Z])"),
-            # E-Mail-Pattern allgemein, aber nur wenn Domain unsere ist
-            _ci(r"[\w.-]+@[\w.-]*last-strawberry\.com"),
-        ),
-        severity="high",
-        recommendation=(
-            "Komplett entfernen. Beispielwerte: 'user@example.com', "
-            "'admin'. CLAUDE.md/MEMORY.md gehoeren u.U. nicht ins "
-            "Public-Repo."
-        ),
-    ),
-    Category(
-        key="matrix_id",
-        label="Matrix-User-/Room-ID",
-        description="@user:matrix.last-strawberry.com, !room:server",
-        patterns=(
-            _ci(r"@[\w-]+:[\w.-]+\.\w{2,}"),
-            _ci(r"![\w-]+:[\w.-]+\.\w{2,}"),
-        ),
-        severity="high",
-        recommendation=(
-            "Beispielwerte: '@bot:matrix.example.com', "
-            "'!roomid:matrix.example.com'."
-        ),
-    ),
-    Category(
-        key="hostname",
-        label="Konkreter Hostname",
-        description="h2724315, elderberry, andere Geraete-Namen",
-        patterns=(
-            _ci(r"\bh2724315\b"),
-            # 'elderberry' ist Projekt-relevant -- nur als Hostname
-            # melden, wenn typische Konfig-Kontexte da sind.
-            _ci(r"\belderberry\b(?:\s*systemd|@elderberry)"),
-        ),
-        severity="medium",
-        recommendation=(
-            "Konkrete Hostnames neutralisieren. 'tower-host', 'rpi5-host' "
-            "als Defaults."
-        ),
-    ),
-    Category(
-        key="server_path",
-        label="Absoluter Server-Pfad",
-        description="/var/www/vhosts/, /home/lera/, /opt/Elder-Berry/",
-        patterns=(
-            _ci(r"/var/www/vhosts/[\w.-]+/[\w./-]*"),
-            _ci(r"/home/lera(?:/[\w./-]*)?"),
-            _ci(r"/opt/Elder-Berry(?:/[\w./-]*)?"),
-        ),
-        severity="medium",
-        recommendation=(
-            "Path.home() / Pfad-Konstanten / ENV nutzen. Niemand sollte "
-            "in deinem Repo-Code wissen, dass dein Server-Hosting-Anbieter "
-            "Plesk-Pfade verwendet."
-        ),
-    ),
-    Category(
-        key="ssh_user",
-        label="SSH-User-Spur",
-        description="lera@host, ssh ... -i ~/.ssh/...",
-        patterns=(
-            _ci(r"\blera@[\w.-]+\b"),
-            _ci(r"\bssh\s+(?:[-\w]+\s+)*lera@"),
-        ),
-        severity="high",
-        recommendation=(
-            "User-Namen durch Platzhalter ('user@host', '<your-user>') "
-            "ersetzen, oder die Stelle nach docs/setup-tunnel.md "
-            "auslagern."
-        ),
+    severity="medium",
+    recommendation=(
+        "Konkrete IPs durch Beispiel-Defaults (192.168.1.x) oder "
+        "Konfiguration ersetzen."
     ),
 )
+
+
+_CATEGORY_MATRIX_ID: Category = Category(
+    key="matrix_id",
+    label="Matrix-User-/Room-ID",
+    description="@user:matrix.example.com, !room:server",
+    patterns=(
+        _ci(r"@[\w-]+:[\w.-]+\.\w{2,}"),
+        _ci(r"![\w-]+:[\w.-]+\.\w{2,}"),
+    ),
+    severity="high",
+    recommendation=(
+        "Beispielwerte: '@bot:matrix.example.com', "
+        "'!roomid:matrix.example.com'."
+    ),
+)
+
+
+def _build_custom_blocklist_category(
+    patterns: tuple[str, ...],
+) -> Category:
+    """Baut die Kategorie 'custom_blocklist' aus Roh-Patterns.
+
+    Patterns sind regex-Strings (case-insensitive). Compile-Fehler
+    werden geloggt und die fehlerhafte Zeile uebersprungen, damit eine
+    kaputte Blocklist-Zeile nicht das ganze Audit blockt.
+    """
+    compiled: list[re.Pattern[str]] = []
+    for raw in patterns:
+        try:
+            compiled.append(_ci(raw))
+        except re.error as exc:
+            print(
+                f"WARN: Blocklist-Pattern '{raw}' ungueltig "
+                f"(uebersprungen): {exc}",
+                file=sys.stderr,
+            )
+    return Category(
+        key="custom_blocklist",
+        label="Custom Blocklist",
+        description=(
+            "Maintainer-Patterns aus .public-readiness-blocklist.txt "
+            "(eigene Domain, Vorname, Hostname, Server-Pfade)."
+        ),
+        patterns=tuple(compiled),
+        severity="high",
+        recommendation=(
+            "Konkrete Werte durch Beispielwerte ('example.com', "
+            "'user@example.com') oder ENV/SecretStore ersetzen. "
+            "Stil siehe .public-readiness-blocklist.example.txt."
+        ),
+    )
+
+
+def _load_blocklist_patterns(repo_root: Path) -> tuple[str, ...]:
+    """Liest ``.public-readiness-blocklist.txt`` und liefert Patterns.
+
+    Format: ein regex-Pattern pro Zeile, case-insensitive. Zeilen mit
+    fuehrendem ``#`` sind Kommentare. Inline-Kommentare (alles ab
+    ``#`` bis Zeilenende) werden abgeschnitten. Leerzeilen ignoriert.
+
+    Wenn die Datei nicht existiert oder leer ist, geben wir die
+    generischen Defaults zurueck (``example.com``, ``your-domain.tld``).
+    Damit funktioniert das Tool auch in Forks ohne Konfiguration und
+    sagt dort vermutlich "alles ok".
+    """
+    bl_path = repo_root / BLOCKLIST_FILENAME
+    if not bl_path.exists():
+        return DEFAULT_BLOCKLIST_PATTERNS
+    try:
+        text = bl_path.read_text(encoding="utf-8")
+    except OSError as exc:
+        print(
+            f"WARN: Blocklist '{bl_path}' nicht lesbar ({exc}). "
+            f"Fallback auf Defaults.",
+            file=sys.stderr,
+        )
+        return DEFAULT_BLOCKLIST_PATTERNS
+    patterns: list[str] = []
+    for raw_line in text.splitlines():
+        line = raw_line
+        # Inline-Kommentare entfernen.
+        hash_pos = line.find("#")
+        if hash_pos >= 0:
+            line = line[:hash_pos]
+        line = line.strip()
+        if not line:
+            continue
+        patterns.append(line)
+    if not patterns:
+        return DEFAULT_BLOCKLIST_PATTERNS
+    return tuple(patterns)
+
+
+def build_categories(repo_root: Path) -> tuple[Category, ...]:
+    """Baut die finale Kategorie-Liste -- generisch + custom Blocklist.
+
+    Public, damit Tests die Liste fuer einen frisch praeparierten
+    Repo-Root pruefen koennen.
+    """
+    custom = _build_custom_blocklist_category(
+        _load_blocklist_patterns(repo_root)
+    )
+    return (custom, _CATEGORY_LAN_IP, _CATEGORY_MATRIX_ID)
 
 
 # ---------------------------------------------------------------------------
@@ -296,7 +328,10 @@ def _walk_repo(root: Path, ignored: set[Path] | None = None):
 
 
 def _scan_file(
-    path: Path, repo_root: Path, results: dict[str, CategoryStats],
+    path: Path,
+    repo_root: Path,
+    results: dict[str, CategoryStats],
+    categories: tuple[Category, ...],
 ) -> None:
     try:
         content = path.read_text(encoding="utf-8", errors="replace")
@@ -306,7 +341,7 @@ def _scan_file(
     rel_path = str(path.relative_to(repo_root)).replace("\\", "/")
 
     for line_num, line in enumerate(content.splitlines(), start=1):
-        for cat in CATEGORIES:
+        for cat in categories:
             for pat in cat.patterns:
                 for match in pat.finditer(line):
                     excerpt = line.strip()
@@ -324,7 +359,11 @@ def _scan_file(
                     results[cat.key].files_affected.add(rel_path)
 
 
-def _format_markdown(results: dict[str, CategoryStats], repo_root: Path) -> str:
+def _format_markdown(
+    results: dict[str, CategoryStats],
+    categories: tuple[Category, ...],
+    repo_root: Path,
+) -> str:
     out: list[str] = []
     out.append("# Public-Readiness Audit")
     out.append("")
@@ -342,7 +381,7 @@ def _format_markdown(results: dict[str, CategoryStats], repo_root: Path) -> str:
     out.append("")
     out.append("| Kategorie | Severity | Treffer | Dateien |")
     out.append("|---|---|---:|---:|")
-    for cat in CATEGORIES:
+    for cat in categories:
         s = results[cat.key]
         out.append(
             f"| {s.label} | {s.severity} | {len(s.findings)} | "
@@ -352,7 +391,7 @@ def _format_markdown(results: dict[str, CategoryStats], repo_root: Path) -> str:
     out.append("")
 
     # Pro Kategorie ein eigener Abschnitt
-    for cat in CATEGORIES:
+    for cat in categories:
         stats = results[cat.key]
         out.append(f"## {stats.label} ({stats.severity})")
         out.append("")
@@ -398,7 +437,10 @@ def _format_markdown(results: dict[str, CategoryStats], repo_root: Path) -> str:
     return "\n".join(out)
 
 
-def _format_json(results: dict[str, CategoryStats]) -> str:
+def _format_json(
+    results: dict[str, CategoryStats],
+    categories: tuple[Category, ...],
+) -> str:
     payload = {
         cat.key: {
             "label": results[cat.key].label,
@@ -420,14 +462,14 @@ def _format_json(results: dict[str, CategoryStats]) -> str:
                 )
             ],
         }
-        for cat in CATEGORIES
+        for cat in categories
     }
     return json.dumps(payload, ensure_ascii=False, indent=2)
 
 
 def main() -> int:
     parser = argparse.ArgumentParser(
-        description="Phase 67: Public-Readiness Audit.",
+        description="Phase 67/71: Public-Readiness Audit.",
     )
     parser.add_argument(
         "--root", default=".",
@@ -449,6 +491,8 @@ def main() -> int:
               file=sys.stderr)
         return 2
 
+    categories = build_categories(repo_root)
+
     results: dict[str, CategoryStats] = {
         cat.key: CategoryStats(
             label=cat.label,
@@ -456,17 +500,19 @@ def main() -> int:
             description=cat.description,
             recommendation=cat.recommendation,
         )
-        for cat in CATEGORIES
+        for cat in categories
     }
 
     ignored = _gitignored_paths(repo_root)
     files_scanned = 0
     for path in _walk_repo(repo_root, ignored=ignored):
-        _scan_file(path, repo_root, results)
+        _scan_file(path, repo_root, results, categories)
         files_scanned += 1
 
-    formatter = _format_json if args.json else _format_markdown
-    text = formatter(results) if args.json else formatter(results, repo_root)
+    if args.json:
+        text = _format_json(results, categories)
+    else:
+        text = _format_markdown(results, categories, repo_root)
 
     if args.out == "-":
         sys.stdout.write(text)

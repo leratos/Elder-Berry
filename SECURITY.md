@@ -71,6 +71,90 @@ Aus früheren internen Audits adressiert (siehe [CHANGELOG.md](docs/CHANGELOG.md
 - ✅ Rate-Limiting für Dashboard-Login + Robot-Token (Phase 59)
 - ✅ Content-Security-Policy ohne `unsafe-inline` (Phase 63)
 
+## Bekannte Einschränkungen / Known Limitations
+
+Diese Punkte sind aus internen Security-Reviews als **mittlere Findings**
+bekannt. Sie sind kein Blocker für die Veröffentlichung — der typische
+Threat-Vektor (versehentliche Internet-Exposition) wird durch andere
+Härtungen abgedeckt — werden aber **nach Public-Release** adressiert.
+Wenn du eines dieser Verhalten in der Praxis ausnutzen kannst, melde
+es trotzdem bitte als Advisory.
+
+### M1 — `allowed_rooms` fail-open
+
+Wenn die Room-Allowlist nicht gesetzt ist (z.B. nach frischem Setup),
+antwortet der Matrix-Bot in **jeder** Room, in die er von einem
+Allow-Sender eingeladen wird. Die Sender-Allowlist (`allowed_senders`)
+schützt davor, dass beliebige Matrix-User antworten bekommen, aber
+ein kompromittierter / überredeter Allow-Sender kann den Bot in eine
+fremde Room einladen.
+
+**Mitigation:** Sender-Allowlist konsequent pflegen. Setup-Wizard sollte
+bei der Ersteinrichtung explizit Rooms konfigurieren (Phase 46
+adressiert das teilweise). Code:
+[matrix_channel.py](src/elder_berry/comms/matrix_channel.py).
+
+### M2 — Setup-Wizard ohne Brute-Force-Schutz
+
+Solange der Setup-Wizard **nicht** abgeschlossen ist (`setup_state.json`
+mit `complete: false`), sind die Setup-Endpoints unauthenticated. Das
+ist by design — der Wizard läuft genau dafür, dass es noch keine
+Credentials gibt. Es gibt aber keine Rate-Limit-Bremse auf den Setup-
+Endpoints (`/setup/*`).
+
+**Mitigation:** Der Wizard ist ein **kurzes einmaliges Fenster** beim
+ersten Start. Wer das Dashboard öffentlich auf 0.0.0.0 bindet, bevor
+der Wizard durch ist, hat ein anderes Problem. Empfohlen: Setup
+**ausschliesslich über Loopback / VPN** (Phase 57 / Phase 64
+Robot-Token Hard-Fail). Nach Abschluss greift der reguläre Login-
+Rate-Limiter (Phase 59).
+
+### M3 — Robot-/Settings-Token ohne automatische Rotation
+
+Die statischen Tokens für Tower-Auth (`tower_auth_token`),
+Robot-API (`robot_api_token`) und Settings-API (`settings_api_token`)
+werden **nicht automatisch rotiert**. Sie sind im OS-Keyring
+verschlüsselt (Phase 65) und werden bis zur manuellen Rotation
+unverändert genutzt.
+
+**Mitigation:** Tokens liegen im SecretStore (Fernet-verschlüsselt,
+Masterkey im OS-Keyring) und können jederzeit über das Settings-
+Dashboard oder direkt im SecretStore neu gesetzt werden — Token-Klau
+benötigt also Filesystem-Zugriff plus den Keyring. Eine zeitgesteuerte
+Auto-Rotation wird erst sinnvoll, wenn separate Refresh-/Access-Tokens
+eingeführt werden (Token-Familien, siehe Phase-70-Notiz im Journal).
+
+### M4 — LLM-Provider-Sichtbarkeit
+
+Alle Matrix-Inhalte, Doc-Summary-Resultate und Web-Search-Snippets
+gehen **1:1** an den konfigurierten LLM-Provider (Anthropic / OpenRouter
+/ Ollama). Das ist kein Bug, sondern Architektur — aber jeder Nutzer
+sollte wissen, dass private Matrix-Konversationen damit beim Provider
+landen.
+
+**Mitigation:** Wer das vermeiden will, nutzt **lokales Ollama**
+(Default für Embeddings, optional auch für Generation). Die Auswahl
+des LLM-Providers ist im Setup-Wizard (Phase 46) sichtbar
+dokumentiert. Privacy-Policy je Provider:
+- Anthropic: kein Training auf API-Daten
+- OpenRouter: variiert je Backend, siehe Provider-Settings
+- Ollama: lokal, kein Cloud-Traffic
+
+### M5 — CSRF-Schutz: SameSite-strict statt Token
+
+State-changing Dashboard-Routen verlassen sich auf **`SameSite=strict`-
+Cookies + Origin-Check** (Phase 64), nicht auf einen klassischen
+CSRF-Token im Formular. Das Real-Risk ist in modernen Browsern minimal:
+SameSite-strict verhindert Cross-Site-Requests komplett, der Origin-
+Check fängt böswillige Same-Site-Requests von Subdomains ab.
+
+**Mitigation:** Kein zusätzlicher Schutz nötig für den Threat-Vektor
+"böswillige fremde Website tricks Browser". Wenn ein Angreifer JS
+auf einer Same-Site-Domain ausführen kann, ist das ein anderes
+Problem (XSS, das CSP in Phase 63 entschärft hat). Für strenge
+Compliance-Anforderungen wäre ein Double-Submit-Cookie- oder
+Synchronizer-Token-Pattern nachrüstbar.
+
 ## Threat-Model in Kurzform
 
 Elder-Berry ist als **persönlicher Assistent** designt — primärer
