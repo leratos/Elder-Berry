@@ -37,6 +37,7 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 from starlette.middleware.base import BaseHTTPMiddleware
 
+from elder_berry.core.log_sanitize import safe_log
 from elder_berry.web.rate_limiter import RateLimiter
 
 from elder_berry.robot.alexa_skill_handler import (
@@ -362,11 +363,13 @@ class RobotServer:
         def set_avatar(request: AvatarRequest) -> dict:
             if request.emotion is not None:
                 self._avatar.set_emotion(request.emotion)
-                logger.info("Avatar Emotion: %s", request.emotion)
+                logger.info("Avatar Emotion: %s", safe_log(request.emotion))
 
             if request.is_speaking is not None:
                 self._avatar.set_speaking(request.is_speaking)
-                logger.info("Avatar Speaking: %s", request.is_speaking)
+                logger.info(
+                    "Avatar Speaking: %s", safe_log(request.is_speaking),
+                )
 
             resp = ApiResponse(success=True, message="Avatar aktualisiert")
             return asdict(resp)
@@ -375,7 +378,8 @@ class RobotServer:
         def drive(request: DriveRequest) -> dict:
             self._motors.drive(request.direction, request.speed)
             logger.info(
-                "Motor: %s @ %.0f%%", request.direction, request.speed * 100,
+                "Motor: %s @ %.0f%%",
+                safe_log(request.direction), request.speed * 100,
             )
             resp = ApiResponse(
                 success=True,

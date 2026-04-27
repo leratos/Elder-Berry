@@ -19,6 +19,8 @@ from urllib.parse import urlparse
 
 import httpx
 
+from elder_berry.core.log_sanitize import safe_log
+
 logger = logging.getLogger(__name__)
 
 
@@ -206,7 +208,9 @@ class SetupTests:
             result["imap"] = True
             mail.logout()
         except Exception as e:
-            logger.error("IMAP-Test fehlgeschlagen (%s): %s", imap_host, e)
+            logger.error(
+                "IMAP-Test fehlgeschlagen (%s): %s", safe_log(imap_host), e,
+            )
         # SMTP
         try:
             ctx = ssl.create_default_context()
@@ -219,7 +223,9 @@ class SetupTests:
             srv.quit()
             result["smtp"] = True
         except Exception as e:
-            logger.error("SMTP-Test fehlgeschlagen (%s): %s", smtp_host, e)
+            logger.error(
+                "SMTP-Test fehlgeschlagen (%s): %s", safe_log(smtp_host), e,
+            )
         result["success"] = result["imap"] and result["smtp"]
         return result
 

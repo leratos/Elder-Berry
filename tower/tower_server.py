@@ -35,6 +35,7 @@ _SRC = Path(__file__).resolve().parent.parent / "src"
 if str(_SRC) not in sys.path:
     sys.path.insert(0, str(_SRC))
 
+from elder_berry.core.log_sanitize import safe_log  # noqa: E402
 from elder_berry.web.rate_limiter import RateLimiter  # noqa: E402
 
 logger = logging.getLogger(__name__)
@@ -492,11 +493,11 @@ async def action(request: ActionRequest):
         return _dispatch_action(engines.actions, request.action, request.params)
     except HTTPException:
         raise
-    except Exception as e:
-        logger.error("Action-Fehler (%s): %s", request.action, e)
+    except Exception:
+        logger.exception("Action-Fehler (%s)", safe_log(request.action))
         raise HTTPException(
-            status_code=500, detail=f"Action-Fehler: {e}",
-        ) from e
+            status_code=500, detail="Action-Fehler.",
+        ) from None
 
 
 @app.get("/monitors")

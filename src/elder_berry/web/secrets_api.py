@@ -12,6 +12,8 @@ from typing import TYPE_CHECKING, Any, NotRequired, TypedDict
 from fastapi import Body, Request
 from fastapi.responses import JSONResponse
 
+from elder_berry.core.log_sanitize import safe_log
+
 if TYPE_CHECKING:
     from fastapi import FastAPI
 
@@ -368,7 +370,10 @@ def register_secrets_routes(app: FastAPI, dashboard: SettingsDashboard) -> None:
         dashboard._record_meta(key)
         dashboard._notify_change(key, value)
         client_host = request.client.host if request.client else "unbekannt"
-        logger.info("AUDIT: secret '%s' gesetzt von %s", key, client_host)
+        logger.info(
+            "AUDIT: secret '%s' gesetzt von %s",
+            safe_log(key), safe_log(client_host),
+        )
         return JSONResponse({
             "success": True,
             "key": key,
@@ -396,7 +401,10 @@ def register_secrets_routes(app: FastAPI, dashboard: SettingsDashboard) -> None:
         async with dashboard._write_lock:
             dashboard._secret_store.delete(key)
         client_host = request.client.host if request.client else "unbekannt"
-        logger.info("AUDIT: secret '%s' gelöscht von %s", key, client_host)
+        logger.info(
+            "AUDIT: secret '%s' gelöscht von %s",
+            safe_log(key), safe_log(client_host),
+        )
         return JSONResponse({"success": True, "key": key})
 
     @app.get("/api/settings/export")

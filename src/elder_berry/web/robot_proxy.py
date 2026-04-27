@@ -25,11 +25,14 @@ durch.
 from __future__ import annotations
 
 import logging
+import re
 from typing import TYPE_CHECKING
 
 import httpx
 from fastapi import Request
 from fastapi.responses import JSONResponse, Response
+
+from elder_berry.core.log_sanitize import safe_log
 
 if TYPE_CHECKING:
     from fastapi import FastAPI
@@ -38,10 +41,55 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
+# Defense-in-Depth gegen SSRF (CodeQL py/partial-ssrf): Host kommt
+# zwar aus dem SecretStore (Admin-konfiguriert), aber wir validieren
+# trotzdem, dass er als http(s)://hostname[:port] parst und der
+# upstream_path keine Scheme-Injection (``://``) oder CR/LF enthaelt.
+_HOSTNAME_RE = re.compile(
+    r"^(?=.{1,253}$)(?:[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?"
+    r"(?:\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*|"
+    r"\d{1,3}(?:\.\d{1,3}){3})$"
+)
 
-def _sanitize_for_log(value: str) -> str:
-    """Entfernt Zeilenumbrueche, um Log-Injection zu verhindern."""
-    return value.replace("\r", "").replace("\n", "")
+
+def _is_safe_host(host: str) -> bool:
+    """Validiert raw ``host`` (vor jeder Schema-Mutation).
+
+    Akzeptiert ``hostname[:port][/path]`` ohne Schema oder mit
+    ``http(s)://``. Lehnt jede andere Scheme-Vorgabe ab (``file://``,
+    ``gopher://``, ``javascript:``, ...). Hostname muss RFC-1035-Pattern
+    oder IPv4 sein. Wenn ein Port angegeben ist, muss er numerisch sein
+    -- damit faengt der Validator auch Pseudo-Schemes wie
+    ``javascript:alert(1)`` ab, die kein ``//`` haben.
+    """
+    if not host:
+        return False
+    if "://" in host:
+        scheme, _, rest = host.partition("://")
+        if scheme.lower() not in ("http", "https"):
+            return False
+    else:
+        rest = host
+    # rest = hostname[:port][/path]
+    authority = rest.split("/", 1)[0]
+    if ":" in authority:
+        hostname, _, port = authority.partition(":")
+        if not port.isdigit() or not (1 <= int(port) <= 65535):
+            return False
+    else:
+        hostname = authority
+    if not hostname:
+        return False
+    return bool(_HOSTNAME_RE.match(hostname))
+
+
+def _is_safe_upstream_path(path: str) -> bool:
+    """Verhindert Scheme-Injection und Header-Forgery via Path."""
+    if "\r" in path or "\n" in path:
+        return False
+    if "://" in path:
+        return False
+    return True
 
 
 ROBOT_TOKEN_HEADER = "X-Saleria-Robot-Token"
@@ -138,9 +186,41 @@ def register_robot_proxy_routes(
                 },
                 status_code=503,
             )
-        host = host.strip().rstrip("/")
-        # robot_host kann mit oder ohne Schema gespeichert sein. Wir
-        # zwingen http://, weil der RobotServer kein TLS terminiert.
+        host = host.strip()
+        # SSRF Defense-in-Depth: host stammt aus dem SecretStore, aber
+        # wir validieren das Format hier nochmal -- damit kann selbst ein
+        # versehentlicher Eintrag wie ``file:///etc/passwd`` keinen
+        # Request ausloesen. Validator laeuft auf dem rohen host VOR
+        # rstrip + Schema-Mutation, sonst wuerde ``http://`` zu ``http:``
+        # geschrumpft und ``file:///`` zu ``http://file:/``.
+        if not _is_safe_host(host):
+            logger.warning(
+                "Robot-Proxy: ungueltiger robot_host: %s", safe_log(host),
+            )
+            return JSONResponse(
+                {
+                    "error": "robot_host hat ein ungueltiges Format.",
+                    "code": "invalid_robot_host",
+                },
+                status_code=503,
+            )
+        if not _is_safe_upstream_path(upstream_path):
+            logger.warning(
+                "Robot-Proxy: ungueltiger upstream_path: %s",
+                safe_log(upstream_path),
+            )
+            return JSONResponse(
+                {
+                    "error": "Ungueltiger Pfad.",
+                    "code": "invalid_path",
+                },
+                status_code=400,
+            )
+
+        # Trailing-Slash entfernen + robot_host kann mit oder ohne Schema
+        # gespeichert sein. Wir zwingen http://, weil der RobotServer
+        # kein TLS terminiert.
+        host = host.rstrip("/")
         if not host.startswith(("http://", "https://")):
             host = f"http://{host}"
 
@@ -152,7 +232,6 @@ def register_robot_proxy_routes(
         target_url = f"{host}/{upstream_path}"
         if request.url.query:
             target_url = f"{target_url}?{request.url.query}"
-        safe_target_url = _sanitize_for_log(target_url)
 
         body = await request.body()
         headers = _filter_request_headers(dict(request.headers), token)
@@ -168,7 +247,7 @@ def register_robot_proxy_routes(
         except httpx.ConnectError as exc:
             logger.warning(
                 "Robot-Proxy: Connection zu %s fehlgeschlagen: %s",
-                safe_target_url, exc,
+                safe_log(target_url), exc,
             )
             return JSONResponse(
                 {
@@ -181,7 +260,9 @@ def register_robot_proxy_routes(
                 status_code=502,
             )
         except httpx.TimeoutException:
-            logger.warning("Robot-Proxy: Timeout fuer %s", safe_target_url)
+            logger.warning(
+                "Robot-Proxy: Timeout fuer %s", safe_log(target_url),
+            )
             return JSONResponse(
                 {
                     "error": "Timeout zum RPi5.",
@@ -191,7 +272,7 @@ def register_robot_proxy_routes(
             )
         except httpx.RequestError:
             logger.exception(
-                "Robot-Proxy: Request-Fehler fuer %s", safe_target_url,
+                "Robot-Proxy: Request-Fehler fuer %s", safe_log(target_url),
             )
             return JSONResponse(
                 {
