@@ -389,7 +389,7 @@ class RobotServer:
             # Vektor mehr; speed ist float und kann keine CR/LF tragen.
             logger.info(
                 "Motor: %s @ %.0f%%",
-                request.direction, request.speed * 100,
+                safe_log(request.direction), request.speed * 100,
             )
             resp = ApiResponse(
                 success=True,
