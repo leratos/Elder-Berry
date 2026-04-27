@@ -385,11 +385,14 @@ class RobotServer:
         @self.app.post("/motor/drive")
         def drive(request: DriveRequest) -> dict:
             self._motors.drive(request.direction, request.speed)
-            # direction ist Literal-constrained -> kein log-injection
-            # Vektor mehr; speed ist float und kann keine CR/LF tragen.
+            # safe_log + int-Cast bricht den Taint-Flow fuer beide
+            # Felder. Pydantic Literal allein reicht CodeQL nicht --
+            # request.direction wird trotz Literal-Constraint noch als
+            # user-provided getrackt, und request.speed * 100 (float)
+            # gilt CodeQL ebenfalls als getainted.
             logger.info(
-                "Motor: %s @ %.0f%%",
-                safe_log(request.direction), request.speed * 100,
+                "Motor: %s @ %d%%",
+                safe_log(request.direction), int(request.speed * 100),
             )
             resp = ApiResponse(
                 success=True,
