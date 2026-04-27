@@ -1230,3 +1230,42 @@ Konzept: `docs/concepts/phase-57-security-haertung.md`
    dauerhafter BC nur für LAN-Dauer-Nutzer)
 4. **57.3 Tower-Token + Host-Discovery** (größter BC, Auto-Migration
    für Token **und** Host)
+
+## Phase 69 – Path-Traversal-Schutz für Matrix-Commands 🛡️ ✅ ABGESCHLOSSEN
+
+- **Trigger**: Security-Review vor Public-Release identifizierte zwei
+  kritische Path-Traversal-Findings:
+  - **K1**: `advanced_commands.py::_cmd_document_summary` reicht den
+    Pfad aus der Matrix-Nachricht direkt an `Path()` weiter — ohne
+    `resolve()` / `is_relative_to`-Check. Matrix-Sender (auch
+    allowlisted) konnten via `zusammenfassung <pfad>` beliebige
+    Dateien lesen (`id_rsa`, `.env`, SecretStore-Backups).
+  - **K2**: `pdf_commands.py::_is_local_path` akzeptiert jeden
+    absoluten Pfad; `_resolve_file` öffnet ihn ungeprüft für
+    `pdf zusammenfügen`, `pdf split`, `pdf ocr`, `pdf komprimieren`,
+    `pdf zu word`, `zu pdf`, `pdf bilder`.
+- **Lösung**: Neue Klasse `PathGuard` in
+  `src/elder_berry/core/path_guard.py` mit `validate(path)`-Methode:
+  - `resolve(strict=True)` — Symlinks aufgelöst, `FileNotFoundError`
+    bei nicht-existenten Dateien (Caller darf NC-Fallback versuchen).
+  - `is_relative_to(base)`-Check gegen Allow-Liste — Verstöße werfen
+    `PermissionError`.
+  - Defaults via `PathGuard.default()`: `~/Documents`, `~/Downloads`,
+    `~/Desktop`, `tempfile.gettempdir()` (NC-Cache lebt dort), CWD.
+  - Override per Env-Var `EB_ALLOWED_PATHS` (`os.pathsep`-getrennt).
+  - Audit-Log via `getLogger("elder_berry.security")` →
+    `logs/security.log` (Konvention aus Phase 59 Rate-Limit-Events).
+- **Integration**:
+  - `advanced_commands.py::_cmd_document_summary`: `validate()` vor
+    Suffix-Check; `PermissionError` → Abbruch ohne Pfad-Echo;
+    `FileNotFoundError` → bestehender NC-Fallback bleibt erhalten.
+  - `pdf_commands.py::_resolve_file`: `validate()` bei lokalen
+    Pfaden; NC-Pfade gehen unverändert durch.
+- **Kein Pfad-Echo**: Fehlermeldungen an Matrix-Sender sind generisch
+  ("Zugriff verweigert. Datei liegt ausserhalb erlaubter
+  Verzeichnisse."). Der konkrete Pfad landet nur im Security-Log.
+- **Tests**: `tests/test_path_guard.py` (neu, 18 Tests inkl.
+  Symlink-Escape, dotdot-Traversal, Env-Override, Logging-Routing).
+  Regression-Tests in `tests/test_advanced_commands.py` (3) und
+  `tests/test_pdf_commands.py` (4). Suite: 4872 passed, 29 skipped.
+- **Branch**: `fix/path-traversal-document-pdf-commands`.
