@@ -9,15 +9,62 @@ from __future__ import annotations
 import imaplib
 import logging
 import platform
+import re
 import shutil
 import smtplib
 import ssl
 import subprocess
 from typing import Any
+from urllib.parse import urlparse
 
 import httpx
 
 logger = logging.getLogger(__name__)
+
+
+class InvalidExternalURLError(ValueError):
+    """URL ist fuer externe Verbindungstests nicht zulaessig."""
+
+
+# Zulaessige URL-Schemas und Hostname-Format. SSRF-Schutz fuer den
+# Setup-Wizard, der unauthenticated im VPN/LAN erreichbar sein kann
+# (siehe SECURITY.md M2). Verhindert file://, gopher://, IPv6-Adressen
+# ohne Brackets, leere Hostnames und URLs mit Userinfo.
+_ALLOWED_SCHEMES = ("http", "https")
+_HOSTNAME_RE = re.compile(
+    r"^(?=.{1,253}$)(?:[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?"
+    r"(?:\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*|"
+    r"\d{1,3}(?:\.\d{1,3}){3})$"
+)
+
+
+def _validate_external_url(url: str) -> str:
+    """Prueft ein User-Input-URL fuer externe Tests (SSRF-Schutz).
+
+    Akzeptiert nur http/https mit gueltigem Hostname oder IPv4. Lehnt
+    Userinfo (``user:pw@``), leere Hosts und URL-Encoded-Tricks ab.
+    Wirft :class:`InvalidExternalURLError` bei Verstoessen.
+    """
+    if not isinstance(url, str) or not url.strip():
+        raise InvalidExternalURLError("URL fehlt.")
+    parsed = urlparse(url.strip())
+    if parsed.scheme.lower() not in _ALLOWED_SCHEMES:
+        raise InvalidExternalURLError(
+            f"Ungueltiges URL-Schema: {parsed.scheme!r}. "
+            "Erlaubt sind nur http und https."
+        )
+    if parsed.username or parsed.password:
+        raise InvalidExternalURLError(
+            "URL darf keine Userinfo (user:pw@) enthalten."
+        )
+    host = parsed.hostname or ""
+    if not host:
+        raise InvalidExternalURLError("URL hat keinen Hostname.")
+    if not _HOSTNAME_RE.match(host):
+        raise InvalidExternalURLError(
+            f"Hostname {host!r} hat ein ungueltiges Format."
+        )
+    return url.strip()
 
 # Bekannte E-Mail-Provider (IMAP-Host, IMAP-Port, SMTP-Host, SMTP-Port)
 EMAIL_PROVIDERS: dict[str, tuple[str, int, str, int]] = {
@@ -87,9 +134,19 @@ class SetupTests:
             "caldav": False,
             "carddav": False,
         }
+        try:
+            safe_url = _validate_external_url(url)
+        except InvalidExternalURLError as exc:
+            return {
+                **results,
+                "success": False,
+                "error": str(exc),
+            }
         auth = (user, password)
-        base = url.rstrip("/")
-        async with httpx.AsyncClient(timeout=10) as client:
+        base = safe_url.rstrip("/")
+        async with httpx.AsyncClient(
+            timeout=10, follow_redirects=False
+        ) as client:
             # WebDAV
             try:
                 r = await client.request(
