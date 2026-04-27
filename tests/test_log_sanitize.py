@@ -19,23 +19,23 @@ class TestSafeLog:
         assert safe_log(value) == expected
 
     @pytest.mark.parametrize("value,expected", [
-        ("a\nb", "a\\nb"),
-        ("a\rb", "a\\rb"),
-        ("a\r\nb", "a\\r\\nb"),
-        ("\nstart", "\\nstart"),
-        ("end\n", "end\\n"),
-        ("multi\nline\nlog", "multi\\nline\\nlog"),
+        ("a\nb", "ab"),
+        ("a\rb", "ab"),
+        ("a\r\nb", "ab"),
+        ("\nstart", "start"),
+        ("end\n", "end"),
+        ("multi\nline\nlog", "multilinelog"),
     ])
-    def test_replaces_cr_and_lf(self, value, expected):
+    def test_strips_cr_and_lf(self, value, expected):
         assert safe_log(value) == expected
 
     def test_log_forgery_attempt(self):
         """Klassischer Log-Forgery-Vektor: gefakete Audit-Zeile injizieren."""
         attack = "alice\nINFO: AUDIT: secret 'admin_token' geloescht von 127.0.0.1"
         result = safe_log(attack)
-        # Newline ersetzt -> keine zweite Log-Zeile entsteht
+        # Newline entfernt -> keine zweite Log-Zeile entsteht
         assert "\n" not in result
-        # Inhalt bleibt sichtbar (zur forensischen Auswertung)
+        # Inhalt laeuft auf einer Zeile zusammen, bleibt aber sichtbar
         assert "alice" in result
         assert "AUDIT" in result
 
@@ -50,7 +50,7 @@ class TestSafeLog:
             def __str__(self) -> str:
                 return "custom\nrepr"
 
-        assert safe_log(Custom()) == "custom\\nrepr"
+        assert safe_log(Custom()) == "customrepr"
 
     def test_no_other_chars_changed(self):
         """Tabs, Backslashes, Quotes etc. bleiben unangetastet."""
