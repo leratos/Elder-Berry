@@ -65,9 +65,19 @@ DEFAULT_MAX_ABSOLUTE_LIFETIME_HOURS = 24
 MIN_MAX_ABSOLUTE_LIFETIME_HOURS = 1
 MAX_MAX_ABSOLUTE_LIFETIME_HOURS = 24 * 30  # 30 Tage Hard-Cap
 
-# bcrypt cost factor – 12 ist 2026 ein guter Kompromiss zwischen
-# Sicherheit und CPU-Zeit auf Tower-Hardware.
-BCRYPT_ROUNDS = 12
+# Mindest-Passwortlaenge fuer das Dashboard. Vor dem Public-Release
+# auf 12 angehoben: 8 ist 2026 fuer GPU-Cracking nicht mehr robust,
+# bcrypt allein faengt das nicht auf.
+MIN_PASSWORD_LENGTH = 12
+
+# bcrypt cost factor. Phase 72: 12 -> 14 angehoben. Auf moderner
+# CPU rechnet ein Hash damit ~250 ms; das ist im Login spuerbar
+# aber unkritisch, dafuer steigt die GPU-Resistenz fuer kurze 8-12
+# Zeichen-Passwoerter um Faktor 4. MIN_PASSWORD_LENGTH oben mitigiert
+# das eigentliche Risiko schon, gehoert aber zusammen.
+# Bestehende Hashes mit rounds=12 funktionieren weiter -- bcrypt
+# liest den Cost-Faktor aus dem Hash-Prefix, neue Hashes nutzen 14.
+BCRYPT_ROUNDS = 14
 
 
 class DashboardAuthError(Exception):
@@ -165,8 +175,10 @@ class DashboardAuthManager:
 
     def set_password(self, password: str) -> None:
         """Speichert ein neues Dashboard-Passwort (bcrypt-Hash)."""
-        if not password or len(password) < 8:
-            raise ValueError("Passwort muss mindestens 8 Zeichen lang sein")
+        if not password or len(password) < MIN_PASSWORD_LENGTH:
+            raise ValueError(
+                f"Passwort muss mindestens {MIN_PASSWORD_LENGTH} Zeichen lang sein"
+            )
         # bcrypt limitiert auf 72 Bytes – Hash längerer PWs ist trivial,
         # aber ein Hinweis ist sauberer als stiller Truncate.
         if len(password.encode("utf-8")) > 72:

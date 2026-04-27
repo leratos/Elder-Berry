@@ -314,8 +314,8 @@ async function completeSetup() {
 
     const pw = document.getElementById('dashboardPassword').value;
     const pw2 = document.getElementById('dashboardPasswordConfirm').value;
-    if (!pw || pw.length < 8) {
-        errEl.textContent = 'Passwort muss mindestens 8 Zeichen lang sein.';
+    if (!pw || pw.length < 12) {
+        errEl.textContent = 'Passwort muss mindestens 12 Zeichen lang sein.';
         return;
     }
     if (pw !== pw2) {

@@ -1385,3 +1385,29 @@ Repo-Hygiene, Audit-Tools und Doku.
   Logout-Replay), `tests/test_web_fetcher.py` (+8 fuer Size-Limit).
   Suite: **4913 passed, 29 skipped** (vorher 4872 → +41 neue Tests).
 - **Branch**: `fix/session-and-web-hardening`.
+
+## Phase 72 – Auth-Hardening (PW-Min + bcrypt rounds) 🔒 ✅ ABGESCHLOSSEN
+
+- **Trigger**: Letzte Hardening-Schicht vor Public-Release. Zwei
+  kleine Stellschrauben in derselben Auth-Surface, gemeinsam in
+  einem PR.
+- **N1 — Mindest-Passwortlaenge 8 → 12**:
+  Neue Konstante `MIN_PASSWORD_LENGTH = 12` in
+  `src/elder_berry/web/dashboard_auth.py`. `set_password()` haengt
+  die Fehlermeldung per f-string an die Konstante. CLI
+  (`scripts/set_dashboard_password.py`) importiert die Konstante
+  und nutzt sie identisch. Setup-Wizard-Label
+  (`templates/setup_wizard.html`) und Client-Validierung
+  (`static/js/setup_wizard.js`) auf 12 Zeichen.
+- **N2 — bcrypt rounds 12 → 14**:
+  `BCRYPT_ROUNDS = 14`. ~250 ms/Hash auf moderner CPU; unkritisch
+  im Login-Pfad, GPU-Resistenz fuer kurze 8–12 Zeichen-PWs steigt
+  um Faktor 4. MIN_PASSWORD_LENGTH = 12 mitigiert den eigentlichen
+  Vektor schon, gehoert aber zusammen.
+- **Migration**: Bestehende rounds=12-Hashes funktionieren weiter
+  -- bcrypt liest den Cost-Faktor aus dem Hash-Prefix. Neue Hashes
+  nutzen rounds=14.
+- **Tests**: `tests/test_dashboard_auth.py::test_overwriting_password_works`
+  nutzt 13/13-Zeichen-PWs (vorher 11/10). Suite:
+  **4916 passed, 29 skipped**.
+- **Branch**: `chore/auth-hardening-pw-bcrypt`.
