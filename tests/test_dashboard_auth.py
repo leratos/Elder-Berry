@@ -124,10 +124,10 @@ class TestPasswordManagement:
     def test_overwriting_password_works(
         self, auth: DashboardAuthManager
     ) -> None:
-        auth.set_password("original123")
-        auth.set_password("changed123")
-        assert auth.verify_password("changed123") is True
-        assert auth.verify_password("original123") is False
+        auth.set_password("original12345")
+        auth.set_password("changed123456")
+        assert auth.verify_password("changed123456") is True
+        assert auth.verify_password("original12345") is False
 
 
 # -- Session-Cookie -------------------------------------------------- #
