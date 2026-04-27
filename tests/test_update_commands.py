@@ -175,10 +175,10 @@ class TestUpdateInterface:
 
 
 # ---------------------------------------------------------------------------
-# Update Tower
+# Update (local git pull)
 # ---------------------------------------------------------------------------
 
-class TestUpdateTower:
+class TestUpdate:
     def test_no_project_root(self, handler_no_root):
         result = handler_no_root.execute("update", "update")
         assert result.success is False

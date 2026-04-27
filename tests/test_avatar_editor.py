@@ -88,16 +88,13 @@ def client(avatar_assets, avatar_config_yaml):
     """TestClient mit gemockten Asset- und Config-Pfaden."""
     from elder_berry.web.settings_dashboard import SettingsDashboard
     import elder_berry.web.avatar_editor as ae
-
-    # Patch die Module-Level-Pfade
-    original_assets = ae._ASSETS_DIR
-    original_config = ae.DEFAULT_CONFIG_PATH
-    ae._ASSETS_DIR = avatar_assets
-    ae.DEFAULT_CONFIG_PATH = avatar_config_yaml
-
-    # Patch auch den ConfigLoader-Default
     import elder_berry.avatar.avatar_config_loader as acl
+
+    # avatar_editor referenziert avatar_config_loader.DEFAULT_CONFIG_PATH
+    # via Modul -- daher reicht ein Patch am Loader, beide Module sehen's.
+    original_assets = ae._ASSETS_DIR
     original_loader_path = acl.DEFAULT_CONFIG_PATH
+    ae._ASSETS_DIR = avatar_assets
     acl.DEFAULT_CONFIG_PATH = avatar_config_yaml
 
     router = AudioRouter(local_available=True)
@@ -108,7 +105,6 @@ def client(avatar_assets, avatar_config_yaml):
 
     # Restore
     ae._ASSETS_DIR = original_assets
-    ae.DEFAULT_CONFIG_PATH = original_config
     acl.DEFAULT_CONFIG_PATH = original_loader_path
 
 
@@ -117,14 +113,11 @@ def client_with_renderer(avatar_assets, avatar_config_yaml):
     """TestClient mit gemocktem Renderer für Hot-Reload-Tests."""
     from elder_berry.web.settings_dashboard import SettingsDashboard
     import elder_berry.web.avatar_editor as ae
+    import elder_berry.avatar.avatar_config_loader as acl
 
     original_assets = ae._ASSETS_DIR
-    original_config = ae.DEFAULT_CONFIG_PATH
-    ae._ASSETS_DIR = avatar_assets
-    ae.DEFAULT_CONFIG_PATH = avatar_config_yaml
-
-    import elder_berry.avatar.avatar_config_loader as acl
     original_loader_path = acl.DEFAULT_CONFIG_PATH
+    ae._ASSETS_DIR = avatar_assets
     acl.DEFAULT_CONFIG_PATH = avatar_config_yaml
 
     mock_renderer = MagicMock()
@@ -137,7 +130,6 @@ def client_with_renderer(avatar_assets, avatar_config_yaml):
     yield tc, mock_renderer
 
     ae._ASSETS_DIR = original_assets
-    ae.DEFAULT_CONFIG_PATH = original_config
     acl.DEFAULT_CONFIG_PATH = original_loader_path
 
 
@@ -492,6 +484,7 @@ class TestErrorResponsesDoNotLeak:
         """Korrupte YAML -> generic Fehlermeldung, kein yaml.YAMLError-Detail."""
         from elder_berry.web.settings_dashboard import SettingsDashboard
         import elder_berry.web.avatar_editor as ae
+        import elder_berry.avatar.avatar_config_loader as acl
 
         bad_yaml = tmp_path / "bad.yaml"
         bad_yaml.write_text(
@@ -500,9 +493,9 @@ class TestErrorResponsesDoNotLeak:
         )
 
         original_assets = ae._ASSETS_DIR
-        original_config = ae.DEFAULT_CONFIG_PATH
+        original_config = acl.DEFAULT_CONFIG_PATH
         ae._ASSETS_DIR = avatar_assets
-        ae.DEFAULT_CONFIG_PATH = bad_yaml
+        acl.DEFAULT_CONFIG_PATH = bad_yaml
 
         try:
             router = AudioRouter(local_available=True)
@@ -522,21 +515,22 @@ class TestErrorResponsesDoNotLeak:
             assert "column" not in body["error"].lower()
         finally:
             ae._ASSETS_DIR = original_assets
-            ae.DEFAULT_CONFIG_PATH = original_config
+            acl.DEFAULT_CONFIG_PATH = original_config
 
     def test_save_config_swallows_io_error(self, avatar_assets, tmp_path):
         """IO-Fehler beim Schreiben -> generic Message, kein OSError-Detail."""
         from elder_berry.web.settings_dashboard import SettingsDashboard
         import elder_berry.web.avatar_editor as ae
+        import elder_berry.avatar.avatar_config_loader as acl
 
         # Pfad zu Verzeichnis statt Datei -> IsADirectoryError beim open()
         unwritable = tmp_path / "as_directory"
         unwritable.mkdir()
 
         original_assets = ae._ASSETS_DIR
-        original_config = ae.DEFAULT_CONFIG_PATH
+        original_config = acl.DEFAULT_CONFIG_PATH
         ae._ASSETS_DIR = avatar_assets
-        ae.DEFAULT_CONFIG_PATH = unwritable
+        acl.DEFAULT_CONFIG_PATH = unwritable
 
         try:
             router = AudioRouter(local_available=True)
@@ -563,4 +557,4 @@ class TestErrorResponsesDoNotLeak:
             assert "errno" not in body["error"].lower()
         finally:
             ae._ASSETS_DIR = original_assets
-            ae.DEFAULT_CONFIG_PATH = original_config
+            acl.DEFAULT_CONFIG_PATH = original_config
