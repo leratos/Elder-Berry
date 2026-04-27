@@ -181,14 +181,31 @@ class SettingsDashboard:
         # Phase 58: DashboardAuthManager (opt-in, vor Token-Middleware
         # initialisieren weil Cookie-OR-Token sie als Dependency braucht)
         self._auth_manager = None
+        self._session_revocations = None
         if require_dashboard_login:
             if secret_store is None:
                 raise ValueError(
                     "require_dashboard_login=True benötigt secret_store"
                 )
             from elder_berry.web.dashboard_auth import DashboardAuthManager
+            from elder_berry.web.session_revocation_list import (
+                SessionRevocationList,
+            )
+
+            # Phase 70 (H-1): SessionRevocationList persistiert neben
+            # secrets.enc. So ueberlebt eine Logout-Revocation einen
+            # Tower-Restart -- sonst koennte ein gestohlener Cookie nach
+            # einem Bounce wieder benutzt werden.
+            revocation_path = (
+                secret_store.secrets_path.parent / "session_revocations.json"
+            )
+            self._session_revocations = SessionRevocationList(
+                persist_path=revocation_path,
+            )
             self._auth_manager = DashboardAuthManager(
-                secret_store, ttl_hours=dashboard_session_hours,
+                secret_store,
+                ttl_hours=dashboard_session_hours,
+                revocation_list=self._session_revocations,
             )
 
         # Phase 52.1a: Token-Middleware (opt-in)
