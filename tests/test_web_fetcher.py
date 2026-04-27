@@ -373,7 +373,13 @@ class TestWebFetcherSizeLimit:
                 fetcher.fetch("https://example.com")
 
     def test_small_response_passes(self):
-        """Antwort innerhalb des Limits geht durch -- kein false positive."""
+        """Antwort innerhalb des Limits liefert den vollen Body zurueck.
+
+        Wir testen ``_download()`` direkt, nicht ``fetch()`` -- der
+        Extraktor (trafilatura/bs4) ist optional und in CI nicht
+        immer installiert. Der Size-Cap lebt in ``_read_capped`` /
+        ``_download``, vor dem Extraktor; das ist hier das Subject.
+        """
         fetcher = WebFetcher(max_response_bytes=1024 * 1024)
         html = (
             b"<html><head><title>Test</title></head>"
@@ -381,8 +387,9 @@ class TestWebFetcherSizeLimit:
         )
         ok_response = _make_stream_response(body_chunks=[html])
         with patch("httpx.stream", return_value=_stream_cm(ok_response)):
-            result = fetcher.fetch("https://example.com")
-        assert "Hello world" in result.text
+            body = fetcher._download("https://example.com")
+        assert "Hello world" in body
+        assert body == html.decode("utf-8")
 
     def test_invalid_content_length_header_ignored(self):
         """``Content-Length: garbage`` fuehrt nicht zum Crash, sondern
@@ -394,8 +401,8 @@ class TestWebFetcherSizeLimit:
             body_chunks=[html],
         )
         with patch("httpx.stream", return_value=_stream_cm(response)):
-            result = fetcher.fetch("https://example.com")
-        assert "fine" in result.text
+            body = fetcher._download("https://example.com")
+        assert "fine" in body
 
     def test_unknown_encoding_falls_back_to_utf8(self):
         fetcher = WebFetcher(max_response_bytes=1024 * 1024)
@@ -403,8 +410,8 @@ class TestWebFetcherSizeLimit:
         response = _make_stream_response(body_chunks=[html])
         response.encoding = "definitely-not-a-real-encoding"
         with patch("httpx.stream", return_value=_stream_cm(response)):
-            result = fetcher.fetch("https://example.com")
-        assert "Hällo" in result.text
+            body = fetcher._download("https://example.com")
+        assert "Hällo" in body
 
 
 # ---------------------------------------------------------------------------
