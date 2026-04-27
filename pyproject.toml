@@ -56,7 +56,7 @@ memory = [
     "chromadb>=0.5",
 ]
 stt = [
-    "faster-whisper>=1.0",
+    "faster-whisper>=1.2.1",
     "sounddevice>=0.4",
     "numpy>=1.26",
 ]
@@ -90,7 +90,7 @@ tower = [
     "coqui-tts>=0.27",
     "sounddevice>=0.4",
     "numpy>=1.26",
-    "faster-whisper>=1.0",
+    "faster-whisper>=1.2.1",
     "pyautogui>=0.9",
     "PyGetWindow>=0.0.9",
     "pycaw>=20230407",
