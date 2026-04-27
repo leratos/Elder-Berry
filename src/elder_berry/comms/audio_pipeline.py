@@ -197,8 +197,15 @@ class AudioPipeline:
 
         try:
             suffix = Path(file_name).suffix or ".tmp"
-            tmp_file = Path(tempfile.mktemp(suffix=suffix))
-            tmp_file.write_bytes(msg.file_data)
+            # Phase 70 (H-2): NamedTemporaryFile ist TOCTOU-frei -- ein
+            # Angreifer mit Schreibrechten in $TMP haette zwischen
+            # mktemp() und write_bytes() einen Symlink auf eine Ziel-
+            # datei legen koennen.
+            with tempfile.NamedTemporaryFile(
+                suffix=suffix, delete=False,
+            ) as fh:
+                fh.write(msg.file_data)
+                tmp_file = Path(fh.name)
 
             logger.info(
                 "Datei verarbeiten: %s (%d bytes)",
@@ -227,7 +234,14 @@ class AudioPipeline:
             )
 
             chat_context = self._chat_history.format_for_prompt(msg.sender)
-            tmp_wav = Path(tempfile.mktemp(suffix=".wav")) if self.audio_to_matrix else None
+            # Phase 70 (H-2): leere WAV-Datei TOCTOU-frei anlegen.
+            # Der Assistant schreibt das echte Audio-Material rein.
+            tmp_wav: Path | None = None
+            if self.audio_to_matrix:
+                with tempfile.NamedTemporaryFile(
+                    suffix=".wav", delete=False,
+                ) as fh:
+                    tmp_wav = Path(fh.name)
             llm_result = await asyncio.wait_for(
                 loop.run_in_executor(
                     None, self._assistant.process, summary_prompt, tmp_wav, chat_context,

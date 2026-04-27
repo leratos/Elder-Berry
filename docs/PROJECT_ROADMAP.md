@@ -1341,3 +1341,47 @@ Repo-Hygiene, Audit-Tools und Doku.
   - **M5** CSRF: SameSite=strict + Origin-Check, kein expliziter
     CSRF-Token (Real-Risk in modernen Browsern minimal).
 - **Branch**: `chore/public-release-hygiene-round-2`.
+## Phase 70 – Session- + Web-Hardening 🛡️ ✅ ABGESCHLOSSEN
+
+- **Trigger**: Security-Review hat vier "Hoch"-Findings ergeben, die
+  alle in derselben Auth-/Tooling-Surface leben und gemeinsam in
+  einem Branch + PR gemerged werden.
+- **H1 — Server-side Logout-Invalidation**:
+  `delete_cookie()` loescht den Cookie nur im Browser; der HMAC-
+  signierte Token bleibt bis ``exp`` valide und kann nach Diebstahl
+  repliziert werden. Neue Klasse
+  `src/elder_berry/web/session_revocation_list.py`
+  (`SessionRevocationList`) -- in-memory Set mit lazy Cleanup +
+  optionaler JSON-Persistenz neben `secrets.enc`. Eintraege halten
+  nur den SHA-256 des Cookies (kein Klartext-Echo).
+  `verify_session()` prueft die Liste nach Signatur + exp + Cap.
+  `/api/dashboard/logout` ruft `revoke_session()` zusaetzlich zu
+  `delete_cookie()`. Trade-off im Code dokumentiert: Single-Session
+  (Default) vs. `logout-all` (Secret-Rotation).
+- **H2 — `tempfile.mktemp()` Abloesung**:
+  Vier TOCTOU-anfaellige Stellen
+  (`audio_pipeline.py` 200/230, `message_handlers.py` 383/599) auf
+  `tempfile.NamedTemporaryFile(delete=False)` umgestellt. Symlink-
+  Race-Vektor in `$TMP` ist damit zu.
+- **H3 — WebFetcher Stream-Cap**:
+  `httpx.get()` -> `httpx.stream()` mit chunk-weisem Lesen + Hard-Cap
+  (`DEFAULT_MAX_RESPONSE_BYTES = 5 MB`, konfigurierbar). Vor dem Read
+  Content-Length-Check, danach laufender Byte-Counter.
+  Neue Exception `ResponseTooLargeError(RuntimeError)`. Verhindert
+  Speicher-DoS via beliebig grosser Antwort.
+- **H4 — Absoluter Session-Cap**:
+  `DashboardAuthManager.issue_session()` schreibt jetzt
+  `iat_original` ins Payload. `verify_session()` und
+  `extend_session()` pruefen `now - iat_original` gegen
+  `DEFAULT_MAX_ABSOLUTE_LIFETIME_HOURS = 24`. Sliding-Renewal
+  verlaengert das Cookie, rollt den Cap aber nicht zurueck.
+  Legacy-Cookies ohne `iat_original` -> Fallback auf `iat`
+  (graceful Migration nach Deploy). Middleware ruft jetzt
+  `extend_session()` statt `issue_session()`, damit
+  `iat_original` ueber alle Renewals erhalten bleibt.
+- **Tests**: `tests/test_session_revocation_list.py` (neu, 14 Tests),
+  `tests/test_dashboard_auth.py` (+18 fuer Cap + Revocation +
+  Legacy-Fallback), `tests/test_dashboard_auth_routes.py` (+4 fuer
+  Logout-Replay), `tests/test_web_fetcher.py` (+8 fuer Size-Limit).
+  Suite: **4913 passed, 29 skipped** (vorher 4872 → +41 neue Tests).
+- **Branch**: `fix/session-and-web-hardening`.
