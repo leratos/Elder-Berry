@@ -30,6 +30,7 @@ from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 from dataclasses import asdict
 from pathlib import Path
+from typing import Literal
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -76,8 +77,15 @@ class AvatarRequest(BaseModel):
 
 
 class DriveRequest(BaseModel):
-    """Request: Fahrbefehl."""
-    direction: str
+    """Request: Fahrbefehl.
+
+    ``direction`` ist auf eine feste Liste eingeschraenkt. Pydantic
+    weist alles andere mit 422 ab, bevor es zum MotorController kommt
+    -- das ist sowohl Defense-in-Depth (kein freier String aus dem
+    Internet steuert die Hardware) als auch log-injection-Mitigation
+    (CodeQL erkennt Literal-Constraints als Sanitizer).
+    """
+    direction: Literal["forward", "backward", "left", "right", "stop"]
     speed: float = 0.5
     duration: float | None = None
 
@@ -377,9 +385,11 @@ class RobotServer:
         @self.app.post("/motor/drive")
         def drive(request: DriveRequest) -> dict:
             self._motors.drive(request.direction, request.speed)
+            # direction ist Literal-constrained -> kein log-injection
+            # Vektor mehr; speed ist float und kann keine CR/LF tragen.
             logger.info(
                 "Motor: %s @ %.0f%%",
-                safe_log(request.direction), request.speed * 100,
+                request.direction, request.speed * 100,
             )
             resp = ApiResponse(
                 success=True,
