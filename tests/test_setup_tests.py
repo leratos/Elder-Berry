@@ -47,8 +47,7 @@ class TestAnthropic:
             result = _run(SetupTests.test_anthropic("sk-invalid"))
         assert result["success"] is False
         # Fehlerdetails werden nur geloggt, nicht in der Response (stack-trace-exposure)
-        assert "error" in result
-        assert result["error"]  # irgendeine generische Meldung
+        assert "Details im Log" in result["error"]
 
 
 # ---------------------------------------------------------------------------
@@ -110,8 +109,7 @@ class TestMatrix:
             ))
         assert result["success"] is False
         # Fehlerdetails werden nur geloggt, nicht in der Response (stack-trace-exposure)
-        assert "error" in result
-        assert result["error"]  # irgendeine generische Meldung
+        assert "Details im Log" in result["error"]
 
 
 # ---------------------------------------------------------------------------

@@ -11,6 +11,11 @@ function escHtml(s) {
         .replace(/'/g, '&#39;');
 }
 
+// Helper: sanitize a string for use as an HTML element ID (alphanumeric + dash/underscore only)
+function safeId(s) {
+    return String(s).replace(/[^a-zA-Z0-9_-]/g, '_');
+}
+
 function showOnboarding() {
     const overlay = document.getElementById("onboardingOverlay");
     if (overlay) overlay.classList.add("active");
@@ -145,7 +150,7 @@ function buildEmotionEditor() {
                 <span class="emotion-name">${escHtml(emo)}</span>
                 <span class="emotion-toggle">${isOpen ? '▼' : '▶'}</span>
             </div>
-            <div class="emotion-fields ${isOpen ? 'open' : ''}" id="fields-${escHtml(emo)}">
+            <div class="emotion-fields ${isOpen ? 'open' : ''}" id="fields-${safeId(emo)}">
                 <div class="field-row">
                     <label>Body</label>
                     <select data-emotion="${escHtml(emo)}" data-field="body">

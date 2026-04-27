@@ -73,14 +73,23 @@ def _is_safe_download_url(url: str) -> bool:
     DOWNLOAD_PATTERN erzwingt bereits https?://, daher wird hier nur
     der Hostname gegen interne Adressbereiche geprueft.
     """
+    host = urlparse(url).hostname or ""
+    if not host:
+        return False
+    # Pruefe zuerst, ob es ein IP-Literal ist; dann ablehnen wenn privat.
+    # Falls kein IP-Literal (ValueError), ist es ein DNS-Name -- erlaubt.
+    is_ip = False
     try:
-        host = urlparse(url).hostname or ""
+        ipaddress.ip_address(host)
+        is_ip = True
+    except ValueError:
+        is_ip = False
+
+    if is_ip:
         addr = ipaddress.ip_address(host)
         return not any(addr in net for net in _PRIVATE_NETS)
-    except ValueError:
-        # hostname ist kein IP-Literal -- DNS-Name ist OK (kann intern sein,
-        # aber DNS-Aufloesung liegt ausserhalb unserer Kontrolle hier).
-        return bool(host)
+    # DNS-Name: DNS-Aufloesung liegt ausserhalb unserer Kontrolle hier.
+    return True
 
 
 class FileCommandHandler(CommandHandler):
