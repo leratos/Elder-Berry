@@ -458,10 +458,10 @@ def register_setup_wizard_routes(
                         "User-Agent": _NOMINATIM_USER_AGENT,
                     },
                 )
-        except httpx.HTTPError as exc:
-            logger.warning("Geocoding-Netzwerkfehler: %s", exc)
+        except httpx.HTTPError:
+            logger.exception("Geocoding-Netzwerkfehler")
             return JSONResponse(
-                {"success": False, "error": f"Netzwerkfehler: {exc}"},
+                {"success": False, "error": "Netzwerkfehler beim Geocoding."},
                 status_code=502,
             )
         if resp.status_code != 200:

@@ -479,3 +479,88 @@ class TestEffectLayerRenderer:
             can_blink=True,
         )
         assert layers.effect is None
+
+
+# ---------------------------------------------------------------------------
+# Stack-Trace-Exposure (CodeQL py/stack-trace-exposure)
+# ---------------------------------------------------------------------------
+
+class TestErrorResponsesDoNotLeak:
+    """Sicherstellt, dass Exception-Pfade keine internen Details ausgeben."""
+
+    def test_get_config_swallows_yaml_error(self, avatar_assets, tmp_path):
+        """Korrupte YAML -> generic Fehlermeldung, kein yaml.YAMLError-Detail."""
+        from elder_berry.web.settings_dashboard import SettingsDashboard
+        import elder_berry.web.avatar_editor as ae
+
+        bad_yaml = tmp_path / "bad.yaml"
+        bad_yaml.write_text(
+            "emotions:\n  neutral: {body: ['unclosed",
+            encoding="utf-8",
+        )
+
+        original_assets = ae._ASSETS_DIR
+        original_config = ae.DEFAULT_CONFIG_PATH
+        ae._ASSETS_DIR = avatar_assets
+        ae.DEFAULT_CONFIG_PATH = bad_yaml
+
+        try:
+            router = AudioRouter(local_available=True)
+            dashboard = SettingsDashboard(audio_router=router)
+            tc = TestClient(dashboard.app)
+
+            r = tc.get("/api/avatar/config")
+            assert r.status_code == 500
+            body = r.json()
+            assert "error" in body
+            # Generic-Message: ja
+            assert "nicht gelesen" in body["error"].lower()
+            # Pfad-Detail oder yaml-Detail: nein
+            assert str(bad_yaml) not in body["error"]
+            assert "yaml" not in body["error"].lower()
+            assert "line" not in body["error"].lower()
+            assert "column" not in body["error"].lower()
+        finally:
+            ae._ASSETS_DIR = original_assets
+            ae.DEFAULT_CONFIG_PATH = original_config
+
+    def test_save_config_swallows_io_error(self, avatar_assets, tmp_path):
+        """IO-Fehler beim Schreiben -> generic Message, kein OSError-Detail."""
+        from elder_berry.web.settings_dashboard import SettingsDashboard
+        import elder_berry.web.avatar_editor as ae
+
+        # Pfad zu Verzeichnis statt Datei -> IsADirectoryError beim open()
+        unwritable = tmp_path / "as_directory"
+        unwritable.mkdir()
+
+        original_assets = ae._ASSETS_DIR
+        original_config = ae.DEFAULT_CONFIG_PATH
+        ae._ASSETS_DIR = avatar_assets
+        ae.DEFAULT_CONFIG_PATH = unwritable
+
+        try:
+            router = AudioRouter(local_available=True)
+            dashboard = SettingsDashboard(audio_router=router)
+            tc = TestClient(dashboard.app)
+
+            valid_config = {
+                "emotions": {
+                    "neutral": {
+                        "body": "relaxed",
+                        "eye_left": "eye_left_open",
+                        "eye_right": "eye_right_open",
+                        "mouth": "mouth_neutral_close",
+                    }
+                }
+            }
+            r = tc.put("/api/avatar/config", json={"config": valid_config})
+            assert r.status_code == 500
+            body = r.json()
+            # Generic-Message
+            assert "nicht gespeichert" in body["error"].lower()
+            # Pfad nicht in der Antwort
+            assert str(unwritable) not in body["error"]
+            assert "errno" not in body["error"].lower()
+        finally:
+            ae._ASSETS_DIR = original_assets
+            ae.DEFAULT_CONFIG_PATH = original_config

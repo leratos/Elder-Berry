@@ -70,10 +70,10 @@ def create_app(config_path: Path = DEFAULT_CONFIG_PATH) -> FastAPI:
             )
             logger.info("Config gespeichert: %s", config_path)
             return JSONResponse({"status": "ok"})
-        except Exception as e:
-            logger.error("Config speichern fehlgeschlagen: %s", e)
+        except Exception:
+            logger.exception("Config speichern fehlgeschlagen: %s", config_path)
             return JSONResponse(
-                {"error": f"Save failed: {e}"},
+                {"error": "Speichern fehlgeschlagen."},
                 status_code=500,
             )
 

@@ -616,9 +616,11 @@ async def system_update():
             timeout=30, cwd=cwd,
         )
         if r.returncode != 0:
-            return {"success": False, "message": f"Git Fetch fehlgeschlagen: {r.stderr}"}
-    except Exception as e:
-        return {"success": False, "message": f"Git Fetch Fehler: {e}"}
+            logger.warning("Git Fetch fehlgeschlagen: stderr=%s", r.stderr)
+            return {"success": False, "message": "Git Fetch fehlgeschlagen."}
+    except Exception:
+        logger.exception("Git Fetch fehlgeschlagen")
+        return {"success": False, "message": "Git Fetch fehlgeschlagen."}
 
     # 2. Commits behind?
     try:
@@ -644,10 +646,12 @@ async def system_update():
             timeout=60, cwd=cwd,
         )
         if r.returncode != 0:
-            return {"success": False, "message": f"Git Pull fehlgeschlagen: {r.stderr}"}
+            logger.warning("Git Pull fehlgeschlagen: stderr=%s", r.stderr)
+            return {"success": False, "message": "Git Pull fehlgeschlagen."}
         steps.append("Code aktualisiert")
-    except Exception as e:
-        return {"success": False, "message": f"Git Pull Fehler: {e}"}
+    except Exception:
+        logger.exception("Git Pull fehlgeschlagen")
+        return {"success": False, "message": "Git Pull fehlgeschlagen."}
 
     # 4. pip install (Windows Tower extras)
     try:
@@ -661,9 +665,11 @@ async def system_update():
         if r.returncode == 0:
             steps.append("Dependencies installiert")
         else:
-            steps.append(f"pip Warnung: {r.stderr[:200]}")
-    except Exception as e:
-        steps.append(f"pip Fehler: {e}")
+            logger.warning("pip install Warnung: stderr=%s", r.stderr[:500])
+            steps.append("pip-Installation mit Warnung beendet")
+    except Exception:
+        logger.exception("pip install fehlgeschlagen")
+        steps.append("pip-Installation fehlgeschlagen")
 
     # 5. Verzögerter Exit – Response geht noch raus, dann beendet sich
     #    der Prozess. Task-Scheduler startet ihn automatisch neu.

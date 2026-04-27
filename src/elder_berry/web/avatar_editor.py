@@ -113,9 +113,13 @@ def register_avatar_editor_routes(
         try:
             with open(DEFAULT_CONFIG_PATH, encoding="utf-8") as f:
                 data = yaml.safe_load(f)
-        except Exception as exc:
+        except Exception:
+            logger.exception(
+                "Avatar-Config konnte nicht gelesen werden: %s",
+                DEFAULT_CONFIG_PATH,
+            )
             return JSONResponse(
-                {"error": f"YAML-Lesefehler: {exc}"},
+                {"error": "Avatar-Config konnte nicht gelesen werden."},
                 status_code=500,
             )
 
@@ -154,9 +158,13 @@ def register_avatar_editor_routes(
                     allow_unicode=True,
                     sort_keys=False,
                 )
-        except Exception as exc:
+        except Exception:
+            logger.exception(
+                "Avatar-Config konnte nicht gespeichert werden: %s",
+                DEFAULT_CONFIG_PATH,
+            )
             return JSONResponse(
-                {"error": f"Fehler beim Schreiben: {exc}"},
+                {"error": "Avatar-Config konnte nicht gespeichert werden."},
                 status_code=500,
             )
 
