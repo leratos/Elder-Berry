@@ -262,11 +262,39 @@ class TestAbsoluteLifetimeCap:
             DashboardAuthManager(store, max_absolute_lifetime_hours=0)
 
     def test_cap_smaller_than_ttl_raises(self, store: _FakeStore) -> None:
-        # ttl=12 h, cap=1 h -> Cookie waere sofort ueber dem Cap
+        # ttl=12 h, expliziter cap=1 h -> Cookie waere sofort ueber Cap
         with pytest.raises(ValueError):
             DashboardAuthManager(
                 store, ttl_hours=12, max_absolute_lifetime_hours=1,
             )
+
+    def test_long_ttl_default_cap_follows_ttl(
+        self, store: _FakeStore,
+    ) -> None:
+        """Regression: ttl_hours > 24 ohne expliziten Cap soll NICHT
+        raisen. Der Default war frueher fix 24 -- damit hat jede TTL
+        zwischen 25 und 168 Stunden den Dashboard-Startup gesprengt.
+        Default ist jetzt ``max(24, ttl_hours)``."""
+        # Realistische Werte aus dashboard_session_hours
+        for hours in (25, 48, 72, 168):
+            auth = DashboardAuthManager(store, ttl_hours=hours)
+            assert auth.max_absolute_lifetime_seconds == hours * 3600
+
+    def test_short_ttl_default_cap_stays_24(
+        self, store: _FakeStore,
+    ) -> None:
+        """ttl_hours <= 24 -> Cap bleibt bei 24 h (Default)."""
+        auth = DashboardAuthManager(store, ttl_hours=12)
+        assert auth.max_absolute_lifetime_seconds == 24 * 3600
+
+    def test_explicit_cap_overrides_default(
+        self, store: _FakeStore,
+    ) -> None:
+        """Wer den Cap bewusst hochzieht, gewinnt."""
+        auth = DashboardAuthManager(
+            store, ttl_hours=12, max_absolute_lifetime_hours=72,
+        )
+        assert auth.max_absolute_lifetime_seconds == 72 * 3600
 
     def test_issue_session_writes_iat_original(
         self, auth: DashboardAuthManager,

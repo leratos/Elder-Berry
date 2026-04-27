@@ -94,7 +94,16 @@ class DashboardAuthManager:
     secret_store : SecretStore
         Persistenz für Hash und Session-Secret.
     ttl_hours : int
-        Session-Lebensdauer in Stunden (Default 12, Range 1–168).
+        Sliding Session-Lebensdauer in Stunden (Default 12, Range 1–168).
+    max_absolute_lifetime_hours : int | None, keyword-only
+        Absoluter Lifetime-Cap (Phase 70 H-4). ``None`` (Default) ->
+        ``max(24, ttl_hours)`` -- so wird ein konfiguriertes
+        ``ttl_hours > 24`` nicht zur Startup-Regression. Explizit
+        gesetzt: muss zwischen ``MIN_MAX_ABSOLUTE_LIFETIME_HOURS`` und
+        ``MAX_MAX_ABSOLUTE_LIFETIME_HOURS`` liegen und darf nicht
+        kleiner sein als ``ttl_hours``.
+    revocation_list : SessionRevocationList | None, keyword-only
+        Optionale Sperrliste fuer Logout-Revocation (Phase 70 H-1).
     """
 
     def __init__(
@@ -102,7 +111,7 @@ class DashboardAuthManager:
         secret_store: SecretStore,
         ttl_hours: int = DEFAULT_TTL_HOURS,
         *,
-        max_absolute_lifetime_hours: int = DEFAULT_MAX_ABSOLUTE_LIFETIME_HOURS,
+        max_absolute_lifetime_hours: int | None = None,
         revocation_list: SessionRevocationList | None = None,
     ) -> None:
         if not MIN_TTL_HOURS <= ttl_hours <= MAX_TTL_HOURS:
@@ -110,20 +119,34 @@ class DashboardAuthManager:
                 f"ttl_hours muss zwischen {MIN_TTL_HOURS} und "
                 f"{MAX_TTL_HOURS} liegen, bekam {ttl_hours}"
             )
+        # Phase 70 (H-4): Default-Cap = max(24, ttl_hours). So wird ein
+        # explizit gesetzter dashboard_session_hours > 24 (z.B. 48 h)
+        # nicht zur Startup-Regression -- das alte Verhalten "TTL bis
+        # 168 h" bleibt erhalten, aber der Cap kappt nie kuerzer als
+        # die TTL. Wer den Cap explizit hochzieht, kann das via
+        # ``max_absolute_lifetime_hours=`` weiterhin steuern.
+        if max_absolute_lifetime_hours is None:
+            effective_cap_hours = max(
+                DEFAULT_MAX_ABSOLUTE_LIFETIME_HOURS, ttl_hours,
+            )
+        else:
+            effective_cap_hours = max_absolute_lifetime_hours
         if not (
             MIN_MAX_ABSOLUTE_LIFETIME_HOURS
-            <= max_absolute_lifetime_hours
+            <= effective_cap_hours
             <= MAX_MAX_ABSOLUTE_LIFETIME_HOURS
         ):
             raise ValueError(
                 "max_absolute_lifetime_hours muss zwischen "
                 f"{MIN_MAX_ABSOLUTE_LIFETIME_HOURS} und "
                 f"{MAX_MAX_ABSOLUTE_LIFETIME_HOURS} liegen, bekam "
-                f"{max_absolute_lifetime_hours}"
+                f"{effective_cap_hours}"
             )
-        if max_absolute_lifetime_hours * 3600 < ttl_hours * 3600:
-            # Sliding-TTL > absolute-Cap waere ein Konfigurationsfehler:
-            # das Cookie wuerde direkt nach Ausgabe schon den Cap reissen.
+        if effective_cap_hours < ttl_hours:
+            # Nur erreichbar bei *explizitem* Cap < TTL -- sonst greift
+            # der max(24, ttl_hours)-Default oben. Ein zu kurzer Cap
+            # waere ein stiller Logout-Loop: das Cookie wuerde sofort
+            # nach Ausgabe den Cap reissen.
             raise ValueError(
                 "max_absolute_lifetime_hours darf nicht kleiner sein als "
                 "ttl_hours -- sonst ist das frisch ausgestellte Cookie "
@@ -131,7 +154,7 @@ class DashboardAuthManager:
             )
         self._store = secret_store
         self._ttl_seconds = ttl_hours * 3600
-        self._max_absolute_lifetime_seconds = max_absolute_lifetime_hours * 3600
+        self._max_absolute_lifetime_seconds = effective_cap_hours * 3600
         self._revocation_list = revocation_list
 
     # -- Passwort-Management ----------------------------------------- #
