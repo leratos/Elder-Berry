@@ -1231,29 +1231,21 @@ Konzept: `docs/concepts/phase-57-security-haertung.md`
 4. **57.3 Tower-Token + Host-Discovery** (größter BC, Auto-Migration
    für Token **und** Host)
 
-## Phase 68 – Public-Release-Vorbereitung 📦 IN ARBEIT
+## Phase 68 – Public-Release-Vorbereitung (laufend)
 
-Bündel kleiner Aufgaben, um das Repo öffentlich verlinkbar zu machen.
-Kein Production-Code-Refactor, nur Meta-Daten und Doku-Lücken.
+Vorbereitung des Repos für Public-Release. In kleinen Tranchen, parallel
+zu den laufenden Sicherheits-Fixes (Phase 69, Path-Traversal). Jede
+Tranche ist scharf abgegrenzt und kommt als eigener PR.
 
-### 68.1 – Public-Meta + CodeQL ✅ ABGESCHLOSSEN
-- CONTRIBUTING.md, CODE_OF_CONDUCT.md, SECURITY.md, CodeQL-Workflow
-  scharf, Branch-Protection-Rulesets als JSON-Backup.
-- Branch: `feature/phase-68-1-public-meta`.
-
-### 68 B1 – Asset-Licensing READMEs + NOTICE 🟡 IN ARBEIT
-- **Problem**: Vor dem Public-Release ist die Lizenzlage der eigenen
-  Assets (Saleria-Voice-Samples, Avatar-Sprites) und der genutzten
-  Drittanbieter (XTTS v2 unter CPML!) nicht im Repo dokumentiert.
-- **Lösung**: Pro Asset-Verzeichnis eine README mit Herkunft + MIT-
-  Begründung, plus zentrale `NOTICE.md` mit Drittanbieter-Übersicht.
-  XTTS-CPML-Hinweis als deutliche Forking-Warnung.
-- **Scope**: `src/elder_berry/tts/voices/README.md`,
-  `src/elder_berry/avatar/assets/README.md`, `NOTICE.md`,
-  Verweis im Repo-`README.md`. Keine Code-Änderungen.
-- **Branch**: `docs/asset-licensing` (parallel zu 68.1 und K1+K2).
-
-### 68 B2/B3/E5 – Public-Release-Cleanup 📋 GEPLANT
-- Parallel-Tranche auf eigenem Branch (`chore/public-release-cleanup`):
-  `--author=marcus` → `--author=user`, last-strawberry.com aus dem
-  Dashboard parametrisieren, `pyproject.toml` PEP 639 Lizenz-Felder.
+### Tranche C – Trivial-Cleanup ✅ ABGESCHLOSSEN
+- **B2**: `--author=marcus` aus `git_commands.py` Hilfetext + Tests durch
+  generisches `--author=user` ersetzt.
+- **B3**: `last-strawberry.com` aus `webapp/dashboard/index.html`
+  entfernt; jetzt parametrisiert über `<meta name="elderberry-server-host">`
+  + JS-Override `window.ELDERBERRY_SERVER_HOST`. Default `example.com`,
+  d.h. LAN-Modus ist im öffentlichen Source der Default.
+- **E5**: `pyproject.toml` `[project]` um `license = "MIT"` und
+  `license-files = ["LICENSE"]` ergänzt (PEP 639, kompatibel mit
+  setuptools>=82, sdist-PKG-INFO bekommt `License-Expression: MIT`).
+- **Branch**: `chore/public-release-cleanup`.
+- **Tests**: 4848 passed, 28 skipped, keine Architektur-Änderungen.

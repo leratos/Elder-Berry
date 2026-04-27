@@ -171,7 +171,7 @@ class TestValidateExtraArgsLog:
         ["--max-count=10"],
         ["--since=yesterday"],
         ["--since=2024-01-01"],
-        ["--author=marcus"],
+        ["--author=user"],
         ["--author=user@example.com"],
         ["--grep=fix bug"],   # reachable via shlex: --grep="fix bug"
         ["abc1234"],
@@ -179,7 +179,7 @@ class TestValidateExtraArgsLog:
         ["HEAD"],
         ["HEAD~3"],
         ["HEAD~5..HEAD"],
-        ["--oneline", "--graph", "-5", "--author=marcus"],
+        ["--oneline", "--graph", "-5", "--author=user"],
     ])
     def test_allowed_tokens(self, tokens):
         ok, bad = _validate_extra_args("log", tokens)
@@ -235,7 +235,7 @@ class TestValidateExtraArgsDiff:
         assert ok is True, f"{tokens} should be allowed"
 
     @pytest.mark.parametrize("tokens", [
-        ["--author=marcus"],   # fuer diff nicht erlaubt
+        ["--author=user"],   # fuer diff nicht erlaubt
         ["--grep=bug"],
         ["--since=yesterday"],
         ["--graph"],
@@ -263,10 +263,10 @@ class TestGitExecuteExtraArgs:
     @patch("elder_berry.comms.commands.git_commands.subprocess.run")
     def test_allowed_extra_arg_passed_to_subprocess(self, mock_run, handler):
         mock_run.return_value = MagicMock(returncode=0, stdout="ok", stderr="")
-        result = handler.execute("git", "git log --author=marcus")
+        result = handler.execute("git", "git log --author=user")
         assert result.success is True
         cmd = mock_run.call_args[0][0]
-        assert "--author=marcus" in cmd
+        assert "--author=user" in cmd
 
     @patch("elder_berry.comms.commands.git_commands.subprocess.run")
     def test_blocked_extra_arg_stops_before_subprocess(self, mock_run, handler):
@@ -285,7 +285,7 @@ class TestGitExecuteExtraArgs:
     @patch("elder_berry.comms.commands.git_commands.subprocess.run")
     def test_diff_error_message_uses_diff_examples(self, mock_run, handler):
         """Fehlermeldung fuer diff darf --author= nicht als Beispiel nennen."""
-        result = handler.execute("git", "git diff --author=marcus")
+        result = handler.execute("git", "git diff --author=user")
         assert result.success is False
         # Der Beispiel-Teil muss diff-spezifisch sein, kein --author=
         examples_part = result.text.split("Erlaubte Beispiele:")[-1]
@@ -318,7 +318,7 @@ class TestGitExecuteExtraArgs:
 
     @patch("elder_berry.comms.commands.git_commands.subprocess.run")
     def test_diff_blocks_log_only_flag(self, mock_run, handler):
-        result = handler.execute("git", "git diff --author=marcus")
+        result = handler.execute("git", "git diff --author=user")
         assert result.success is False
         mock_run.assert_not_called()
 
