@@ -39,6 +39,11 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
+def _sanitize_for_log(value: str) -> str:
+    """Entfernt Zeilenumbrueche, um Log-Injection zu verhindern."""
+    return value.replace("\r", "").replace("\n", "")
+
+
 ROBOT_TOKEN_HEADER = "X-Saleria-Robot-Token"
 
 ROBOT_HOST_KEY = "robot_host"
@@ -147,6 +152,7 @@ def register_robot_proxy_routes(
         target_url = f"{host}/{upstream_path}"
         if request.url.query:
             target_url = f"{target_url}?{request.url.query}"
+        safe_target_url = _sanitize_for_log(target_url)
 
         body = await request.body()
         headers = _filter_request_headers(dict(request.headers), token)
@@ -162,7 +168,7 @@ def register_robot_proxy_routes(
         except httpx.ConnectError as exc:
             logger.warning(
                 "Robot-Proxy: Connection zu %s fehlgeschlagen: %s",
-                target_url, exc,
+                safe_target_url, exc,
             )
             return JSONResponse(
                 {
@@ -175,7 +181,7 @@ def register_robot_proxy_routes(
                 status_code=502,
             )
         except httpx.TimeoutException:
-            logger.warning("Robot-Proxy: Timeout fuer %s", target_url)
+            logger.warning("Robot-Proxy: Timeout fuer %s", safe_target_url)
             return JSONResponse(
                 {
                     "error": "Timeout zum RPi5.",
@@ -185,7 +191,7 @@ def register_robot_proxy_routes(
             )
         except httpx.RequestError:
             logger.exception(
-                "Robot-Proxy: Request-Fehler fuer %s", target_url,
+                "Robot-Proxy: Request-Fehler fuer %s", safe_target_url,
             )
             return JSONResponse(
                 {
