@@ -5,6 +5,11 @@ Versuche auf private/loopback/metadata-IPs. Aufrufer erhalten ``ValueError``
 (UnsafeUrlError-Subklasse), wenn eine URL nicht oeffentlich aufloesbar ist --
 insbesondere relevant fuer URLs aus Matrix-Nachrichten (advanced_commands
 "fasse <url> zusammen").
+
+Phase 70 (H-3): Stream-Download mit Hard-Cap (Default 5 MB). Vorher
+liess ``httpx.get()`` die komplette Antwort durch und der ``max_chars``-
+Trim griff erst NACH dem Read -- ein Server konnte uns mit beliebig
+grossen Antworten den Speicher fluten (DoS).
 """
 from __future__ import annotations
 
@@ -21,6 +26,15 @@ logger = logging.getLogger(__name__)
 _USER_AGENT = "Mozilla/5.0 (compatible; Elder-Berry/1.0)"
 _TIMEOUT = 10.0
 _MAX_REDIRECTS = 10
+
+# Phase 70 (H-3): Standard-Maximum fuer den Antwort-Body (HTML-Bytes,
+# vor Text-Extraktion). 5 MB ist genug fuer realistische Artikel und
+# klein genug, um einen DoS via riesiger Response zu verhindern.
+DEFAULT_MAX_RESPONSE_BYTES = 5 * 1024 * 1024
+
+
+class ResponseTooLargeError(RuntimeError):
+    """Antwort-Body ueberschreitet das konfigurierte Limit (Phase 70 H-3)."""
 
 
 @dataclass(frozen=True)
@@ -40,8 +54,15 @@ class WebFetcher:
     Primär via *trafilatura*, Fallback auf BeautifulSoup (h1 + p-Tags).
     """
 
-    def __init__(self, max_chars: int = 8000) -> None:
+    def __init__(
+        self,
+        max_chars: int = 8000,
+        max_response_bytes: int = DEFAULT_MAX_RESPONSE_BYTES,
+    ) -> None:
+        if max_response_bytes < 1024:
+            raise ValueError("max_response_bytes muss >= 1024 sein")
         self._max_chars = max_chars
+        self._max_response_bytes = max_response_bytes
 
     # ------------------------------------------------------------------
     # public
@@ -91,37 +112,92 @@ class WebFetcher:
     # ------------------------------------------------------------------
 
     def _download(self, url: str) -> str:
-        """HTML per httpx herunterladen.
+        """HTML per httpx streamen und mit Hard-Cap herunterladen.
 
         Redirects werden manuell verfolgt; jede Location-URL wird erneut
         mit ``ensure_public_url()`` validiert, um SSRF via Open-Redirect
         (oeffentliche URL leitet auf 169.254.x.x / 10.x.x.x weiter) zu
         blockieren.
+
+        Phase 70 (H-3): Stream + harter Byte-Cap. Wenn der Server einen
+        ``Content-Length`` schickt, der das Limit ueberschreitet, brechen
+        wir vor dem Body-Read ab. Sonst lesen wir chunk-weise und brechen
+        beim Ueberschreiten mit :class:`ResponseTooLargeError` ab. Die
+        Verbindung wird via ``with``-Block sauber geschlossen.
         """
         current_url = url
         redirects = 0
         while True:
-            response = httpx.get(
+            with httpx.stream(
+                "GET",
                 current_url,
                 headers={"User-Agent": _USER_AGENT},
                 timeout=_TIMEOUT,
                 follow_redirects=False,
-            )
-            if not response.is_redirect:
-                response.raise_for_status()
-                return response.text
+            ) as response:
+                if response.is_redirect:
+                    redirects += 1
+                    if redirects > _MAX_REDIRECTS:
+                        raise httpx.TooManyRedirects(
+                            f"Zu viele Weiterleitungen (> {_MAX_REDIRECTS}) fuer {url}"
+                        )
+                    location = response.headers.get("location", "")
+                    if not location:
+                        raise httpx.RequestError(
+                            f"Redirect ohne Location-Header von {current_url}"
+                        )
+                    current_url = ensure_public_url(
+                        urljoin(current_url, location),
+                    )
+                    continue
 
-            redirects += 1
-            if redirects > _MAX_REDIRECTS:
-                raise httpx.TooManyRedirects(
-                    f"Zu viele Weiterleitungen (> {_MAX_REDIRECTS}) fuer {url}"
+                response.raise_for_status()
+                return self._read_capped(response, current_url)
+
+    def _read_capped(
+        self, response: httpx.Response, current_url: str,
+    ) -> str:
+        """Liest den Stream chunk-weise, hart begrenzt auf ``max_response_bytes``.
+
+        Wirft :class:`ResponseTooLargeError` sobald entweder
+        ``Content-Length`` ueber dem Limit liegt oder die kumulierten
+        Chunks das Limit reissen.
+        """
+        cl_header = response.headers.get("content-length")
+        if cl_header is not None:
+            try:
+                claimed = int(cl_header)
+            except ValueError:
+                claimed = -1
+            if claimed > self._max_response_bytes:
+                raise ResponseTooLargeError(
+                    f"Antwort von {current_url} signalisiert "
+                    f"{claimed} Bytes > Limit {self._max_response_bytes}"
                 )
-            location = response.headers.get("location", "")
-            if not location:
-                raise httpx.RequestError(
-                    f"Redirect ohne Location-Header von {current_url}"
+
+        chunks: list[bytes] = []
+        total = 0
+        for chunk in response.iter_bytes():
+            if not chunk:
+                continue
+            total += len(chunk)
+            if total > self._max_response_bytes:
+                raise ResponseTooLargeError(
+                    f"Antwort von {current_url} ueberschreitet das "
+                    f"Limit von {self._max_response_bytes} Bytes "
+                    f"(bisher gelesen: {total})"
                 )
-            current_url = ensure_public_url(urljoin(current_url, location))
+            chunks.append(chunk)
+
+        body = b"".join(chunks)
+        # httpx erkennt das Encoding bei ``stream`` nicht automatisch
+        # (response.text waere ohne vorherigen Read leer); wir nehmen
+        # das Encoding aus dem Header oder fallen auf utf-8 zurueck.
+        encoding = response.encoding or "utf-8"
+        try:
+            return body.decode(encoding, errors="replace")
+        except LookupError:
+            return body.decode("utf-8", errors="replace")
 
     def _extract(self, html: str, url: str) -> tuple[str, str]:
         """Text und Titel aus HTML extrahieren.

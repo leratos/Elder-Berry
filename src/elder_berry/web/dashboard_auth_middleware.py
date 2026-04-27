@@ -142,19 +142,35 @@ class DashboardAuthMiddleware(BaseHTTPMiddleware):
 
         # Sliding Renewal: wenn weniger als ttl/2 Restlaufzeit übrig,
         # Cookie verlängern. Spart Round-Trips für aktive Sessions.
+        # Phase 70 (H-4): ``extend_session()`` (statt ``issue_session()``)
+        # uebernimmt das ``iat_original`` aus dem alten Cookie -- damit
+        # rollt sliding renewal NICHT den absoluten Lifetime-Cap zurueck.
+        # Wenn der Cap zwischen verify_session() und Renewal greift,
+        # wird hier eine InvalidSessionError geworfen; wir verzichten
+        # dann still auf das frische Cookie und liefern die normale
+        # Antwort -- der Browser erbt das alte Cookie und faellt beim
+        # naechsten Request automatisch in den 401-Pfad oben.
         import time
         remaining = int(payload["exp"]) - int(time.time())
         if remaining < self._auth.ttl_seconds // 2:
-            new_cookie, new_exp = self._auth.issue_session()
-            response.set_cookie(
-                COOKIE_NAME,
-                new_cookie,
-                max_age=self._auth.ttl_seconds,
-                httponly=True,
-                # Phase 64 (H-1): strict, konsistent mit Login-Route.
-                samesite="strict",
-                secure=request.url.scheme == "https",
-                path="/",
-            )
+            try:
+                new_cookie, _new_exp = self._auth.extend_session(cookie)
+            except InvalidSessionError as exc:
+                logger.info(
+                    "Sliding-Renewal abgelehnt fuer %s %s (%s) -- altes "
+                    "Cookie laeuft naturalmente ab.",
+                    request.method, path, exc,
+                )
+            else:
+                response.set_cookie(
+                    COOKIE_NAME,
+                    new_cookie,
+                    max_age=self._auth.ttl_seconds,
+                    httponly=True,
+                    # Phase 64 (H-1): strict, konsistent mit Login-Route.
+                    samesite="strict",
+                    secure=request.url.scheme == "https",
+                    path="/",
+                )
 
         return response

@@ -379,10 +379,13 @@ class BridgeMessageHandler:
             )
             chat_context = self._chat_history.format_for_prompt(msg.sender)
 
-            tmp_wav = (
-                Path(tempfile.mktemp(suffix=".wav"))
-                if self._audio.audio_to_matrix else None
-            )
+            # Phase 70 (H-2): TOCTOU-frei via NamedTemporaryFile.
+            tmp_wav: Path | None = None
+            if self._audio.audio_to_matrix:
+                with tempfile.NamedTemporaryFile(
+                    suffix=".wav", delete=False,
+                ) as fh:
+                    tmp_wav = Path(fh.name)
             llm_result = await asyncio.wait_for(
                 loop.run_in_executor(
                     None, self._assistant.process, summary_prompt,
@@ -595,10 +598,13 @@ class BridgeMessageHandler:
             self._chat_history.add(msg.sender, "user", msg.body)
             chat_context = self._chat_history.format_for_prompt(msg.sender)
 
-            tmp_wav = (
-                Path(tempfile.mktemp(suffix=".wav"))
-                if self._audio.audio_to_matrix else None
-            )
+            # Phase 70 (H-2): TOCTOU-frei via NamedTemporaryFile.
+            tmp_wav: Path | None = None
+            if self._audio.audio_to_matrix:
+                with tempfile.NamedTemporaryFile(
+                    suffix=".wav", delete=False,
+                ) as fh:
+                    tmp_wav = Path(fh.name)
             result = await asyncio.wait_for(
                 loop.run_in_executor(
                     None, self._assistant.process, msg.body,
