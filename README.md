@@ -210,6 +210,17 @@ pytest tests/ -q
 
 Vollständige Roadmap mit Details: **[PROJECT_ROADMAP.md](docs/PROJECT_ROADMAP.md)**
 
+## Lizenz & Drittanbieter
+
+Elder-Berry steht unter der **MIT-Lizenz** ([LICENSE](LICENSE)). Eigene Assets
+(Saleria Voice-Samples, Avatar-Sprites) stehen ebenfalls unter MIT.
+
+Wichtig für Forks: **XTTS v2** (Coqui TTS) ist nur **non-commercial** lizenziert
+(CPML). Wer Elder-Berry kommerziell einsetzen will, muss XTTS v2 ersetzen.
+
+Vollständige Übersicht über eigene Assets, eingebundene Modelle und genutzte
+Cloud-APIs: **[NOTICE.md](NOTICE.md)**.
+
 ## Projektfamilie
 
 - [last-strawberry.com](https://last-strawberry.com)
