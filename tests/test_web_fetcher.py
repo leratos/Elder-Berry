@@ -297,9 +297,121 @@ class TestWebFetcherSSRFProtection:
         redirect_response.is_redirect = True
         redirect_response.headers = {"location": "http://internal.corp/secret"}
 
-        with patch("httpx.get", return_value=redirect_response):
+        # httpx.stream() ist ein Context-Manager -- mocken via __enter__
+        stream_cm = MagicMock()
+        stream_cm.__enter__ = MagicMock(return_value=redirect_response)
+        stream_cm.__exit__ = MagicMock(return_value=False)
+        with patch("httpx.stream", return_value=stream_cm):
             with pytest.raises(UnsafeUrlError, match="nicht-oeffentliche"):
                 fetcher.fetch("https://trusted.example.com/page")
+
+
+# ---------------------------------------------------------------------------
+# Phase 70 (H-3): Stream-Download mit Hard-Cap
+# ---------------------------------------------------------------------------
+
+
+def _make_stream_response(
+    *,
+    body_chunks: list[bytes] | None = None,
+    headers: dict[str, str] | None = None,
+    is_redirect: bool = False,
+    status_code: int = 200,
+):
+    """Erzeugt einen Mock fuer ``httpx.Response`` im Stream-Modus."""
+    response = MagicMock()
+    response.is_redirect = is_redirect
+    response.status_code = status_code
+    response.headers = headers or {}
+    response.encoding = "utf-8"
+    response.iter_bytes = MagicMock(return_value=iter(body_chunks or []))
+    response.raise_for_status = MagicMock()
+    return response
+
+
+def _stream_cm(response):
+    cm = MagicMock()
+    cm.__enter__ = MagicMock(return_value=response)
+    cm.__exit__ = MagicMock(return_value=False)
+    return cm
+
+
+class TestWebFetcherSizeLimit:
+    """Phase 70 (H-3): WebFetcher.fetch() darf den Speicher nicht fluten."""
+
+    def test_default_max_response_bytes_is_5mb(self, fetcher):
+        from elder_berry.tools.web_fetcher import DEFAULT_MAX_RESPONSE_BYTES
+        assert fetcher._max_response_bytes == DEFAULT_MAX_RESPONSE_BYTES
+        assert DEFAULT_MAX_RESPONSE_BYTES == 5 * 1024 * 1024
+
+    def test_invalid_limit_raises(self):
+        with pytest.raises(ValueError):
+            WebFetcher(max_response_bytes=10)
+
+    def test_content_length_over_limit_rejected(self):
+        from elder_berry.tools.web_fetcher import ResponseTooLargeError
+
+        fetcher = WebFetcher(max_response_bytes=1024)
+        big_response = _make_stream_response(
+            headers={"content-length": str(10 * 1024 * 1024)},
+            body_chunks=[b"<html>"],
+        )
+        with patch("httpx.stream", return_value=_stream_cm(big_response)):
+            with pytest.raises(ResponseTooLargeError, match="signalisiert"):
+                fetcher.fetch("https://example.com")
+
+    def test_streamed_body_over_limit_rejected(self):
+        """Server schickt keine Content-Length, streamt mehr als limit."""
+        from elder_berry.tools.web_fetcher import ResponseTooLargeError
+
+        fetcher = WebFetcher(max_response_bytes=1024)
+        # 10 chunks * 200 bytes = 2 KB > 1 KB Limit
+        chunks = [b"a" * 200] * 10
+        streamed_response = _make_stream_response(body_chunks=chunks)
+        with patch("httpx.stream", return_value=_stream_cm(streamed_response)):
+            with pytest.raises(ResponseTooLargeError, match="ueberschreitet"):
+                fetcher.fetch("https://example.com")
+
+    def test_small_response_passes(self):
+        """Antwort innerhalb des Limits liefert den vollen Body zurueck.
+
+        Wir testen ``_download()`` direkt, nicht ``fetch()`` -- der
+        Extraktor (trafilatura/bs4) ist optional und in CI nicht
+        immer installiert. Der Size-Cap lebt in ``_read_capped`` /
+        ``_download``, vor dem Extraktor; das ist hier das Subject.
+        """
+        fetcher = WebFetcher(max_response_bytes=1024 * 1024)
+        html = (
+            b"<html><head><title>Test</title></head>"
+            b"<body><p>Hello world</p></body></html>"
+        )
+        ok_response = _make_stream_response(body_chunks=[html])
+        with patch("httpx.stream", return_value=_stream_cm(ok_response)):
+            body = fetcher._download("https://example.com")
+        assert "Hello world" in body
+        assert body == html.decode("utf-8")
+
+    def test_invalid_content_length_header_ignored(self):
+        """``Content-Length: garbage`` fuehrt nicht zum Crash, sondern
+        faellt in den Streaming-Pfad mit Cap zurueck."""
+        fetcher = WebFetcher(max_response_bytes=1024 * 1024)
+        html = b"<html><body><p>fine</p></body></html>"
+        response = _make_stream_response(
+            headers={"content-length": "not-a-number"},
+            body_chunks=[html],
+        )
+        with patch("httpx.stream", return_value=_stream_cm(response)):
+            body = fetcher._download("https://example.com")
+        assert "fine" in body
+
+    def test_unknown_encoding_falls_back_to_utf8(self):
+        fetcher = WebFetcher(max_response_bytes=1024 * 1024)
+        html = "<html><body><p>Hällo</p></body></html>".encode("utf-8")
+        response = _make_stream_response(body_chunks=[html])
+        response.encoding = "definitely-not-a-real-encoding"
+        with patch("httpx.stream", return_value=_stream_cm(response)):
+            body = fetcher._download("https://example.com")
+        assert "Hällo" in body
 
 
 # ---------------------------------------------------------------------------

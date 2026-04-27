@@ -168,7 +168,20 @@ temp/
 *.tmp
 *.bak
 *.swp
+# Generischer OldVersions/-Schutz (matcht ueberall im Repo)
 OldVersions/
+# Expliziter Eintrag fuer hardware/enclosure/OldVersions/ -- Inventor
+# legt dort Backup-Versionen (.0001.ipt, .0002.iam, ...) ab. Lokal ~129 MB,
+# darf NIE ins Public-Repo. Doppelt gehalten als Schutz, falls oben
+# das generische Pattern spaeter entfernt wird.
+hardware/enclosure/OldVersions/
+
+# ============================================================================
+# Public-Readiness Blocklist (Phase 71)
+# ============================================================================
+# Maintainer-spezifische Such-Patterns (Domains, Namen, Hostnames).
+# .example.txt ist getrackt und dient als Vorlage.
+.public-readiness-blocklist.txt
 
 # ============================================================================
 # SECRETS & KEYS
@@ -212,6 +225,7 @@ docs/personal/
 # Saleria instance lock
 .saleria.lock
 .claude/settings.json
+.claude/settings.local.json
 config/harmony_config_backup.json
 server/borg-backup.sh
 scripts/Install-SshTunnelTask.ps1

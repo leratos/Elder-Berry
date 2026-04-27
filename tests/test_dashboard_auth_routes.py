@@ -151,6 +151,77 @@ class TestLogout:
         assert r.status_code == 200
 
 
+# ---------------------------------------------------------------------------
+# Phase 70 (H-1): Server-side Revocation auf Logout
+# ---------------------------------------------------------------------------
+
+
+class TestLogoutServerSideRevocation:
+    """Logout darf den HMAC-Token nicht nur browser-seitig entwerten."""
+
+    def _build(self):
+        from elder_berry.web.session_revocation_list import (
+            SessionRevocationList,
+        )
+
+        store = _FakeStore()
+        rl = SessionRevocationList()
+        auth = DashboardAuthManager(store, revocation_list=rl)
+        from fastapi import FastAPI
+        from fastapi.testclient import TestClient
+
+        app = FastAPI()
+        register_dashboard_auth_routes(app, auth)
+        return TestClient(app), auth, rl
+
+    def test_logout_marks_cookie_revoked(self) -> None:
+        client, auth, rl = self._build()
+        auth.set_password("supersecret123")
+        cookie, _ = auth.issue_session()
+        client.cookies.set(COOKIE_NAME, cookie)
+
+        r = client.post("/api/dashboard/logout")
+        assert r.status_code == 200
+        assert r.json()["revoked"] is True
+        # verify_session muss diesen Cookie nun ablehnen
+        from elder_berry.web.dashboard_auth import InvalidSessionError
+        with pytest.raises(InvalidSessionError):
+            auth.verify_session(cookie)
+
+    def test_stolen_cookie_after_logout_is_dead(self) -> None:
+        """Szenario: Angreifer hat den Cookie kopiert. Nutzer logged sich
+        aus. Angreifer-Replay muss scheitern."""
+        client, auth, rl = self._build()
+        auth.set_password("supersecret123")
+        cookie, _ = auth.issue_session()
+        client.cookies.set(COOKIE_NAME, cookie)
+
+        # Logout
+        client.post("/api/dashboard/logout")
+
+        # auth/status mit altem Cookie -> nicht mehr authenticated
+        # (wir setzen den Cookie manuell, weil delete_cookie() ihn aus
+        # dem Test-Client entfernt hat)
+        client.cookies.set(COOKIE_NAME, cookie)
+        r = client.get("/api/dashboard/auth/status")
+        data = r.json()
+        assert data["authenticated"] is False
+
+    def test_logout_without_cookie_does_not_crash(self) -> None:
+        client, _, _ = self._build()
+        r = client.post("/api/dashboard/logout")
+        assert r.status_code == 200
+        assert r.json()["revoked"] is False
+
+    def test_logout_with_invalid_cookie_does_not_revoke(self) -> None:
+        client, _, rl = self._build()
+        client.cookies.set(COOKIE_NAME, "definitely-not.a-valid-cookie")
+        r = client.post("/api/dashboard/logout")
+        assert r.status_code == 200
+        assert r.json()["revoked"] is False
+        assert len(rl) == 0
+
+
 # -- /api/dashboard/password ----------------------------------------- #
 
 class TestChangePassword:

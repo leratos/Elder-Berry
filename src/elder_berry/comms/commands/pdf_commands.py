@@ -19,6 +19,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from elder_berry.comms.commands.base import CommandHandler, CommandResult, user_friendly_error
+from elder_berry.core.path_guard import PathGuard
 
 if TYPE_CHECKING:
     from elder_berry.tools.nextcloud_files import NextcloudFilesClient
@@ -103,9 +104,11 @@ class PDFCommandHandler(CommandHandler):
         self,
         stirling_pdf: StirlingPDFClient | None = None,
         nextcloud_files: NextcloudFilesClient | None = None,
+        path_guard: PathGuard | None = None,
     ) -> None:
         self._spdf = stirling_pdf
         self._nc = nextcloud_files
+        self._path_guard = path_guard or PathGuard.default()
 
     # ── CommandHandler interface ────────────────────────────────────────
 
@@ -248,10 +251,19 @@ class PDFCommandHandler(CommandHandler):
         """
         name = name.strip()
         if _is_local_path(name):
-            local = Path(name)
-            if local.exists():
-                return local, "", ""
-            return None, "", f"Datei nicht gefunden: {name}"
+            # Path-Traversal-Schutz (Phase 69): Pfad muss in einem
+            # erlaubten Basis-Verzeichnis liegen. PermissionError -> Abbruch
+            # ohne Pfad-Echo. FileNotFoundError -> "Datei nicht gefunden".
+            try:
+                local = self._path_guard.validate(name)
+            except PermissionError:
+                return None, "", (
+                    "Zugriff verweigert. Datei liegt ausserhalb "
+                    "erlaubter Verzeichnisse (z.B. Documents, Downloads)."
+                )
+            except FileNotFoundError:
+                return None, "", "Datei nicht gefunden."
+            return local, "", ""
 
         # Nextcloud-Suche
         return self._resolve_nc_file(name, temp_dir)

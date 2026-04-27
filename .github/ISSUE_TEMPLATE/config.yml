@@ -1,0 +1,13 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Sicherheitslücke melden
+    url: https://github.com/leratos/Elder-Berry/security/advisories/new
+    about: |
+      Bitte KEIN öffentliches Issue. Sicherheits-Reports laufen
+      privat über GitHub Security Advisories. Details in SECURITY.md.
+  - name: Frage statt Bug?
+    url: https://github.com/leratos/Elder-Berry/issues/new?labels=question
+    about: |
+      Allgemeine Fragen, Setup-Probleme oder Use-Case-Diskussionen
+      bitte als Issue mit Label "question". Discussions sind nicht
+      aktiviert.

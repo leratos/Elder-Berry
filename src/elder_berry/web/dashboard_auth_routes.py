@@ -129,7 +129,18 @@ def register_dashboard_auth_routes(
 
     @app.post("/api/dashboard/logout")
     async def logout(request: Request) -> JSONResponse:
-        response = JSONResponse({"ok": True})
+        # Phase 70 (H-1): Server-side Revocation. ``delete_cookie()``
+        # alleine entfernt den Cookie nur im Browser -- wer den HMAC-
+        # signierten Token vorher kopiert hat (XSS-Snapshot, Backup,
+        # Browser-Sync), koennte ihn bis ``exp`` weiter benutzen.
+        # ``revoke_session()`` fuegt den konkreten Cookie auf die
+        # Sperrliste, sodass ``verify_session()`` ihn beim naechsten
+        # Request hart ablehnt. Bewusst gezielt auf diese Session;
+        # der Endpoint ``/logout-all`` rotiert das Secret und nimmt
+        # damit auch andere Geraete mit -- der Trade-off ist absichtlich.
+        cookie = request.cookies.get(COOKIE_NAME)
+        revoked = auth_manager.revoke_session(cookie)
+        response = JSONResponse({"ok": True, "revoked": revoked})
         response.delete_cookie(COOKIE_NAME, path="/")
         return response
 

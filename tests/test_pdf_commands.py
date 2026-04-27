@@ -910,3 +910,111 @@ class TestExtractImagesCommand:
         with patch("tempfile.mkdtemp", return_value=str(tmp_path)):
             result = handler.execute("pdf_extract_images", "pdf bilder Doc.pdf")
         assert result.success is True
+
+
+# ── Path-Traversal-Schutz (Phase 69 Security-Fix) ──────────────────────
+
+
+class TestPathTraversalGuard:
+    """PathGuard verhindert beliebige Dateizugriffe via lokaler Pfade."""
+
+    def _make_handler(
+        self,
+        mock_spdf: MagicMock,
+        allowed_base: Path,
+    ) -> PDFCommandHandler:
+        from elder_berry.core.path_guard import PathGuard
+        return PDFCommandHandler(
+            stirling_pdf=mock_spdf,
+            nextcloud_files=None,
+            path_guard=PathGuard([allowed_base]),
+        )
+
+    def test_local_path_outside_base_blocked(
+        self, mock_spdf: MagicMock, tmp_path: Path,
+    ) -> None:
+        """Existierende Datei ausserhalb der Base -> Zugriff verweigert."""
+        safe_base = tmp_path / "safe"
+        safe_base.mkdir()
+        outside_pdf = tmp_path / "outside.pdf"
+        outside_pdf.write_bytes(b"%PDF outside")
+
+        handler = self._make_handler(mock_spdf, safe_base)
+
+        with patch("tempfile.mkdtemp", return_value=str(safe_base)):
+            result = handler.execute(
+                "pdf_compress", f"pdf komprimieren {outside_pdf}",
+            )
+
+        assert result.success is False
+        assert "Zugriff verweigert" in result.text
+        # Pfad darf nicht echoed werden
+        assert str(outside_pdf) not in result.text
+        # StirlingPDF darf nicht angefasst worden sein
+        mock_spdf.compress.assert_not_called()
+
+    def test_local_path_dotdot_blocked(
+        self, mock_spdf: MagicMock, tmp_path: Path,
+    ) -> None:
+        """`../`-Traversal wird via resolve() aufgeloest und abgewiesen."""
+        safe_base = tmp_path / "safe"
+        safe_base.mkdir()
+        secret = tmp_path / "secret.pdf"
+        secret.write_bytes(b"%PDF secret")
+
+        handler = self._make_handler(mock_spdf, safe_base)
+        traversal = safe_base / ".." / "secret.pdf"
+
+        with patch("tempfile.mkdtemp", return_value=str(safe_base)):
+            result = handler.execute(
+                "pdf_ocr", f"pdf ocr {traversal}",
+            )
+
+        assert result.success is False
+        assert "Zugriff verweigert" in result.text
+        mock_spdf.ocr.assert_not_called()
+
+    def test_local_path_inside_base_allowed(
+        self, mock_spdf: MagicMock, tmp_path: Path,
+    ) -> None:
+        """Datei innerhalb der Base wird normal verarbeitet."""
+        safe_base = tmp_path / "safe"
+        safe_base.mkdir()
+        ok_pdf = safe_base / "ok.pdf"
+        ok_pdf.write_bytes(b"%PDF ok")
+
+        mock_spdf.compress.return_value = PDFResult(
+            success=True,
+            output_path=safe_base / "ok_compressed.pdf",
+            message="Komprimiert.",
+        )
+
+        handler = self._make_handler(mock_spdf, safe_base)
+        with patch("tempfile.mkdtemp", return_value=str(safe_base)):
+            result = handler.execute(
+                "pdf_compress", f"pdf komprimieren {ok_pdf}",
+            )
+
+        assert result.success is True
+        mock_spdf.compress.assert_called_once()
+
+    def test_merge_blocks_traversal_in_first_file(
+        self, mock_spdf: MagicMock, tmp_path: Path,
+    ) -> None:
+        """Bei merge wird auch der erste Datei-Argument validiert."""
+        safe_base = tmp_path / "safe"
+        safe_base.mkdir()
+        outside = tmp_path / "outside.pdf"
+        outside.write_bytes(b"%PDF outside")
+        ok_b = safe_base / "b.pdf"
+        ok_b.write_bytes(b"%PDF b")
+
+        handler = self._make_handler(mock_spdf, safe_base)
+        with patch("tempfile.mkdtemp", return_value=str(safe_base)):
+            result = handler.execute(
+                "pdf_merge", f"pdf zusammenfügen {outside} {ok_b}",
+            )
+
+        assert result.success is False
+        assert "Zugriff verweigert" in result.text
+        mock_spdf.merge.assert_not_called()

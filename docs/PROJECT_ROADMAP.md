@@ -1230,3 +1230,184 @@ Konzept: `docs/concepts/phase-57-security-haertung.md`
    dauerhafter BC nur für LAN-Dauer-Nutzer)
 4. **57.3 Tower-Token + Host-Discovery** (größter BC, Auto-Migration
    für Token **und** Host)
+## Phase 68 – Public-Release-Vorbereitung (laufend)
+
+Vorbereitung des Repos für Public-Release. In kleinen Tranchen, parallel
+zu den laufenden Sicherheits-Fixes (Phase 69, Path-Traversal). Jede
+Tranche ist scharf abgegrenzt und kommt als eigener PR.
+
+### Tranche C – Trivial-Cleanup ✅ ABGESCHLOSSEN
+- **B2**: `--author=marcus` aus `git_commands.py` Hilfetext + Tests durch
+  generisches `--author=user` ersetzt.
+- **B3**: `last-strawberry.com` aus `webapp/dashboard/index.html`
+  entfernt; jetzt parametrisiert über `<meta name="elderberry-server-host">`
+  + JS-Override `window.ELDERBERRY_SERVER_HOST`. Default `example.com`,
+  d.h. LAN-Modus ist im öffentlichen Source der Default.
+- **E5**: `pyproject.toml` `[project]` um `license = "MIT"` und
+  `license-files = ["LICENSE"]` ergänzt (PEP 639, kompatibel mit
+  setuptools>=82, sdist-PKG-INFO bekommt `License-Expression: MIT`).
+- **Branch**: `chore/public-release-cleanup`.
+- **Tests**: 4848 passed, 28 skipped, keine Architektur-Änderungen.
+
+## Phase 69 – Path-Traversal-Schutz für Matrix-Commands 🛡️ ✅ ABGESCHLOSSEN
+
+- **Trigger**: Security-Review vor Public-Release identifizierte zwei
+  kritische Path-Traversal-Findings:
+  - **K1**: `advanced_commands.py::_cmd_document_summary` reicht den
+    Pfad aus der Matrix-Nachricht direkt an `Path()` weiter — ohne
+    `resolve()` / `is_relative_to`-Check. Matrix-Sender (auch
+    allowlisted) konnten via `zusammenfassung <pfad>` beliebige
+    Dateien lesen (`id_rsa`, `.env`, SecretStore-Backups).
+  - **K2**: `pdf_commands.py::_is_local_path` akzeptiert jeden
+    absoluten Pfad; `_resolve_file` öffnet ihn ungeprüft für
+    `pdf zusammenfügen`, `pdf split`, `pdf ocr`, `pdf komprimieren`,
+    `pdf zu word`, `zu pdf`, `pdf bilder`.
+- **Lösung**: Neue Klasse `PathGuard` in
+  `src/elder_berry/core/path_guard.py` mit `validate(path)`-Methode:
+  - `resolve(strict=True)` — Symlinks aufgelöst, `FileNotFoundError`
+    bei nicht-existenten Dateien (Caller darf NC-Fallback versuchen).
+  - `is_relative_to(base)`-Check gegen Allow-Liste — Verstöße werfen
+    `PermissionError`.
+  - Defaults via `PathGuard.default()`: `~/Documents`, `~/Downloads`,
+    `~/Desktop`, `tempfile.gettempdir()` (NC-Cache lebt dort), CWD.
+  - Override per Env-Var `EB_ALLOWED_PATHS` (`os.pathsep`-getrennt).
+  - Audit-Log via `getLogger("elder_berry.security")` →
+    `logs/security.log` (Konvention aus Phase 59 Rate-Limit-Events).
+- **Integration**:
+  - `advanced_commands.py::_cmd_document_summary`: `validate()` vor
+    Suffix-Check; `PermissionError` → Abbruch ohne Pfad-Echo;
+    `FileNotFoundError` → bestehender NC-Fallback bleibt erhalten.
+  - `pdf_commands.py::_resolve_file`: `validate()` bei lokalen
+    Pfaden; NC-Pfade gehen unverändert durch.
+- **Kein Pfad-Echo**: Fehlermeldungen an Matrix-Sender sind generisch
+  ("Zugriff verweigert. Datei liegt ausserhalb erlaubter
+  Verzeichnisse."). Der konkrete Pfad landet nur im Security-Log.
+- **Tests**: `tests/test_path_guard.py` (neu, 18 Tests inkl.
+  Symlink-Escape, dotdot-Traversal, Env-Override, Logging-Routing).
+  Regression-Tests in `tests/test_advanced_commands.py` (3) und
+  `tests/test_pdf_commands.py` (4). Suite: 4872 passed, 29 skipped.
+- **Branch**: `fix/path-traversal-document-pdf-commands`.
+
+## Phase 71 – Public-Release-Hygiene Runde 2 🧹 ✅ ABGESCHLOSSEN
+
+Vier unabhängige Public-Release-Verbesserungen in einem PR. Parallel
+zu Phase 70 (Session-Härtung), berührt keine Auth-/Web-Dateien — nur
+Repo-Hygiene, Audit-Tools und Doku.
+
+- **E2 — Hardware-OldVersions explizit ausgeschlossen**: `.gitignore`
+  bekommt einen expliziten Eintrag `hardware/enclosure/OldVersions/`
+  (zusätzlich zum bereits vorhandenen generischen `OldVersions/`-
+  Pattern). Inventor-Backup-Versionen (.0001.ipt, .0002.iam, ~129 MB
+  lokal) sollen niemals ins Public-Repo. Doppelt gehalten als Schutz,
+  falls jemand das generische Pattern später entfernt. Kein
+  `git rm --cached` nötig — die Dateien waren nie im Tracking.
+  Zusätzlich: `.claude/settings.local.json` zu `.gitignore` ergänzt
+  (war ein Loch — harness-spezifische Permissions sollen nicht ins
+  Repo).
+- **E3 — Issue-/PR-Templates**:
+  - `.github/ISSUE_TEMPLATE/bug_report.md` (Plattform-Auswahl Tower /
+    Laptop / RPi5, Stack-Trace-Block, Sicherheits-Hinweis).
+  - `.github/ISSUE_TEMPLATE/feature_request.md` (Use-Case + Alternativen
+    + "selbst bauen?"-Checkbox).
+  - `.github/ISSUE_TEMPLATE/config.yml` mit `contact_links` auf
+    Security-Advisory + Issue-mit-Label-question (Discussions sind
+    deaktiviert).
+  - `.github/PULL_REQUEST_TEMPLATE.md` (Was/Warum, Test-Plan,
+    Plattform-Impact, Checkliste inkl. Journal/Roadmap).
+- **E6 — `scripts/check_public_readiness.py` konfigurierbar**:
+  - Maintainer-spezifische Patterns (last-strawberry.com, marcus,
+    sfi-kohtz, lera, h2724315, /home/lera, /opt/Elder-Berry, ...)
+    raus aus dem hardcoded `CATEGORIES`-Tupel.
+  - Neue Funktion `_load_blocklist_patterns()` lädt Patterns aus
+    optionaler `.public-readiness-blocklist.txt` (gitignored, ein
+    Regex pro Zeile, `#`-Kommentare).
+  - Default-Fallback: `example.com`, `your-domain.tld` — Forks
+    bekommen "alles ok" und sehen das Tool als Skeleton.
+  - `.public-readiness-blocklist.example.txt` (getrackt) zeigt
+    den Stil mit allen Original-Patterns + Kommentaren.
+  - Generische Kategorien (`lan_ip`, `matrix_id`) bleiben als
+    konstantes `_CATEGORY_*`.
+  - Tests: `tests/test_check_public_readiness.py` (neu, 21 Tests:
+    Loader-Logik, Default-Fallback, Compile-Robustheit für ungültige
+    Regex, End-to-End-Scan).
+- **SECURITY.md — Bekannte Einschränkungen / Known Limitations**:
+  Neuer Abschnitt mit M1-M5 aus dem internen Security-Review:
+  - **M1** `allowed_rooms` fail-open ohne explizite Konfiguration.
+  - **M2** Setup-Wizard unauthenticated (by design, mitigation: VPN-only).
+  - **M3** Robot-/Settings-Token ohne Auto-Rotation (manuell via
+    Dashboard / SecretStore).
+  - **M4** LLM-Provider-Sichtbarkeit (Matrix-Inhalte gehen 1:1 an
+    Anthropic/OpenRouter; Mitigation: lokales Ollama).
+  - **M5** CSRF: SameSite=strict + Origin-Check, kein expliziter
+    CSRF-Token (Real-Risk in modernen Browsern minimal).
+- **Branch**: `chore/public-release-hygiene-round-2`.
+## Phase 70 – Session- + Web-Hardening 🛡️ ✅ ABGESCHLOSSEN
+
+- **Trigger**: Security-Review hat vier "Hoch"-Findings ergeben, die
+  alle in derselben Auth-/Tooling-Surface leben und gemeinsam in
+  einem Branch + PR gemerged werden.
+- **H1 — Server-side Logout-Invalidation**:
+  `delete_cookie()` loescht den Cookie nur im Browser; der HMAC-
+  signierte Token bleibt bis ``exp`` valide und kann nach Diebstahl
+  repliziert werden. Neue Klasse
+  `src/elder_berry/web/session_revocation_list.py`
+  (`SessionRevocationList`) -- in-memory Set mit lazy Cleanup +
+  optionaler JSON-Persistenz neben `secrets.enc`. Eintraege halten
+  nur den SHA-256 des Cookies (kein Klartext-Echo).
+  `verify_session()` prueft die Liste nach Signatur + exp + Cap.
+  `/api/dashboard/logout` ruft `revoke_session()` zusaetzlich zu
+  `delete_cookie()`. Trade-off im Code dokumentiert: Single-Session
+  (Default) vs. `logout-all` (Secret-Rotation).
+- **H2 — `tempfile.mktemp()` Abloesung**:
+  Vier TOCTOU-anfaellige Stellen
+  (`audio_pipeline.py` 200/230, `message_handlers.py` 383/599) auf
+  `tempfile.NamedTemporaryFile(delete=False)` umgestellt. Symlink-
+  Race-Vektor in `$TMP` ist damit zu.
+- **H3 — WebFetcher Stream-Cap**:
+  `httpx.get()` -> `httpx.stream()` mit chunk-weisem Lesen + Hard-Cap
+  (`DEFAULT_MAX_RESPONSE_BYTES = 5 MB`, konfigurierbar). Vor dem Read
+  Content-Length-Check, danach laufender Byte-Counter.
+  Neue Exception `ResponseTooLargeError(RuntimeError)`. Verhindert
+  Speicher-DoS via beliebig grosser Antwort.
+- **H4 — Absoluter Session-Cap**:
+  `DashboardAuthManager.issue_session()` schreibt jetzt
+  `iat_original` ins Payload. `verify_session()` und
+  `extend_session()` pruefen `now - iat_original` gegen
+  `DEFAULT_MAX_ABSOLUTE_LIFETIME_HOURS = 24`. Sliding-Renewal
+  verlaengert das Cookie, rollt den Cap aber nicht zurueck.
+  Legacy-Cookies ohne `iat_original` -> Fallback auf `iat`
+  (graceful Migration nach Deploy). Middleware ruft jetzt
+  `extend_session()` statt `issue_session()`, damit
+  `iat_original` ueber alle Renewals erhalten bleibt.
+- **Tests**: `tests/test_session_revocation_list.py` (neu, 14 Tests),
+  `tests/test_dashboard_auth.py` (+18 fuer Cap + Revocation +
+  Legacy-Fallback), `tests/test_dashboard_auth_routes.py` (+4 fuer
+  Logout-Replay), `tests/test_web_fetcher.py` (+8 fuer Size-Limit).
+  Suite: **4913 passed, 29 skipped** (vorher 4872 → +41 neue Tests).
+- **Branch**: `fix/session-and-web-hardening`.
+
+## Phase 72 – Auth-Hardening (PW-Min + bcrypt rounds) 🔒 ✅ ABGESCHLOSSEN
+
+- **Trigger**: Letzte Hardening-Schicht vor Public-Release. Zwei
+  kleine Stellschrauben in derselben Auth-Surface, gemeinsam in
+  einem PR.
+- **N1 — Mindest-Passwortlaenge 8 → 12**:
+  Neue Konstante `MIN_PASSWORD_LENGTH = 12` in
+  `src/elder_berry/web/dashboard_auth.py`. `set_password()` haengt
+  die Fehlermeldung per f-string an die Konstante. CLI
+  (`scripts/set_dashboard_password.py`) importiert die Konstante
+  und nutzt sie identisch. Setup-Wizard-Label
+  (`templates/setup_wizard.html`) und Client-Validierung
+  (`static/js/setup_wizard.js`) auf 12 Zeichen.
+- **N2 — bcrypt rounds 12 → 14**:
+  `BCRYPT_ROUNDS = 14`. ~250 ms/Hash auf moderner CPU; unkritisch
+  im Login-Pfad, GPU-Resistenz fuer kurze 8–12 Zeichen-PWs steigt
+  um Faktor 4. MIN_PASSWORD_LENGTH = 12 mitigiert den eigentlichen
+  Vektor schon, gehoert aber zusammen.
+- **Migration**: Bestehende rounds=12-Hashes funktionieren weiter
+  -- bcrypt liest den Cost-Faktor aus dem Hash-Prefix. Neue Hashes
+  nutzen rounds=14.
+- **Tests**: `tests/test_dashboard_auth.py::test_overwriting_password_works`
+  nutzt 13/13-Zeichen-PWs (vorher 11/10). Suite:
+  **4916 passed, 29 skipped**.
+- **Branch**: `chore/auth-hardening-pw-bcrypt`.

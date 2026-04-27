@@ -1,8 +1,8 @@
-"""DashboardAuthManager – Phase 58.
+"""DashboardAuthManager – Phase 58 + Phase 70.
 
 Login-Layer für das Settings-Dashboard. Speichert ein bcrypt-Passwort-Hash
 im SecretStore und gibt zeitsignierte Session-Cookies aus
-(HMAC-SHA256, stateless).
+(HMAC-SHA256).
 
 Komponenten
 -----------
@@ -10,14 +10,24 @@ Komponenten
   SecretStore unter Key ``dashboard_password_hash``.
 - ``issue_session()`` / ``verify_session(cookie)`` /
   ``extend_session(cookie)`` – HMAC-signiertes Cookie mit ``iat`` +
-  ``exp``. Sliding renewal liefert ein neues Cookie zurück.
+  ``iat_original`` + ``exp``. Sliding renewal liefert ein neues
+  Cookie zurück und behaelt das ``iat_original`` aus dem alten Cookie
+  bei (siehe Phase 70 H-4).
 - Session-Secret in ``dashboard_session_secret`` – auto-generiert
   beim ersten Aufruf (32 Byte ``secrets.token_urlsafe``).
-- TTL konfigurierbar: ``DashboardAuthManager(ttl_hours=12)``,
-  Range 1–168 (1 h bis 7 Tage).
+- TTL (sliding): ``DashboardAuthManager(ttl_hours=12)``, Range 1–168.
+- Absoluter Cap (Phase 70 H-4): ``max_absolute_lifetime_hours``
+  (Default 24 h). Sliding renewal verlaengert nicht ueber diesen Punkt
+  -- nach Ablauf wird ein Re-Login erzwungen.
+- Server-side Revocation (Phase 70 H-1): optionaler
+  :class:`SessionRevocationList`-Parameter. Logout markiert den
+  konkreten Cookie als gesperrt; ``verify_session()`` prueft die
+  Sperrliste nach erfolgreicher Signatur.
 
-Stateless: Tower-Restart invalidiert keine Sessions (Secret bleibt).
-Wird das Session-Secret rotiert, verfallen alle bisherigen Cookies.
+Tower-Restart invalidiert keine Sessions, solange Session-Secret +
+(falls konfiguriert) Persistenz der Sperrliste erhalten bleiben. Wird
+das Session-Secret rotiert (``rotate_session_secret``), verfallen alle
+bisherigen Cookies.
 """
 
 from __future__ import annotations
@@ -35,6 +45,7 @@ import bcrypt
 
 if TYPE_CHECKING:
     from elder_berry.core.secret_store import SecretStore
+    from elder_berry.web.session_revocation_list import SessionRevocationList
 
 logger = logging.getLogger(__name__)
 
@@ -47,9 +58,26 @@ DEFAULT_TTL_HOURS = 12
 MIN_TTL_HOURS = 1
 MAX_TTL_HOURS = 168
 
-# bcrypt cost factor – 12 ist 2026 ein guter Kompromiss zwischen
-# Sicherheit und CPU-Zeit auf Tower-Hardware.
-BCRYPT_ROUNDS = 12
+# Phase 70 (H-4): absoluter Cap. Sliding-Renewal verlaengert nicht
+# darueber hinaus -- nach Ablauf wird ein frischer Login erzwungen,
+# selbst wenn ein gestohlener Cookie laufend per /api/* getouched wird.
+DEFAULT_MAX_ABSOLUTE_LIFETIME_HOURS = 24
+MIN_MAX_ABSOLUTE_LIFETIME_HOURS = 1
+MAX_MAX_ABSOLUTE_LIFETIME_HOURS = 24 * 30  # 30 Tage Hard-Cap
+
+# Mindest-Passwortlaenge fuer das Dashboard. Vor dem Public-Release
+# auf 12 angehoben: 8 ist 2026 fuer GPU-Cracking nicht mehr robust,
+# bcrypt allein faengt das nicht auf.
+MIN_PASSWORD_LENGTH = 12
+
+# bcrypt cost factor. Phase 72: 12 -> 14 angehoben. Auf moderner
+# CPU rechnet ein Hash damit ~250 ms; das ist im Login spuerbar
+# aber unkritisch, dafuer steigt die GPU-Resistenz fuer kurze 8-12
+# Zeichen-Passwoerter um Faktor 4. MIN_PASSWORD_LENGTH oben mitigiert
+# das eigentliche Risiko schon, gehoert aber zusammen.
+# Bestehende Hashes mit rounds=12 funktionieren weiter -- bcrypt
+# liest den Cost-Faktor aus dem Hash-Prefix, neue Hashes nutzen 14.
+BCRYPT_ROUNDS = 14
 
 
 class DashboardAuthError(Exception):
@@ -76,21 +104,68 @@ class DashboardAuthManager:
     secret_store : SecretStore
         Persistenz für Hash und Session-Secret.
     ttl_hours : int
-        Session-Lebensdauer in Stunden (Default 12, Range 1–168).
+        Sliding Session-Lebensdauer in Stunden (Default 12, Range 1–168).
+    max_absolute_lifetime_hours : int | None, keyword-only
+        Absoluter Lifetime-Cap (Phase 70 H-4). ``None`` (Default) ->
+        ``max(24, ttl_hours)`` -- so wird ein konfiguriertes
+        ``ttl_hours > 24`` nicht zur Startup-Regression. Explizit
+        gesetzt: muss zwischen ``MIN_MAX_ABSOLUTE_LIFETIME_HOURS`` und
+        ``MAX_MAX_ABSOLUTE_LIFETIME_HOURS`` liegen und darf nicht
+        kleiner sein als ``ttl_hours``.
+    revocation_list : SessionRevocationList | None, keyword-only
+        Optionale Sperrliste fuer Logout-Revocation (Phase 70 H-1).
     """
 
     def __init__(
         self,
         secret_store: SecretStore,
         ttl_hours: int = DEFAULT_TTL_HOURS,
+        *,
+        max_absolute_lifetime_hours: int | None = None,
+        revocation_list: SessionRevocationList | None = None,
     ) -> None:
         if not MIN_TTL_HOURS <= ttl_hours <= MAX_TTL_HOURS:
             raise ValueError(
                 f"ttl_hours muss zwischen {MIN_TTL_HOURS} und "
                 f"{MAX_TTL_HOURS} liegen, bekam {ttl_hours}"
             )
+        # Phase 70 (H-4): Default-Cap = max(24, ttl_hours). So wird ein
+        # explizit gesetzter dashboard_session_hours > 24 (z.B. 48 h)
+        # nicht zur Startup-Regression -- das alte Verhalten "TTL bis
+        # 168 h" bleibt erhalten, aber der Cap kappt nie kuerzer als
+        # die TTL. Wer den Cap explizit hochzieht, kann das via
+        # ``max_absolute_lifetime_hours=`` weiterhin steuern.
+        if max_absolute_lifetime_hours is None:
+            effective_cap_hours = max(
+                DEFAULT_MAX_ABSOLUTE_LIFETIME_HOURS, ttl_hours,
+            )
+        else:
+            effective_cap_hours = max_absolute_lifetime_hours
+        if not (
+            MIN_MAX_ABSOLUTE_LIFETIME_HOURS
+            <= effective_cap_hours
+            <= MAX_MAX_ABSOLUTE_LIFETIME_HOURS
+        ):
+            raise ValueError(
+                "max_absolute_lifetime_hours muss zwischen "
+                f"{MIN_MAX_ABSOLUTE_LIFETIME_HOURS} und "
+                f"{MAX_MAX_ABSOLUTE_LIFETIME_HOURS} liegen, bekam "
+                f"{effective_cap_hours}"
+            )
+        if effective_cap_hours < ttl_hours:
+            # Nur erreichbar bei *explizitem* Cap < TTL -- sonst greift
+            # der max(24, ttl_hours)-Default oben. Ein zu kurzer Cap
+            # waere ein stiller Logout-Loop: das Cookie wuerde sofort
+            # nach Ausgabe den Cap reissen.
+            raise ValueError(
+                "max_absolute_lifetime_hours darf nicht kleiner sein als "
+                "ttl_hours -- sonst ist das frisch ausgestellte Cookie "
+                "schon ueber dem absoluten Cap"
+            )
         self._store = secret_store
         self._ttl_seconds = ttl_hours * 3600
+        self._max_absolute_lifetime_seconds = effective_cap_hours * 3600
+        self._revocation_list = revocation_list
 
     # -- Passwort-Management ----------------------------------------- #
 
@@ -100,8 +175,10 @@ class DashboardAuthManager:
 
     def set_password(self, password: str) -> None:
         """Speichert ein neues Dashboard-Passwort (bcrypt-Hash)."""
-        if not password or len(password) < 8:
-            raise ValueError("Passwort muss mindestens 8 Zeichen lang sein")
+        if not password or len(password) < MIN_PASSWORD_LENGTH:
+            raise ValueError(
+                f"Passwort muss mindestens {MIN_PASSWORD_LENGTH} Zeichen lang sein"
+            )
         # bcrypt limitiert auf 72 Bytes – Hash längerer PWs ist trivial,
         # aber ein Hinweis ist sauberer als stiller Truncate.
         if len(password.encode("utf-8")) > 72:
@@ -157,17 +234,32 @@ class DashboardAuthManager:
         logger.warning("dashboard_session_secret rotiert – alle "
                        "bestehenden Sessions sind ungültig")
 
-    def issue_session(self, now: float | None = None) -> tuple[str, int]:
+    def issue_session(
+        self,
+        now: float | None = None,
+        iat_original: int | None = None,
+    ) -> tuple[str, int]:
         """Erzeugt ein neues Session-Cookie.
+
+        Parameters
+        ----------
+        iat_original : int | None
+            Wenn gesetzt: ``iat_original`` wird aus der bisherigen
+            Session uebernommen (Sliding-Renewal). ``None`` = neuer
+            Login, ``iat_original`` = jetzt.
 
         Returns
         -------
         tuple[str, int]
-            (cookie_value, expires_at_unix_ts)
+            ``(cookie_value, expires_at_unix_ts)``
         """
         ts = int(now if now is not None else time.time())
         exp = ts + self._ttl_seconds
-        payload = {"iat": ts, "exp": exp}
+        payload = {
+            "iat": ts,
+            "iat_original": int(iat_original) if iat_original is not None else ts,
+            "exp": exp,
+        }
         return self._sign_payload(payload), exp
 
     def verify_session(
@@ -175,8 +267,19 @@ class DashboardAuthManager:
     ) -> dict[str, int]:
         """Prüft ein Cookie und gibt das Payload zurück.
 
-        Wirft :class:`InvalidSessionError` bei fehlendem,
-        manipuliertem oder abgelaufenem Cookie.
+        Reihenfolge der Checks (alle harten Aborts werfen
+        :class:`InvalidSessionError`):
+
+        1. Cookie vorhanden + Format
+        2. HMAC-Signatur (Phase 58)
+        3. Payload-Struktur, ``exp`` nicht abgelaufen
+        4. Phase 70 (H-4): absoluter Cap ueber ``iat_original`` --
+           wenn das Feld fehlt (Cookie aus alter Phase-58/65-Welt),
+           fallen wir auf ``iat`` zurueck. Konsequenz: bestehende
+           Sessions verlieren beim Deploy keinen Zugang sofort,
+           werden aber spaetestens nach ``max_absolute_lifetime``
+           ausgestiegen.
+        5. Phase 70 (H-1): Revocation-Check.
         """
         if not cookie_value:
             raise InvalidSessionError("Cookie fehlt")
@@ -198,6 +301,28 @@ class DashboardAuthManager:
         ts = int(now if now is not None else time.time())
         if ts >= int(payload["exp"]):
             raise InvalidSessionError("Session abgelaufen")
+
+        # Phase 70 (H-4): absoluter Cap
+        iat_original = payload.get("iat_original", payload.get("iat"))
+        if iat_original is not None:
+            try:
+                iat_original_int = int(iat_original)
+            except (TypeError, ValueError) as exc:
+                raise InvalidSessionError(
+                    "iat_original im Payload ist kein Integer",
+                ) from exc
+            if ts - iat_original_int >= self._max_absolute_lifetime_seconds:
+                raise InvalidSessionError(
+                    "Session ueberschreitet absoluten Lifetime-Cap "
+                    f"({self._max_absolute_lifetime_seconds // 3600} h)"
+                )
+
+        # Phase 70 (H-1): Revocation-Check
+        if self._revocation_list is not None and self._revocation_list.is_revoked(
+            cookie_value, now=ts,
+        ):
+            raise InvalidSessionError("Session wurde server-seitig widerrufen")
+
         return payload
 
     def extend_session(
@@ -205,11 +330,46 @@ class DashboardAuthManager:
     ) -> tuple[str, int]:
         """Sliding-Renewal: validiert + gibt frisches Cookie zurück.
 
-        Wirft :class:`InvalidSessionError` wenn die alte Session nicht
-        mehr gültig ist (kein Refresh nach Ablauf).
+        Behaelt das ``iat_original`` aus dem alten Cookie bei, damit
+        der absolute Cap (Phase 70 H-4) nicht durch jede Renewal-Runde
+        zurueckgesetzt wird.
+
+        Wirft :class:`InvalidSessionError` wenn die alte Session
+        ungueltig ist (Signatur, exp, absoluter Cap, Revocation).
         """
-        self.verify_session(cookie_value, now=now)
-        return self.issue_session(now=now)
+        payload = self.verify_session(cookie_value, now=now)
+        iat_original = payload.get("iat_original", payload.get("iat"))
+        return self.issue_session(now=now, iat_original=iat_original)
+
+    def revoke_session(
+        self, cookie_value: str | None, now: float | None = None,
+    ) -> bool:
+        """Setzt einen Cookie auf die Sperrliste (Phase 70 H-1).
+
+        Macht nichts, wenn keine :class:`SessionRevocationList`
+        injiziert wurde (Tests, Setup-Wizard) oder das Cookie ohnehin
+        keine valide Session ist.
+
+        Returns
+        -------
+        bool
+            ``True`` wenn der Cookie tatsaechlich revoked wurde
+            (gueltige Session + Liste vorhanden), sonst ``False``.
+        """
+        if not cookie_value or self._revocation_list is None:
+            return False
+        try:
+            payload = self.verify_session(cookie_value, now=now)
+        except InvalidSessionError:
+            # Schon ungueltig (abgelaufen, manipuliert, bereits
+            # revoked) -- kein zusaetzlicher Eintrag noetig.
+            return False
+        self._revocation_list.revoke(
+            cookie_value,
+            expires_at=float(payload["exp"]),
+            now=now,
+        )
+        return True
 
     # -- Interne Helpers --------------------------------------------- #
 
@@ -234,6 +394,14 @@ class DashboardAuthManager:
     @property
     def ttl_seconds(self) -> int:
         return self._ttl_seconds
+
+    @property
+    def max_absolute_lifetime_seconds(self) -> int:
+        return self._max_absolute_lifetime_seconds
+
+    @property
+    def revocation_list(self) -> SessionRevocationList | None:
+        return self._revocation_list
 
 
 def _pad(value: str) -> bytes:
