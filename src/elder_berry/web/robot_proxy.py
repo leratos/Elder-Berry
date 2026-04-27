@@ -183,13 +183,13 @@ def register_robot_proxy_routes(
                 },
                 status_code=504,
             )
-        except httpx.RequestError as exc:
-            logger.warning(
-                "Robot-Proxy: Request-Fehler fuer %s: %s", target_url, exc,
+        except httpx.RequestError:
+            logger.exception(
+                "Robot-Proxy: Request-Fehler fuer %s", target_url,
             )
             return JSONResponse(
                 {
-                    "error": f"Proxy-Fehler: {exc}",
+                    "error": "Proxy-Fehler beim Weiterleiten an den RPi5.",
                     "code": "proxy_error",
                 },
                 status_code=502,

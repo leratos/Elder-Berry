@@ -591,10 +591,10 @@ class SettingsDashboard:
                     data = await self._tower_agent.set_monitor(index)
                     logger.info("Tower Monitor geändert: %d", index)
                     return JSONResponse(data)
-                except Exception as e:
-                    logger.warning("Tower Monitor-Setzen fehlgeschlagen: %s", e)
+                except Exception:
+                    logger.exception("Tower Monitor-Setzen fehlgeschlagen")
                     return JSONResponse(
-                        {"error": f"Tower nicht erreichbar: {e}"},
+                        {"error": "Tower nicht erreichbar."},
                         status_code=502,
                     )
 
