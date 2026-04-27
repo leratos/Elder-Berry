@@ -26,7 +26,10 @@ _REPO_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(_REPO_ROOT / "src"))
 
 from elder_berry.core.secret_store import SecretStore  # noqa: E402
-from elder_berry.web.dashboard_auth import DashboardAuthManager  # noqa: E402
+from elder_berry.web.dashboard_auth import (  # noqa: E402
+    MIN_PASSWORD_LENGTH,
+    DashboardAuthManager,
+)
 
 
 def _read_password_twice() -> str:
@@ -35,9 +38,11 @@ def _read_password_twice() -> str:
     if pw1 != pw2:
         print("Fehler: Passwörter stimmen nicht überein.", file=sys.stderr)
         sys.exit(2)
-    if len(pw1) < 8:
-        print("Fehler: Passwort muss mindestens 8 Zeichen lang sein.",
-              file=sys.stderr)
+    if len(pw1) < MIN_PASSWORD_LENGTH:
+        print(
+            f"Fehler: Passwort muss mindestens {MIN_PASSWORD_LENGTH} Zeichen lang sein.",
+            file=sys.stderr,
+        )
         sys.exit(2)
     return pw1
 
