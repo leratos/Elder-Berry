@@ -32,7 +32,7 @@ windows = [
 ]
 tts-neural = [
     "coqui-tts>=0.27",
-    "sounddevice>=0.4",
+    "sounddevice>=0.5.5",
     "numpy>=1.26",
 ]
 avatar = [
@@ -41,7 +41,7 @@ avatar = [
 robot = []
 agent = [
     "python-multipart>=0.0.18",
-    "sounddevice>=0.4",
+    "sounddevice>=0.5.5",
     "numpy>=1.26",
 ]
 matrix = [
@@ -57,7 +57,7 @@ memory = [
 ]
 stt = [
     "faster-whisper>=1.2.1",
-    "sounddevice>=0.4",
+    "sounddevice>=0.5.5",
     "numpy>=1.26",
 ]
 tools = [
@@ -88,7 +88,7 @@ tower = [
     "aiofiles>=23.0",
     "python-multipart>=0.0.18",
     "coqui-tts>=0.27",
-    "sounddevice>=0.4",
+    "sounddevice>=0.5.5",
     "numpy>=1.26",
     "faster-whisper>=1.2.1",
     "pyautogui>=0.9",
