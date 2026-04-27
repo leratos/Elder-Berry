@@ -183,7 +183,8 @@ class TestTTS:
         mock_tts.generate_audio.side_effect = RuntimeError("GPU OOM")
         r = client.post("/tts", json={"text": "Test"})
         assert r.status_code == 500
-        assert "GPU OOM" in r.json()["detail"]
+        # Fehlerdetails werden nur geloggt, nicht in der Response (stack-trace-exposure)
+        assert "detail" in r.json()
 
 
 # ===========================================================================
@@ -225,7 +226,8 @@ class TestSTT:
             files={"file": ("test.ogg", io.BytesIO(b"\x00" * 100), "audio/ogg")},
         )
         assert r.status_code == 500
-        assert "Modell kaputt" in r.json()["detail"]
+        # Fehlerdetails werden nur geloggt, nicht in der Response (stack-trace-exposure)
+        assert "detail" in r.json()
 
     def test_stt_preserves_suffix(self, client, mock_stt):
         """Prüft dass die korrekte Dateiendung an transcribe übergeben wird."""

@@ -98,7 +98,7 @@ class SetupTests:
             return {"success": True, "model": resp.model}
         except Exception as e:
             logger.error("Anthropic API-Test fehlgeschlagen: %s", e)
-            return {"success": False, "error": str(e)}
+            return {"success": False, "error": "Verbindung fehlgeschlagen – Details im Log."}
 
     @staticmethod
     async def test_matrix(
@@ -122,7 +122,7 @@ class SetupTests:
             return result
         except Exception as e:
             logger.error("Matrix-Test fehlgeschlagen: %s", e)
-            return {"success": False, "error": str(e)}
+            return {"success": False, "error": "Matrix-Verbindung fehlgeschlagen – Details im Log."}
 
     @staticmethod
     async def test_nextcloud(
@@ -246,7 +246,7 @@ class SetupTests:
             return {"success": r.status_code == 200}
         except Exception as e:
             logger.error("Brave Search-Test fehlgeschlagen: %s", e)
-            return {"success": False, "error": str(e)}
+            return {"success": False, "error": "Brave Search-Verbindung fehlgeschlagen – Details im Log."}
 
     @staticmethod
     async def test_groq(api_key: str) -> dict[str, Any]:
@@ -260,7 +260,7 @@ class SetupTests:
             return {"success": r.status_code == 200}
         except Exception as e:
             logger.error("Groq-Test fehlgeschlagen: %s", e)
-            return {"success": False, "error": str(e)}
+            return {"success": False, "error": "Groq-Verbindung fehlgeschlagen – Details im Log."}
 
     @staticmethod
     async def test_google_maps(api_key: str) -> dict[str, Any]:
@@ -279,7 +279,7 @@ class SetupTests:
             return {"success": data.get("status") == "OK"}
         except Exception as e:
             logger.error("Google Maps-Test fehlgeschlagen: %s", e)
-            return {"success": False, "error": str(e)}
+            return {"success": False, "error": "Google Maps-Verbindung fehlgeschlagen – Details im Log."}
 
     @staticmethod
     def check_prerequisites() -> dict[str, Any]:

@@ -220,14 +220,14 @@ class AgentServer:
             return ActionResult(
                 success=False,
                 action_type=action_type,
-                message=f"Fehlende Parameter: {e}",
+                message="Fehlende Parameter – Details im Log.",
             )
         except Exception as e:
             logger.error("Aktion '%s' fehlgeschlagen: %s", action_type, e)
             return ActionResult(
                 success=False,
                 action_type=action_type,
-                message=str(e),
+                message="Interner Fehler – Details im Log.",
             )
 
     def _dispatch(self, action_type: str, params: dict):

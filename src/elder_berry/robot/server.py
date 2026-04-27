@@ -404,7 +404,7 @@ class RobotServer:
         def stop(request: StopRequest | None = None) -> dict:
             reason = request.reason if request else "manual"
             self._motors.stop()
-            logger.info("Motor STOP: %s", reason)
+            logger.info("Motor STOP: %s", safe_log(reason))
             resp = ApiResponse(success=True, message=f"Gestoppt: {reason}")
             return asdict(resp)
 

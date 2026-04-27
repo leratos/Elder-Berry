@@ -1,6 +1,16 @@
 // ===== Phase 53.2 – Onboarding =====
 const ONBOARDING_KEY = "elderberry.avatar.onboarding.seen";
 
+// Helper: escape HTML to prevent XSS when inserting server data into innerHTML
+function escHtml(s) {
+    return String(s)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+}
+
 function showOnboarding() {
     const overlay = document.getElementById("onboardingOverlay");
     if (overlay) overlay.classList.add("active");
@@ -99,8 +109,8 @@ function buildAssetBrowser() {
             thumb.dataset.category = cat.key;
             thumb.dataset.name = name;
             thumb.innerHTML = `
-                <img src="/api/avatar/assets/${cat.key}/${name}" loading="lazy" alt="${name}">
-                <span class="asset-name">${name}</span>
+                <img src="/api/avatar/assets/${escHtml(cat.key)}/${escHtml(name)}" loading="lazy" alt="${escHtml(name)}">
+                <span class="asset-name">${escHtml(name)}</span>
             `;
             thumb.addEventListener('click', () => selectAsset(cat.key, name));
             grid.appendChild(thumb);
@@ -132,44 +142,44 @@ function buildEmotionEditor() {
         const isOpen = emo === selectedEmotion;
         section.innerHTML = `
             <div class="emotion-header">
-                <span class="emotion-name">${emo}</span>
+                <span class="emotion-name">${escHtml(emo)}</span>
                 <span class="emotion-toggle">${isOpen ? '▼' : '▶'}</span>
             </div>
-            <div class="emotion-fields ${isOpen ? 'open' : ''}" id="fields-${emo}">
+            <div class="emotion-fields ${isOpen ? 'open' : ''}" id="fields-${escHtml(emo)}">
                 <div class="field-row">
                     <label>Body</label>
-                    <select data-emotion="${emo}" data-field="body">
+                    <select data-emotion="${escHtml(emo)}" data-field="body">
                         ${optionsFor('body', layers.body)}
                     </select>
                 </div>
                 <div class="field-row">
                     <label>Eye L</label>
-                    <select data-emotion="${emo}" data-field="eye_left">
+                    <select data-emotion="${escHtml(emo)}" data-field="eye_left">
                         ${optionsFor('eye', layers.eye_left, 'eye_left_')}
                     </select>
                 </div>
                 <div class="field-row">
                     <label>Eye R</label>
-                    <select data-emotion="${emo}" data-field="eye_right">
+                    <select data-emotion="${escHtml(emo)}" data-field="eye_right">
                         ${optionsFor('eye', layers.eye_right, 'eye_right_')}
                     </select>
                 </div>
                 <div class="field-row">
                     <label>Mouth</label>
-                    <select data-emotion="${emo}" data-field="mouth">
+                    <select data-emotion="${escHtml(emo)}" data-field="mouth">
                         ${optionsFor('mouth', layers.mouth)}
                     </select>
                 </div>
                 <div class="field-row">
                     <label>Effect</label>
-                    <select data-emotion="${emo}" data-field="effect">
+                    <select data-emotion="${escHtml(emo)}" data-field="effect">
                         <option value="">(none)</option>
                         ${optionsFor('effect', layers.effect || '')}
                     </select>
                 </div>
                 <div class="field-row">
                     <label>Blink</label>
-                    <input type="checkbox" data-emotion="${emo}" data-field="can_blink"
+                    <input type="checkbox" data-emotion="${escHtml(emo)}" data-field="can_blink"
                            ${layers.can_blink !== false ? 'checked' : ''}>
                 </div>
             </div>
@@ -219,7 +229,7 @@ function toggleEmotion(header) {
 function buildPreviewDropdown() {
     const select = document.getElementById('preview-emotion');
     select.innerHTML = emotions.map(e =>
-        `<option value="${e}" ${e === selectedEmotion ? 'selected' : ''}>${e}</option>`
+        `<option value="${escHtml(e)}" ${e === selectedEmotion ? 'selected' : ''}>${escHtml(e)}</option>`
     ).join('');
     select.addEventListener('change', () => {
         selectedEmotion = select.value;

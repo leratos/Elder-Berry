@@ -4,9 +4,11 @@ Extrahiert aus remote_commands.py (Refactoring).
 """
 from __future__ import annotations
 
+import ipaddress
 import logging
 import re
 from pathlib import Path
+from urllib.parse import urlparse
 
 from elder_berry.comms.commands.base import CommandHandler, CommandResult, user_friendly_error
 
@@ -51,6 +53,34 @@ _DEFAULT_SEND_FILE_ROOTS: tuple[Path, ...] = (
     Path.home() / "Desktop",
     Path.home() / "Pictures",
 )
+
+# SSRF-Schutz: private / loopback / link-local Adressen ablehnen.
+_PRIVATE_NETS = (
+    ipaddress.ip_network("10.0.0.0/8"),
+    ipaddress.ip_network("172.16.0.0/12"),
+    ipaddress.ip_network("192.168.0.0/16"),
+    ipaddress.ip_network("127.0.0.0/8"),
+    ipaddress.ip_network("169.254.0.0/16"),
+    ipaddress.ip_network("::1/128"),
+    ipaddress.ip_network("fc00::/7"),
+    ipaddress.ip_network("fe80::/10"),
+)
+
+
+def _is_safe_download_url(url: str) -> bool:
+    """Lehnt private/loopback-Hosts ab (SSRF-Schutz fuer Downloads).
+
+    DOWNLOAD_PATTERN erzwingt bereits https?://, daher wird hier nur
+    der Hostname gegen interne Adressbereiche geprueft.
+    """
+    try:
+        host = urlparse(url).hostname or ""
+        addr = ipaddress.ip_address(host)
+        return not any(addr in net for net in _PRIVATE_NETS)
+    except ValueError:
+        # hostname ist kein IP-Literal -- DNS-Name ist OK (kann intern sein,
+        # aber DNS-Aufloesung liegt ausserhalb unserer Kontrolle hier).
+        return bool(host)
 
 
 class FileCommandHandler(CommandHandler):
@@ -297,6 +327,14 @@ class FileCommandHandler(CommandHandler):
 
         url = match.group(1)
 
+        # SSRF-Schutz: private / loopback Hosts ablehnen.
+        if not _is_safe_download_url(url):
+            return CommandResult(
+                command="download",
+                success=False,
+                text="Download abgelehnt: interne Adressen sind nicht erlaubt.",
+            )
+
         try:
             import httpx
         except ImportError:
@@ -309,7 +347,7 @@ class FileCommandHandler(CommandHandler):
         # Dateiname aus URL extrahieren und gegen Path-Traversal sanitisieren.
         # Path(...).name entfernt alle Verzeichnis-Trennzeichen (z.B. "../../.bashrc"
         # → ".bashrc"), sodass der Dateiname stets nur ein einfacher Name ist.
-        from urllib.parse import urlparse, unquote
+        from urllib.parse import unquote
         parsed = urlparse(url)
         raw_name = unquote(parsed.path.split("/")[-1])
         filename = Path(raw_name).name or "download"

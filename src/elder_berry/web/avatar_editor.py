@@ -230,6 +230,7 @@ def _validate_config(data: dict) -> str | None:
         # indem wir sie temporär laden. Da wir noch nicht geschrieben haben,
         # validieren wir stattdessen das Minimum.
     except Exception as exc:
-        return f"Config-Parsing-Fehler: {exc}"
+        logger.debug("Config-Parsing-Fehler: %s", exc)
+        return "Config-Parsing-Fehler – Details im Log."
 
     return None
