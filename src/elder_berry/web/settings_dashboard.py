@@ -31,21 +31,21 @@ from fastapi import Body, FastAPI
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
-# Re-Exports fuer Rueckwaertskompatibilitaet. SECRET_REGISTRY NICHT
-# re-exportieren -- secrets_api hat einen TYPE_CHECKING-Cyclic-Import
-# zu settings_dashboard, und CodeQL py/unsafe-cyclic-import flagt
-# die Konstellation als instabil. Tests importieren SECRET_REGISTRY
-# direkt aus secrets_api.
-from elder_berry.web.secrets_api import (
-    SecretRegistryEntry,
-    _REGISTRY_BY_KEY,
-)
+# SecretRegistryEntry und _REGISTRY_BY_KEY werden NICHT auf Modulebene
+# importiert: secrets_api hat einen TYPE_CHECKING-Rueckimport auf
+# settings_dashboard, und CodeQL py/unsafe-cyclic-import flagt einen
+# Top-Level-Import als instabil (je nach Lade-Reihenfolge waeren die
+# Symbole noch nicht definiert). Loesung:
+# - SecretRegistryEntry: nur Type-Annotation -> TYPE_CHECKING-Block
+#   reicht, weil ``from __future__ import annotations`` Annotationen
+#   lazy auswertet.
+# - _REGISTRY_BY_KEY: lokaler Import in ``_setting_definitions`` an
+#   der einzigen Use-Site.
+# Tests importieren SECRET_REGISTRY/_REGISTRY_BY_KEY direkt aus secrets_api.
 
 __all__ = [
     "SettingsDashboard",
     "SettingDefinition",
-    "SecretRegistryEntry",
-    "_REGISTRY_BY_KEY",
     "register_secrets_routes",
 ]
 from elder_berry.core.log_sanitize import safe_log
@@ -66,6 +66,7 @@ if TYPE_CHECKING:
     from elder_berry.core.tower_agent import TowerAgent
     from elder_berry.core.secret_store import SecretStore
     from elder_berry.llm.router import LLMRouter
+    from elder_berry.web.secrets_api import SecretRegistryEntry
 
 logger = logging.getLogger(__name__)
 
@@ -322,6 +323,10 @@ class SettingsDashboard:
         ``AVAILABLE_TIMEZONES`` injiziert (UI-spezifisch, nicht in der
         Registry hinterlegt).
         """
+        # Lokaler Import bricht den Cyclic-Import zu secrets_api auf
+        # (CodeQL py/unsafe-cyclic-import). Standard-Idiom in Python.
+        from elder_berry.web.secrets_api import _REGISTRY_BY_KEY
+
         definitions: list[SettingDefinition] = []
         for key in self.DASHBOARD_SETTING_KEYS:
             entry = _REGISTRY_BY_KEY.get(key)
