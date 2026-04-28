@@ -22,10 +22,8 @@ from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 if TYPE_CHECKING:
     from elder_berry.avatar.layered_renderer import LayeredSpriteRenderer
 
-from elder_berry.avatar.avatar_config_loader import (
-    DEFAULT_CONFIG_PATH,
-    load_avatar_config,
-)
+from elder_berry.avatar import avatar_config_loader
+from elder_berry.avatar.avatar_config_loader import load_avatar_config
 from elder_berry.character.base import Emotion
 
 logger = logging.getLogger(__name__)
@@ -104,19 +102,19 @@ def register_avatar_editor_routes(
     @app.get("/api/avatar/config")
     async def get_config():
         """Gibt die aktuelle YAML-Config als JSON zurück."""
-        if not DEFAULT_CONFIG_PATH.exists():
+        if not avatar_config_loader.DEFAULT_CONFIG_PATH.exists():
             return JSONResponse(
                 {"error": "avatar_config.yaml nicht gefunden"},
                 status_code=404,
             )
 
         try:
-            with open(DEFAULT_CONFIG_PATH, encoding="utf-8") as f:
+            with open(avatar_config_loader.DEFAULT_CONFIG_PATH, encoding="utf-8") as f:
                 data = yaml.safe_load(f)
         except Exception:
             logger.exception(
                 "Avatar-Config konnte nicht gelesen werden: %s",
-                DEFAULT_CONFIG_PATH,
+                avatar_config_loader.DEFAULT_CONFIG_PATH,
             )
             return JSONResponse(
                 {"error": "Avatar-Config konnte nicht gelesen werden."},
@@ -150,7 +148,7 @@ def register_avatar_editor_routes(
 
         # YAML schreiben
         try:
-            with open(DEFAULT_CONFIG_PATH, "w", encoding="utf-8") as f:
+            with open(avatar_config_loader.DEFAULT_CONFIG_PATH, "w", encoding="utf-8") as f:
                 yaml.dump(
                     config_data,
                     f,
@@ -161,7 +159,7 @@ def register_avatar_editor_routes(
         except Exception:
             logger.exception(
                 "Avatar-Config konnte nicht gespeichert werden: %s",
-                DEFAULT_CONFIG_PATH,
+                avatar_config_loader.DEFAULT_CONFIG_PATH,
             )
             return JSONResponse(
                 {"error": "Avatar-Config konnte nicht gespeichert werden."},

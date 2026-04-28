@@ -169,8 +169,8 @@ def _get_setup_status(secret_store: SecretStore) -> dict[str, Any]:
         else:
             missing.append(service)
 
-    # Aktuellen Schritt bestimmen (erster Schritt mit fehlenden Pflicht-Keys)
-    current_step = 1
+    # Aktuellen Schritt bestimmen (erster Schritt mit fehlenden Pflicht-Keys).
+    # for-else: Loop-Body setzt current_step bei Break, sonst else-Branch.
     for step_def in WIZARD_STEPS:
         req = step_def["required_keys"]
         if req and not all(secret_store.has(k) for k in req):
