@@ -2,6 +2,7 @@
 
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Python 3.12+](https://img.shields.io/badge/python-3.12%2B-blue.svg)](https://www.python.org/)
+[![codecov](https://codecov.io/gh/leratos/Elder-Berry/branch/main/graph/badge.svg)](https://codecov.io/gh/leratos/Elder-Berry)
 
 > Virtueller KI-Assistent mit V-Tuber-Charakter, Voice Cloning und Fernsteuerung.
 > Teil der [Last-Strawberry](https://last-strawberry.com) Projektfamilie.
