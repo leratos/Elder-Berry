@@ -1369,9 +1369,6 @@ class TestBridgeAudioRouting:
                 msg = _make_audio_msg()
 
                 # Patch NamedTemporaryFile um unsere Datei zu nutzen
-                import builtins
-                orig_open = builtins.open
-
                 with _patch("elder_berry.comms.audio_pipeline.tempfile.NamedTemporaryFile") as mock_tmp:
                     mock_file = MagicMock()
                     mock_file.name = tmp_name

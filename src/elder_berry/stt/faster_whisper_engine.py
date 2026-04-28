@@ -167,7 +167,6 @@ class FasterWhisperEngine(STTEngine):
     @staticmethod
     def _write_wav(path: Path, pcm_bytes: bytes, sample_rate: int) -> None:
         """Schreibt PCM-Bytes als WAV-Datei."""
-        n_samples = len(pcm_bytes) // 2  # int16 = 2 Bytes pro Sample
         with wave.open(str(path), "wb") as wf:
             wf.setnchannels(1)       # Mono
             wf.setsampwidth(2)       # 16-bit

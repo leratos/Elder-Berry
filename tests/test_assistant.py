@@ -95,7 +95,7 @@ class TestNoAction:
             "response": "Ja, die Rechnung von RK Bedachung.",
         })
         history = "Bisheriger Gesprächsverlauf:\nUser: mail suche RK\nSaleria: 2 Mails gefunden"
-        result = assistant.process(
+        assistant.process(
             "fasse die erste zusammen", chat_history=history,
         )
 

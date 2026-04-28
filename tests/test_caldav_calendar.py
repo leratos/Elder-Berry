@@ -287,7 +287,7 @@ class TestCreateEvent:
     def test_create_event_with_recurrence(self):
         client, cal = _client_with_calendar()
         start = datetime(2026, 9, 28)
-        event = client.create_event(
+        client.create_event(
             "Geburtstag", start, all_day=True,
             recurrence=["RRULE:FREQ=YEARLY"],
         )

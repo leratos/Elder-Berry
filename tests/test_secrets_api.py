@@ -6,10 +6,8 @@ from elder_berry.core.audio_router import AudioRouter
 
 try:
     from fastapi.testclient import TestClient
-    from elder_berry.web.settings_dashboard import (
-        SettingsDashboard,
-        SECRET_REGISTRY,
-    )
+    from elder_berry.web.settings_dashboard import SettingsDashboard
+    from elder_berry.web.secrets_api import SECRET_REGISTRY
 
     HAS_FASTAPI = True
 except ImportError:

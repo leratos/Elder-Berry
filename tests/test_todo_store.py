@@ -168,7 +168,7 @@ class TestDelete:
 
     def test_delete_all_done(self, store: TodoStore) -> None:
         t1 = store.add(USER, "A")
-        t2 = store.add(USER, "B")
+        store.add(USER, "B")
         store.complete(t1.id)
         deleted = store.delete_all_done(USER)
         assert deleted == 1

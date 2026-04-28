@@ -368,7 +368,7 @@ class WeatherCommandHandler(CommandHandler):
 
             due = datetime.now(timezone.utc) + delta
             # User-ID ist hier nicht bekannt -> default User
-            reminder = self._reminder_store.add("_timer_user", f"Timer ({amount} {unit})", due)
+            self._reminder_store.add("_timer_user", f"Timer ({amount} {unit})", due)
 
             local_time = due.astimezone()
             return CommandResult(
@@ -422,7 +422,7 @@ class WeatherCommandHandler(CommandHandler):
                 delta = _parse_duration(amount, unit)
                 due = datetime.now(timezone.utc) + delta
 
-            reminder = self._reminder_store.add("_timer_user", message.strip(), due)
+            self._reminder_store.add("_timer_user", message.strip(), due)
             local_time = due.astimezone()
 
             return CommandResult(
@@ -584,7 +584,7 @@ class WeatherCommandHandler(CommandHandler):
         """Erstellt eine wiederkehrende Erinnerung im Store."""
         from elder_berry.tools.recurrence import format_recurrence
 
-        reminder = self._reminder_store.add(
+        self._reminder_store.add(
             "_timer_user", message, due, recurrence=recurrence,
         )
         local_time = due.astimezone()

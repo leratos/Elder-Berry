@@ -256,7 +256,7 @@ class TestTaskChainRunnerContext:
         ]
 
         steps_received = []
-        result = runner.run("Task", on_step=lambda s: steps_received.append(s))
+        runner.run("Task", on_step=lambda s: steps_received.append(s))
 
         assert len(steps_received) == 2
         assert steps_received[0].step_number == 1

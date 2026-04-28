@@ -44,12 +44,10 @@ KEYRING_USERNAME_PREFIX = "master-key"
 # automatisch im Fallback-Modus (Plaintext-Datei + Warning).
 try:
     import keyring
-    import keyring.errors as keyring_errors
     from keyring.backends.fail import Keyring as _FailKeyring
     _HAS_KEYRING = True
 except ImportError:  # pragma: no cover -- auf supported Platforms ist keyring dabei
     keyring = None
-    keyring_errors = None
     _FailKeyring = None  # type: ignore[assignment]
     _HAS_KEYRING = False
 
