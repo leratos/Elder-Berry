@@ -31,11 +31,12 @@ from fastapi import Body, FastAPI
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
-# Re-Exports für Rückwärtskompatibilität (Tests importieren diese von hier).
-# In __all__ aufgefuehrt, damit Ruff F401 die Re-Exports nicht als unused
-# Imports flagt.
+# Re-Exports fuer Rueckwaertskompatibilitaet. SECRET_REGISTRY NICHT
+# re-exportieren -- secrets_api hat einen TYPE_CHECKING-Cyclic-Import
+# zu settings_dashboard, und CodeQL py/unsafe-cyclic-import flagt
+# die Konstellation als instabil. Tests importieren SECRET_REGISTRY
+# direkt aus secrets_api.
 from elder_berry.web.secrets_api import (
-    SECRET_REGISTRY,
     SecretRegistryEntry,
     _REGISTRY_BY_KEY,
     register_secrets_routes,
@@ -44,7 +45,6 @@ from elder_berry.web.secrets_api import (
 __all__ = [
     "SettingsDashboard",
     "SettingDefinition",
-    "SECRET_REGISTRY",
     "SecretRegistryEntry",
     "_REGISTRY_BY_KEY",
     "register_secrets_routes",
