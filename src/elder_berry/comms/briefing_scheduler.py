@@ -423,7 +423,6 @@ class BriefingScheduler:
         if not self._note_store or not self._default_user_id:
             return []
         try:
-            last_year = now.year - 1
             notes = self._note_store.get_notes_from_date(
                 self._default_user_id, now.month, now.day, limit=3,
             )

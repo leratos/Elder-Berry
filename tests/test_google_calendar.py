@@ -285,7 +285,7 @@ class TestCreateEvent:
         store = _make_store_mock()
         client = GoogleCalendarClient(secret_store=store)
 
-        event = client.create_event(
+        client.create_event(
             summary="Meeting",
             start=datetime(2026, 3, 20, 14, 0),
             location="Büro",

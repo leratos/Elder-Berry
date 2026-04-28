@@ -206,7 +206,7 @@ class TestListAll:
         assert store.list_all(USER_A) == []
 
     def test_order_newest_first(self, store):
-        n1 = store.add_note(USER_A, "Erste Notiz")
+        store.add_note(USER_A, "Erste Notiz")
         n2 = store.add_note(USER_A, "Zweite Notiz")
         notes = store.list_all(USER_A)
         # Neueste zuerst

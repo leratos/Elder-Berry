@@ -284,12 +284,10 @@ def fake_keyring(monkeypatch):
         _NotAFailKeyring,
     )
     # get_keyring() liefert irgendwas, das nicht _NotAFailKeyring ist
-    monkeypatch.setattr(
-        fake, "get_keyring", lambda: object(), raising=False,
-    )
+    monkeypatch.setattr(fake, "get_keyring", object, raising=False)
     # Aber unser _keyring_available() nutzt keyring.get_keyring() -- das ist
     # jetzt der fake. Lass das via fake auch existieren:
-    fake.get_keyring = lambda: object()  # type: ignore[attr-defined]
+    fake.get_keyring = object  # type: ignore[attr-defined]
     return fake
 
 

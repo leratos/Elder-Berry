@@ -355,10 +355,8 @@ class TestScreenshot:
         mock_sct.__enter__ = MagicMock(return_value=mock_sct)
         mock_sct.__exit__ = MagicMock(return_value=False)
 
-        fake_png = b"\x89PNG\r\n\x1a\nfake_png_data"
-
         with patch.dict("sys.modules", {"mss": mock_mss, "mss.tools": MagicMock()}):
-            with patch("tower.tower_server.screenshot") as mock_endpoint:
+            with patch("tower.tower_server.screenshot"):
                 # Einfacherer Ansatz: direkt den mss-Import im Endpoint patchen
                 pass
 

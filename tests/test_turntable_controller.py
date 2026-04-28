@@ -129,7 +129,7 @@ class TestRPi5TurntableInit:
         )
 
         with patch.dict("sys.modules", {"lgpio": lgpio_mock}):
-            ctrl = RPi5TurntableController(step_delay_ms=0.001)
+            RPi5TurntableController(step_delay_ms=0.001)
 
         lgpio_mock.gpiochip_open.assert_called_once_with(0)
         for pin in STEPPER_PINS:

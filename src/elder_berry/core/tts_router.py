@@ -150,7 +150,7 @@ class TTSRouter(TTSEngine):
             )
             return actual_path
 
-        except (TTSUnavailableError, Exception) as e:
+        except (TTSUnavailableError, Exception):
             if self._local_tts is None:
                 raise
 

@@ -676,7 +676,6 @@ class CardDAVSyncClient:
         if hasattr(card, "note"):
             note_text = str(card.note.value)
             # Neues Format: [Rolle: X] extrahieren
-            import re
             bracket_match = re.search(r"\[Rolle:\s*(.+?)\]", note_text)
             if bracket_match:
                 role = bracket_match.group(1).strip()

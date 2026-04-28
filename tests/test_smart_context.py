@@ -265,7 +265,7 @@ class TestQueryReminders:
         mock_dt.now.return_value = datetime(
             year, month, day, hour, 0, 0, tzinfo=timezone.utc,
         )
-        mock_dt.side_effect = lambda *a, **kw: datetime(*a, **kw)
+        mock_dt.side_effect = datetime
         return patch("elder_berry.core.smart_context.datetime", mock_dt)
 
     def test_today_reminders_included(self, provider_all):
@@ -389,7 +389,7 @@ class TestGetContext:
             mock_dt.now.return_value = datetime(
                 2026, 3, 28, 12, 0, 0, tzinfo=timezone.utc,
             )
-            mock_dt.side_effect = lambda *a, **kw: datetime(*a, **kw)
+            mock_dt.side_effect = datetime
             result = provider_all.get_context("Gib mir ein Briefing")
         assert "📅 Termine heute:" in result
         assert "Offene Todos" in result
@@ -429,7 +429,7 @@ class TestGetContext:
             mock_dt.now.return_value = datetime(
                 2026, 3, 28, 12, 0, 0, tzinfo=timezone.utc,
             )
-            mock_dt.side_effect = lambda *a, **kw: datetime(*a, **kw)
+            mock_dt.side_effect = datetime
             result = provider_all.get_context("Briefing bitte")
         cal_pos = result.find("📅")
         weather_pos = result.find("🌤️")

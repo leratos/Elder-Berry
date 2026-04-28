@@ -31,13 +31,24 @@ from fastapi import Body, FastAPI
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
-# Re-Exports für Rückwärtskompatibilität (Tests importieren diese von hier)
+# Re-Exports für Rückwärtskompatibilität (Tests importieren diese von hier).
+# In __all__ aufgefuehrt, damit Ruff F401 die Re-Exports nicht als unused
+# Imports flagt.
 from elder_berry.web.secrets_api import (
+    SECRET_REGISTRY,
     SecretRegistryEntry,
     _REGISTRY_BY_KEY,
-    validate_secret,
     register_secrets_routes,
 )
+
+__all__ = [
+    "SettingsDashboard",
+    "SettingDefinition",
+    "SECRET_REGISTRY",
+    "SecretRegistryEntry",
+    "_REGISTRY_BY_KEY",
+    "register_secrets_routes",
+]
 from elder_berry.core.log_sanitize import safe_log
 from elder_berry.web.llm_api import register_llm_routes
 from elder_berry.web.security_middleware import setup_security
@@ -52,9 +63,6 @@ if TYPE_CHECKING:
     from elder_berry.llm.router import LLMRouter
 
 logger = logging.getLogger(__name__)
-
-# Rückwärtskompatibilität: _validate_secret als statische Methode-Alias
-_validate_secret = validate_secret
 
 
 @dataclass(frozen=True)
@@ -949,7 +957,6 @@ class SettingsDashboard:
             return
 
         def _run():
-            import asyncio
             import socket as _sock
 
             sock = _sock.socket(_sock.AF_INET, _sock.SOCK_STREAM)

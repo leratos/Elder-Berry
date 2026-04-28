@@ -223,12 +223,11 @@ def _validate_config(data: dict) -> str | None:
     if breathing and not isinstance(breathing, dict):
         return "breathing muss ein Dictionary sein."
 
-    # Versuch, die Config tatsächlich zu parsen
+    # Smoke-Test: aktuelle Config-Datei muss parsebar sein. Validiert
+    # die NEUEN Daten nicht (die liegen nur als dict vor, noch nicht
+    # auf der Platte). Mehr als Minimum geht ohne Roundtrip nicht.
     try:
-        result = load_avatar_config(DEFAULT_CONFIG_PATH)
-        # Prüfe ob die zu speichernden Daten parsbar sind,
-        # indem wir sie temporär laden. Da wir noch nicht geschrieben haben,
-        # validieren wir stattdessen das Minimum.
+        load_avatar_config(DEFAULT_CONFIG_PATH)
     except Exception as exc:
         logger.debug("Config-Parsing-Fehler: %s", exc)
         return "Config-Parsing-Fehler – Details im Log."

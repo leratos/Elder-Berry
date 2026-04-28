@@ -133,17 +133,6 @@ _ALLOWED_FIELDS_DISPLAY = (
     "adresse, firma, titel, gruppe, spitzname, jahrestag, website"
 )
 
-# Mapping Feld-Abfrage-Typ → menschenlesbarer Name
-_FIELD_QUERY_LABELS: dict[str, str] = {
-    "birthday": "Geburtstag",
-    "address": "Adresse",
-    "phones": "Telefonnummer",
-    "emails": "Email",
-    "categories": "Gruppen",
-    "organization": "Arbeitgeber",
-}
-
-
 class ContactCommandHandler(CommandHandler):
     """Kontaktbuch-Commands für Matrix."""
 

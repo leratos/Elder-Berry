@@ -604,7 +604,7 @@ class TestAgentClient:
         mock_http.post.return_value = mock_resp
 
         c = self._make_client(mock_http)
-        result = c.execute_action("mute")
+        c.execute_action("mute")
 
         call_args = mock_http.post.call_args
         assert call_args[1]["json"]["params"] == {}

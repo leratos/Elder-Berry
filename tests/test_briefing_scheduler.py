@@ -202,7 +202,7 @@ class TestLifecycle:
         fake_now = datetime(2026, 3, 17, 12, 0, 0)
         with patch("elder_berry.comms.briefing_scheduler.datetime") as mock_dt:
             mock_dt.now.return_value = fake_now
-            mock_dt.side_effect = lambda *a, **kw: datetime(*a, **kw)
+            mock_dt.side_effect = datetime
 
             # Direkt _run-Logik testen (statt Thread)
             scheduler._briefing_sent_today = None
