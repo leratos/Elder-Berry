@@ -36,7 +36,6 @@ from fastapi.staticfiles import StaticFiles
 # zu settings_dashboard, und CodeQL py/unsafe-cyclic-import flagt
 # die Konstellation als instabil. Tests importieren SECRET_REGISTRY
 # direkt aus secrets_api.
-from elder_berry.web.secrets_api import SecretRegistryEntry
 
 __all__ = [
     "SettingsDashboard",
@@ -61,6 +60,10 @@ def __getattr__(name: str) -> Any:
         from elder_berry.web.secrets_api import _REGISTRY_BY_KEY as registry_by_key
 
         return registry_by_key
+    if name == "SecretRegistryEntry":
+        from elder_berry.web.secrets_api import SecretRegistryEntry as secret_registry_entry
+
+        return secret_registry_entry
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 
