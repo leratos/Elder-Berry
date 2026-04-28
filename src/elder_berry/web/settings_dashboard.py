@@ -31,21 +31,15 @@ from fastapi import Body, FastAPI
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
-# Re-Exports fuer Rueckwaertskompatibilitaet. SECRET_REGISTRY NICHT
-# re-exportieren -- secrets_api hat einen TYPE_CHECKING-Cyclic-Import
-# zu settings_dashboard, und CodeQL py/unsafe-cyclic-import flagt
-# die Konstellation als instabil. Tests importieren SECRET_REGISTRY
-# direkt aus secrets_api.
-from elder_berry.web.secrets_api import (
-    SecretRegistryEntry,
-    _REGISTRY_BY_KEY,
-)
+# SecretRegistryEntry wird nur als Type-Annotation verwendet. Mit
+# `from __future__ import annotations` wird die Annotation lazy ausgewertet,
+# daher genuegt ein TYPE_CHECKING-Guard – kein Runtime-Import noetig.
+# _REGISTRY_BY_KEY wird lokal dort importiert, wo es gebraucht wird,
+# um den CodeQL py/unsafe-cyclic-import zu vermeiden.
 
 __all__ = [
     "SettingsDashboard",
     "SettingDefinition",
-    "SecretRegistryEntry",
-    "_REGISTRY_BY_KEY",
     "register_secrets_routes",
 ]
 from elder_berry.core.log_sanitize import safe_log
@@ -66,6 +60,7 @@ if TYPE_CHECKING:
     from elder_berry.core.tower_agent import TowerAgent
     from elder_berry.core.secret_store import SecretStore
     from elder_berry.llm.router import LLMRouter
+    from elder_berry.web.secrets_api import SecretRegistryEntry
 
 logger = logging.getLogger(__name__)
 
@@ -323,6 +318,7 @@ class SettingsDashboard:
         Registry hinterlegt).
         """
         definitions: list[SettingDefinition] = []
+        from elder_berry.web.secrets_api import _REGISTRY_BY_KEY
         for key in self.DASHBOARD_SETTING_KEYS:
             entry = _REGISTRY_BY_KEY.get(key)
             if entry is None:
