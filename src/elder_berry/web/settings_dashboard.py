@@ -317,9 +317,9 @@ class SettingsDashboard:
         Registry hinterlegt).
         """
         definitions: list[SettingDefinition] = []
-        from elder_berry.web.secrets_api import _REGISTRY_BY_KEY
+        registry_by_key = {entry["key"]: entry for entry in self._secret_registry}
         for key in self.DASHBOARD_SETTING_KEYS:
-            entry = _REGISTRY_BY_KEY.get(key)
+            entry = registry_by_key.get(key)
             if entry is None:
                 logger.warning("Dashboard-Key '%s' nicht in SECRET_REGISTRY", key)
                 continue
