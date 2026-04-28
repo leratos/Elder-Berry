@@ -60,7 +60,6 @@ if TYPE_CHECKING:
     from elder_berry.core.tower_agent import TowerAgent
     from elder_berry.core.secret_store import SecretStore
     from elder_berry.llm.router import LLMRouter
-    from elder_berry.web.secrets_api import SecretRegistryEntry
 
 logger = logging.getLogger(__name__)
 
