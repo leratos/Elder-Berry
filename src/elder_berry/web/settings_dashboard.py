@@ -39,7 +39,6 @@ from fastapi.staticfiles import StaticFiles
 from elder_berry.web.secrets_api import (
     SecretRegistryEntry,
     _REGISTRY_BY_KEY,
-    register_secrets_routes,
 )
 
 __all__ = [
@@ -52,6 +51,12 @@ __all__ = [
 from elder_berry.core.log_sanitize import safe_log
 from elder_berry.web.llm_api import register_llm_routes
 from elder_berry.web.security_middleware import setup_security
+
+
+def register_secrets_routes(*args: Any, **kwargs: Any) -> Any:
+    from elder_berry.web.secrets_api import register_secrets_routes as _register_secrets_routes
+
+    return _register_secrets_routes(*args, **kwargs)
 
 if TYPE_CHECKING:
     from elder_berry.actions.computer_use import ComputerUseController
