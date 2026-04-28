@@ -31,12 +31,12 @@ from fastapi import Body, FastAPI
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
-# Re-Exports fuer Rueckwaertskompatibilitaet. SECRET_REGISTRY NICHT
-# re-exportieren -- secrets_api hat einen TYPE_CHECKING-Cyclic-Import
-# zu settings_dashboard, und CodeQL py/unsafe-cyclic-import flagt
-# die Konstellation als instabil. Tests importieren SECRET_REGISTRY
-# direkt aus secrets_api.
-from elder_berry.web.secrets_api import (
+# Registry-Daten kommen aus dem Leaf-Modul secrets_registry, nicht mehr
+# aus secrets_api. Damit ist der frühere Modul-Zyklus zwischen
+# settings_dashboard und secrets_api aufgelöst (CodeQL
+# py/unsafe-cyclic-import). Tests, die SECRET_REGISTRY weiterhin aus
+# secrets_api importieren, funktionieren über die Re-Exports dort.
+from elder_berry.web.secrets_registry import (
     SecretRegistryEntry,
     _REGISTRY_BY_KEY,
 )
