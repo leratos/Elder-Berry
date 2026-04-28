@@ -26,6 +26,8 @@ import re
 import httpx
 
 if TYPE_CHECKING:
+    import vobject
+
     from elder_berry.core.secret_store import SecretStore
     from elder_berry.tools.contact_store import Contact, ContactStore
 

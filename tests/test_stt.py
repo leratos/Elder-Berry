@@ -1,12 +1,18 @@
 """Tests für STT – TranscriptionResult, STTEngine ABC, FasterWhisperEngine."""
+from __future__ import annotations
+
 import importlib
 import wave
 from pathlib import Path
+from typing import TYPE_CHECKING
 from unittest.mock import MagicMock, patch
 
 import pytest
 
 from elder_berry.stt.base import TranscriptionResult, TranscriptionSegment
+
+if TYPE_CHECKING:
+    from elder_berry.stt.faster_whisper_engine import FasterWhisperEngine
 
 _faster_whisper_installed = importlib.util.find_spec("faster_whisper") is not None
 requires_faster_whisper = pytest.mark.skipif(

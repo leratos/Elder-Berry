@@ -132,7 +132,7 @@ class CommandHandler(ABC):
             service: Anzeigename des Dienstes (z.B. "E-Mail", "Nextcloud").
             setup_step: Optionale Schritt-Nummer im Setup-Wizard.
         """
-        hint = f"Einrichten unter http://localhost:8090/setup"
+        hint = "Einrichten unter http://localhost:8090/setup"
         if setup_step is not None:
             hint += f" (Schritt {setup_step})"
         return CommandResult(

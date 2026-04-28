@@ -479,7 +479,7 @@ class CalDAVTaskClient:
                 f"SUMMARY:{text}",
                 f"CREATED:{now}",
                 f"DTSTAMP:{now}",
-                f"STATUS:NEEDS-ACTION",
+                "STATUS:NEEDS-ACTION",
             ]
 
             ical_prio = _SALERIA_TO_ICAL.get(priority, 0)
