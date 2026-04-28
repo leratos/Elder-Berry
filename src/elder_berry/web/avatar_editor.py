@@ -23,7 +23,6 @@ if TYPE_CHECKING:
     from elder_berry.avatar.layered_renderer import LayeredSpriteRenderer
 
 from elder_berry.avatar import avatar_config_loader
-from elder_berry.avatar.avatar_config_loader import load_avatar_config
 from elder_berry.character.base import Emotion
 
 logger = logging.getLogger(__name__)
@@ -220,14 +219,5 @@ def _validate_config(data: dict) -> str | None:
     breathing = data.get("breathing")
     if breathing and not isinstance(breathing, dict):
         return "breathing muss ein Dictionary sein."
-
-    # Smoke-Test: aktuelle Config-Datei muss parsebar sein. Validiert
-    # die NEUEN Daten nicht (die liegen nur als dict vor, noch nicht
-    # auf der Platte). Mehr als Minimum geht ohne Roundtrip nicht.
-    try:
-        load_avatar_config(DEFAULT_CONFIG_PATH)
-    except Exception as exc:
-        logger.debug("Config-Parsing-Fehler: %s", exc)
-        return "Config-Parsing-Fehler – Details im Log."
 
     return None
