@@ -1,0 +1,43 @@
+# Codecov-Konfiguration -- Phase 74.
+#
+# Schwellen bewusst nicht zu strikt am Anfang. Wir messen erstmal
+# eine Baseline auf main und ziehen die Werte spaeter an, wenn das
+# Bild stabil ist.
+
+coverage:
+  status:
+    project:
+      default:
+        # Project-Coverage darf um max. 1% fallen pro PR.
+        target: auto
+        threshold: 1%
+        if_ci_failed: error
+    patch:
+      default:
+        # Was im Diff dazukommt sollte zumindest grob getestet sein.
+        # 70% statt der Standard-100, weil viele kleine Fixes nichts
+        # zum Testen haben (Doku-Strings, Konstanten-Tweaks).
+        target: 70%
+        threshold: 5%
+        if_ci_failed: error
+
+# Aus dem Coverage-Report ausschliessen:
+# - tests/: triviale Eigen-Coverage, keine Aussagekraft.
+# - scripts/start_*: Entry-Points, werden integration-tested via
+#   ihrer Module, nicht via Unit-Tests.
+# - src/elder_berry/avatar/assets/: nur PNG-Daten.
+# - src/elder_berry/webapp/: Frontend-JS, kein Python-Coverage.
+ignore:
+  - "tests/"
+  - "scripts/start_saleria.py"
+  - "scripts/start_rpi5.py"
+  - "scripts/demo_integration.py"
+  - "scripts/setup_email.py"
+  - "scripts/elder_berry_export.jsx"
+  - "src/elder_berry/avatar/assets/"
+  - "src/elder_berry/webapp/"
+
+comment:
+  layout: "reach, diff, flags, files"
+  behavior: default
+  require_changes: false
