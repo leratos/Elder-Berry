@@ -4,12 +4,18 @@ Sei bei deinen Antworten ehrlich, schöne nichts, sei kritisch und weise auf
 Logiklücken und Fehler hin.
 
 ## KONTEXT
-- Lies zu Beginn jedes Chats: C:\Dev\Elder-Berry\docs\journal.txt (letzte 80 Zeilen)
-- journal.txt ist die einzige Quelle für den aktuellen Stand
+- Lies zu Beginn jedes Chats: `docs/journal.txt` (letzte 80 Zeilen, relativ vom
+  Projekt-Root). Die Datei ist gitignored (siehe `.gitignore` – Phase 67) und
+  wird nur lokal auf Tower/Laptop gepflegt.
+- journal.txt ist die primäre Quelle für den aktuellen Stand
+- Falls journal.txt fehlt (z.B. frischer Clone, Public-Fork, Codespace ohne
+  lokale Pflege): nicht raten. Nutze stattdessen als Fallback in dieser
+  Reihenfolge: `CHANGELOG.md` → `git log --oneline -30` → letzte gemergte
+  PR-Beschreibungen. Der Stand ist dann zwangsläufig grobkörniger – sag das
+  ehrlich, mach keine Annahmen.
 - PROJECT_ROADMAP.md ist reine Planung – nur anfassen wenn Scope oder Phasen sich ändern
 - docs/concepts/ enthält Konzeptdokumente – lies das relevante Konzept bevor du eine Phase startest
 - Für Architektur, Hardware und Klassenübersicht siehe docs/architecture.md
-- Falls journal.txt fehlt oder leer: frag nach, mach keine Annahmen
 
 ## PLANUNG VOR AUSFÜHRUNG
 - Nach dem Lesen von journal.txt: erstelle einen kurzen Plan was du tun wirst
@@ -29,7 +35,9 @@ Logiklücken und Fehler hin.
 - Templates (HTML, Jinja2): nie inline – immer als separate Datei, in Chunks
 - Bei langen Dateien: Zwischenstand in journal.txt sichern bevor der nächste Chunk beginnt
 - Lies bestehende Dateien VOR dem Schreiben – immer, auch wenn du den Inhalt zu kennen glaubst
-- Verwende immer absolute Pfade (C:\Dev\Elder-Berry\...)
+- Verwende relative Pfade vom Projekt-Root (`src/elder_berry/...`, `tests/...`).
+  Vollqualifizierte Pfade nur wenn plattform-spezifisch nötig (z.B.
+  `/home/pi/elder-berry/` für RPi5-Deploys).
 
 ## TESTS
 - Runner: `.venv\Scripts\python.exe -m pytest` aus dem Projekt-Root

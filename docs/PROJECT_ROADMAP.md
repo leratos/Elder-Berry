@@ -1101,13 +1101,28 @@ Konzept: `docs/concepts/phase-55-audioop-migration.md`
 - Globales `timeout = 60` in `[tool.pytest.ini_options]`, damit
   zukünftige Hänger nach 60s zwangsweise abgebrochen werden
 
-## Phase 56 – Nextcloud Tasks als Todo-Backend 📋 GEPLANT
+## Phase 56 – Nextcloud Tasks als Todo-Backend 📋 ✅ ABGESCHLOSSEN
 
 Nextcloud Tasks (CalDAV VTODO) ersetzt den lokalen SQLite-TodoStore.
 Aufgaben werden über DAVx5 aufs Handy synchronisiert. Fälligkeitsdaten
 werden unterstützt ("aufgaben morgen", "todo: Arzt, morgen").
 
 Konzept: `docs/concepts/phase-56-nextcloud-tasks.md`
+
+- ✅ **56.1 CalDAVTaskClient** (`src/elder_berry/tools/caldav_tasks.py`):
+  TaskItem-Dataclass + CalDAVTaskClient, lazy-init, retry, graceful
+  degradation, VTODO-Lesen/Schreiben via `caldav` + `icalendar`.
+- ✅ **56.2 TodoCommandHandler umverdrahtet**: `task_client: CalDAVTaskClient`
+  per Konstruktor, IDs als UUID-Strings + Session-Index für Chat-Usability.
+- ✅ **56.3 Due-Date-Support**: Patterns "todo: X, morgen", "aufgaben
+  morgen/heute/überfällig", Datum-Parsing für Wochentage + DD.MM(.YYYY).
+- ✅ **56.4 BriefingScheduler umgestellt**:
+  `briefing_scheduler.py:402` ruft `task_client.format_for_briefing()`.
+- ✅ **56.5 Migration & Deprecation**: `scripts/migrate_todos_to_nextcloud.py`
+  (einmalige SQLite→CalDAV-Migration), `tools/todo_store.py` mit
+  `.. deprecated:: Phase 56` markiert, Imports aus aktivem Code entfernt.
+- ✅ **Tests**: `tests/test_caldav_tasks.py`, `tests/test_todo_commands.py`
+  auf den neuen Client umgestellt.
 
 ### 56.1 – CalDAVTaskClient
 
@@ -1140,7 +1155,7 @@ Konzept: `docs/concepts/phase-56-nextcloud-tasks.md`
 - TodoStore aus allen Imports entfernen, Datei deprecaten
 
 
-## Phase 57 – Security-Härtung: Loopback, First-Run-Gate, Tower-Auth 🛡️ GEPLANT
+## Phase 57 – Security-Härtung: Loopback, First-Run-Gate, Tower-Auth 🛡️ ✅ ABGESCHLOSSEN
 
 Schließt 4 Sicherheitslücken, die ein Code-Review nach Phase 52 aufgedeckt
 hat. Phase 52 hat die Basis gelegt (Loopback + Token fürs Settings-Panel),
@@ -1148,6 +1163,21 @@ hat. Phase 52 hat die Basis gelegt (Loopback + Token fürs Settings-Panel),
 Wizard-Exemption der Middleware.
 
 Konzept: `docs/concepts/phase-57-security-haertung.md`
+
+- ✅ **57.1** Loopback-Default + Grace-Period: `ELDER_BERRY_SETUP_BIND` /
+  `ELDER_BERRY_TOWER_BIND`, Default `127.0.0.1`. Einmaliger LAN-Bind beim
+  Upgrade-Start (Marker-Datei). Stellen: `scripts/start_saleria.py`
+  (Z. 605, 1413), `src/elder_berry/web/setup_wizard.py:651`.
+- ✅ **57.2** First-Run-Gate für Wizard-Exemption:
+  `SettingsTokenMiddleware` wertet `setup_wizard_completed` aus.
+- ✅ **57.3** Tower-Token + Host-Discovery: Header
+  `X-Saleria-Tower-Token` (`tower/tower_server.py:149`,
+  `src/elder_berry/core/tower_agent.py:35`), neue Secrets
+  `tower_auth_token` + `tower_advertised_host` (auto-generiert beim
+  ersten Start), RobotClient zieht beides aus dem SecretStore.
+- ✅ **57.4** `matrix_allowed_senders` Fail-Closed-Audit:
+  `src/elder_berry/comms/bridge.py:340` – leere/None-Senderliste lehnt
+  Nachrichten ab, Regression-Test `tests/test_allowed_senders_fail_closed.py`.
 
 ### 57.1 – Loopback-Default + Grace-Period für Setup-Wizard und TowerAgent
 
@@ -1230,6 +1260,135 @@ Konzept: `docs/concepts/phase-57-security-haertung.md`
    dauerhafter BC nur für LAN-Dauer-Nutzer)
 4. **57.3 Tower-Token + Host-Discovery** (größter BC, Auto-Migration
    für Token **und** Host)
+
+## Phase 54 – Bull-Berry: Autonomes Investment-Experiment 📊 KONZEPT
+
+Eigenständiges Projekt mit geplanter Schnittstelle zu Saleria. Eigenes
+Repository, separate Codebase. **Kein** Code-Bestandteil von Elder-Berry.
+
+- Konzept: `docs/concepts/phase-54-investment-experiment.md`
+- Status: Konzept-Phase, kein Elder-Berry-Code-Impact.
+
+## Phase 58 – Dashboard-Login + Avatar-Tab 🔐🎭 ✅ ABGESCHLOSSEN
+
+Folge-Phase nach 57. Login-Flow für das Dashboard (`fern.example.com`)
+plus eigener Avatar-Tab im Settings-Panel.
+
+- Konzept: `docs/concepts/phase-58-dashboard-login-avatar.md`
+- PR: #99 (`feature/phase-58-dashboard-login-avatar`)
+
+## Phase 59 – Rate-Limiting & Brute-Force-Schutz 🚦 ✅ ABGESCHLOSSEN
+
+Auth-Endpoints (Dashboard-Login, Setup-Wizard, Tower) bekommen
+IP-basiertes Rate-Limiting + Brute-Force-Erkennung. Security-Events
+landen in `logs/security.log`.
+
+- `RateLimiter` Klasse, `start_rpi5` Robot-Token-Handling als Teil-Scope.
+- PRs: #103 (`feature/phase-59-rate-limiting`), Robot-Token-Regressions
+  in `start_saleria` / `start_rpi5`.
+
+## Phase 60 – IMAP-Gesendet-Ordner ✉️ ✅ ABGESCHLOSSEN
+
+Gesendete E-Mails (Saleria-Antworten via Matrix) werden jetzt zusätzlich
+in den IMAP-`Gesendet`-Ordner kopiert, damit sie im Mail-Client sichtbar
+bleiben. Provider-agnostisch (Gmail "Sent", IMAP "Sent", deutsche
+"Gesendet"-Ordner).
+
+- PR: #104 (`feature/phase-60-sent-folder-copy`)
+
+## Phase 61 – Remote Log-Zugriff via Matrix 📜 ✅ ABGESCHLOSSEN
+
+Neuer Matrix-Command `log` – holt die letzten N Zeilen aus den
+Tower-Logs aufs Handy. Nützlich für Remote-Debugging.
+
+- Neuer `LogCommandHandler` in `src/elder_berry/comms/commands/`.
+- PR: #105 (`feature/phase-61-remote-log-access`)
+
+> **Phase 62**: Nummer übersprungen – kein zugehöriger PR/Branch.
+
+## Phase 63 – CSP-Härtung: `unsafe-inline` raus 🛡️ ✅ ABGESCHLOSSEN
+
+Alle Jinja2-Templates des Web-Stacks auf externe `/static/`-Assets
+migriert; CSP-Header verzichtet auf `unsafe-inline`.
+
+- Konzept: `docs/concepts/security-h2-csp-unsafe-inline.md`
+- Schritte 1+2: StaticFiles-Mount + CSP-Negativtests.
+- Schritt 3: `settings_panel.html` (Pilot).
+- Schritt 4: `audio_dashboard.html`.
+- Schritt 5: `avatar_editor.html`.
+- Schritt 6a: `/api/setup/geocode` als Nominatim-Proxy.
+- Schritt 6b: `setup_wizard.html` (großer Brocken, 27 Inline-Treffer).
+- Schritt 7: CSP verschärft, `'unsafe-inline'` entfernt.
+- Nachtrag: Standalone-Wizard liefert `/static/`-Assets korrekt aus.
+
+## Phase 64 – CSRF/SSRF/Robot-Token Hard-Fail 🛡️ ✅ ABGESCHLOSSEN
+
+Drei "Hoch"-Findings aus dem Security-Review:
+
+- **H-1** Robot-Token Hard-Fail: kein Fallback-Mode mehr, fehlender
+  Token → Server-Start verweigert.
+- **H-2** CSRF-Schutz: SameSite=strict + Origin-Check für
+  state-changing Endpoints.
+- **H-3** SSRF-Schutz: Whitelist für ausgehende Web-Fetches.
+- PR: #112 (`feature/phase-64-security-fixes`)
+
+## Phase 65 – Mittlere Security-Fixes (M-1…M-4) 🔐 ✅ ABGESCHLOSSEN
+
+- **M-1 SecretStore → OS-Keyring**: Fernet-Masterkey wandert aus der
+  Plaintext-Datei in den OS-Keyring (Windows DPAPI, macOS Keychain,
+  Linux Secret Service). Auto-Migration mit Verify-before-Delete.
+  Fallback auf File-Verhalten wenn kein Keyring-Backend verfügbar.
+- **M-2 Git-Command-Whitelist**: `extra_args` für `git log` / `git diff`
+  via Matrix gegen enge Regex-Whitelist validiert (max 10 Tokens).
+  Schützt gegen `--output`, `-o`, `--exec`, `-c core.pager=…`.
+- **M-3 Lockfiles + Dependabot**: `pip-tools>=7.0`, zwei Lockfiles
+  (`requirements-tower.lock`, `requirements-dev.lock`),
+  `scripts/update-lockfiles.{ps1,sh}`. Dependabot weekly mit
+  Security-/Non-Security-Gruppen.
+- **M-4 Globales Logout**: `POST /api/dashboard/logout-all` rotiert
+  das Session-Secret → alle bestehenden Cookies sofort ungültig,
+  aufrufender Client bekommt frisches Cookie.
+- PR: #113 (`feature/phase-65-medium-security`)
+
+## Phase 66 – Robot-Reverse-Proxy 🔁 ✅ ABGESCHLOSSEN
+
+`/api/robot/*` als authentifizierter Reverse-Proxy zum RPi5. Damit
+muss der RPi5 nicht direkt aus dem LAN/VPN erreichbar sein – Tower
+ist der einzige Eintrittspunkt.
+
+- PR: #123 (`feature/phase-66-robot-proxy`)
+
+## Phase 67 – Public-Readiness Audit + Sanitization 🌍 ✅ ABGESCHLOSSEN
+
+Audit-Welle vor dem Public-Release. Mehrere Tranchen:
+
+- Public-Readiness Audit-Tooling (`scripts/check_public_readiness.py`).
+- README-Polish, CHANGELOG für die Public-Story.
+- Deployment-spezifische Setup-Docs entfernt.
+- Matrix-IDs und PII in Tests sanitisiert.
+- Service-Files + Deploy-Script als Templates.
+- **`docs/journal.txt` aus dem Public-Repo entfernt** (lebt nur noch
+  lokal als Workflow-Tool, gitignored).
+- Final cleanup nach Audit.
+- PR: #124 (`feature/phase-67-public-readiness`)
+
+## Phase 73 – Code-Hygiene-Sweep 🧹 ✅ ABGESCHLOSSEN
+
+PR-E der Public-Release-Hygiene-Serie. Reanimation des
+`test_secrets_api`, kleinere Aufräumarbeiten.
+
+- PR: #142
+
+## Phase 74 – Codecov-Integration 📊 ✅ ABGESCHLOSSEN
+
+Coverage-Reporting nach Codecov, getriggert vom Linux-CI-Lauf.
+`codecov.yml` mit zurückhaltenden Schwellen (`target: auto`,
+`threshold: 1%`, Patch-Coverage 70%) – Baseline wird nach 1–2
+Mergewochen angezogen. Frontend-Bundle (`webapp/`) und Entry-Points
+(`scripts/start_*`) aus dem Coverage-Report ausgeschlossen.
+
+- PR: #144
+
 ## Phase 68 – Public-Release-Vorbereitung (laufend)
 
 Vorbereitung des Repos für Public-Release. In kleinen Tranchen, parallel
