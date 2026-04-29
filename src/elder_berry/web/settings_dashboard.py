@@ -34,12 +34,17 @@ from fastapi.staticfiles import StaticFiles
 # Registry-Daten kommen aus dem Leaf-Modul secrets_registry, nicht mehr
 # aus secrets_api. Damit ist der frühere Modul-Zyklus zwischen
 # settings_dashboard und secrets_api aufgelöst (CodeQL
-# py/unsafe-cyclic-import). Tests, die SECRET_REGISTRY weiterhin aus
-# secrets_api importieren, funktionieren über die Re-Exports dort.
+# py/cyclic-import). secrets_api/llm_api nutzen ein lokales Protocol
+# statt eines TYPE_CHECKING-Imports, damit der Zyklus auch in den
+# Annotationen aufgebrochen ist.
+from elder_berry.core.log_sanitize import safe_log
+from elder_berry.web.llm_api import register_llm_routes
+from elder_berry.web.secrets_api import register_secrets_routes
 from elder_berry.web.secrets_registry import (
     SecretRegistryEntry,
     _REGISTRY_BY_KEY,
 )
+from elder_berry.web.security_middleware import setup_security
 
 __all__ = [
     "SettingsDashboard",
@@ -48,15 +53,6 @@ __all__ = [
     "_REGISTRY_BY_KEY",
     "register_secrets_routes",
 ]
-from elder_berry.core.log_sanitize import safe_log
-from elder_berry.web.llm_api import register_llm_routes
-from elder_berry.web.security_middleware import setup_security
-
-
-def register_secrets_routes(*args: Any, **kwargs: Any) -> Any:
-    from elder_berry.web.secrets_api import register_secrets_routes as _register_secrets_routes
-
-    return _register_secrets_routes(*args, **kwargs)
 
 if TYPE_CHECKING:
     from elder_berry.actions.computer_use import ComputerUseController

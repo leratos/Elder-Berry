@@ -5,8 +5,9 @@ Wird von SettingsDashboard eingebunden via ``register_llm_routes()``.
 
 from __future__ import annotations
 
+import asyncio
 import logging
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, Protocol
 
 from fastapi import Body, Request
 from fastapi.responses import JSONResponse
@@ -14,12 +15,22 @@ from fastapi.responses import JSONResponse
 if TYPE_CHECKING:
     from fastapi import FastAPI
 
-    from elder_berry.web.settings_dashboard import SettingsDashboard
-
 logger = logging.getLogger(__name__)
 
 
-def register_llm_routes(app: FastAPI, dashboard: SettingsDashboard) -> None:
+class _DashboardLike(Protocol):
+    """Strukturelles Subset von ``SettingsDashboard``, das die LLM-Routen
+    benötigen. Vermeidet einen Modul-Zyklus mit ``settings_dashboard``
+    (CodeQL ``py/cyclic-import``).
+    """
+
+    LLM_MODE_KEY: str
+    _llm_router: Any
+    _secret_store: Any
+    _write_lock: asyncio.Lock
+
+
+def register_llm_routes(app: FastAPI, dashboard: _DashboardLike) -> None:
     """Registriert die LLM-Status- und Mode-Endpoints auf der FastAPI-App."""
 
     @app.get("/api/llm/status")
