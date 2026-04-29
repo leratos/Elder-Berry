@@ -13,8 +13,9 @@ zwischen ``secrets_api`` und ``settings_dashboard``
 
 from __future__ import annotations
 
+import asyncio
 import logging
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Protocol
 
 from fastapi import Body, Request
 from fastapi.responses import JSONResponse
@@ -32,9 +33,21 @@ from elder_berry.web.secrets_registry import (
 if TYPE_CHECKING:
     from fastapi import FastAPI
 
-    from elder_berry.web.settings_dashboard import SettingsDashboard
-
 logger = logging.getLogger(__name__)
+
+
+class _DashboardLike(Protocol):
+    """Strukturelles Subset von ``SettingsDashboard``, das die Secrets-Routen
+    benötigen. Vermeidet einen Modul-Zyklus mit ``settings_dashboard``
+    (CodeQL ``py/cyclic-import``).
+    """
+
+    _secret_store: Any
+    _secrets_meta: dict[str, dict[str, str]]
+    _write_lock: asyncio.Lock
+
+    def _record_meta(self, key: str) -> None: ...
+    def _notify_change(self, key: str, new_value: str) -> None: ...
 
 __all__ = [
     "SECRET_REGISTRY",
@@ -47,7 +60,7 @@ __all__ = [
 ]
 
 
-def register_secrets_routes(app: FastAPI, dashboard: SettingsDashboard) -> None:
+def register_secrets_routes(app: FastAPI, dashboard: _DashboardLike) -> None:
     """Registriert die Secrets-API-Endpoints auf der FastAPI-App."""
 
     @app.get("/api/secrets/status")
