@@ -48,6 +48,8 @@ jobs:
           # security-and-quality erweitert default (security-extended) um
           # Maintainability-Checks. Lieber mehr Findings, dann triagen.
           queries: security-and-quality
+          # paths-ignore u.a. fuer Adobe ExtendScript (.jsx).
+          config-file: ./.github/codeql/codeql-config.yml
 
       - name: Perform CodeQL Analysis
         uses: github/codeql-action/analyze@v3
