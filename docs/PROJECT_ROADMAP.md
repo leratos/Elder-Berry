@@ -1389,6 +1389,23 @@ Mergewochen angezogen. Frontend-Bundle (`webapp/`) und Entry-Points
 
 - PR: #144
 
+## Phase 75 – Repo-Hygiene 🧹 ✅ ABGESCHLOSSEN
+
+Sediment-Cleanup vor den Modernisierungs-Phasen 76–78. Lokale Branch-Liste
+von 28 auf 2 reduziert (`main` + aktiver Phase-Branch), 14 verwaiste
+Worktrees entfernt, Phase-33-Stash gedroppt, korrupte
+`.git/config`-Tail-Whitespace-Zeile repariert. Versionsbump
+`0.1.0 → 1.0.0-rc1` als Public-Release-Kandidat. `pre-commit`-Setup mit
+`ruff` (Lint), Standard-Checks (EOL, trailing-whitespace, YAML/TOML,
+merge-conflict, large-files) und `check_public_readiness.py` als
+pre-push-Hook. `ruff-format` bewusst auf `manual` stage – Massen-Reformat
+(300 Dateien) gehört in eine eigene Folgephase. 8 EOL/whitespace-Fixes in
+alten Konzept-/Skript-Dateien als Beiprodukt mitgenommen. Zusätzlich
+Konzepte für Phase 76 (mypy), 77 (Plugin-Registry) und 78 (Plugin
+Self-Suggestion) angelegt – Roadmap der nächsten Modernisierungs-Reihe.
+
+- Konzept: `docs/concepts/phase-75-repo-hygiene.md`
+
 ## Phase 68 – Public-Release-Vorbereitung (laufend)
 
 Vorbereitung des Repos für Public-Release. In kleinen Tranchen, parallel

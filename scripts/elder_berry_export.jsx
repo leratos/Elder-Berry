@@ -24,7 +24,7 @@ function showParents(layer) {
 
 function exportLayer(layer) {
     hideAllLayers(doc.layers);
-    
+
     // Ebene selbst + alle Eltern sichtbar
     layer.visible = true;
     showParents(layer);
