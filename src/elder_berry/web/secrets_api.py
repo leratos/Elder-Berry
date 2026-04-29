@@ -46,8 +46,11 @@ class _DashboardLike(Protocol):
     _secrets_meta: dict[str, dict[str, str]]
     _write_lock: asyncio.Lock
 
-    def _record_meta(self, key: str) -> None: ...
-    def _notify_change(self, key: str, new_value: str) -> None: ...
+    def _record_meta(self, key: str) -> None:
+        pass
+
+    def _notify_change(self, key: str, new_value: str) -> None:
+        pass
 
 __all__ = [
     "SECRET_REGISTRY",
