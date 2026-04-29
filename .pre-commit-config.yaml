@@ -1,0 +1,62 @@
+# Phase 75: Pre-Commit-Hooks (lokale Disziplin vor Push).
+#
+# Aktivierung:
+#   pip install pre-commit
+#   pre-commit install
+#   pre-commit install --hook-type pre-push
+#
+# Manuelle Volllauf-Pruefung:
+#   pre-commit run --all-files
+#
+# Notfall-Bypass (sehr sparsam einsetzen):
+#   git commit --no-verify
+repos:
+  # ---------------------------------------------------------------
+  # Ruff: Lint + Format. Identische Regeln wie CI (.github/workflows/
+  # ci.yml, lint-Job). Bricht den Commit, wenn Verstoss vorliegt.
+  # ---------------------------------------------------------------
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.13.0
+    hooks:
+      - id: ruff
+        args:
+          - --select=E9,W605,F401,B
+          - --ignore=B008
+        types_or: [python]
+      # Phase 75: ruff-format auf manual gestellt, weil ein erster Lauf
+      # 300 Dateien reformatieren wuerde -- das gehoert in eine separate
+      # Format-Sweep-Phase (geplant als 75b), nicht hier.
+      # Manueller Aufruf, wenn gewollt:
+      #   pre-commit run --hook-stage manual ruff-format
+      - id: ruff-format
+        types_or: [python]
+        stages: [manual]
+
+  # ---------------------------------------------------------------
+  # Standard-Checks aus dem pre-commit-hooks-Paket.
+  # ---------------------------------------------------------------
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: end-of-file-fixer
+      - id: trailing-whitespace
+        args: [--markdown-linebreak-ext=md]
+      - id: check-yaml
+      - id: check-toml
+      - id: check-merge-conflict
+      - id: check-added-large-files
+        args: [--maxkb=500]
+
+  # ---------------------------------------------------------------
+  # Public-Readiness-Audit (Phase 67/71).
+  # Laeuft NUR pre-push (nicht pre-commit), weil das Scan-Script
+  # ueber das ganze Repo geht und entsprechend Zeit braucht.
+  # ---------------------------------------------------------------
+  - repo: local
+    hooks:
+      - id: public-readiness
+        name: Public-Readiness Audit
+        entry: python scripts/check_public_readiness.py --out -
+        language: system
+        pass_filenames: false
+        stages: [pre-push]

@@ -18,20 +18,20 @@ logger = logging.getLogger(__name__)
 
 class Schedulable(Protocol):
     """Protocol für Objekte die als Background-Scheduler gestartet werden können."""
-    
+
     @property
     def is_running(self) -> bool: ...
-    
+
     def set_callback(self, callback) -> None: ...
-    
+
     def start(self) -> None: ...
-    
+
     def stop(self) -> None: ...
 
 
 class SchedulerManager:
     """Verwaltet Background-Scheduler mit thread-safe Matrix-Callbacks.
-    
+
     Statt dass die Bridge direkt auf private Attribute der Scheduler zugreift,
     registriert der SchedulerManager Callbacks über öffentliche Methoden.
     """
@@ -50,7 +50,7 @@ class SchedulerManager:
     @property
     def loop(self) -> asyncio.AbstractEventLoop | None:
         return self._loop
-    
+
     @loop.setter
     def loop(self, value: asyncio.AbstractEventLoop | None) -> None:
         self._loop = value
@@ -76,7 +76,7 @@ class SchedulerManager:
 
     def register(self, name: str, scheduler, callback_attr: str, prefix: str = "") -> None:
         """Registriert einen Scheduler mit thread-safe Callback.
-        
+
         Args:
             name: Name für Logging
             scheduler: Scheduler-Objekt (muss start()/stop()/is_running haben)

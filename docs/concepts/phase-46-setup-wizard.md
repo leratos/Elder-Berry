@@ -96,7 +96,7 @@ Ollama (lokales LLM, optional):
 ```
 Matrix-Server (Saleria kommuniziert über Matrix):
 
-Homeserver-URL:  [https://matrix.example.com_____] 
+Homeserver-URL:  [https://matrix.example.com_____]
 Bot-User-ID:     [@saleria:example.com____________]
 Access-Token:    [syt_________________________] [?]
 Raum-ID:         [!abc:example.com________________]

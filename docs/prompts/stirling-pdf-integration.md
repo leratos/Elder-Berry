@@ -218,7 +218,7 @@ Jeder Command folgt demselben Muster:
 ```python
 def _resolve_nc_file(self, name: str) -> tuple[Path | None, str]:
     """Sucht Datei in Nextcloud, lädt sie herunter.
-    
+
     Returns:
         (local_path, remote_path) oder (None, error_message)
     """

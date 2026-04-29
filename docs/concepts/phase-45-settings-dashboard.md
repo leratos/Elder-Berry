@@ -921,7 +921,7 @@ class SettingsDashboard:
     @classmethod
     def register_key(cls, entry: SecretRegistryEntry) -> None:
         """Registriert einen weiteren Key in der Registry.
-        
+
         Aufruf idealerweise vor dem Instanziieren des Dashboards,
         z.B. im __init__.py des jeweiligen Moduls.
         """
@@ -955,7 +955,7 @@ class SettingsDashboard:
 
     def on_change(self, key: str, callback: Callable[[str], None]) -> None:
         """Registriert einen Callback für Änderungen an einem Key.
-        
+
         Callback-Signatur: callback(new_value: str) -> None
         """
         self._change_callbacks.setdefault(key, []).append(callback)

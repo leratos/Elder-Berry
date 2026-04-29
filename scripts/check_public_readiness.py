@@ -515,9 +515,20 @@ def main() -> int:
         text = _format_markdown(results, categories, repo_root)
 
     if args.out == "-":
-        sys.stdout.write(text)
-        if not text.endswith("\n"):
-            sys.stdout.write("\n")
+        # Phase 75: Windows-Default-stdout ist CP1252 und kann
+        # Box-Drawing-Zeichen (z.B. U+2551) nicht enkodieren. Wir
+        # zwingen UTF-8 ueber den binaeren stdout-Stream, damit der
+        # pre-push-Hook und CI-Pipes konsistent funktionieren.
+        try:
+            sys.stdout.buffer.write(text.encode("utf-8"))
+            if not text.endswith("\n"):
+                sys.stdout.buffer.write(b"\n")
+            sys.stdout.flush()
+        except AttributeError:
+            # Fallback fuer exotische stdout-Wrapper ohne .buffer
+            sys.stdout.write(text)
+            if not text.endswith("\n"):
+                sys.stdout.write("\n")
     else:
         out_path = (repo_root / args.out).resolve()
         out_path.parent.mkdir(parents=True, exist_ok=True)

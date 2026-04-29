@@ -36,7 +36,7 @@ Nutzer: "antworte auf mail #4523 positiv, bedanke dich für das Angebot"
          ---
          Betreff: Re: Angebot Dachsanierung
          An: info@firma.de
-         
+
          Sehr geehrte Damen und Herren,
          vielen Dank für Ihr Angebot vom ...
          ---
@@ -1013,7 +1013,7 @@ gespeichert. Das Senden nutzt nur SMTP + die gespeicherten Header.
 ### 7.4 SMTP-Fehler beim Senden
 
 `_execute_mail_send()` fängt Exceptions und sendet eine Fehlermeldung.
-Die PendingAction ist bereits gelöscht (bei "confirm" wird `.clear()` 
+Die PendingAction ist bereits gelöscht (bei "confirm" wird `.clear()`
 aufgerufen bevor die Aktion ausgeführt wird).
 **Korrektur**: `.clear()` sollte erst NACH erfolgreichem Senden erfolgen.
 
