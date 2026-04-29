@@ -1,0 +1,14 @@
+# CodeQL-Konfiguration fuer Elder-Berry.
+#
+# Wird von .github/workflows/codeql.yml via `config-file:` referenziert.
+
+name: "Elder-Berry CodeQL Config"
+
+paths-ignore:
+  # Adobe Photoshop ExtendScript -- keine React-JSX-Datei.
+  # Erste Zeile '#target photoshop' ist eine Adobe-Praeprozessor-
+  # Direktive, die CodeQL als JavaScript-Private-Field-Syntax
+  # ausserhalb einer Klasse interpretiert -> Parse-Fehler. Die
+  # Datei laeuft nur lokal in Photoshop und wird weder gebaut
+  # noch ausgeliefert.
+  - 'scripts/elder_berry_export.jsx'
