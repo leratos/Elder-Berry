@@ -23,7 +23,15 @@ logger = logging.getLogger(__name__)
 
 
 class InvalidExternalURLError(ValueError):
-    """URL ist fuer externe Verbindungstests nicht zulaessig."""
+    """URL ist fuer externe Verbindungstests nicht zulaessig.
+
+    ``code`` kennzeichnet die Reject-Kategorie und erlaubt sichere
+    User-Meldungen ohne Echo des User-Inputs (CodeQL py/stack-trace-exposure).
+    """
+
+    def __init__(self, message: str, *, code: str) -> None:
+        super().__init__(message)
+        self.code = code
 
 
 # Zulaessige URL-Schemas und Hostname-Format. SSRF-Schutz fuer den
@@ -37,6 +45,16 @@ _HOSTNAME_RE = re.compile(
     r"\d{1,3}(?:\.\d{1,3}){3})$"
 )
 
+# Kategorisierte User-Meldungen ohne User-Input-Echo. Werden in
+# test_nextcloud anhand des Reject-Codes ausgewaehlt.
+_URL_ERROR_MESSAGES: dict[str, str] = {
+    "missing": "Ungültige Nextcloud-URL: URL fehlt.",
+    "scheme": "Ungültige Nextcloud-URL: ungültiges Schema (nur http/https erlaubt).",
+    "userinfo": "Ungültige Nextcloud-URL: Userinfo (user:pw@) ist nicht erlaubt.",
+    "no_host": "Ungültige Nextcloud-URL: kein Hostname.",
+    "bad_host": "Ungültige Nextcloud-URL: ungültiges Hostname-Format.",
+}
+
 
 def _validate_external_url(url: str) -> str:
     """Prueft ein User-Input-URL fuer externe Tests (SSRF-Schutz).
@@ -46,20 +64,27 @@ def _validate_external_url(url: str) -> str:
     Wirft :class:`InvalidExternalURLError` bei Verstoessen.
     """
     if not isinstance(url, str) or not url.strip():
-        raise InvalidExternalURLError("URL fehlt.")
+        raise InvalidExternalURLError("URL fehlt.", code="missing")
     parsed = urlparse(url.strip())
     if parsed.scheme.lower() not in _ALLOWED_SCHEMES:
         raise InvalidExternalURLError(
             f"Ungueltiges URL-Schema: {parsed.scheme!r}. "
-            "Erlaubt sind nur http und https."
+            "Erlaubt sind nur http und https.",
+            code="scheme",
         )
     if parsed.username or parsed.password:
-        raise InvalidExternalURLError("URL darf keine Userinfo (user:pw@) enthalten.")
+        raise InvalidExternalURLError(
+            "URL darf keine Userinfo (user:pw@) enthalten.",
+            code="userinfo",
+        )
     host = parsed.hostname or ""
     if not host:
-        raise InvalidExternalURLError("URL hat keinen Hostname.")
+        raise InvalidExternalURLError("URL hat keinen Hostname.", code="no_host")
     if not _HOSTNAME_RE.match(host):
-        raise InvalidExternalURLError(f"Hostname {host!r} hat ein ungueltiges Format.")
+        raise InvalidExternalURLError(
+            f"Hostname {host!r} hat ein ungueltiges Format.",
+            code="bad_host",
+        )
     return url.strip()
 
 
@@ -142,7 +167,7 @@ class SetupTests:
             return {
                 **results,
                 "success": False,
-                "error": "Ungültige Nextcloud-URL.",
+                "error": _URL_ERROR_MESSAGES.get(exc.code, "Ungültige Nextcloud-URL."),
             }
         auth = (user, password)
         base = safe_url.rstrip("/")

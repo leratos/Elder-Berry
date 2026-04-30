@@ -319,6 +319,12 @@ def register_setup_wizard_routes(app: FastAPI, secret_store: SecretStore) -> Non
         try:
             result = await _run_single_test(service, body)
             return JSONResponse(result)
+        except _MissingParamError as e:
+            logging.warning("Setup service test validation failed: %s", e)
+            return JSONResponse(
+                {"error": "Pflichtfeld fehlt für den Diensttest."},
+                status_code=400,
+            )
         except ValueError as e:
             logging.warning("Setup service test validation failed: %s", e)
             return JSONResponse(
@@ -583,16 +589,20 @@ async def _run_email_tests(secret_store: SecretStore) -> dict[str, Any]:
     }
 
 
+class _MissingParamError(ValueError):
+    """Pflichtfeld fehlt im Setup-Wizard-Diensttest. Param-Name nur fuers Log."""
+
+
 async def _run_single_test(service: str, params: dict[str, Any]) -> dict[str, Any]:
     """Führt einen einzelnen Verbindungstest aus."""
     if service == "anthropic":
         if "api_key" not in params:
-            raise ValueError("api_key fehlt")
+            raise _MissingParamError("api_key fehlt")
         return await SetupTests.test_anthropic(params["api_key"])
     if service == "matrix":
         for k in ("homeserver", "user_id", "token"):
             if k not in params:
-                raise ValueError(f"{k} fehlt")
+                raise _MissingParamError(f"{k} fehlt")
         return await SetupTests.test_matrix(
             params["homeserver"],
             params["user_id"],
@@ -602,14 +612,14 @@ async def _run_single_test(service: str, params: dict[str, Any]) -> dict[str, An
     if service == "nextcloud":
         for k in ("url", "user", "password"):
             if k not in params:
-                raise ValueError(f"{k} fehlt")
+                raise _MissingParamError(f"{k} fehlt")
         return await SetupTests.test_nextcloud(
             params["url"], params["user"], params["password"]
         )
     if service == "email":
         for k in ("imap_host", "smtp_host", "user", "password"):
             if k not in params:
-                raise ValueError(f"{k} fehlt")
+                raise _MissingParamError(f"{k} fehlt")
         return await SetupTests.test_email(
             params["imap_host"],
             int(params.get("imap_port", 993)),
@@ -622,15 +632,15 @@ async def _run_single_test(service: str, params: dict[str, Any]) -> dict[str, An
         return SetupTests.test_ollama()
     if service == "brave":
         if "api_key" not in params:
-            raise ValueError("api_key fehlt")
+            raise _MissingParamError("api_key fehlt")
         return await SetupTests.test_brave(params["api_key"])
     if service == "groq":
         if "api_key" not in params:
-            raise ValueError("api_key fehlt")
+            raise _MissingParamError("api_key fehlt")
         return await SetupTests.test_groq(params["api_key"])
     if service == "google_maps":
         if "api_key" not in params:
-            raise ValueError("api_key fehlt")
+            raise _MissingParamError("api_key fehlt")
         return await SetupTests.test_google_maps(params["api_key"])
     raise ValueError(f"Unbekannter Service: {service}")
 
