@@ -777,9 +777,7 @@ def _init_productivity_services(secrets, default_user_id):
             cal = CalDAVCalendarClient(secret_store=secrets)
             if cal.is_available():
                 calendar_client = cal
-                logger.info(
-                    "Calendar: Nextcloud CalDAV (%s)", secrets.get("nextcloud_url")
-                )
+                logger.info("Calendar: Nextcloud CalDAV konfiguriert")
         except ImportError:
             logger.debug("CalDAV: caldav-Library nicht installiert")
         except Exception as e:

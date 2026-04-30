@@ -320,7 +320,11 @@ def register_setup_wizard_routes(app: FastAPI, secret_store: SecretStore) -> Non
             result = await _run_single_test(service, body)
             return JSONResponse(result)
         except ValueError as e:
-            return JSONResponse({"error": str(e)}, status_code=400)
+            logging.warning("Setup service test validation failed: %s", e)
+            return JSONResponse(
+                {"error": "Ungültige Eingaben für den Diensttest."},
+                status_code=400,
+            )
 
     @app.post("/api/setup/dashboard-password")
     async def setup_dashboard_password(body: dict = Body(...)):
