@@ -1,4 +1,5 @@
 """Tests: MessageChannel ABC, IncomingMessage DTO, MatrixBridge, Command-Routing, ClaudeAgent-Routing."""
+
 import asyncio
 import time
 from pathlib import Path
@@ -21,14 +22,16 @@ from elder_berry.core.assistant import AssistantResult
 # die explizit eine andere Whitelist prüfen (z.B. Block-Verhalten für
 # ``@unknown:test``), überschreiben den Default per Keyword-Argument –
 # ``dict.setdefault`` lässt vorhandene Werte unangetastet.
-_DEFAULT_TEST_SENDERS = frozenset({
-    "@a:x",
-    "@b:x",
-    "@u:x",
-    "@user:example.com",
-    "@user:test",
-    "@user:x",
-})
+_DEFAULT_TEST_SENDERS = frozenset(
+    {
+        "@a:x",
+        "@b:x",
+        "@u:x",
+        "@user:example.com",
+        "@user:test",
+        "@user:x",
+    }
+)
 
 
 class MatrixBridge(_RealMatrixBridge):
@@ -43,6 +46,7 @@ class MatrixBridge(_RealMatrixBridge):
 # Helper: async in sync ausführen (kein pytest-asyncio nötig)
 # ---------------------------------------------------------------------------
 
+
 def run_async(coro):
     """Führt eine Coroutine synchron aus (für Tests ohne pytest-asyncio)."""
     return asyncio.run(coro)
@@ -51,6 +55,7 @@ def run_async(coro):
 # ---------------------------------------------------------------------------
 # Mock-Implementierung des MessageChannel ABC
 # ---------------------------------------------------------------------------
+
 
 class MockChannel(MessageChannel):
     """Testbare Implementierung des MessageChannel."""
@@ -103,6 +108,7 @@ class MockChannel(MessageChannel):
 # IncomingMessage DTO
 # ---------------------------------------------------------------------------
 
+
 class TestIncomingMessage:
     def test_creation(self):
         msg = IncomingMessage(
@@ -119,7 +125,10 @@ class TestIncomingMessage:
 
     def test_frozen(self):
         msg = IncomingMessage(
-            sender="@u:x", room_id="!r:x", body="hi", timestamp=0.0,
+            sender="@u:x",
+            room_id="!r:x",
+            body="hi",
+            timestamp=0.0,
         )
         with pytest.raises(AttributeError):
             msg.body = "changed"
@@ -127,8 +136,11 @@ class TestIncomingMessage:
     def test_with_raw_data(self):
         raw = {"event_id": "$abc123"}
         msg = IncomingMessage(
-            sender="@u:x", room_id="!r:x", body="hi",
-            timestamp=0.0, raw=raw,
+            sender="@u:x",
+            room_id="!r:x",
+            body="hi",
+            timestamp=0.0,
+            raw=raw,
         )
         assert msg.raw == {"event_id": "$abc123"}
 
@@ -145,6 +157,7 @@ class TestIncomingMessage:
 # ---------------------------------------------------------------------------
 # MessageChannel ABC
 # ---------------------------------------------------------------------------
+
 
 class TestMessageChannelABC:
     def test_cannot_instantiate_abc(self):
@@ -191,7 +204,10 @@ class TestMessageChannelABC:
             channel.on_message(lambda msg: received.append(msg))
 
             msg = IncomingMessage(
-                sender="@u:x", room_id="!r:x", body="test", timestamp=1.0,
+                sender="@u:x",
+                room_id="!r:x",
+                body="test",
+                timestamp=1.0,
             )
             for cb in channel._callbacks:
                 result = cb(msg)
@@ -219,7 +235,10 @@ class TestMessageChannelABC:
             channel.on_message(cb_b)
 
             msg = IncomingMessage(
-                sender="@u:x", room_id="!r:x", body="multi", timestamp=1.0,
+                sender="@u:x",
+                room_id="!r:x",
+                body="multi",
+                timestamp=1.0,
             )
             await channel.simulate_message(msg)
 
@@ -232,6 +251,7 @@ class TestMessageChannelABC:
 # ---------------------------------------------------------------------------
 # MatrixBridge
 # ---------------------------------------------------------------------------
+
 
 class TestMatrixBridge:
     def _make_assistant_mock(self, response_text="Antwort", emotion="neutral"):
@@ -292,7 +312,9 @@ class TestMatrixBridge:
             channel.on_message(bridge._handle_message)
 
             msg = IncomingMessage(
-                sender="@user:x", room_id="!room:x", body="Hi Saleria",
+                sender="@user:x",
+                room_id="!room:x",
+                body="Hi Saleria",
                 timestamp=time.time(),
             )
             await bridge._handle_message(msg)
@@ -326,13 +348,16 @@ class TestMatrixBridge:
             converter.to_ogg_opus.return_value = (ogg_file, 1000)
 
             bridge = MatrixBridge(
-                channel=channel, assistant=assistant,
+                channel=channel,
+                assistant=assistant,
                 audio_converter=converter,
             )
             await channel.connect()
 
             msg = IncomingMessage(
-                sender="@u:x", room_id="!r:x", body="Sag was",
+                sender="@u:x",
+                room_id="!r:x",
+                body="Sag was",
                 timestamp=time.time(),
             )
             await bridge._handle_message(msg)
@@ -355,7 +380,10 @@ class TestMatrixBridge:
             await channel.connect()
 
             msg = IncomingMessage(
-                sender="@u:x", room_id="!r:x", body="Hi", timestamp=1.0,
+                sender="@u:x",
+                room_id="!r:x",
+                body="Hi",
+                timestamp=1.0,
             )
             await bridge._handle_message(msg)
 
@@ -373,7 +401,10 @@ class TestMatrixBridge:
             await channel.connect()
 
             msg = IncomingMessage(
-                sender="@u:x", room_id="!r:x", body="test", timestamp=1.0,
+                sender="@u:x",
+                room_id="!r:x",
+                body="test",
+                timestamp=1.0,
             )
             await bridge._handle_message(msg)
 
@@ -390,7 +421,10 @@ class TestMatrixBridge:
             await channel.connect()
 
             msg = IncomingMessage(
-                sender="@u:x", room_id="!r:x", body="test", timestamp=1.0,
+                sender="@u:x",
+                room_id="!r:x",
+                body="test",
+                timestamp=1.0,
             )
             await bridge._handle_message(msg)
 
@@ -418,6 +452,7 @@ class TestMatrixBridge:
 # MatrixBridge – Command-Routing (Phase 7)
 # ---------------------------------------------------------------------------
 
+
 class TestBridgeCommandRouting:
     def _make_assistant_mock(self, response_text="LLM Antwort"):
         assistant = MagicMock()
@@ -433,12 +468,15 @@ class TestBridgeCommandRouting:
         handler = MagicMock(spec=RemoteCommandHandler)
         handler.parse_command.return_value = command
         handler.execute.return_value = result or CommandResult(
-            command=command or "status", success=True, text="OK",
+            command=command or "status",
+            success=True,
+            text="OK",
         )
         return handler
 
     def test_command_routed_to_handler(self):
         """Direkter Command wird an RemoteCommandHandler delegiert, nicht an Assistant."""
+
         async def _test():
             channel = MockChannel()
             assistant = self._make_assistant_mock()
@@ -447,12 +485,17 @@ class TestBridgeCommandRouting:
                 result=CommandResult(command="status", success=True, text="CPU: 25%"),
             )
             bridge = MatrixBridge(
-                channel=channel, assistant=assistant, remote_commands=handler,
+                channel=channel,
+                assistant=assistant,
+                remote_commands=handler,
             )
             await channel.connect()
 
             msg = IncomingMessage(
-                sender="@user:x", room_id="!r:x", body="status", timestamp=1.0,
+                sender="@user:x",
+                room_id="!r:x",
+                body="status",
+                timestamp=1.0,
             )
             await bridge._handle_message(msg)
 
@@ -468,17 +511,22 @@ class TestBridgeCommandRouting:
 
     def test_non_command_falls_through_to_assistant(self):
         """Normaler Text wird an Assistant delegiert (kein Command)."""
+
         async def _test():
             channel = MockChannel()
             assistant = self._make_assistant_mock("Hallo!")
             handler = self._make_remote_handler(command=None)  # Kein Command erkannt
             bridge = MatrixBridge(
-                channel=channel, assistant=assistant, remote_commands=handler,
+                channel=channel,
+                assistant=assistant,
+                remote_commands=handler,
             )
             await channel.connect()
 
             msg = IncomingMessage(
-                sender="@user:x", room_id="!r:x", body="Was ist los?",
+                sender="@user:x",
+                room_id="!r:x",
+                body="Was ist los?",
                 timestamp=1.0,
             )
             await bridge._handle_message(msg)
@@ -495,6 +543,7 @@ class TestBridgeCommandRouting:
 
     def test_screenshot_sends_image(self, tmp_path):
         """Screenshot-Command sendet Bild über send_image."""
+
         async def _test():
             channel = MockChannel()
             assistant = self._make_assistant_mock()
@@ -505,18 +554,23 @@ class TestBridgeCommandRouting:
             handler = self._make_remote_handler(
                 command="screenshot",
                 result=CommandResult(
-                    command="screenshot", success=True,
+                    command="screenshot",
+                    success=True,
                     text="Screenshot aufgenommen.",
                     image_path=img_path,
                 ),
             )
             bridge = MatrixBridge(
-                channel=channel, assistant=assistant, remote_commands=handler,
+                channel=channel,
+                assistant=assistant,
+                remote_commands=handler,
             )
             await channel.connect()
 
             msg = IncomingMessage(
-                sender="@user:x", room_id="!r:x", body="screenshot",
+                sender="@user:x",
+                room_id="!r:x",
+                body="screenshot",
                 timestamp=1.0,
             )
             await bridge._handle_message(msg)
@@ -530,6 +584,7 @@ class TestBridgeCommandRouting:
 
     def test_no_handler_falls_through(self):
         """Ohne RemoteCommandHandler wird alles an Assistant delegiert."""
+
         async def _test():
             channel = MockChannel()
             assistant = self._make_assistant_mock("Antwort")
@@ -537,7 +592,9 @@ class TestBridgeCommandRouting:
             await channel.connect()
 
             msg = IncomingMessage(
-                sender="@user:x", room_id="!r:x", body="status",
+                sender="@user:x",
+                room_id="!r:x",
+                body="status",
                 timestamp=1.0,
             )
             await bridge._handle_message(msg)
@@ -550,6 +607,7 @@ class TestBridgeCommandRouting:
 
     def test_command_error_sends_error_message(self):
         """Fehler bei Command-Ausführung wird als Fehlermeldung gesendet."""
+
         async def _test():
             channel = MockChannel()
             assistant = self._make_assistant_mock()
@@ -557,12 +615,16 @@ class TestBridgeCommandRouting:
             handler.parse_command.return_value = "status"
             handler.execute.side_effect = RuntimeError("psutil kaputt")
             bridge = MatrixBridge(
-                channel=channel, assistant=assistant, remote_commands=handler,
+                channel=channel,
+                assistant=assistant,
+                remote_commands=handler,
             )
             await channel.connect()
 
             msg = IncomingMessage(
-                sender="@user:x", room_id="!r:x", body="status",
+                sender="@user:x",
+                room_id="!r:x",
+                body="status",
                 timestamp=1.0,
             )
             await bridge._handle_message(msg)
@@ -576,6 +638,7 @@ class TestBridgeCommandRouting:
 
     def test_send_file_routes_file(self, tmp_path):
         """send_file Command sendet Datei über send_file."""
+
         async def _test():
             channel = MockChannel()
             assistant = self._make_assistant_mock()
@@ -586,19 +649,24 @@ class TestBridgeCommandRouting:
             handler = self._make_remote_handler(
                 command="send_file",
                 result=CommandResult(
-                    command="send_file", success=True,
+                    command="send_file",
+                    success=True,
                     text="Datei wird gesendet: test.pdf (0.1 KB)",
                     file_path=file_path,
                 ),
             )
             bridge = MatrixBridge(
-                channel=channel, assistant=assistant, remote_commands=handler,
+                channel=channel,
+                assistant=assistant,
+                remote_commands=handler,
             )
             await channel.connect()
 
             msg = IncomingMessage(
-                sender="@user:x", room_id="!r:x",
-                body=f"schick mir {file_path}", timestamp=1.0,
+                sender="@user:x",
+                room_id="!r:x",
+                body=f"schick mir {file_path}",
+                timestamp=1.0,
             )
             await bridge._handle_message(msg)
 
@@ -612,11 +680,13 @@ class TestBridgeCommandRouting:
 
     def test_send_file_not_implemented_fallback(self, tmp_path):
         """send_file NotImplementedError → Fallback-Text."""
+
         async def _test():
             channel = MockChannel()
 
             async def raise_not_impl(room_id, path):
                 raise NotImplementedError("not supported")
+
             channel.send_file = raise_not_impl
 
             assistant = self._make_assistant_mock()
@@ -627,19 +697,24 @@ class TestBridgeCommandRouting:
             handler = self._make_remote_handler(
                 command="send_file",
                 result=CommandResult(
-                    command="send_file", success=True,
+                    command="send_file",
+                    success=True,
                     text="Datei wird gesendet.",
                     file_path=file_path,
                 ),
             )
             bridge = MatrixBridge(
-                channel=channel, assistant=assistant, remote_commands=handler,
+                channel=channel,
+                assistant=assistant,
+                remote_commands=handler,
             )
             await channel.connect()
 
             msg = IncomingMessage(
-                sender="@user:x", room_id="!r:x",
-                body=f"schick mir {file_path}", timestamp=1.0,
+                sender="@user:x",
+                room_id="!r:x",
+                body=f"schick mir {file_path}",
+                timestamp=1.0,
             )
             await bridge._handle_message(msg)
 
@@ -650,41 +725,51 @@ class TestBridgeCommandRouting:
 
     def test_send_image_not_implemented_fallback(self):
         """Wenn send_image NotImplementedError wirft, kommt ein Fallback-Text."""
+
         async def _test():
             channel = MockChannel()
+
             # send_image wirft NotImplementedError
             async def raise_not_impl(room_id, path):
                 raise NotImplementedError("not supported")
+
             channel.send_image = raise_not_impl
 
             assistant = self._make_assistant_mock()
             handler = self._make_remote_handler(
                 command="screenshot",
                 result=CommandResult(
-                    command="screenshot", success=True,
+                    command="screenshot",
+                    success=True,
                     text="Screenshot aufgenommen.",
                     image_path=Path("/tmp/fake.png"),
                 ),
             )
             bridge = MatrixBridge(
-                channel=channel, assistant=assistant, remote_commands=handler,
+                channel=channel,
+                assistant=assistant,
+                remote_commands=handler,
             )
             await channel.connect()
 
             # Fake-Bild erstellen damit exists() True ergibt
             import tempfile
+
             with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as f:
                 f.write(b"fake")
                 fake_path = Path(f.name)
 
             handler.execute.return_value = CommandResult(
-                command="screenshot", success=True,
+                command="screenshot",
+                success=True,
                 text="Screenshot aufgenommen.",
                 image_path=fake_path,
             )
 
             msg = IncomingMessage(
-                sender="@user:x", room_id="!r:x", body="screenshot",
+                sender="@user:x",
+                room_id="!r:x",
+                body="screenshot",
                 timestamp=1.0,
             )
             await bridge._handle_message(msg)
@@ -702,13 +787,18 @@ class TestBridgeCommandRouting:
 # MatrixBridge.extract_claude_message – Keyword-Routing (Phase 7 Schritt 3)
 # ---------------------------------------------------------------------------
 
+
 class TestExtractClaudeMessage:
     def test_claude_with_quotes(self):
-        result = MatrixBridge.extract_claude_message('Sag Claude bitte "Dokumentiere X im Journal"')
+        result = MatrixBridge.extract_claude_message(
+            'Sag Claude bitte "Dokumentiere X im Journal"'
+        )
         assert result == "Dokumentiere X im Journal"
 
     def test_claude_lowercase(self):
-        result = MatrixBridge.extract_claude_message('claude "Was war der letzte Schritt?"')
+        result = MatrixBridge.extract_claude_message(
+            'claude "Was war der letzte Schritt?"'
+        )
         assert result == "Was war der letzte Schritt?"
 
     def test_claude_uppercase(self):
@@ -736,13 +826,16 @@ class TestExtractClaudeMessage:
         assert result is None
 
     def test_first_quoted_text_extracted(self):
-        result = MatrixBridge.extract_claude_message('Claude "erster Auftrag" und "zweiter"')
+        result = MatrixBridge.extract_claude_message(
+            'Claude "erster Auftrag" und "zweiter"'
+        )
         assert result == "erster Auftrag"
 
 
 # ---------------------------------------------------------------------------
 # MatrixBridge – ClaudeAgent-Routing (Phase 7 Schritt 3)
 # ---------------------------------------------------------------------------
+
 
 class TestBridgeClaudeAgentRouting:
     def _make_assistant_mock(self, response_text="LLM Antwort"):
@@ -754,8 +847,13 @@ class TestBridgeClaudeAgentRouting:
         )
         return assistant
 
-    def _make_claude_agent(self, summary="Agent-Antwort", details=None,
-                           action_taken="answer_only", success=True):
+    def _make_claude_agent(
+        self,
+        summary="Agent-Antwort",
+        details=None,
+        action_taken="answer_only",
+        success=True,
+    ):
         """Erstellt einen Mock-ClaudeAgent."""
         agent = MagicMock()
         agent.process.return_value = AgentResult(
@@ -768,6 +866,7 @@ class TestBridgeClaudeAgentRouting:
 
     def test_claude_keyword_routes_to_agent(self):
         """'claude' + Anführungszeichen → ClaudeAgent."""
+
         async def _test():
             channel = MockChannel()
             assistant = self._make_assistant_mock()
@@ -777,14 +876,18 @@ class TestBridgeClaudeAgentRouting:
                 summary="Journal aktualisiert.",
             )
             bridge = MatrixBridge(
-                channel=channel, assistant=assistant,
-                remote_commands=handler, claude_agent=claude_agent,
+                channel=channel,
+                assistant=assistant,
+                remote_commands=handler,
+                claude_agent=claude_agent,
             )
             await channel.connect()
 
             msg = IncomingMessage(
-                sender="@user:x", room_id="!r:x",
-                body='Claude "Dokumentiere X im Journal"', timestamp=1.0,
+                sender="@user:x",
+                room_id="!r:x",
+                body='Claude "Dokumentiere X im Journal"',
+                timestamp=1.0,
             )
             await bridge._handle_message(msg)
 
@@ -799,6 +902,7 @@ class TestBridgeClaudeAgentRouting:
 
     def test_no_claude_keyword_goes_to_llm(self):
         """Ohne 'claude' Keyword → direkt an lokales LLM."""
+
         async def _test():
             channel = MockChannel()
             assistant = self._make_assistant_mock("Saleria antwortet!")
@@ -806,14 +910,18 @@ class TestBridgeClaudeAgentRouting:
             handler.parse_command.return_value = None
             claude_agent = self._make_claude_agent()
             bridge = MatrixBridge(
-                channel=channel, assistant=assistant,
-                remote_commands=handler, claude_agent=claude_agent,
+                channel=channel,
+                assistant=assistant,
+                remote_commands=handler,
+                claude_agent=claude_agent,
             )
             await channel.connect()
 
             msg = IncomingMessage(
-                sender="@user:x", room_id="!r:x",
-                body="Wie geht's dir?", timestamp=1.0,
+                sender="@user:x",
+                room_id="!r:x",
+                body="Wie geht's dir?",
+                timestamp=1.0,
             )
             await bridge._handle_message(msg)
 
@@ -827,19 +935,23 @@ class TestBridgeClaudeAgentRouting:
 
     def test_claude_without_quotes_goes_to_llm(self):
         """'claude' ohne Anführungszeichen → lokales LLM."""
+
         async def _test():
             channel = MockChannel()
             assistant = self._make_assistant_mock("LLM Antwort")
             claude_agent = self._make_claude_agent()
             bridge = MatrixBridge(
-                channel=channel, assistant=assistant,
+                channel=channel,
+                assistant=assistant,
                 claude_agent=claude_agent,
             )
             await channel.connect()
 
             msg = IncomingMessage(
-                sender="@user:x", room_id="!r:x",
-                body="Claude mach mal was", timestamp=1.0,
+                sender="@user:x",
+                room_id="!r:x",
+                body="Claude mach mal was",
+                timestamp=1.0,
             )
             await bridge._handle_message(msg)
 
@@ -850,23 +962,30 @@ class TestBridgeClaudeAgentRouting:
 
     def test_command_still_routed_to_handler_not_agent(self):
         """Commands gehen weiter an RemoteCommandHandler, nicht an ClaudeAgent."""
+
         async def _test():
             channel = MockChannel()
             assistant = self._make_assistant_mock()
             handler = MagicMock(spec=RemoteCommandHandler)
             handler.parse_command.return_value = "status"
             handler.execute.return_value = CommandResult(
-                command="status", success=True, text="CPU: 10%",
+                command="status",
+                success=True,
+                text="CPU: 10%",
             )
             claude_agent = self._make_claude_agent()
             bridge = MatrixBridge(
-                channel=channel, assistant=assistant,
-                remote_commands=handler, claude_agent=claude_agent,
+                channel=channel,
+                assistant=assistant,
+                remote_commands=handler,
+                claude_agent=claude_agent,
             )
             await channel.connect()
 
             msg = IncomingMessage(
-                sender="@user:x", room_id="!r:x", body="status",
+                sender="@user:x",
+                room_id="!r:x",
+                body="status",
                 timestamp=1.0,
             )
             await bridge._handle_message(msg)
@@ -879,20 +998,24 @@ class TestBridgeClaudeAgentRouting:
 
     def test_no_claude_agent_falls_to_assistant(self):
         """Ohne ClaudeAgent geht alles an Assistant (auch mit 'claude' keyword)."""
+
         async def _test():
             channel = MockChannel()
             assistant = self._make_assistant_mock("Lokale Antwort")
             handler = MagicMock(spec=RemoteCommandHandler)
             handler.parse_command.return_value = None
             bridge = MatrixBridge(
-                channel=channel, assistant=assistant,
+                channel=channel,
+                assistant=assistant,
                 remote_commands=handler,
             )
             await channel.connect()
 
             msg = IncomingMessage(
-                sender="@user:x", room_id="!r:x",
-                body='Claude "test"', timestamp=1.0,
+                sender="@user:x",
+                room_id="!r:x",
+                body='Claude "test"',
+                timestamp=1.0,
             )
             await bridge._handle_message(msg)
 
@@ -902,6 +1025,7 @@ class TestBridgeClaudeAgentRouting:
 
     def test_claude_agent_with_details(self):
         """ClaudeAgent-Antwort mit Details sendet zwei Nachrichten."""
+
         async def _test():
             channel = MockChannel()
             assistant = self._make_assistant_mock()
@@ -911,14 +1035,17 @@ class TestBridgeClaudeAgentRouting:
                 action_taken="read_file",
             )
             bridge = MatrixBridge(
-                channel=channel, assistant=assistant,
+                channel=channel,
+                assistant=assistant,
                 claude_agent=claude_agent,
             )
             await channel.connect()
 
             msg = IncomingMessage(
-                sender="@user:x", room_id="!r:x",
-                body='Claude "Zeig CLAUDE.md"', timestamp=1.0,
+                sender="@user:x",
+                room_id="!r:x",
+                body='Claude "Zeig CLAUDE.md"',
+                timestamp=1.0,
             )
             await bridge._handle_message(msg)
 
@@ -930,6 +1057,7 @@ class TestBridgeClaudeAgentRouting:
 
     def test_claude_agent_screenshot_sends_image(self, tmp_path):
         """ClaudeAgent-Screenshot sendet Bild über send_image."""
+
         async def _test():
             channel = MockChannel()
             assistant = self._make_assistant_mock()
@@ -943,14 +1071,17 @@ class TestBridgeClaudeAgentRouting:
                 action_taken="screenshot",
             )
             bridge = MatrixBridge(
-                channel=channel, assistant=assistant,
+                channel=channel,
+                assistant=assistant,
                 claude_agent=claude_agent,
             )
             await channel.connect()
 
             msg = IncomingMessage(
-                sender="@user:x", room_id="!r:x",
-                body='Claude "Mach ein Screenshot"', timestamp=1.0,
+                sender="@user:x",
+                room_id="!r:x",
+                body='Claude "Mach ein Screenshot"',
+                timestamp=1.0,
             )
             await bridge._handle_message(msg)
 
@@ -961,20 +1092,24 @@ class TestBridgeClaudeAgentRouting:
 
     def test_claude_agent_error_sends_error_message(self):
         """Fehler bei ClaudeAgent wird als Fehlermeldung gesendet."""
+
         async def _test():
             channel = MockChannel()
             assistant = self._make_assistant_mock()
             claude_agent = MagicMock()
             claude_agent.process.side_effect = RuntimeError("API kaputt")
             bridge = MatrixBridge(
-                channel=channel, assistant=assistant,
+                channel=channel,
+                assistant=assistant,
                 claude_agent=claude_agent,
             )
             await channel.connect()
 
             msg = IncomingMessage(
-                sender="@user:x", room_id="!r:x",
-                body='Claude "Test"', timestamp=1.0,
+                sender="@user:x",
+                room_id="!r:x",
+                body='Claude "Test"',
+                timestamp=1.0,
             )
             await bridge._handle_message(msg)
 
@@ -984,10 +1119,10 @@ class TestBridgeClaudeAgentRouting:
         run_async(_test())
 
 
-
 # ---------------------------------------------------------------------------
 # MatrixBridge – Error-Alerting via ErrorCollector
 # ---------------------------------------------------------------------------
+
 
 class TestBridgeErrorLogging:
     """Prüft dass Bridge-Fehler via logger.error() geloggt werden (statt _log_error)."""
@@ -995,7 +1130,8 @@ class TestBridgeErrorLogging:
     def _make_assistant_mock(self):
         assistant = MagicMock()
         assistant.process.return_value = AssistantResult(
-            response="ok", emotion="neutral",
+            response="ok",
+            emotion="neutral",
             action_executed=None,
             action_success=False,
         )
@@ -1003,6 +1139,7 @@ class TestBridgeErrorLogging:
 
     def test_command_exception_logs_error(self):
         """Exception bei Command erzeugt logger.error() mit extra-Kontext."""
+
         async def _test():
             channel = MockChannel()
             assistant = self._make_assistant_mock()
@@ -1010,13 +1147,16 @@ class TestBridgeErrorLogging:
             handler.parse_command.return_value = "status"
             handler.execute.side_effect = RuntimeError("psutil kaputt")
             bridge = MatrixBridge(
-                channel=channel, assistant=assistant,
+                channel=channel,
+                assistant=assistant,
                 remote_commands=handler,
             )
             await channel.connect()
 
             msg = IncomingMessage(
-                sender="@user:x", room_id="!r:x", body="status",
+                sender="@user:x",
+                room_id="!r:x",
+                body="status",
                 timestamp=1.0,
             )
             with patch("elder_berry.comms.message_handlers.logger") as mock_logger:
@@ -1030,23 +1170,28 @@ class TestBridgeErrorLogging:
 
     def test_failed_command_logs_error(self):
         """success=False bei Command erzeugt logger.error()."""
+
         async def _test():
             channel = MockChannel()
             assistant = self._make_assistant_mock()
             handler = MagicMock(spec=RemoteCommandHandler)
             handler.parse_command.return_value = "status"
             handler.execute.return_value = CommandResult(
-                command="status", success=False,
+                command="status",
+                success=False,
                 text="SystemMonitor nicht verfügbar.",
             )
             bridge = MatrixBridge(
-                channel=channel, assistant=assistant,
+                channel=channel,
+                assistant=assistant,
                 remote_commands=handler,
             )
             await channel.connect()
 
             msg = IncomingMessage(
-                sender="@user:x", room_id="!r:x", body="status",
+                sender="@user:x",
+                room_id="!r:x",
+                body="status",
                 timestamp=1.0,
             )
             with patch("elder_berry.comms.message_handlers.logger") as mock_logger:
@@ -1059,17 +1204,21 @@ class TestBridgeErrorLogging:
 
     def test_llm_error_logs_with_handler_extra(self):
         """LLM-Fehler erzeugt logger.error() mit handler=llm."""
+
         async def _test():
             channel = MockChannel()
             assistant = MagicMock()
             assistant.process.side_effect = RuntimeError("Ollama down")
             bridge = MatrixBridge(
-                channel=channel, assistant=assistant,
+                channel=channel,
+                assistant=assistant,
             )
             await channel.connect()
 
             msg = IncomingMessage(
-                sender="@user:x", room_id="!r:x", body="Hallo",
+                sender="@user:x",
+                room_id="!r:x",
+                body="Hallo",
                 timestamp=1.0,
             )
             with patch("elder_berry.comms.message_handlers.logger") as mock_logger:
@@ -1082,22 +1231,28 @@ class TestBridgeErrorLogging:
 
     def test_no_error_on_success(self):
         """Erfolgreicher Command erzeugt keinen logger.error()."""
+
         async def _test():
             channel = MockChannel()
             assistant = self._make_assistant_mock()
             handler = MagicMock(spec=RemoteCommandHandler)
             handler.parse_command.return_value = "status"
             handler.execute.return_value = CommandResult(
-                command="status", success=True, text="CPU: 25%",
+                command="status",
+                success=True,
+                text="CPU: 25%",
             )
             bridge = MatrixBridge(
-                channel=channel, assistant=assistant,
+                channel=channel,
+                assistant=assistant,
                 remote_commands=handler,
             )
             await channel.connect()
 
             msg = IncomingMessage(
-                sender="@user:x", room_id="!r:x", body="status",
+                sender="@user:x",
+                room_id="!r:x",
+                body="status",
                 timestamp=1.0,
             )
             with patch("elder_berry.comms.bridge.logger") as mock_logger:
@@ -1155,11 +1310,15 @@ class TestBridgeAlertMonitor:
         bridge._running = True
         # SchedulerManager simulieren: AlertMonitor registrieren
         from elder_berry.comms.scheduler_manager import SchedulerManager
+
         bridge._scheduler_mgr = SchedulerManager(
-            channel=channel, room_id="!test:matrix.org",
+            channel=channel,
+            room_id="!test:matrix.org",
         )
         bridge._scheduler_mgr.register(
-            "AlertMonitor", alert_monitor, "_send_alert",
+            "AlertMonitor",
+            alert_monitor,
+            "_send_alert",
         )
         bridge.stop()
 
@@ -1169,6 +1328,7 @@ class TestBridgeAlertMonitor:
 # ---------------------------------------------------------------------------
 # Restart-Flag + Notification
 # ---------------------------------------------------------------------------
+
 
 class TestRestartNotification:
     """Tests für Restart-Flag und Startup-Benachrichtigung."""
@@ -1183,10 +1343,13 @@ class TestRestartNotification:
         RESTART_FLAG_FILE.unlink(missing_ok=True)
 
         from unittest.mock import patch as _patch
-        with _patch("elder_berry.comms.restart_manager.os.execv"), \
-             _patch("elder_berry.comms.restart_manager.os._exit"), \
-             _patch("elder_berry.comms.restart_manager.subprocess.Popen", create=True), \
-             _patch("elder_berry.comms.restart_manager.sys.exit"):
+
+        with (
+            _patch("elder_berry.comms.restart_manager.os.execv"),
+            _patch("elder_berry.comms.restart_manager.os._exit"),
+            _patch("elder_berry.comms.restart_manager.subprocess.Popen", create=True),
+            _patch("elder_berry.comms.restart_manager.sys.exit"),
+        ):
             run_async(perform_restart(channel, None, "!test:room"))
 
         assert RESTART_FLAG_FILE.exists()
@@ -1197,7 +1360,10 @@ class TestRestartNotification:
 
     def test_send_restart_notification_sends_message(self):
         """send_restart_notification sendet Nachricht wenn Flag existiert."""
-        from elder_berry.comms.restart_manager import RESTART_FLAG_FILE, send_restart_notification
+        from elder_berry.comms.restart_manager import (
+            RESTART_FLAG_FILE,
+            send_restart_notification,
+        )
 
         channel = MockChannel()
         channel._connected = True
@@ -1215,7 +1381,10 @@ class TestRestartNotification:
 
     def test_send_restart_notification_noop_without_flag(self):
         """Ohne Flag-Datei passiert nichts."""
-        from elder_berry.comms.restart_manager import RESTART_FLAG_FILE, send_restart_notification
+        from elder_berry.comms.restart_manager import (
+            RESTART_FLAG_FILE,
+            send_restart_notification,
+        )
 
         RESTART_FLAG_FILE.unlink(missing_ok=True)
 
@@ -1233,8 +1402,10 @@ class TestRestartNotification:
         mock_handler = MagicMock()
         mock_handler.parse_command.return_value = "restart"
         mock_handler.execute.return_value = CommandResult(
-            command="restart", success=True,
-            text="Starte neu...", restart=True,
+            command="restart",
+            success=True,
+            text="Starte neu...",
+            restart=True,
         )
 
         bridge = MatrixBridge(
@@ -1245,12 +1416,17 @@ class TestRestartNotification:
         bridge._running = True
 
         msg = IncomingMessage(
-            sender="@user:test", room_id="!room:test",
-            body="restart", timestamp=0.0,
+            sender="@user:test",
+            room_id="!room:test",
+            body="restart",
+            timestamp=0.0,
         )
 
         from unittest.mock import patch as _patch, AsyncMock
-        with _patch("elder_berry.comms.restart_manager.perform_restart", new_callable=AsyncMock) as mock_restart:
+
+        with _patch(
+            "elder_berry.comms.restart_manager.perform_restart", new_callable=AsyncMock
+        ) as mock_restart:
             run_async(bridge._handle_message(msg))
 
         # Text wurde gesendet
@@ -1265,25 +1441,35 @@ class TestRestartNotification:
 # IncomingMessage – audio_data Feld
 # ---------------------------------------------------------------------------
 
+
 class TestIncomingMessageAudio:
     def test_audio_data_default_none(self):
         msg = IncomingMessage(
-            sender="@u:x", room_id="!r:x", body="voice.ogg", timestamp=0.0,
+            sender="@u:x",
+            room_id="!r:x",
+            body="voice.ogg",
+            timestamp=0.0,
         )
         assert msg.audio_data is None
 
     def test_audio_data_set(self):
         data = b"\x00\x01\x02\x03"
         msg = IncomingMessage(
-            sender="@u:x", room_id="!r:x", body="voice.ogg",
-            timestamp=0.0, audio_data=data,
+            sender="@u:x",
+            room_id="!r:x",
+            body="voice.ogg",
+            timestamp=0.0,
+            audio_data=data,
         )
         assert msg.audio_data == data
 
     def test_audio_data_immutable(self):
         msg = IncomingMessage(
-            sender="@u:x", room_id="!r:x", body="hi",
-            timestamp=0.0, audio_data=b"test",
+            sender="@u:x",
+            room_id="!r:x",
+            body="hi",
+            timestamp=0.0,
+            audio_data=b"test",
         )
         with pytest.raises(AttributeError):
             msg.audio_data = b"other"
@@ -1293,10 +1479,16 @@ class TestIncomingMessageAudio:
 # MatrixBridge – Audio-Routing (STT)
 # ---------------------------------------------------------------------------
 
-def _make_audio_msg(body: str = "voice.ogg", data: bytes = b"\x00" * 16) -> IncomingMessage:
+
+def _make_audio_msg(
+    body: str = "voice.ogg", data: bytes = b"\x00" * 16
+) -> IncomingMessage:
     return IncomingMessage(
-        sender="@user:test", room_id="!room:test",
-        body=body, timestamp=0.0, audio_data=data,
+        sender="@user:test",
+        room_id="!room:test",
+        body=body,
+        timestamp=0.0,
+        audio_data=data,
     )
 
 
@@ -1315,9 +1507,11 @@ class TestBridgeAudioRouting:
         run_async(bridge._handle_message(_make_audio_msg()))
 
         assert len(channel._sent_texts) == 1
-        assert "nicht unterstützt" in channel._sent_texts[0][1].lower() or \
-               "stt" in channel._sent_texts[0][1].lower() or \
-               "sprachnachrichten" in channel._sent_texts[0][1].lower()
+        assert (
+            "nicht unterstützt" in channel._sent_texts[0][1].lower()
+            or "stt" in channel._sent_texts[0][1].lower()
+            or "sprachnachrichten" in channel._sent_texts[0][1].lower()
+        )
 
     def test_audio_message_routed_before_commands(self):
         """Audio-Nachrichten werden NICHT an RemoteCommandHandler weitergeleitet."""
@@ -1364,12 +1558,16 @@ class TestBridgeAudioRouting:
             with tempfile.NamedTemporaryFile(suffix=".ogg", delete=False) as f:
                 tmp_name = f.name
 
-            with _patch.object(mock_stt, "transcribe", return_value=TranscriptionResult(text="")):
+            with _patch.object(
+                mock_stt, "transcribe", return_value=TranscriptionResult(text="")
+            ):
                 # Direkt _handle_audio_message aufrufen mit echtem tmp-file-Flow
                 msg = _make_audio_msg()
 
                 # Patch NamedTemporaryFile um unsere Datei zu nutzen
-                with _patch("elder_berry.comms.audio_pipeline.tempfile.NamedTemporaryFile") as mock_tmp:
+                with _patch(
+                    "elder_berry.comms.audio_pipeline.tempfile.NamedTemporaryFile"
+                ) as mock_tmp:
                     mock_file = MagicMock()
                     mock_file.name = tmp_name
                     mock_file.__enter__ = lambda s: s
@@ -1399,12 +1597,16 @@ class TestBridgeAudioRouting:
 
         mock_assistant = MagicMock()
         mock_assistant.process.return_value = AssistantResult(
-            response="Hallo!", action_executed=None, action_success=False,
+            response="Hallo!",
+            action_executed=None,
+            action_success=False,
         )
 
         mock_stt = MagicMock()
         mock_stt.transcribe.return_value = TranscriptionResult(
-            text="Wie geht es dir?", language="de", confidence=0.95,
+            text="Wie geht es dir?",
+            language="de",
+            confidence=0.95,
         )
 
         bridge = MatrixBridge(channel=channel, assistant=mock_assistant, stt=mock_stt)
@@ -1415,7 +1617,9 @@ class TestBridgeAudioRouting:
         with tempfile.NamedTemporaryFile(suffix=".ogg", delete=False) as f:
             tmp_name = f.name
 
-        with _patch("elder_berry.comms.audio_pipeline.tempfile.NamedTemporaryFile") as mock_tmp:
+        with _patch(
+            "elder_berry.comms.audio_pipeline.tempfile.NamedTemporaryFile"
+        ) as mock_tmp:
             mock_file = MagicMock()
             mock_file.name = tmp_name
             mock_file.__enter__ = lambda s: s
@@ -1456,7 +1660,9 @@ class TestBridgeAudioRouting:
         with tempfile.NamedTemporaryFile(suffix=".ogg", delete=False) as f:
             tmp_name = f.name
 
-        with _patch("elder_berry.comms.audio_pipeline.tempfile.NamedTemporaryFile") as mock_tmp:
+        with _patch(
+            "elder_berry.comms.audio_pipeline.tempfile.NamedTemporaryFile"
+        ) as mock_tmp:
             mock_file = MagicMock()
             mock_file.name = tmp_name
             mock_file.__enter__ = lambda s: s
@@ -1471,8 +1677,10 @@ class TestBridgeAudioRouting:
             pass
 
         assert len(channel._sent_texts) == 1
-        assert "fehler" in channel._sent_texts[0][1].lower() or \
-               "error" in channel._sent_texts[0][1].lower()
+        assert (
+            "fehler" in channel._sent_texts[0][1].lower()
+            or "error" in channel._sent_texts[0][1].lower()
+        )
 
     def test_audio_message_allowed_sender(self):
         """Audio-Nachrichten werden durch Sender-Whitelist gefiltert."""
@@ -1490,8 +1698,11 @@ class TestBridgeAudioRouting:
 
         # Nicht erlaubter Sender
         msg = IncomingMessage(
-            sender="@unknown:test", room_id="!room:test",
-            body="voice.ogg", timestamp=0.0, audio_data=b"\x00",
+            sender="@unknown:test",
+            room_id="!room:test",
+            body="voice.ogg",
+            timestamp=0.0,
+            audio_data=b"\x00",
         )
         run_async(bridge._handle_message(msg))
 
@@ -1513,6 +1724,7 @@ class TestBridgeChatHistory:
 
     def test_chat_history_passed_to_assistant(self):
         """Chat-History wird als dritter Parameter an assistant.process übergeben."""
+
         async def _test():
             channel = MockChannel()
             assistant = self._make_assistant_mock("Antwort 1")
@@ -1520,7 +1732,9 @@ class TestBridgeChatHistory:
             await channel.connect()
 
             msg = IncomingMessage(
-                sender="@user:x", room_id="!r:x", body="Hallo",
+                sender="@user:x",
+                room_id="!r:x",
+                body="Hallo",
                 timestamp=1.0,
             )
             await bridge._handle_message(msg)
@@ -1529,30 +1743,36 @@ class TestBridgeChatHistory:
             assistant.process.assert_called_once()
             args = assistant.process.call_args[0]
             assert args[0] == "Hallo"  # user_input
-            assert args[1] is None     # audio_output
+            assert args[1] is None  # audio_output
             assert "Hallo" in args[2]  # chat_history enthält die Nachricht
 
         run_async(_test())
 
     def test_command_result_stored_in_history(self):
         """Command-Ergebnisse werden in der Chat-History gespeichert."""
+
         async def _test():
             channel = MockChannel()
             assistant = self._make_assistant_mock()
             handler = MagicMock(spec=RemoteCommandHandler)
             handler.parse_command.return_value = "mails"
             handler.execute.return_value = CommandResult(
-                command="mails", success=True,
+                command="mails",
+                success=True,
                 text="3 ungelesene Mails",
             )
             bridge = MatrixBridge(
-                channel=channel, assistant=assistant, remote_commands=handler,
+                channel=channel,
+                assistant=assistant,
+                remote_commands=handler,
             )
             await channel.connect()
 
             # Command ausführen
             msg1 = IncomingMessage(
-                sender="@user:x", room_id="!r:x", body="mails",
+                sender="@user:x",
+                room_id="!r:x",
+                body="mails",
                 timestamp=1.0,
             )
             await bridge._handle_message(msg1)
@@ -1569,6 +1789,7 @@ class TestBridgeChatHistory:
 
     def test_assistant_response_stored_in_history(self):
         """LLM-Antworten werden in der Chat-History gespeichert."""
+
         async def _test():
             channel = MockChannel()
             assistant = self._make_assistant_mock("Ich bin Saleria!")
@@ -1576,7 +1797,9 @@ class TestBridgeChatHistory:
             await channel.connect()
 
             msg = IncomingMessage(
-                sender="@user:x", room_id="!r:x", body="Wer bist du?",
+                sender="@user:x",
+                room_id="!r:x",
+                body="Wer bist du?",
                 timestamp=1.0,
             )
             await bridge._handle_message(msg)
@@ -1590,6 +1813,7 @@ class TestBridgeChatHistory:
 
     def test_multi_turn_context_grows(self):
         """Mehrere Nachrichten bauen Kontext auf."""
+
         async def _test():
             channel = MockChannel()
             assistant = self._make_assistant_mock("OK")
@@ -1598,7 +1822,8 @@ class TestBridgeChatHistory:
 
             for i in range(3):
                 msg = IncomingMessage(
-                    sender="@user:x", room_id="!r:x",
+                    sender="@user:x",
+                    room_id="!r:x",
                     body=f"Nachricht {i}",
                     timestamp=float(i),
                 )
@@ -1612,8 +1837,10 @@ class TestBridgeChatHistory:
 
     def test_file_paths_sent(self):
         """file_paths (z.B. Mail-Anhänge) werden via send_file gesendet."""
+
         async def _test():
             import tempfile
+
             channel = MockChannel()
             assistant = self._make_assistant_mock()
             handler = MagicMock(spec=RemoteCommandHandler)
@@ -1621,24 +1848,31 @@ class TestBridgeChatHistory:
 
             # Temp-Datei erstellen
             tmp = tempfile.NamedTemporaryFile(
-                suffix=".pdf", delete=False,
+                suffix=".pdf",
+                delete=False,
             )
             tmp.write(b"PDF content")
             tmp.close()
             tmp_path = Path(tmp.name)
 
             handler.execute.return_value = CommandResult(
-                command="mail_attachment", success=True,
-                text="1 Anhang", file_paths=[tmp_path],
+                command="mail_attachment",
+                success=True,
+                text="1 Anhang",
+                file_paths=[tmp_path],
             )
             bridge = MatrixBridge(
-                channel=channel, assistant=assistant, remote_commands=handler,
+                channel=channel,
+                assistant=assistant,
+                remote_commands=handler,
             )
             await channel.connect()
 
             msg = IncomingMessage(
-                sender="@user:x", room_id="!r:x",
-                body="mail anhang 42", timestamp=1.0,
+                sender="@user:x",
+                room_id="!r:x",
+                body="mail anhang 42",
+                timestamp=1.0,
             )
             await bridge._handle_message(msg)
 
@@ -1664,7 +1898,9 @@ class TestBridgeAudioRouter:
         assistant = MagicMock()
         router = AudioRouter(local_available=True)
         bridge = MatrixBridge(
-            channel=channel, assistant=assistant, audio_router=router,
+            channel=channel,
+            assistant=assistant,
+            audio_router=router,
         )
         assert bridge._audio._audio_router is router
 
@@ -1683,7 +1919,9 @@ class TestBridgeAudioRouter:
         assistant = MagicMock()
         router = AudioRouter(local_available=True)
         bridge = MatrixBridge(
-            channel=channel, assistant=assistant, audio_router=router,
+            channel=channel,
+            assistant=assistant,
+            audio_router=router,
         )
         bridge._audio._play_audio_local = MagicMock()
 

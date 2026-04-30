@@ -2,6 +2,7 @@
 
 Extrahiert aus remote_commands.py (Refactoring).
 """
+
 from __future__ import annotations
 
 import logging
@@ -9,7 +10,11 @@ import re
 from datetime import datetime, timedelta
 from typing import TYPE_CHECKING, Callable
 
-from elder_berry.comms.commands.base import CommandHandler, CommandResult, user_friendly_error
+from elder_berry.comms.commands.base import (
+    CommandHandler,
+    CommandResult,
+    user_friendly_error,
+)
 
 if TYPE_CHECKING:
     from elder_berry.comms.briefing_scheduler import BriefingScheduler
@@ -36,7 +41,9 @@ WEATHER_PATTERN = re.compile(
 _WEATHER_TIME_WORDS = r"(?:morgen|heute|übermorgen|uebermorgen|woche|draußen)"
 WEATHER_LOCATION_PATTERN = re.compile(
     r"(?:wetter|temperatur).*?(?:\s+in\s+([A-ZÄÖÜa-zäöüß][\w\s\-]+?)"
-    r"|\s+(?!" + _WEATHER_TIME_WORDS + r"(?:\s|$))([A-ZÄÖÜ][\wäöüß\-]+(?:\s+[A-ZÄÖÜ][\wäöüß\-]+)*))"
+    r"|\s+(?!"
+    + _WEATHER_TIME_WORDS
+    + r"(?:\s|$))([A-ZÄÖÜ][\wäöüß\-]+(?:\s+[A-ZÄÖÜ][\wäöüß\-]+)*))"
     r"(?:\s+(?:morgen|heute|übermorgen|uebermorgen|woche|\d{1,2}))?$",
     re.IGNORECASE,
 )
@@ -176,35 +183,68 @@ class WeatherCommandHandler(CommandHandler):
     def keywords(self) -> dict[str, list[str]]:
         return {
             "training": [
-                "letztes training", "wie war mein training", "trainings woche",
-                "was habe ich trainiert", "gym", "berry-gym", "fitness",
-                "workout", "trainingsplan",
+                "letztes training",
+                "wie war mein training",
+                "trainings woche",
+                "was habe ich trainiert",
+                "gym",
+                "berry-gym",
+                "fitness",
+                "workout",
+                "trainingsplan",
             ],
             "prs": [
-                "personal record", "personal records", "bestleistung",
-                "bestleistungen", "rekorde",
+                "personal record",
+                "personal records",
+                "bestleistung",
+                "bestleistungen",
+                "rekorde",
             ],
             "wetter": [
-                "wie ist das wetter", "wie ist heute das wetter",
-                "wie wird das wetter", "wetter draußen", "regnet es",
-                "temperatur", "brauche ich einen schirm",
-                "brauche ich eine jacke", "wie warm", "wie kalt",
-                "wettervorhersage", "prognose", "regen", "sonnig",
-                "sonne", "gewitter", "schnee", "regenschirm",
-                "friert es", "wird es kalt", "wird es warm",
+                "wie ist das wetter",
+                "wie ist heute das wetter",
+                "wie wird das wetter",
+                "wetter draußen",
+                "regnet es",
+                "temperatur",
+                "brauche ich einen schirm",
+                "brauche ich eine jacke",
+                "wie warm",
+                "wie kalt",
+                "wettervorhersage",
+                "prognose",
+                "regen",
+                "sonnig",
+                "sonne",
+                "gewitter",
+                "schnee",
+                "regenschirm",
+                "friert es",
+                "wird es kalt",
+                "wird es warm",
                 "soll ich eine jacke mitnehmen",
-                "wie warm ist es", "wie kalt ist es",
+                "wie warm ist es",
+                "wie kalt ist es",
                 "wetter in ",
             ],
             "erinnerungen": [
-                "meine erinnerungen", "offene timer", "was steht an timer",
-                "welche erinnerungen", "ausstehende erinnerungen",
-                "laufende timer", "aktive erinnerungen",
+                "meine erinnerungen",
+                "offene timer",
+                "was steht an timer",
+                "welche erinnerungen",
+                "ausstehende erinnerungen",
+                "laufende timer",
+                "aktive erinnerungen",
             ],
             "briefing": [
-                "guten morgen", "was steht heute an", "tagesübersicht",
-                "daily briefing", "morgen briefing", "was gibt's neues",
-                "was gibt es neues", "tagesbriefing",
+                "guten morgen",
+                "was steht heute an",
+                "tagesübersicht",
+                "daily briefing",
+                "morgen briefing",
+                "was gibt's neues",
+                "was gibt es neues",
+                "tagesbriefing",
             ],
         }
 
@@ -263,13 +303,23 @@ class WeatherCommandHandler(CommandHandler):
 
             # Auch aus Location-Texten den Zeitparameter extrahieren
             if not param:
-                for keyword in ("übermorgen", "uebermorgen", "morgen", "heute", "woche"):
+                for keyword in (
+                    "übermorgen",
+                    "uebermorgen",
+                    "morgen",
+                    "heute",
+                    "woche",
+                ):
                     if keyword in normalized:
                         param = keyword
                         break
 
             if param in ("übermorgen", "uebermorgen"):
-                forecasts = self._weather.get_days(3) if location is None else self._weather.get_days(3, location=location)
+                forecasts = (
+                    self._weather.get_days(3)
+                    if location is None
+                    else self._weather.get_days(3, location=location)
+                )
                 if len(forecasts) >= 3:
                     text = self._weather.format_forecast([forecasts[2]])
                 else:
@@ -277,7 +327,11 @@ class WeatherCommandHandler(CommandHandler):
                 return CommandResult(command="wetter", success=True, text=text)
 
             if param == "morgen":
-                forecasts = self._weather.get_days(2) if location is None else self._weather.get_days(2, location=location)
+                forecasts = (
+                    self._weather.get_days(2)
+                    if location is None
+                    else self._weather.get_days(2, location=location)
+                )
                 if len(forecasts) >= 2:
                     text = self._weather.format_forecast([forecasts[1]])
                 else:
@@ -285,7 +339,11 @@ class WeatherCommandHandler(CommandHandler):
                 return CommandResult(command="wetter", success=True, text=text)
 
             if param == "woche":
-                forecasts = self._weather.get_days(7) if location is None else self._weather.get_days(7, location=location)
+                forecasts = (
+                    self._weather.get_days(7)
+                    if location is None
+                    else self._weather.get_days(7, location=location)
+                )
                 text = self._weather.format_forecast(forecasts)
                 return CommandResult(command="wetter", success=True, text=text)
 
@@ -298,7 +356,11 @@ class WeatherCommandHandler(CommandHandler):
 
             if match and match.group(2):
                 days = int(match.group(2))
-                forecasts = self._weather.get_days(days) if location is None else self._weather.get_days(days, location=location)
+                forecasts = (
+                    self._weather.get_days(days)
+                    if location is None
+                    else self._weather.get_days(days, location=location)
+                )
                 text = self._weather.format_forecast(forecasts)
                 return CommandResult(command="wetter", success=True, text=text)
 
@@ -318,7 +380,8 @@ class WeatherCommandHandler(CommandHandler):
             )
 
     def _extract_location(
-        self, raw_text: str,
+        self,
+        raw_text: str,
     ) -> tuple[str, str, str] | None:
         """Extrahiert Ort aus Freitext und geocodet ihn.
 
@@ -349,16 +412,19 @@ class WeatherCommandHandler(CommandHandler):
         """Timer setzen: 'timer 20 min' -> Erinnerung in 20 Minuten."""
         if not self._reminder_store:
             return CommandResult(
-                command="timer", success=False,
+                command="timer",
+                success=False,
                 text="Erinnerungen nicht verfügbar.",
             )
 
         try:
             from datetime import timezone
+
             match = TIMER_PATTERN.match(raw_text.strip().lower())
             if not match:
                 return CommandResult(
-                    command="timer", success=False,
+                    command="timer",
+                    success=False,
                     text="Timer nicht erkannt. Beispiel: timer 20 min",
                 )
 
@@ -372,13 +438,15 @@ class WeatherCommandHandler(CommandHandler):
 
             local_time = due.astimezone()
             return CommandResult(
-                command="timer", success=True,
+                command="timer",
+                success=True,
                 text=f"\u23f0 Timer gesetzt: {amount} {unit} (fällig um {local_time.strftime('%H:%M')})",
             )
 
         except Exception as e:
             return CommandResult(
-                command="timer", success=False,
+                command="timer",
+                success=False,
                 text=user_friendly_error(e, "Timer"),
             )
 
@@ -386,23 +454,26 @@ class WeatherCommandHandler(CommandHandler):
         """Erinnerung setzen: Uhrzeit oder Dauer + optionale Nachricht."""
         if not self._reminder_store:
             return CommandResult(
-                command="reminder", success=False,
+                command="reminder",
+                success=False,
                 text="Erinnerungen nicht verfügbar.",
             )
 
         try:
             from datetime import timedelta, timezone, date as date_cls
+
             match = REMINDER_PATTERN.match(raw_text.strip().lower())
             if not match:
                 return CommandResult(
-                    command="reminder", success=False,
+                    command="reminder",
+                    success=False,
                     text="Nicht erkannt. Beispiel: erinnere mich um 18:00: Wäsche\n"
-                         "Oder: erinnere mich in 30 min: Kuchen aus dem Ofen",
+                    "Oder: erinnere mich in 30 min: Kuchen aus dem Ofen",
                 )
 
-            time_str = match.group(1)    # "18:00" oder None
+            time_str = match.group(1)  # "18:00" oder None
             amount_str = match.group(2)  # "2" oder None
-            unit = match.group(3)        # "stunden" oder None
+            unit = match.group(3)  # "stunden" oder None
             message = match.group(4) or "Erinnerung"
 
             if time_str:
@@ -410,9 +481,11 @@ class WeatherCommandHandler(CommandHandler):
                 hour, minute = map(int, time_str.split(":"))
                 today = date_cls.today()
                 from zoneinfo import ZoneInfo
+
                 local_tz = ZoneInfo(self._get_timezone())
-                due = datetime(today.year, today.month, today.day, hour, minute,
-                               tzinfo=local_tz)
+                due = datetime(
+                    today.year, today.month, today.day, hour, minute, tzinfo=local_tz
+                )
                 # Wenn Uhrzeit schon vorbei: morgen
                 if due < datetime.now(local_tz):
                     due += timedelta(days=1)
@@ -426,13 +499,15 @@ class WeatherCommandHandler(CommandHandler):
             local_time = due.astimezone()
 
             return CommandResult(
-                command="reminder", success=True,
+                command="reminder",
+                success=True,
                 text=f"\u23f0 Erinnerung gesetzt: {message.strip()} (fällig: {local_time.strftime('%d.%m. %H:%M')})",
             )
 
         except Exception as e:
             return CommandResult(
-                command="reminder", success=False,
+                command="reminder",
+                success=False,
                 text=user_friendly_error(e, "Erinnerung"),
             )
 
@@ -440,7 +515,8 @@ class WeatherCommandHandler(CommandHandler):
         """Offene Erinnerungen anzeigen."""
         if not self._reminder_store:
             return CommandResult(
-                command="erinnerungen", success=False,
+                command="erinnerungen",
+                success=False,
                 text="Erinnerungen nicht verfügbar.",
             )
 
@@ -452,7 +528,8 @@ class WeatherCommandHandler(CommandHandler):
         """Erinnerung löschen: einzeln per ID oder alle."""
         if not self._reminder_store:
             return CommandResult(
-                command="reminder_delete", success=False,
+                command="reminder_delete",
+                success=False,
                 text="Erinnerungen nicht verfügbar.",
             )
 
@@ -465,14 +542,15 @@ class WeatherCommandHandler(CommandHandler):
                 count = len(reminders)
                 if count == 0:
                     return CommandResult(
-                        command="reminder_delete", success=True,
+                        command="reminder_delete",
+                        success=True,
                         text="✅ Keine offenen Erinnerungen vorhanden.",
                     )
                 return CommandResult(
                     command="reminder_delete",
                     success=True,
                     text=f"🗑️ {count} Erinnerung{'en' if count != 1 else ''} "
-                         "löschen? Bestätige mit 'ja'.",
+                    "löschen? Bestätige mit 'ja'.",
                     pending_confirmation=True,
                     pending_data={
                         "action_type": "bulk_delete_reminders",
@@ -488,18 +566,21 @@ class WeatherCommandHandler(CommandHandler):
                     rid = int(id_str)
                     self._reminder_store.cancel(rid)
                     return CommandResult(
-                        command="reminder_delete", success=True,
+                        command="reminder_delete",
+                        success=True,
                         text=f"\u2705 Erinnerung #{rid} gelöscht.",
                     )
 
             return CommandResult(
-                command="reminder_delete", success=False,
+                command="reminder_delete",
+                success=False,
                 text="Welche Erinnerung? Nutze: lösche erinnerung <ID> oder lösche alle erinnerungen",
             )
 
         except Exception as e:
             return CommandResult(
-                command="reminder_delete", success=False,
+                command="reminder_delete",
+                success=False,
                 text=user_friendly_error(e, "Erinnerung löschen"),
             )
 
@@ -507,7 +588,8 @@ class WeatherCommandHandler(CommandHandler):
         """Führt das Löschen aller Erinnerungen nach Bestätigung aus."""
         count = self._reminder_store.cancel_all("_timer_user")
         return CommandResult(
-            command="reminder_delete", success=True,
+            command="reminder_delete",
+            success=True,
             text=f"✅ {count} Erinnerung{'en' if count != 1 else ''} gelöscht.",
         )
 
@@ -519,7 +601,8 @@ class WeatherCommandHandler(CommandHandler):
         """Wiederkehrende Erinnerung setzen."""
         if not self._reminder_store:
             return CommandResult(
-                command="recurring_reminder", success=False,
+                command="recurring_reminder",
+                success=False,
                 text="Erinnerungen nicht verfügbar.",
             )
 
@@ -568,29 +651,38 @@ class WeatherCommandHandler(CommandHandler):
                 return self._create_recurring(message, due, f"monthly:{day}")
 
             return CommandResult(
-                command="recurring_reminder", success=False,
+                command="recurring_reminder",
+                success=False,
                 text="Format nicht erkannt. Beispiel: erinnere mich jeden montag um 9:00: Wochenbericht",
             )
 
         except Exception as e:
             return CommandResult(
-                command="recurring_reminder", success=False,
+                command="recurring_reminder",
+                success=False,
                 text=user_friendly_error(e, "Wiederkehrende Erinnerung"),
             )
 
     def _create_recurring(
-        self, message: str, due: datetime, recurrence: str,
+        self,
+        message: str,
+        due: datetime,
+        recurrence: str,
     ) -> CommandResult:
         """Erstellt eine wiederkehrende Erinnerung im Store."""
         from elder_berry.tools.recurrence import format_recurrence
 
         self._reminder_store.add(
-            "_timer_user", message, due, recurrence=recurrence,
+            "_timer_user",
+            message,
+            due,
+            recurrence=recurrence,
         )
         local_time = due.astimezone()
         rec_text = format_recurrence(recurrence)
         return CommandResult(
-            command="recurring_reminder", success=True,
+            command="recurring_reminder",
+            success=True,
             text=(
                 f"🔁 Wiederkehrende Erinnerung gesetzt: {message}\n"
                 f"  Nächster Termin: {local_time.strftime('%d.%m. %H:%M')}\n"
@@ -600,7 +692,9 @@ class WeatherCommandHandler(CommandHandler):
 
     @staticmethod
     def _next_weekday_at(
-        day_name: str, time_str: str, tz,
+        day_name: str,
+        time_str: str,
+        tz,
     ) -> datetime:
         """Berechnet den nächsten Wochentag mit Uhrzeit."""
         from elder_berry.tools.recurrence import _WEEKDAY_MAP
@@ -624,8 +718,12 @@ class WeatherCommandHandler(CommandHandler):
 
         target_date = (now + timedelta(days=days_ahead)).date()
         return datetime(
-            target_date.year, target_date.month, target_date.day,
-            hour, minute, tzinfo=tz,
+            target_date.year,
+            target_date.month,
+            target_date.day,
+            hour,
+            minute,
+            tzinfo=tz,
         )
 
     @staticmethod
@@ -663,7 +761,12 @@ class WeatherCommandHandler(CommandHandler):
         max_day = calendar.monthrange(now.year, now.month)[1]
         target_day = min(day, max_day)
         candidate = datetime(
-            now.year, now.month, target_day, hour, minute, tzinfo=tz,
+            now.year,
+            now.month,
+            target_day,
+            hour,
+            minute,
+            tzinfo=tz,
         )
         if candidate > now:
             return candidate
@@ -686,7 +789,8 @@ class WeatherCommandHandler(CommandHandler):
         """Tagesübersicht: Wetter + Termine + Erinnerungen."""
         if not self._briefing_scheduler:
             return CommandResult(
-                command="briefing", success=False,
+                command="briefing",
+                success=False,
                 text="Briefing nicht verfügbar.",
             )
 
@@ -694,7 +798,8 @@ class WeatherCommandHandler(CommandHandler):
             text = self._briefing_scheduler.build_briefing()
             if not text:
                 return CommandResult(
-                    command="briefing", success=True,
+                    command="briefing",
+                    success=True,
                     text="Kein Briefing verfügbar (keine Daten konfiguriert).",
                 )
             return CommandResult(command="briefing", success=True, text=text)
@@ -702,7 +807,8 @@ class WeatherCommandHandler(CommandHandler):
         except Exception as e:
             logger.error("Briefing fehlgeschlagen: %s", e)
             return CommandResult(
-                command="briefing", success=False,
+                command="briefing",
+                success=False,
                 text=user_friendly_error(e, "Briefing"),
             )
 
@@ -725,7 +831,8 @@ class WeatherCommandHandler(CommandHandler):
                     training = self._gym_client.get_last_training()
                     if not training:
                         return CommandResult(
-                            command="training", success=True,
+                            command="training",
+                            success=True,
                             text="Kein Training gefunden.",
                         )
                     text = self._gym_client.format_last_training(training)
@@ -740,7 +847,8 @@ class WeatherCommandHandler(CommandHandler):
             summary = self._gym_client.get_summary()
             if not summary:
                 return CommandResult(
-                    command="training", success=False,
+                    command="training",
+                    success=False,
                     text="Berry-Gym API nicht erreichbar.",
                 )
             text = self._gym_client.format_summary(summary)
@@ -749,7 +857,8 @@ class WeatherCommandHandler(CommandHandler):
         except Exception as e:
             logger.error("Berry-Gym Abfrage fehlgeschlagen: %s", e)
             return CommandResult(
-                command="training", success=False,
+                command="training",
+                success=False,
                 text=user_friendly_error(e, "Berry-Gym"),
             )
 
@@ -765,6 +874,7 @@ class WeatherCommandHandler(CommandHandler):
         except Exception as e:
             logger.error("Berry-Gym PRs fehlgeschlagen: %s", e)
             return CommandResult(
-                command="prs", success=False,
+                command="prs",
+                success=False,
                 text=user_friendly_error(e, "Berry-Gym"),
             )

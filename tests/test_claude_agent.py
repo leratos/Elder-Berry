@@ -2,6 +2,7 @@
 
 Alle Tests Mock-basiert (kein echter API-Call).
 """
+
 from __future__ import annotations
 
 import json
@@ -20,11 +21,14 @@ from elder_berry.comms.claude_agent import (
 # Fixtures
 # ---------------------------------------------------------------------------
 
+
 @pytest.fixture
 def project_root(tmp_path):
     """Erstellt eine Projekt-Struktur für Tests."""
     # CLAUDE.md
-    (tmp_path / "CLAUDE.md").write_text("# Test CLAUDE.md\nTest-Projekt", encoding="utf-8")
+    (tmp_path / "CLAUDE.md").write_text(
+        "# Test CLAUDE.md\nTest-Projekt", encoding="utf-8"
+    )
 
     # docs/journal.txt
     docs = tmp_path / "docs"
@@ -76,11 +80,14 @@ def _make_api_response(action: str, params: dict = None, summary: str = "OK"):
 # AgentResult DTO
 # ---------------------------------------------------------------------------
 
+
 class TestAgentResult:
     def test_creation(self):
         result = AgentResult(
-            success=True, action_taken="read_file",
-            summary="Datei gelesen", details="Inhalt",
+            success=True,
+            action_taken="read_file",
+            summary="Datei gelesen",
+            details="Inhalt",
         )
         assert result.success is True
         assert result.action_taken == "read_file"
@@ -101,6 +108,7 @@ class TestAgentResult:
 # ClaudeAgent – Initialisierung
 # ---------------------------------------------------------------------------
 
+
 class TestClaudeAgentInit:
     def test_creation(self, agent, project_root):
         assert agent.model == "claude-sonnet-4-6"
@@ -109,7 +117,8 @@ class TestClaudeAgentInit:
 
     def test_custom_model(self, project_root):
         agent = ClaudeAgent(
-            api_key="test", project_root=project_root,
+            api_key="test",
+            project_root=project_root,
             model="claude-haiku-4-5-20251001",
         )
         assert agent.model == "claude-haiku-4-5-20251001"
@@ -117,7 +126,8 @@ class TestClaudeAgentInit:
     def test_custom_allowed_actions(self, project_root):
         custom = frozenset({"answer_only", "read_file"})
         agent = ClaudeAgent(
-            api_key="test", project_root=project_root,
+            api_key="test",
+            project_root=project_root,
             allowed_actions=custom,
         )
         assert agent.allowed_actions == custom
@@ -126,6 +136,7 @@ class TestClaudeAgentInit:
 # ---------------------------------------------------------------------------
 # Kontext-Laden
 # ---------------------------------------------------------------------------
+
 
 class TestContextLoading:
     def test_load_claude_md(self, agent):
@@ -162,6 +173,7 @@ class TestContextLoading:
 # JSON-Parsing
 # ---------------------------------------------------------------------------
 
+
 class TestResponseParsing:
     def test_direct_json(self, agent):
         raw = '{"action": "answer_only", "params": {}, "summary": "OK"}'
@@ -192,9 +204,14 @@ class TestResponseParsing:
 # Aktions-Validierung
 # ---------------------------------------------------------------------------
 
+
 class TestActionValidation:
     def test_valid_action(self, agent):
-        parsed = {"action": "read_file", "params": {"path": "docs/x.md"}, "summary": "OK"}
+        parsed = {
+            "action": "read_file",
+            "params": {"path": "docs/x.md"},
+            "summary": "OK",
+        }
         action, params, summary = agent._validate_action(parsed)
         assert action == "read_file"
         assert params == {"path": "docs/x.md"}
@@ -206,7 +223,9 @@ class TestActionValidation:
 
     def test_disallowed_action(self, agent):
         with pytest.raises(ValueError, match="nicht erlaubt"):
-            agent._validate_action({"action": "shell_exec", "params": {}, "summary": "X"})
+            agent._validate_action(
+                {"action": "shell_exec", "params": {}, "summary": "X"}
+            )
 
     def test_empty_summary_gets_default(self, agent):
         parsed = {"action": "answer_only", "params": {}, "summary": ""}
@@ -223,6 +242,7 @@ class TestActionValidation:
 # ---------------------------------------------------------------------------
 # Pfad-Validierung
 # ---------------------------------------------------------------------------
+
 
 class TestPathValidation:
     def test_valid_path(self, agent, project_root):
@@ -257,6 +277,7 @@ class TestPathValidation:
 # ---------------------------------------------------------------------------
 # Aktions-Ausführung: read_file
 # ---------------------------------------------------------------------------
+
 
 class TestExecReadFile:
     def test_read_existing_file(self, agent, project_root):
@@ -296,21 +317,26 @@ class TestExecReadFile:
 # Aktions-Ausführung: write_file
 # ---------------------------------------------------------------------------
 
+
 class TestExecWriteFile:
     def test_write_in_docs(self, agent, project_root):
-        result = agent._exec_write_file({
-            "path": "docs/test_write.md",
-            "content": "# Test\nInhalt",
-        })
+        result = agent._exec_write_file(
+            {
+                "path": "docs/test_write.md",
+                "content": "# Test\nInhalt",
+            }
+        )
         assert result.success is True
         written = (project_root / "docs" / "test_write.md").read_text(encoding="utf-8")
         assert written == "# Test\nInhalt"
 
     def test_write_outside_docs_blocked(self, agent):
-        result = agent._exec_write_file({
-            "path": "src/evil.py",
-            "content": "import os; os.system('rm -rf /')",
-        })
+        result = agent._exec_write_file(
+            {
+                "path": "src/evil.py",
+                "content": "import os; os.system('rm -rf /')",
+            }
+        )
         assert result.success is False
         assert "nicht erlaubt" in result.summary
 
@@ -319,10 +345,12 @@ class TestExecWriteFile:
         assert result.success is False
 
     def test_write_creates_subdirectory(self, agent, project_root):
-        result = agent._exec_write_file({
-            "path": "docs/sub/deep/file.md",
-            "content": "nested",
-        })
+        result = agent._exec_write_file(
+            {
+                "path": "docs/sub/deep/file.md",
+                "content": "nested",
+            }
+        )
         assert result.success is True
         assert (project_root / "docs" / "sub" / "deep" / "file.md").exists()
 
@@ -331,21 +359,26 @@ class TestExecWriteFile:
 # Aktions-Ausführung: append_file
 # ---------------------------------------------------------------------------
 
+
 class TestExecAppendFile:
     def test_append_to_journal(self, agent, project_root):
-        result = agent._exec_append_file({
-            "path": "docs/journal.txt",
-            "content": "## Neuer Eintrag",
-        })
+        result = agent._exec_append_file(
+            {
+                "path": "docs/journal.txt",
+                "content": "## Neuer Eintrag",
+            }
+        )
         assert result.success is True
         content = (project_root / "docs" / "journal.txt").read_text(encoding="utf-8")
         assert "Neuer Eintrag" in content
 
     def test_append_to_other_file_blocked(self, agent):
-        result = agent._exec_append_file({
-            "path": "docs/other.txt",
-            "content": "nope",
-        })
+        result = agent._exec_append_file(
+            {
+                "path": "docs/other.txt",
+                "content": "nope",
+            }
+        )
         assert result.success is False
         assert "nicht erlaubt" in result.summary
 
@@ -357,6 +390,7 @@ class TestExecAppendFile:
 # ---------------------------------------------------------------------------
 # Aktions-Ausführung: list_directory
 # ---------------------------------------------------------------------------
+
 
 class TestExecListDirectory:
     def test_list_root(self, agent, project_root):
@@ -384,6 +418,7 @@ class TestExecListDirectory:
 # Aktions-Ausführung: search_files
 # ---------------------------------------------------------------------------
 
+
 class TestExecSearchFiles:
     def test_search_md_files(self, agent):
         result = agent._exec_search_files({"pattern": "*.md", "path": "."})
@@ -405,6 +440,7 @@ class TestExecSearchFiles:
 # Aktions-Ausführung: answer_only
 # ---------------------------------------------------------------------------
 
+
 class TestExecAnswerOnly:
     def test_answer_only(self, agent):
         result = agent._execute_action("answer_only", {}, "Die nächste Phase ist 8.")
@@ -417,25 +453,33 @@ class TestExecAnswerOnly:
 # Aktions-Ausführung: git_status
 # ---------------------------------------------------------------------------
 
+
 class TestExecGitStatus:
     def test_git_status(self, agent, project_root):
         # Initialisiere ein git repo im tmp_path
         import subprocess
+
         subprocess.run(
-            ["git", "init"], cwd=str(project_root),
+            ["git", "init"],
+            cwd=str(project_root),
             capture_output=True,
         )
         subprocess.run(
-            ["git", "add", "."], cwd=str(project_root),
+            ["git", "add", "."],
+            cwd=str(project_root),
             capture_output=True,
         )
         subprocess.run(
             ["git", "commit", "-m", "init", "--allow-empty"],
-            cwd=str(project_root), capture_output=True,
-            env={**__import__("os").environ, "GIT_AUTHOR_NAME": "Test",
-                 "GIT_AUTHOR_EMAIL": "test@test.com",
-                 "GIT_COMMITTER_NAME": "Test",
-                 "GIT_COMMITTER_EMAIL": "test@test.com"},
+            cwd=str(project_root),
+            capture_output=True,
+            env={
+                **__import__("os").environ,
+                "GIT_AUTHOR_NAME": "Test",
+                "GIT_AUTHOR_EMAIL": "test@test.com",
+                "GIT_COMMITTER_NAME": "Test",
+                "GIT_COMMITTER_EMAIL": "test@test.com",
+            },
         )
         result = agent._exec_git_status()
         assert result.success is True
@@ -445,6 +489,7 @@ class TestExecGitStatus:
 # ---------------------------------------------------------------------------
 # process() – End-to-End (Mock-API)
 # ---------------------------------------------------------------------------
+
 
 class TestProcess:
     def test_empty_message(self, agent):
@@ -461,7 +506,8 @@ class TestProcess:
     def test_answer_only(self, mock_get_client, agent):
         mock_client = MagicMock()
         mock_client.messages.create.return_value = _make_api_response(
-            "answer_only", summary="Die nächste Phase ist Phase 8.",
+            "answer_only",
+            summary="Die nächste Phase ist Phase 8.",
         )
         mock_get_client.return_value = mock_client
 
@@ -474,7 +520,9 @@ class TestProcess:
     def test_read_file_action(self, mock_get_client, agent):
         mock_client = MagicMock()
         mock_client.messages.create.return_value = _make_api_response(
-            "read_file", params={"path": "CLAUDE.md"}, summary="CLAUDE.md gelesen",
+            "read_file",
+            params={"path": "CLAUDE.md"},
+            summary="CLAUDE.md gelesen",
         )
         mock_get_client.return_value = mock_client
 
@@ -501,7 +549,9 @@ class TestProcess:
     def test_disallowed_action_rejected(self, mock_get_client, agent):
         mock_client = MagicMock()
         mock_client.messages.create.return_value = _make_api_response(
-            "shell_exec", params={"cmd": "rm -rf /"}, summary="Böse",
+            "shell_exec",
+            params={"cmd": "rm -rf /"},
+            summary="Böse",
         )
         mock_get_client.return_value = mock_client
 
@@ -583,6 +633,7 @@ class TestProcess:
 # Import-Fehler (anthropic nicht installiert)
 # ---------------------------------------------------------------------------
 
+
 class TestImportError:
     def test_anthropic_not_installed(self, project_root):
         agent = ClaudeAgent(api_key="test", project_root=project_root)
@@ -591,4 +642,7 @@ class TestImportError:
         with patch.dict("sys.modules", {"anthropic": None}):
             result = agent.process("Test")
             assert result.success is False
-            assert "anthropic" in result.summary.lower() or "nicht installiert" in result.summary
+            assert (
+                "anthropic" in result.summary.lower()
+                or "nicht installiert" in result.summary
+            )

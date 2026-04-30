@@ -4,6 +4,7 @@ Der Wizard ruft Nominatim nicht mehr direkt aus dem Browser auf. Der
 Server-seitige Proxy umgeht die strikte CSP (connect-src 'self') und
 liefert ein schlankes Format zurueck.
 """
+
 from __future__ import annotations
 
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -80,10 +81,12 @@ def _patch_httpx(resp=None, side_effect=None):
 
 class TestGeocodeSuccess:
     def test_found_city_returns_lat_lon(self, client):
-        patcher, _ = _patch_httpx(resp=_mock_response(
-            200,
-            [{"lat": "52.5200", "lon": "13.4050", "display_name": "Berlin, DE"}],
-        ))
+        patcher, _ = _patch_httpx(
+            resp=_mock_response(
+                200,
+                [{"lat": "52.5200", "lon": "13.4050", "display_name": "Berlin, DE"}],
+            )
+        )
         with patcher:
             r = client.get("/api/setup/geocode?q=Berlin")
         assert r.status_code == 200
@@ -94,9 +97,12 @@ class TestGeocodeSuccess:
         assert "Berlin" in data["display_name"]
 
     def test_user_agent_and_accept_language_sent(self, client):
-        patcher, mock_get = _patch_httpx(resp=_mock_response(
-            200, [{"lat": "0", "lon": "0", "display_name": "X"}],
-        ))
+        patcher, mock_get = _patch_httpx(
+            resp=_mock_response(
+                200,
+                [{"lat": "0", "lon": "0", "display_name": "X"}],
+            )
+        )
         with patcher:
             client.get("/api/setup/geocode?q=Paris")
         headers = mock_get.call_args.kwargs["headers"]
@@ -104,9 +110,12 @@ class TestGeocodeSuccess:
         assert headers["Accept-Language"] == "de"
 
     def test_query_forwarded_to_nominatim(self, client):
-        patcher, mock_get = _patch_httpx(resp=_mock_response(
-            200, [{"lat": "0", "lon": "0", "display_name": "X"}],
-        ))
+        patcher, mock_get = _patch_httpx(
+            resp=_mock_response(
+                200,
+                [{"lat": "0", "lon": "0", "display_name": "X"}],
+            )
+        )
         with patcher:
             client.get("/api/setup/geocode?q=  Hamburg  ")
         params = mock_get.call_args.kwargs["params"]
@@ -152,9 +161,12 @@ class TestGeocodeUpstreamFailures:
         assert "Netzwerkfehler" in r.json()["error"]
 
     def test_non_json_response_returns_502(self, client):
-        patcher, _ = _patch_httpx(resp=_mock_response(
-            200, ValueError("not json"),
-        ))
+        patcher, _ = _patch_httpx(
+            resp=_mock_response(
+                200,
+                ValueError("not json"),
+            )
+        )
         with patcher:
             r = client.get("/api/setup/geocode?q=Berlin")
         assert r.status_code == 502
@@ -171,9 +183,12 @@ class TestGeocodeUpstreamFailures:
 
     def test_malformed_result_returns_502(self, client):
         """Nominatim liefert Dict statt List -- Format unerwartet."""
-        patcher, _ = _patch_httpx(resp=_mock_response(
-            200, [{"lat": "not-a-number", "lon": "0"}],
-        ))
+        patcher, _ = _patch_httpx(
+            resp=_mock_response(
+                200,
+                [{"lat": "not-a-number", "lon": "0"}],
+            )
+        )
         with patcher:
             r = client.get("/api/setup/geocode?q=Berlin")
         assert r.status_code == 502

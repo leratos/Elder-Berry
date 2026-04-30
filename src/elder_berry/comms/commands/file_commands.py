@@ -2,6 +2,7 @@
 
 Extrahiert aus remote_commands.py (Refactoring).
 """
+
 from __future__ import annotations
 
 import ipaddress
@@ -10,7 +11,11 @@ import re
 from pathlib import Path
 from urllib.parse import urlparse
 
-from elder_berry.comms.commands.base import CommandHandler, CommandResult, user_friendly_error
+from elder_berry.comms.commands.base import (
+    CommandHandler,
+    CommandResult,
+    user_friendly_error,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -139,9 +144,12 @@ class FileCommandHandler(CommandHandler):
     def keywords(self) -> dict[str, list[str]]:
         return {
             "clipboard": [
-                "zwischenablage", "clipboard lesen",
-                "was ist im clipboard", "was hab ich kopiert",
-                "zeig zwischenablage", "was ist kopiert",
+                "zwischenablage",
+                "clipboard lesen",
+                "was ist im clipboard",
+                "was hab ich kopiert",
+                "zeig zwischenablage",
+                "was ist kopiert",
             ],
         }
 
@@ -275,8 +283,7 @@ class FileCommandHandler(CommandHandler):
         # Pfad gegen erlaubte Wurzelverzeichnisse prüfen (Roots bereits beim Init aufgelöst)
         if self._send_file_allowed_roots:
             allowed = any(
-                file_path.is_relative_to(root)
-                for root in self._send_file_allowed_roots
+                file_path.is_relative_to(root) for root in self._send_file_allowed_roots
             )
             if not allowed:
                 allowed_str = ", ".join(str(r) for r in self._send_file_allowed_roots)
@@ -315,8 +322,7 @@ class FileCommandHandler(CommandHandler):
         return CommandResult(
             command="send_file",
             success=True,
-            text=f"Datei wird gesendet: {file_path.name} "
-                 f"({file_size / 1024:.1f} KB)",
+            text=f"Datei wird gesendet: {file_path.name} ({file_size / 1024:.1f} KB)",
             file_path=file_path,
         )
 
@@ -357,6 +363,7 @@ class FileCommandHandler(CommandHandler):
         # Path(...).name entfernt alle Verzeichnis-Trennzeichen (z.B. "../../.bashrc"
         # → ".bashrc"), sodass der Dateiname stets nur ein einfacher Name ist.
         from urllib.parse import unquote
+
         parsed = urlparse(url)
         raw_name = unquote(parsed.path.split("/")[-1])
         filename = Path(raw_name).name or "download"
@@ -398,7 +405,7 @@ class FileCommandHandler(CommandHandler):
                                 command="download",
                                 success=False,
                                 text=f"Download abgebrochen: Größenlimit "
-                                     f"({MAX_FILE_SIZE_MB} MB) überschritten.",
+                                f"({MAX_FILE_SIZE_MB} MB) überschritten.",
                             )
                         f.write(chunk)
 
@@ -407,7 +414,7 @@ class FileCommandHandler(CommandHandler):
                 command="download",
                 success=True,
                 text=f"Download abgeschlossen: {target.name} ({size_kb:.1f} KB)\n"
-                     f"Pfad: {target}",
+                f"Pfad: {target}",
             )
         except httpx.HTTPStatusError as e:
             return CommandResult(

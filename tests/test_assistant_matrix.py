@@ -1,4 +1,5 @@
 """Tests: Assistant.process() mit audio_output Parameter (Matrix-Integration)."""
+
 import json
 from unittest.mock import MagicMock
 
@@ -15,14 +16,17 @@ from elder_berry.tts.base import TTSEngine
 # Fixtures
 # ---------------------------------------------------------------------------
 
+
 @pytest.fixture
 def mock_llm():
     llm = MagicMock(spec=LLMClient)
-    llm.generate.return_value = json.dumps({
-        "action": None,
-        "params": {},
-        "response": "[neutral] Hallo, ich bin Saleria!",
-    })
+    llm.generate.return_value = json.dumps(
+        {
+            "action": None,
+            "params": {},
+            "response": "[neutral] Hallo, ich bin Saleria!",
+        }
+    )
     return llm
 
 
@@ -39,9 +43,11 @@ def mock_controller():
 @pytest.fixture
 def mock_tts():
     tts = MagicMock(spec=TTSEngine)
+
     # generate_audio erzeugt eine echte Datei
     def _generate(text, path, **kwargs):
         path.write_bytes(b"RIFF" + b"\x00" * 44 + b"\xff" * 1000)
+
     tts.generate_audio.side_effect = _generate
     return tts
 
@@ -59,6 +65,7 @@ def assistant(mock_llm, mock_db, mock_controller, mock_tts):
 # ---------------------------------------------------------------------------
 # audio_output Parameter
 # ---------------------------------------------------------------------------
+
 
 class TestAudioOutput:
     def test_process_without_audio_output(self, assistant, mock_tts):
@@ -95,15 +102,21 @@ class TestAudioOutput:
         assert result.audio_path.stat().st_size > 0
 
     def test_audio_output_generate_audio_not_implemented(
-        self, mock_llm, mock_db, mock_controller, tmp_path,
+        self,
+        mock_llm,
+        mock_db,
+        mock_controller,
+        tmp_path,
     ):
         """Wenn TTS kein generate_audio hat: audio_path ist None, kein Crash."""
         tts = MagicMock(spec=TTSEngine)
         tts.generate_audio.side_effect = NotImplementedError
 
         assistant = Assistant(
-            llm=mock_llm, actions_db=mock_db,
-            controller=mock_controller, tts=tts,
+            llm=mock_llm,
+            actions_db=mock_db,
+            controller=mock_controller,
+            tts=tts,
         )
 
         wav_path = tmp_path / "output.wav"
@@ -113,15 +126,21 @@ class TestAudioOutput:
         assert result.response
 
     def test_audio_output_generate_audio_error(
-        self, mock_llm, mock_db, mock_controller, tmp_path,
+        self,
+        mock_llm,
+        mock_db,
+        mock_controller,
+        tmp_path,
     ):
         """Wenn generate_audio fehlschlägt: audio_path ist None, kein Crash."""
         tts = MagicMock(spec=TTSEngine)
         tts.generate_audio.side_effect = RuntimeError("GPU out of memory")
 
         assistant = Assistant(
-            llm=mock_llm, actions_db=mock_db,
-            controller=mock_controller, tts=tts,
+            llm=mock_llm,
+            actions_db=mock_db,
+            controller=mock_controller,
+            tts=tts,
         )
 
         wav_path = tmp_path / "output.wav"
@@ -141,8 +160,10 @@ class TestAudioOutput:
     def test_audio_output_no_tts(self, mock_llm, mock_db, mock_controller, tmp_path):
         """Ohne TTS-Engine: audio_path ist None."""
         assistant = Assistant(
-            llm=mock_llm, actions_db=mock_db,
-            controller=mock_controller, tts=None,
+            llm=mock_llm,
+            actions_db=mock_db,
+            controller=mock_controller,
+            tts=None,
         )
 
         wav_path = tmp_path / "output.wav"
@@ -156,17 +177,22 @@ class TestAudioOutput:
 # AssistantResult.audio_path Feld
 # ---------------------------------------------------------------------------
 
+
 class TestAssistantResultAudioPath:
     def test_default_none(self):
         result = AssistantResult(
-            response="Test", action_executed=None, action_success=False,
+            response="Test",
+            action_executed=None,
+            action_success=False,
         )
         assert result.audio_path is None
 
     def test_with_path(self, tmp_path):
         p = tmp_path / "audio.wav"
         result = AssistantResult(
-            response="Test", action_executed=None, action_success=False,
+            response="Test",
+            action_executed=None,
+            action_success=False,
             audio_path=p,
         )
         assert result.audio_path == p

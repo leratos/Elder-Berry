@@ -1,4 +1,5 @@
 """Tests fuer TurntableCommandHandler (Patterns, Keywords, Execute)."""
+
 from unittest.mock import MagicMock
 
 
@@ -20,7 +21,6 @@ def _make_handler(robot=None):
 
 
 class TestSimpleCommands:
-
     def test_simple_commands_registered(self):
         h = _make_handler()
         assert "drehteller home" in h.simple_commands
@@ -29,7 +29,6 @@ class TestSimpleCommands:
 
 
 class TestPatterns:
-
     def test_rotate_by_90(self):
         m = ROTATE_BY_PATTERN.match("dreh dich um 90 grad")
         assert m is not None
@@ -73,7 +72,6 @@ class TestPatterns:
 
 
 class TestKeywords:
-
     def test_keyword_dreh_dich(self):
         h = _make_handler()
         all_keywords = {}
@@ -100,16 +98,20 @@ class TestKeywords:
 
 
 class TestExecution:
-
     def test_no_robot_client(self):
         h = TurntableCommandHandler(robot_client=None)
         result = h.execute("drehteller home", "drehteller home")
         assert result.success is False
-        assert "nicht verfügbar" in result.text.lower() or "nicht verbunden" in result.text.lower()
+        assert (
+            "nicht verfügbar" in result.text.lower()
+            or "nicht verbunden" in result.text.lower()
+        )
 
     def test_home_execute(self):
         robot = MagicMock()
-        robot.home_turntable.return_value = ApiResponse(success=True, message="Homing gestartet")
+        robot.home_turntable.return_value = ApiResponse(
+            success=True, message="Homing gestartet"
+        )
         h = _make_handler(robot)
         result = h.execute("drehteller home", "drehteller home")
         assert result.success is True
@@ -131,7 +133,8 @@ class TestExecution:
     def test_rotate_dir_links(self):
         robot = MagicMock()
         robot.rotate_turntable.return_value = ApiResponse(
-            success=True, message="Rotation um -90 Grad gestartet",
+            success=True,
+            message="Rotation um -90 Grad gestartet",
         )
         h = _make_handler(robot)
         result = h.execute("turntable_rotate_dir", "dreh dich nach links")
@@ -143,7 +146,8 @@ class TestExecution:
     def test_rotate_dir_rechts(self):
         robot = MagicMock()
         robot.rotate_turntable.return_value = ApiResponse(
-            success=True, message="Rotation um 90 Grad gestartet",
+            success=True,
+            message="Rotation um 90 Grad gestartet",
         )
         h = _make_handler(robot)
         result = h.execute("turntable_rotate_dir", "dreh dich nach rechts")
@@ -155,7 +159,8 @@ class TestExecution:
     def test_stop_execute(self):
         robot = MagicMock()
         robot.stop_turntable.return_value = ApiResponse(
-            success=True, message="Rotation gestoppt",
+            success=True,
+            message="Rotation gestoppt",
         )
         h = _make_handler(robot)
         result = h.execute("drehteller stopp", "drehteller stopp")
@@ -163,7 +168,6 @@ class TestExecution:
 
 
 class TestCollisionCheck:
-
     def test_no_collision_schau_mal(self):
         """'schau mal was' darf NICHT vom Turntable-Pattern gematcht werden."""
         assert LOOK_DIRECTION_PATTERN.match("schau mal was") is None
@@ -176,7 +180,6 @@ class TestCollisionCheck:
 
 
 class TestCommandDescriptions:
-
     def test_descriptions_not_empty(self):
         h = _make_handler()
         assert len(h.command_descriptions) > 0

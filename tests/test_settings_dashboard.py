@@ -7,6 +7,7 @@ from elder_berry.core.audio_router import AudioRouter
 try:
     from fastapi.testclient import TestClient
     from elder_berry.web.settings_dashboard import SettingsDashboard
+
     HAS_FASTAPI = True
 except ImportError:
     HAS_FASTAPI = False
@@ -129,6 +130,7 @@ class TestPostAudioMode:
 # Monitor-Auswahl (Computer Use)
 # ===========================================================================
 
+
 class TestGetMonitors:
     """GET /api/monitors – Monitor-Liste abfragen."""
 
@@ -142,6 +144,7 @@ class TestGetMonitors:
 
     def test_with_computer_use(self, router_local):
         from unittest.mock import MagicMock
+
         mock_cu = MagicMock()
         mock_cu.get_available_monitors.return_value = [
             {"index": 1, "width": 1920, "height": 1080, "left": 0, "top": 0},
@@ -168,6 +171,7 @@ class TestSetMonitor:
 
     def test_missing_index(self, router_local):
         from unittest.mock import MagicMock
+
         mock_cu = MagicMock()
         dashboard = SettingsDashboard(audio_router=router_local, computer_use=mock_cu)
         client = TestClient(dashboard.app)
@@ -178,6 +182,7 @@ class TestSetMonitor:
 
     def test_invalid_index(self, router_local):
         from unittest.mock import MagicMock
+
         mock_cu = MagicMock()
         mock_cu.get_available_monitors.return_value = [
             {"index": 1, "width": 1920, "height": 1080, "left": 0, "top": 0},
@@ -191,6 +196,7 @@ class TestSetMonitor:
 
     def test_valid_set(self, router_local):
         from unittest.mock import MagicMock
+
         mock_cu = MagicMock()
         mock_cu.get_available_monitors.return_value = [
             {"index": 1, "width": 1920, "height": 1080, "left": 0, "top": 0},
@@ -209,6 +215,7 @@ class TestSetMonitor:
 
     def test_html_contains_monitor_section(self, router_local):
         from unittest.mock import MagicMock
+
         mock_cu = MagicMock()
         dashboard = SettingsDashboard(audio_router=router_local, computer_use=mock_cu)
         client = TestClient(dashboard.app)
@@ -221,6 +228,7 @@ class TestSetMonitor:
 # ===========================================================================
 # Allowed Senders (Matrix-Sicherheit)
 # ===========================================================================
+
 
 class TestGetAllowedSenders:
     """GET /api/allowed-senders – Status abfragen."""
@@ -237,10 +245,12 @@ class TestGetAllowedSenders:
     def test_not_configured(self, router_local):
         """SecretStore vorhanden, aber kein Key gesetzt."""
         from unittest.mock import MagicMock
+
         mock_store = MagicMock()
         mock_store.get_or_none.return_value = None
         dashboard = SettingsDashboard(
-            audio_router=router_local, secret_store=mock_store,
+            audio_router=router_local,
+            secret_store=mock_store,
         )
         client = TestClient(dashboard.app)
 
@@ -253,10 +263,12 @@ class TestGetAllowedSenders:
     def test_configured_single(self, router_local):
         """Ein Sender konfiguriert."""
         from unittest.mock import MagicMock
+
         mock_store = MagicMock()
         mock_store.get_or_none.return_value = "@user:matrix.example.com"
         dashboard = SettingsDashboard(
-            audio_router=router_local, secret_store=mock_store,
+            audio_router=router_local,
+            secret_store=mock_store,
         )
         client = TestClient(dashboard.app)
 
@@ -269,12 +281,14 @@ class TestGetAllowedSenders:
     def test_configured_multiple(self, router_local):
         """Mehrere Sender konfiguriert."""
         from unittest.mock import MagicMock
+
         mock_store = MagicMock()
         mock_store.get_or_none.return_value = (
             "@user1:matrix.example.com, @user2:matrix.example.com"
         )
         dashboard = SettingsDashboard(
-            audio_router=router_local, secret_store=mock_store,
+            audio_router=router_local,
+            secret_store=mock_store,
         )
         client = TestClient(dashboard.app)
 
@@ -298,9 +312,11 @@ class TestPostAllowedSenders:
     def test_empty_body(self, router_local):
         """Leerer Body: 400."""
         from unittest.mock import MagicMock
+
         mock_store = MagicMock()
         dashboard = SettingsDashboard(
-            audio_router=router_local, secret_store=mock_store,
+            audio_router=router_local,
+            secret_store=mock_store,
         )
         client = TestClient(dashboard.app)
 
@@ -310,9 +326,11 @@ class TestPostAllowedSenders:
     def test_set_valid_sender(self, router_local):
         """Gültigen Sender setzen."""
         from unittest.mock import MagicMock
+
         mock_store = MagicMock()
         dashboard = SettingsDashboard(
-            audio_router=router_local, secret_store=mock_store,
+            audio_router=router_local,
+            secret_store=mock_store,
         )
         client = TestClient(dashboard.app)
 
@@ -332,9 +350,11 @@ class TestPostAllowedSenders:
     def test_set_multiple_senders(self, router_local):
         """Mehrere gültige Sender setzen."""
         from unittest.mock import MagicMock
+
         mock_store = MagicMock()
         dashboard = SettingsDashboard(
-            audio_router=router_local, secret_store=mock_store,
+            audio_router=router_local,
+            secret_store=mock_store,
         )
         client = TestClient(dashboard.app)
 
@@ -349,9 +369,11 @@ class TestPostAllowedSenders:
     def test_invalid_sender_format(self, router_local):
         """Ungültiges Format: kein @ oder kein : → 400."""
         from unittest.mock import MagicMock
+
         mock_store = MagicMock()
         dashboard = SettingsDashboard(
-            audio_router=router_local, secret_store=mock_store,
+            audio_router=router_local,
+            secret_store=mock_store,
         )
         client = TestClient(dashboard.app)
 
@@ -366,9 +388,11 @@ class TestPostAllowedSenders:
     def test_mixed_valid_invalid(self, router_local):
         """Mix aus gültig und ungültig: 400, nichts wird gespeichert."""
         from unittest.mock import MagicMock
+
         mock_store = MagicMock()
         dashboard = SettingsDashboard(
-            audio_router=router_local, secret_store=mock_store,
+            audio_router=router_local,
+            secret_store=mock_store,
         )
         client = TestClient(dashboard.app)
 
@@ -382,9 +406,11 @@ class TestPostAllowedSenders:
     def test_remove_senders(self, router_local):
         """Sender entfernen."""
         from unittest.mock import MagicMock
+
         mock_store = MagicMock()
         dashboard = SettingsDashboard(
-            audio_router=router_local, secret_store=mock_store,
+            audio_router=router_local,
+            secret_store=mock_store,
         )
         client = TestClient(dashboard.app)
 
@@ -408,7 +434,8 @@ class TestPostAllowedSenders:
         mock_store = MagicMock()
         mock_store.delete.side_effect = SecretNotFoundError("nicht da")
         dashboard = SettingsDashboard(
-            audio_router=router_local, secret_store=mock_store,
+            audio_router=router_local,
+            secret_store=mock_store,
         )
         client = TestClient(dashboard.app)
 
@@ -421,9 +448,11 @@ class TestPostAllowedSenders:
     def test_empty_senders_string(self, router_local):
         """Leerer senders-String: 400."""
         from unittest.mock import MagicMock
+
         mock_store = MagicMock()
         dashboard = SettingsDashboard(
-            audio_router=router_local, secret_store=mock_store,
+            audio_router=router_local,
+            secret_store=mock_store,
         )
         client = TestClient(dashboard.app)
 
@@ -436,9 +465,11 @@ class TestPostAllowedSenders:
     def test_html_contains_senders_section(self, router_local):
         """HTML enthält Sicherheits-Sektion."""
         from unittest.mock import MagicMock
+
         mock_store = MagicMock()
         dashboard = SettingsDashboard(
-            audio_router=router_local, secret_store=mock_store,
+            audio_router=router_local,
+            secret_store=mock_store,
         )
         client = TestClient(dashboard.app)
 
@@ -448,9 +479,9 @@ class TestPostAllowedSenders:
         assert "Erlaubte Matrix-Absender" in r.text
 
 
-
 def test_settings_schema_contains_phase45_registry(router_local):
     from unittest.mock import MagicMock
+
     mock_store = MagicMock()
     mock_store.get_or_none.return_value = None
     dashboard = SettingsDashboard(audio_router=router_local, secret_store=mock_store)
@@ -460,11 +491,17 @@ def test_settings_schema_contains_phase45_registry(router_local):
     assert r.status_code == 200
     data = r.json()
     keys = {item["key"] for item in data["settings"]}
-    assert {"matrix_allowed_senders", "user_timezone", "stt_timeout", "llm_mode"}.issubset(keys)
+    assert {
+        "matrix_allowed_senders",
+        "user_timezone",
+        "stt_timeout",
+        "llm_mode",
+    }.issubset(keys)
 
 
 def test_settings_values_returns_defaults(router_local):
     from unittest.mock import MagicMock
+
     mock_store = MagicMock()
     mock_store.get_or_none.return_value = None
     dashboard = SettingsDashboard(audio_router=router_local, secret_store=mock_store)
@@ -481,24 +518,32 @@ def test_settings_values_returns_defaults(router_local):
 
 def test_settings_update_validates_timezone(router_local):
     from unittest.mock import MagicMock
+
     mock_store = MagicMock()
     mock_store.get_or_none.return_value = None
     dashboard = SettingsDashboard(audio_router=router_local, secret_store=mock_store)
     client = TestClient(dashboard.app)
 
-    r = client.post("/api/settings/update", json={"key": "user_timezone", "value": "Mars/Olympus"})
+    r = client.post(
+        "/api/settings/update", json={"key": "user_timezone", "value": "Mars/Olympus"}
+    )
     assert r.status_code == 400
     assert "Ungültige Zeitzone" in r.json()["error"]
 
 
 def test_settings_update_persists_llm_mode(router_local):
     from unittest.mock import MagicMock
+
     mock_store = MagicMock()
-    mock_store.get_or_none.side_effect = lambda key: None if key != "llm_mode" else "local_preferred"
+    mock_store.get_or_none.side_effect = (
+        lambda key: None if key != "llm_mode" else "local_preferred"
+    )
     dashboard = SettingsDashboard(audio_router=router_local, secret_store=mock_store)
     client = TestClient(dashboard.app)
 
-    r = client.post("/api/settings/update", json={"key": "llm_mode", "value": "local_preferred"})
+    r = client.post(
+        "/api/settings/update", json={"key": "llm_mode", "value": "local_preferred"}
+    )
     assert r.status_code == 200
     assert r.json()["value"] == "local_preferred"
     mock_store.set.assert_called_with("llm_mode", "local_preferred")

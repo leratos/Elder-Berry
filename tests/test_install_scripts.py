@@ -1,4 +1,5 @@
 """Tests: Bootstrap-Scripts – Syntax und Inhalt prüfen."""
+
 import shutil
 import subprocess
 import sys
@@ -93,9 +94,13 @@ class TestPipNotQuiet:
 
     def test_ps1_no_quiet_on_pip_line(self):
         lines = [
-            line for line in _ps1_text().splitlines()
-            if "pip.exe install" in line or (
-                "pip " in line and "install" in line and "#" not in line[:line.find("pip")]
+            line
+            for line in _ps1_text().splitlines()
+            if "pip.exe install" in line
+            or (
+                "pip " in line
+                and "install" in line
+                and "#" not in line[: line.find("pip")]
             )
         ]
         assert lines, "pip install-Zeile nicht gefunden"
@@ -104,7 +109,8 @@ class TestPipNotQuiet:
 
     def test_sh_no_quiet_on_pip_line(self):
         lines = [
-            line for line in _sh_text().splitlines()
+            line
+            for line in _sh_text().splitlines()
             if "pip install" in line and not line.lstrip().startswith("#")
         ]
         assert lines, "pip install-Zeile nicht gefunden"
@@ -120,7 +126,7 @@ class TestExplicitErrorHandling:
         pip_idx = text.find("pip.exe install")
         assert pip_idx > 0
         # In den nächsten ~500 Zeichen muss $LASTEXITCODE geprüft werden
-        window = text[pip_idx:pip_idx + 500]
+        window = text[pip_idx : pip_idx + 500]
         assert "$LASTEXITCODE" in window
         assert "pip install fehlgeschlagen" in text
 
@@ -137,7 +143,7 @@ class TestPostInstallSmokeTest:
         text = _ps1_text()
         assert "import elder_berry" in text
         # Fehlerpfad ist nach dem import-Aufruf vorhanden
-        after = text[text.find("import elder_berry"):]
+        after = text[text.find("import elder_berry") :]
         assert "$LASTEXITCODE" in after
         assert "elder_berry-Package konnte nicht importiert werden" in after
 

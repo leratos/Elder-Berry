@@ -1,4 +1,5 @@
 """Tests fuer SessionRevocationList (Phase 70 H-1)."""
+
 from __future__ import annotations
 
 import json
@@ -90,6 +91,7 @@ class TestPersistence:
         path = tmp_path / "revocations.json"
         # Datei mit abgelaufenem + gueltigem Eintrag manuell befuellen
         import hashlib
+
         digest_old = hashlib.sha256(b"old").hexdigest()
         digest_new = hashlib.sha256(b"new").hexdigest()
         path.write_text(

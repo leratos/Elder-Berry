@@ -18,6 +18,7 @@ try:
         SettingsTokenManager,
     )
     from elder_berry.web.settings_token_middleware import SettingsTokenMiddleware
+
     HAS_FASTAPI = True
 except ImportError:
     HAS_FASTAPI = False
@@ -107,6 +108,7 @@ class TestSettingsTokenManager:
         """Regression: Token darf niemals im Klartext in die Logs geschrieben
         werden. Nur die ersten 8 Zeichen (Fingerprint) sind erlaubt."""
         import logging
+
         path = tmp_path / "settings_token"
         manager = SettingsTokenManager(path)
         with caplog.at_level(logging.DEBUG):
@@ -297,6 +299,7 @@ class TestFirstRunGate:
     def test_setup_exempt_when_marker_not_set(self, manager):
         """Vor dem Wizard-Finish ist /api/setup offen (wie Phase 52.1a)."""
         from unittest.mock import MagicMock
+
         store = MagicMock()
         store.get_or_none.return_value = None
 
@@ -307,6 +310,7 @@ class TestFirstRunGate:
     def test_setup_exempt_when_marker_false(self, manager):
         """Explizit ``"false"``-Marker wird nicht als completed gelesen."""
         from unittest.mock import MagicMock
+
         store = MagicMock()
         store.get_or_none.return_value = "false"
 
@@ -317,6 +321,7 @@ class TestFirstRunGate:
     def test_setup_requires_token_when_marker_true(self, manager):
         """Nach Wizard-Finish verlangt /api/setup den Settings-Token."""
         from unittest.mock import MagicMock
+
         store = MagicMock()
         store.get_or_none.return_value = "true"
 
@@ -328,6 +333,7 @@ class TestFirstRunGate:
     def test_setup_accepts_valid_token_when_marker_true(self, manager):
         """Mit gültigem Token kommt man auch nach Finish an /api/setup."""
         from unittest.mock import MagicMock
+
         store = MagicMock()
         store.get_or_none.return_value = "true"
 
@@ -378,6 +384,7 @@ class TestFirstRunGate:
     def test_marker_cached_between_requests(self, manager):
         """Der Store wird nur einmal gelesen, weitere Requests nutzen den Cache."""
         from unittest.mock import MagicMock
+
         store = MagicMock()
         store.get_or_none.return_value = None
 
@@ -394,6 +401,7 @@ class TestFirstRunGate:
     def test_protected_endpoint_not_affected_by_gate(self, manager):
         """Protected-Prefix bleibt unverändert geschützt, egal ob Marker gesetzt."""
         from unittest.mock import MagicMock
+
         store = MagicMock()
 
         # Marker false
@@ -459,10 +467,12 @@ class TestCookieOrToken:
     @pytest.fixture
     def auth(self):
         from elder_berry.web.dashboard_auth import DashboardAuthManager
+
         return DashboardAuthManager(_AuthFakeStore())
 
     def test_cookie_alone_is_sufficient(self, manager, auth):
         from elder_berry.web.dashboard_auth import COOKIE_NAME
+
         cookie, _ = auth.issue_session()
         client = TestClient(
             _make_app_with_auth(manager, auth),
@@ -482,6 +492,7 @@ class TestCookieOrToken:
 
     def test_invalid_cookie_falls_back_to_token(self, manager, auth):
         from elder_berry.web.dashboard_auth import COOKIE_NAME
+
         client = TestClient(
             _make_app_with_auth(manager, auth),
             cookies={COOKIE_NAME: "garbage"},

@@ -32,6 +32,7 @@ zurueck (``example.com``, ``your-domain.tld``) -- Forks bekommen so
 "alles ok" und sehen das Tool als Skeleton. Wer das Tool ernsthaft
 nutzt, kopiert die ``.example.txt`` und passt sie an.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -47,41 +48,100 @@ from pathlib import Path
 # ---------------------------------------------------------------------------
 
 # Verzeichnisse, die NICHT durchsucht werden (rekursiv).
-_SKIP_DIRS: frozenset[str] = frozenset({
-    ".git", ".venv", "venv", "env", "__pycache__", ".pytest_cache",
-    ".mypy_cache", ".ruff_cache", "node_modules", "dist", "build",
-    ".claude", ".idea", ".vscode", ".tox", "htmlcov", "coverage",
-    "site-packages", ".eggs", "egg-info",
-    # Lokale Daten/Outputs, sind in .gitignore und sollen nicht im
-    # Public-Audit auftauchen.
-    "logs",
-})
+_SKIP_DIRS: frozenset[str] = frozenset(
+    {
+        ".git",
+        ".venv",
+        "venv",
+        "env",
+        "__pycache__",
+        ".pytest_cache",
+        ".mypy_cache",
+        ".ruff_cache",
+        "node_modules",
+        "dist",
+        "build",
+        ".claude",
+        ".idea",
+        ".vscode",
+        ".tox",
+        "htmlcov",
+        "coverage",
+        "site-packages",
+        ".eggs",
+        "egg-info",
+        # Lokale Daten/Outputs, sind in .gitignore und sollen nicht im
+        # Public-Audit auftauchen.
+        "logs",
+    }
+)
 
 # Datei-Endungen, die ueberhaupt geprueft werden. Binaerdateien (.png,
 # .wav, .pdf, ...) ignorieren wir.
-_TEXT_EXTENSIONS: frozenset[str] = frozenset({
-    ".py", ".js", ".ts", ".jsx", ".tsx", ".html", ".htm", ".css",
-    ".scss", ".sass", ".yml", ".yaml", ".toml", ".ini", ".cfg",
-    ".conf", ".json", ".md", ".rst", ".txt", ".sh", ".bash", ".zsh",
-    ".ps1", ".psm1", ".env", ".example", ".service", ".dockerfile",
-    ".docker", ".sql", ".jinja", ".jinja2", ".j2",
-})
+_TEXT_EXTENSIONS: frozenset[str] = frozenset(
+    {
+        ".py",
+        ".js",
+        ".ts",
+        ".jsx",
+        ".tsx",
+        ".html",
+        ".htm",
+        ".css",
+        ".scss",
+        ".sass",
+        ".yml",
+        ".yaml",
+        ".toml",
+        ".ini",
+        ".cfg",
+        ".conf",
+        ".json",
+        ".md",
+        ".rst",
+        ".txt",
+        ".sh",
+        ".bash",
+        ".zsh",
+        ".ps1",
+        ".psm1",
+        ".env",
+        ".example",
+        ".service",
+        ".dockerfile",
+        ".docker",
+        ".sql",
+        ".jinja",
+        ".jinja2",
+        ".j2",
+    }
+)
 
 # Dateien ohne Endung, die wir trotzdem als Text behandeln.
-_TEXT_FILENAMES: frozenset[str] = frozenset({
-    "Dockerfile", "Makefile", "LICENSE", "README", "CHANGELOG",
-    ".gitignore", ".dockerignore", ".env",
-})
+_TEXT_FILENAMES: frozenset[str] = frozenset(
+    {
+        "Dockerfile",
+        "Makefile",
+        "LICENSE",
+        "README",
+        "CHANGELOG",
+        ".gitignore",
+        ".dockerignore",
+        ".env",
+    }
+)
 
 # Dateien, die wir komplett ueberspringen (z.B. dieses Skript selbst,
 # der Audit-Output, die Blocklist selbst).
-_SKIP_FILES: frozenset[str] = frozenset({
-    Path(__file__).name,
-    "public-readiness-audit.md",
-    "public-readiness-audit.json",
-    ".public-readiness-blocklist.txt",
-    ".public-readiness-blocklist.example.txt",
-})
+_SKIP_FILES: frozenset[str] = frozenset(
+    {
+        Path(__file__).name,
+        "public-readiness-audit.md",
+        "public-readiness-audit.json",
+        ".public-readiness-blocklist.txt",
+        ".public-readiness-blocklist.example.txt",
+    }
+)
 
 # Custom-Blocklist-Datei im Repo-Root.
 BLOCKLIST_FILENAME: str = ".public-readiness-blocklist.txt"
@@ -103,11 +163,12 @@ DEFAULT_BLOCKLIST_PATTERNS: tuple[str, ...] = (
 @dataclass
 class Category:
     """Eine Audit-Kategorie."""
-    key: str           # interner Schluessel
-    label: str         # Anzeige-Name
-    description: str   # was das hier eigentlich findet
+
+    key: str  # interner Schluessel
+    label: str  # Anzeige-Name
+    description: str  # was das hier eigentlich findet
     patterns: tuple[re.Pattern[str], ...]
-    severity: str      # "high" | "medium" | "low" (was ist das fuer eine Veroeffentlichung)
+    severity: str  # "high" | "medium" | "low" (was ist das fuer eine Veroeffentlichung)
     recommendation: str
 
 
@@ -148,8 +209,7 @@ _CATEGORY_MATRIX_ID: Category = Category(
     ),
     severity="high",
     recommendation=(
-        "Beispielwerte: '@bot:matrix.example.com', "
-        "'!roomid:matrix.example.com'."
+        "Beispielwerte: '@bot:matrix.example.com', '!roomid:matrix.example.com'."
     ),
 )
 
@@ -169,8 +229,7 @@ def _build_custom_blocklist_category(
             compiled.append(_ci(raw))
         except re.error as exc:
             print(
-                f"WARN: Blocklist-Pattern '{raw}' ungueltig "
-                f"(uebersprungen): {exc}",
+                f"WARN: Blocklist-Pattern '{raw}' ungueltig (uebersprungen): {exc}",
                 file=sys.stderr,
             )
     return Category(
@@ -209,8 +268,7 @@ def _load_blocklist_patterns(repo_root: Path) -> tuple[str, ...]:
         text = bl_path.read_text(encoding="utf-8")
     except OSError as exc:
         print(
-            f"WARN: Blocklist '{bl_path}' nicht lesbar ({exc}). "
-            f"Fallback auf Defaults.",
+            f"WARN: Blocklist '{bl_path}' nicht lesbar ({exc}). Fallback auf Defaults.",
             file=sys.stderr,
         )
         return DEFAULT_BLOCKLIST_PATTERNS
@@ -236,9 +294,7 @@ def build_categories(repo_root: Path) -> tuple[Category, ...]:
     Public, damit Tests die Liste fuer einen frisch praeparierten
     Repo-Root pruefen koennen.
     """
-    custom = _build_custom_blocklist_category(
-        _load_blocklist_patterns(repo_root)
-    )
+    custom = _build_custom_blocklist_category(_load_blocklist_patterns(repo_root))
     return (custom, _CATEGORY_LAN_IP, _CATEGORY_MATRIX_ID)
 
 
@@ -250,11 +306,12 @@ def build_categories(repo_root: Path) -> tuple[Category, ...]:
 @dataclass
 class Finding:
     """Ein einzelner Treffer."""
+
     category: str
-    file: str       # repo-relativer Pfad
+    file: str  # repo-relativer Pfad
     line: int
-    excerpt: str    # die Zeile (gekuerzt auf 200 Zeichen)
-    match: str      # konkrete Substring
+    excerpt: str  # die Zeile (gekuerzt auf 200 Zeichen)
+    match: str  # konkrete Substring
 
 
 @dataclass
@@ -286,8 +343,14 @@ def _gitignored_paths(root: Path) -> set[Path]:
     """
     try:
         result = subprocess.run(
-            ["git", "ls-files", "--others", "--ignored",
-             "--exclude-standard", "--directory"],
+            [
+                "git",
+                "ls-files",
+                "--others",
+                "--ignored",
+                "--exclude-standard",
+                "--directory",
+            ],
             cwd=root,
             capture_output=True,
             text=True,
@@ -405,8 +468,10 @@ def _format_markdown(
             out.append("")
             continue
 
-        out.append(f"**Treffer: {len(stats.findings)}** in "
-                   f"{len(stats.files_affected)} Datei(en).")
+        out.append(
+            f"**Treffer: {len(stats.findings)}** in "
+            f"{len(stats.files_affected)} Datei(en)."
+        )
         out.append("")
         out.append("| Datei | Zeile | Match | Auszug |")
         out.append("|---|---:|---|---|")
@@ -421,8 +486,7 @@ def _format_markdown(
     out.append("---")
     out.append("")
     out.append(
-        "Naechster Schritt: Diesen Report durchgehen und pro Kategorie "
-        "entscheiden:"
+        "Naechster Schritt: Diesen Report durchgehen und pro Kategorie entscheiden:"
     )
     out.append("- **entfernen** (Wert war nur fuer dich relevant),")
     out.append(
@@ -472,23 +536,25 @@ def main() -> int:
         description="Phase 67/71: Public-Readiness Audit.",
     )
     parser.add_argument(
-        "--root", default=".",
+        "--root",
+        default=".",
         help="Repo-Wurzel (default: cwd).",
     )
     parser.add_argument(
-        "--out", default="docs/public-readiness-audit.md",
+        "--out",
+        default="docs/public-readiness-audit.md",
         help="Output-Pfad (relativ zur --root). '-' = stdout.",
     )
     parser.add_argument(
-        "--json", action="store_true",
+        "--json",
+        action="store_true",
         help="JSON statt Markdown ausgeben (nur sinnvoll mit --out=-).",
     )
     args = parser.parse_args()
 
     repo_root = Path(args.root).resolve()
     if not repo_root.is_dir():
-        print(f"FEHLER: --root '{repo_root}' ist kein Verzeichnis.",
-              file=sys.stderr)
+        print(f"FEHLER: --root '{repo_root}' ist kein Verzeichnis.", file=sys.stderr)
         return 2
 
     categories = build_categories(repo_root)

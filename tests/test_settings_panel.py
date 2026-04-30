@@ -9,6 +9,7 @@ try:
 
     from elder_berry.core.audio_router import AudioRouter
     from elder_berry.web.settings_dashboard import SettingsDashboard
+
     HAS_FASTAPI = True
 except ImportError:
     HAS_FASTAPI = False

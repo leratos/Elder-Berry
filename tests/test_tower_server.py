@@ -1,4 +1,5 @@
 """Tests für tower.tower_server – TowerServer Endpoints."""
+
 from __future__ import annotations
 
 import io
@@ -101,6 +102,7 @@ def _fake_generate_audio(text: str, output_path: Path, emotion=None) -> Path:
     """Erzeugt eine minimale WAV-Fake-Datei."""
     # Minimale WAV: 44 Byte Header + 100 Byte Stille
     import struct
+
     sample_rate = 16000
     num_samples = 100
     data = struct.pack(f"<{num_samples}h", *([0] * num_samples))
@@ -112,13 +114,13 @@ def _fake_generate_audio(text: str, output_path: Path, emotion=None) -> Path:
         f.write(struct.pack("<I", 36 + data_size))
         f.write(b"WAVE")
         f.write(b"fmt ")
-        f.write(struct.pack("<I", 16))       # Subchunk1Size
-        f.write(struct.pack("<H", 1))        # PCM
-        f.write(struct.pack("<H", 1))        # Mono
+        f.write(struct.pack("<I", 16))  # Subchunk1Size
+        f.write(struct.pack("<H", 1))  # PCM
+        f.write(struct.pack("<H", 1))  # Mono
         f.write(struct.pack("<I", sample_rate))
         f.write(struct.pack("<I", sample_rate * 2))
-        f.write(struct.pack("<H", 2))        # BlockAlign
-        f.write(struct.pack("<H", 16))       # BitsPerSample
+        f.write(struct.pack("<H", 2))  # BlockAlign
+        f.write(struct.pack("<H", 16))  # BitsPerSample
         f.write(b"data")
         f.write(struct.pack("<I", data_size))
         f.write(data)
@@ -248,7 +250,9 @@ class TestSTT:
 
 class TestAction:
     def test_press_key(self, client, mock_actions):
-        r = client.post("/action", json={"action": "press_key", "params": {"key": "enter"}})
+        r = client.post(
+            "/action", json={"action": "press_key", "params": {"key": "enter"}}
+        )
         assert r.status_code == 200
         assert r.json()["success"] is True
         mock_actions.press_key.assert_called_once_with(key="enter")
@@ -301,6 +305,7 @@ class TestAction:
 
     def test_list_windows(self, client, mock_actions):
         from elder_berry.actions.base import WindowInfo
+
         mock_actions.list_windows.return_value = [
             WindowInfo(title="Notepad", handle=1234),
             WindowInfo(title="Chrome", handle=5678),
@@ -448,7 +453,9 @@ class TestSystemUpdate:
     @patch("subprocess.run")
     def test_update_fetch_fails(self, mock_run, client):
         mock_run.return_value = MagicMock(
-            returncode=1, stdout="", stderr="network error",
+            returncode=1,
+            stdout="",
+            stderr="network error",
         )
         r = client.post("/system/update")
         assert r.status_code == 200
@@ -461,10 +468,10 @@ class TestSystemUpdate:
     def test_update_success(self, mock_run, mock_thread, client):
         """Volles Update: fetch + pull + pip + delayed exit."""
         mock_run.side_effect = [
-            MagicMock(returncode=0, stdout="", stderr=""),       # fetch
-            MagicMock(returncode=0, stdout="3\n", stderr=""),    # behind
-            MagicMock(returncode=0, stdout="ok\n", stderr=""),   # pull
-            MagicMock(returncode=0, stdout="", stderr=""),       # pip
+            MagicMock(returncode=0, stdout="", stderr=""),  # fetch
+            MagicMock(returncode=0, stdout="3\n", stderr=""),  # behind
+            MagicMock(returncode=0, stdout="ok\n", stderr=""),  # pull
+            MagicMock(returncode=0, stdout="", stderr=""),  # pip
         ]
         r = client.post("/system/update")
         assert r.status_code == 200

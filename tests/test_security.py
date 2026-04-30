@@ -58,6 +58,7 @@ def client_with_origin():
 # Security Headers
 # ------------------------------------------------------------------
 
+
 class TestSecurityHeaders:
     """Alle Responses müssen Security-Header enthalten."""
 
@@ -130,6 +131,7 @@ class TestSecurityHeaders:
 # CORS
 # ------------------------------------------------------------------
 
+
 class TestCORS:
     """CORS-Konfiguration Tests."""
 
@@ -177,8 +179,7 @@ class TestCORS:
             },
         )
         assert (
-            r.headers.get("access-control-allow-origin")
-            == "https://fern.example.com"
+            r.headers.get("access-control-allow-origin") == "https://fern.example.com"
         )
 
     def test_cors_methods_restricted(self, client):
@@ -198,6 +199,7 @@ class TestCORS:
 # ------------------------------------------------------------------
 # Exception-Handler
 # ------------------------------------------------------------------
+
 
 class TestExceptionHandler:
     """Globaler Exception-Handler fängt unbehandelte Fehler."""

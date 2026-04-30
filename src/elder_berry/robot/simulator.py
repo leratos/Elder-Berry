@@ -9,6 +9,7 @@ Verwendung:
     python -m elder_berry.robot.simulator
     → Startet den RobotServer auf localhost:8000
 """
+
 from __future__ import annotations
 
 import logging
@@ -46,7 +47,9 @@ class SimulatedMotors(MotorController):
         self._speed = max(0.0, min(1.0, speed))
         self._active = True
         logger.info(
-            "[SIM] Motor: %s @ %.0f%%", direction, self._speed * 100,
+            "[SIM] Motor: %s @ %.0f%%",
+            direction,
+            self._speed * 100,
         )
 
     def stop(self) -> None:
@@ -237,10 +240,11 @@ if __name__ == "__main__":
         description="Elder-Berry Robot-Simulator (FastAPI)",
     )
     parser.add_argument(
-        "--bind", default="127.0.0.1",
+        "--bind",
+        default="127.0.0.1",
         help="Bind-Host (default: 127.0.0.1 = Loopback). "
-             "Fuer LAN-Zugriff explizit '--bind 0.0.0.0' -- der Simulator "
-             "hat keine Auth, das LAN muss vertrauenswuerdig sein.",
+        "Fuer LAN-Zugriff explizit '--bind 0.0.0.0' -- der Simulator "
+        "hat keine Auth, das LAN muss vertrauenswuerdig sein.",
     )
     parser.add_argument("--port", type=int, default=8000)
     args = parser.parse_args()

@@ -7,6 +7,7 @@ Benötigt:
     - elevenlabs_api_key (SecretStore)
     - elevenlabs_voice_id (SecretStore)
 """
+
 from __future__ import annotations
 
 import logging
@@ -102,7 +103,8 @@ class ElevenLabsClient:
 
                 logger.debug(
                     "ElevenLabs TTS: %d Zeichen → %d bytes MP3",
-                    len(text), len(audio_bytes),
+                    len(text),
+                    len(audio_bytes),
                 )
                 return audio_bytes
 
@@ -110,7 +112,8 @@ class ElevenLabsClient:
             raise ElevenLabsError("ElevenLabs Timeout: %s" % e) from e
         except httpx.HTTPStatusError as e:
             raise ElevenLabsError(
-                "ElevenLabs HTTP %d: %s" % (e.response.status_code, e.response.text[:200]),
+                "ElevenLabs HTTP %d: %s"
+                % (e.response.status_code, e.response.text[:200]),
             ) from e
         except ElevenLabsError:
             raise

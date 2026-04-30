@@ -19,6 +19,7 @@ Ablauf:
 Scopes:
     - calendar (Termine lesen + erstellen)
 """
+
 import json
 import sys
 from pathlib import Path
@@ -57,7 +58,8 @@ def main() -> None:
     print()
 
     flow = InstalledAppFlow.from_client_secrets_file(
-        str(CLIENT_SECRET_PATH), scopes=SCOPES,
+        str(CLIENT_SECRET_PATH),
+        scopes=SCOPES,
     )
     credentials = flow.run_local_server(port=0)
 

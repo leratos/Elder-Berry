@@ -1,4 +1,5 @@
 """Tests für PendingConfirmationStore."""
+
 from __future__ import annotations
 
 import time
@@ -15,17 +16,22 @@ from elder_berry.comms.pending_confirmation import (
 # PendingAction
 # ---------------------------------------------------------------------------
 
+
 class TestPendingAction:
     def test_not_expired_within_ttl(self):
         action = PendingAction(
-            action_type="mail_reply", description="test", ttl=300,
+            action_type="mail_reply",
+            description="test",
+            ttl=300,
         )
         assert action.is_expired is False
 
     def test_expired_after_ttl(self):
         action = PendingAction(
-            action_type="mail_reply", description="test",
-            created_at=time.time() - 400, ttl=300,
+            action_type="mail_reply",
+            description="test",
+            created_at=time.time() - 400,
+            ttl=300,
         )
         assert action.is_expired is True
 
@@ -37,6 +43,7 @@ class TestPendingAction:
 # ---------------------------------------------------------------------------
 # PendingConfirmationStore – set/get/clear
 # ---------------------------------------------------------------------------
+
 
 class TestStoreBasics:
     def test_set_and_get(self):
@@ -52,8 +59,10 @@ class TestStoreBasics:
     def test_get_none_when_expired(self):
         store = PendingConfirmationStore()
         action = PendingAction(
-            action_type="x", description="y",
-            created_at=time.time() - 600, ttl=300,
+            action_type="x",
+            description="y",
+            created_at=time.time() - 600,
+            ttl=300,
         )
         store.set("@user:mx", action)
         assert store.get("@user:mx") is None
@@ -85,11 +94,13 @@ class TestStoreBasics:
 # check_response
 # ---------------------------------------------------------------------------
 
+
 class TestCheckResponse:
     def _store_with_action(self):
         store = PendingConfirmationStore()
         action = PendingAction(
-            action_type="mail_reply", description="d",
+            action_type="mail_reply",
+            description="d",
             data={"msg_id": "123"},
         )
         store.set("@user:mx", action)
@@ -150,8 +161,10 @@ class TestCheckResponse:
     def test_none_when_expired(self):
         store = PendingConfirmationStore()
         action = PendingAction(
-            action_type="x", description="y",
-            created_at=time.time() - 600, ttl=300,
+            action_type="x",
+            description="y",
+            created_at=time.time() - 600,
+            ttl=300,
         )
         store.set("@user:mx", action)
         rtype, act = store.check_response("@user:mx", "ja")

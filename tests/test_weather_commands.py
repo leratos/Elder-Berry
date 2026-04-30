@@ -1,4 +1,5 @@
 """Tests: WeatherCommandHandler – Patterns für wiederkehrende Erinnerungen."""
+
 from datetime import datetime, timezone, timedelta
 from unittest.mock import MagicMock
 
@@ -18,6 +19,7 @@ from elder_berry.tools.reminder_store import ReminderStore
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
+
 
 @pytest.fixture
 def store(tmp_path):
@@ -39,16 +41,21 @@ def handler(store):
 # Pattern-Matching
 # ---------------------------------------------------------------------------
 
+
 class TestRecurringWeeklyPattern:
     def test_jeden_montag(self):
-        m = RECURRING_WEEKLY_PATTERN.match("erinnere mich jeden montag um 9:00: Wochenbericht")
+        m = RECURRING_WEEKLY_PATTERN.match(
+            "erinnere mich jeden montag um 9:00: Wochenbericht"
+        )
         assert m is not None
         assert m.group(1) == "montag"
         assert m.group(2) == "9:00"
         assert m.group(3) == "Wochenbericht"
 
     def test_jeden_freitag(self):
-        m = RECURRING_WEEKLY_PATTERN.match("erinnere mich jeden freitag um 17:30: Feierabend")
+        m = RECURRING_WEEKLY_PATTERN.match(
+            "erinnere mich jeden freitag um 17:30: Feierabend"
+        )
         assert m is not None
         assert m.group(1) == "freitag"
         assert m.group(2) == "17:30"
@@ -63,7 +70,9 @@ class TestRecurringWeeklyPattern:
         assert m is not None
 
     def test_erinnerung_variante(self):
-        m = RECURRING_WEEKLY_PATTERN.match("erinnerung jeden sonntag um 8:00: Frühstück")
+        m = RECURRING_WEEKLY_PATTERN.match(
+            "erinnerung jeden sonntag um 8:00: Frühstück"
+        )
         assert m is not None
 
 
@@ -97,7 +106,9 @@ class TestRecurringMonthlyPattern:
         assert m.group(3) == "Miete"
 
     def test_monatlich_15(self):
-        m = RECURRING_MONTHLY_PATTERN.match("erinnere mich jeden 15. um 12:00: Gehalt prüfen")
+        m = RECURRING_MONTHLY_PATTERN.match(
+            "erinnere mich jeden 15. um 12:00: Gehalt prüfen"
+        )
         assert m is not None
         assert m.group(1) == "15"
 
@@ -105,6 +116,7 @@ class TestRecurringMonthlyPattern:
 # ---------------------------------------------------------------------------
 # Command Registration
 # ---------------------------------------------------------------------------
+
 
 class TestWeatherLocationPattern:
     """WEATHER_LOCATION_PATTERN erkennt Orte aus natürlichsprachlichen Anfragen."""
@@ -174,7 +186,11 @@ class TestWeatherLocationExecution:
 
     def test_location_extracted_and_used(self):
         weather_mock = MagicMock()
-        weather_mock.geocode.return_value = ("52.41", "12.56", "Brandenburg an der Havel")
+        weather_mock.geocode.return_value = (
+            "52.41",
+            "12.56",
+            "Brandenburg an der Havel",
+        )
         weather_mock.get_current.return_value = {"temp": 5.0}
         weather_mock.get_today.return_value = {"day": "heute"}
         weather_mock.format_current.return_value = "Wetter in Brandenburg"
@@ -182,7 +198,8 @@ class TestWeatherLocationExecution:
 
         handler = WeatherCommandHandler(weather=weather_mock)
         result = handler.execute(
-            "wetter", "Wie ist heute das Wetter in Brandenburg an der Havel",
+            "wetter",
+            "Wie ist heute das Wetter in Brandenburg an der Havel",
         )
         assert result.success is True
         weather_mock.geocode.assert_called_once_with("Brandenburg an der Havel")
@@ -219,9 +236,12 @@ class TestCommandRegistration:
 # Command-Ausführung
 # ---------------------------------------------------------------------------
 
+
 class TestRecurringCommandExecution:
     def test_daily_creates_recurring(self, handler, store):
-        result = handler.execute("recurring_reminder", "erinnere mich täglich um 8:00: Standup")
+        result = handler.execute(
+            "recurring_reminder", "erinnere mich täglich um 8:00: Standup"
+        )
         assert result.success is True
         assert "🔁" in result.text
         assert "täglich" in result.text
@@ -233,7 +253,9 @@ class TestRecurringCommandExecution:
         assert pending[0].message == "standup"
 
     def test_weekly_creates_recurring(self, handler, store):
-        result = handler.execute("recurring_reminder", "erinnere mich jeden montag um 9:00: Wochenbericht")
+        result = handler.execute(
+            "recurring_reminder", "erinnere mich jeden montag um 9:00: Wochenbericht"
+        )
         assert result.success is True
         assert "🔁" in result.text
 
@@ -242,7 +264,9 @@ class TestRecurringCommandExecution:
         assert pending[0].recurrence == "weekly:1"
 
     def test_weekday_creates_recurring(self, handler, store):
-        result = handler.execute("recurring_reminder", "erinnere mich werktags um 7:30: Aufstehen")
+        result = handler.execute(
+            "recurring_reminder", "erinnere mich werktags um 7:30: Aufstehen"
+        )
         assert result.success is True
 
         pending = store.get_pending()
@@ -250,7 +274,9 @@ class TestRecurringCommandExecution:
         assert pending[0].recurrence == "weekdays"
 
     def test_monthly_creates_recurring(self, handler, store):
-        result = handler.execute("recurring_reminder", "erinnere mich jeden 1. um 10:00: Miete")
+        result = handler.execute(
+            "recurring_reminder", "erinnere mich jeden 1. um 10:00: Miete"
+        )
         assert result.success is True
 
         pending = store.get_pending()
@@ -259,19 +285,31 @@ class TestRecurringCommandExecution:
 
     def test_no_store_returns_error(self):
         handler = WeatherCommandHandler(reminder_store=None)
-        result = handler.execute("recurring_reminder", "erinnere mich täglich um 8:00: Test")
+        result = handler.execute(
+            "recurring_reminder", "erinnere mich täglich um 8:00: Test"
+        )
         assert result.success is False
         assert "nicht verfügbar" in result.text
 
     def test_erinnerungen_shows_recurrence(self, handler, store):
-        store.add("_timer_user", "Standup", datetime.now(timezone.utc) + timedelta(hours=1), recurrence="daily")
+        store.add(
+            "_timer_user",
+            "Standup",
+            datetime.now(timezone.utc) + timedelta(hours=1),
+            recurrence="daily",
+        )
         result = handler.execute("erinnerungen", "erinnerungen")
         assert result.success is True
         assert "🔁" in result.text
         assert "täglich" in result.text
 
     def test_delete_cancels_recurring(self, handler, store):
-        r = store.add("_timer_user", "Serie", datetime.now(timezone.utc) + timedelta(hours=1), recurrence="weekly:1")
+        r = store.add(
+            "_timer_user",
+            "Serie",
+            datetime.now(timezone.utc) + timedelta(hours=1),
+            recurrence="weekly:1",
+        )
         result = handler.execute("reminder_delete", f"lösche erinnerung {r.id}")
         assert result.success is True
         assert store.get_pending() == []
@@ -281,6 +319,7 @@ class TestRecurringCommandExecution:
 # Timezone-Integration
 # ---------------------------------------------------------------------------
 
+
 class TestTimezone:
     def test_get_timezone_used_for_reminder(self, store):
         tz_mock = MagicMock(return_value="Europe/Berlin")
@@ -288,7 +327,9 @@ class TestTimezone:
             reminder_store=store,
             get_timezone=tz_mock,
         )
-        result = handler.execute("recurring_reminder", "erinnere mich täglich um 8:00: Test")
+        result = handler.execute(
+            "recurring_reminder", "erinnere mich täglich um 8:00: Test"
+        )
         assert result.success is True
         # Timezone-Callback wurde genutzt (mindestens für _today_or_tomorrow_at)
 

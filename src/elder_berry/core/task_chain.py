@@ -9,6 +9,7 @@ Beispiel: "Lies meine Mails und trag den Zahnarzttermin ein"
   → Step 3: termin: Zahnarzt 2026-04-15 14:00 → "Termin erstellt"
   → DONE → Zusammenfassung an User
 """
+
 from __future__ import annotations
 
 import json
@@ -182,7 +183,8 @@ class TaskChainRunner:
 
             # Kontext für nächsten Schritt aufbauen
             step_context = self._build_step_context(
-                user_request, chain.steps,
+                user_request,
+                chain.steps,
             )
         else:
             # Max Steps erreicht ohne DONE
@@ -195,7 +197,10 @@ class TaskChainRunner:
         return chain
 
     def _execute_step(
-        self, step_num: int, command: str, llm_response: str,
+        self,
+        step_num: int,
+        command: str,
+        llm_response: str,
     ) -> StepResult:
         """Führt einen einzelnen Command-Schritt aus."""
         logger.info("Chain execute: %s", command)
@@ -219,10 +224,7 @@ class TaskChainRunner:
 
             # Ergebnis kürzen wenn nötig
             if len(result_text) > self._max_result_chars:
-                result_text = (
-                    result_text[: self._max_result_chars]
-                    + "\n... (gekürzt)"
-                )
+                result_text = result_text[: self._max_result_chars] + "\n... (gekürzt)"
 
             return StepResult(
                 step_number=step_num,
@@ -246,7 +248,9 @@ class TaskChainRunner:
         return CHAIN_SYSTEM_PROMPT.format(max_steps=self._max_steps)
 
     def _build_initial_context(
-        self, user_request: str, chat_history: str,
+        self,
+        user_request: str,
+        chat_history: str,
     ) -> str:
         """Baut den initialen Kontext für den ersten Schritt."""
         parts = []
@@ -257,7 +261,9 @@ class TaskChainRunner:
         return "\n".join(parts)
 
     def _build_step_context(
-        self, user_request: str, steps: list[StepResult],
+        self,
+        user_request: str,
+        steps: list[StepResult],
     ) -> str:
         """Baut den Kontext mit bisherigen Schritten für den nächsten LLM-Call."""
         parts = [f"Aufgabe des Nutzers: {user_request}\n"]
@@ -265,9 +271,7 @@ class TaskChainRunner:
 
         for step in steps:
             status = "OK" if step.success else "FEHLER"
-            parts.append(
-                f"\nSchritt {step.step_number}: {step.command} → [{status}]"
-            )
+            parts.append(f"\nSchritt {step.step_number}: {step.command} → [{status}]")
             if step.result_text:
                 parts.append(f"Ergebnis: {step.result_text}")
 

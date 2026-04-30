@@ -5,13 +5,18 @@ Verwaltet:
 - docker restart <name> → Container neustarten
 - docker logs <name> → Container-Logs
 """
+
 from __future__ import annotations
 
 import logging
 import re
 import subprocess
 
-from elder_berry.comms.commands.base import CommandHandler, CommandResult, user_friendly_error
+from elder_berry.comms.commands.base import (
+    CommandHandler,
+    CommandResult,
+    user_friendly_error,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -63,7 +68,7 @@ class DockerCommandHandler(CommandHandler):
                 command="docker",
                 success=False,
                 text="Ungültiges Format. Erlaubt: docker ps, docker restart <name>, "
-                     "docker logs <name>",
+                "docker logs <name>",
             )
 
         subcmd = match.group(1).lower()
@@ -74,7 +79,7 @@ class DockerCommandHandler(CommandHandler):
                 command="docker",
                 success=False,
                 text=f"Docker-Befehl '{subcmd}' nicht erlaubt. "
-                     f"Erlaubt: {', '.join(sorted(DOCKER_WHITELIST))}",
+                f"Erlaubt: {', '.join(sorted(DOCKER_WHITELIST))}",
             )
 
         if subcmd in ("restart", "logs") and not container:
@@ -89,7 +94,7 @@ class DockerCommandHandler(CommandHandler):
                 command="docker",
                 success=False,
                 text=f"Ungültiger Container-Name '{container}'. "
-                     "Erlaubt: Buchstaben, Ziffern, Bindestrich, Unterstrich, Punkt.",
+                "Erlaubt: Buchstaben, Ziffern, Bindestrich, Unterstrich, Punkt.",
             )
 
         cmd = ["docker", subcmd]

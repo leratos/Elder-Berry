@@ -76,7 +76,9 @@ class RateLimiter:
     # ------------------------------------------------------------------
 
     async def check_and_record(
-        self, key: str, now: float | None = None,
+        self,
+        key: str,
+        now: float | None = None,
     ) -> bool:
         """Prüft ob ``key`` erlaubt ist und zählt einen Fehlversuch.
 
@@ -99,7 +101,9 @@ class RateLimiter:
                 remaining = int(lockout_until - ts)
                 security_logger.warning(
                     "[%s] BLOCKED %s – Lockout noch %ds",
-                    self._name, key, remaining,
+                    self._name,
+                    key,
+                    remaining,
                 )
                 return False
 
@@ -115,9 +119,11 @@ class RateLimiter:
                 lockout_until = ts + self._lockout
                 self._data[key] = ([], lockout_until)
                 security_logger.warning(
-                    "[%s] LOCKOUT %s – %d Fehlversuche in %ds, "
-                    "gesperrt für %ds bis %s",
-                    self._name, key, len(attempts), self._window,
+                    "[%s] LOCKOUT %s – %d Fehlversuche in %ds, gesperrt für %ds bis %s",
+                    self._name,
+                    key,
+                    len(attempts),
+                    self._window,
                     self._lockout,
                     _format_ts(lockout_until),
                 )
@@ -149,14 +155,17 @@ class RateLimiter:
             return
         cutoff = now - max(self._window, self._lockout)
         stale = [
-            k for k, (attempts, lockout_until) in self._data.items()
+            k
+            for k, (attempts, lockout_until) in self._data.items()
             if lockout_until <= now and (not attempts or max(attempts) <= cutoff)
         ]
         for k in stale:
             del self._data[k]
         if stale:
             security_logger.debug(
-                "[%s] Cleanup: %d veraltete Einträge entfernt", self._name, len(stale),
+                "[%s] Cleanup: %d veraltete Einträge entfernt",
+                self._name,
+                len(stale),
             )
         self._last_cleanup = now
 
@@ -180,4 +189,5 @@ class RateLimiter:
 def _format_ts(ts: float) -> str:
     """Lesbare UTC-Zeit für Log-Ausgaben."""
     import datetime
+
     return datetime.datetime.fromtimestamp(ts, tz=datetime.UTC).strftime("%H:%M:%S UTC")

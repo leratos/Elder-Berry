@@ -9,6 +9,7 @@ Verwaltet:
 - notiz löschen #<id>             → Notiz per ID löschen
 - vergiss <key>                   → KV-Fakt per Key löschen
 """
+
 from __future__ import annotations
 
 import logging
@@ -125,17 +126,27 @@ class NoteCommandHandler(CommandHandler):
     def keywords(self) -> dict[str, list[str]]:
         return {
             "note_set_fact": [
-                "merk dir", "merke dir", "speicher dir",
-                "denk dran", "speichere",
+                "merk dir",
+                "merke dir",
+                "speicher dir",
+                "denk dran",
+                "speichere",
             ],
             "note_add": ["notiz:", "notiere", "schreib auf"],
             "note_get_fact": [
-                "was ist", "was war", "wie heißt", "wie lautet",
-                "weißt du noch", "wann ist", "wer ist",
+                "was ist",
+                "was war",
+                "wie heißt",
+                "wie lautet",
+                "weißt du noch",
+                "wann ist",
+                "wer ist",
                 "erinnerst du dich",
             ],
             "note_search": [
-                "notizen suche", "notiz suche", "suche in notizen",
+                "notizen suche",
+                "notiz suche",
+                "suche in notizen",
                 "durchsuche notizen",
             ],
             "notizen": ["notizen", "alle notizen", "meine notizen"],
@@ -237,7 +248,9 @@ class NoteCommandHandler(CommandHandler):
         match = NOTE_GET_FACT_PATTERN.match(raw_text.strip())
         if not match:
             return CommandResult(
-                command="note_get_fact", success=False, fallthrough=True,
+                command="note_get_fact",
+                success=False,
+                fallthrough=True,
             )
 
         key = (match.group(1) or match.group(2) or "").strip()
@@ -246,7 +259,9 @@ class NoteCommandHandler(CommandHandler):
         if note is None:
             # Kein Treffer → LLM-Fallthrough (z.B. "was ist deine meinung")
             return CommandResult(
-                command="note_get_fact", success=False, fallthrough=True,
+                command="note_get_fact",
+                success=False,
+                fallthrough=True,
             )
 
         return CommandResult(

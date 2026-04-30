@@ -1,4 +1,5 @@
 """Tests für DocumentClassifier – Klassifizierung, Textextraktion, JSON-Parsing."""
+
 from __future__ import annotations
 
 import json
@@ -67,9 +68,12 @@ def _llm_json(**kwargs) -> str:
 
 
 def test_classify_rechnung(classifier, llm, reader):
-    reader.read_pdf.return_value = MagicMock(text="Rechnung Nr. 12345 von Zahnarzt Dr. Weber")
+    reader.read_pdf.return_value = MagicMock(
+        text="Rechnung Nr. 12345 von Zahnarzt Dr. Weber"
+    )
     llm.generate.return_value = _llm_json(
-        kategorie="Rechnung", beschreibung="Zahnarzt-Dr-Weber",
+        kategorie="Rechnung",
+        beschreibung="Zahnarzt-Dr-Weber",
     )
 
     result = classifier.classify(Path("C:/tmp/scan.pdf"))
@@ -82,7 +86,8 @@ def test_classify_rechnung(classifier, llm, reader):
 def test_classify_vertrag(classifier, llm, reader):
     reader.read_pdf.return_value = MagicMock(text="Mietvertrag für Wohnung")
     llm.generate.return_value = _llm_json(
-        kategorie="Vertrag", beschreibung="Mietvertrag-Wohnung",
+        kategorie="Vertrag",
+        beschreibung="Mietvertrag-Wohnung",
     )
 
     result = classifier.classify(Path("C:/tmp/vertrag.pdf"))
@@ -94,7 +99,8 @@ def test_classify_vertrag(classifier, llm, reader):
 def test_classify_haus_angebot(classifier, llm, reader):
     reader.read_pdf.return_value = MagicMock(text="Angebot RK Bedachung")
     llm.generate.return_value = _llm_json(
-        kategorie="Haus", beschreibung="RK-Bedachung-Angebot",
+        kategorie="Haus",
+        beschreibung="RK-Bedachung-Angebot",
     )
 
     result = classifier.classify(Path("C:/tmp/angebot.pdf"))
@@ -106,7 +112,8 @@ def test_classify_haus_angebot(classifier, llm, reader):
 def test_classify_manual_elektronik(classifier, llm, reader):
     reader.read_pdf.return_value = MagicMock(text="Arduino Uno Handbuch")
     llm.generate.return_value = _llm_json(
-        kategorie="Manual", beschreibung="Arduino-Uno-Handbuch",
+        kategorie="Manual",
+        beschreibung="Arduino-Uno-Handbuch",
         manual_unterordner="Elektronik",
     )
 
@@ -120,7 +127,8 @@ def test_classify_manual_elektronik(classifier, llm, reader):
 def test_classify_manual_unknown_sub(classifier, llm, reader):
     reader.read_pdf.return_value = MagicMock(text="Irgendein Manual")
     llm.generate.return_value = _llm_json(
-        kategorie="Manual", beschreibung="Handbuch",
+        kategorie="Manual",
+        beschreibung="Handbuch",
         manual_unterordner="Kochen",  # ungültig
     )
 
@@ -134,7 +142,8 @@ def test_classify_manual_unknown_sub(classifier, llm, reader):
 def test_classify_projekt(classifier, llm, reader):
     reader.read_pdf.return_value = MagicMock(text="Elder-Berry Projektdokumentation")
     llm.generate.return_value = _llm_json(
-        kategorie="Projekt", beschreibung="Elder-Berry-Doku",
+        kategorie="Projekt",
+        beschreibung="Elder-Berry-Doku",
     )
 
     result = classifier.classify(Path("C:/tmp/projekt.pdf"))
@@ -158,9 +167,12 @@ def test_classify_no_text_scanned_ocr_fallback(classifier, llm, reader, stirling
         MagicMock(text="[Kein Text erkannt – möglicherweise ein gescanntes Dokument."),
         MagicMock(text="OCR-Text: Rechnung von Firma XY"),
     ]
-    stirling.ocr.return_value = MagicMock(success=True, output_path=Path("C:/tmp/ocr.pdf"))
+    stirling.ocr.return_value = MagicMock(
+        success=True, output_path=Path("C:/tmp/ocr.pdf")
+    )
     llm.generate.return_value = _llm_json(
-        kategorie="Rechnung", beschreibung="Firma-XY",
+        kategorie="Rechnung",
+        beschreibung="Firma-XY",
     )
 
     result = classifier.classify(Path("C:/tmp/scan.pdf"))
@@ -185,11 +197,13 @@ def test_classify_with_hint_category(classifier, llm, reader):
     """User-Korrektur 'Kategorie ist Haus' → neuer Vorschlag via LLM."""
     reader.read_pdf.return_value = MagicMock(text="Angebot für Dachdeckerarbeiten")
     llm.generate.return_value = _llm_json(
-        kategorie="Haus", beschreibung="Dachdecker-Angebot",
+        kategorie="Haus",
+        beschreibung="Dachdecker-Angebot",
     )
 
     result = classifier.classify_with_hint(
-        Path("C:/tmp/scan.pdf"), "Kategorie ist Haus",
+        Path("C:/tmp/scan.pdf"),
+        "Kategorie ist Haus",
     )
 
     assert result.category == "Haus"
@@ -201,7 +215,8 @@ def test_classify_with_hint_category(classifier, llm, reader):
 def test_classify_with_hint_full_name(classifier, llm):
     """'Haus Angebot-Dach' → direkt gebaut ohne LLM."""
     result = classifier.classify_with_hint(
-        Path("C:/tmp/scan.pdf"), "Haus Angebot-Dach",
+        Path("C:/tmp/scan.pdf"),
+        "Haus Angebot-Dach",
     )
 
     assert result.category == "Haus"
@@ -245,7 +260,9 @@ def test_extract_pdf_ocr_fallback(classifier, reader, stirling):
         MagicMock(text="[Kein Text erkannt – gescanntes Dokument."),
         MagicMock(text="OCR-Ergebnis"),
     ]
-    stirling.ocr.return_value = MagicMock(success=True, output_path=Path("C:/tmp/ocr.pdf"))
+    stirling.ocr.return_value = MagicMock(
+        success=True, output_path=Path("C:/tmp/ocr.pdf")
+    )
 
     text = classifier._extract_text(Path("C:/tmp/scan.pdf"))
 
@@ -307,7 +324,8 @@ def test_classify_llm_unavailable(classifier, llm, reader):
 
 def test_parse_valid_json(classifier):
     response = _llm_json(
-        kategorie="Haus", beschreibung="RK-Bedachung-Angebot",
+        kategorie="Haus",
+        beschreibung="RK-Bedachung-Angebot",
         datum="2026-04-02",
     )
 
@@ -319,7 +337,7 @@ def test_parse_valid_json(classifier):
 
 
 def test_parse_json_in_markdown(classifier):
-    response = '```json\n' + _llm_json(kategorie="Rechnung") + '\n```'
+    response = "```json\n" + _llm_json(kategorie="Rechnung") + "\n```"
 
     result = classifier._parse_response(response, Path("C:/tmp/scan.pdf"))
 
@@ -328,7 +346,8 @@ def test_parse_json_in_markdown(classifier):
 
 def test_parse_invalid_json(classifier):
     result = classifier._parse_response(
-        "Das ist kein JSON", Path("C:/tmp/scan.pdf"),
+        "Das ist kein JSON",
+        Path("C:/tmp/scan.pdf"),
     )
 
     assert result.confidence == "low"

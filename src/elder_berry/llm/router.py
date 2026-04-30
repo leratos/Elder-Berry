@@ -1,4 +1,5 @@
 """LLMRouter – primäres Backend (Anthropic) mit Offline-Fallback (Ollama)."""
+
 import logging
 
 from .base import LLMClient
@@ -97,7 +98,9 @@ class LLMRouter(LLMClient):
         """Gibt den Namen des aktiven Backends zurück (z.B. 'anthropic', 'ollama')."""
         if self._mode == "local_only":
             if self._fallback.is_available():
-                return getattr(self._fallback, "name", type(self._fallback).__name__.lower())
+                return getattr(
+                    self._fallback, "name", type(self._fallback).__name__.lower()
+                )
             return "none"
         for client in (self._primary, self._fallback):
             if client.is_available():

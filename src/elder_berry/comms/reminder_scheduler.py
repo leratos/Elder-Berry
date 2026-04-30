@@ -15,6 +15,7 @@ Verwendung:
     ...
     scheduler.stop()
 """
+
 from __future__ import annotations
 
 import logging
@@ -119,12 +120,15 @@ class ReminderScheduler:
 
                 logger.info(
                     "Erinnerung #%d gesendet an %s: %s",
-                    reminder.id, reminder.user_id, reminder.message,
+                    reminder.id,
+                    reminder.user_id,
+                    reminder.message,
                 )
             except Exception as e:
                 logger.error(
                     "Erinnerung #%d senden fehlgeschlagen: %s",
-                    reminder.id, e,
+                    reminder.id,
+                    e,
                 )
 
     def _reschedule(self, reminder) -> None:
@@ -134,16 +138,21 @@ class ReminderScheduler:
         try:
             tz_name = self._get_timezone()
             next_due = calculate_next_due(
-                reminder.due_at, reminder.recurrence, tz_name,
+                reminder.due_at,
+                reminder.recurrence,
+                tz_name,
             )
             self._store.reschedule(reminder.id, next_due)
             logger.info(
                 "Erinnerung #%d rescheduled auf %s (recurrence: %s)",
-                reminder.id, next_due.isoformat(), reminder.recurrence,
+                reminder.id,
+                next_due.isoformat(),
+                reminder.recurrence,
             )
         except Exception as e:
             logger.error(
                 "Erinnerung #%d reschedule fehlgeschlagen: %s – markiere als fired",
-                reminder.id, e,
+                reminder.id,
+                e,
             )
             self._store.mark_fired(reminder.id)

@@ -63,7 +63,9 @@ def register_dashboard_auth_routes(
     _limiter = login_limiter if login_limiter is not None else _DEFAULT_LOGIN_LIMITER
 
     def _set_session_cookie(
-        response: JSONResponse, cookie: str, request: Request,
+        response: JSONResponse,
+        cookie: str,
+        request: Request,
     ) -> None:
         response.set_cookie(
             COOKIE_NAME,
@@ -196,11 +198,13 @@ def register_dashboard_auth_routes(
                 expires_at = int(payload["exp"])
             except InvalidSessionError:
                 pass
-        return JSONResponse({
-            "authenticated": authenticated,
-            "expires_at": expires_at,
-            "password_set": password_set,
-        })
+        return JSONResponse(
+            {
+                "authenticated": authenticated,
+                "expires_at": expires_at,
+                "password_set": password_set,
+            }
+        )
 
     @app.post("/api/dashboard/password")
     async def change_password(request: Request) -> JSONResponse:

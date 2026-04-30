@@ -1,4 +1,5 @@
 """Tests: NoteStore – SQLite + FTS5 Notizen & Wissensdatenbank (Phase 16)."""
+
 from __future__ import annotations
 
 import pytest
@@ -14,6 +15,7 @@ USER_B = "@bob:matrix.org"
 # Fixtures
 # ---------------------------------------------------------------------------
 
+
 @pytest.fixture
 def store(tmp_path):
     """Erstellt einen NoteStore mit temporärer DB."""
@@ -26,6 +28,7 @@ def store(tmp_path):
 # ---------------------------------------------------------------------------
 # DTO-Tests
 # ---------------------------------------------------------------------------
+
 
 class TestNoteDTO:
     def test_frozen(self, store):
@@ -76,6 +79,7 @@ class TestNoteDTO:
 # set_fact – Tests
 # ---------------------------------------------------------------------------
 
+
 class TestSetFact:
     def test_new_fact(self, store):
         note = store.set_fact(USER_A, "wlan passwort", "xyz123")
@@ -115,6 +119,7 @@ class TestSetFact:
 # add_note – Tests
 # ---------------------------------------------------------------------------
 
+
 class TestAddNote:
     def test_add_note_no_key(self, store):
         note = store.add_note(USER_A, "Vermieter heißt Müller")
@@ -137,6 +142,7 @@ class TestAddNote:
 # ---------------------------------------------------------------------------
 # get_fact – Tests
 # ---------------------------------------------------------------------------
+
 
 class TestGetFact:
     def test_existing_key(self, store):
@@ -163,6 +169,7 @@ class TestGetFact:
 # ---------------------------------------------------------------------------
 # search – Tests
 # ---------------------------------------------------------------------------
+
 
 class TestSearch:
     def test_search_in_content(self, store):
@@ -201,6 +208,7 @@ class TestSearch:
 # list_all – Tests
 # ---------------------------------------------------------------------------
 
+
 class TestListAll:
     def test_empty(self, store):
         assert store.list_all(USER_A) == []
@@ -228,6 +236,7 @@ class TestListAll:
 # delete – Tests
 # ---------------------------------------------------------------------------
 
+
 class TestDelete:
     def test_delete_existing(self, store):
         note = store.add_note(USER_A, "Zu löschen")
@@ -254,6 +263,7 @@ class TestDelete:
 # close – Tests
 # ---------------------------------------------------------------------------
 
+
 class TestClose:
     def test_close_no_error(self, tmp_path):
         db = tmp_path / "close_test.db"
@@ -267,6 +277,7 @@ class TestClose:
 # ---------------------------------------------------------------------------
 # _normalize_key – Tests
 # ---------------------------------------------------------------------------
+
 
 class TestNormalizeKey:
     def test_lowercase(self):
@@ -282,6 +293,7 @@ class TestNormalizeKey:
 # ---------------------------------------------------------------------------
 # _sanitize_fts_query – Tests
 # ---------------------------------------------------------------------------
+
 
 class TestSanitizeFtsQuery:
     def test_normal_query(self):

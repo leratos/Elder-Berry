@@ -13,6 +13,7 @@ Verwendung:
     client.add("Milch kaufen", priority="hoch", due=date(2026, 5, 1))
     client.complete(uid="abc-123")
 """
+
 from __future__ import annotations
 
 import logging
@@ -31,10 +32,16 @@ PRIORITY_ICONS = {"hoch": "🔴", "mittel": "🟡", "niedrig": "🟢"}
 
 # iCal PRIORITY (0-9) → Saleria-Priorität
 _ICAL_TO_SALERIA = {
-    0: "niedrig",   # undefiniert
-    1: "hoch", 2: "hoch", 3: "hoch", 4: "hoch",
+    0: "niedrig",  # undefiniert
+    1: "hoch",
+    2: "hoch",
+    3: "hoch",
+    4: "hoch",
     5: "mittel",
-    6: "niedrig", 7: "niedrig", 8: "niedrig", 9: "niedrig",
+    6: "niedrig",
+    7: "niedrig",
+    8: "niedrig",
+    9: "niedrig",
 }
 
 # Saleria-Priorität → iCal PRIORITY
@@ -50,10 +57,10 @@ class TaskItem:
 
     uid: str
     text: str
-    priority: str           # "hoch" | "mittel" | "niedrig"
-    category: str           # Erste CATEGORIES oder ""
+    priority: str  # "hoch" | "mittel" | "niedrig"
+    category: str  # Erste CATEGORIES oder ""
     done: bool
-    due: date | None        # Nur Datum, keine Uhrzeit
+    due: date | None  # Nur Datum, keine Uhrzeit
     description: str
     created_at: datetime | None
     completed_at: datetime | None
@@ -143,7 +150,8 @@ class CalDAVTaskClient:
         names = [getattr(c, "name", "?") for c in vtodo_collections]
         logger.info(
             "Nextcloud Task-Listen gefunden (%d): %s",
-            len(vtodo_collections), ", ".join(names),
+            len(vtodo_collections),
+            ", ".join(names),
         )
         return self._task_lists
 
@@ -181,7 +189,8 @@ class CalDAVTaskClient:
             except Exception as e:
                 logger.debug(
                     "Task-Liste '%s' übersprungen: %s",
-                    getattr(task_list, "name", "?"), e,
+                    getattr(task_list, "name", "?"),
+                    e,
                 )
         return all_todos
 
@@ -242,7 +251,9 @@ class CalDAVTaskClient:
             # Priorität
             ical_prio = component.get("PRIORITY")
             if ical_prio is not None:
-                prio_val = int(ical_prio) if not isinstance(ical_prio, int) else ical_prio
+                prio_val = (
+                    int(ical_prio) if not isinstance(ical_prio, int) else ical_prio
+                )
                 priority = _ICAL_TO_SALERIA.get(prio_val, "niedrig")
             else:
                 priority = "niedrig"
@@ -307,6 +318,7 @@ class CalDAVTaskClient:
 
     def get_open(self, limit: int = 50) -> list[TaskItem]:
         """Offene Aufgaben aus allen Listen, sortiert: hoch → mittel → niedrig."""
+
         def _op():
             todos = self._collect_todos()
 
@@ -327,6 +339,7 @@ class CalDAVTaskClient:
 
     def get_open_by_due(self, target: date) -> list[TaskItem]:
         """Offene Aufgaben mit Fälligkeit an einem bestimmten Datum."""
+
         def _op():
             todos = self._collect_todos()
 
@@ -346,9 +359,12 @@ class CalDAVTaskClient:
         return self._call_with_retry(_op)
 
     def get_open_by_due_range(
-        self, start: date, end: date,
+        self,
+        start: date,
+        end: date,
     ) -> list[TaskItem]:
         """Offene Aufgaben mit Fälligkeit in einem Zeitraum (inklusiv)."""
+
         def _op():
             todos = self._collect_todos()
 
@@ -389,6 +405,7 @@ class CalDAVTaskClient:
 
     def get_done(self, limit: int = 20) -> list[TaskItem]:
         """Erledigte Aufgaben (neueste zuerst)."""
+
         def _op():
             todos = self._collect_todos(include_completed=True)
 
@@ -402,7 +419,8 @@ class CalDAVTaskClient:
                     logger.debug("Todo-Parsing übersprungen: %s", e)
 
             items.sort(
-                key=lambda t: t.completed_at or datetime.min.replace(
+                key=lambda t: t.completed_at
+                or datetime.min.replace(
                     tzinfo=timezone.utc,
                 ),
                 reverse=True,
@@ -492,10 +510,12 @@ class CalDAVTaskClient:
             if due:
                 vcal_lines.append(f"DUE;VALUE=DATE:{due.strftime('%Y%m%d')}")
 
-            vcal_lines.extend([
-                "END:VTODO",
-                "END:VCALENDAR",
-            ])
+            vcal_lines.extend(
+                [
+                    "END:VTODO",
+                    "END:VCALENDAR",
+                ]
+            )
 
             ical_str = "\r\n".join(vcal_lines)
             task_list.save_todo(ical_str)
@@ -517,6 +537,7 @@ class CalDAVTaskClient:
 
     def complete(self, uid: str) -> TaskItem | None:
         """Aufgabe als erledigt markieren (sucht über alle Listen)."""
+
         def _op():
             todo = self._find_todo_by_uid(uid)
             if not todo:
@@ -530,6 +551,7 @@ class CalDAVTaskClient:
 
     def reopen(self, uid: str) -> TaskItem | None:
         """Erledigte Aufgabe wieder öffnen (sucht über alle Listen)."""
+
         def _op():
             todo = self._find_todo_by_uid(uid)
             if not todo:
@@ -584,11 +606,13 @@ class CalDAVTaskClient:
 
     def delete(self, uid: str) -> bool:
         """Aufgabe löschen (sucht über alle Listen)."""
+
         def _op():
             todo = self._find_todo_by_uid(uid)
             if not todo:
                 logger.info(
-                    "Aufgabe bereits gelöscht/nicht gefunden: %s", uid,
+                    "Aufgabe bereits gelöscht/nicht gefunden: %s",
+                    uid,
                 )
                 return True
             todo.delete()

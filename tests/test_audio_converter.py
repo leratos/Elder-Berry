@@ -1,4 +1,5 @@
 """Tests: AudioConverter – WAV/MP3 → OGG/Opus Konvertierung."""
+
 import json
 import subprocess
 import wave
@@ -26,6 +27,7 @@ def _ffprobe_json(duration_seconds: float) -> str:
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
+
 
 @pytest.fixture
 def converter():
@@ -71,6 +73,7 @@ def short_wav(tmp_path) -> Path:
 # Init + ffmpeg-Check
 # ---------------------------------------------------------------------------
 
+
 class TestInit:
     def test_ffmpeg_check(self, converter):
         # Ergebnis hängt von System ab, aber Property muss bool sein
@@ -82,7 +85,10 @@ class TestInit:
             assert conv.ffmpeg_available is False
 
     def test_ffmpeg_found(self):
-        with patch("elder_berry.comms.audio_converter.shutil.which", return_value="/usr/bin/ffmpeg"):
+        with patch(
+            "elder_berry.comms.audio_converter.shutil.which",
+            return_value="/usr/bin/ffmpeg",
+        ):
             conv = AudioConverter()
             assert conv.ffmpeg_available is True
 
@@ -90,6 +96,7 @@ class TestInit:
 # ---------------------------------------------------------------------------
 # to_ogg_opus (nur wenn ffmpeg verfügbar)
 # ---------------------------------------------------------------------------
+
 
 class TestToOggOpus:
     def test_convert_wav_to_ogg(self, converter, wav_file, tmp_path):
@@ -166,6 +173,7 @@ class TestToOggOpus:
 # to_ogg_opus ohne ffmpeg
 # ---------------------------------------------------------------------------
 
+
 class TestWithoutFfmpeg:
     def test_raises_without_ffmpeg(self, wav_file):
         with patch("elder_berry.comms.audio_converter.shutil.which", return_value=None):
@@ -183,6 +191,7 @@ class TestWithoutFfmpeg:
 # ---------------------------------------------------------------------------
 # get_duration_ms
 # ---------------------------------------------------------------------------
+
 
 class TestGetDuration:
     def test_wav_duration(self, converter, wav_file):
@@ -210,6 +219,7 @@ class TestGetDuration:
 # ---------------------------------------------------------------------------
 # Mocked subprocess tests – Phase 55 Rewrite ohne pydub
 # ---------------------------------------------------------------------------
+
 
 def _make_mocked_converter():
     """AudioConverter mit simuliertem ffmpeg + ffprobe."""
@@ -249,8 +259,8 @@ class TestToOggOpusMocked:
         conv = _make_mocked_converter()
 
         responses = [
-            _fake_run(),                                     # ffmpeg
-            _fake_run(stdout=_ffprobe_json(1.234)),          # ffprobe
+            _fake_run(),  # ffmpeg
+            _fake_run(stdout=_ffprobe_json(1.234)),  # ffprobe
         ]
         with patch(
             "elder_berry.comms.audio_converter.subprocess.run",
@@ -283,7 +293,9 @@ class TestToOggOpusMocked:
             side_effect=responses,
         ) as mock_run:
             result_path, duration_ms = conv.to_ogg_opus(
-                input_wav, output_path=custom_out, bitrate="32k",
+                input_wav,
+                output_path=custom_out,
+                bitrate="32k",
             )
 
         assert result_path == custom_out
@@ -302,7 +314,8 @@ class TestToOggOpusMocked:
             return_value=_fake_run(stderr="Invalid data found", returncode=1),
         ):
             with pytest.raises(
-                AudioConverterError, match="Konvertierung fehlgeschlagen",
+                AudioConverterError,
+                match="Konvertierung fehlgeschlagen",
             ):
                 conv.to_ogg_opus(input_wav)
 
@@ -337,8 +350,8 @@ class TestToOggOpusMocked:
 
         conv = _make_mocked_converter()
         responses = [
-            _fake_run(),                                  # ffmpeg OK
-            _fake_run(stderr="corrupt", returncode=1),    # ffprobe fails
+            _fake_run(),  # ffmpeg OK
+            _fake_run(stderr="corrupt", returncode=1),  # ffprobe fails
         ]
         with patch(
             "elder_berry.comms.audio_converter.subprocess.run",

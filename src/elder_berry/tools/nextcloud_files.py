@@ -6,6 +6,7 @@ Uses httpx for HTTP and xml.etree.ElementTree for WebDAV XML parsing.
 Credentials are read from SecretStore:
     nextcloud_url, nextcloud_user, nextcloud_app_password
 """
+
 from __future__ import annotations
 
 import logging
@@ -176,9 +177,7 @@ class NextcloudFilesClient:
         try:
             resp = httpx.request("MKCOL", url, auth=self._auth, timeout=10.0)
         except (httpx.ConnectError, httpx.TimeoutException) as exc:
-            raise NextcloudConnectionError(
-                f"Server nicht erreichbar: {exc}"
-            ) from exc
+            raise NextcloudConnectionError(f"Server nicht erreichbar: {exc}") from exc
 
         self._check_auth_error(resp)
         if resp.status_code == 201:
@@ -209,9 +208,7 @@ class NextcloudFilesClient:
         try:
             resp = httpx.request("DELETE", url, auth=self._auth, timeout=15.0)
         except (httpx.ConnectError, httpx.TimeoutException) as exc:
-            raise NextcloudConnectionError(
-                f"Server nicht erreichbar: {exc}"
-            ) from exc
+            raise NextcloudConnectionError(f"Server nicht erreichbar: {exc}") from exc
 
         self._check_auth_error(resp)
         if resp.status_code == 404:
@@ -260,9 +257,7 @@ class NextcloudFilesClient:
                 timeout=15.0,
             )
         except (httpx.ConnectError, httpx.TimeoutException) as exc:
-            raise NextcloudConnectionError(
-                f"Server nicht erreichbar: {exc}"
-            ) from exc
+            raise NextcloudConnectionError(f"Server nicht erreichbar: {exc}") from exc
 
         self._check_auth_error(resp)
         if resp.status_code == 404:
@@ -270,9 +265,7 @@ class NextcloudFilesClient:
         if resp.status_code == 412:
             raise NextcloudError("Zieldatei existiert bereits")
         if resp.status_code not in (201, 204):
-            raise NextcloudError(
-                f"MOVE fehlgeschlagen: HTTP {resp.status_code}"
-            )
+            raise NextcloudError(f"MOVE fehlgeschlagen: HTTP {resp.status_code}")
 
         logger.info("Verschoben: %s → %s", source_path, dest_path)
         return dest_path
@@ -325,22 +318,16 @@ class NextcloudFilesClient:
                     timeout=30.0,
                 )
         except (httpx.ConnectError, httpx.TimeoutException) as exc:
-            raise NextcloudConnectionError(
-                f"Server nicht erreichbar: {exc}"
-            ) from exc
+            raise NextcloudConnectionError(f"Server nicht erreichbar: {exc}") from exc
 
         self._check_auth_error(resp)
         if resp.status_code not in (200, 201, 204):
-            raise NextcloudError(
-                f"Upload fehlgeschlagen: HTTP {resp.status_code}"
-            )
+            raise NextcloudError(f"Upload fehlgeschlagen: HTTP {resp.status_code}")
 
         logger.info("Upload OK: %s → %s", local_path.name, remote_path)
         return remote_path
 
-    def download(
-        self, remote_path: str, local_dir: Path | None = None
-    ) -> Path:
+    def download(self, remote_path: str, local_dir: Path | None = None) -> Path:
         """Download a file from Nextcloud via WebDAV GET.
 
         Args:
@@ -364,19 +351,13 @@ class NextcloudFilesClient:
         try:
             resp = httpx.get(url, auth=self._auth, timeout=30.0)
         except (httpx.ConnectError, httpx.TimeoutException) as exc:
-            raise NextcloudConnectionError(
-                f"Server nicht erreichbar: {exc}"
-            ) from exc
+            raise NextcloudConnectionError(f"Server nicht erreichbar: {exc}") from exc
 
         self._check_auth_error(resp)
         if resp.status_code == 404:
-            raise NextcloudError(
-                f"Datei nicht gefunden: {remote_path}"
-            )
+            raise NextcloudError(f"Datei nicht gefunden: {remote_path}")
         if resp.status_code not in (200,):
-            raise NextcloudError(
-                f"Download fehlgeschlagen: HTTP {resp.status_code}"
-            )
+            raise NextcloudError(f"Download fehlgeschlagen: HTTP {resp.status_code}")
 
         filename = remote_path.rstrip("/").split("/")[-1]
         local_path = local_dir / filename
@@ -405,8 +386,7 @@ class NextcloudFilesClient:
             # Resource type
             restype = prop.find(f"{_DAV}resourcetype")
             is_dir = (
-                restype is not None
-                and restype.find(f"{_DAV}collection") is not None
+                restype is not None and restype.find(f"{_DAV}collection") is not None
             )
 
             # Display name (href ist URL-encoded, displayname nicht)
@@ -434,13 +414,15 @@ class NextcloudFilesClient:
             else:
                 rel_path = href.rstrip("/").split("/")[-1]
 
-            results.append(NextcloudFile(
-                name=name,
-                path=rel_path.rstrip("/"),
-                is_dir=is_dir,
-                size=size,
-                modified=modified,
-            ))
+            results.append(
+                NextcloudFile(
+                    name=name,
+                    path=rel_path.rstrip("/"),
+                    is_dir=is_dir,
+                    size=size,
+                    modified=modified,
+                )
+            )
 
         return results
 
@@ -473,15 +455,11 @@ class NextcloudFilesClient:
                 timeout=10.0,
             )
         except (httpx.ConnectError, httpx.TimeoutException) as exc:
-            raise NextcloudConnectionError(
-                f"Server nicht erreichbar: {exc}"
-            ) from exc
+            raise NextcloudConnectionError(f"Server nicht erreichbar: {exc}") from exc
 
         self._check_auth_error(resp)
         if resp.status_code not in (200, 207):
-            raise NextcloudError(
-                f"Listing fehlgeschlagen: HTTP {resp.status_code}"
-            )
+            raise NextcloudError(f"Listing fehlgeschlagen: HTTP {resp.status_code}")
 
         entries = self._parse_propfind(resp.text)
         # First entry is the queried directory itself — skip it
@@ -517,15 +495,11 @@ class NextcloudFilesClient:
                 timeout=30.0,
             )
         except (httpx.ConnectError, httpx.TimeoutException) as exc:
-            raise NextcloudConnectionError(
-                f"Server nicht erreichbar: {exc}"
-            ) from exc
+            raise NextcloudConnectionError(f"Server nicht erreichbar: {exc}") from exc
 
         self._check_auth_error(resp)
         if resp.status_code not in (200, 207):
-            raise NextcloudError(
-                f"Suche fehlgeschlagen: HTTP {resp.status_code}"
-            )
+            raise NextcloudError(f"Suche fehlgeschlagen: HTTP {resp.status_code}")
 
         all_entries = self._parse_propfind(resp.text)
         # Skip the root entry and filter by query
@@ -537,7 +511,8 @@ class NextcloudFilesClient:
         tokens = _SEP.split(query.lower().strip())
         tokens = [t for t in tokens if t]
         return [
-            e for e in all_entries
+            e
+            for e in all_entries
             if all(t in _SEP.sub(" ", e.name.lower()) for t in tokens)
         ]
 
@@ -666,19 +641,19 @@ class NextcloudFilesClient:
         results: list[dict] = []
         try:
             data = resp.json()
-            entries = (
-                data.get("ocs", {}).get("data", {}).get("entries", [])
-            )
+            entries = data.get("ocs", {}).get("data", {}).get("entries", [])
             for entry in entries[:limit]:
                 title = entry.get("title", "")
                 subline = entry.get("subline", "")
                 # resourceUrl enthält den NC-Dateipfad
                 resource_url = entry.get("resourceUrl", "")
-                results.append({
-                    "name": title,
-                    "path": subline or resource_url,
-                    "excerpt": entry.get("excerpt", subline),
-                })
+                results.append(
+                    {
+                        "name": title,
+                        "path": subline or resource_url,
+                        "excerpt": entry.get("excerpt", subline),
+                    }
+                )
         except (ValueError, KeyError, AttributeError) as exc:
             logger.warning("Inhaltssuche: Antwort-Parsing fehlgeschlagen: %s", exc)
 

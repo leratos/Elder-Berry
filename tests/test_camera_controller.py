@@ -1,4 +1,5 @@
 """Tests für CameraController, SimulatedCamera und Server/Client Kamera-Endpoints."""
+
 import base64
 from unittest.mock import MagicMock, patch
 
@@ -20,6 +21,7 @@ from elder_berry.robot.server import RobotServer  # noqa: E402
 # ---------------------------------------------------------------------------
 # SimulatedCamera
 # ---------------------------------------------------------------------------
+
 
 class TestSimulatedCamera:
     def test_simulated_camera_available(self):
@@ -60,6 +62,7 @@ class TestSimulatedCamera:
 # ---------------------------------------------------------------------------
 # RPi5Camera – unit tests with mocked picamera2 and PIL
 # ---------------------------------------------------------------------------
+
 
 def _make_picamera2_mock():
     """Create a minimal picamera2 mock."""
@@ -166,8 +169,10 @@ class TestRPi5CameraCaptureJpeg:
 
         # Mock PIL.Image so capture_jpeg works without Pillow installed
         mock_image = MagicMock()
+
         def fake_save(buf, format, quality):
             buf.write(b"\xff\xd8\xff\xe0fake jpeg data")
+
         mock_image.save.side_effect = fake_save
 
         mock_pil = MagicMock()
@@ -212,6 +217,7 @@ class TestRPi5CameraClose:
 # Server Kamera-Endpoints
 # ---------------------------------------------------------------------------
 
+
 @pytest.fixture
 def server_with_camera():
     """RobotServer mit SimulatedCamera."""
@@ -239,12 +245,14 @@ def server_without_camera():
 @pytest.fixture
 def client_with_camera(server_with_camera):
     from fastapi.testclient import TestClient
+
     return TestClient(server_with_camera.app)
 
 
 @pytest.fixture
 def client_without_camera(server_without_camera):
     from fastapi.testclient import TestClient
+
     return TestClient(server_without_camera.app)
 
 

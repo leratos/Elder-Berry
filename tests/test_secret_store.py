@@ -1,4 +1,5 @@
 """Tests: SecretStore – Verschlüsselte Credential-Verwaltung."""
+
 import hashlib
 import json
 from pathlib import Path
@@ -34,6 +35,7 @@ def _username_for(base_dir) -> str:
 # Fixtures
 # ---------------------------------------------------------------------------
 
+
 @pytest.fixture
 def store(tmp_path):
     """SecretStore mit temporärem Verzeichnis im File-Fallback-Modus.
@@ -59,6 +61,7 @@ def store_with_data(store):
 # ---------------------------------------------------------------------------
 # Basis-Operationen
 # ---------------------------------------------------------------------------
+
 
 class TestBasicOperations:
     def test_set_and_get(self, store):
@@ -109,6 +112,7 @@ class TestBasicOperations:
 # Verschlüsselung
 # ---------------------------------------------------------------------------
 
+
 class TestEncryption:
     def test_secrets_file_is_encrypted(self, store, tmp_path):
         store.set("password", "geheim")
@@ -153,6 +157,7 @@ class TestEncryption:
 # Unicode + Sonderzeichen
 # ---------------------------------------------------------------------------
 
+
 class TestSpecialValues:
     def test_unicode_value(self, store):
         store.set("gruss", "Héllo Wörld 🎉")
@@ -182,6 +187,7 @@ class TestSpecialValues:
 # Mehrere Secrets
 # ---------------------------------------------------------------------------
 
+
 class TestMultipleSecrets:
     def test_multiple_independent(self, store):
         store.set("a", "1")
@@ -205,6 +211,7 @@ class TestMultipleSecrets:
 # ---------------------------------------------------------------------------
 # Edge Cases
 # ---------------------------------------------------------------------------
+
 
 class TestEdgeCases:
     def test_base_dir_created_on_first_use(self, tmp_path):
@@ -279,6 +286,7 @@ def fake_keyring(monkeypatch):
     # Fail-Check: isinstance(backend, _FailKeyring) darf nicht truthy werden.
     class _NotAFailKeyring:
         pass
+
     monkeypatch.setattr(
         "elder_berry.core.secret_store._FailKeyring",
         _NotAFailKeyring,
@@ -303,7 +311,8 @@ class TestKeyringAvailability:
 
     def test_auto_falls_back_when_unavailable(self, tmp_path, monkeypatch):
         monkeypatch.setattr(
-            "elder_berry.core.secret_store._HAS_KEYRING", False,
+            "elder_berry.core.secret_store._HAS_KEYRING",
+            False,
         )
         store = SecretStore(base_dir=tmp_path)
         store.set("x", "y")
@@ -315,11 +324,14 @@ class TestKeyringAvailability:
         store.set("x", "y")
         assert (tmp_path / "secret.key").exists()
         # Keyring wurde NICHT angefasst
-        assert fake_keyring.get_password(KEYRING_SERVICE, _username_for(tmp_path)) is None
+        assert (
+            fake_keyring.get_password(KEYRING_SERVICE, _username_for(tmp_path)) is None
+        )
 
     def test_explicit_true_raises_when_unavailable(self, tmp_path, monkeypatch):
         monkeypatch.setattr(
-            "elder_berry.core.secret_store._HAS_KEYRING", False,
+            "elder_berry.core.secret_store._HAS_KEYRING",
+            False,
         )
         store = SecretStore(base_dir=tmp_path, use_keyring=True)
         with pytest.raises(KeyringUnavailableError, match="kein Keyring-Backend"):
@@ -327,11 +339,13 @@ class TestKeyringAvailability:
 
     def test_fail_backend_counts_as_unavailable(self, tmp_path, monkeypatch):
         """Wenn keyring installiert, aber Default-Backend = FailKeyring."""
+
         # Wir konstruieren explizit den Fall: _HAS_KEYRING=True, aber
         # get_keyring() liefert eine Instanz der gleichen Klasse, die
         # _FailKeyring ist.
         class _Fail:
             pass
+
         fake = MagicMock()
         fake.get_keyring.return_value = _Fail()
         monkeypatch.setattr("elder_berry.core.secret_store.keyring", fake)
@@ -344,7 +358,10 @@ class TestKeyringAvailability:
         assert (tmp_path / "secret.key").exists()
 
     def test_get_keyring_raising_counts_as_unavailable(
-        self, tmp_path, monkeypatch, caplog,
+        self,
+        tmp_path,
+        monkeypatch,
+        caplog,
     ):
         """Backend-Discovery kann selbst raisen -- z.B. libsecret
         installiert aber keine DBus-Session, oder macOS Keychain-
@@ -381,6 +398,7 @@ class TestKeyringMigration:
         (tmp_path / "secret.key").write_bytes(old_key)
 
         import logging
+
         with caplog.at_level(logging.INFO, logger="elder_berry.core.secret_store"):
             store = SecretStore(base_dir=tmp_path)
             store.set("x", "y")
@@ -392,8 +410,7 @@ class TestKeyringMigration:
         assert not (tmp_path / "secret.key").exists()
         # Log-Nachricht
         migration_logged = any(
-            "Migriere" in r.message or "migriert" in r.message
-            for r in caplog.records
+            "Migriere" in r.message or "migriert" in r.message for r in caplog.records
         )
         assert migration_logged
 
@@ -424,7 +441,9 @@ class TestKeyringMigration:
         """Key ist schon im Keyring -> direkt nutzen, keine Migration."""
         existing = Fernet.generate_key()
         fake_keyring.set_password(
-            KEYRING_SERVICE, _username_for(tmp_path), existing.decode("ascii"),
+            KEYRING_SERVICE,
+            _username_for(tmp_path),
+            existing.decode("ascii"),
         )
 
         store = SecretStore(base_dir=tmp_path)
@@ -432,11 +451,14 @@ class TestKeyringMigration:
 
         # Kein Neuanlegen im Keyring (Wert unveraendert)
         assert fake_keyring.get_password(
-            KEYRING_SERVICE, _username_for(tmp_path),
+            KEYRING_SERVICE,
+            _username_for(tmp_path),
         ) == existing.decode("ascii")
 
     def test_different_base_dirs_get_independent_keys(
-        self, tmp_path, fake_keyring,
+        self,
+        tmp_path,
+        fake_keyring,
     ):
         """PR #113 Review (P1): Zwei Stores mit verschiedenen base_dirs
         duerfen sich NICHT den gleichen Keyring-Eintrag teilen.
@@ -469,15 +491,18 @@ class TestKeyringMigration:
         assert fake_keyring.get_password(KEYRING_SERVICE, user_b)
         # Die Keys sind tatsaechlich verschieden (verschluesseln mit
         # unterschiedlichem Fernet-Key)
-        assert fake_keyring.get_password(KEYRING_SERVICE, user_a) != \
-               fake_keyring.get_password(KEYRING_SERVICE, user_b)
+        assert fake_keyring.get_password(
+            KEYRING_SERVICE, user_a
+        ) != fake_keyring.get_password(KEYRING_SERVICE, user_b)
 
         # Beide Stores koennen ihre eigenen Werte lesen
         assert SecretStore(base_dir=dir_a).get("token") == "value_from_a"
         assert SecretStore(base_dir=dir_b).get("token") == "value_from_b"
 
     def test_second_base_dir_does_not_skip_its_own_migration(
-        self, tmp_path, fake_keyring,
+        self,
+        tmp_path,
+        fake_keyring,
     ):
         """PR #113 Review (P1): Regression der urspruenglichen Phase-65-
         Implementierung -- A migriert, B findet faelschlicherweise A's
@@ -510,8 +535,9 @@ class TestKeyringMigration:
         # Der im Keyring fuer B gelandete Key ist der aus B's secret.key,
         # NICHT der aus A's Migration.
         user_b = _username_for(dir_b)
-        assert fake_keyring.get_password(KEYRING_SERVICE, user_b) == \
-               key_b_before.decode("ascii")
+        assert fake_keyring.get_password(
+            KEYRING_SERVICE, user_b
+        ) == key_b_before.decode("ascii")
 
     def test_verify_mismatch_aborts_migration(self, tmp_path, fake_keyring):
         """Wenn Re-Read vom Keyring etwas anderes liefert als geschrieben,
@@ -556,7 +582,10 @@ class TestKeyringOpExceptionFallback:
     """
 
     def test_get_password_exception_auto_falls_back_to_file(
-        self, tmp_path, monkeypatch, caplog,
+        self,
+        tmp_path,
+        monkeypatch,
+        caplog,
     ):
         """get_password wirft im Auto-Mode -> Fallback auf Datei, kein Crash."""
         import logging
@@ -586,14 +615,17 @@ class TestKeyringOpExceptionFallback:
         assert "Fallback" in messages
 
     def test_set_password_exception_auto_falls_back_to_file(
-        self, tmp_path, monkeypatch, caplog,
+        self,
+        tmp_path,
+        monkeypatch,
+        caplog,
     ):
         """set_password wirft im Auto-Mode (neue Key-Anlage) -> Fallback auf Datei."""
         import logging
 
         fake = MagicMock()
         fake.get_keyring.return_value = object()
-        fake.get_password.return_value = None   # kein existierender Key
+        fake.get_password.return_value = None  # kein existierender Key
         fake.set_password.side_effect = OSError("D-Bus unavailable")
         monkeypatch.setattr("elder_berry.core.secret_store.keyring", fake)
         monkeypatch.setattr("elder_berry.core.secret_store._HAS_KEYRING", True)
@@ -611,7 +643,9 @@ class TestKeyringOpExceptionFallback:
         assert "Keyring-Operation fehlgeschlagen" in messages
 
     def test_get_password_exception_strict_raises(
-        self, tmp_path, monkeypatch,
+        self,
+        tmp_path,
+        monkeypatch,
     ):
         """use_keyring=True + get_password-Exception -> SecretStoreError (kein Fallback)."""
         fake = MagicMock()

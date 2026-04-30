@@ -1,4 +1,5 @@
 """Tests: safe_log -- CR/LF-Schutz fuer Log-Forgery-Pravention."""
+
 from __future__ import annotations
 
 import pytest
@@ -7,25 +8,31 @@ from elder_berry.core.log_sanitize import safe_log
 
 
 class TestSafeLog:
-    @pytest.mark.parametrize("value,expected", [
-        ("hallo", "hallo"),
-        ("", ""),
-        ("   ", "   "),
-        ("with spaces and 123", "with spaces and 123"),
-        ("Umlaute äöü ß", "Umlaute äöü ß"),
-        ("emoji ✨🤖", "emoji ✨🤖"),
-    ])
+    @pytest.mark.parametrize(
+        "value,expected",
+        [
+            ("hallo", "hallo"),
+            ("", ""),
+            ("   ", "   "),
+            ("with spaces and 123", "with spaces and 123"),
+            ("Umlaute äöü ß", "Umlaute äöü ß"),
+            ("emoji ✨🤖", "emoji ✨🤖"),
+        ],
+    )
     def test_passthrough_for_clean_strings(self, value, expected):
         assert safe_log(value) == expected
 
-    @pytest.mark.parametrize("value,expected", [
-        ("a\nb", "ab"),
-        ("a\rb", "ab"),
-        ("a\r\nb", "ab"),
-        ("\nstart", "start"),
-        ("end\n", "end"),
-        ("multi\nline\nlog", "multilinelog"),
-    ])
+    @pytest.mark.parametrize(
+        "value,expected",
+        [
+            ("a\nb", "ab"),
+            ("a\rb", "ab"),
+            ("a\r\nb", "ab"),
+            ("\nstart", "start"),
+            ("end\n", "end"),
+            ("multi\nline\nlog", "multilinelog"),
+        ],
+    )
     def test_strips_cr_and_lf(self, value, expected):
         assert safe_log(value) == expected
 

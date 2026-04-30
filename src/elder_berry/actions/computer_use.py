@@ -1,4 +1,5 @@
 """Computer Use – Vision-gesteuerte PC-Bedienung via Anthropic API."""
+
 from __future__ import annotations
 
 import base64
@@ -17,6 +18,7 @@ logger = logging.getLogger(__name__)
 try:
     import mss
     import mss.tools
+
     _MSS_AVAILABLE = True
 except ImportError:
     mss = None  # type: ignore[assignment]
@@ -24,6 +26,7 @@ except ImportError:
 
 try:
     from PIL import Image
+
     _PIL_AVAILABLE = True
 except ImportError:
     Image = None  # type: ignore[assignment]
@@ -94,13 +97,15 @@ class ComputerUseController:
             for i, mon in enumerate(sct.monitors):
                 if i == 0:
                     continue  # Index 0 = virtueller Gesamtbildschirm
-                monitors.append({
-                    "index": i,
-                    "width": mon["width"],
-                    "height": mon["height"],
-                    "left": mon["left"],
-                    "top": mon["top"],
-                })
+                monitors.append(
+                    {
+                        "index": i,
+                        "width": mon["width"],
+                        "height": mon["height"],
+                        "left": mon["left"],
+                        "top": mon["top"],
+                    }
+                )
             return monitors
 
     def execute_instruction(self, instruction: str) -> ComputerUseResult:
@@ -283,6 +288,7 @@ class ComputerUseController:
             # pyautogui.scroll: positiv = hoch, negativ = runter
             try:
                 import pyautogui
+
                 pyautogui.scroll(amount)
             except ImportError:
                 logger.warning("pyautogui nicht verfügbar für scroll.")
@@ -309,6 +315,7 @@ class ComputerUseController:
         """Nimmt einen Verification-Screenshot auf und gibt den Pfad zurück."""
         try:
             import tempfile
+
             with mss.mss() as sct:
                 monitors = sct.monitors
                 if self._monitor_index >= len(monitors):
@@ -317,12 +324,12 @@ class ComputerUseController:
                 screenshot = sct.grab(monitor)
                 # NamedTemporaryFile statt mktemp() – verhindert TOCTOU-Race-Condition
                 with tempfile.NamedTemporaryFile(
-                    suffix=".png", prefix="cu_verify_", delete=False,
+                    suffix=".png",
+                    prefix="cu_verify_",
+                    delete=False,
                 ) as tmp:
                     tmp_path = Path(tmp.name)
-                mss.tools.to_png(
-                    screenshot.rgb, screenshot.size, output=str(tmp_path)
-                )
+                mss.tools.to_png(screenshot.rgb, screenshot.size, output=str(tmp_path))
                 return tmp_path
         except Exception as e:
             logger.error("Verification-Screenshot fehlgeschlagen: %s", e)
@@ -331,13 +338,22 @@ class ComputerUseController:
     @staticmethod
     def _describe_action(action: ComputerUseAction) -> str:
         """Erstellt eine lesbare Beschreibung der Aktion."""
-        if action.action in ("left_click", "right_click", "middle_click", "double_click"):
-            coord = f" bei ({action.coordinate[0]}, {action.coordinate[1]})" if action.coordinate else ""
+        if action.action in (
+            "left_click",
+            "right_click",
+            "middle_click",
+            "double_click",
+        ):
+            coord = (
+                f" bei ({action.coordinate[0]}, {action.coordinate[1]})"
+                if action.coordinate
+                else ""
+            )
             return f"{action.action}{coord}"
         if action.action == "type":
             text = action.text or ""
             preview = text[:30] + "..." if len(text) > 30 else text
-            return f"type: \"{preview}\""
+            return f'type: "{preview}"'
         if action.action == "key":
             return f"key: {action.text}"
         if action.action == "scroll":

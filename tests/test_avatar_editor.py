@@ -7,6 +7,7 @@ import yaml
 
 try:
     from fastapi.testclient import TestClient
+
     HAS_FASTAPI = True
 except ImportError:
     HAS_FASTAPI = False
@@ -21,12 +22,16 @@ pytestmark = pytest.mark.skipif(not HAS_FASTAPI, reason="fastapi nicht installie
 # Fixtures
 # ---------------------------------------------------------------------------
 
+
 @pytest.fixture
 def avatar_assets(tmp_path):
     """Erstellt temporäre Asset-Ordner mit Dummy-PNGs."""
     for subdir, names in [
         ("body", ["idle", "relaxed", "angry"]),
-        ("eye", ["eye_left_open", "eye_right_open", "eye_left_close", "eye_right_close"]),
+        (
+            "eye",
+            ["eye_left_open", "eye_right_open", "eye_left_close", "eye_right_close"],
+        ),
         ("mouth", ["mouth_neutral_close", "mouth_open", "mouth_halfopen"]),
         ("effect", ["effect_tear"]),
     ]:
@@ -34,9 +39,7 @@ def avatar_assets(tmp_path):
         d.mkdir()
         for name in names:
             # Minimales PNG (Header reicht für FileResponse-Test)
-            (d / f"{name}.png").write_bytes(
-                b"\x89PNG\r\n\x1a\n" + b"\x00" * 40
-            )
+            (d / f"{name}.png").write_bytes(b"\x89PNG\r\n\x1a\n" + b"\x00" * 40)
     return tmp_path
 
 
@@ -137,6 +140,7 @@ def client_with_renderer(avatar_assets, avatar_config_yaml):
 # Editor-Seite
 # ---------------------------------------------------------------------------
 
+
 class TestEditorPage:
     def test_returns_html(self, client):
         r = client.get("/avatar/editor")
@@ -155,6 +159,7 @@ class TestEditorPage:
 # ---------------------------------------------------------------------------
 # Asset-Liste
 # ---------------------------------------------------------------------------
+
 
 class TestListAssets:
     def test_returns_all_categories(self, client):
@@ -181,6 +186,7 @@ class TestListAssets:
 # ---------------------------------------------------------------------------
 # Asset-Serving
 # ---------------------------------------------------------------------------
+
 
 class TestGetAsset:
     def test_serves_png(self, client):
@@ -209,6 +215,7 @@ class TestGetAsset:
 # ---------------------------------------------------------------------------
 # Config lesen
 # ---------------------------------------------------------------------------
+
 
 class TestGetConfig:
     def test_returns_config(self, client):
@@ -246,6 +253,7 @@ class TestGetConfig:
 # Config speichern
 # ---------------------------------------------------------------------------
 
+
 class TestSaveConfig:
     def test_save_valid_config(self, client, avatar_config_yaml):
         config = {
@@ -276,33 +284,39 @@ class TestSaveConfig:
         assert saved["emotions"]["neutral"]["body"] == "idle"
 
     def test_save_missing_body(self, client):
-        r = client.put("/api/avatar/config", json={
-            "config": {
-                "emotions": {
-                    "neutral": {
-                        "eye_left": "x",
-                        "eye_right": "x",
-                        "mouth": "x",
+        r = client.put(
+            "/api/avatar/config",
+            json={
+                "config": {
+                    "emotions": {
+                        "neutral": {
+                            "eye_left": "x",
+                            "eye_right": "x",
+                            "mouth": "x",
+                        },
                     },
                 },
             },
-        })
+        )
         assert r.status_code == 400
         assert "body" in r.json()["error"]
 
     def test_save_unknown_emotion(self, client):
-        r = client.put("/api/avatar/config", json={
-            "config": {
-                "emotions": {
-                    "nonexistent": {
-                        "body": "x",
-                        "eye_left": "x",
-                        "eye_right": "x",
-                        "mouth": "x",
+        r = client.put(
+            "/api/avatar/config",
+            json={
+                "config": {
+                    "emotions": {
+                        "nonexistent": {
+                            "body": "x",
+                            "eye_left": "x",
+                            "eye_right": "x",
+                            "mouth": "x",
+                        },
                     },
                 },
             },
-        })
+        )
         assert r.status_code == 400
         assert "Unbekannte Emotion" in r.json()["error"]
 
@@ -311,9 +325,12 @@ class TestSaveConfig:
         assert r.status_code == 400
 
     def test_save_no_emotions(self, client):
-        r = client.put("/api/avatar/config", json={
-            "config": {"emotions": {}},
-        })
+        r = client.put(
+            "/api/avatar/config",
+            json={
+                "config": {"emotions": {}},
+            },
+        )
         assert r.status_code == 400
 
     def test_save_with_effect(self, client, avatar_config_yaml):
@@ -329,7 +346,11 @@ class TestSaveConfig:
                     "can_blink": False,
                 },
             },
-            "lip_sync": {"frames": {"mouth_open": 1.0}, "interval": 0.2, "jitter": 0.02},
+            "lip_sync": {
+                "frames": {"mouth_open": 1.0},
+                "interval": 0.2,
+                "jitter": 0.02,
+            },
             "breathing": {"enabled": True, "speed": 1.0, "amplitude": 1.5},
         }
         r = client.put("/api/avatar/config", json={"config": config})
@@ -343,6 +364,7 @@ class TestSaveConfig:
 # ---------------------------------------------------------------------------
 # Hot-Reload
 # ---------------------------------------------------------------------------
+
 
 class TestReload:
     def test_reload_without_renderer(self, client):
@@ -368,9 +390,11 @@ class TestReload:
 # Effekt-Layer im ConfigLoader
 # ---------------------------------------------------------------------------
 
+
 class TestEffectLayerConfig:
     def test_effect_field_in_emotion_layers(self):
         from elder_berry.avatar.avatar_config_loader import EmotionLayers
+
         layers = EmotionLayers(
             body="relaxed",
             eye_left="eye_left_open",
@@ -383,6 +407,7 @@ class TestEffectLayerConfig:
 
     def test_effect_field_default_none(self):
         from elder_berry.avatar.avatar_config_loader import EmotionLayers
+
         layers = EmotionLayers(
             body="relaxed",
             eye_left="eye_left_open",
@@ -414,6 +439,7 @@ class TestEffectLayerConfig:
             yaml.dump(config, f)
 
         from elder_berry.avatar.avatar_config_loader import load_avatar_config
+
         result = load_avatar_config(config_path)
         assert result is not None
         assert result.emotions[Emotion.SAD].effect == "effect_tear"
@@ -439,6 +465,7 @@ class TestEffectLayerConfig:
             yaml.dump(config, f)
 
         from elder_berry.avatar.avatar_config_loader import load_avatar_config
+
         result = load_avatar_config(config_path)
         assert result is not None
         assert result.emotions[Emotion.NEUTRAL].effect is None
@@ -448,9 +475,11 @@ class TestEffectLayerConfig:
 # Effekt-Layer im Renderer
 # ---------------------------------------------------------------------------
 
+
 class TestEffectLayerRenderer:
     def test_emotion_layers_has_effect(self):
         from elder_berry.avatar.layered_renderer import EmotionLayers
+
         layers = EmotionLayers(
             body="relaxed",
             eye_left="eye_left_open",
@@ -463,6 +492,7 @@ class TestEffectLayerRenderer:
 
     def test_emotion_layers_effect_default_none(self):
         from elder_berry.avatar.layered_renderer import EmotionLayers
+
         layers = EmotionLayers(
             body="relaxed",
             eye_left="eye_left_open",
@@ -476,6 +506,7 @@ class TestEffectLayerRenderer:
 # ---------------------------------------------------------------------------
 # Stack-Trace-Exposure (CodeQL py/stack-trace-exposure)
 # ---------------------------------------------------------------------------
+
 
 class TestErrorResponsesDoNotLeak:
     """Sicherstellt, dass Exception-Pfade keine internen Details ausgeben."""

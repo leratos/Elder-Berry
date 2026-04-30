@@ -1,11 +1,16 @@
 """TurntableCommandHandler -- Drehteller-Befehle."""
+
 from __future__ import annotations
 
 import logging
 import re
 from typing import TYPE_CHECKING
 
-from elder_berry.comms.commands.base import CommandHandler, CommandResult, user_friendly_error
+from elder_berry.comms.commands.base import (
+    CommandHandler,
+    CommandResult,
+    user_friendly_error,
+)
 
 if TYPE_CHECKING:
     from elder_berry.robot.client import RobotClient
@@ -64,21 +69,29 @@ class TurntableCommandHandler(CommandHandler):
         return {
             "turntable_rotate_dir": [
                 "dreh dich",
-                "schau nach links", "schau nach rechts",
-                "guck nach links", "guck nach rechts",
-                "dreh nach links", "dreh nach rechts",
+                "schau nach links",
+                "schau nach rechts",
+                "guck nach links",
+                "guck nach rechts",
+                "dreh nach links",
+                "dreh nach rechts",
             ],
             "drehteller home": [
-                "home position", "heimposition",
-                "drehteller home", "drehteller zurück",
+                "home position",
+                "heimposition",
+                "drehteller home",
+                "drehteller zurück",
             ],
             "drehteller stopp": [
-                "drehteller stopp", "drehteller stop",
+                "drehteller stopp",
+                "drehteller stop",
                 "hör auf zu drehen",
             ],
             "drehteller status": [
-                "drehteller status", "drehteller position",
-                "wo schaust du hin", "in welche richtung",
+                "drehteller status",
+                "drehteller position",
+                "wo schaust du hin",
+                "in welche richtung",
             ],
         }
 
@@ -96,7 +109,8 @@ class TurntableCommandHandler(CommandHandler):
     def execute(self, command: str, raw_text: str) -> CommandResult:
         if not self._robot:
             return CommandResult(
-                command=command, success=False,
+                command=command,
+                success=False,
                 text="RobotClient nicht verfügbar (RPi5 nicht verbunden).",
             )
         if command == "drehteller home":
@@ -106,12 +120,15 @@ class TurntableCommandHandler(CommandHandler):
         if command == "drehteller status":
             return self._cmd_status()
         if command in (
-            "turntable_rotate_by", "turntable_rotate_to",
-            "turntable_rotate_dir", "turntable_look_dir",
+            "turntable_rotate_by",
+            "turntable_rotate_to",
+            "turntable_rotate_dir",
+            "turntable_look_dir",
         ):
             return self._cmd_rotate(command, raw_text)
         return CommandResult(
-            command=command, success=False,
+            command=command,
+            success=False,
             text=f"Unbekannter Command: {command}",
         )
 
@@ -120,11 +137,13 @@ class TurntableCommandHandler(CommandHandler):
             resp = self._robot.home_turntable()
             return CommandResult(
                 command="drehteller home",
-                success=resp.success, text=resp.message,
+                success=resp.success,
+                text=resp.message,
             )
         except Exception as e:
             return CommandResult(
-                command="drehteller home", success=False,
+                command="drehteller home",
+                success=False,
                 text=user_friendly_error(e, "Drehteller-Homing"),
             )
 
@@ -133,11 +152,13 @@ class TurntableCommandHandler(CommandHandler):
             resp = self._robot.stop_turntable()
             return CommandResult(
                 command="drehteller stopp",
-                success=resp.success, text=resp.message,
+                success=resp.success,
+                text=resp.message,
             )
         except Exception as e:
             return CommandResult(
-                command="drehteller stopp", success=False,
+                command="drehteller stopp",
+                success=False,
                 text=user_friendly_error(e, "Drehteller-Stopp"),
             )
 
@@ -147,7 +168,8 @@ class TurntableCommandHandler(CommandHandler):
             if not status.get("available"):
                 return CommandResult(
                     command="drehteller status",
-                    success=False, text="Drehteller nicht verfügbar.",
+                    success=False,
+                    text="Drehteller nicht verfügbar.",
                 )
             homed = status.get("is_homed", False)
             moving = status.get("is_moving", False)
@@ -161,11 +183,13 @@ class TurntableCommandHandler(CommandHandler):
                 parts.append("Dreht sich gerade")
             return CommandResult(
                 command="drehteller status",
-                success=True, text=" | ".join(parts),
+                success=True,
+                text=" | ".join(parts),
             )
         except Exception as e:
             return CommandResult(
-                command="drehteller status", success=False,
+                command="drehteller status",
+                success=False,
                 text=user_friendly_error(e, "Drehteller-Status"),
             )
 
@@ -174,11 +198,13 @@ class TurntableCommandHandler(CommandHandler):
 
         # "dreh dich nach links/rechts" oder "schau nach links/rechts"
         if command in ("turntable_rotate_dir", "turntable_look_dir"):
-            match = (ROTATE_DIRECTION_PATTERN.match(normalized)
-                     or LOOK_DIRECTION_PATTERN.match(normalized))
+            match = ROTATE_DIRECTION_PATTERN.match(
+                normalized
+            ) or LOOK_DIRECTION_PATTERN.match(normalized)
             if not match:
                 return CommandResult(
-                    command=command, success=False,
+                    command=command,
+                    success=False,
                     text="Richtung nicht erkannt.",
                 )
             direction = match.group(1)
@@ -192,7 +218,8 @@ class TurntableCommandHandler(CommandHandler):
             match = ROTATE_BY_PATTERN.match(normalized)
             if not match:
                 return CommandResult(
-                    command=command, success=False,
+                    command=command,
+                    success=False,
                     text="Grad-Angabe nicht erkannt.",
                 )
             degrees = float(match.group(1))
@@ -206,14 +233,16 @@ class TurntableCommandHandler(CommandHandler):
             match = ROTATE_TO_PATTERN.match(normalized)
             if not match:
                 return CommandResult(
-                    command=command, success=False,
+                    command=command,
+                    success=False,
                     text="Position nicht erkannt.",
                 )
             degrees = float(match.group(1))
             return self._execute_rotate_to(degrees)
 
         return CommandResult(
-            command=command, success=False,
+            command=command,
+            success=False,
             text=f"Rotation-Command nicht erkannt: {command}",
         )
 
@@ -222,11 +251,13 @@ class TurntableCommandHandler(CommandHandler):
             resp = self._robot.rotate_turntable(relative_degrees=degrees)
             return CommandResult(
                 command="turntable_rotate",
-                success=resp.success, text=resp.message,
+                success=resp.success,
+                text=resp.message,
             )
         except Exception as e:
             return CommandResult(
-                command="turntable_rotate", success=False,
+                command="turntable_rotate",
+                success=False,
                 text=user_friendly_error(e, "Drehteller"),
             )
 
@@ -235,10 +266,12 @@ class TurntableCommandHandler(CommandHandler):
             resp = self._robot.rotate_turntable(target_degrees=degrees)
             return CommandResult(
                 command="turntable_rotate",
-                success=resp.success, text=resp.message,
+                success=resp.success,
+                text=resp.message,
             )
         except Exception as e:
             return CommandResult(
-                command="turntable_rotate", success=False,
+                command="turntable_rotate",
+                success=False,
                 text=user_friendly_error(e, "Drehteller"),
             )

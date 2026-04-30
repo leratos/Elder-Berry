@@ -194,9 +194,7 @@ class SettingsDashboard:
         self._session_revocations = None
         if require_dashboard_login:
             if secret_store is None:
-                raise ValueError(
-                    "require_dashboard_login=True benötigt secret_store"
-                )
+                raise ValueError("require_dashboard_login=True benötigt secret_store")
             from elder_berry.web.dashboard_auth import DashboardAuthManager
             from elder_berry.web.session_revocation_list import (
                 SessionRevocationList,
@@ -229,7 +227,8 @@ class SettingsDashboard:
             if settings_token_path is None:
                 home = Path(
                     os.environ.get(
-                        "ELDER_BERRY_HOME", Path(__file__).parent.parent.parent.parent,
+                        "ELDER_BERRY_HOME",
+                        Path(__file__).parent.parent.parent.parent,
                     )
                 ).resolve()
                 settings_token_path = home / "settings_token"
@@ -259,6 +258,7 @@ class SettingsDashboard:
             from elder_berry.web.dashboard_auth_routes import (
                 register_dashboard_auth_routes,
             )
+
             self._app.add_middleware(
                 DashboardAuthMiddleware,
                 auth_manager=self._auth_manager,
@@ -278,11 +278,13 @@ class SettingsDashboard:
 
         # Avatar-Editor-Routen
         from elder_berry.web.avatar_editor import register_avatar_editor_routes
+
         register_avatar_editor_routes(self._app, renderer=avatar_renderer)
 
         # Setup-Wizard-Routen (Re-Konfiguration auch nach Ersteinrichtung möglich)
         if self._secret_store:
             from elder_berry.web.setup_wizard import register_setup_wizard_routes
+
             register_setup_wizard_routes(self._app, self._secret_store)
 
         # Phase 66: Reverse-Proxy /api/robot/* zum RPi5 (durch SSH-Tunnel),
@@ -290,6 +292,7 @@ class SettingsDashboard:
         # LAN-IP ansprechen muss (Mixed-Content + LAN-Routing-Probleme).
         if self._secret_store:
             from elder_berry.web.robot_proxy import register_robot_proxy_routes
+
             register_robot_proxy_routes(self._app, self._secret_store)
 
     @property
@@ -328,7 +331,8 @@ class SettingsDashboard:
         return definitions
 
     def _registry_to_setting_definition(
-        self, entry: SecretRegistryEntry,
+        self,
+        entry: SecretRegistryEntry,
     ) -> SettingDefinition:
         """Konvertiert einen Registry-Eintrag in eine SettingDefinition."""
         key = entry["key"]
@@ -384,7 +388,8 @@ class SettingsDashboard:
         }
 
     def _serialize_setting_definition(
-        self, definition: SettingDefinition,
+        self,
+        definition: SettingDefinition,
     ) -> dict[str, Any]:
         return {
             "key": definition.key,
@@ -422,11 +427,17 @@ class SettingsDashboard:
             return self.DEFAULT_LLM_MODE
         raise KeyError(key)
 
-    def _validate_setting_value(self, definition: SettingDefinition, value: Any) -> str | float:
+    def _validate_setting_value(
+        self, definition: SettingDefinition, value: Any
+    ) -> str | float:
         if definition.key == self.ALLOWED_SENDERS_KEY:
             if not isinstance(value, str):
                 raise ValueError("Erlaubte Sender müssen Text sein.")
-            senders = [line.strip() for line in value.replace(",", "\n").splitlines() if line.strip()]
+            senders = [
+                line.strip()
+                for line in value.replace(",", "\n").splitlines()
+                if line.strip()
+            ]
             if any(not sender.startswith("@") for sender in senders):
                 raise ValueError("Jeder Sender muss mit @ beginnen.")
             return "\n".join(senders)
@@ -450,7 +461,9 @@ class SettingsDashboard:
             return str(value)
         raise ValueError("Unbekanntes Setting.")
 
-    def _store_setting_value(self, definition: SettingDefinition, value: str | float) -> None:
+    def _store_setting_value(
+        self, definition: SettingDefinition, value: str | float
+    ) -> None:
         if not self._secret_store:
             raise RuntimeError("SecretStore nicht verfügbar")
         if definition.key == self.ALLOWED_SENDERS_KEY:
@@ -505,8 +518,11 @@ class SettingsDashboard:
         @self._app.get("/", response_class=HTMLResponse)
         async def dashboard():
             # Redirect zum Setup-Wizard wenn Setup nicht abgeschlossen
-            if self._secret_store and not self._secret_store.has("setup_wizard_completed"):
+            if self._secret_store and not self._secret_store.has(
+                "setup_wizard_completed"
+            ):
                 from fastapi.responses import RedirectResponse
+
                 return RedirectResponse(url="/setup", status_code=302)
             template_path = _TEMPLATE_DIR / "audio_dashboard.html"
             if template_path.exists():
@@ -519,20 +535,25 @@ class SettingsDashboard:
             template_path = _TEMPLATE_DIR / "settings_panel.html"
             if template_path.exists():
                 return HTMLResponse(template_path.read_text(encoding="utf-8"))
-            return HTMLResponse("<h1>settings_panel.html nicht gefunden</h1>", status_code=500)
+            return HTMLResponse(
+                "<h1>settings_panel.html nicht gefunden</h1>", status_code=500
+            )
 
         @self._app.get("/api/audio")
         async def get_audio_mode():
-            return JSONResponse({
-                "mode": self._router.mode.value,
-                "local_available": self._router.local_available,
-                "play_local": self._router.should_play_local(),
-            })
+            return JSONResponse(
+                {
+                    "mode": self._router.mode.value,
+                    "local_available": self._router.local_available,
+                    "play_local": self._router.should_play_local(),
+                }
+            )
 
         @self._app.post("/api/audio")
         async def set_audio_mode(body: dict | None = None):
             if body and "mode" in body:
                 from elder_berry.core.audio_router import AudioOutputMode
+
                 try:
                     mode = AudioOutputMode(body["mode"])
                 except ValueError:
@@ -545,11 +566,13 @@ class SettingsDashboard:
                 new_mode = self._router.toggle()
 
             logger.info("Audio-Modus geändert: %s", new_mode.value)
-            return JSONResponse({
-                "mode": new_mode.value,
-                "local_available": self._router.local_available,
-                "play_local": self._router.should_play_local(),
-            })
+            return JSONResponse(
+                {
+                    "mode": new_mode.value,
+                    "local_available": self._router.local_available,
+                    "play_local": self._router.should_play_local(),
+                }
+            )
 
         # --- Monitor-Auswahl (Computer Use) ---
 
@@ -561,24 +584,30 @@ class SettingsDashboard:
                     return JSONResponse(data)
                 except Exception as e:
                     logger.warning("Tower Monitor-Abfrage fehlgeschlagen: %s", e)
-                    return JSONResponse({
+                    return JSONResponse(
+                        {
+                            "available": False,
+                            "monitors": [],
+                            "selected": 1,
+                            "error": "Tower nicht erreichbar",
+                        }
+                    )
+            if not self._computer_use:
+                return JSONResponse(
+                    {
                         "available": False,
                         "monitors": [],
                         "selected": 1,
-                        "error": "Tower nicht erreichbar",
-                    })
-            if not self._computer_use:
-                return JSONResponse({
-                    "available": False,
-                    "monitors": [],
-                    "selected": 1,
-                })
+                    }
+                )
             monitors = self._computer_use.get_available_monitors()
-            return JSONResponse({
-                "available": True,
-                "monitors": monitors,
-                "selected": self._computer_use.monitor_index,
-            })
+            return JSONResponse(
+                {
+                    "available": True,
+                    "monitors": monitors,
+                    "selected": self._computer_use.monitor_index,
+                }
+            )
 
         @self._app.post("/api/monitor")
         async def set_monitor(body: dict | None = None):
@@ -617,41 +646,51 @@ class SettingsDashboard:
             valid_indices = {m["index"] for m in monitors}
             if index not in valid_indices:
                 return JSONResponse(
-                    {"error": f"Monitor {index} nicht verfügbar. "
-                              f"Gültig: {sorted(valid_indices)}"},
+                    {
+                        "error": f"Monitor {index} nicht verfügbar. "
+                        f"Gültig: {sorted(valid_indices)}"
+                    },
                     status_code=400,
                 )
 
             self._computer_use.monitor_index = index
             logger.info("Computer Use Monitor geändert: %d", index)
-            return JSONResponse({
-                "selected": index,
-                "monitors": monitors,
-            })
+            return JSONResponse(
+                {
+                    "selected": index,
+                    "monitors": monitors,
+                }
+            )
 
         # --- Allowed Senders (Matrix-Sicherheit) ---
 
         @self._app.get("/api/allowed-senders")
         async def get_allowed_senders():
             if not self._secret_store:
-                return JSONResponse({
-                    "available": False,
-                    "configured": False,
-                    "count": 0,
-                })
+                return JSONResponse(
+                    {
+                        "available": False,
+                        "configured": False,
+                        "count": 0,
+                    }
+                )
             raw = self._secret_store.get_or_none(self.ALLOWED_SENDERS_KEY)
             if not raw:
-                return JSONResponse({
-                    "available": True,
-                    "configured": False,
-                    "count": 0,
-                })
+                return JSONResponse(
+                    {
+                        "available": True,
+                        "configured": False,
+                        "count": 0,
+                    }
+                )
             senders = [s.strip() for s in raw.split(",") if s.strip()]
-            return JSONResponse({
-                "available": True,
-                "configured": bool(senders),
-                "count": len(senders),
-            })
+            return JSONResponse(
+                {
+                    "available": True,
+                    "configured": bool(senders),
+                    "count": len(senders),
+                }
+            )
 
         @self._app.post("/api/allowed-senders")
         async def set_allowed_senders(body: dict | None = None):
@@ -672,10 +711,12 @@ class SettingsDashboard:
                 except Exception:
                     pass
                 logger.info("Allowed-Senders entfernt")
-                return JSONResponse({
-                    "configured": False,
-                    "count": 0,
-                })
+                return JSONResponse(
+                    {
+                        "configured": False,
+                        "count": 0,
+                    }
+                )
 
             senders_raw = body.get("senders", "")
             if not isinstance(senders_raw, str) or not senders_raw.strip():
@@ -688,8 +729,10 @@ class SettingsDashboard:
             invalid = [s for s in senders if not s.startswith("@") or ":" not in s]
             if invalid:
                 return JSONResponse(
-                    {"error": f"Ungültige Matrix-ID(s): {', '.join(invalid)}. "
-                              "Format: @user:domain.com"},
+                    {
+                        "error": f"Ungültige Matrix-ID(s): {', '.join(invalid)}. "
+                        "Format: @user:domain.com"
+                    },
                     status_code=400,
                 )
 
@@ -698,20 +741,24 @@ class SettingsDashboard:
                 ",".join(senders),
             )
             logger.info("Allowed-Senders gesetzt: %d Sender", len(senders))
-            return JSONResponse({
-                "configured": True,
-                "count": len(senders),
-            })
+            return JSONResponse(
+                {
+                    "configured": True,
+                    "count": len(senders),
+                }
+            )
 
         # --- Timezone ---
 
         @self._app.get("/api/timezone")
         async def get_timezone():
             tz = self.get_timezone()
-            return JSONResponse({
-                "timezone": tz,
-                "available": sorted(self.AVAILABLE_TIMEZONES),
-            })
+            return JSONResponse(
+                {
+                    "timezone": tz,
+                    "available": sorted(self.AVAILABLE_TIMEZONES),
+                }
+            )
 
         @self._app.post("/api/timezone")
         async def set_timezone(body: dict | None = None):
@@ -729,6 +776,7 @@ class SettingsDashboard:
 
             try:
                 from zoneinfo import ZoneInfo
+
                 ZoneInfo(tz_name)
             except (KeyError, Exception):
                 return JSONResponse(
@@ -738,20 +786,24 @@ class SettingsDashboard:
 
             self._secret_store.set(self.TIMEZONE_KEY, tz_name)
             logger.info("Zeitzone geändert: %s", safe_log(tz_name))
-            return JSONResponse({
-                "timezone": tz_name,
-                "available": sorted(self.AVAILABLE_TIMEZONES),
-            })
+            return JSONResponse(
+                {
+                    "timezone": tz_name,
+                    "available": sorted(self.AVAILABLE_TIMEZONES),
+                }
+            )
 
         # --- STT-Timeout ---
 
         @self._app.get("/api/stt-timeout")
         async def get_stt_timeout():
             timeout = self._get_stt_timeout()
-            return JSONResponse({
-                "timeout": timeout,
-                "available": self._audio_pipeline is not None,
-            })
+            return JSONResponse(
+                {
+                    "timeout": timeout,
+                    "available": self._audio_pipeline is not None,
+                }
+            )
 
         @self._app.post("/api/stt-timeout")
         async def set_stt_timeout(body: dict | None = None):
@@ -766,8 +818,10 @@ class SettingsDashboard:
                     raise ValueError("Out of range")
             except (ValueError, TypeError):
                 return JSONResponse(
-                    {"error": f"Ungültiger Timeout: {body['timeout']}. "
-                              "Erlaubt: 5–600 Sekunden."},
+                    {
+                        "error": f"Ungültiger Timeout: {body['timeout']}. "
+                        "Erlaubt: 5–600 Sekunden."
+                    },
                     status_code=400,
                 )
 
@@ -778,10 +832,12 @@ class SettingsDashboard:
                 self._secret_store.set(self.STT_TIMEOUT_KEY, str(timeout))
 
             logger.info("STT-Timeout geändert: %.0fs", timeout)
-            return JSONResponse({
-                "timeout": timeout,
-                "available": self._audio_pipeline is not None,
-            })
+            return JSONResponse(
+                {
+                    "timeout": timeout,
+                    "available": self._audio_pipeline is not None,
+                }
+            )
 
         # --- Settings-API (Schema, Values, Status, Update) ---
 
@@ -808,31 +864,37 @@ class SettingsDashboard:
             configured = 0
             restart_required = []
             for definition in settings:
-                categories[definition.category] = categories.get(definition.category, 0) + 1
+                categories[definition.category] = (
+                    categories.get(definition.category, 0) + 1
+                )
                 value = self._get_setting_value(definition.key)
                 is_set = bool(str(value).strip()) if isinstance(value, str) else True
                 if is_set:
                     configured += 1
                 if definition.restart_required:
                     restart_required.append(definition.key)
-            return JSONResponse({
-                "configured": configured,
-                "total": len(settings),
-                "categories": categories,
-                "llmMode": self._get_setting_value(self.LLM_MODE_KEY),
-                "timezone": self._get_setting_value(self.TIMEZONE_KEY),
-                "restartRequiredSettings": restart_required,
-                "monitor": await self._get_monitor_status(),
-                "towerTopology": {
-                    "dashboardRemote": True,
-                    "towerLocal": True,
-                },
-            })
+            return JSONResponse(
+                {
+                    "configured": configured,
+                    "total": len(settings),
+                    "categories": categories,
+                    "llmMode": self._get_setting_value(self.LLM_MODE_KEY),
+                    "timezone": self._get_setting_value(self.TIMEZONE_KEY),
+                    "restartRequiredSettings": restart_required,
+                    "monitor": await self._get_monitor_status(),
+                    "towerTopology": {
+                        "dashboardRemote": True,
+                        "towerLocal": True,
+                    },
+                }
+            )
 
         @self._app.post("/api/settings/update")
         async def settings_update(body: dict = Body(...)):
             if not self._secret_store:
-                return JSONResponse({"error": "SecretStore nicht verfügbar"}, status_code=503)
+                return JSONResponse(
+                    {"error": "SecretStore nicht verfügbar"}, status_code=503
+                )
             if not isinstance(body, dict):
                 return JSONResponse({"error": "JSON-Objekt erwartet"}, status_code=400)
 
@@ -850,28 +912,37 @@ class SettingsDashboard:
                 return JSONResponse({"error": str(exc)}, status_code=400)
             except Exception:
                 logger.exception(
-                    "Settings-Update fehlgeschlagen (%s)", safe_log(key),
+                    "Settings-Update fehlgeschlagen (%s)",
+                    safe_log(key),
                 )
-                return JSONResponse({"error": "Setting konnte nicht gespeichert werden"}, status_code=500)
+                return JSONResponse(
+                    {"error": "Setting konnte nicht gespeichert werden"},
+                    status_code=500,
+                )
 
-            return JSONResponse({
-                "status": "ok",
-                "key": definition.key,
-                "value": self._get_setting_value(definition.key),
-                "restartRequired": definition.restart_required,
-                "riskLevel": definition.risk_level,
-            })
+            return JSONResponse(
+                {
+                    "status": "ok",
+                    "key": definition.key,
+                    "value": self._get_setting_value(definition.key),
+                    "restartRequired": definition.restart_required,
+                    "riskLevel": definition.risk_level,
+                }
+            )
 
         # --- Health ---
 
         @self._app.get("/health")
         async def health():
             import platform
-            return JSONResponse({
-                "status": "ok",
-                "hostname": platform.node(),
-                "saleria_running": True,
-            })
+
+            return JSONResponse(
+                {
+                    "status": "ok",
+                    "hostname": platform.node(),
+                    "saleria_running": True,
+                }
+            )
 
     # ------------------------------------------------------------------
     # Helper-Methoden
@@ -916,6 +987,7 @@ class SettingsDashboard:
     def _record_meta(self, key: str) -> None:
         """Speichert den Änderungs-Timestamp für einen Key."""
         from datetime import datetime, timezone
+
         self._secrets_meta[key] = {
             "updated_at": datetime.now(timezone.utc).isoformat(),
         }
@@ -923,6 +995,7 @@ class SettingsDashboard:
     def _is_port_free(self) -> bool:
         """Prüft ob der Port frei ist."""
         import socket
+
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
             s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
             try:
@@ -947,13 +1020,17 @@ class SettingsDashboard:
             if attempt < retries:
                 logger.info(
                     "Settings-Dashboard: Port %d belegt, Retry %d/%d in %.0fs …",
-                    self._port, attempt, retries, retry_delay,
+                    self._port,
+                    attempt,
+                    retries,
+                    retry_delay,
                 )
                 time.sleep(retry_delay)
         else:
             logger.warning(
                 "Settings-Dashboard: Port %d nach %d Versuchen belegt – übersprungen.",
-                self._port, retries,
+                self._port,
+                retries,
             )
             return
 
@@ -983,7 +1060,9 @@ class SettingsDashboard:
         )
         self._thread.start()
         logger.info(
-            "Settings-Dashboard gestartet: http://%s:%d", self._host, self._port,
+            "Settings-Dashboard gestartet: http://%s:%d",
+            self._host,
+            self._port,
         )
 
     def stop(self) -> None:

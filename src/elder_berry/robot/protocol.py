@@ -1,4 +1,5 @@
 """Kommunikationsprotokoll Tower ↔ RPi5 – gemeinsame Nachrichtentypen."""
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -10,8 +11,10 @@ from typing import Any
 # Enums
 # ---------------------------------------------------------------------------
 
+
 class DriveDirection(str, Enum):
     """Fahrtrichtungen für Mecanum-Antrieb."""
+
     FORWARD = "forward"
     BACKWARD = "backward"
     LEFT = "left"
@@ -23,6 +26,7 @@ class DriveDirection(str, Enum):
 
 class SensorType(str, Enum):
     """Verfügbare Sensor-Typen auf dem RPi5."""
+
     BATTERY = "battery"
     TEMPERATURE = "temperature"
     CAMERA = "camera"
@@ -33,9 +37,11 @@ class SensorType(str, Enum):
 # Tower → RPi5: Befehle
 # ---------------------------------------------------------------------------
 
+
 @dataclass(frozen=True)
 class AvatarCommand:
     """Setzt Emotion und/oder Sprechzustand auf dem RPi5-Display."""
+
     emotion: str | None = None
     is_speaking: bool | None = None
 
@@ -43,6 +49,7 @@ class AvatarCommand:
 @dataclass(frozen=True)
 class DriveCommand:
     """Fahrbefehl an den Mecanum-Antrieb."""
+
     direction: str
     speed: float = 0.5
     duration: float | None = None
@@ -51,6 +58,7 @@ class DriveCommand:
 @dataclass(frozen=True)
 class MotorStopCommand:
     """Notfall-Stopp aller Motoren."""
+
     reason: str = "manual"
 
 
@@ -58,9 +66,11 @@ class MotorStopCommand:
 # RPi5 → Tower: Status / Sensor-Daten
 # ---------------------------------------------------------------------------
 
+
 @dataclass
 class BatteryStatus:
     """Akku-Zustand (vom Pico 2W via RPi5)."""
+
     voltage: float = 0.0
     percentage: int = 0
     is_charging: bool = False
@@ -70,6 +80,7 @@ class BatteryStatus:
 @dataclass
 class SensorReading:
     """Einzelne Sensor-Messung."""
+
     sensor_type: str
     value: Any
     unit: str = ""
@@ -79,6 +90,7 @@ class SensorReading:
 @dataclass
 class RobotStatus:
     """Gesamtstatus des Roboters."""
+
     online: bool = True
     battery: BatteryStatus = field(default_factory=BatteryStatus)
     motors_active: bool = False
@@ -93,9 +105,11 @@ class RobotStatus:
 # Health / Heartbeat
 # ---------------------------------------------------------------------------
 
+
 @dataclass(frozen=True)
 class HealthResponse:
     """Heartbeat-Antwort vom RPi5."""
+
     status: str = "ok"
     hostname: str = ""
     uptime: float = 0.0
@@ -106,9 +120,11 @@ class HealthResponse:
 # API Response Wrapper
 # ---------------------------------------------------------------------------
 
+
 @dataclass
 class ApiResponse:
     """Einheitliche API-Antwort."""
+
     success: bool
     message: str = ""
     data: dict[str, Any] | None = None

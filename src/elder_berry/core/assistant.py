@@ -1,4 +1,5 @@
 """Assistant – Orchestrierung: User-Input → LLM → Aktion → TTS → Avatar → Robot."""
+
 from __future__ import annotations
 
 import json
@@ -34,6 +35,7 @@ logger = logging.getLogger(__name__)
 @dataclass
 class AssistantResult:
     """Ergebnis einer Assistant.process()-Anfrage."""
+
     response: str
     action_executed: str | None
     action_success: bool
@@ -82,7 +84,9 @@ class Assistant:
         self._agent_online_cache: bool | None = None
 
     def process(
-        self, user_input: str, audio_output: Path | None = None,
+        self,
+        user_input: str,
+        audio_output: Path | None = None,
         chat_history: str = "",
     ) -> AssistantResult:
         """
@@ -164,7 +168,9 @@ class Assistant:
             if audio_output:
                 # Datei-Modus: Audio generieren, nicht abspielen
                 generated_audio = self._tts_to_file(
-                    response_text, audio_output, emotion_str,
+                    response_text,
+                    audio_output,
+                    emotion_str,
                 )
             else:
                 # Playback-Modus: Audio direkt abspielen
@@ -239,7 +245,10 @@ class Assistant:
             return None
 
     def _tts_to_file(
-        self, text: str, output_path: Path, emotion: str | None,
+        self,
+        text: str,
+        output_path: Path,
+        emotion: str | None,
     ) -> Path | None:
         """Generiert TTS-Audio als Datei (ohne Playback).
 
@@ -248,7 +257,9 @@ class Assistant:
         """
         try:
             actual_path = self._tts.generate_audio(
-                text, output_path, emotion=emotion,
+                text,
+                output_path,
+                emotion=emotion,
             )
             # generate_audio() kann einen anderen Pfad zurückgeben
             # (z.B. .mp3 statt .wav bei ElevenLabs/TTSRouter)
@@ -266,7 +277,9 @@ class Assistant:
             return None
 
     def _build_system_prompt(
-        self, memory_context: str = "", chat_history: str = "",
+        self,
+        memory_context: str = "",
+        chat_history: str = "",
         smart_context: str = "",
     ) -> str:
         """Generiert System-Prompt – aus CharacterEngine oder Fallback-Template."""
@@ -274,7 +287,7 @@ class Assistant:
         if db_actions:
             lines = ["Registrierte Aktionen in der Datenbank:"]
             for a in db_actions:
-                lines.append(f"- Trigger: \"{a.trigger}\" → Typ: {a.action_type}")
+                lines.append(f'- Trigger: "{a.trigger}" → Typ: {a.action_type}')
             action_list = "\n".join(lines)
         else:
             action_list = "Keine zusätzlichen Aktionen in der Datenbank registriert."
@@ -351,23 +364,31 @@ class Assistant:
             return
         try:
             from elder_berry.memory.base import MemoryEntry
-            self._memory.add(MemoryEntry.create(
-                role="user",
-                content=user_input,
-                session_id=self._session_id,
-            ))
+
+            self._memory.add(
+                MemoryEntry.create(
+                    role="user",
+                    content=user_input,
+                    session_id=self._session_id,
+                )
+            )
             meta = {"emotion": emotion} if emotion else {}
-            self._memory.add(MemoryEntry.create(
-                role="assistant",
-                content=response,
-                session_id=self._session_id,
-                metadata=meta,
-            ))
+            self._memory.add(
+                MemoryEntry.create(
+                    role="assistant",
+                    content=response,
+                    session_id=self._session_id,
+                    metadata=meta,
+                )
+            )
         except Exception as e:
             logger.warning("Memory-Speicherung fehlgeschlagen: %s", e)
 
     def generate_raw(
-        self, user_input: str, system: str = "", chat_history: str = "",
+        self,
+        user_input: str,
+        system: str = "",
+        chat_history: str = "",
     ) -> str:
         """Ruft nur das LLM auf, ohne SmartContext, Memory, TTS oder Emotion.
 
@@ -411,7 +432,7 @@ class Assistant:
         end = raw.rfind("}")
         if start != -1 and end != -1 and end > start:
             try:
-                return json.loads(raw[start:end + 1])
+                return json.loads(raw[start : end + 1])
             except json.JSONDecodeError:
                 pass
 
@@ -436,8 +457,9 @@ class Assistant:
         try:
             result = self._agent.execute_action(action_type, params)
             if not result.success:
-                logger.warning("Agent-Aktion '%s' fehlgeschlagen: %s",
-                               action_type, result.message)
+                logger.warning(
+                    "Agent-Aktion '%s' fehlgeschlagen: %s", action_type, result.message
+                )
             return result.success
         except Exception as e:
             logger.error("Agent-Aktion '%s' fehlgeschlagen: %s", action_type, e)
@@ -470,8 +492,9 @@ class Assistant:
                     return False
             return True
         except (KeyError, TypeError) as e:
-            logger.error("Aktion '%s' fehlgeschlagen – fehlende Parameter: %s",
-                         action_type, e)
+            logger.error(
+                "Aktion '%s' fehlgeschlagen – fehlende Parameter: %s", action_type, e
+            )
             return False
         except Exception as e:
             logger.error("Aktion '%s' fehlgeschlagen: %s", action_type, e)

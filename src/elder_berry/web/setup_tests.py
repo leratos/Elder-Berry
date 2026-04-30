@@ -54,17 +54,14 @@ def _validate_external_url(url: str) -> str:
             "Erlaubt sind nur http und https."
         )
     if parsed.username or parsed.password:
-        raise InvalidExternalURLError(
-            "URL darf keine Userinfo (user:pw@) enthalten."
-        )
+        raise InvalidExternalURLError("URL darf keine Userinfo (user:pw@) enthalten.")
     host = parsed.hostname or ""
     if not host:
         raise InvalidExternalURLError("URL hat keinen Hostname.")
     if not _HOSTNAME_RE.match(host):
-        raise InvalidExternalURLError(
-            f"Hostname {host!r} hat ein ungueltiges Format."
-        )
+        raise InvalidExternalURLError(f"Hostname {host!r} hat ein ungueltiges Format.")
     return url.strip()
+
 
 # Bekannte E-Mail-Provider (IMAP-Host, IMAP-Port, SMTP-Host, SMTP-Port)
 EMAIL_PROVIDERS: dict[str, tuple[str, int, str, int]] = {
@@ -98,7 +95,10 @@ class SetupTests:
             return {"success": True, "model": resp.model}
         except Exception as e:
             logger.error("Anthropic API-Test fehlgeschlagen: %s", e)
-            return {"success": False, "error": "Verbindung fehlgeschlagen – Details im Log."}
+            return {
+                "success": False,
+                "error": "Verbindung fehlgeschlagen – Details im Log.",
+            }
 
     @staticmethod
     async def test_matrix(
@@ -122,12 +122,13 @@ class SetupTests:
             return result
         except Exception as e:
             logger.error("Matrix-Test fehlgeschlagen: %s", e)
-            return {"success": False, "error": "Matrix-Verbindung fehlgeschlagen – Details im Log."}
+            return {
+                "success": False,
+                "error": "Matrix-Verbindung fehlgeschlagen – Details im Log.",
+            }
 
     @staticmethod
-    async def test_nextcloud(
-        url: str, user: str, password: str
-    ) -> dict[str, Any]:
+    async def test_nextcloud(url: str, user: str, password: str) -> dict[str, Any]:
         """Testet WebDAV, CalDAV, CardDAV Erreichbarkeit."""
         results: dict[str, Any] = {
             "webdav": False,
@@ -144,9 +145,7 @@ class SetupTests:
             }
         auth = (user, password)
         base = safe_url.rstrip("/")
-        async with httpx.AsyncClient(
-            timeout=10, follow_redirects=False
-        ) as client:
+        async with httpx.AsyncClient(timeout=10, follow_redirects=False) as client:
             # WebDAV
             try:
                 r = await client.request(
@@ -180,9 +179,7 @@ class SetupTests:
                 results["carddav"] = r.status_code in (207, 200)
             except Exception:
                 pass
-        results["success"] = all(
-            results[k] for k in ("webdav", "caldav", "carddav")
-        )
+        results["success"] = all(results[k] for k in ("webdav", "caldav", "carddav"))
         return results
 
     @staticmethod
@@ -246,7 +243,10 @@ class SetupTests:
             return {"success": r.status_code == 200}
         except Exception as e:
             logger.error("Brave Search-Test fehlgeschlagen: %s", e)
-            return {"success": False, "error": "Brave Search-Verbindung fehlgeschlagen – Details im Log."}
+            return {
+                "success": False,
+                "error": "Brave Search-Verbindung fehlgeschlagen – Details im Log.",
+            }
 
     @staticmethod
     async def test_groq(api_key: str) -> dict[str, Any]:
@@ -260,7 +260,10 @@ class SetupTests:
             return {"success": r.status_code == 200}
         except Exception as e:
             logger.error("Groq-Test fehlgeschlagen: %s", e)
-            return {"success": False, "error": "Groq-Verbindung fehlgeschlagen – Details im Log."}
+            return {
+                "success": False,
+                "error": "Groq-Verbindung fehlgeschlagen – Details im Log.",
+            }
 
     @staticmethod
     async def test_google_maps(api_key: str) -> dict[str, Any]:
@@ -279,7 +282,10 @@ class SetupTests:
             return {"success": data.get("status") == "OK"}
         except Exception as e:
             logger.error("Google Maps-Test fehlgeschlagen: %s", e)
-            return {"success": False, "error": "Google Maps-Verbindung fehlgeschlagen – Details im Log."}
+            return {
+                "success": False,
+                "error": "Google Maps-Verbindung fehlgeschlagen – Details im Log.",
+            }
 
     @staticmethod
     def check_prerequisites() -> dict[str, Any]:

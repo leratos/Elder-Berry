@@ -1,4 +1,5 @@
 """Abstrakte Basisklassen und DTOs für das Memory-System."""
+
 from __future__ import annotations
 
 import uuid

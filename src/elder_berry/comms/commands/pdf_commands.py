@@ -9,6 +9,7 @@ Commands:
     zu pdf <datei>                           – Word/Bild → PDF konvertieren
     pdf bilder <datei>                       – Bilder aus PDF extrahieren
 """
+
 from __future__ import annotations
 
 import logging
@@ -18,7 +19,11 @@ import tempfile
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from elder_berry.comms.commands.base import CommandHandler, CommandResult, user_friendly_error
+from elder_berry.comms.commands.base import (
+    CommandHandler,
+    CommandResult,
+    user_friendly_error,
+)
 from elder_berry.core.path_guard import PathGuard
 
 if TYPE_CHECKING:
@@ -151,7 +156,9 @@ class PDFCommandHandler(CommandHandler):
     def execute(self, command: str, raw_text: str) -> CommandResult:
         if self._spdf is None:
             return self.not_configured(
-                command, "PDF-Verarbeitung (Stirling-PDF)", setup_step=7,
+                command,
+                "PDF-Verarbeitung (Stirling-PDF)",
+                setup_step=7,
             )
 
         if command == "pdf_merge":
@@ -178,7 +185,9 @@ class PDFCommandHandler(CommandHandler):
     # ── NC-Helfer ──────────────────────────────────────────────────────
 
     def _resolve_nc_file(
-        self, name: str, temp_dir: Path,
+        self,
+        name: str,
+        temp_dir: Path,
     ) -> tuple[Path | None, str, str]:
         """Sucht Datei in Nextcloud, lädt sie herunter.
 
@@ -187,7 +196,11 @@ class PDFCommandHandler(CommandHandler):
             Bei Fehler: (None, "", error_message)
         """
         if self._nc is None:
-            return None, "", "⚠ Nextcloud nicht konfiguriert. Einrichten unter http://localhost:8090/setup (Schritt 4)"
+            return (
+                None,
+                "",
+                "⚠ Nextcloud nicht konfiguriert. Einrichten unter http://localhost:8090/setup (Schritt 4)",
+            )
 
         try:
             results = self._nc.search(name)
@@ -200,11 +213,10 @@ class PDFCommandHandler(CommandHandler):
         if len(matches) == 0:
             return None, "", f"Keine Datei '{name}' in Nextcloud gefunden."
         if len(matches) > 1:
-            listing = "\n".join(
-                f"  \U0001f4c4 {f.path}" for f in matches[:5]
-            )
+            listing = "\n".join(f"  \U0001f4c4 {f.path}" for f in matches[:5])
             return (
-                None, "",
+                None,
+                "",
                 f"Mehrere Treffer:\n{listing}\nBitte genauer angeben.",
             )
 
@@ -218,7 +230,9 @@ class PDFCommandHandler(CommandHandler):
         return local_path, remote_path, ""
 
     def _upload_nc_result(
-        self, local_path: Path, remote_dir: str,
+        self,
+        local_path: Path,
+        remote_dir: str,
     ) -> str:
         """Lädt Ergebnis-Datei nach Nextcloud hoch.
 
@@ -242,7 +256,9 @@ class PDFCommandHandler(CommandHandler):
         return parts[0] if len(parts) > 1 else ""
 
     def _resolve_file(
-        self, name: str, temp_dir: Path,
+        self,
+        name: str,
+        temp_dir: Path,
     ) -> tuple[Path | None, str, str]:
         """Löst Dateiname auf: lokaler Pfad oder Nextcloud-Suche.
 
@@ -257,9 +273,13 @@ class PDFCommandHandler(CommandHandler):
             try:
                 local = self._path_guard.validate(name)
             except PermissionError:
-                return None, "", (
-                    "Zugriff verweigert. Datei liegt ausserhalb "
-                    "erlaubter Verzeichnisse (z.B. Documents, Downloads)."
+                return (
+                    None,
+                    "",
+                    (
+                        "Zugriff verweigert. Datei liegt ausserhalb "
+                        "erlaubter Verzeichnisse (z.B. Documents, Downloads)."
+                    ),
                 )
             except FileNotFoundError:
                 return None, "", "Datei nicht gefunden."
@@ -295,19 +315,24 @@ class PDFCommandHandler(CommandHandler):
                 local, rpath, err = self._resolve_file(fname, temp_dir)
                 if local is None:
                     return CommandResult(
-                        command="pdf_merge", success=False, text=err,
+                        command="pdf_merge",
+                        success=False,
+                        text=err,
                     )
                 local_paths.append(local)
                 if rpath and not remote_dir:
                     remote_dir = self._get_remote_dir(rpath)
 
             import time
+
             ts = time.strftime("%Y%m%d_%H%M%S")
             output = temp_dir / f"merged_{ts}.pdf"
             result = self._spdf.merge(local_paths, output)
             if not result.success:
                 return CommandResult(
-                    command="pdf_merge", success=False, text=result.message,
+                    command="pdf_merge",
+                    success=False,
+                    text=result.message,
                 )
 
             # Upload
@@ -346,14 +371,18 @@ class PDFCommandHandler(CommandHandler):
             local, remote_path, err = self._resolve_file(filename, temp_dir)
             if local is None:
                 return CommandResult(
-                    command="pdf_split", success=False, text=err,
+                    command="pdf_split",
+                    success=False,
+                    text=err,
                 )
 
             output_dir = temp_dir / "split"
             result = self._spdf.split(local, pages, output_dir)
             if not result.success:
                 return CommandResult(
-                    command="pdf_split", success=False, text=result.message,
+                    command="pdf_split",
+                    success=False,
+                    text=result.message,
                 )
 
             # Upload
@@ -367,7 +396,7 @@ class PDFCommandHandler(CommandHandler):
                     command="pdf_split",
                     success=True,
                     text=f"{result.message}\nHochgeladen:\n"
-                         + "\n".join(f"  \U0001f4c4 {u}" for u in uploaded),
+                    + "\n".join(f"  \U0001f4c4 {u}" for u in uploaded),
                 )
 
             return CommandResult(
@@ -397,7 +426,9 @@ class PDFCommandHandler(CommandHandler):
             local, remote_path, err = self._resolve_file(filename, temp_dir)
             if local is None:
                 return CommandResult(
-                    command="pdf_compress", success=False, text=err,
+                    command="pdf_compress",
+                    success=False,
+                    text=err,
                 )
 
             stem = local.stem
@@ -405,7 +436,9 @@ class PDFCommandHandler(CommandHandler):
             result = self._spdf.compress(local, output, level=level)
             if not result.success:
                 return CommandResult(
-                    command="pdf_compress", success=False, text=result.message,
+                    command="pdf_compress",
+                    success=False,
+                    text=result.message,
                 )
 
             # Upload
@@ -444,7 +477,9 @@ class PDFCommandHandler(CommandHandler):
             local, remote_path, err = self._resolve_file(filename, temp_dir)
             if local is None:
                 return CommandResult(
-                    command="pdf_ocr", success=False, text=err,
+                    command="pdf_ocr",
+                    success=False,
+                    text=err,
                 )
 
             stem = local.stem
@@ -452,7 +487,9 @@ class PDFCommandHandler(CommandHandler):
             result = self._spdf.ocr(local, output)
             if not result.success:
                 return CommandResult(
-                    command="pdf_ocr", success=False, text=result.message,
+                    command="pdf_ocr",
+                    success=False,
+                    text=result.message,
                 )
 
             remote_dir = self._get_remote_dir(remote_path) if remote_path else ""
@@ -490,7 +527,9 @@ class PDFCommandHandler(CommandHandler):
             local, remote_path, err = self._resolve_file(filename, temp_dir)
             if local is None:
                 return CommandResult(
-                    command="pdf_to_word", success=False, text=err,
+                    command="pdf_to_word",
+                    success=False,
+                    text=err,
                 )
 
             stem = local.stem
@@ -498,7 +537,9 @@ class PDFCommandHandler(CommandHandler):
             result = self._spdf.to_word(local, output)
             if not result.success:
                 return CommandResult(
-                    command="pdf_to_word", success=False, text=result.message,
+                    command="pdf_to_word",
+                    success=False,
+                    text=result.message,
                 )
 
             remote_dir = self._get_remote_dir(remote_path) if remote_path else ""
@@ -536,7 +577,9 @@ class PDFCommandHandler(CommandHandler):
             local, remote_path, err = self._resolve_file(filename, temp_dir)
             if local is None:
                 return CommandResult(
-                    command="pdf_from_file", success=False, text=err,
+                    command="pdf_from_file",
+                    success=False,
+                    text=err,
                 )
 
             stem = local.stem
@@ -544,7 +587,9 @@ class PDFCommandHandler(CommandHandler):
             result = self._spdf.to_pdf(local, output)
             if not result.success:
                 return CommandResult(
-                    command="pdf_from_file", success=False, text=result.message,
+                    command="pdf_from_file",
+                    success=False,
+                    text=result.message,
                 )
 
             remote_dir = self._get_remote_dir(remote_path) if remote_path else ""
@@ -582,7 +627,9 @@ class PDFCommandHandler(CommandHandler):
             local, remote_path, err = self._resolve_file(filename, temp_dir)
             if local is None:
                 return CommandResult(
-                    command="pdf_extract_images", success=False, text=err,
+                    command="pdf_extract_images",
+                    success=False,
+                    text=err,
                 )
 
             output_dir = temp_dir / "images"
@@ -604,7 +651,7 @@ class PDFCommandHandler(CommandHandler):
                     command="pdf_extract_images",
                     success=True,
                     text=f"{result.message}\nHochgeladen:\n"
-                         + "\n".join(f"  \U0001f5bc {u}" for u in uploaded),
+                    + "\n".join(f"  \U0001f5bc {u}" for u in uploaded),
                 )
 
             return CommandResult(

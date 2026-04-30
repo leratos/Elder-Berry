@@ -13,6 +13,7 @@ Phase 59: ``TowerTokenMiddleware`` hat Rate-Limiting.
 Starten:
     ELDER_BERRY_TOWER_TOKEN=<token> uvicorn tower.tower_server:app --port 8090
 """
+
 from __future__ import annotations
 
 import logging
@@ -196,6 +197,7 @@ def _load_tower_token() -> str:
 
     try:
         from elder_berry.core.secret_store import SecretStore
+
         store = SecretStore()
         token = store.get_or_none("tower_auth_token")
         if token:
@@ -250,7 +252,7 @@ def _dispatch_action(
         raise HTTPException(
             status_code=400,
             detail=f"Unbekannte Aktion: {action}. "
-                   f"Erlaubt: {sorted(_ACTION_MAP.keys())}",
+            f"Erlaubt: {sorted(_ACTION_MAP.keys())}",
         )
 
     method_name, required_params = _ACTION_MAP[action]
@@ -286,7 +288,8 @@ def _dispatch_action(
             "success": True,
             "result": [
                 {"title": w.title, "handle": w.handle}
-                if hasattr(w, "title") else str(w)
+                if hasattr(w, "title")
+                else str(w)
                 for w in result
             ],
         }
@@ -307,6 +310,7 @@ async def lifespan(app: FastAPI):
     except RuntimeError as exc:
         logger.error("%s", exc)
         import sys
+
         sys.exit(1)
 
     logger.info("TowerServer startet auf %s", socket.gethostname())
@@ -354,6 +358,7 @@ async def system_info():
     """Systeminfo vom Tower (CPU, RAM, GPU, Top-Prozesse)."""
     try:
         from elder_berry.system.info import SystemMonitor
+
         monitor = SystemMonitor()
         info = monitor.get_info(top_processes=5)
         return {
@@ -406,7 +411,9 @@ async def avatar(emotion: str = "neutral"):
     try:
         renderer = LayeredSpriteRenderer()
         with tempfile.NamedTemporaryFile(
-            suffix=".png", prefix="avatar_", delete=False,
+            suffix=".png",
+            prefix="avatar_",
+            delete=False,
         ) as tmp:
             tmp_path = Path(tmp.name)
 
@@ -433,7 +440,8 @@ async def tts(request: TTSRequest):
 
     try:
         with tempfile.NamedTemporaryFile(
-            suffix=".wav", delete=False,
+            suffix=".wav",
+            delete=False,
         ) as tmp:
             tmp_path = Path(tmp.name)
 
@@ -462,7 +470,8 @@ async def stt(file: UploadFile):
         # Audio in temporäre Datei schreiben (FasterWhisper braucht Dateipfad)
         suffix = Path(file.filename).suffix if file.filename else ".ogg"
         with tempfile.NamedTemporaryFile(
-            suffix=suffix, delete=False,
+            suffix=suffix,
+            delete=False,
         ) as tmp:
             tmp.write(audio_data)
             tmp_path = Path(tmp.name)
@@ -486,7 +495,8 @@ async def action(request: ActionRequest):
     """Führt eine PC-Steuerungsaktion aus."""
     if engines.actions is None:
         raise HTTPException(
-            status_code=503, detail="ActionController nicht verfügbar",
+            status_code=503,
+            detail="ActionController nicht verfügbar",
         )
 
     try:
@@ -496,7 +506,8 @@ async def action(request: ActionRequest):
     except Exception:
         logger.exception("Action-Fehler (%s)", safe_log(request.action))
         raise HTTPException(
-            status_code=500, detail="Action-Fehler.",
+            status_code=500,
+            detail="Action-Fehler.",
         ) from None
 
 
@@ -514,13 +525,15 @@ async def get_monitors():
             for i, mon in enumerate(sct.monitors):
                 if i == 0:
                     continue  # Index 0 = "alle Monitore kombiniert"
-                monitors.append({
-                    "index": i,
-                    "width": mon["width"],
-                    "height": mon["height"],
-                    "left": mon["left"],
-                    "top": mon["top"],
-                })
+                monitors.append(
+                    {
+                        "index": i,
+                        "width": mon["width"],
+                        "height": mon["height"],
+                        "left": mon["left"],
+                        "top": mon["top"],
+                    }
+                )
         # Aktuellen Index aus engines.actions oder Default 1
         selected = getattr(engines, "_monitor_index", 1)
         return {
@@ -543,10 +556,13 @@ async def set_monitor(body: dict | None = None):
     try:
         index = int(body["index"])
     except (ValueError, TypeError):
-        raise HTTPException(status_code=400, detail="Ungültiger Monitor-Index.") from None
+        raise HTTPException(
+            status_code=400, detail="Ungültiger Monitor-Index."
+        ) from None
 
     try:
         import mss
+
         with mss.mss() as sct:
             valid = set(range(1, len(sct.monitors)))
     except ImportError:
@@ -587,7 +603,8 @@ async def screenshot():
     except Exception as e:
         logger.error("Screenshot-Fehler: %s", e)
         raise HTTPException(
-            status_code=500, detail="Screenshot-Fehler",
+            status_code=500,
+            detail="Screenshot-Fehler",
         ) from e
 
 
@@ -613,8 +630,10 @@ async def system_update():
     try:
         r = subprocess.run(
             ["git", "fetch", "origin"],
-            capture_output=True, text=True,
-            timeout=30, cwd=cwd,
+            capture_output=True,
+            text=True,
+            timeout=30,
+            cwd=cwd,
         )
         if r.returncode != 0:
             logger.warning("Git Fetch fehlgeschlagen: stderr=%s", r.stderr)
@@ -627,8 +646,10 @@ async def system_update():
     try:
         r = subprocess.run(
             ["git", "rev-list", "--count", "HEAD..@{u}"],
-            capture_output=True, text=True,
-            timeout=10, cwd=cwd,
+            capture_output=True,
+            text=True,
+            timeout=10,
+            cwd=cwd,
         )
         behind = int(r.stdout.strip()) if r.returncode == 0 else 0
     except Exception:
@@ -643,8 +664,10 @@ async def system_update():
     try:
         r = subprocess.run(
             ["git", "pull", "--ff-only"],
-            capture_output=True, text=True,
-            timeout=60, cwd=cwd,
+            capture_output=True,
+            text=True,
+            timeout=60,
+            cwd=cwd,
         )
         if r.returncode != 0:
             logger.warning("Git Pull fehlgeschlagen: stderr=%s", r.stderr)
@@ -657,11 +680,19 @@ async def system_update():
     # 4. pip install (Windows Tower extras)
     try:
         r = subprocess.run(
-            [sys.executable, "-m", "pip", "install", "-e",
-             ".[windows,tts-neural,avatar,matrix,remote,memory,stt]",
-             "--quiet"],
-            capture_output=True, text=True,
-            timeout=300, cwd=cwd,
+            [
+                sys.executable,
+                "-m",
+                "pip",
+                "install",
+                "-e",
+                ".[windows,tts-neural,avatar,matrix,remote,memory,stt]",
+                "--quiet",
+            ],
+            capture_output=True,
+            text=True,
+            timeout=300,
+            cwd=cwd,
         )
         if r.returncode == 0:
             steps.append("Dependencies installiert")
@@ -676,6 +707,7 @@ async def system_update():
     #    der Prozess. Task-Scheduler startet ihn automatisch neu.
     def _delayed_exit():
         import time
+
         time.sleep(2)
         logger.info("Tower-Update abgeschlossen – beende Prozess fuer Neustart")
         os._exit(1)

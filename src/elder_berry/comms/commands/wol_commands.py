@@ -3,13 +3,18 @@
 Verwaltet:
 - wol → Magic Packet an Tower senden
 """
+
 from __future__ import annotations
 
 import logging
 import socket
 from typing import TYPE_CHECKING
 
-from elder_berry.comms.commands.base import CommandHandler, CommandResult, user_friendly_error
+from elder_berry.comms.commands.base import (
+    CommandHandler,
+    CommandResult,
+    user_friendly_error,
+)
 
 if TYPE_CHECKING:
     from elder_berry.core.secret_store import SecretStore
@@ -37,8 +42,12 @@ class WolCommandHandler(CommandHandler):
     def keywords(self) -> dict[str, list[str]]:
         return {
             "wol": [
-                "weck tower", "tower aufwecken", "wake on lan",
-                "tower starten", "pc aufwecken", "rechner wecken",
+                "weck tower",
+                "tower aufwecken",
+                "wake on lan",
+                "tower starten",
+                "pc aufwecken",
+                "rechner wecken",
                 "tower wecken",
             ],
         }
@@ -68,7 +77,7 @@ class WolCommandHandler(CommandHandler):
                 command="wol",
                 success=False,
                 text="MAC-Adresse 'tower_mac_address' nicht im SecretStore hinterlegt.\n"
-                     "Speichern mit: SecretStore().set('tower_mac_address', 'AA:BB:CC:DD:EE:FF')",
+                "Speichern mit: SecretStore().set('tower_mac_address', 'AA:BB:CC:DD:EE:FF')",
             )
 
         # MAC-Adresse validieren und normalisieren

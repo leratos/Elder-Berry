@@ -9,6 +9,7 @@ Subsysteme delegieren:
 - Multi-Step Tasks (TaskChainRunner)
 - Pending Confirmations → delegiert an ConfirmationHandler
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -88,11 +89,15 @@ class BridgeMessageHandler:
 
     # Commands die länger brauchen (Netzwerk-Sync, Updates etc.)
     _LONG_RUNNING_COMMANDS = {
-        "contact_sync", "system_update", "git_pull",
+        "contact_sync",
+        "system_update",
+        "git_pull",
     }
 
     async def handle_remote_command(
-        self, msg: IncomingMessage, command: str,
+        self,
+        msg: IncomingMessage,
+        command: str,
     ) -> None:
         """Führt einen direkten Remote-Command aus und sendet das Ergebnis."""
         logger.info("Remote-Command erkannt: %s", command)
@@ -102,7 +107,10 @@ class BridgeMessageHandler:
             loop = asyncio.get_running_loop()
             result = await asyncio.wait_for(
                 loop.run_in_executor(
-                    None, self._remote_commands.execute, command, msg.body,
+                    None,
+                    self._remote_commands.execute,
+                    command,
+                    msg.body,
                 ),
                 timeout=timeout,
             )
@@ -113,8 +121,8 @@ class BridgeMessageHandler:
             if result.fallthrough:
                 if msg.sender in self._in_llm_command:
                     logger.warning(
-                        "Fallthrough '%s' blockiert (LLM-initiiert, "
-                        "Rekursions-Guard)", command,
+                        "Fallthrough '%s' blockiert (LLM-initiiert, Rekursions-Guard)",
+                        command,
                     )
                     return
                 logger.debug("Command '%s' fallthrough → LLM", command)
@@ -150,7 +158,9 @@ class BridgeMessageHandler:
 
             # Pending Confirmation (Phase 28: Email-Reply Draft)
             if result.pending_confirmation and result.pending_data:
-                action_type = result.pending_data.pop("action_type", None) or result.command
+                action_type = (
+                    result.pending_data.pop("action_type", None) or result.command
+                )
                 pending_action = PendingAction(
                     action_type=action_type,
                     description=result.text or "",
@@ -161,7 +171,9 @@ class BridgeMessageHandler:
                     await self._channel.send_text(msg.room_id, result.text)
                 self._chat_history.add(msg.sender, "user", msg.body)
                 self._chat_history.add(
-                    msg.sender, "assistant", result.text or "",
+                    msg.sender,
+                    "assistant",
+                    result.text or "",
                 )
                 return
 
@@ -180,7 +192,8 @@ class BridgeMessageHandler:
             if not result.success and not result.fallthrough:
                 logger.error(
                     "Command '%s' fehlgeschlagen: %s",
-                    command, result.text or "Command fehlgeschlagen",
+                    command,
+                    result.text or "Command fehlgeschlagen",
                     extra={"sender": msg.sender, "handler": f"command:{command}"},
                 )
 
@@ -188,7 +201,8 @@ class BridgeMessageHandler:
             if result.image_path and result.image_path.exists():
                 try:
                     await self._channel.send_image(
-                        msg.room_id, result.image_path,
+                        msg.room_id,
+                        result.image_path,
                     )
                 except NotImplementedError:
                     await self._channel.send_text(
@@ -201,28 +215,31 @@ class BridgeMessageHandler:
             # Datei senden: über Nextcloud (Upload + Share-Link) oder Matrix-Fallback
             if result.file_path and result.file_path.exists():
                 await self._send_file_via_nc_or_matrix(
-                    msg.room_id, result.file_path,
+                    msg.room_id,
+                    result.file_path,
                 )
 
             # Mehrere Dateien senden (z.B. Mail-Anhänge)
             if result.file_paths:
                 if result.command == "mail_attachment" and self._nc_files:
                     await self._handle_attachment_upload_with_menu(
-                        msg, result.file_paths,
+                        msg,
+                        result.file_paths,
                     )
                 else:
                     for fpath in result.file_paths:
                         if fpath.exists():
                             await self._send_file_via_nc_or_matrix(
-                                msg.room_id, fpath, cleanup=True,
+                                msg.room_id,
+                                fpath,
+                                cleanup=True,
                             )
 
             # Restart
             if result.restart:
                 if time.monotonic() < self.restart_cooldown_until:
                     logger.warning(
-                        "Restart-Cooldown aktiv, ignoriere restart-Befehl "
-                        "(noch %.0fs)",
+                        "Restart-Cooldown aktiv, ignoriere restart-Befehl (noch %.0fs)",
                         self.restart_cooldown_until - time.monotonic(),
                     )
                     await self._channel.send_text(
@@ -232,9 +249,12 @@ class BridgeMessageHandler:
                     )
                     return
                 from elder_berry.comms.restart_manager import perform_restart
+
                 await perform_restart(
-                    self._channel, self._scheduler_mgr,
-                    msg.room_id, msg_server_ts=msg.timestamp,
+                    self._channel,
+                    self._scheduler_mgr,
+                    msg.room_id,
+                    msg_server_ts=msg.timestamp,
                 )
 
         except asyncio.TimeoutError:
@@ -248,7 +268,9 @@ class BridgeMessageHandler:
                 pass
         except Exception as e:
             logger.error(
-                "Remote-Command '%s' fehlgeschlagen: %s", command, e,
+                "Remote-Command '%s' fehlgeschlagen: %s",
+                command,
+                e,
                 extra={"sender": msg.sender, "handler": "command"},
             )
             try:
@@ -264,26 +286,34 @@ class BridgeMessageHandler:
     # ------------------------------------------------------------------
 
     async def handle_pending_confirm(
-        self, msg: IncomingMessage, action: PendingAction,
+        self,
+        msg: IncomingMessage,
+        action: PendingAction,
     ) -> None:
         """Führt eine bestätigte PendingAction aus."""
         self._confirm.restart_cooldown_until = self.restart_cooldown_until
         await self._confirm.handle_confirm(msg, action)
 
     async def handle_pending_modify(
-        self, msg: IncomingMessage, action: PendingAction,
+        self,
+        msg: IncomingMessage,
+        action: PendingAction,
     ) -> None:
         """Generiert einen neuen Draft basierend auf der Änderungsanweisung."""
         await self._confirm.handle_modify(msg, action)
 
     async def handle_filing_response(
-        self, msg: IncomingMessage, action: PendingAction,
+        self,
+        msg: IncomingMessage,
+        action: PendingAction,
     ) -> None:
         """Verarbeitet Filing-Antworten die kein Standard-Confirm/Cancel sind."""
         await self._confirm.handle_filing_response(msg, action)
 
     async def handle_attachment_menu_response(
-        self, msg: IncomingMessage, action: PendingAction,
+        self,
+        msg: IncomingMessage,
+        action: PendingAction,
     ) -> None:
         """Verarbeitet Anhang-Aktionsmenü-Antworten."""
         await self._confirm.handle_attachment_menu(msg, action)
@@ -293,7 +323,9 @@ class BridgeMessageHandler:
     # ------------------------------------------------------------------
 
     async def handle_claude_agent(
-        self, msg: IncomingMessage, claude_text: str,
+        self,
+        msg: IncomingMessage,
+        claude_text: str,
     ) -> None:
         """Delegiert an ClaudeAgent.process() für komplexe Anfragen."""
         logger.info("ClaudeAgent verarbeitet: %s", claude_text[:100])
@@ -302,7 +334,9 @@ class BridgeMessageHandler:
             loop = asyncio.get_running_loop()
             result = await asyncio.wait_for(
                 loop.run_in_executor(
-                    None, self._claude_agent.process, claude_text,
+                    None,
+                    self._claude_agent.process,
+                    claude_text,
                 ),
                 timeout=180.0,
             )
@@ -316,7 +350,8 @@ class BridgeMessageHandler:
                     if image_path.exists():
                         try:
                             await self._channel.send_image(
-                                msg.room_id, image_path,
+                                msg.room_id,
+                                image_path,
                             )
                         except NotImplementedError:
                             await self._channel.send_text(
@@ -343,7 +378,8 @@ class BridgeMessageHandler:
                 pass
         except Exception as e:
             logger.error(
-                "ClaudeAgent Fehler: %s", e,
+                "ClaudeAgent Fehler: %s",
+                e,
                 extra={"sender": msg.sender, "handler": "agent"},
             )
             try:
@@ -359,9 +395,13 @@ class BridgeMessageHandler:
     # ------------------------------------------------------------------
 
     async def _handle_llm_enrichment(
-        self, msg: IncomingMessage, result,
-        prompt_intro: str, prompt_instruction: str,
-        error_log_msg: str, error_fallback_suffix: str,
+        self,
+        msg: IncomingMessage,
+        result,
+        prompt_intro: str,
+        prompt_instruction: str,
+        error_log_msg: str,
+        error_fallback_suffix: str,
     ) -> None:
         """Gemeinsame Logik für LLM-basierte Anreicherung."""
         try:
@@ -383,13 +423,17 @@ class BridgeMessageHandler:
             tmp_wav: Path | None = None
             if self._audio.audio_to_matrix:
                 with tempfile.NamedTemporaryFile(
-                    suffix=".wav", delete=False,
+                    suffix=".wav",
+                    delete=False,
                 ) as fh:
                     tmp_wav = Path(fh.name)
             llm_result = await asyncio.wait_for(
                 loop.run_in_executor(
-                    None, self._assistant.process, summary_prompt,
-                    tmp_wav, chat_context,
+                    None,
+                    self._assistant.process,
+                    summary_prompt,
+                    tmp_wav,
+                    chat_context,
                 ),
                 timeout=120.0,
             )
@@ -402,7 +446,9 @@ class BridgeMessageHandler:
                 await self._channel.send_text(msg.room_id, result.text)
 
             await self._audio.send_audio_if_available(
-                msg.room_id, llm_result, tmp_wav,
+                msg.room_id,
+                llm_result,
+                tmp_wav,
             )
 
         except Exception as e:
@@ -420,7 +466,9 @@ class BridgeMessageHandler:
     # ------------------------------------------------------------------
 
     async def _handle_attachment_upload_with_menu(
-        self, msg: IncomingMessage, file_paths: list[Path],
+        self,
+        msg: IncomingMessage,
+        file_paths: list[Path],
     ) -> None:
         """Lädt Mail-Anhänge zu Nextcloud hoch und bietet Aktionsmenü an.
 
@@ -431,6 +479,7 @@ class BridgeMessageHandler:
         nc_remote_paths: list[str] = []
 
         from datetime import datetime
+
         month_folder = datetime.now().strftime("%Y-%m")
 
         for fpath in file_paths:
@@ -442,7 +491,8 @@ class BridgeMessageHandler:
 
             if link:
                 await self._channel.send_text(
-                    msg.room_id, f"📎 {fpath.name}: {link}",
+                    msg.room_id,
+                    f"📎 {fpath.name}: {link}",
                 )
                 if fpath.suffix.lower() == ".pdf":
                     pdf_paths.append(fpath)
@@ -456,7 +506,8 @@ class BridgeMessageHandler:
                     await self._channel.send_file(msg.room_id, fpath)
                 except NotImplementedError:
                     await self._channel.send_text(
-                        msg.room_id, "Datei-Upload nicht unterstützt.",
+                        msg.room_id,
+                        "Datei-Upload nicht unterstützt.",
                     )
                 fpath.unlink(missing_ok=True)
 
@@ -466,10 +517,10 @@ class BridgeMessageHandler:
 
         menu_text = (
             "\nWas soll ich damit tun?\n"
-            "  → \"zusammenfassen\" – PDF analysieren\n"
-            "  → \"ablegen\" – Dateiname vorschlagen und einsortieren\n"
-            "  → \"löschen\" – Datei aus Nextcloud entfernen\n"
-            "  → \"nichts\" – so lassen"
+            '  → "zusammenfassen" – PDF analysieren\n'
+            '  → "ablegen" – Dateiname vorschlagen und einsortieren\n'
+            '  → "löschen" – Datei aus Nextcloud entfernen\n'
+            '  → "nichts" – so lassen'
         )
         await self._channel.send_text(msg.room_id, menu_text)
 
@@ -485,7 +536,8 @@ class BridgeMessageHandler:
         self._pending.set(msg.sender, pending_action)
         self._chat_history.add(msg.sender, "user", msg.body)
         self._chat_history.add(
-            msg.sender, "assistant",
+            msg.sender,
+            "assistant",
             f"{len(pdf_paths)} PDF-Anhang/Anhänge hochgeladen. Aktionsmenü angeboten.",
         )
 
@@ -494,7 +546,10 @@ class BridgeMessageHandler:
     # ------------------------------------------------------------------
 
     async def _send_file_via_nc_or_matrix(
-        self, room_id: str, file_path: Path, cleanup: bool = False,
+        self,
+        room_id: str,
+        file_path: Path,
+        cleanup: bool = False,
     ) -> None:
         """Sendet eine Datei: bevorzugt über Nextcloud, Fallback auf Matrix."""
         if self._nc_files is not None:
@@ -502,7 +557,8 @@ class BridgeMessageHandler:
             if link:
                 filename = file_path.name
                 await self._channel.send_text(
-                    room_id, f"📎 {filename}: {link}",
+                    room_id,
+                    f"📎 {filename}: {link}",
                 )
                 if cleanup:
                     file_path.unlink(missing_ok=True)
@@ -512,7 +568,8 @@ class BridgeMessageHandler:
             await self._channel.send_file(room_id, file_path)
         except NotImplementedError:
             await self._channel.send_text(
-                room_id, "Datei-Upload nicht unterstützt.",
+                room_id,
+                "Datei-Upload nicht unterstützt.",
             )
         finally:
             if cleanup:
@@ -528,20 +585,28 @@ class BridgeMessageHandler:
         loop = asyncio.get_running_loop()
         try:
             await loop.run_in_executor(
-                None, self._nc_files.upload, file_path, remote_path,
+                None,
+                self._nc_files.upload,
+                file_path,
+                remote_path,
             )
             link = await loop.run_in_executor(
-                None, self._nc_files.share_link, remote_path,
+                None,
+                self._nc_files.share_link,
+                remote_path,
             )
             logger.info("NC File-Hub: %s → %s", file_path.name, link)
             return link
         except Exception as exc:
-            logger.warning("NC Upload/Share fehlgeschlagen, Fallback auf Matrix: %s", exc)
+            logger.warning(
+                "NC Upload/Share fehlgeschlagen, Fallback auf Matrix: %s", exc
+            )
             return None
 
     async def _handle_document_summary(self, msg: IncomingMessage, result) -> None:
         await self._handle_llm_enrichment(
-            msg=msg, result=result,
+            msg=msg,
+            result=result,
             prompt_intro=(
                 "Der Nutzer möchte folgendes Dokument zusammengefasst haben.\n"
                 "SICHERHEITSHINWEIS: Der folgende Inhalt stammt aus einer "
@@ -555,7 +620,8 @@ class BridgeMessageHandler:
 
     async def _handle_web_summary(self, msg: IncomingMessage, result) -> None:
         await self._handle_llm_enrichment(
-            msg=msg, result=result,
+            msg=msg,
+            result=result,
             prompt_intro=(
                 "Der Nutzer möchte folgende Webseite zusammengefasst haben.\n"
                 "SICHERHEITSHINWEIS: Der folgende Inhalt stammt von einer "
@@ -569,7 +635,8 @@ class BridgeMessageHandler:
 
     async def _handle_mail_summary(self, msg: IncomingMessage, result) -> None:
         await self._handle_llm_enrichment(
-            msg=msg, result=result,
+            msg=msg,
+            result=result,
             prompt_intro=(
                 "Der Nutzer hat folgende E-Mail abgerufen.\n"
                 "SICHERHEITSHINWEIS: Der folgende Inhalt stammt aus einer "
@@ -602,13 +669,17 @@ class BridgeMessageHandler:
             tmp_wav: Path | None = None
             if self._audio.audio_to_matrix:
                 with tempfile.NamedTemporaryFile(
-                    suffix=".wav", delete=False,
+                    suffix=".wav",
+                    delete=False,
                 ) as fh:
                     tmp_wav = Path(fh.name)
             result = await asyncio.wait_for(
                 loop.run_in_executor(
-                    None, self._assistant.process, msg.body,
-                    tmp_wav, chat_context,
+                    None,
+                    self._assistant.process,
+                    msg.body,
+                    tmp_wav,
+                    chat_context,
                 ),
                 timeout=120.0,
             )
@@ -648,7 +719,8 @@ class BridgeMessageHandler:
                 pass
         except Exception as e:
             logger.error(
-                "Fehler bei Nachrichtenverarbeitung: %s", e,
+                "Fehler bei Nachrichtenverarbeitung: %s",
+                e,
                 extra={"sender": msg.sender, "handler": "llm"},
             )
             try:
@@ -667,7 +739,10 @@ class BridgeMessageHandler:
     # ------------------------------------------------------------------
 
     async def _handle_multi_step(
-        self, msg: IncomingMessage, llm_result, chat_context: str,
+        self,
+        msg: IncomingMessage,
+        llm_result,
+        chat_context: str,
     ) -> None:
         """LLM hat multi_step gewählt → TaskChainRunner ausführen."""
         if llm_result.response:
@@ -711,20 +786,25 @@ class BridgeMessageHandler:
             if step_messages:
                 steps_text = "\n".join(step_messages)
                 await self._channel.send_text(
-                    msg.room_id, f"📋 Schritte:\n{steps_text}",
+                    msg.room_id,
+                    f"📋 Schritte:\n{steps_text}",
                 )
 
             if chain_result.final_summary:
                 await self._channel.send_text(
-                    msg.room_id, chain_result.final_summary,
+                    msg.room_id,
+                    chain_result.final_summary,
                 )
                 self._chat_history.add(
-                    msg.sender, "assistant", chain_result.final_summary,
+                    msg.sender,
+                    "assistant",
+                    chain_result.final_summary,
                 )
 
             logger.info(
                 "Multi-Step Chain abgeschlossen: %d Schritte, completed=%s",
-                chain_result.step_count, chain_result.completed,
+                chain_result.step_count,
+                chain_result.completed,
             )
 
         except asyncio.TimeoutError:
@@ -738,7 +818,8 @@ class BridgeMessageHandler:
                 pass
         except Exception as e:
             logger.error(
-                "Multi-Step Chain fehlgeschlagen: %s", e,
+                "Multi-Step Chain fehlgeschlagen: %s",
+                e,
                 extra={"sender": msg.sender, "handler": "multi_step"},
             )
             try:
@@ -754,7 +835,9 @@ class BridgeMessageHandler:
     # ------------------------------------------------------------------
 
     async def _handle_llm_remote_command(
-        self, msg: IncomingMessage, llm_result,
+        self,
+        msg: IncomingMessage,
+        llm_result,
     ) -> None:
         """LLM hat remote_command Aktion gewählt → Command ausführen."""
         if llm_result.response:
@@ -793,7 +876,8 @@ class BridgeMessageHandler:
 
         # Parse fehlgeschlagen → Retry mit Feedback
         logger.info(
-            "LLM remote_command nicht erkannt: '%s' – starte Retry", command_text,
+            "LLM remote_command nicht erkannt: '%s' – starte Retry",
+            command_text,
         )
         retry_cmd = await self._retry_llm_remote_command(msg, command_text)
         if retry_cmd:
@@ -809,11 +893,14 @@ class BridgeMessageHandler:
                 return
 
         logger.warning(
-            "LLM remote_command nach Retry nicht erkannt: '%s'", command_text,
+            "LLM remote_command nach Retry nicht erkannt: '%s'",
+            command_text,
         )
 
     async def _retry_llm_remote_command(
-        self, msg: IncomingMessage, failed_command: str,
+        self,
+        msg: IncomingMessage,
+        failed_command: str,
     ) -> str | None:
         """Gibt dem LLM Feedback über den fehlgeschlagenen Command."""
         summary = self._remote_commands.get_command_summary()
@@ -829,8 +916,11 @@ class BridgeMessageHandler:
             chat_context = self._chat_history.format_for_prompt(msg.sender)
             raw = await asyncio.wait_for(
                 loop.run_in_executor(
-                    None, self._assistant.generate_raw,
-                    retry_prompt, "", chat_context,
+                    None,
+                    self._assistant.generate_raw,
+                    retry_prompt,
+                    "",
+                    chat_context,
                 ),
                 timeout=60.0,
             )

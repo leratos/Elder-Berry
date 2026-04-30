@@ -13,6 +13,7 @@ Verwendung:
     response_type, action = store.check_response("@user:matrix.org", "ja")
     # response_type == "confirm", action == PendingAction(...)
 """
+
 from __future__ import annotations
 
 import logging
@@ -26,12 +27,8 @@ logger = logging.getLogger(__name__)
 DEFAULT_TTL_SECONDS = 300
 
 # Bestätigungs-Antworten
-CONFIRM_WORDS = frozenset(
-    {"ja", "yes", "senden", "send", "ok", "passt", "abschicken"}
-)
-CANCEL_WORDS = frozenset(
-    {"nein", "no", "abbrechen", "cancel", "verwerfen", "stopp"}
-)
+CONFIRM_WORDS = frozenset({"ja", "yes", "senden", "send", "ok", "passt", "abschicken"})
+CANCEL_WORDS = frozenset({"nein", "no", "abbrechen", "cancel", "verwerfen", "stopp"})
 MODIFY_PREFIX = "ändern:"
 
 
@@ -78,7 +75,9 @@ class PendingConfirmationStore:
         self._pending[user_id] = action
         logger.info(
             "PendingAction gesetzt für %s: %s (TTL: %.0fs)",
-            user_id, action.action_type, action.ttl,
+            user_id,
+            action.action_type,
+            action.ttl,
         )
 
     def get(self, user_id: str) -> PendingAction | None:
@@ -93,7 +92,8 @@ class PendingConfirmationStore:
         if action.is_expired:
             logger.info(
                 "PendingAction abgelaufen für %s: %s",
-                user_id, action.action_type,
+                user_id,
+                action.action_type,
             )
             del self._pending[user_id]
             return None
@@ -104,7 +104,9 @@ class PendingConfirmationStore:
         self._pending.pop(user_id, None)
 
     def check_response(
-        self, user_id: str, text: str,
+        self,
+        user_id: str,
+        text: str,
     ) -> tuple[str, PendingAction | None]:
         """Prüft ob ein Text eine Bestätigungs-Antwort ist.
 
@@ -135,13 +137,13 @@ class PendingConfirmationStore:
             return ("cancel", action)
 
         if normalized.startswith(MODIFY_PREFIX):
-            instruction = text[len(MODIFY_PREFIX):].strip()
+            instruction = text[len(MODIFY_PREFIX) :].strip()
             action.data["modify_instruction"] = instruction
             return ("modify", action)
 
         # Auch "ändern:" mit großem Ä prüfen
         if normalized.startswith("ändern:"):
-            instruction = text[len("ändern:"):].strip()
+            instruction = text[len("ändern:") :].strip()
             action.data["modify_instruction"] = instruction
             return ("modify", action)
 

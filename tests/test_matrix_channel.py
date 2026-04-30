@@ -1,4 +1,5 @@
 """Tests: MatrixChannel – Matrix-Implementierung des MessageChannel."""
+
 import asyncio
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -27,6 +28,7 @@ from elder_berry.comms.message_channel import IncomingMessage, MessageChannel  #
 # ---------------------------------------------------------------------------
 # Helper
 # ---------------------------------------------------------------------------
+
 
 def run_async(coro):
     """Führt Coroutine synchron aus (kein pytest-asyncio nötig)."""
@@ -71,6 +73,7 @@ def make_upload_response() -> UploadResponse:
 # Konstruktor
 # ---------------------------------------------------------------------------
 
+
 class TestMatrixChannelInit:
     def test_implements_interface(self):
         channel = make_channel()
@@ -102,6 +105,7 @@ class TestMatrixChannelInit:
 # ---------------------------------------------------------------------------
 # Connect
 # ---------------------------------------------------------------------------
+
 
 class TestConnect:
     def test_login_success(self):
@@ -166,6 +170,7 @@ class TestConnect:
 # Disconnect
 # ---------------------------------------------------------------------------
 
+
 class TestDisconnect:
     def test_disconnect(self):
         async def _test():
@@ -195,6 +200,7 @@ class TestDisconnect:
 # ---------------------------------------------------------------------------
 # Send Text
 # ---------------------------------------------------------------------------
+
 
 class TestSendText:
     def test_send_text_success(self):
@@ -238,6 +244,7 @@ class TestSendText:
 # ---------------------------------------------------------------------------
 # Send Audio
 # ---------------------------------------------------------------------------
+
 
 class TestSendAudio:
     def test_send_audio_success(self, tmp_path):
@@ -312,6 +319,7 @@ class TestSendAudio:
 # ---------------------------------------------------------------------------
 # On Message + Callback
 # ---------------------------------------------------------------------------
+
 
 class TestOnMessage:
     def test_register_callback(self):
@@ -492,6 +500,7 @@ class TestOnMessage:
 # Sync-Loop
 # ---------------------------------------------------------------------------
 
+
 class TestSyncLoop:
     def test_sync_loop_not_connected(self):
         async def _test():
@@ -540,7 +549,9 @@ class TestSyncLoop:
             channel._client.sync = flaky_sync
 
             # Patch sleep damit der Test schnell läuft
-            with patch("elder_berry.comms.matrix_channel.asyncio.sleep", new_callable=AsyncMock):
+            with patch(
+                "elder_berry.comms.matrix_channel.asyncio.sleep", new_callable=AsyncMock
+            ):
                 await channel.sync_loop()
 
             assert call_count == 2
@@ -555,6 +566,7 @@ class TestSyncLoop:
 # ---------------------------------------------------------------------------
 # Send Image
 # ---------------------------------------------------------------------------
+
 
 class TestSendImage:
     def test_send_image_success(self, tmp_path):
@@ -656,7 +668,10 @@ class TestMimeType:
         assert MatrixChannel._guess_mime_type(Path("song.mp3")) == "audio/mpeg"
 
     def test_unknown(self):
-        assert MatrixChannel._guess_mime_type(Path("file.xyz")) == "application/octet-stream"
+        assert (
+            MatrixChannel._guess_mime_type(Path("file.xyz"))
+            == "application/octet-stream"
+        )
 
     def test_opus(self):
         assert MatrixChannel._guess_mime_type(Path("voice.opus")) == "audio/ogg"
@@ -665,6 +680,7 @@ class TestMimeType:
 # ---------------------------------------------------------------------------
 # Auto-Join
 # ---------------------------------------------------------------------------
+
 
 class TestAutoJoin:
     def test_auto_join_invited_room(self):
@@ -743,6 +759,7 @@ class TestAutoJoin:
 # Image MIME-Type
 # ---------------------------------------------------------------------------
 
+
 class TestImageMimeType:
     def test_png(self):
         assert MatrixChannel._guess_image_mime_type(Path("screen.png")) == "image/png"
@@ -760,12 +777,16 @@ class TestImageMimeType:
         assert MatrixChannel._guess_image_mime_type(Path("img.webp")) == "image/webp"
 
     def test_unknown(self):
-        assert MatrixChannel._guess_image_mime_type(Path("file.xyz")) == "application/octet-stream"
+        assert (
+            MatrixChannel._guess_image_mime_type(Path("file.xyz"))
+            == "application/octet-stream"
+        )
 
 
 # ---------------------------------------------------------------------------
 # _on_room_audio – Eingehende Sprachnachrichten
 # ---------------------------------------------------------------------------
+
 
 def make_audio_event(
     sender: str = "@user:test.com",
@@ -785,6 +806,7 @@ def make_audio_event(
 class TestOnRoomAudio:
     def test_audio_own_message_ignored(self):
         """Eigene Audio-Nachrichten werden ignoriert."""
+
         async def _test():
             channel = make_channel(user_id="@bot:test.com")
             received = []
@@ -801,6 +823,7 @@ class TestOnRoomAudio:
 
     def test_audio_room_whitelist_blocked(self):
         """Nachrichten aus nicht erlaubten Räumen werden ignoriert."""
+
         async def _test():
             channel = make_channel(allowed_rooms=["!allowed:test.com"])
             received = []
@@ -817,6 +840,7 @@ class TestOnRoomAudio:
 
     def test_audio_invalid_mxc_url_ignored(self):
         """Event ohne gültige mxc://-URL wird ignoriert."""
+
         async def _test():
             channel = make_channel()
             received = []
@@ -833,6 +857,7 @@ class TestOnRoomAudio:
 
     def test_audio_download_error_no_callback(self):
         """Download-Fehler verhindert Callback (kein Crash)."""
+
         async def _test():
             channel = make_channel()
             received = []
@@ -853,6 +878,7 @@ class TestOnRoomAudio:
 
     def test_audio_download_success_fires_callback(self):
         """Erfolgreicher Download: Callback mit audio_data wird aufgerufen."""
+
         async def _test():
             channel = make_channel()
             received = []
@@ -890,6 +916,7 @@ class TestOnRoomAudio:
 
     def test_audio_download_calls_correct_server_and_media_id(self):
         """Download-Aufruf nutzt Server-Name und Media-ID aus MXC-URL."""
+
         async def _test():
             channel = make_channel()
 
@@ -905,13 +932,15 @@ class TestOnRoomAudio:
             await channel._on_room_audio(room, event)
 
             channel._client.download.assert_called_once_with(
-                "matrix.example.org", "XYZ987",
+                "matrix.example.org",
+                "XYZ987",
             )
 
         run_async(_test())
 
     def test_audio_callback_error_no_crash(self):
         """Fehlerhafter Callback darf nicht crashen."""
+
         async def _test():
             channel = make_channel()
 
@@ -935,6 +964,7 @@ class TestOnRoomAudio:
 
     def test_audio_registered_in_connect(self):
         """_on_room_audio wird in connect() als Callback registriert."""
+
         async def _test():
             from nio import RoomMessageAudio
 

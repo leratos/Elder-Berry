@@ -8,6 +8,7 @@ Erstellt einfache 512x512 PNGs mit:
 Wird nur einmal ausgeführt – die Sprites werden danach manuell
 durch richtige Assets ersetzt.
 """
+
 from pathlib import Path
 
 from PIL import Image, ImageDraw, ImageFont
@@ -19,16 +20,16 @@ HEAD_CENTER = (SIZE // 2, SIZE // 2 - 40)
 
 # Emotion → (Hintergrundfarbe, Augenform, Mundform)
 EMOTION_STYLES = {
-    "neutral":    {"color": (120, 90, 160), "eyes": "normal",  "mouth": "neutral"},
-    "cheerful":   {"color": (200, 130, 60), "eyes": "happy",   "mouth": "smile"},
-    "sarcastic":  {"color": (160, 80, 120), "eyes": "half",    "mouth": "smirk"},
-    "motivated":  {"color": (60, 160, 100), "eyes": "wide",    "mouth": "grin"},
-    "thoughtful": {"color": (80, 100, 170), "eyes": "half",    "mouth": "neutral"},
-    "whisper":    {"color": (100, 80, 130), "eyes": "normal",  "mouth": "small_o"},
-    "shy":        {"color": (180, 120, 140), "eyes": "down",   "mouth": "small"},
-    "depressed":  {"color": (70, 70, 90),   "eyes": "down",    "mouth": "frown"},
-    "sad":        {"color": (80, 90, 140),  "eyes": "sad",     "mouth": "frown"},
-    "angry":      {"color": (180, 50, 50),  "eyes": "angry",   "mouth": "teeth"},
+    "neutral": {"color": (120, 90, 160), "eyes": "normal", "mouth": "neutral"},
+    "cheerful": {"color": (200, 130, 60), "eyes": "happy", "mouth": "smile"},
+    "sarcastic": {"color": (160, 80, 120), "eyes": "half", "mouth": "smirk"},
+    "motivated": {"color": (60, 160, 100), "eyes": "wide", "mouth": "grin"},
+    "thoughtful": {"color": (80, 100, 170), "eyes": "half", "mouth": "neutral"},
+    "whisper": {"color": (100, 80, 130), "eyes": "normal", "mouth": "small_o"},
+    "shy": {"color": (180, 120, 140), "eyes": "down", "mouth": "small"},
+    "depressed": {"color": (70, 70, 90), "eyes": "down", "mouth": "frown"},
+    "sad": {"color": (80, 90, 140), "eyes": "sad", "mouth": "frown"},
+    "angry": {"color": (180, 50, 50), "eyes": "angry", "mouth": "teeth"},
 }
 
 
@@ -43,7 +44,13 @@ def draw_eyes(draw: ImageDraw.Draw, cx: int, cy: int, style: str) -> None:
             draw.ellipse([x - 6, eye_y - 6, x + 6, eye_y + 6], fill=(40, 40, 60))
     elif style == "happy":
         for x in (left_x, right_x):
-            draw.arc([x - 14, eye_y - 10, x + 14, eye_y + 14], 200, 340, fill=(40, 40, 60), width=3)
+            draw.arc(
+                [x - 14, eye_y - 10, x + 14, eye_y + 14],
+                200,
+                340,
+                fill=(40, 40, 60),
+                width=3,
+            )
     elif style == "half":
         for x in (left_x, right_x):
             draw.ellipse([x - 12, eye_y - 6, x + 12, eye_y + 8], fill=(255, 255, 255))
@@ -69,8 +76,14 @@ def draw_eyes(draw: ImageDraw.Draw, cx: int, cy: int, style: str) -> None:
             # Augenbraue
             direction = -1 if x == left_x else 1
             draw.line(
-                [x - 16, eye_y - 20 + direction * 6, x + 16, eye_y - 20 - direction * 6],
-                fill=(40, 40, 60), width=4,
+                [
+                    x - 16,
+                    eye_y - 20 + direction * 6,
+                    x + 16,
+                    eye_y - 20 - direction * 6,
+                ],
+                fill=(40, 40, 60),
+                width=4,
             )
 
 
@@ -81,21 +94,55 @@ def draw_mouth(draw: ImageDraw.Draw, cx: int, cy: int, style: str) -> None:
     if style == "neutral":
         draw.line([cx - 20, mouth_y, cx + 20, mouth_y], fill=(40, 40, 60), width=3)
     elif style == "smile":
-        draw.arc([cx - 25, mouth_y - 10, cx + 25, mouth_y + 20], 10, 170, fill=(40, 40, 60), width=3)
+        draw.arc(
+            [cx - 25, mouth_y - 10, cx + 25, mouth_y + 20],
+            10,
+            170,
+            fill=(40, 40, 60),
+            width=3,
+        )
     elif style == "smirk":
-        draw.arc([cx - 5, mouth_y - 5, cx + 30, mouth_y + 15], 10, 170, fill=(40, 40, 60), width=3)
+        draw.arc(
+            [cx - 5, mouth_y - 5, cx + 30, mouth_y + 15],
+            10,
+            170,
+            fill=(40, 40, 60),
+            width=3,
+        )
     elif style == "grin":
-        draw.arc([cx - 30, mouth_y - 12, cx + 30, mouth_y + 22], 10, 170, fill=(40, 40, 60), width=4)
-        draw.line([cx - 25, mouth_y + 2, cx + 25, mouth_y + 2], fill=(255, 255, 255), width=2)
+        draw.arc(
+            [cx - 30, mouth_y - 12, cx + 30, mouth_y + 22],
+            10,
+            170,
+            fill=(40, 40, 60),
+            width=4,
+        )
+        draw.line(
+            [cx - 25, mouth_y + 2, cx + 25, mouth_y + 2], fill=(255, 255, 255), width=2
+        )
     elif style == "small_o":
         draw.ellipse([cx - 10, mouth_y - 8, cx + 10, mouth_y + 8], fill=(40, 40, 60))
     elif style == "small":
         draw.line([cx - 10, mouth_y, cx + 10, mouth_y], fill=(40, 40, 60), width=2)
     elif style == "frown":
-        draw.arc([cx - 25, mouth_y, cx + 25, mouth_y + 25], 200, 340, fill=(40, 40, 60), width=3)
+        draw.arc(
+            [cx - 25, mouth_y, cx + 25, mouth_y + 25],
+            200,
+            340,
+            fill=(40, 40, 60),
+            width=3,
+        )
     elif style == "teeth":
-        draw.arc([cx - 28, mouth_y - 8, cx + 28, mouth_y + 18], 10, 170, fill=(40, 40, 60), width=3)
-        draw.line([cx - 22, mouth_y + 2, cx + 22, mouth_y + 2], fill=(255, 255, 255), width=3)
+        draw.arc(
+            [cx - 28, mouth_y - 8, cx + 28, mouth_y + 18],
+            10,
+            170,
+            fill=(40, 40, 60),
+            width=3,
+        )
+        draw.line(
+            [cx - 22, mouth_y + 2, cx + 22, mouth_y + 2], fill=(255, 255, 255), width=3
+        )
 
 
 def generate_sprite(emotion: str, style: dict) -> Image.Image:
@@ -109,15 +156,18 @@ def generate_sprite(emotion: str, style: dict) -> Image.Image:
     # Körper (einfaches Trapez)
     body_top = cy + HEAD_RADIUS - 20
     draw.polygon(
-        [(cx - 80, body_top), (cx + 80, body_top),
-         (cx + 120, SIZE - 20), (cx - 120, SIZE - 20)],
+        [
+            (cx - 80, body_top),
+            (cx + 80, body_top),
+            (cx + 120, SIZE - 20),
+            (cx - 120, SIZE - 20),
+        ],
         fill=color,
     )
 
     # Kopf
     draw.ellipse(
-        [cx - HEAD_RADIUS, cy - HEAD_RADIUS,
-         cx + HEAD_RADIUS, cy + HEAD_RADIUS],
+        [cx - HEAD_RADIUS, cy - HEAD_RADIUS, cx + HEAD_RADIUS, cy + HEAD_RADIUS],
         fill=color,
     )
 
@@ -136,7 +186,9 @@ def generate_sprite(emotion: str, style: dict) -> Image.Image:
     text_w = bbox[2] - bbox[0]
     draw.text(
         ((SIZE - text_w) // 2, SIZE - 35),
-        label, fill=(255, 255, 255, 180), font=font,
+        label,
+        fill=(255, 255, 255, 180),
+        font=font,
     )
 
     return img

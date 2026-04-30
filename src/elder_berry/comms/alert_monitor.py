@@ -16,6 +16,7 @@ Verwendung:
     ...
     monitor.stop()
 """
+
 from __future__ import annotations
 
 import logging
@@ -138,6 +139,7 @@ class AlertMonitor:
 
         try:
             import psutil  # noqa: F401
+
             running = self._get_running_process_names()
             for proc_name in self._config.watch_processes:
                 if proc_name.lower() in running:
@@ -166,15 +168,17 @@ class AlertMonitor:
             if usage.percent >= threshold:
                 if mount not in self._disk_alerted:
                     self._disk_alerted.add(mount)
-                    total_gb = usage.total / (1024 ** 3)
-                    free_gb = usage.free / (1024 ** 3)
+                    total_gb = usage.total / (1024**3)
+                    free_gb = usage.free / (1024**3)
                     self._send_alert(
                         f"Disk-Warnung: {mount} ist zu "
                         f"{usage.percent}% belegt!\n"
                         f"Frei: {free_gb:.1f} / {total_gb:.1f} GB"
                     )
                     logger.warning(
-                        "Disk-Alert gesendet: %s bei %s%%", mount, usage.percent,
+                        "Disk-Alert gesendet: %s bei %s%%",
+                        mount,
+                        usage.percent,
                     )
             else:
                 # Unter Schwelle → Alert-Status zurücksetzen

@@ -1,4 +1,5 @@
 """Tests für WindowsActionController – alle Aktionen gemockt."""
+
 from unittest.mock import MagicMock, patch, PropertyMock
 
 import pytest
@@ -10,6 +11,7 @@ from elder_berry.actions.base import ActionController, WindowInfo
 # ABC-Vertrag: ActionController kann nicht direkt instanziiert werden
 # ---------------------------------------------------------------------------
 
+
 class TestActionControllerABC:
     def test_cannot_instantiate_abc(self):
         with pytest.raises(TypeError):
@@ -20,11 +22,13 @@ class TestActionControllerABC:
 # Windows-Plattformprüfung
 # ---------------------------------------------------------------------------
 
+
 class TestPlatformCheck:
     @patch("elder_berry.actions.windows_controller.platform")
     def test_raises_on_non_windows(self, mock_platform):
         mock_platform.system.return_value = "Linux"
         from elder_berry.actions.windows_controller import WindowsActionController
+
         with pytest.raises(RuntimeError, match="Windows"):
             WindowsActionController()
 
@@ -34,6 +38,7 @@ class TestPlatformCheck:
     def test_ok_on_windows(self, _gw, _pyauto, mock_platform):
         mock_platform.system.return_value = "Windows"
         from elder_berry.actions.windows_controller import WindowsActionController
+
         ctrl = WindowsActionController()
         assert isinstance(ctrl, ActionController)
 
@@ -42,12 +47,14 @@ class TestPlatformCheck:
 # Hilfsfunktion: Controller mit gemockter Plattform erzeugen
 # ---------------------------------------------------------------------------
 
+
 @pytest.fixture
 def controller():
     """Erzeugt einen WindowsActionController mit gemockter Plattformprüfung."""
     with patch("elder_berry.actions.windows_controller.platform") as mock_p:
         mock_p.system.return_value = "Windows"
         from elder_berry.actions.windows_controller import WindowsActionController
+
         ctrl = WindowsActionController()
     return ctrl
 
@@ -55,6 +62,7 @@ def controller():
 # ---------------------------------------------------------------------------
 # Tastatur
 # ---------------------------------------------------------------------------
+
 
 class TestKeyboard:
     @patch("elder_berry.actions.windows_controller.pyautogui")
@@ -77,6 +85,7 @@ class TestKeyboard:
 # Maus
 # ---------------------------------------------------------------------------
 
+
 class TestMouse:
     @patch("elder_berry.actions.windows_controller.pyautogui")
     def test_move_mouse(self, mock_pyauto, controller):
@@ -98,8 +107,10 @@ class TestMouse:
 # Fenster
 # ---------------------------------------------------------------------------
 
-def _make_mock_window(title: str, hwnd: int = 12345,
-                      is_minimized: bool = False) -> MagicMock:
+
+def _make_mock_window(
+    title: str, hwnd: int = 12345, is_minimized: bool = False
+) -> MagicMock:
     """Erzeugt ein Mock-Fensterobjekt kompatibel mit pygetwindow."""
     w = MagicMock()
     w.title = title
@@ -167,6 +178,7 @@ class TestWindows:
 # ---------------------------------------------------------------------------
 # Lautstärke
 # ---------------------------------------------------------------------------
+
 
 class TestVolume:
     def _mock_volume(self, controller):

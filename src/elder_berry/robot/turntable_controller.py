@@ -5,6 +5,7 @@ ABC + echte Implementierung + Simulator + DI.
 
 Plattformhinweis: RPi5TurntableController nur auf RPi5 (Linux mit lgpio) lauffaehig.
 """
+
 from __future__ import annotations
 
 import logging
@@ -15,14 +16,14 @@ from abc import ABC, abstractmethod
 logger = logging.getLogger(__name__)
 
 # Hardware-Konstanten
-STEPS_PER_REV = 4096           # Half-Steps pro volle Umdrehung
-STEP_DELAY_MS = 2.0            # Millisekunden zwischen Steps (28BYJ-48 safe minimum)
-MAX_DEGREES = 180.0            # +/-180 Grad Rotationslimit
-HOMING_STEP_LIMIT = 4200       # Sicherheitslimit Homing (~369 Grad)
+STEPS_PER_REV = 4096  # Half-Steps pro volle Umdrehung
+STEP_DELAY_MS = 2.0  # Millisekunden zwischen Steps (28BYJ-48 safe minimum)
+MAX_DEGREES = 180.0  # +/-180 Grad Rotationslimit
+HOMING_STEP_LIMIT = 4200  # Sicherheitslimit Homing (~369 Grad)
 
 # GPIO Pins (BCM)
 STEPPER_PINS = (17, 27, 22, 23)  # IN1, IN2, IN3, IN4
-HALL_PIN = 24                     # A3144 Output
+HALL_PIN = 24  # A3144 Output
 
 # Half-Step Sequenz
 HALF_STEP_SEQ = [
@@ -136,6 +137,7 @@ class RPi5TurntableController(TurntableController):
 
         # GPIO initialisieren
         import lgpio
+
         self._lgpio = lgpio
         self._chip = lgpio.gpiochip_open(0)
         for pin in STEPPER_PINS:
@@ -144,7 +146,8 @@ class RPi5TurntableController(TurntableController):
 
         logger.info(
             "RPi5TurntableController initialisiert: Stepper=%s, Hall=GPIO%d",
-            STEPPER_PINS, HALL_PIN,
+            STEPPER_PINS,
+            HALL_PIN,
         )
         if auto_home:
             self.home()
@@ -277,7 +280,9 @@ class RPi5TurntableController(TurntableController):
         if clamped != target_deg:
             logger.warning(
                 "rotate_by(%.1f) -> Ziel %.1f geclampt auf %.1f",
-                degrees, target_deg, clamped,
+                degrees,
+                target_deg,
+                clamped,
             )
         target_steps = degrees_to_steps(clamped)
         self._start_worker(lambda: self._run_rotate(target_steps))

@@ -1,4 +1,5 @@
 """Tests für LogCommandHandler."""
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -15,6 +16,7 @@ from elder_berry.comms.commands.log_commands import (
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
+
 
 @pytest.fixture
 def log_dir(tmp_path: Path) -> Path:
@@ -51,6 +53,7 @@ def handler(log_dir: Path) -> LogCommandHandler:
 # ---------------------------------------------------------------------------
 # Pattern
 # ---------------------------------------------------------------------------
+
 
 class TestPattern:
     def test_log_bare(self):
@@ -102,6 +105,7 @@ class TestPattern:
 # execute – default log
 # ---------------------------------------------------------------------------
 
+
 class TestLogDefault:
     def test_returns_default_10(self, handler):
         # Log hat nur 6 Zeilen – sollte alle zurückgeben
@@ -133,14 +137,15 @@ class TestLogDefault:
 # execute – filtered
 # ---------------------------------------------------------------------------
 
+
 class TestLogErrors:
     def test_only_errors_and_critical(self, handler):
         result = handler.execute("log", "log errors")
         assert result.success is True
         assert "Connection failed" in result.text  # [ERROR]
-        assert "Out of memory" in result.text      # [CRITICAL]
-        assert "Start" not in result.text          # [INFO]
-        assert "Slow query" not in result.text     # [WARNING]
+        assert "Out of memory" in result.text  # [CRITICAL]
+        assert "Start" not in result.text  # [INFO]
+        assert "Slow query" not in result.text  # [WARNING]
 
     def test_title_is_errors(self, handler):
         result = handler.execute("log", "log errors")
@@ -151,15 +156,16 @@ class TestLogWarnings:
     def test_warnings_errors_and_critical(self, handler):
         result = handler.execute("log", "log warnings")
         assert result.success is True
-        assert "Slow query" in result.text       # [WARNING]
+        assert "Slow query" in result.text  # [WARNING]
         assert "Connection failed" in result.text  # [ERROR]
-        assert "Out of memory" in result.text     # [CRITICAL]
-        assert "Start" not in result.text         # [INFO]
+        assert "Out of memory" in result.text  # [CRITICAL]
+        assert "Start" not in result.text  # [INFO]
 
 
 # ---------------------------------------------------------------------------
 # execute – security.log
 # ---------------------------------------------------------------------------
+
 
 class TestLogSecurity:
     def test_reads_security_log(self, handler):
@@ -180,6 +186,7 @@ class TestLogSecurity:
 # ---------------------------------------------------------------------------
 # execute – Fehlerfälle
 # ---------------------------------------------------------------------------
+
 
 class TestErrorCases:
     def test_log_file_missing(self, tmp_path: Path):
@@ -230,6 +237,7 @@ class TestErrorCases:
 # Length limit
 # ---------------------------------------------------------------------------
 
+
 class TestLengthLimit:
     def test_long_log_gets_truncated(self, tmp_path: Path):
         """Sehr lange Responses werden auf MAX_RESPONSE_CHARS gekürzt."""
@@ -237,11 +245,11 @@ class TestLengthLimit:
         d.mkdir()
         # 50 Zeilen à ~200 Zeichen → >10000
         long_lines = [
-            f"2026-04-23 10:00:{i:02d} [ERROR] x: " + ("A" * 200)
-            for i in range(50)
+            f"2026-04-23 10:00:{i:02d} [ERROR] x: " + ("A" * 200) for i in range(50)
         ]
         (d / "elder_berry.log").write_text(
-            "\n".join(long_lines) + "\n", encoding="utf-8",
+            "\n".join(long_lines) + "\n",
+            encoding="utf-8",
         )
         h = LogCommandHandler(log_dir=d)
         result = h.execute("log", "log 50")
@@ -254,6 +262,7 @@ class TestLengthLimit:
 # ---------------------------------------------------------------------------
 # Handler-API (simple_commands, patterns, keywords)
 # ---------------------------------------------------------------------------
+
 
 class TestHandlerAPI:
     def test_simple_commands(self, handler):

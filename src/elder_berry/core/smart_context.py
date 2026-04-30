@@ -21,6 +21,7 @@ Verwendung:
     context = provider.get_context("Was muss ich heute noch machen?")
     # → "=== Aktueller Kontext ===\\n\\n📅 Termine heute:\\n  ..."
 """
+
 from __future__ import annotations
 
 import logging
@@ -59,77 +60,203 @@ class ContextSource(Enum):
 # Keyword-Sets pro Quelle (lowercase, Deutsch + Englisch)
 _SOURCE_KEYWORDS: dict[ContextSource, set[str]] = {
     ContextSource.CALENDAR: {
-        "termin", "termine", "kalender", "calendar", "meeting",
-        "besprechung", "verabredung", "event", "events",
-        "woche", "wochenplan", "wochenende", "heute", "morgen",
-        "montag", "dienstag", "mittwoch", "donnerstag",
-        "freitag", "samstag", "sonntag",
+        "termin",
+        "termine",
+        "kalender",
+        "calendar",
+        "meeting",
+        "besprechung",
+        "verabredung",
+        "event",
+        "events",
+        "woche",
+        "wochenplan",
+        "wochenende",
+        "heute",
+        "morgen",
+        "montag",
+        "dienstag",
+        "mittwoch",
+        "donnerstag",
+        "freitag",
+        "samstag",
+        "sonntag",
     },
     ContextSource.TODOS: {
-        "todo", "todos", "aufgabe", "aufgaben", "task", "tasks",
-        "erledigen", "abarbeiten", "offen", "machen", "to-do",
+        "todo",
+        "todos",
+        "aufgabe",
+        "aufgaben",
+        "task",
+        "tasks",
+        "erledigen",
+        "abarbeiten",
+        "offen",
+        "machen",
+        "to-do",
     },
     ContextSource.REMINDERS: {
-        "erinnerung", "erinnerungen", "reminder", "reminders",
-        "fällig", "vergessen", "erinner",
+        "erinnerung",
+        "erinnerungen",
+        "reminder",
+        "reminders",
+        "fällig",
+        "vergessen",
+        "erinner",
     },
     ContextSource.NOTES: {
-        "notiz", "notizen", "note", "notes", "merke",
-        "wissen", "fakt", "fakten",
+        "notiz",
+        "notizen",
+        "note",
+        "notes",
+        "merke",
+        "wissen",
+        "fakt",
+        "fakten",
     },
     ContextSource.CONTACTS: {
-        "kontakt", "kontakte", "contact", "contacts", "telefon",
-        "nummer", "email", "adresse", "anrufen", "telefonnummer",
-        "geburtstag", "birthday", "wohnt", "arbeitet",
-        "gruppe", "gruppen", "kategorie", "kategorien",
-        "firma", "organisation", "jahrestag", "spitzname",
-        "website", "kollege", "kollegin", "freund", "freundin",
+        "kontakt",
+        "kontakte",
+        "contact",
+        "contacts",
+        "telefon",
+        "nummer",
+        "email",
+        "adresse",
+        "anrufen",
+        "telefonnummer",
+        "geburtstag",
+        "birthday",
+        "wohnt",
+        "arbeitet",
+        "gruppe",
+        "gruppen",
+        "kategorie",
+        "kategorien",
+        "firma",
+        "organisation",
+        "jahrestag",
+        "spitzname",
+        "website",
+        "kollege",
+        "kollegin",
+        "freund",
+        "freundin",
     },
     ContextSource.WEATHER: {
-        "wetter", "weather", "regen", "regnet", "temperatur",
-        "kalt", "warm", "sonne", "sonnig", "schnee", "grad",
-        "bewölkt", "wind", "sturm", "gewitter", "schirm", "jacke",
+        "wetter",
+        "weather",
+        "regen",
+        "regnet",
+        "temperatur",
+        "kalt",
+        "warm",
+        "sonne",
+        "sonnig",
+        "schnee",
+        "grad",
+        "bewölkt",
+        "wind",
+        "sturm",
+        "gewitter",
+        "schirm",
+        "jacke",
     },
 }
 
 # Phrasen die mehrere Quellen gleichzeitig triggern (längste zuerst)
 _META_PHRASES: list[tuple[str, set[ContextSource]]] = [
-    ("wie sieht mein tag aus", {
-        ContextSource.CALENDAR, ContextSource.TODOS,
-        ContextSource.REMINDERS, ContextSource.WEATHER,
-    }),
-    ("was steht heute an", {
-        ContextSource.CALENDAR, ContextSource.TODOS, ContextSource.REMINDERS,
-    }),
-    ("plan für heute", {
-        ContextSource.CALENDAR, ContextSource.TODOS, ContextSource.REMINDERS,
-    }),
-    ("was muss ich", {
-        ContextSource.CALENDAR, ContextSource.TODOS, ContextSource.REMINDERS,
-    }),
-    ("was steht an", {
-        ContextSource.CALENDAR, ContextSource.TODOS, ContextSource.REMINDERS,
-    }),
-    ("was hab ich", {
-        ContextSource.CALENDAR, ContextSource.TODOS, ContextSource.REMINDERS,
-    }),
-    ("was habe ich", {
-        ContextSource.CALENDAR, ContextSource.TODOS, ContextSource.REMINDERS,
-    }),
-    ("tagesplan", {
-        ContextSource.CALENDAR, ContextSource.TODOS, ContextSource.REMINDERS,
-    }),
-    ("überblick", {
-        ContextSource.CALENDAR, ContextSource.TODOS, ContextSource.REMINDERS,
-    }),
-    ("zusammenfassung", {
-        ContextSource.CALENDAR, ContextSource.TODOS,
-        ContextSource.REMINDERS, ContextSource.WEATHER,
-    }),
-    ("briefing", {
-        ContextSource.CALENDAR, ContextSource.TODOS,
-        ContextSource.REMINDERS, ContextSource.WEATHER,
-    }),
+    (
+        "wie sieht mein tag aus",
+        {
+            ContextSource.CALENDAR,
+            ContextSource.TODOS,
+            ContextSource.REMINDERS,
+            ContextSource.WEATHER,
+        },
+    ),
+    (
+        "was steht heute an",
+        {
+            ContextSource.CALENDAR,
+            ContextSource.TODOS,
+            ContextSource.REMINDERS,
+        },
+    ),
+    (
+        "plan für heute",
+        {
+            ContextSource.CALENDAR,
+            ContextSource.TODOS,
+            ContextSource.REMINDERS,
+        },
+    ),
+    (
+        "was muss ich",
+        {
+            ContextSource.CALENDAR,
+            ContextSource.TODOS,
+            ContextSource.REMINDERS,
+        },
+    ),
+    (
+        "was steht an",
+        {
+            ContextSource.CALENDAR,
+            ContextSource.TODOS,
+            ContextSource.REMINDERS,
+        },
+    ),
+    (
+        "was hab ich",
+        {
+            ContextSource.CALENDAR,
+            ContextSource.TODOS,
+            ContextSource.REMINDERS,
+        },
+    ),
+    (
+        "was habe ich",
+        {
+            ContextSource.CALENDAR,
+            ContextSource.TODOS,
+            ContextSource.REMINDERS,
+        },
+    ),
+    (
+        "tagesplan",
+        {
+            ContextSource.CALENDAR,
+            ContextSource.TODOS,
+            ContextSource.REMINDERS,
+        },
+    ),
+    (
+        "überblick",
+        {
+            ContextSource.CALENDAR,
+            ContextSource.TODOS,
+            ContextSource.REMINDERS,
+        },
+    ),
+    (
+        "zusammenfassung",
+        {
+            ContextSource.CALENDAR,
+            ContextSource.TODOS,
+            ContextSource.REMINDERS,
+            ContextSource.WEATHER,
+        },
+    ),
+    (
+        "briefing",
+        {
+            ContextSource.CALENDAR,
+            ContextSource.TODOS,
+            ContextSource.REMINDERS,
+            ContextSource.WEATHER,
+        },
+    ),
 ]
 
 
@@ -201,7 +328,8 @@ class SmartContextProvider:
         return detected
 
     def _filter_available(
-        self, sources: set[ContextSource],
+        self,
+        sources: set[ContextSource],
     ) -> set[ContextSource]:
         """Filtert auf Quellen, für die ein Store konfiguriert ist."""
         store_map = {
@@ -215,7 +343,9 @@ class SmartContextProvider:
         return {s for s in sources if store_map.get(s) is not None}
 
     def _query_sources(
-        self, sources: set[ContextSource], user_input: str,
+        self,
+        sources: set[ContextSource],
+        user_input: str,
     ) -> dict[ContextSource, str]:
         """Fragt alle relevanten Quellen parallel ab (mit Timeout)."""
         results: dict[ContextSource, str] = {}
@@ -239,17 +369,18 @@ class SmartContextProvider:
                             results[source] = result
                     except Exception as e:
                         logger.warning(
-                            "SmartContext: %s Fehler: %s", source.value, e,
+                            "SmartContext: %s Fehler: %s",
+                            source.value,
+                            e,
                         )
             except FuturesTimeoutError:
                 timed_out = [
-                    future_to_source[f].value
-                    for f in future_to_source
-                    if not f.done()
+                    future_to_source[f].value for f in future_to_source if not f.done()
                 ]
                 if timed_out:
                     logger.warning(
-                        "SmartContext: Timeout für: %s", ", ".join(timed_out),
+                        "SmartContext: Timeout für: %s",
+                        ", ".join(timed_out),
                     )
 
         return results
@@ -295,7 +426,13 @@ class SmartContextProvider:
             return ""
         now = datetime.now(timezone.utc)
         today_end = datetime(
-            now.year, now.month, now.day, 23, 59, 59, tzinfo=timezone.utc,
+            now.year,
+            now.month,
+            now.day,
+            23,
+            59,
+            59,
+            tzinfo=timezone.utc,
         )
         relevant = [r for r in pending if r.due_at <= today_end]
         if not relevant:
@@ -304,8 +441,7 @@ class SmartContextProvider:
         for r in relevant:
             local_time = r.due_at.astimezone()
             lines.append(
-                f"  #{r.id} – {r.message} "
-                f"(fällig: {local_time.strftime('%H:%M')})"
+                f"  #{r.id} – {r.message} (fällig: {local_time.strftime('%H:%M')})"
             )
         return "\n".join(lines)
 
@@ -328,7 +464,9 @@ class SmartContextProvider:
         if not self._default_user_id:
             return ""
         results = self._contact_store.search(
-            self._default_user_id, user_input, 3,
+            self._default_user_id,
+            user_input,
+            3,
         )
         if not results:
             return ""

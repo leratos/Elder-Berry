@@ -1,4 +1,5 @@
 """Tests for CloudCommandHandler (Nextcloud commands via Matrix)."""
+
 from __future__ import annotations
 
 from unittest.mock import MagicMock
@@ -159,9 +160,7 @@ def test_upload_success(handler, nc_client, tmp_path):
     test_file.write_bytes(b"PDF content")
     nc_client.upload.return_value = "Saleria/report.pdf"
 
-    result = handler.execute(
-        "cloud_upload", f"cloud upload {test_file}"
-    )
+    result = handler.execute("cloud_upload", f"cloud upload {test_file}")
 
     assert result.success is True
     assert "Hochgeladen" in result.text
@@ -169,9 +168,7 @@ def test_upload_success(handler, nc_client, tmp_path):
 
 
 def test_upload_file_not_found(handler):
-    result = handler.execute(
-        "cloud_upload", "cloud upload C:\\nonexistent\\file.txt"
-    )
+    result = handler.execute("cloud_upload", "cloud upload C:\\nonexistent\\file.txt")
     assert result.success is False
     assert "nicht gefunden" in result.text
 
@@ -370,9 +367,7 @@ def test_setup_parent_before_child_order():
     for d in _NC_TARGET_DIRS:
         if "/" in d:
             parent = d.rsplit("/", 1)[0]
-            assert parent in seen, (
-                f"Parent '{parent}' must appear before child '{d}'"
-            )
+            assert parent in seen, f"Parent '{parent}' must appear before child '{d}'"
         seen.add(d)
 
 

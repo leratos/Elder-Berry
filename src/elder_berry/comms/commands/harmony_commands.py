@@ -11,13 +11,18 @@ Patterns:
   "harmony geraete"                        → list_devices()
   "harmony befehle <geraet>"               → list_commands(device)
 """
+
 from __future__ import annotations
 
 import logging
 import re
 from typing import TYPE_CHECKING
 
-from elder_berry.comms.commands.base import CommandHandler, CommandResult, user_friendly_error
+from elder_berry.comms.commands.base import (
+    CommandHandler,
+    CommandResult,
+    user_friendly_error,
+)
 
 if TYPE_CHECKING:
     from elder_berry.robot.client import RobotClient
@@ -50,19 +55,24 @@ CURRENT_PATTERN = re.compile(
     re.IGNORECASE,
 )
 LIST_ACTIVITIES_PATTERN = re.compile(
-    r"^harmony\s+aktivit[äa]ten$", re.IGNORECASE,
+    r"^harmony\s+aktivit[äa]ten$",
+    re.IGNORECASE,
 )
 LIST_DEVICES_PATTERN = re.compile(
-    r"^harmony\s+ger[äa]te$", re.IGNORECASE,
+    r"^harmony\s+ger[äa]te$",
+    re.IGNORECASE,
 )
 LIST_COMMANDS_PATTERN = re.compile(
-    r"^harmony\s+befehle\s+(?P<device>.+)$", re.IGNORECASE,
+    r"^harmony\s+befehle\s+(?P<device>.+)$",
+    re.IGNORECASE,
 )
 SCENE_START_PATTERN = re.compile(
-    r"^(?:starte?\s+)?szene\s+(?P<scene>.+)$", re.IGNORECASE,
+    r"^(?:starte?\s+)?szene\s+(?P<scene>.+)$",
+    re.IGNORECASE,
 )
 SCENE_LIST_PATTERN = re.compile(
-    r"^szenen(?:\s+liste)?$", re.IGNORECASE,
+    r"^szenen(?:\s+liste)?$",
+    re.IGNORECASE,
 )
 
 
@@ -96,23 +106,33 @@ class HarmonyCommandHandler(CommandHandler):
     def keywords(self) -> dict[str, list[str]]:
         return {
             "harmony_activity_on": [
-                "fernsehen an", "tv an", "musik an",
-                "radio an", "gaming an", "film an", "kino an",
+                "fernsehen an",
+                "tv an",
+                "musik an",
+                "radio an",
+                "gaming an",
+                "film an",
+                "kino an",
             ],
             "harmony_all_off": [
-                "alles aus", "harmony aus", "schalte alles aus",
+                "alles aus",
+                "harmony aus",
+                "schalte alles aus",
             ],
             "harmony_volume_up": ["lauter", "mach lauter"],
             "harmony_volume_down": ["leiser", "mach leiser"],
             "harmony_mute": ["stummschalten", "stumm"],
             "harmony_current": [
-                "was läuft", "was ist an", "harmony status",
+                "was läuft",
+                "was ist an",
+                "harmony status",
             ],
             "harmony_list_activities": ["harmony aktivitäten"],
             "harmony_list_devices": ["harmony geräte"],
             "harmony_list_commands": ["harmony befehle"],
             "harmony_scene_start": [
-                "starte szene", "szene starten",
+                "starte szene",
+                "szene starten",
             ],
             "harmony_scene_list": ["szenen", "szenen liste"],
         }
@@ -136,7 +156,8 @@ class HarmonyCommandHandler(CommandHandler):
     def execute(self, command: str, raw_text: str) -> CommandResult:
         if not self._robot:
             return CommandResult(
-                command=command, success=False,
+                command=command,
+                success=False,
                 text="RobotClient nicht verfügbar (RPi5 nicht verbunden).",
             )
 
@@ -164,7 +185,8 @@ class HarmonyCommandHandler(CommandHandler):
             return self._cmd_scene_list()
 
         return CommandResult(
-            command=command, success=False,
+            command=command,
+            success=False,
             text=f"Unbekannter Harmony-Command: {command}",
         )
 
@@ -175,7 +197,8 @@ class HarmonyCommandHandler(CommandHandler):
         match = ACTIVITY_ON_PATTERN.match(normalized)
         if not match:
             return CommandResult(
-                command="harmony_activity_on", success=False,
+                command="harmony_activity_on",
+                success=False,
                 text="Aktivität nicht erkannt.",
             )
 
@@ -200,16 +223,19 @@ class HarmonyCommandHandler(CommandHandler):
             success = self._robot.harmony_start_activity(activity_name)
             if success:
                 return CommandResult(
-                    command="harmony_activity_on", success=True,
+                    command="harmony_activity_on",
+                    success=True,
                     text=f"Aktivität '{activity_name}' gestartet.",
                 )
             return CommandResult(
-                command="harmony_activity_on", success=False,
+                command="harmony_activity_on",
+                success=False,
                 text=f"Aktivität '{activity_name}' nicht gefunden oder Fehler.",
             )
         except Exception as e:
             return CommandResult(
-                command="harmony_activity_on", success=False,
+                command="harmony_activity_on",
+                success=False,
                 text=user_friendly_error(e, "Harmony"),
             )
 
@@ -218,36 +244,43 @@ class HarmonyCommandHandler(CommandHandler):
             success = self._robot.harmony_power_off()
             if success:
                 return CommandResult(
-                    command="harmony_all_off", success=True,
+                    command="harmony_all_off",
+                    success=True,
                     text="Alle Geräte ausgeschaltet.",
                 )
             return CommandResult(
-                command="harmony_all_off", success=False,
+                command="harmony_all_off",
+                success=False,
                 text="Power-Off fehlgeschlagen.",
             )
         except Exception as e:
             return CommandResult(
-                command="harmony_all_off", success=False,
+                command="harmony_all_off",
+                success=False,
                 text=user_friendly_error(e, "Harmony"),
             )
 
     def _cmd_volume(self, command: str, label: str) -> CommandResult:
         try:
             success = self._robot.harmony_send_command(
-                _VOLUME_DEVICE, command,
+                _VOLUME_DEVICE,
+                command,
             )
             if success:
                 return CommandResult(
-                    command=f"harmony_{command.lower()}", success=True,
+                    command=f"harmony_{command.lower()}",
+                    success=True,
                     text=f"{label}.",
                 )
             return CommandResult(
-                command=f"harmony_{command.lower()}", success=False,
+                command=f"harmony_{command.lower()}",
+                success=False,
                 text=f"{label} fehlgeschlagen.",
             )
         except Exception as e:
             return CommandResult(
-                command=f"harmony_{command.lower()}", success=False,
+                command=f"harmony_{command.lower()}",
+                success=False,
                 text=user_friendly_error(e, "Harmony"),
             )
 
@@ -258,21 +291,25 @@ class HarmonyCommandHandler(CommandHandler):
             connected = status.get("connected", False)
             if not connected:
                 return CommandResult(
-                    command="harmony_current", success=False,
+                    command="harmony_current",
+                    success=False,
                     text="Harmony Hub nicht verbunden.",
                 )
             if activity:
                 return CommandResult(
-                    command="harmony_current", success=True,
+                    command="harmony_current",
+                    success=True,
                     text=f"Aktuelle Aktivität: {activity}",
                 )
             return CommandResult(
-                command="harmony_current", success=True,
+                command="harmony_current",
+                success=True,
                 text="Keine Aktivität aktiv (alles aus).",
             )
         except Exception as e:
             return CommandResult(
-                command="harmony_current", success=False,
+                command="harmony_current",
+                success=False,
                 text=user_friendly_error(e, "Harmony"),
             )
 
@@ -282,19 +319,20 @@ class HarmonyCommandHandler(CommandHandler):
             activities = config.get("activities", [])
             if not activities:
                 return CommandResult(
-                    command="harmony_list_activities", success=True,
+                    command="harmony_list_activities",
+                    success=True,
                     text="Keine Aktivitäten konfiguriert.",
                 )
-            text = "Harmony-Aktivitäten:\n" + "\n".join(
-                f"  • {a}" for a in activities
-            )
+            text = "Harmony-Aktivitäten:\n" + "\n".join(f"  • {a}" for a in activities)
             return CommandResult(
-                command="harmony_list_activities", success=True,
+                command="harmony_list_activities",
+                success=True,
                 text=text,
             )
         except Exception as e:
             return CommandResult(
-                command="harmony_list_activities", success=False,
+                command="harmony_list_activities",
+                success=False,
                 text=user_friendly_error(e, "Harmony"),
             )
 
@@ -304,19 +342,20 @@ class HarmonyCommandHandler(CommandHandler):
             devices = config.get("devices", [])
             if not devices:
                 return CommandResult(
-                    command="harmony_list_devices", success=True,
+                    command="harmony_list_devices",
+                    success=True,
                     text="Keine Geräte konfiguriert.",
                 )
-            text = "Harmony-Geräte:\n" + "\n".join(
-                f"  • {d}" for d in devices
-            )
+            text = "Harmony-Geräte:\n" + "\n".join(f"  • {d}" for d in devices)
             return CommandResult(
-                command="harmony_list_devices", success=True,
+                command="harmony_list_devices",
+                success=True,
                 text=text,
             )
         except Exception as e:
             return CommandResult(
-                command="harmony_list_devices", success=False,
+                command="harmony_list_devices",
+                success=False,
                 text=user_friendly_error(e, "Harmony"),
             )
 
@@ -325,7 +364,8 @@ class HarmonyCommandHandler(CommandHandler):
         match = LIST_COMMANDS_PATTERN.match(normalized)
         if not match:
             return CommandResult(
-                command="harmony_list_commands", success=False,
+                command="harmony_list_commands",
+                success=False,
                 text="Gerätename nicht erkannt. Syntax: harmony befehle <gerät>",
             )
 
@@ -346,14 +386,16 @@ class HarmonyCommandHandler(CommandHandler):
 
         if not found:
             return CommandResult(
-                command="harmony_list_commands", success=False,
+                command="harmony_list_commands",
+                success=False,
                 text=f"Gerät '{device_name}' nicht gefunden.",
             )
 
         return CommandResult(
-            command="harmony_list_commands", success=True,
+            command="harmony_list_commands",
+            success=True,
             text=f"Befehle für '{found}' – nutze die PWA oder die API direkt "
-                 f"(GET /harmony/config für Details).",
+            f"(GET /harmony/config für Details).",
         )
 
     def _cmd_scene_start(self, raw_text: str) -> CommandResult:
@@ -361,7 +403,8 @@ class HarmonyCommandHandler(CommandHandler):
         match = SCENE_START_PATTERN.match(raw_text.strip())
         if not match:
             return CommandResult(
-                command="harmony_scene_start", success=False,
+                command="harmony_scene_start",
+                success=False,
                 text="Szenenname nicht erkannt. Syntax: starte szene <name>",
             )
 
@@ -373,17 +416,20 @@ class HarmonyCommandHandler(CommandHandler):
                 ok = result.get("steps_ok", 0)
                 total = result.get("steps_total", 0)
                 return CommandResult(
-                    command="harmony_scene_start", success=True,
+                    command="harmony_scene_start",
+                    success=True,
                     text=f"Szene '{scene_name}' gestartet ({ok}/{total} OK).",
                 )
             error = result.get("error", "Unbekannter Fehler")
             return CommandResult(
-                command="harmony_scene_start", success=False,
+                command="harmony_scene_start",
+                success=False,
                 text=f"Szene '{scene_name}': {error}",
             )
         except Exception as e:
             return CommandResult(
-                command="harmony_scene_start", success=False,
+                command="harmony_scene_start",
+                success=False,
                 text=user_friendly_error(e, "Harmony"),
             )
 
@@ -392,19 +438,20 @@ class HarmonyCommandHandler(CommandHandler):
             scenes = self._robot.harmony_scenes()
             if not scenes:
                 return CommandResult(
-                    command="harmony_scene_list", success=True,
+                    command="harmony_scene_list",
+                    success=True,
                     text="Keine Szenen konfiguriert.",
                 )
             names = [s.get("name", "?") for s in scenes]
-            text = "Harmony-Szenen:\n" + "\n".join(
-                f"  • {n}" for n in names
-            )
+            text = "Harmony-Szenen:\n" + "\n".join(f"  • {n}" for n in names)
             return CommandResult(
-                command="harmony_scene_list", success=True,
+                command="harmony_scene_list",
+                success=True,
                 text=text,
             )
         except Exception as e:
             return CommandResult(
-                command="harmony_scene_list", success=False,
+                command="harmony_scene_list",
+                success=False,
                 text=user_friendly_error(e, "Harmony"),
             )

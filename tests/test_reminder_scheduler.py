@@ -1,4 +1,5 @@
 """Tests: ReminderScheduler – Periodischer Check fälliger Erinnerungen."""
+
 import time
 from datetime import datetime, timezone, timedelta
 from unittest.mock import MagicMock
@@ -32,11 +33,14 @@ def store(tmp_path):
 # Lifecycle
 # ---------------------------------------------------------------------------
 
+
 class TestLifecycle:
     def test_start_stop(self, store):
         callback = MagicMock()
         scheduler = ReminderScheduler(
-            store=store, send_reminder=callback, poll_interval=1,
+            store=store,
+            send_reminder=callback,
+            poll_interval=1,
         )
 
         assert scheduler.is_running is False
@@ -48,7 +52,9 @@ class TestLifecycle:
     def test_double_start(self, store):
         callback = MagicMock()
         scheduler = ReminderScheduler(
-            store=store, send_reminder=callback, poll_interval=1,
+            store=store,
+            send_reminder=callback,
+            poll_interval=1,
         )
         scheduler.start()
         scheduler.start()  # Sollte Warnung loggen, nicht crashen
@@ -59,6 +65,7 @@ class TestLifecycle:
 # Fälligkeits-Checks
 # ---------------------------------------------------------------------------
 
+
 class TestDueChecks:
     def test_due_reminder_fires_callback(self, store):
         """Fällige Erinnerung → Callback wird aufgerufen."""
@@ -66,7 +73,9 @@ class TestDueChecks:
         callback = MagicMock()
 
         scheduler = ReminderScheduler(
-            store=store, send_reminder=callback, poll_interval=1,
+            store=store,
+            send_reminder=callback,
+            poll_interval=1,
         )
         scheduler.start()
         time.sleep(2.5)  # Mindestens 1 Poll-Zyklus
@@ -84,7 +93,9 @@ class TestDueChecks:
         callback = MagicMock()
 
         scheduler = ReminderScheduler(
-            store=store, send_reminder=callback, poll_interval=1,
+            store=store,
+            send_reminder=callback,
+            poll_interval=1,
         )
         scheduler.start()
         time.sleep(2.5)
@@ -98,7 +109,9 @@ class TestDueChecks:
         callback = MagicMock()
 
         scheduler = ReminderScheduler(
-            store=store, send_reminder=callback, poll_interval=1,
+            store=store,
+            send_reminder=callback,
+            poll_interval=1,
         )
         scheduler.start()
         time.sleep(3.5)  # Mindestens 2 Poll-Zyklen
@@ -113,7 +126,9 @@ class TestDueChecks:
         callback = MagicMock(side_effect=RuntimeError("Netzwerk"))
 
         scheduler = ReminderScheduler(
-            store=store, send_reminder=callback, poll_interval=1,
+            store=store,
+            send_reminder=callback,
+            poll_interval=1,
         )
         scheduler.start()
         time.sleep(2.5)
@@ -129,6 +144,7 @@ class TestDueChecks:
 # Wiederkehrende Erinnerungen (Phase 19)
 # ---------------------------------------------------------------------------
 
+
 class TestRecurrence:
     def test_oneshot_still_marks_fired(self, store):
         """One-Shot-Reminder wird wie bisher als fired markiert."""
@@ -136,7 +152,9 @@ class TestRecurrence:
         callback = MagicMock()
 
         scheduler = ReminderScheduler(
-            store=store, send_reminder=callback, poll_interval=1,
+            store=store,
+            send_reminder=callback,
+            poll_interval=1,
         )
         scheduler.start()
         time.sleep(2.5)
@@ -152,7 +170,9 @@ class TestRecurrence:
         callback = MagicMock()
 
         scheduler = ReminderScheduler(
-            store=store, send_reminder=callback, poll_interval=1,
+            store=store,
+            send_reminder=callback,
+            poll_interval=1,
         )
         scheduler.start()
         time.sleep(2.5)
@@ -166,6 +186,7 @@ class TestRecurrence:
         assert pending[0].recurrence == "daily"
         # Neues due_at muss in der Zukunft liegen
         from datetime import timezone as tz
+
         assert pending[0].due_at > datetime.now(tz.utc)
 
     def test_recurring_fires_only_once_per_cycle(self, store):
@@ -174,7 +195,9 @@ class TestRecurrence:
         callback = MagicMock()
 
         scheduler = ReminderScheduler(
-            store=store, send_reminder=callback, poll_interval=1,
+            store=store,
+            send_reminder=callback,
+            poll_interval=1,
         )
         scheduler.start()
         time.sleep(3.5)  # 2+ Zyklen
@@ -190,7 +213,9 @@ class TestRecurrence:
         tz_callback = MagicMock(return_value="Europe/Berlin")
 
         scheduler = ReminderScheduler(
-            store=store, send_reminder=callback, poll_interval=1,
+            store=store,
+            send_reminder=callback,
+            poll_interval=1,
             get_timezone=tz_callback,
         )
         scheduler.start()
@@ -206,7 +231,9 @@ class TestRecurrence:
         callback = MagicMock()
 
         scheduler = ReminderScheduler(
-            store=store, send_reminder=callback, poll_interval=1,
+            store=store,
+            send_reminder=callback,
+            poll_interval=1,
         )
         scheduler.start()
         time.sleep(2.5)

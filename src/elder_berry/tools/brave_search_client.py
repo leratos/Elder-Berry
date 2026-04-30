@@ -10,6 +10,7 @@ Verwendung:
     results = client.search("Dachdecker Plattenburg")
     text = client.format_results(results)
 """
+
 from __future__ import annotations
 
 import logging
@@ -31,6 +32,7 @@ MAX_COUNT = 20
 # DTOs
 # ---------------------------------------------------------------------------
 
+
 @dataclass(frozen=True)
 class SearchResult:
     """Ein einzelnes Suchergebnis."""
@@ -43,6 +45,7 @@ class SearchResult:
 # ---------------------------------------------------------------------------
 # BraveSearchClient
 # ---------------------------------------------------------------------------
+
 
 class BraveSearchClient:
     """Brave Search API Client.
@@ -183,6 +186,7 @@ class BraveSearchClient:
 # ---------------------------------------------------------------------------
 # Hilfsfunktionen
 # ---------------------------------------------------------------------------
+
 
 def _clean_description(desc: str) -> str:
     """Entfernt HTML-Tags aus der Beschreibung."""

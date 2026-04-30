@@ -1,4 +1,5 @@
 """Tests für RoutePlanner – Google Maps Directions API."""
+
 from __future__ import annotations
 
 from datetime import datetime, timedelta
@@ -16,6 +17,7 @@ from elder_berry.tools.route_planner import (
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
+
 
 @pytest.fixture
 def planner() -> RoutePlanner:
@@ -60,6 +62,7 @@ def _directions_response(
 # Init
 # ---------------------------------------------------------------------------
 
+
 class TestInit:
     def test_default_buffer(self, planner: RoutePlanner) -> None:
         assert planner.buffer_minutes == 15
@@ -71,6 +74,7 @@ class TestInit:
 # ---------------------------------------------------------------------------
 # get_route
 # ---------------------------------------------------------------------------
+
 
 class TestGetRoute:
     def test_success(self, planner: RoutePlanner) -> None:
@@ -161,14 +165,16 @@ class TestGetRoute:
     def test_network_error(self, planner: RoutePlanner) -> None:
         """Netzwerkfehler → httpx.RequestError durchgereicht."""
         with patch.object(
-            planner._client, "get",
+            planner._client,
+            "get",
             side_effect=httpx.ConnectError("timeout"),
         ):
             with pytest.raises(httpx.ConnectError):
                 planner.get_route("A", "B")
 
     def test_params_contain_language_and_units(
-        self, planner: RoutePlanner,
+        self,
+        planner: RoutePlanner,
     ) -> None:
         resp = _directions_response()
         mock_resp = MagicMock()
@@ -187,6 +193,7 @@ class TestGetRoute:
 # ---------------------------------------------------------------------------
 # calculate_departure
 # ---------------------------------------------------------------------------
+
 
 class TestCalculateDeparture:
     def test_simple(self, planner: RoutePlanner) -> None:
@@ -212,6 +219,7 @@ class TestCalculateDeparture:
 # generate_maps_link
 # ---------------------------------------------------------------------------
 
+
 class TestGenerateMapsLink:
     def test_basic_link(self, planner: RoutePlanner) -> None:
         link = planner.generate_maps_link("Berlin", "Hamburg")
@@ -234,19 +242,24 @@ class TestGenerateMapsLink:
 # _parse_response
 # ---------------------------------------------------------------------------
 
+
 class TestParseResponse:
     def test_minimal(self, planner: RoutePlanner) -> None:
         """Nur Pflichtfelder."""
         data = {
             "status": "OK",
-            "routes": [{
-                "legs": [{
-                    "duration": {"value": 600, "text": "10 Min."},
-                    "distance": {"text": "5 km"},
-                    "start_address": "A",
-                    "end_address": "B",
-                }],
-            }],
+            "routes": [
+                {
+                    "legs": [
+                        {
+                            "duration": {"value": 600, "text": "10 Min."},
+                            "distance": {"text": "5 km"},
+                            "start_address": "A",
+                            "end_address": "B",
+                        }
+                    ],
+                }
+            ],
         }
         result = planner._parse_response(data)
         assert result.duration_seconds == 600
@@ -272,6 +285,7 @@ class TestParseResponse:
 # ---------------------------------------------------------------------------
 # close
 # ---------------------------------------------------------------------------
+
 
 class TestClose:
     def test_close(self, planner: RoutePlanner) -> None:

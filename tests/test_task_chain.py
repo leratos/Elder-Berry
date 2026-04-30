@@ -1,4 +1,5 @@
 """Tests für TaskChainRunner – Multi-Step Task Chaining."""
+
 import json
 from unittest.mock import MagicMock
 
@@ -17,6 +18,7 @@ from elder_berry.llm.base import LLMClient
 # Fixtures
 # ---------------------------------------------------------------------------
 
+
 @pytest.fixture
 def mock_llm():
     return MagicMock(spec=LLMClient)
@@ -30,7 +32,9 @@ def mock_commands():
     handler.parse_command.side_effect = lambda cmd: cmd
     # Default: execute gibt Erfolg zurück
     handler.execute.return_value = CommandResult(
-        command="test", success=True, text="OK",
+        command="test",
+        success=True,
+        text="OK",
     )
     return handler
 
@@ -49,11 +53,15 @@ def runner(mock_llm, mock_commands):
 # Tests: StepResult / ChainResult Dataclasses
 # ---------------------------------------------------------------------------
 
+
 class TestStepResult:
     def test_creation(self):
         step = StepResult(
-            step_number=1, command="mails", result_text="3 Mails",
-            success=True, llm_response="Ich schaue nach...",
+            step_number=1,
+            command="mails",
+            result_text="3 Mails",
+            success=True,
+            llm_response="Ich schaue nach...",
         )
         assert step.step_number == 1
         assert step.command == "mails"
@@ -61,8 +69,11 @@ class TestStepResult:
 
     def test_failed_step(self):
         step = StepResult(
-            step_number=2, command="bad_cmd", result_text="Fehler",
-            success=False, llm_response="Hmm...",
+            step_number=2,
+            command="bad_cmd",
+            result_text="Fehler",
+            success=False,
+            llm_response="Hmm...",
         )
         assert step.success is False
 
@@ -101,13 +112,16 @@ class TestChainResult:
 # Tests: TaskChainRunner.run()
 # ---------------------------------------------------------------------------
 
+
 class TestTaskChainRunnerBasic:
     def test_single_step_done(self, runner, mock_llm):
         """LLM sagt sofort DONE → 0 Commands, nur Zusammenfassung."""
-        mock_llm.generate.return_value = json.dumps({
-            "action": "DONE",
-            "response": "Das brauchte keinen Command.",
-        })
+        mock_llm.generate.return_value = json.dumps(
+            {
+                "action": "DONE",
+                "response": "Das brauchte keinen Command.",
+            }
+        )
 
         result = runner.run("Was ist 2+2?")
 
@@ -122,7 +136,9 @@ class TestTaskChainRunnerBasic:
             json.dumps({"action": "DONE", "response": "Du hast 3 Mails."}),
         ]
         mock_commands.execute.return_value = CommandResult(
-            command="mails", success=True, text="3 ungelesene Mails",
+            command="mails",
+            success=True,
+            text="3 ungelesene Mails",
         )
 
         result = runner.run("Zeig mir meine Mails")
@@ -138,12 +154,24 @@ class TestTaskChainRunnerBasic:
         mock_llm.generate.side_effect = [
             json.dumps({"action": "mails", "response": "Schaue Mails..."}),
             json.dumps({"action": "mail suche Zahnarzt", "response": "Suche..."}),
-            json.dumps({"action": "termin: Zahnarzt 2026-04-15 14:00", "response": "Trage ein..."}),
-            json.dumps({"action": "DONE", "response": "Zahnarzt am 15.04 um 14:00 eingetragen."}),
+            json.dumps(
+                {
+                    "action": "termin: Zahnarzt 2026-04-15 14:00",
+                    "response": "Trage ein...",
+                }
+            ),
+            json.dumps(
+                {
+                    "action": "DONE",
+                    "response": "Zahnarzt am 15.04 um 14:00 eingetragen.",
+                }
+            ),
         ]
         mock_commands.execute.side_effect = [
             CommandResult(command="mails", success=True, text="3 Mails"),
-            CommandResult(command="mail_search", success=True, text="Zahnarzt 15.04 14:00"),
+            CommandResult(
+                command="mail_search", success=True, text="Zahnarzt 15.04 14:00"
+            ),
             CommandResult(command="create_event", success=True, text="Termin erstellt"),
         ]
 
@@ -175,7 +203,9 @@ class TestTaskChainRunnerBasic:
 class TestTaskChainRunnerErrors:
     def test_unrecognized_command(self, runner, mock_llm, mock_commands):
         """Command wird von parse_command nicht erkannt."""
-        mock_commands.parse_command.side_effect = None  # side_effect aus Fixture entfernen
+        mock_commands.parse_command.side_effect = (
+            None  # side_effect aus Fixture entfernen
+        )
         mock_commands.parse_command.return_value = None  # nicht erkannt
         mock_llm.generate.side_effect = [
             json.dumps({"action": "gibberish", "response": "Hmm..."}),
@@ -218,7 +248,9 @@ class TestTaskChainRunnerContext:
         runner._max_result_chars = 100
         long_text = "x" * 500
         mock_commands.execute.return_value = CommandResult(
-            command="mails", success=True, text=long_text,
+            command="mails",
+            success=True,
+            text=long_text,
         )
         mock_llm.generate.side_effect = [
             json.dumps({"action": "mails", "response": "Schaue..."}),
@@ -234,7 +266,8 @@ class TestTaskChainRunnerContext:
     def test_history_text_preferred(self, runner, mock_llm, mock_commands):
         """history_text wird bevorzugt über text verwendet."""
         mock_commands.execute.return_value = CommandResult(
-            command="mails", success=True,
+            command="mails",
+            success=True,
             text="📧 3 Mails",
             history_text="Mail 1: Betreff A\nMail 2: Betreff B\nMail 3: Betreff C",
         )
@@ -264,9 +297,12 @@ class TestTaskChainRunnerContext:
 
     def test_chat_history_in_initial_context(self, runner, mock_llm):
         """Chat-History wird in den initialen Kontext eingebaut."""
-        mock_llm.generate.return_value = json.dumps({
-            "action": "DONE", "response": "Ok.",
-        })
+        mock_llm.generate.return_value = json.dumps(
+            {
+                "action": "DONE",
+                "response": "Ok.",
+            }
+        )
 
         runner.run("Mach was", chat_history="User: Hallo\nAssistant: Hi!")
 

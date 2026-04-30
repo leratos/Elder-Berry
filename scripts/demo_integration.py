@@ -8,6 +8,7 @@ Verwendung:
     python scripts/demo_integration.py              # Mit Mock-LLM
     python scripts/demo_integration.py --ollama      # Mit echtem Ollama
 """
+
 from __future__ import annotations
 
 import argparse
@@ -42,6 +43,7 @@ SIMULATOR_PORT = 8321  # Nicht 8000, um Konflikte zu vermeiden
 # Mock-LLM für Tests ohne Ollama
 # ---------------------------------------------------------------------------
 
+
 class DemoMockLLM(LLMClient):
     """Mock-LLM der Robot-Aktionen aus dem Input ableitet."""
 
@@ -49,38 +51,52 @@ class DemoMockLLM(LLMClient):
         lower = prompt.lower()
 
         if "vorwärts" in lower or "fahr" in lower:
-            return json.dumps({
-                "action": "robot_drive",
-                "params": {"direction": "forward", "speed": 0.7},
-                "response": "[motivated] Auf geht's, ich fahre vorwärts!",
-            })
+            return json.dumps(
+                {
+                    "action": "robot_drive",
+                    "params": {"direction": "forward", "speed": 0.7},
+                    "response": "[motivated] Auf geht's, ich fahre vorwärts!",
+                }
+            )
         if "links" in lower:
-            return json.dumps({
-                "action": "robot_drive",
-                "params": {"direction": "left", "speed": 0.5},
-                "response": "[cheerful] Okay, ich biege links ab!",
-            })
+            return json.dumps(
+                {
+                    "action": "robot_drive",
+                    "params": {"direction": "left", "speed": 0.5},
+                    "response": "[cheerful] Okay, ich biege links ab!",
+                }
+            )
         if "rechts" in lower:
-            return json.dumps({
-                "action": "robot_drive",
-                "params": {"direction": "right", "speed": 0.5},
-                "response": "[cheerful] Nach rechts, verstanden!",
-            })
+            return json.dumps(
+                {
+                    "action": "robot_drive",
+                    "params": {"direction": "right", "speed": 0.5},
+                    "response": "[cheerful] Nach rechts, verstanden!",
+                }
+            )
         if "stopp" in lower or "halt" in lower:
-            return json.dumps({
-                "action": "robot_stop",
-                "params": {"reason": "user_command"},
-                "response": "[neutral] Angehalten.",
-            })
+            return json.dumps(
+                {
+                    "action": "robot_stop",
+                    "params": {"reason": "user_command"},
+                    "response": "[neutral] Angehalten.",
+                }
+            )
         if "akku" in lower or "batterie" in lower:
-            return json.dumps({
-                "action": None, "params": {},
-                "response": "[thoughtful] Lass mich den Akku-Status prüfen...",
-            })
-        return json.dumps({
-            "action": None, "params": {},
-            "response": "[neutral] Verstanden. Was soll ich tun?",
-        })
+            return json.dumps(
+                {
+                    "action": None,
+                    "params": {},
+                    "response": "[thoughtful] Lass mich den Akku-Status prüfen...",
+                }
+            )
+        return json.dumps(
+            {
+                "action": None,
+                "params": {},
+                "response": "[neutral] Verstanden. Was soll ich tun?",
+            }
+        )
 
     def is_available(self) -> bool:
         return True
@@ -90,29 +106,53 @@ class DemoMockLLM(LLMClient):
 # Mock ActionController (kein echter PC-Zugriff im Test)
 # ---------------------------------------------------------------------------
 
+
 class DemoMockController:
     """Dummy-Controller der nichts tut."""
-    def press_key(self, key: str) -> None: pass
-    def type_text(self, text: str) -> None: pass
-    def hotkey(self, *keys: str) -> None: pass
-    def set_volume(self, level: float) -> None: pass
-    def mute(self, state: bool = True) -> None: pass
-    def focus_window(self, title: str) -> bool: return False
-    def minimize_window(self, title: str) -> bool: return False
-    def maximize_window(self, title: str) -> bool: return False
-    def list_windows(self) -> list: return []
-    def get_volume(self) -> float: return 0.5
+
+    def press_key(self, key: str) -> None:
+        pass
+
+    def type_text(self, text: str) -> None:
+        pass
+
+    def hotkey(self, *keys: str) -> None:
+        pass
+
+    def set_volume(self, level: float) -> None:
+        pass
+
+    def mute(self, state: bool = True) -> None:
+        pass
+
+    def focus_window(self, title: str) -> bool:
+        return False
+
+    def minimize_window(self, title: str) -> bool:
+        return False
+
+    def maximize_window(self, title: str) -> bool:
+        return False
+
+    def list_windows(self) -> list:
+        return []
+
+    def get_volume(self) -> float:
+        return 0.5
 
 
 # ---------------------------------------------------------------------------
 # Simulator-Thread
 # ---------------------------------------------------------------------------
 
+
 def start_simulator_background() -> threading.Thread:
     """Startet den Simulator-Server in einem Daemon-Thread."""
     sim = create_simulator(host=SIMULATOR_HOST, port=SIMULATOR_PORT)
     config = uvicorn.Config(
-        sim.app, host=SIMULATOR_HOST, port=SIMULATOR_PORT,
+        sim.app,
+        host=SIMULATOR_HOST,
+        port=SIMULATOR_PORT,
         log_level="warning",
     )
     server = uvicorn.Server(config)
@@ -141,6 +181,7 @@ def wait_for_simulator(timeout: float = 5.0) -> bool:
 # Automatischer Test-Durchlauf
 # ---------------------------------------------------------------------------
 
+
 def run_automated_tests(assistant: Assistant, robot: RobotClient) -> None:
     """Führt automatische Testszenarien durch."""
     print("\n" + "=" * 60)
@@ -159,7 +200,7 @@ def run_automated_tests(assistant: Assistant, robot: RobotClient) -> None:
     failed = 0
 
     for user_input, expected_action in scenarios:
-        print(f"\n--- Input: \"{user_input}\" ---")
+        print(f'\n--- Input: "{user_input}" ---')
         result = assistant.process(user_input)
 
         # Status vom Simulator holen
@@ -169,18 +210,19 @@ def run_automated_tests(assistant: Assistant, robot: RobotClient) -> None:
         print(f"  Emotion:  {result.emotion}")
         print(f"  Aktion:   {result.action_executed}")
         print(f"  Erfolg:   {result.action_success}")
-        print(f"  Motor:    {status.current_direction} "
-              f"(aktiv={status.motors_active})")
-        print(f"  Avatar:   {status.avatar_emotion} "
-              f"(speaking={status.avatar_speaking})")
-        print(f"  Akku:     {status.battery.percentage}% "
-              f"({status.battery.voltage}V)")
+        print(f"  Motor:    {status.current_direction} (aktiv={status.motors_active})")
+        print(
+            f"  Avatar:   {status.avatar_emotion} (speaking={status.avatar_speaking})"
+        )
+        print(f"  Akku:     {status.battery.percentage}% ({status.battery.voltage}V)")
 
         # Prüfungen
         ok = True
         if expected_action and result.action_executed != expected_action:
-            print(f"  FEHLER: Erwartete Aktion '{expected_action}', "
-                  f"bekam '{result.action_executed}'")
+            print(
+                f"  FEHLER: Erwartete Aktion '{expected_action}', "
+                f"bekam '{result.action_executed}'"
+            )
             ok = False
         if expected_action and not result.action_success:
             print(f"  FEHLER: Aktion nicht erfolgreich")
@@ -202,6 +244,7 @@ def run_automated_tests(assistant: Assistant, robot: RobotClient) -> None:
 # ---------------------------------------------------------------------------
 # Interaktiver Modus
 # ---------------------------------------------------------------------------
+
 
 def run_interactive(assistant: Assistant, robot: RobotClient) -> None:
     """Interaktiver Modus: Eingabe → Verarbeitung → Status-Anzeige."""
@@ -226,8 +269,10 @@ def run_interactive(assistant: Assistant, robot: RobotClient) -> None:
         if result.action_executed:
             ok = "OK" if result.action_success else "FEHLER"
             print(f"  Aktion: {result.action_executed} → {ok}")
-        print(f"  Robot: Motor={status.current_direction} "
-              f"Akku={status.battery.percentage}%")
+        print(
+            f"  Robot: Motor={status.current_direction} "
+            f"Akku={status.battery.percentage}%"
+        )
 
     print("\nBye!")
 
@@ -236,14 +281,18 @@ def run_interactive(assistant: Assistant, robot: RobotClient) -> None:
 # Main
 # ---------------------------------------------------------------------------
 
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Elder-Berry Integration Demo")
     parser.add_argument(
-        "--ollama", action="store_true",
+        "--ollama",
+        action="store_true",
         help="Echtes Ollama LLM statt Mock verwenden",
     )
     parser.add_argument(
-        "--interactive", "-i", action="store_true",
+        "--interactive",
+        "-i",
+        action="store_true",
         help="Interaktiver Modus statt automatischem Test",
     )
     args = parser.parse_args()
@@ -259,6 +308,7 @@ def main() -> None:
     # 2. LLM wählen
     if args.ollama:
         from elder_berry.llm.ollama_client import OllamaClient
+
         llm = OllamaClient()
         print("LLM: Ollama (phi4:14b)")
     else:

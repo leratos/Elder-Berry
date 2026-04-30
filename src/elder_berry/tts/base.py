@@ -1,4 +1,5 @@
 """Abstrakte Basisklasse für Text-to-Speech Engines."""
+
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from pathlib import Path
@@ -7,6 +8,7 @@ from pathlib import Path
 @dataclass
 class VoiceInfo:
     """Informationen über eine verfügbare TTS-Stimme."""
+
     id: str
     name: str
     language: str
@@ -48,8 +50,9 @@ class TTSEngine(ABC):
         die explizites VRAM-Management benötigen (z.B. CoquiTTSEngine).
         """
 
-    def generate_audio(self, text: str, output_path: Path,
-                       emotion: str | None = None) -> Path:
+    def generate_audio(
+        self, text: str, output_path: Path, emotion: str | None = None
+    ) -> Path:
         """
         Generiert Audio-Datei ohne sie abzuspielen.
 

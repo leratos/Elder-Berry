@@ -1,15 +1,23 @@
 """Tests für OllamaClient – is_available, generate, Fehlerbehandlung."""
+
 from unittest.mock import MagicMock, patch
 
 import httpx
 import pytest
 
-from elder_berry.llm.ollama_client import OllamaClient, DEFAULT_MODEL, OLLAMA_BASE_URL, TIMEOUT, VISION_MODEL
+from elder_berry.llm.ollama_client import (
+    OllamaClient,
+    DEFAULT_MODEL,
+    OLLAMA_BASE_URL,
+    TIMEOUT,
+    VISION_MODEL,
+)
 
 
 # ---------------------------------------------------------------------------
 # Konstruktor / Defaults
 # ---------------------------------------------------------------------------
+
 
 class TestOllamaClientInit:
     def test_default_values(self):
@@ -38,6 +46,7 @@ class TestOllamaClientInit:
 # is_available()
 # ---------------------------------------------------------------------------
 
+
 class TestOllamaIsAvailable:
     def test_available_on_200(self):
         client = OllamaClient()
@@ -45,7 +54,8 @@ class TestOllamaIsAvailable:
             mock_get.return_value = MagicMock(status_code=200)
             assert client.is_available() is True
             mock_get.assert_called_once_with(
-                f"{client.base_url}/api/tags", timeout=3.0,
+                f"{client.base_url}/api/tags",
+                timeout=3.0,
             )
 
     def test_not_available_on_non_200(self):
@@ -70,13 +80,15 @@ class TestOllamaIsAvailable:
             mock_get.return_value = MagicMock(status_code=200)
             client.is_available()
             mock_get.assert_called_once_with(
-                "http://remote:11434/api/tags", timeout=3.0,
+                "http://remote:11434/api/tags",
+                timeout=3.0,
             )
 
 
 # ---------------------------------------------------------------------------
 # generate()
 # ---------------------------------------------------------------------------
+
 
 class TestOllamaGenerate:
     def _mock_post(self, content: str = "Antwort") -> MagicMock:
@@ -98,7 +110,10 @@ class TestOllamaGenerate:
             client.generate("Frage", system="Du bist Saleria.")
         payload = mock_post.call_args.kwargs["json"]
         assert len(payload["messages"]) == 2
-        assert payload["messages"][0] == {"role": "system", "content": "Du bist Saleria."}
+        assert payload["messages"][0] == {
+            "role": "system",
+            "content": "Du bist Saleria.",
+        }
         assert payload["messages"][1] == {"role": "user", "content": "Frage"}
 
     def test_without_system_prompt(self):
@@ -129,7 +144,9 @@ class TestOllamaGenerate:
         resp = MagicMock()
         resp.status_code = 500
         resp.raise_for_status.side_effect = httpx.HTTPStatusError(
-            "Server Error", request=MagicMock(), response=resp,
+            "Server Error",
+            request=MagicMock(),
+            response=resp,
         )
         with patch("httpx.post", return_value=resp):
             with pytest.raises(RuntimeError, match="Ollama HTTP-Fehler"):
@@ -152,6 +169,7 @@ class TestOllamaGenerate:
 # generate_with_image()
 # ---------------------------------------------------------------------------
 
+
 class TestOllamaGenerateWithImage:
     def _mock_post(self, content: str = "Beschreibung") -> MagicMock:
         resp = MagicMock()
@@ -161,7 +179,9 @@ class TestOllamaGenerateWithImage:
 
     def test_success(self):
         client = OllamaClient()
-        with patch("httpx.post", return_value=self._mock_post("Ein Dokument")) as mock_post:
+        with patch(
+            "httpx.post", return_value=self._mock_post("Ein Dokument")
+        ) as mock_post:
             result = client.generate_with_image("Beschreibe das Bild", "base64data")
         assert result == "Ein Dokument"
         payload = mock_post.call_args.kwargs["json"]
@@ -194,7 +214,9 @@ class TestOllamaGenerateWithImage:
         resp = MagicMock()
         resp.status_code = 500
         resp.raise_for_status.side_effect = httpx.HTTPStatusError(
-            "Server Error", request=MagicMock(), response=resp,
+            "Server Error",
+            request=MagicMock(),
+            response=resp,
         )
         with patch("httpx.post", return_value=resp):
             with pytest.raises(RuntimeError, match="Ollama HTTP-Fehler"):

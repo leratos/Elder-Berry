@@ -1,4 +1,5 @@
 """Tests: UpdateCommandHandler – Self-Update, Rollback, Backup."""
+
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -18,6 +19,7 @@ from elder_berry.comms.commands.update_commands import (
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
+
 
 @pytest.fixture
 def handler(tmp_path, monkeypatch):
@@ -73,7 +75,9 @@ def handler_full(tmp_path, monkeypatch):
     tower = MagicMock()
     tower.host = "127.0.0.1:12769"
     return UpdateCommandHandler(
-        project_root=tmp_path, robot_client=robot, tower_agent=tower,
+        project_root=tmp_path,
+        robot_client=robot,
+        tower_agent=tower,
     )
 
 
@@ -81,11 +85,19 @@ def handler_full(tmp_path, monkeypatch):
 # Pattern Tests
 # ---------------------------------------------------------------------------
 
+
 class TestUpdatePattern:
-    @pytest.mark.parametrize("text", [
-        "update", "update dich", "update saleria", "update mich",
-        "aktualisiere dich", "aktualisieren",
-    ])
+    @pytest.mark.parametrize(
+        "text",
+        [
+            "update",
+            "update dich",
+            "update saleria",
+            "update mich",
+            "aktualisiere dich",
+            "aktualisieren",
+        ],
+    )
     def test_valid(self, text):
         assert UPDATE_PATTERN.match(text) is not None
 
@@ -94,25 +106,40 @@ class TestUpdatePattern:
 
 
 class TestRollbackPattern:
-    @pytest.mark.parametrize("text", [
-        "rollback", "update zurücksetzen", "zurückrollen",
-    ])
+    @pytest.mark.parametrize(
+        "text",
+        [
+            "rollback",
+            "update zurücksetzen",
+            "zurückrollen",
+        ],
+    )
     def test_valid(self, text):
         assert ROLLBACK_PATTERN.match(text) is not None
 
 
 class TestUpdateRpiPattern:
-    @pytest.mark.parametrize("text", [
-        "update rpi", "rpi update", "aktualisiere rpi",
-    ])
+    @pytest.mark.parametrize(
+        "text",
+        [
+            "update rpi",
+            "rpi update",
+            "aktualisiere rpi",
+        ],
+    )
     def test_valid(self, text):
         assert UPDATE_RPI_PATTERN.match(text) is not None
 
 
 class TestUpdateTowerPattern:
-    @pytest.mark.parametrize("text", [
-        "update tower", "tower update", "aktualisiere tower",
-    ])
+    @pytest.mark.parametrize(
+        "text",
+        [
+            "update tower",
+            "tower update",
+            "aktualisiere tower",
+        ],
+    )
     def test_valid(self, text):
         assert UPDATE_TOWER_PATTERN.match(text) is not None
 
@@ -122,9 +149,13 @@ class TestUpdateTowerPattern:
 
 
 class TestUpdateAllPattern:
-    @pytest.mark.parametrize("text", [
-        "update alles", "alles updaten",
-    ])
+    @pytest.mark.parametrize(
+        "text",
+        [
+            "update alles",
+            "alles updaten",
+        ],
+    )
     def test_valid(self, text):
         assert UPDATE_ALL_PATTERN.match(text) is not None
 
@@ -132,6 +163,7 @@ class TestUpdateAllPattern:
 # ---------------------------------------------------------------------------
 # Helper
 # ---------------------------------------------------------------------------
+
 
 class TestIsValidGitHash:
     def test_valid_short(self):
@@ -153,6 +185,7 @@ class TestIsValidGitHash:
 # ---------------------------------------------------------------------------
 # Interface
 # ---------------------------------------------------------------------------
+
 
 class TestUpdateInterface:
     def test_simple_commands(self, handler):
@@ -178,6 +211,7 @@ class TestUpdateInterface:
 # Update (local git pull)
 # ---------------------------------------------------------------------------
 
+
 class TestUpdate:
     def test_no_project_root(self, handler_no_root):
         result = handler_no_root.execute("update", "update")
@@ -187,9 +221,10 @@ class TestUpdate:
     @patch("elder_berry.comms.commands.update_commands.run_cmd")
     def test_already_up_to_date_asks_restart(self, mock_run_cmd, handler):
         from elder_berry.comms.commands.cmd_utils import CmdResult
+
         mock_run_cmd.side_effect = [
-            CmdResult(success=True, output=""),    # fetch
-            CmdResult(success=True, output="0"),   # behind
+            CmdResult(success=True, output=""),  # fetch
+            CmdResult(success=True, output="0"),  # behind
         ]
         result = handler.execute("update", "update")
         assert result.success is True
@@ -201,6 +236,7 @@ class TestUpdate:
     @patch("elder_berry.comms.commands.update_commands.run_cmd")
     def test_fetch_fails(self, mock_run_cmd, handler):
         from elder_berry.comms.commands.cmd_utils import CmdResult
+
         mock_run_cmd.return_value = CmdResult(success=False, output="network error")
         result = handler.execute("update", "update")
         assert result.success is False
@@ -209,9 +245,10 @@ class TestUpdate:
     @patch("elder_berry.comms.commands.update_commands.run_cmd")
     def test_local_changes_abort(self, mock_run_cmd, handler):
         from elder_berry.comms.commands.cmd_utils import CmdResult
+
         mock_run_cmd.side_effect = [
-            CmdResult(success=True, output=""),       # fetch
-            CmdResult(success=True, output="3"),      # behind
+            CmdResult(success=True, output=""),  # fetch
+            CmdResult(success=True, output="3"),  # behind
             CmdResult(success=True, output="M dirty"),  # status dirty
         ]
         result = handler.execute("update", "update")
@@ -222,6 +259,7 @@ class TestUpdate:
 # ---------------------------------------------------------------------------
 # Update RPi
 # ---------------------------------------------------------------------------
+
 
 class TestUpdateRpi:
     def test_no_robot(self, handler):
@@ -243,6 +281,7 @@ class TestUpdateRpi:
 # ---------------------------------------------------------------------------
 # Update Tower (remote)
 # ---------------------------------------------------------------------------
+
 
 class TestUpdateTower:
     def test_no_tower_agent(self, handler):
@@ -291,6 +330,7 @@ class TestUpdateTower:
 # Rollback
 # ---------------------------------------------------------------------------
 
+
 class TestRollback:
     def test_no_project_root(self, handler_no_root):
         result = handler_no_root.execute("rollback", "rollback")
@@ -304,6 +344,7 @@ class TestRollback:
     @patch("elder_berry.comms.commands.update_commands.run_cmd")
     def test_rollback_hash_not_found(self, mock_run_cmd, handler):
         from elder_berry.comms.commands.cmd_utils import CmdResult
+
         # Write backup via handler (uses monkeypatched DEFAULT_BACKUP_DIR)
         handler._write_backup("abc123def456", "main")
 
@@ -316,6 +357,7 @@ class TestRollback:
 # ---------------------------------------------------------------------------
 # Backup Write/Read
 # ---------------------------------------------------------------------------
+
 
 class TestBackup:
     def test_write_and_read(self, handler):
@@ -342,13 +384,15 @@ class TestBackup:
 # Update All: pending_confirmation durchreichen
 # ---------------------------------------------------------------------------
 
+
 class TestUpdateAllExecution:
     @patch("elder_berry.comms.commands.update_commands.run_cmd")
     def test_update_all_up_to_date_asks_restart(self, mock_run_cmd, handler):
         from elder_berry.comms.commands.cmd_utils import CmdResult
+
         mock_run_cmd.side_effect = [
-            CmdResult(success=True, output=""),    # fetch
-            CmdResult(success=True, output="0"),   # behind
+            CmdResult(success=True, output=""),  # fetch
+            CmdResult(success=True, output="0"),  # behind
         ]
         result = handler.execute("update_all", "update alles")
         assert result.success is True
@@ -360,14 +404,15 @@ class TestUpdateAllExecution:
     @patch("elder_berry.comms.commands.update_commands.run_cmd")
     def test_update_all_includes_tower(self, mock_run_cmd, mock_post, handler_full):
         from elder_berry.comms.commands.cmd_utils import CmdResult
+
         # Tower HTTP response
         mock_resp = MagicMock()
         mock_resp.json.return_value = {"success": True, "message": "Tower OK"}
         mock_post.return_value = mock_resp
         # Server self-update: already up to date
         mock_run_cmd.side_effect = [
-            CmdResult(success=True, output=""),    # fetch
-            CmdResult(success=True, output="0"),   # behind
+            CmdResult(success=True, output=""),  # fetch
+            CmdResult(success=True, output="0"),  # behind
         ]
         result = handler_full.execute("update_all", "update alles")
         assert "RPi5" in result.text
@@ -378,6 +423,7 @@ class TestUpdateAllExecution:
     def test_update_all_skips_disconnected(self, mock_run_cmd, handler):
         """No robot + no tower → both skipped, server still runs."""
         from elder_berry.comms.commands.cmd_utils import CmdResult
+
         mock_run_cmd.side_effect = [
             CmdResult(success=True, output=""),
             CmdResult(success=True, output="0"),
@@ -391,6 +437,7 @@ class TestUpdateAllExecution:
 # Unknown Command
 # ---------------------------------------------------------------------------
 
+
 class TestUnknownCommand:
     def test_unknown(self, handler):
         result = handler.execute("unknown", "unknown")
@@ -400,6 +447,7 @@ class TestUnknownCommand:
 # ---------------------------------------------------------------------------
 # Pip Install Groups
 # ---------------------------------------------------------------------------
+
 
 class TestPipInstallGroups:
     def test_windows_groups(self):

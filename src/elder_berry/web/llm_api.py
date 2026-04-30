@@ -36,26 +36,30 @@ def register_llm_routes(app: FastAPI, dashboard: _DashboardLike) -> None:
     @app.get("/api/llm/status")
     async def llm_status():
         if not dashboard._llm_router:
-            return JSONResponse({
-                "available": False,
-                "mode": None,
-                "active_backend": "none",
-                "primary": {"name": None, "available": False},
-                "fallback": {"name": None, "available": False},
-            })
-        return JSONResponse({
-            "available": True,
-            "mode": dashboard._llm_router.mode,
-            "active_backend": dashboard._llm_router.active_backend,
-            "primary": {
-                "name": dashboard._llm_router.primary_name,
-                "available": dashboard._llm_router.primary_available,
-            },
-            "fallback": {
-                "name": dashboard._llm_router.fallback_name,
-                "available": dashboard._llm_router.fallback_available,
-            },
-        })
+            return JSONResponse(
+                {
+                    "available": False,
+                    "mode": None,
+                    "active_backend": "none",
+                    "primary": {"name": None, "available": False},
+                    "fallback": {"name": None, "available": False},
+                }
+            )
+        return JSONResponse(
+            {
+                "available": True,
+                "mode": dashboard._llm_router.mode,
+                "active_backend": dashboard._llm_router.active_backend,
+                "primary": {
+                    "name": dashboard._llm_router.primary_name,
+                    "available": dashboard._llm_router.primary_available,
+                },
+                "fallback": {
+                    "name": dashboard._llm_router.fallback_name,
+                    "available": dashboard._llm_router.fallback_available,
+                },
+            }
+        )
 
     @app.post("/api/llm/mode")
     async def llm_mode(request: Request, body: dict = Body(...)):
@@ -67,8 +71,10 @@ def register_llm_routes(app: FastAPI, dashboard: _DashboardLike) -> None:
         new_mode = body.get("mode")
         if new_mode not in ("api_preferred", "local_only"):
             return JSONResponse(
-                {"error": f"Ungültiger Modus: {new_mode}. "
-                          "Erlaubt: api_preferred, local_only"},
+                {
+                    "error": f"Ungültiger Modus: {new_mode}. "
+                    "Erlaubt: api_preferred, local_only"
+                },
                 status_code=400,
             )
         dashboard._llm_router.mode = new_mode
@@ -77,9 +83,13 @@ def register_llm_routes(app: FastAPI, dashboard: _DashboardLike) -> None:
                 dashboard._secret_store.set(dashboard.LLM_MODE_KEY, new_mode)
         client_host = request.client.host if request.client else "unbekannt"
         logger.info(
-            "AUDIT: LLM-Modus auf '%s' gesetzt von %s", new_mode, client_host,
+            "AUDIT: LLM-Modus auf '%s' gesetzt von %s",
+            new_mode,
+            client_host,
         )
-        return JSONResponse({
-            "mode": dashboard._llm_router.mode,
-            "active_backend": dashboard._llm_router.active_backend,
-        })
+        return JSONResponse(
+            {
+                "mode": dashboard._llm_router.mode,
+                "active_backend": dashboard._llm_router.active_backend,
+            }
+        )

@@ -1,4 +1,5 @@
 """Tests: SelfcheckCommandHandler – Systemgesundheitsprüfung."""
+
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -13,6 +14,7 @@ from elder_berry.comms.commands.selfcheck_commands import (
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
+
 
 @pytest.fixture
 def secret_store():
@@ -38,18 +40,33 @@ def handler_minimal():
 # Pattern Tests
 # ---------------------------------------------------------------------------
 
+
 class TestSelfcheckPattern:
-    @pytest.mark.parametrize("text", [
-        "selfcheck", "self check", "system check", "systemcheck",
-        "prüf dich", "prüfdich", "alles ok?", "alles ok",
-        "gesundheitscheck",
-    ])
+    @pytest.mark.parametrize(
+        "text",
+        [
+            "selfcheck",
+            "self check",
+            "system check",
+            "systemcheck",
+            "prüf dich",
+            "prüfdich",
+            "alles ok?",
+            "alles ok",
+            "gesundheitscheck",
+        ],
+    )
     def test_valid_patterns(self, text):
         assert SELFCHECK_PATTERN.match(text) is not None
 
-    @pytest.mark.parametrize("text", [
-        "selfcheck bitte", "mach self check", "status",
-    ])
+    @pytest.mark.parametrize(
+        "text",
+        [
+            "selfcheck bitte",
+            "mach self check",
+            "status",
+        ],
+    )
     def test_invalid_patterns(self, text):
         assert SELFCHECK_PATTERN.match(text) is None
 
@@ -57,6 +74,7 @@ class TestSelfcheckPattern:
 # ---------------------------------------------------------------------------
 # Interface
 # ---------------------------------------------------------------------------
+
 
 class TestSelfcheckInterface:
     def test_simple_commands(self, handler):
@@ -76,6 +94,7 @@ class TestSelfcheckInterface:
 # Execute
 # ---------------------------------------------------------------------------
 
+
 class TestSelfcheckExecute:
     def test_unknown_command(self, handler):
         result = handler.execute("unknown", "unknown")
@@ -91,16 +110,18 @@ class TestSelfcheckExecute:
 
         # Git-Commands mocken
         mock_run_cmd.side_effect = [
-            CmdResult(success=True, output="main"),       # branch
-            CmdResult(success=True, output=""),            # status (clean)
-            CmdResult(success=True, output=""),            # fetch
-            CmdResult(success=True, output="0"),           # behind
-            CmdResult(success=True, output="No broken"),   # pip check
+            CmdResult(success=True, output="main"),  # branch
+            CmdResult(success=True, output=""),  # status (clean)
+            CmdResult(success=True, output=""),  # fetch
+            CmdResult(success=True, output="0"),  # behind
+            CmdResult(success=True, output="No broken"),  # pip check
         ]
 
         # Disk
         mock_disk.return_value = MagicMock(
-            total=500 * 1024**3, used=200 * 1024**3, free=300 * 1024**3,
+            total=500 * 1024**3,
+            used=200 * 1024**3,
+            free=300 * 1024**3,
         )
 
         # Ollama – Mock urllib.request.urlopen
@@ -129,12 +150,14 @@ class TestSelfcheckExecute:
             CmdResult(success=True, output="main"),
             CmdResult(success=True, output="M file.py"),  # dirty
             CmdResult(success=True, output=""),
-            CmdResult(success=True, output="3"),           # behind
+            CmdResult(success=True, output="3"),  # behind
             CmdResult(success=True, output="No broken"),
         ]
 
         mock_disk.return_value = MagicMock(
-            total=500 * 1024**3, used=200 * 1024**3, free=300 * 1024**3,
+            total=500 * 1024**3,
+            used=200 * 1024**3,
+            free=300 * 1024**3,
         )
 
         result = handler.execute("selfcheck", "selfcheck")
@@ -144,7 +167,9 @@ class TestSelfcheckExecute:
     def test_selfcheck_no_project_root(self, mock_disk, handler_minimal):
         """Selfcheck ohne project_root → Git-Warnung."""
         mock_disk.return_value = MagicMock(
-            total=500 * 1024**3, used=200 * 1024**3, free=300 * 1024**3,
+            total=500 * 1024**3,
+            used=200 * 1024**3,
+            free=300 * 1024**3,
         )
         result = handler_minimal.execute("selfcheck", "selfcheck")
         assert "Systemcheck" in result.text
@@ -154,6 +179,7 @@ class TestSelfcheckExecute:
 # ---------------------------------------------------------------------------
 # Service-Check Tests (Fähigkeiten)
 # ---------------------------------------------------------------------------
+
 
 class TestServiceChecks:
     """Tests für die Fähigkeiten-Prüfung (Service-Connectivity)."""
@@ -171,14 +197,20 @@ class TestServiceChecks:
     @patch("elder_berry.comms.commands.selfcheck_commands.run_cmd")
     @patch("shutil.disk_usage")
     def test_services_section_appears(
-        self, mock_disk, mock_run_cmd, mock_urlopen, tmp_path,
+        self,
+        mock_disk,
+        mock_run_cmd,
+        mock_urlopen,
+        tmp_path,
     ):
         """Wenn Services vorhanden, erscheint 'Fähigkeiten' im Output."""
         from elder_berry.comms.commands.cmd_utils import CmdResult
 
         mock_run_cmd.return_value = CmdResult(success=True, output="main")
         mock_disk.return_value = MagicMock(
-            total=500 * 1024**3, used=200 * 1024**3, free=300 * 1024**3,
+            total=500 * 1024**3,
+            used=200 * 1024**3,
+            free=300 * 1024**3,
         )
         mock_urlopen.side_effect = Exception("no ollama")
 
@@ -293,14 +325,20 @@ class TestServiceChecks:
     @patch("elder_berry.comms.commands.selfcheck_commands.run_cmd")
     @patch("shutil.disk_usage")
     def test_full_selfcheck_with_mixed_services(
-        self, mock_disk, mock_run_cmd, mock_urlopen, tmp_path,
+        self,
+        mock_disk,
+        mock_run_cmd,
+        mock_urlopen,
+        tmp_path,
     ):
         """Voller Selfcheck mit Mix aus verfügbaren und kaputten Services."""
         from elder_berry.comms.commands.cmd_utils import CmdResult
 
         mock_run_cmd.return_value = CmdResult(success=True, output="main")
         mock_disk.return_value = MagicMock(
-            total=500 * 1024**3, used=200 * 1024**3, free=300 * 1024**3,
+            total=500 * 1024**3,
+            used=200 * 1024**3,
+            free=300 * 1024**3,
         )
         mock_urlopen.side_effect = Exception("no ollama")
 
@@ -311,10 +349,13 @@ class TestServiceChecks:
         bad_svc = MagicMock()
         bad_svc.is_available.return_value = False
 
-        handler = self._make_handler(tmp_path, {
-            "calendar": ok_svc,
-            "email_client": bad_svc,
-        })
+        handler = self._make_handler(
+            tmp_path,
+            {
+                "calendar": ok_svc,
+                "email_client": bad_svc,
+            },
+        )
 
         result = handler.execute("selfcheck", "selfcheck")
         assert "Kalender" in result.text
@@ -326,17 +367,24 @@ class TestServiceChecks:
     @patch("elder_berry.comms.commands.selfcheck_commands.run_cmd")
     @patch("shutil.disk_usage")
     def test_service_errors_count(
-        self, mock_disk, mock_run_cmd, mock_urlopen, tmp_path,
+        self,
+        mock_disk,
+        mock_run_cmd,
+        mock_urlopen,
+        tmp_path,
     ):
         """Kaputte Services erhöhen den Error-Count im Header."""
         from elder_berry.comms.commands.cmd_utils import CmdResult
 
         mock_run_cmd.return_value = CmdResult(success=True, output="main")
         mock_disk.return_value = MagicMock(
-            total=500 * 1024**3, used=200 * 1024**3, free=300 * 1024**3,
+            total=500 * 1024**3,
+            used=200 * 1024**3,
+            free=300 * 1024**3,
         )
         # Ollama OK
         import json
+
         ollama_resp = MagicMock()
         ollama_resp.__enter__ = MagicMock(return_value=ollama_resp)
         ollama_resp.__exit__ = MagicMock(return_value=False)
@@ -358,6 +406,7 @@ class TestServiceChecks:
 # ---------------------------------------------------------------------------
 # _get_service_detail Tests
 # ---------------------------------------------------------------------------
+
 
 class TestGetServiceDetail:
     def test_calendar_caldav(self):
@@ -389,11 +438,14 @@ class TestGetServiceDetail:
 # TowerAgent im Selfcheck
 # ---------------------------------------------------------------------------
 
+
 class TestTowerAgentSelfcheck:
     def test_tower_agent_online(self):
         """TowerAgent online → synchroner HTTP-Check, ✅ im Check."""
         import httpx as _httpx
-        from elder_berry.comms.commands.selfcheck_commands import SelfcheckCommandHandler
+        from elder_berry.comms.commands.selfcheck_commands import (
+            SelfcheckCommandHandler,
+        )
 
         tower = MagicMock(spec=[])  # spec=[] verhindert auto-Attribute
         tower.host = "127.0.0.1:12769"
@@ -408,7 +460,9 @@ class TestTowerAgentSelfcheck:
     def test_tower_agent_offline(self):
         """TowerAgent offline → ⚠️ im Check (optional)."""
         import httpx as _httpx
-        from elder_berry.comms.commands.selfcheck_commands import SelfcheckCommandHandler
+        from elder_berry.comms.commands.selfcheck_commands import (
+            SelfcheckCommandHandler,
+        )
 
         tower = MagicMock(spec=[])
         tower.host = "127.0.0.1:12769"
@@ -419,7 +473,9 @@ class TestTowerAgentSelfcheck:
 
     def test_tower_agent_in_check_order(self):
         """TowerAgent erscheint im Selfcheck-Output."""
-        from elder_berry.comms.commands.selfcheck_commands import SelfcheckCommandHandler
+        from elder_berry.comms.commands.selfcheck_commands import (
+            SelfcheckCommandHandler,
+        )
 
         handler = SelfcheckCommandHandler(services={"tower_agent": None})
         checks = []
@@ -430,11 +486,14 @@ class TestTowerAgentSelfcheck:
 
     def test_is_online_property_handled(self):
         """is_online als Property (nicht Methode) wird korrekt behandelt."""
-        from elder_berry.comms.commands.selfcheck_commands import SelfcheckCommandHandler
+        from elder_berry.comms.commands.selfcheck_commands import (
+            SelfcheckCommandHandler,
+        )
 
         # Simuliere ein Objekt mit is_online als Property (nicht callable)
         class FakeService:
             is_online = True
+
         svc = FakeService()
         ok, _ = SelfcheckCommandHandler._probe_service("some_service", svc)
         assert ok is True

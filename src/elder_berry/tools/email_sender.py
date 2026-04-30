@@ -3,6 +3,7 @@
 Sendet Antworten auf bestehende E-Mails mit korrekten Reply-Headern.
 Keine extra Dependencies – nutzt Python-Standardbibliothek (smtplib, email).
 """
+
 from __future__ import annotations
 
 import email.message
@@ -111,25 +112,33 @@ class EmailSender:
             conn.quit()
             logger.info("Email gesendet an %s: %s", to, subject)
             return SentEmail(
-                to=to, subject=subject, success=True,
+                to=to,
+                subject=subject,
+                success=True,
                 raw_msg=msg.as_bytes(),
             )
         except smtplib.SMTPAuthenticationError as e:
             logger.error("SMTP Auth-Fehler: %s", e)
             return SentEmail(
-                to=to, subject=subject, success=False,
+                to=to,
+                subject=subject,
+                success=False,
                 error=f"Authentifizierung fehlgeschlagen: {e}",
             )
         except smtplib.SMTPException as e:
             logger.error("SMTP-Fehler beim Senden: %s", e)
             return SentEmail(
-                to=to, subject=subject, success=False,
+                to=to,
+                subject=subject,
+                success=False,
                 error=f"SMTP-Fehler: {e}",
             )
         except OSError as e:
             logger.error("Verbindungsfehler beim Senden: %s", e)
             return SentEmail(
-                to=to, subject=subject, success=False,
+                to=to,
+                subject=subject,
+                success=False,
                 error=f"Verbindungsfehler: {e}",
             )
 

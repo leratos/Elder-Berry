@@ -19,6 +19,7 @@ Verwendung:
     extra = enricher.enrich_event("Meeting Max", datetime(...), "Büro")
     # → "Notiz: Max wollte über das Dachprojekt sprechen\n..."
 """
+
 from __future__ import annotations
 
 import logging
@@ -63,8 +64,9 @@ class EnrichmentResult:
     @property
     def has_context(self) -> bool:
         """True wenn mindestens eine Quelle Kontext geliefert hat."""
-        return bool(self.raw_notes or self.raw_mails
-                     or self.raw_weather or self.raw_memories)
+        return bool(
+            self.raw_notes or self.raw_mails or self.raw_weather or self.raw_memories
+        )
 
 
 class ContextEnricher:
@@ -125,8 +127,13 @@ class ContextEnricher:
             return EnrichmentResult()
 
         formatted = self._format_with_llm(
-            title, event_time, location,
-            raw_notes, raw_mails, raw_weather, raw_memories,
+            title,
+            event_time,
+            location,
+            raw_notes,
+            raw_mails,
+            raw_weather,
+            raw_memories,
         )
 
         return EnrichmentResult(
@@ -144,8 +151,9 @@ class ContextEnricher:
                 future = pool.submit(func, *args)
                 return future.result(timeout=SOURCE_TIMEOUT_SECONDS)
         except FuturesTimeoutError:
-            logger.warning("ContextEnricher: %s Timeout (%ss)",
-                           source_name, SOURCE_TIMEOUT_SECONDS)
+            logger.warning(
+                "ContextEnricher: %s Timeout (%ss)", source_name, SOURCE_TIMEOUT_SECONDS
+            )
             return None
         except Exception as e:
             logger.warning("ContextEnricher: %s Fehler: %s", source_name, e)
@@ -158,15 +166,16 @@ class ContextEnricher:
 
         result = self._run_with_timeout(
             self._note_store.search,
-            self._default_user_id, query, 3,
+            self._default_user_id,
+            query,
+            3,
             source_name="NoteStore",
         )
         if not result:
             return []
 
         return [
-            f"{'🔑 ' + n.key + ': ' if n.key else '📝 '}{n.content}"
-            for n in result
+            f"{'🔑 ' + n.key + ': ' if n.key else '📝 '}{n.content}" for n in result
         ]
 
     def _search_mails(self, query: str) -> list[str]:
@@ -176,7 +185,9 @@ class ContextEnricher:
 
         result = self._run_with_timeout(
             self._email_client.search,
-            query, 3, 7,
+            query,
+            3,
+            7,
             source_name="IMAP",
         )
         if not result:
@@ -211,7 +222,8 @@ class ContextEnricher:
 
         result = self._run_with_timeout(
             self._memory_store.search,
-            query, 3,
+            query,
+            3,
             source_name="MemoryStore",
         )
         if not result:
@@ -233,7 +245,7 @@ class ContextEnricher:
         if not self._llm:
             return self._format_fallback(notes, mails, weather, memories)
 
-        parts = [f"Termin: \"{title}\" um {event_time.strftime('%H:%M')}"]
+        parts = [f'Termin: "{title}" um {event_time.strftime("%H:%M")}']
         if location:
             parts.append(f"Ort: {location}")
 

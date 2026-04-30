@@ -1,4 +1,5 @@
 """Abstrakte Basisklasse für PC-Steuerung."""
+
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 
@@ -6,6 +7,7 @@ from dataclasses import dataclass
 @dataclass
 class WindowInfo:
     """Informationen über ein Fenster."""
+
     title: str
     handle: int
 
@@ -47,8 +49,9 @@ class ActionController(ABC):
         ...
 
     @abstractmethod
-    def click(self, x: int | None = None, y: int | None = None,
-              button: str = "left") -> None:
+    def click(
+        self, x: int | None = None, y: int | None = None, button: str = "left"
+    ) -> None:
         """Klickt an der angegebenen Position (oder aktuelle Position)."""
         ...
 

@@ -1,4 +1,5 @@
 """Tests für CardDAVSyncClient (Phase 38 Vollintegration)."""
+
 from __future__ import annotations
 
 import json
@@ -233,12 +234,7 @@ class TestVcardToDict:
 
     def test_empty_fn_returns_none(self, mock_secret_store: MagicMock) -> None:
         client = CardDAVSyncClient(mock_secret_store)
-        vcard = (
-            "BEGIN:VCARD\r\n"
-            "VERSION:3.0\r\n"
-            "FN:\r\n"
-            "END:VCARD\r\n"
-        )
+        vcard = "BEGIN:VCARD\r\nVERSION:3.0\r\nFN:\r\nEND:VCARD\r\n"
         assert client._vcard_to_dict(vcard, USER) is None
 
 
@@ -249,14 +245,25 @@ class TestContactToVcard:
         client = CardDAVSyncClient(mock_secret_store)
         now = datetime.now(timezone.utc)
         contact = Contact(
-            id=1, user_id=USER, name="Lisa",
+            id=1,
+            user_id=USER,
+            name="Lisa",
             emails='[{"type":"home","email":"lisa@x.de"}]',
             phones='[{"type":"cell","number":"+49 170 111"}]',
-            role="Freundin", formality="locker", notes="mag Katzen",
-            birthday="1990-06-15", address="Musterstr. 42",
-            organization="", title="", categories="Familie",
-            nickname="", anniversary="", url="",
-            vcard_uid="", created_at=now, updated_at=now,
+            role="Freundin",
+            formality="locker",
+            notes="mag Katzen",
+            birthday="1990-06-15",
+            address="Musterstr. 42",
+            organization="",
+            title="",
+            categories="Familie",
+            nickname="",
+            anniversary="",
+            url="",
+            vcard_uid="",
+            created_at=now,
+            updated_at=now,
         )
         vcard_str = client._contact_to_vcard(contact)
         assert "FN:Lisa" in vcard_str
@@ -294,7 +301,9 @@ class TestResetAndPull:
     """Tests für die Clean-Slate-Migration."""
 
     def test_reset_deletes_and_pulls(
-        self, store: ContactStore, mock_secret_store: MagicMock,
+        self,
+        store: ContactStore,
+        mock_secret_store: MagicMock,
     ) -> None:
         # Lokale Kontakte anlegen
         store.add(USER, "Alt1")
@@ -305,16 +314,40 @@ class TestResetAndPull:
 
         # Mock pull_contacts um Remote-Daten zurückzugeben
         remote_data = [
-            {"name": "Neu1", "emails": "[]", "phones": "[]",
-             "role": "", "formality": "förmlich", "notes": "",
-             "birthday": "", "address": "", "organization": "",
-             "title": "", "categories": "", "nickname": "",
-             "anniversary": "", "url": "", "vcard_uid": "uid-1"},
-            {"name": "Neu2", "emails": "[]", "phones": "[]",
-             "role": "", "formality": "förmlich", "notes": "",
-             "birthday": "", "address": "", "organization": "",
-             "title": "", "categories": "", "nickname": "",
-             "anniversary": "", "url": "", "vcard_uid": "uid-2"},
+            {
+                "name": "Neu1",
+                "emails": "[]",
+                "phones": "[]",
+                "role": "",
+                "formality": "förmlich",
+                "notes": "",
+                "birthday": "",
+                "address": "",
+                "organization": "",
+                "title": "",
+                "categories": "",
+                "nickname": "",
+                "anniversary": "",
+                "url": "",
+                "vcard_uid": "uid-1",
+            },
+            {
+                "name": "Neu2",
+                "emails": "[]",
+                "phones": "[]",
+                "role": "",
+                "formality": "förmlich",
+                "notes": "",
+                "birthday": "",
+                "address": "",
+                "organization": "",
+                "title": "",
+                "categories": "",
+                "nickname": "",
+                "anniversary": "",
+                "url": "",
+                "vcard_uid": "uid-2",
+            },
         ]
         with patch.object(client, "pull_contacts", return_value=remote_data):
             result = client.reset_and_pull(store, USER)
@@ -331,24 +364,34 @@ class TestInjectEBFields:
     """Testet das Einfügen von EB-Feldern in bestehende vCards."""
 
     def test_inject_role_and_formality(
-        self, mock_secret_store: MagicMock,
+        self,
+        mock_secret_store: MagicMock,
     ) -> None:
         client = CardDAVSyncClient(mock_secret_store)
         now = datetime.now(timezone.utc)
         contact = Contact(
-            id=1, user_id=USER, name="Lisa",
-            emails="[]", phones="[]",
-            role="Schwester", formality="locker", notes="mag Katzen",
-            birthday="", address="", organization="", title="",
-            categories="", nickname="", anniversary="", url="",
-            vcard_uid="", created_at=now, updated_at=now,
+            id=1,
+            user_id=USER,
+            name="Lisa",
+            emails="[]",
+            phones="[]",
+            role="Schwester",
+            formality="locker",
+            notes="mag Katzen",
+            birthday="",
+            address="",
+            organization="",
+            title="",
+            categories="",
+            nickname="",
+            anniversary="",
+            url="",
+            vcard_uid="",
+            created_at=now,
+            updated_at=now,
         )
         original_vcard = (
-            "BEGIN:VCARD\r\n"
-            "VERSION:3.0\r\n"
-            "FN:Lisa\r\n"
-            "UID:test-123\r\n"
-            "END:VCARD\r\n"
+            "BEGIN:VCARD\r\nVERSION:3.0\r\nFN:Lisa\r\nUID:test-123\r\nEND:VCARD\r\n"
         )
         result = client._inject_local_fields(original_vcard, contact)
         assert "[Rolle: Schwester]" in result

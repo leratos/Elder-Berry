@@ -75,17 +75,27 @@ class TestAuditLogging:
     def test_audit_log_on_set(self, caplog):
         client, _, _ = _make_dashboard()
         with caplog.at_level(logging.INFO):
-            client.post("/api/secrets/set", json={"key": "brave_api_key", "value": "test"})
-        assert any("AUDIT" in r.message and "brave_api_key" in r.message and "gesetzt" in r.message
-                    for r in caplog.records)
+            client.post(
+                "/api/secrets/set", json={"key": "brave_api_key", "value": "test"}
+            )
+        assert any(
+            "AUDIT" in r.message
+            and "brave_api_key" in r.message
+            and "gesetzt" in r.message
+            for r in caplog.records
+        )
 
     def test_audit_log_on_delete(self, caplog):
         store = FakeSecretStore({"brave_api_key": "test"})
         client, _, _ = _make_dashboard(store)
         with caplog.at_level(logging.INFO):
             client.post("/api/secrets/delete", json={"key": "brave_api_key"})
-        assert any("AUDIT" in r.message and "brave_api_key" in r.message and "gelöscht" in r.message
-                    for r in caplog.records)
+        assert any(
+            "AUDIT" in r.message
+            and "brave_api_key" in r.message
+            and "gelöscht" in r.message
+            for r in caplog.records
+        )
 
 
 class TestRestartHint:
@@ -93,17 +103,25 @@ class TestRestartHint:
 
     def test_restart_hint_flag_true(self):
         client, _, _ = _make_dashboard()
-        r = client.post("/api/secrets/set", json={
-            "key": "matrix_access_token", "value": "syt_test",
-        })
+        r = client.post(
+            "/api/secrets/set",
+            json={
+                "key": "matrix_access_token",
+                "value": "syt_test",
+            },
+        )
         assert r.status_code == 200
         assert r.json()["requires_restart"] is True
 
     def test_restart_hint_flag_false(self):
         client, _, _ = _make_dashboard()
-        r = client.post("/api/secrets/set", json={
-            "key": "weather_city", "value": "Berlin",
-        })
+        r = client.post(
+            "/api/secrets/set",
+            json={
+                "key": "weather_city",
+                "value": "Berlin",
+            },
+        )
         assert r.status_code == 200
         assert r.json()["requires_restart"] is False
 
@@ -117,7 +135,9 @@ class TestChangeCallbacks:
         dashboard.on_change("weather_city", lambda v: received.append(v))
 
         client = TestClient(dashboard.app)
-        client.post("/api/secrets/set", json={"key": "weather_city", "value": "München"})
+        client.post(
+            "/api/secrets/set", json={"key": "weather_city", "value": "München"}
+        )
         assert received == ["München"]
 
     def test_change_callback_error_isolated(self):
@@ -129,7 +149,9 @@ class TestChangeCallbacks:
 
         dashboard.on_change("weather_city", bad_callback)
         client = TestClient(dashboard.app)
-        r = client.post("/api/secrets/set", json={"key": "weather_city", "value": "Berlin"})
+        r = client.post(
+            "/api/secrets/set", json={"key": "weather_city", "value": "Berlin"}
+        )
         assert r.status_code == 200
         assert store.get("weather_city") == "Berlin"
 
@@ -140,7 +162,9 @@ class TestChangeCallbacks:
         dashboard.on_change("weather_city", lambda v: results_b.append(v))
 
         client = TestClient(dashboard.app)
-        client.post("/api/secrets/set", json={"key": "weather_city", "value": "Hamburg"})
+        client.post(
+            "/api/secrets/set", json={"key": "weather_city", "value": "Hamburg"}
+        )
         assert results_a == ["Hamburg"]
         assert results_b == ["Hamburg"]
 
@@ -149,10 +173,12 @@ class TestSettingsExport:
     """GET /api/settings/export – Export nicht-sensitiver Werte."""
 
     def test_export_structure(self):
-        store = FakeSecretStore({
-            "weather_city": "Berlin",
-            "anthropic_api_key": "sk-secret",
-        })
+        store = FakeSecretStore(
+            {
+                "weather_city": "Berlin",
+                "anthropic_api_key": "sk-secret",
+            }
+        )
         client, _, _ = _make_dashboard(store)
         r = client.get("/api/settings/export")
         assert r.status_code == 200
@@ -183,7 +209,10 @@ class TestMetadataTimestamps:
             for entry in cat["keys"]:
                 if entry["key"] == "weather_city":
                     assert "updated_at" in entry
-                    assert entry["updated_at"].endswith("+00:00") or "Z" in entry["updated_at"]
+                    assert (
+                        entry["updated_at"].endswith("+00:00")
+                        or "Z" in entry["updated_at"]
+                    )
                     return
         pytest.fail("weather_city nicht in Status gefunden")
 

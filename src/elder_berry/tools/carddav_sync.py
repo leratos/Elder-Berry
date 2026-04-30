@@ -13,6 +13,7 @@ Sync-Richtungen:
 Credentials aus SecretStore (identisch mit Files + CalDAV):
     nextcloud_url, nextcloud_user, nextcloud_app_password
 """
+
 from __future__ import annotations
 
 import json
@@ -164,12 +165,14 @@ class CardDAVSyncClient:
                 if contact.vcard_uid:
                     # Bestehende NC-vCard aktualisieren
                     ok = self._update_existing_vcard(
-                        contact, uid_href_map=uid_href_map,
+                        contact,
+                        uid_href_map=uid_href_map,
                     )
                 else:
                     # Neue vCard anlegen
                     ok = self._create_new_vcard(
-                        contact, contact_store=contact_store,
+                        contact,
+                        contact_store=contact_store,
                     )
                 if ok:
                     result.pushed += 1
@@ -300,7 +303,8 @@ class CardDAVSyncClient:
     # ── Pull ───────────────────────────────────────────────────────────
 
     def pull_contacts(
-        self, user_id: str,
+        self,
+        user_id: str,
         uid_href_map: dict[str, str] | None = None,
     ) -> list[dict]:
         """Nextcloud → lokale Contact-Daten (PROPFIND + GET + Parse).
@@ -323,7 +327,9 @@ class CardDAVSyncClient:
             try:
                 url = self._href_to_url(href)
                 resp = httpx.get(
-                    url, auth=self._auth, timeout=15.0,
+                    url,
+                    auth=self._auth,
+                    timeout=15.0,
                 )
                 if resp.status_code != 200:
                     continue
@@ -339,7 +345,9 @@ class CardDAVSyncClient:
         return contacts
 
     def reset_and_pull(
-        self, contact_store: ContactStore, user_id: str,
+        self,
+        contact_store: ContactStore,
+        user_id: str,
     ) -> SyncResult:
         """Löscht alle lokalen Kontakte und zieht frischen Stand von NC.
 
@@ -354,7 +362,8 @@ class CardDAVSyncClient:
         for data in remote_data:
             try:
                 contact_store.add_or_update_by_vcard_uid(
-                    user_id, vcard_uid=data.pop("vcard_uid", ""),
+                    user_id,
+                    vcard_uid=data.pop("vcard_uid", ""),
                     **data,
                 )
                 result.pulled += 1
@@ -393,7 +402,8 @@ class CardDAVSyncClient:
                 existing = None
                 if vcard_uid:
                     existing = contact_store.find_by_vcard_uid(
-                        user_id, vcard_uid,
+                        user_id,
+                        vcard_uid,
                     )
                 if not existing and name:
                     existing = contact_store.find_by_name(user_id, name)
@@ -414,7 +424,9 @@ class CardDAVSyncClient:
                     result.updated += 1
                 else:
                     contact_store.add_or_update_by_vcard_uid(
-                        user_id, vcard_uid=vcard_uid, **data,
+                        user_id,
+                        vcard_uid=vcard_uid,
+                        **data,
                     )
                     result.pulled += 1
             except Exception as exc:
@@ -425,17 +437,17 @@ class CardDAVSyncClient:
         # Phase 2: Push lokal gesetzte Felder (lokal → NC)
         local_contacts = contact_store.list_all(user_id, limit=1000)
         to_push = [
-            c for c in local_contacts
-            if c.vcard_uid and (
-                c.role or c.notes or c.formality != "förmlich"
-                or c.address
-            )
+            c
+            for c in local_contacts
+            if c.vcard_uid
+            and (c.role or c.notes or c.formality != "förmlich" or c.address)
             # Rein lokale Kontakte (ohne vcard_uid) → neu auf NC anlegen
             or (not c.vcard_uid and c.name)
         ]
         if to_push:
             push_result = self.push_contacts(
-                to_push, uid_href_map=uid_href_map,
+                to_push,
+                uid_href_map=uid_href_map,
                 contact_store=contact_store,
             )
             result.pushed = push_result.pushed
@@ -546,7 +558,10 @@ class CardDAVSyncClient:
             country = parts[2].strip()
 
         return vobject.vcard.Address(
-            street=street, city=city, code=code, country=country,
+            street=street,
+            city=city,
+            code=code,
+            country=country,
         )
 
     @staticmethod
@@ -681,7 +696,10 @@ class CardDAVSyncClient:
             bracket_match = re.search(r"\[Rolle:\s*(.+?)\]", note_text)
             if bracket_match:
                 role = bracket_match.group(1).strip()
-                notes = note_text[:bracket_match.start()] + note_text[bracket_match.end():]
+                notes = (
+                    note_text[: bracket_match.start()]
+                    + note_text[bracket_match.end() :]
+                )
                 notes = notes.strip().strip("\n").strip()
             else:
                 # Altes Format: "Rolle: X" am Zeilenanfang

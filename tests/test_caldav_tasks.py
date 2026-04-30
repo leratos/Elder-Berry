@@ -1,4 +1,5 @@
 """Tests für CalDAVTaskClient – CalDAV komplett gemockt."""
+
 from __future__ import annotations
 
 from datetime import date, datetime, timezone
@@ -23,11 +24,13 @@ except ImportError:
     _has_icalendar = False
 
 needs_icalendar = pytest.mark.skipif(
-    not _has_icalendar, reason="icalendar nicht installiert",
+    not _has_icalendar,
+    reason="icalendar nicht installiert",
 )
 
 
 # ── Helpers ──────────────────────────────────────────────────────────
+
 
 def _make_secret_store(**overrides):
     """Erstellt einen Mock-SecretStore mit Nextcloud-Credentials."""
@@ -100,12 +103,19 @@ def _client_with_task_list(mock_task_list=None):
 
 # ── TaskItem Dataclass ───────────────────────────────────────────────
 
+
 class TestTaskItem:
     def test_format_short_basic(self):
         item = TaskItem(
-            uid="u1", text="Milch kaufen", priority="niedrig",
-            category="", done=False, due=None, description="",
-            created_at=None, completed_at=None,
+            uid="u1",
+            text="Milch kaufen",
+            priority="niedrig",
+            category="",
+            done=False,
+            due=None,
+            description="",
+            created_at=None,
+            completed_at=None,
         )
         result = item.format_short()
         assert "⬚" in result
@@ -114,17 +124,29 @@ class TestTaskItem:
 
     def test_format_short_done(self):
         item = TaskItem(
-            uid="u2", text="Erledigt", priority="niedrig",
-            category="", done=True, due=None, description="",
-            created_at=None, completed_at=None,
+            uid="u2",
+            text="Erledigt",
+            priority="niedrig",
+            category="",
+            done=True,
+            due=None,
+            description="",
+            created_at=None,
+            completed_at=None,
         )
         assert "☑" in item.format_short()
 
     def test_format_short_high_priority(self):
         item = TaskItem(
-            uid="u3", text="Wichtig", priority="hoch",
-            category="", done=False, due=None, description="",
-            created_at=None, completed_at=None,
+            uid="u3",
+            text="Wichtig",
+            priority="hoch",
+            category="",
+            done=False,
+            due=None,
+            description="",
+            created_at=None,
+            completed_at=None,
         )
         result = item.format_short()
         assert "🔴" in result
@@ -132,26 +154,44 @@ class TestTaskItem:
 
     def test_format_short_with_category(self):
         item = TaskItem(
-            uid="u4", text="Task", priority="niedrig",
-            category="Arbeit", done=False, due=None, description="",
-            created_at=None, completed_at=None,
+            uid="u4",
+            text="Task",
+            priority="niedrig",
+            category="Arbeit",
+            done=False,
+            due=None,
+            description="",
+            created_at=None,
+            completed_at=None,
         )
         assert "Arbeit" in item.format_short()
 
     def test_format_short_with_due(self):
         item = TaskItem(
-            uid="u5", text="Task", priority="niedrig",
-            category="", done=False, due=date(2026, 5, 15), description="",
-            created_at=None, completed_at=None,
+            uid="u5",
+            text="Task",
+            priority="niedrig",
+            category="",
+            done=False,
+            due=date(2026, 5, 15),
+            description="",
+            created_at=None,
+            completed_at=None,
         )
         result = item.format_short()
         assert "fällig 15.05." in result
 
     def test_format_short_all_extras(self):
         item = TaskItem(
-            uid="u6", text="Alles", priority="hoch",
-            category="Privat", done=False, due=date(2026, 3, 1),
-            description="", created_at=None, completed_at=None,
+            uid="u6",
+            text="Alles",
+            priority="hoch",
+            category="Privat",
+            done=False,
+            due=date(2026, 3, 1),
+            description="",
+            created_at=None,
+            completed_at=None,
         )
         result = item.format_short()
         assert "🔴" in result
@@ -160,8 +200,14 @@ class TestTaskItem:
 
     def test_frozen(self):
         item = TaskItem(
-            uid="u7", text="Test", priority="niedrig", category="",
-            done=False, due=None, description="", created_at=None,
+            uid="u7",
+            text="Test",
+            priority="niedrig",
+            category="",
+            done=False,
+            due=None,
+            description="",
+            created_at=None,
             completed_at=None,
         )
         with pytest.raises(AttributeError):
@@ -169,6 +215,7 @@ class TestTaskItem:
 
 
 # ── Prioritäts-Mapping ──────────────────────────────────────────────
+
 
 class TestPriorityMapping:
     def test_ical_to_saleria_hoch(self):
@@ -195,6 +242,7 @@ class TestPriorityMapping:
 
 # ── Credentials & Verfügbarkeit ─────────────────────────────────────
 
+
 class TestCredentialsAndAvailability:
     def test_init_from_secret_store(self):
         store = _make_secret_store()
@@ -220,7 +268,9 @@ class TestCredentialsAndAvailability:
         client = CalDAVTaskClient(secret_store=store)
 
         with patch.object(
-            client, "_get_task_lists", side_effect=ConnectionError("timeout"),
+            client,
+            "_get_task_lists",
+            side_effect=ConnectionError("timeout"),
         ):
             assert client.is_available() is False
 
@@ -232,6 +282,7 @@ class TestCredentialsAndAvailability:
 
 
 # ── Task-Liste finden ────────────────────────────────────────────────
+
 
 class TestGetTaskLists:
     def test_finds_all_vtodo_collections(self):
@@ -252,13 +303,13 @@ class TestGetTaskLists:
 
         mock_principal = MagicMock()
         mock_principal.calendars.return_value = [
-            mock_cal_events, mock_cal_tasks, mock_cal_haushalt,
+            mock_cal_events,
+            mock_cal_tasks,
+            mock_cal_haushalt,
         ]
 
         mock_caldav = MagicMock()
-        mock_caldav.DAVClient.return_value.principal.return_value = (
-            mock_principal
-        )
+        mock_caldav.DAVClient.return_value.principal.return_value = mock_principal
         with patch.dict(sys.modules, {"caldav": mock_caldav}):
             result = client._get_task_lists()
 
@@ -302,9 +353,7 @@ class TestGetTaskLists:
         mock_principal.calendars.return_value = [mock_cal]
 
         mock_caldav = MagicMock()
-        mock_caldav.DAVClient.return_value.principal.return_value = (
-            mock_principal
-        )
+        mock_caldav.DAVClient.return_value.principal.return_value = mock_principal
         with patch.dict(sys.modules, {"caldav": mock_caldav}):
             with pytest.raises(RuntimeError, match="VTODO-Support"):
                 client._get_task_lists()
@@ -317,9 +366,7 @@ class TestGetTaskLists:
         mock_principal.calendars.return_value = []
 
         mock_caldav = MagicMock()
-        mock_caldav.DAVClient.return_value.principal.return_value = (
-            mock_principal
-        )
+        mock_caldav.DAVClient.return_value.principal.return_value = mock_principal
         with patch.dict(sys.modules, {"caldav": mock_caldav}):
             with pytest.raises(RuntimeError, match="Keine CalDAV-Collections"):
                 client._get_task_lists()
@@ -334,11 +381,13 @@ class TestGetTaskLists:
 
 # ── Parsing ──────────────────────────────────────────────────────────
 
+
 @needs_icalendar
 class TestParseTodo:
     def test_parse_basic(self):
         ical = _make_vtodo_ical(
-            summary="Milch kaufen", uid="abc-123",
+            summary="Milch kaufen",
+            uid="abc-123",
         )
         item = CalDAVTaskClient._parse_todo(_make_caldav_todo(ical))
         assert item.uid == "abc-123"
@@ -351,7 +400,9 @@ class TestParseTodo:
 
     def test_parse_completed(self):
         ical = _make_vtodo_ical(
-            summary="Erledigt", uid="done-1", status="COMPLETED",
+            summary="Erledigt",
+            uid="done-1",
+            status="COMPLETED",
             completed="20260401T120000Z",
         )
         item = CalDAVTaskClient._parse_todo(_make_caldav_todo(ical))
@@ -375,21 +426,26 @@ class TestParseTodo:
 
     def test_parse_category(self):
         ical = _make_vtodo_ical(
-            summary="Cat", uid="c1", categories="Arbeit,Privat",
+            summary="Cat",
+            uid="c1",
+            categories="Arbeit,Privat",
         )
         item = CalDAVTaskClient._parse_todo(_make_caldav_todo(ical))
         assert item.category == "Arbeit"
 
     def test_parse_due_date(self):
         ical = _make_vtodo_ical(
-            summary="Fällig", uid="d1", due="20260515",
+            summary="Fällig",
+            uid="d1",
+            due="20260515",
         )
         item = CalDAVTaskClient._parse_todo(_make_caldav_todo(ical))
         assert item.due == date(2026, 5, 15)
 
     def test_parse_description(self):
         ical = _make_vtodo_ical(
-            summary="Desc", uid="desc1",
+            summary="Desc",
+            uid="desc1",
             description="Detaillierte Beschreibung",
         )
         item = CalDAVTaskClient._parse_todo(_make_caldav_todo(ical))
@@ -397,7 +453,8 @@ class TestParseTodo:
 
     def test_parse_created_at(self):
         ical = _make_vtodo_ical(
-            summary="Created", uid="cr1",
+            summary="Created",
+            uid="cr1",
             created="20260401T100000Z",
         )
         item = CalDAVTaskClient._parse_todo(_make_caldav_todo(ical))
@@ -412,17 +469,26 @@ class TestParseTodo:
 
 # ── Lese-Operationen ────────────────────────────────────────────────
 
+
 @needs_icalendar
 class TestGetOpen:
     def test_get_open_basic(self):
         client, tl = _client_with_task_list()
         tl.todos.return_value = [
-            _make_caldav_todo(_make_vtodo_ical(
-                summary="A", uid="a1", priority=1,
-            )),
-            _make_caldav_todo(_make_vtodo_ical(
-                summary="B", uid="b1", priority=9,
-            )),
+            _make_caldav_todo(
+                _make_vtodo_ical(
+                    summary="A",
+                    uid="a1",
+                    priority=1,
+                )
+            ),
+            _make_caldav_todo(
+                _make_vtodo_ical(
+                    summary="B",
+                    uid="b1",
+                    priority=9,
+                )
+            ),
         ]
 
         items = client.get_open()
@@ -433,12 +499,19 @@ class TestGetOpen:
     def test_get_open_excludes_done(self):
         client, tl = _client_with_task_list()
         tl.todos.return_value = [
-            _make_caldav_todo(_make_vtodo_ical(
-                summary="Offen", uid="o1",
-            )),
-            _make_caldav_todo(_make_vtodo_ical(
-                summary="Erledigt", uid="d1", status="COMPLETED",
-            )),
+            _make_caldav_todo(
+                _make_vtodo_ical(
+                    summary="Offen",
+                    uid="o1",
+                )
+            ),
+            _make_caldav_todo(
+                _make_vtodo_ical(
+                    summary="Erledigt",
+                    uid="d1",
+                    status="COMPLETED",
+                )
+            ),
         ]
 
         items = client.get_open()
@@ -448,9 +521,12 @@ class TestGetOpen:
     def test_get_open_limit(self):
         client, tl = _client_with_task_list()
         tl.todos.return_value = [
-            _make_caldav_todo(_make_vtodo_ical(
-                summary=f"Task {i}", uid=f"t{i}",
-            ))
+            _make_caldav_todo(
+                _make_vtodo_ical(
+                    summary=f"Task {i}",
+                    uid=f"t{i}",
+                )
+            )
             for i in range(10)
         ]
 
@@ -460,15 +536,27 @@ class TestGetOpen:
     def test_get_open_sorted_by_priority(self):
         client, tl = _client_with_task_list()
         tl.todos.return_value = [
-            _make_caldav_todo(_make_vtodo_ical(
-                summary="Niedrig", uid="n1", priority=9,
-            )),
-            _make_caldav_todo(_make_vtodo_ical(
-                summary="Hoch", uid="h1", priority=1,
-            )),
-            _make_caldav_todo(_make_vtodo_ical(
-                summary="Mittel", uid="m1", priority=5,
-            )),
+            _make_caldav_todo(
+                _make_vtodo_ical(
+                    summary="Niedrig",
+                    uid="n1",
+                    priority=9,
+                )
+            ),
+            _make_caldav_todo(
+                _make_vtodo_ical(
+                    summary="Hoch",
+                    uid="h1",
+                    priority=1,
+                )
+            ),
+            _make_caldav_todo(
+                _make_vtodo_ical(
+                    summary="Mittel",
+                    uid="m1",
+                    priority=5,
+                )
+            ),
         ]
 
         items = client.get_open()
@@ -487,15 +575,26 @@ class TestGetByDue:
     def test_get_open_by_due(self):
         client, tl = _client_with_task_list()
         tl.todos.return_value = [
-            _make_caldav_todo(_make_vtodo_ical(
-                summary="Heute", uid="h1", due="20260416",
-            )),
-            _make_caldav_todo(_make_vtodo_ical(
-                summary="Morgen", uid="m1", due="20260417",
-            )),
-            _make_caldav_todo(_make_vtodo_ical(
-                summary="Ohne", uid="o1",
-            )),
+            _make_caldav_todo(
+                _make_vtodo_ical(
+                    summary="Heute",
+                    uid="h1",
+                    due="20260416",
+                )
+            ),
+            _make_caldav_todo(
+                _make_vtodo_ical(
+                    summary="Morgen",
+                    uid="m1",
+                    due="20260417",
+                )
+            ),
+            _make_caldav_todo(
+                _make_vtodo_ical(
+                    summary="Ohne",
+                    uid="o1",
+                )
+            ),
         ]
 
         items = client.get_open_by_due(date(2026, 4, 16))
@@ -505,12 +604,20 @@ class TestGetByDue:
     def test_get_overdue(self):
         client, tl = _client_with_task_list()
         tl.todos.return_value = [
-            _make_caldav_todo(_make_vtodo_ical(
-                summary="Überfällig", uid="o1", due="20260101",
-            )),
-            _make_caldav_todo(_make_vtodo_ical(
-                summary="Zukunft", uid="z1", due="20991231",
-            )),
+            _make_caldav_todo(
+                _make_vtodo_ical(
+                    summary="Überfällig",
+                    uid="o1",
+                    due="20260101",
+                )
+            ),
+            _make_caldav_todo(
+                _make_vtodo_ical(
+                    summary="Zukunft",
+                    uid="z1",
+                    due="20991231",
+                )
+            ),
         ]
 
         items = client.get_overdue()
@@ -520,19 +627,32 @@ class TestGetByDue:
     def test_get_open_by_due_range(self):
         client, tl = _client_with_task_list()
         tl.todos.return_value = [
-            _make_caldav_todo(_make_vtodo_ical(
-                summary="Mo", uid="mo", due="20260413",
-            )),
-            _make_caldav_todo(_make_vtodo_ical(
-                summary="Mi", uid="mi", due="20260415",
-            )),
-            _make_caldav_todo(_make_vtodo_ical(
-                summary="Sa", uid="sa", due="20260418",
-            )),
+            _make_caldav_todo(
+                _make_vtodo_ical(
+                    summary="Mo",
+                    uid="mo",
+                    due="20260413",
+                )
+            ),
+            _make_caldav_todo(
+                _make_vtodo_ical(
+                    summary="Mi",
+                    uid="mi",
+                    due="20260415",
+                )
+            ),
+            _make_caldav_todo(
+                _make_vtodo_ical(
+                    summary="Sa",
+                    uid="sa",
+                    due="20260418",
+                )
+            ),
         ]
 
         items = client.get_open_by_due_range(
-            date(2026, 4, 13), date(2026, 4, 17),
+            date(2026, 4, 13),
+            date(2026, 4, 17),
         )
         assert len(items) == 2
         assert items[0].text == "Mo"
@@ -544,13 +664,20 @@ class TestGetDone:
     def test_get_done(self):
         client, tl = _client_with_task_list()
         tl.todos.return_value = [
-            _make_caldav_todo(_make_vtodo_ical(
-                summary="Offen", uid="o1",
-            )),
-            _make_caldav_todo(_make_vtodo_ical(
-                summary="Erledigt", uid="d1", status="COMPLETED",
-                completed="20260401T120000Z",
-            )),
+            _make_caldav_todo(
+                _make_vtodo_ical(
+                    summary="Offen",
+                    uid="o1",
+                )
+            ),
+            _make_caldav_todo(
+                _make_vtodo_ical(
+                    summary="Erledigt",
+                    uid="d1",
+                    status="COMPLETED",
+                    completed="20260401T120000Z",
+                )
+            ),
         ]
 
         items = client.get_done()
@@ -563,9 +690,15 @@ class TestGetDone:
         client, tl = _client_with_task_list()
         tl.todos.side_effect = [
             TypeError("unexpected keyword"),
-            [_make_caldav_todo(_make_vtodo_ical(
-                summary="Done", uid="d1", status="COMPLETED",
-            ))],
+            [
+                _make_caldav_todo(
+                    _make_vtodo_ical(
+                        summary="Done",
+                        uid="d1",
+                        status="COMPLETED",
+                    )
+                )
+            ],
         ]
 
         items = client.get_done()
@@ -577,15 +710,27 @@ class TestCountAndBriefing:
     def test_count_open(self):
         client, tl = _client_with_task_list()
         tl.todos.return_value = [
-            _make_caldav_todo(_make_vtodo_ical(
-                summary="H1", uid="h1", priority=1,
-            )),
-            _make_caldav_todo(_make_vtodo_ical(
-                summary="H2", uid="h2", priority=2,
-            )),
-            _make_caldav_todo(_make_vtodo_ical(
-                summary="M1", uid="m1", priority=5,
-            )),
+            _make_caldav_todo(
+                _make_vtodo_ical(
+                    summary="H1",
+                    uid="h1",
+                    priority=1,
+                )
+            ),
+            _make_caldav_todo(
+                _make_vtodo_ical(
+                    summary="H2",
+                    uid="h2",
+                    priority=2,
+                )
+            ),
+            _make_caldav_todo(
+                _make_vtodo_ical(
+                    summary="M1",
+                    uid="m1",
+                    priority=5,
+                )
+            ),
         ]
 
         counts = client.count_open()
@@ -604,12 +749,18 @@ class TestCountAndBriefing:
     def test_format_for_briefing_few(self):
         client, tl = _client_with_task_list()
         tl.todos.return_value = [
-            _make_caldav_todo(_make_vtodo_ical(
-                summary="Task A", uid="a1",
-            )),
-            _make_caldav_todo(_make_vtodo_ical(
-                summary="Task B", uid="b1",
-            )),
+            _make_caldav_todo(
+                _make_vtodo_ical(
+                    summary="Task A",
+                    uid="a1",
+                )
+            ),
+            _make_caldav_todo(
+                _make_vtodo_ical(
+                    summary="Task B",
+                    uid="b1",
+                )
+            ),
         ]
 
         result = client.format_for_briefing()
@@ -620,9 +771,12 @@ class TestCountAndBriefing:
     def test_format_for_briefing_many(self):
         client, tl = _client_with_task_list()
         tl.todos.return_value = [
-            _make_caldav_todo(_make_vtodo_ical(
-                summary=f"Task {i}", uid=f"t{i}",
-            ))
+            _make_caldav_todo(
+                _make_vtodo_ical(
+                    summary=f"Task {i}",
+                    uid=f"t{i}",
+                )
+            )
             for i in range(10)
         ]
 
@@ -632,9 +786,13 @@ class TestCountAndBriefing:
     def test_format_for_briefing_with_overdue(self):
         client, tl = _client_with_task_list()
         tl.todos.return_value = [
-            _make_caldav_todo(_make_vtodo_ical(
-                summary="Überfällig", uid="o1", due="20260101",
-            )),
+            _make_caldav_todo(
+                _make_vtodo_ical(
+                    summary="Überfällig",
+                    uid="o1",
+                    due="20260101",
+                )
+            ),
         ]
 
         result = client.format_for_briefing()
@@ -642,6 +800,7 @@ class TestCountAndBriefing:
 
 
 # ── Schreib-Operationen ─────────────────────────────────────────────
+
 
 class TestAdd:
     def test_add_basic(self):
@@ -693,17 +852,27 @@ class TestAdd:
 class TestComplete:
     def test_complete_success(self):
         client, tl = _client_with_task_list()
-        mock_todo = _make_caldav_todo(_make_vtodo_ical(
-            summary="Task", uid="c1", status="COMPLETED",
-            completed="20260416T120000Z",
-        ))
+        mock_todo = _make_caldav_todo(
+            _make_vtodo_ical(
+                summary="Task",
+                uid="c1",
+                status="COMPLETED",
+                completed="20260416T120000Z",
+            )
+        )
         tl.todo_by_uid.return_value = mock_todo
 
         with patch.object(
-            CalDAVTaskClient, "_parse_todo",
+            CalDAVTaskClient,
+            "_parse_todo",
             return_value=TaskItem(
-                uid="c1", text="Task", priority="niedrig", category="",
-                done=True, due=None, description="",
+                uid="c1",
+                text="Task",
+                priority="niedrig",
+                category="",
+                done=True,
+                due=None,
+                description="",
                 created_at=None,
                 completed_at=datetime(2026, 4, 16, 12, tzinfo=timezone.utc),
             ),
@@ -727,7 +896,9 @@ class TestReopen:
     def test_reopen_success(self):
         client, tl = _client_with_task_list()
         ical = _make_vtodo_ical(
-            summary="Reopened", uid="r1", status="COMPLETED",
+            summary="Reopened",
+            uid="r1",
+            status="COMPLETED",
             completed="20260401T120000Z",
         )
         mock_todo = _make_caldav_todo(ical)
@@ -801,14 +972,22 @@ class TestDeleteAllDone:
     def test_delete_all_done(self):
         client, tl = _client_with_task_list()
         tl.todos.return_value = [
-            _make_caldav_todo(_make_vtodo_ical(
-                summary="Done1", uid="d1", status="COMPLETED",
-                completed="20260401T120000Z",
-            )),
-            _make_caldav_todo(_make_vtodo_ical(
-                summary="Done2", uid="d2", status="COMPLETED",
-                completed="20260402T120000Z",
-            )),
+            _make_caldav_todo(
+                _make_vtodo_ical(
+                    summary="Done1",
+                    uid="d1",
+                    status="COMPLETED",
+                    completed="20260401T120000Z",
+                )
+            ),
+            _make_caldav_todo(
+                _make_vtodo_ical(
+                    summary="Done2",
+                    uid="d2",
+                    status="COMPLETED",
+                    completed="20260402T120000Z",
+                )
+            ),
         ]
 
         mock_todo = MagicMock()
@@ -819,6 +998,7 @@ class TestDeleteAllDone:
 
 
 # ── Connection Recovery ──────────────────────────────────────────────
+
 
 class TestConnectionRecovery:
     def test_retry_after_connection_error(self):

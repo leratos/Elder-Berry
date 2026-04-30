@@ -9,6 +9,7 @@ Verwendung:
     events = client.get_events(days=7)
     client.create_event("Zahnarzt", datetime(2026, 3, 20, 14, 0), duration_minutes=60)
 """
+
 from __future__ import annotations
 
 import json
@@ -130,7 +131,8 @@ class GoogleCalendarClient:
             return operation()
         except self._RETRIABLE_ERRORS as e:
             logger.warning(
-                "Google API Connection-Fehler, retry mit neuem Service: %s", e,
+                "Google API Connection-Fehler, retry mit neuem Service: %s",
+                e,
             )
             self._service = None
             return operation()
@@ -156,27 +158,35 @@ class GoogleCalendarClient:
         Returns:
             Liste von CalendarEvent, chronologisch sortiert.
         """
+
         def _op():
             service = self._get_service()
             now = datetime.now(timezone.utc)
             time_min = now.isoformat()
             time_max = (now + timedelta(days=days)).isoformat()
 
-            result = service.events().list(
-                calendarId=self.CALENDAR_ID,
-                timeMin=time_min,
-                timeMax=time_max,
-                maxResults=max_results,
-                singleEvents=True,
-                orderBy="startTime",
-            ).execute()
+            result = (
+                service.events()
+                .list(
+                    calendarId=self.CALENDAR_ID,
+                    timeMin=time_min,
+                    timeMax=time_max,
+                    maxResults=max_results,
+                    singleEvents=True,
+                    orderBy="startTime",
+                )
+                .execute()
+            )
 
             return [self._parse_event(item) for item in result.get("items", [])]
 
         return self._call_with_retry(_op)
 
     def search_events(
-        self, query: str, days: int = 30, max_results: int = 10,
+        self,
+        query: str,
+        days: int = 30,
+        max_results: int = 10,
     ) -> list[CalendarEvent]:
         """Sucht Termine per Volltextsuche.
 
@@ -188,21 +198,26 @@ class GoogleCalendarClient:
         Returns:
             Liste passender CalendarEvents.
         """
+
         def _op():
             service = self._get_service()
             now = datetime.now(timezone.utc)
             time_min = now.isoformat()
             time_max = (now + timedelta(days=days)).isoformat()
 
-            result = service.events().list(
-                calendarId=self.CALENDAR_ID,
-                timeMin=time_min,
-                timeMax=time_max,
-                maxResults=max_results,
-                singleEvents=True,
-                orderBy="startTime",
-                q=query,
-            ).execute()
+            result = (
+                service.events()
+                .list(
+                    calendarId=self.CALENDAR_ID,
+                    timeMin=time_min,
+                    timeMax=time_max,
+                    maxResults=max_results,
+                    singleEvents=True,
+                    orderBy="startTime",
+                    q=query,
+                )
+                .execute()
+            )
 
             return [self._parse_event(item) for item in result.get("items", [])]
 
@@ -228,38 +243,51 @@ class GoogleCalendarClient:
         Returns:
             Liste von CalendarEvents im Zeitraum, nach Startzeit sortiert.
         """
+
         def _op():
             service = self._get_service()
-            result = service.events().list(
-                calendarId=self.CALENDAR_ID,
-                timeMin=start.isoformat(),
-                timeMax=end.isoformat(),
-                maxResults=max_results,
-                singleEvents=True,
-                orderBy="startTime",
-            ).execute()
+            result = (
+                service.events()
+                .list(
+                    calendarId=self.CALENDAR_ID,
+                    timeMin=start.isoformat(),
+                    timeMax=end.isoformat(),
+                    maxResults=max_results,
+                    singleEvents=True,
+                    orderBy="startTime",
+                )
+                .execute()
+            )
             return [self._parse_event(item) for item in result.get("items", [])]
 
         return self._call_with_retry(_op)
 
     def get_tomorrow(self) -> list[CalendarEvent]:
         """Termine für morgen."""
+
         def _op():
             service = self._get_service()
             now = datetime.now(timezone.utc)
             tomorrow_start = (now + timedelta(days=1)).replace(
-                hour=0, minute=0, second=0, microsecond=0,
+                hour=0,
+                minute=0,
+                second=0,
+                microsecond=0,
             )
             tomorrow_end = tomorrow_start + timedelta(days=1)
 
-            result = service.events().list(
-                calendarId=self.CALENDAR_ID,
-                timeMin=tomorrow_start.isoformat(),
-                timeMax=tomorrow_end.isoformat(),
-                maxResults=20,
-                singleEvents=True,
-                orderBy="startTime",
-            ).execute()
+            result = (
+                service.events()
+                .list(
+                    calendarId=self.CALENDAR_ID,
+                    timeMin=tomorrow_start.isoformat(),
+                    timeMax=tomorrow_end.isoformat(),
+                    maxResults=20,
+                    singleEvents=True,
+                    orderBy="startTime",
+                )
+                .execute()
+            )
 
             return [self._parse_event(item) for item in result.get("items", [])]
 
@@ -322,9 +350,14 @@ class GoogleCalendarClient:
 
         def _op():
             service = self._get_service()
-            created = service.events().insert(
-                calendarId=self.CALENDAR_ID, body=body,
-            ).execute()
+            created = (
+                service.events()
+                .insert(
+                    calendarId=self.CALENDAR_ID,
+                    body=body,
+                )
+                .execute()
+            )
             logger.info("Termin erstellt: %s (%s)", summary, created.get("id"))
             return self._parse_event(created)
 
@@ -342,11 +375,13 @@ class GoogleCalendarClient:
         Raises:
             RuntimeError: Wenn der Termin nicht gefunden wurde oder API-Fehler.
         """
+
         def _op():
             service = self._get_service()
             try:
                 service.events().delete(
-                    calendarId=self.CALENDAR_ID, eventId=event_id,
+                    calendarId=self.CALENDAR_ID,
+                    eventId=event_id,
                 ).execute()
                 logger.info("Termin gelöscht: %s", event_id)
                 return True

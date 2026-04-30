@@ -1,4 +1,5 @@
 """Tests für OpenRouterClient – is_available, generate, Fehlerbehandlung."""
+
 from unittest.mock import MagicMock, patch
 
 import httpx
@@ -15,6 +16,7 @@ from elder_berry.llm.openrouter_client import (
 # ---------------------------------------------------------------------------
 # Konstruktor / Defaults
 # ---------------------------------------------------------------------------
+
 
 class TestOpenRouterClientInit:
     def test_default_model(self):
@@ -44,6 +46,7 @@ class TestOpenRouterClientInit:
 # is_available()
 # ---------------------------------------------------------------------------
 
+
 class TestOpenRouterIsAvailable:
     def test_available_with_key(self):
         client = OpenRouterClient()
@@ -64,6 +67,7 @@ class TestOpenRouterIsAvailable:
 # ---------------------------------------------------------------------------
 # generate()
 # ---------------------------------------------------------------------------
+
 
 class TestOpenRouterGenerate:
     def _mock_post(self, content: str = "Antwort") -> MagicMock:
@@ -106,7 +110,10 @@ class TestOpenRouterGenerate:
             client.generate("Frage", system="Du bist Saleria.")
         payload = mock_post.call_args.kwargs["json"]
         assert len(payload["messages"]) == 2
-        assert payload["messages"][0] == {"role": "system", "content": "Du bist Saleria."}
+        assert payload["messages"][0] == {
+            "role": "system",
+            "content": "Du bist Saleria.",
+        }
         assert payload["messages"][1] == {"role": "user", "content": "Frage"}
 
     def test_without_system_prompt(self):
@@ -143,7 +150,9 @@ class TestOpenRouterGenerate:
         resp.status_code = 500
         resp.text = "Internal Server Error"
         resp.raise_for_status.side_effect = httpx.HTTPStatusError(
-            "Server Error", request=MagicMock(), response=resp,
+            "Server Error",
+            request=MagicMock(),
+            response=resp,
         )
         with patch("httpx.post", return_value=resp):
             with pytest.raises(RuntimeError, match="OpenRouter HTTP-Fehler"):

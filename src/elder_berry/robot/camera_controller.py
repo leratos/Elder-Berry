@@ -1,4 +1,5 @@
 """CameraController – Kamera-Steuerung für RPi Camera Module 3 (IMX708)."""
+
 from __future__ import annotations
 
 import io
@@ -71,7 +72,8 @@ class RPi5Camera(CameraController):
             self._initialized = True
             logger.info(
                 "RPi5Camera initialisiert: %dx%d",
-                self._resolution[0], self._resolution[1],
+                self._resolution[0],
+                self._resolution[1],
             )
         except ImportError:
             raise RuntimeError(
@@ -85,6 +87,7 @@ class RPi5Camera(CameraController):
         """Prüft ob picamera2 importierbar und Kamera erkannt."""
         try:
             from picamera2 import Picamera2
+
             cameras = Picamera2.global_camera_info()
             return len(cameras) > 0
         except Exception:

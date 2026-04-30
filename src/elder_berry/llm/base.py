@@ -1,4 +1,5 @@
 """Abstrakte Basisklasse für alle LLM-Clients."""
+
 from abc import ABC, abstractmethod
 
 

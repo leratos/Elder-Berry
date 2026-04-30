@@ -1,4 +1,5 @@
 """Tests: NoteCommandHandler – Command-Parsing und Ausführung (Phase 16)."""
+
 from __future__ import annotations
 
 import pytest
@@ -21,6 +22,7 @@ USER_A = "@alice:matrix.org"
 # Fixtures
 # ---------------------------------------------------------------------------
 
+
 @pytest.fixture
 def store(tmp_path):
     db = tmp_path / "test_notes.db"
@@ -37,6 +39,7 @@ def handler(store):
 # ---------------------------------------------------------------------------
 # Pattern-Tests
 # ---------------------------------------------------------------------------
+
 
 class TestPatterns:
     def test_set_fact_colon(self):
@@ -80,6 +83,7 @@ class TestPatterns:
 # simple_commands + keywords
 # ---------------------------------------------------------------------------
 
+
 class TestRegistration:
     def test_notizen_in_simple_commands(self, handler):
         assert "notizen" in handler.simple_commands
@@ -103,6 +107,7 @@ class TestRegistration:
 # execute() – set_fact
 # ---------------------------------------------------------------------------
 
+
 class TestExecuteSetFact:
     def test_new_fact(self, handler):
         result = handler.execute("note_set_fact", "merk dir: WLAN Büro ist xyz123")
@@ -124,6 +129,7 @@ class TestExecuteSetFact:
 # execute() – add_note
 # ---------------------------------------------------------------------------
 
+
 class TestExecuteAddNote:
     def test_add_note(self, handler):
         result = handler.execute("note_add", "notiz: Vermieter Müller")
@@ -139,6 +145,7 @@ class TestExecuteAddNote:
 # ---------------------------------------------------------------------------
 # execute() – get_fact
 # ---------------------------------------------------------------------------
+
 
 class TestExecuteGetFact:
     def test_hit(self, handler, store):
@@ -164,6 +171,7 @@ class TestExecuteGetFact:
 # execute() – search
 # ---------------------------------------------------------------------------
 
+
 class TestExecuteSearch:
     def test_search_found(self, handler, store):
         store.add_note(USER_A, "Vermieter heißt Müller")
@@ -187,6 +195,7 @@ class TestExecuteSearch:
 # execute() – list
 # ---------------------------------------------------------------------------
 
+
 class TestExecuteList:
     def test_empty(self, handler):
         result = handler.execute("notizen", "notizen")
@@ -204,6 +213,7 @@ class TestExecuteList:
 # ---------------------------------------------------------------------------
 # execute() – delete
 # ---------------------------------------------------------------------------
+
 
 class TestExecuteDelete:
     def test_delete_existing(self, handler, store):

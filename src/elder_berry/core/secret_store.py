@@ -16,6 +16,7 @@ Verwendung:
     pw = store.get("matrix_password")
     store.delete("matrix_password")
 """
+
 from __future__ import annotations
 
 import hashlib
@@ -45,6 +46,7 @@ KEYRING_USERNAME_PREFIX = "master-key"
 try:
     import keyring
     from keyring.backends.fail import Keyring as _FailKeyring
+
     _HAS_KEYRING = True
 except ImportError:  # pragma: no cover -- auf supported Platforms ist keyring dabei
     keyring = None
@@ -137,7 +139,8 @@ class SecretStore:
         except Exception as exc:  # noqa: BLE001 -- defensiv, jeder Fehler = unavailable
             logger.warning(
                 "Keyring-Backend-Discovery fehlgeschlagen (%s): %s",
-                type(exc).__name__, exc,
+                type(exc).__name__,
+                exc,
             )
             return False
         if _FailKeyring is not None and isinstance(backend, _FailKeyring):
@@ -262,7 +265,8 @@ class SecretStore:
                             "OS-Benutzer gebunden -- bei User-/Maschinenwechsel "
                             "wird der Store unbenutzbar. Backup von %s + Export "
                             "der Secret-Werte empfohlen.",
-                            self._key_path, self._secrets_path,
+                            self._key_path,
+                            self._secrets_path,
                         )
                     else:
                         key = Fernet.generate_key()
@@ -270,7 +274,8 @@ class SecretStore:
                         logger.info(
                             "Neuer Master-Key im OS-Keyring erzeugt "
                             "(service=%s, user=%s).",
-                            KEYRING_SERVICE, self._keyring_username(),
+                            KEYRING_SERVICE,
+                            self._keyring_username(),
                         )
             except SecretStoreError:
                 # Verify-Mismatch bei Migration oder expliziter Keyring-Fehler
@@ -286,7 +291,8 @@ class SecretStore:
                 logger.warning(
                     "Keyring-Operation fehlgeschlagen (%s: %s) -- "
                     "Fallback auf Plaintext-Datei.",
-                    type(exc).__name__, exc,
+                    type(exc).__name__,
+                    exc,
                 )
                 key = None  # Fallthrough zum File-Pfad
 

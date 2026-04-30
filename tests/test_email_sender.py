@@ -1,4 +1,5 @@
 """Tests für EmailSender (SMTP-Client)."""
+
 from __future__ import annotations
 
 from unittest.mock import MagicMock, patch
@@ -11,6 +12,7 @@ from elder_berry.tools.email_sender import EmailSender
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
+
 
 @pytest.fixture
 def sender() -> EmailSender:
@@ -42,6 +44,7 @@ def mock_secret_store() -> MagicMock:
 # from_secret_store
 # ---------------------------------------------------------------------------
 
+
 class TestFromSecretStore:
     def test_defaults(self, mock_secret_store):
         s = EmailSender.from_secret_store(mock_secret_store)
@@ -68,6 +71,7 @@ class TestFromSecretStore:
 # _build_reply_message
 # ---------------------------------------------------------------------------
 
+
 class TestBuildReplyMessage:
     def test_headers(self, sender):
         msg = sender._build_reply_message(
@@ -87,23 +91,35 @@ class TestBuildReplyMessage:
 
     def test_cc_header(self, sender):
         msg = sender._build_reply_message(
-            to="a@b.com", subject="Re: X", body="Hi",
-            in_reply_to="", references="", cc="cc@b.com",
+            to="a@b.com",
+            subject="Re: X",
+            body="Hi",
+            in_reply_to="",
+            references="",
+            cc="cc@b.com",
         )
         assert msg["Cc"] == "cc@b.com"
 
     def test_references_fallback(self, sender):
         """References = In-Reply-To wenn keine Kette vorhanden."""
         msg = sender._build_reply_message(
-            to="a@b.com", subject="Re: X", body="Hi",
-            in_reply_to="<id@mx>", references="", cc="",
+            to="a@b.com",
+            subject="Re: X",
+            body="Hi",
+            in_reply_to="<id@mx>",
+            references="",
+            cc="",
         )
         assert msg["References"] == "<id@mx>"
 
     def test_utf8_body(self, sender):
         msg = sender._build_reply_message(
-            to="a@b.com", subject="Re: Ü", body="Schöne Grüße",
-            in_reply_to="", references="", cc="",
+            to="a@b.com",
+            subject="Re: Ü",
+            body="Schöne Grüße",
+            in_reply_to="",
+            references="",
+            cc="",
         )
         content = msg.get_content()
         assert "Schöne Grüße" in content
@@ -113,6 +129,7 @@ class TestBuildReplyMessage:
 # send_reply (mocked SMTP)
 # ---------------------------------------------------------------------------
 
+
 class TestSendReply:
     @patch("elder_berry.tools.email_sender.EmailSender._connect")
     def test_success(self, mock_connect, sender):
@@ -120,7 +137,9 @@ class TestSendReply:
         mock_connect.return_value = mock_conn
 
         result = sender.send_reply(
-            to="r@b.com", subject="Re: Test", body="OK",
+            to="r@b.com",
+            subject="Re: Test",
+            body="OK",
         )
         assert result.success is True
         assert result.to == "r@b.com"
@@ -134,7 +153,9 @@ class TestSendReply:
         mock_connect.side_effect = OSError("Connection refused")
 
         result = sender.send_reply(
-            to="r@b.com", subject="Re: Test", body="OK",
+            to="r@b.com",
+            subject="Re: Test",
+            body="OK",
         )
         assert result.success is False
         assert "Verbindungsfehler" in result.error
@@ -142,11 +163,15 @@ class TestSendReply:
     @patch("elder_berry.tools.email_sender.EmailSender._connect")
     def test_auth_error(self, mock_connect, sender):
         import smtplib
+
         mock_connect.side_effect = smtplib.SMTPAuthenticationError(
-            535, b"Auth failed",
+            535,
+            b"Auth failed",
         )
         result = sender.send_reply(
-            to="r@b.com", subject="Re: Test", body="OK",
+            to="r@b.com",
+            subject="Re: Test",
+            body="OK",
         )
         assert result.success is False
         assert "Authentifizierung" in result.error
@@ -155,6 +180,7 @@ class TestSendReply:
 # ---------------------------------------------------------------------------
 # is_available
 # ---------------------------------------------------------------------------
+
 
 class TestIsAvailable:
     @patch("elder_berry.tools.email_sender.EmailSender._connect")

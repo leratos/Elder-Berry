@@ -1,4 +1,5 @@
 """Tests für TTSEngine ABC und WindowsTTSEngine – alle Aktionen gemockt."""
+
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -10,6 +11,7 @@ from elder_berry.tts.base import TTSEngine, VoiceInfo
 # ABC-Vertrag: TTSEngine kann nicht direkt instanziiert werden
 # ---------------------------------------------------------------------------
 
+
 class TestTTSEngineABC:
     def test_cannot_instantiate_abc(self):
         with pytest.raises(TypeError):
@@ -19,6 +21,7 @@ class TestTTSEngineABC:
 # ---------------------------------------------------------------------------
 # VoiceInfo DTO
 # ---------------------------------------------------------------------------
+
 
 class TestVoiceInfo:
     def test_voice_info_fields(self):
@@ -32,11 +35,13 @@ class TestVoiceInfo:
 # Windows-Plattformprüfung
 # ---------------------------------------------------------------------------
 
+
 class TestPlatformCheck:
     @patch("elder_berry.tts.windows_engine.platform")
     def test_raises_on_non_windows(self, mock_platform):
         mock_platform.system.return_value = "Linux"
         from elder_berry.tts.windows_engine import WindowsTTSEngine
+
         with pytest.raises(RuntimeError, match="Windows"):
             WindowsTTSEngine()
 
@@ -46,6 +51,7 @@ class TestPlatformCheck:
         mock_platform.system.return_value = "Windows"
         mock_pyttsx3.init.return_value = MagicMock()
         from elder_berry.tts.windows_engine import WindowsTTSEngine
+
         engine = WindowsTTSEngine()
         assert isinstance(engine, TTSEngine)
 
@@ -53,6 +59,7 @@ class TestPlatformCheck:
 # ---------------------------------------------------------------------------
 # Hilfsfunktion: Engine mit gemockter Plattform + Engine erzeugen
 # ---------------------------------------------------------------------------
+
 
 @pytest.fixture
 def engine():
@@ -65,6 +72,7 @@ def engine():
         mock_engine = MagicMock()
         mock_pyttsx3.init.return_value = mock_engine
         from elder_berry.tts.windows_engine import WindowsTTSEngine
+
         tts = WindowsTTSEngine()
     return tts
 
@@ -72,6 +80,7 @@ def engine():
 # ---------------------------------------------------------------------------
 # speak
 # ---------------------------------------------------------------------------
+
 
 class TestSpeak:
     def test_speak_calls_say_and_run(self, engine):
@@ -89,6 +98,7 @@ class TestSpeak:
 # Rate (Sprechgeschwindigkeit)
 # ---------------------------------------------------------------------------
 
+
 class TestRate:
     def test_get_rate(self, engine):
         engine._engine.getProperty.return_value = 200
@@ -103,6 +113,7 @@ class TestRate:
 # ---------------------------------------------------------------------------
 # Volume (TTS-Lautstärke)
 # ---------------------------------------------------------------------------
+
 
 class TestVolume:
     def test_get_volume(self, engine):
@@ -124,6 +135,7 @@ class TestVolume:
 # ---------------------------------------------------------------------------
 # Voices (Stimmen)
 # ---------------------------------------------------------------------------
+
 
 def _make_mock_voice(voice_id: str, name: str, languages=None) -> MagicMock:
     """Erzeugt ein Mock-Voice-Objekt kompatibel mit pyttsx3."""

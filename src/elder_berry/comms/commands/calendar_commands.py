@@ -7,6 +7,7 @@ Commands:
 - termin suche <Begriff> → Termine durchsuchen
 - termin löschen <ID|Index|alle|Titel> → Termin(e) löschen
 """
+
 from __future__ import annotations
 
 import calendar
@@ -15,7 +16,11 @@ import re
 from datetime import date, datetime
 from typing import TYPE_CHECKING
 
-from elder_berry.comms.commands.base import CommandHandler, CommandResult, user_friendly_error
+from elder_berry.comms.commands.base import (
+    CommandHandler,
+    CommandResult,
+    user_friendly_error,
+)
 
 if TYPE_CHECKING:
     from elder_berry.tools.google_calendar import GoogleCalendarClient
@@ -44,15 +49,15 @@ TERMINE_PATTERN = re.compile(
 # Auch mit "erstelle": "erstelle termin Zahnarzt morgen 14:00"
 TERMIN_CREATE_PATTERN = re.compile(
     r"^(?:bitte\s+)?"
-    r"(?:erstelle?\s+(?:(?:einen?\s+)?termin\s*[:\s]?\s*)"    # "erstelle termin ..."
-    r"|(?:neuer?)\s+termin[:\s]\s*"                            # "neuer termin: ..."
-    r"|termin[:\s]\s*)"                                        # oder "termin: ..."
-    r"(.+?)\s+"                                                # Titel (non-greedy)
-    r"(morgen|übermorgen|uebermorgen"                           # Wort-Datum
-    r"|\d{1,2}\.\d{1,2}(?:\.\d{2,4})?"                        # DD.MM oder DD.MM.YY(YY)
-    r"|\d{4}-\d{2}-\d{2})"                                    # YYYY-MM-DD
-    r"(?:\s+(?:um\s+)?(\d{1,2}:\d{2})(?:\s*uhr)?)?"           # Uhrzeit (optional)
-    r"(?:\s+(jährlich|monatlich|wöchentlich|täglich"            # Wiederholung (optional)
+    r"(?:erstelle?\s+(?:(?:einen?\s+)?termin\s*[:\s]?\s*)"  # "erstelle termin ..."
+    r"|(?:neuer?)\s+termin[:\s]\s*"  # "neuer termin: ..."
+    r"|termin[:\s]\s*)"  # oder "termin: ..."
+    r"(.+?)\s+"  # Titel (non-greedy)
+    r"(morgen|übermorgen|uebermorgen"  # Wort-Datum
+    r"|\d{1,2}\.\d{1,2}(?:\.\d{2,4})?"  # DD.MM oder DD.MM.YY(YY)
+    r"|\d{4}-\d{2}-\d{2})"  # YYYY-MM-DD
+    r"(?:\s+(?:um\s+)?(\d{1,2}:\d{2})(?:\s*uhr)?)?"  # Uhrzeit (optional)
+    r"(?:\s+(jährlich|monatlich|wöchentlich|täglich"  # Wiederholung (optional)
     r"|yearly|monthly|weekly|daily)"
     r"(?:\s+wiederhol(?:en|end))?)?$",
     re.IGNORECASE,
@@ -81,6 +86,7 @@ TERMIN_SEARCH_PATTERN = re.compile(
 # ------------------------------------------------------------------
 # Helper
 # ------------------------------------------------------------------
+
 
 def _parse_natural_date(date_str: str) -> datetime | None:
     """Parst natürliche Datumsangaben in ein datetime.date.
@@ -149,6 +155,7 @@ def _parse_recurrence(text: str) -> list[str] | None:
 # Handler
 # ------------------------------------------------------------------
 
+
 class CalendarCommandHandler(CommandHandler):
     """Handler für Kalender-Commands (Termine)."""
 
@@ -193,30 +200,52 @@ class CalendarCommandHandler(CommandHandler):
     def keywords(self) -> dict[str, list[str]]:
         return {
             "termine_monat": [
-                "diesen monat", "dieser monat", "restlicher monat",
-                "monat termine", "monatsübersicht", "monatsplan",
-                "was steht diesen monat an", "termine im monat",
+                "diesen monat",
+                "dieser monat",
+                "restlicher monat",
+                "monat termine",
+                "monatsübersicht",
+                "monatsplan",
+                "was steht diesen monat an",
+                "termine im monat",
             ],
             "termine_woche": [
-                "nächste woche", "diese woche", "woche termine",
-                "wochenplan", "wochenübersicht",
+                "nächste woche",
+                "diese woche",
+                "woche termine",
+                "wochenplan",
+                "wochenübersicht",
             ],
             "termine_morgen": [
-                "morgen termine", "habe ich morgen",
-                "bin ich morgen frei", "was hab ich morgen vor",
+                "morgen termine",
+                "habe ich morgen",
+                "bin ich morgen frei",
+                "was hab ich morgen vor",
             ],
             "termine": [
-                "was steht an", "welche termine",
-                "nächster termin", "termine heute", "habe ich termine",
-                "zeitplan", "terminplan", "agenda", "was hab ich vor",
-                "hab ich heute was", "bin ich heute frei",
+                "was steht an",
+                "welche termine",
+                "nächster termin",
+                "termine heute",
+                "habe ich termine",
+                "zeitplan",
+                "terminplan",
+                "agenda",
+                "was hab ich vor",
+                "hab ich heute was",
+                "bin ich heute frei",
             ],
             "termin_create": [
-                "neuer termin", "termin erstellen", "termin anlegen",
-                "termin hinzufügen", "kalender eintrag",
+                "neuer termin",
+                "termin erstellen",
+                "termin anlegen",
+                "termin hinzufügen",
+                "kalender eintrag",
             ],
             "termin_search": [
-                "termin suche", "termin finden", "suche termin",
+                "termin suche",
+                "termin finden",
+                "suche termin",
                 "suche den termin",
             ],
         }
@@ -239,7 +268,8 @@ class CalendarCommandHandler(CommandHandler):
             return self._cmd_termin_delete(raw_text)
 
         return CommandResult(
-            command=command, success=False,
+            command=command,
+            success=False,
             text=f"Unbekannter Calendar-Command: {command}",
         )
 
@@ -273,8 +303,12 @@ class CalendarCommandHandler(CommandHandler):
                 elif param in ("woche", "nächste woche", "diese woche"):
                     events = self._calendar.get_events(days=7)
                     label = "Termine (nächste 7 Tage)"
-                elif param in ("monat", "dieser monat", "diesen monat",
-                               "restlicher monat"):
+                elif param in (
+                    "monat",
+                    "dieser monat",
+                    "diesen monat",
+                    "restlicher monat",
+                ):
                     days = self._days_remaining_in_month()
                     events = self._calendar.get_events(days=days)
                     label = f"Termine (restlicher Monat, {days} Tage)"
@@ -321,8 +355,8 @@ class CalendarCommandHandler(CommandHandler):
                 command="termin_create",
                 success=False,
                 text="Format: termin: Titel morgen 14:00\n"
-                     "Oder Ganztags: termin: Titel 30.03\n"
-                     "Datum-Formate: morgen, übermorgen, 30.03, 30.03.2026, 2026-03-30",
+                "Oder Ganztags: termin: Titel 30.03\n"
+                "Datum-Formate: morgen, übermorgen, 30.03, 30.03.2026, 2026-03-30",
             )
 
         title = match.group(1).strip()
@@ -337,7 +371,7 @@ class CalendarCommandHandler(CommandHandler):
                 command="termin_create",
                 success=False,
                 text=f"Ungültiges Datum: '{date_str}'.\n"
-                     "Erlaubt: morgen, übermorgen, 30.03, 30.03.2026, 2026-03-30",
+                "Erlaubt: morgen, übermorgen, 30.03, 30.03.2026, 2026-03-30",
             )
 
         all_day = time_str is None
@@ -358,8 +392,10 @@ class CalendarCommandHandler(CommandHandler):
 
         try:
             event = self._calendar.create_event(
-                summary=title, start=start,
-                all_day=all_day, recurrence=recurrence,
+                summary=title,
+                start=start,
+                all_day=all_day,
+                recurrence=recurrence,
             )
             text = f"Termin erstellt: {event.format_short()}"
             if recurrence:
@@ -385,7 +421,8 @@ class CalendarCommandHandler(CommandHandler):
         match = TERMIN_SEARCH_PATTERN.search(raw_text.strip())
         if not match:
             return CommandResult(
-                command="termin_search", success=False,
+                command="termin_search",
+                success=False,
                 text="Suchbegriff fehlt. Beispiel: termin suche Zahnarzt",
             )
 
@@ -395,7 +432,8 @@ class CalendarCommandHandler(CommandHandler):
             events = self._calendar.search_events(query, days=90)
             if not events:
                 return CommandResult(
-                    command="termin_search", success=True,
+                    command="termin_search",
+                    success=True,
                     text=f"Keine Termine gefunden für '{query}'.",
                 )
 
@@ -408,7 +446,8 @@ class CalendarCommandHandler(CommandHandler):
         except Exception as e:
             logger.error("Termin-Suche fehlgeschlagen: %s", e)
             return CommandResult(
-                command="termin_search", success=False,
+                command="termin_search",
+                success=False,
                 text=user_friendly_error(e, "Termin-Suche"),
             )
 
@@ -426,15 +465,29 @@ class CalendarCommandHandler(CommandHandler):
         match = TERMIN_DELETE_PATTERN.match(raw_text.strip())
         if not match:
             return CommandResult(
-                command="termin_delete", success=False,
+                command="termin_delete",
+                success=False,
                 text="Format: termin löschen <ID> oder lösche den 2. termin",
             )
 
         target = (match.group(1) or match.group(2) or "").strip().rstrip(".")
 
         # Füllwörter entfernen (bitte, mal, doch, morgen ohne Datum-Kontext)
-        filler = {"bitte", "mal", "doch", "jetzt", "sofort", "gleich",
-                  "morgen", "heute", "den", "die", "das", "termin", "termine"}
+        filler = {
+            "bitte",
+            "mal",
+            "doch",
+            "jetzt",
+            "sofort",
+            "gleich",
+            "morgen",
+            "heute",
+            "den",
+            "die",
+            "das",
+            "termin",
+            "termine",
+        }
         clean_words = [w for w in target.lower().split() if w not in filler]
         clean_target = " ".join(clean_words).strip()
 
@@ -444,9 +497,10 @@ class CalendarCommandHandler(CommandHandler):
             if len(self._last_events) == 1:
                 return self._delete_event_by_index(1)
             return CommandResult(
-                command="termin_delete", success=False,
+                command="termin_delete",
+                success=False,
                 text=f"Welchen? Es gibt {len(self._last_events)} Termine.\n"
-                     "Sag z.B. 'lösche den 1. termin' oder 'lösche alle termine'.",
+                "Sag z.B. 'lösche den 1. termin' oder 'lösche alle termine'.",
             )
 
         # Index-basiert: "1", "2.", "den 1.", "den ersten"
@@ -463,7 +517,8 @@ class CalendarCommandHandler(CommandHandler):
             return self._delete_event_by_id(target)
 
         return CommandResult(
-            command="termin_delete", success=False,
+            command="termin_delete",
+            success=False,
             text="Keine Termine zum Löschen. Frag erst nach Terminen.",
         )
 
@@ -471,19 +526,18 @@ class CalendarCommandHandler(CommandHandler):
         """Zeigt Bestätigungsdialog vor dem Löschen aller Events."""
         if not self._last_events:
             return CommandResult(
-                command="termin_delete", success=False,
+                command="termin_delete",
+                success=False,
                 text="Keine Termine zum Löschen. Frag erst nach Terminen.",
             )
 
         count = len(self._last_events)
-        event_ids = [
-            e.event_id for e in self._last_events if e.event_id
-        ]
+        event_ids = [e.event_id for e in self._last_events if e.event_id]
         return CommandResult(
             command="termin_delete",
             success=True,
             text=f"🗑️ {count} Termin{'e' if count != 1 else ''} löschen? "
-                 "Bestätige mit 'ja'.",
+            "Bestätige mit 'ja'.",
             pending_confirmation=True,
             pending_data={
                 "action_type": "bulk_delete_events",
@@ -507,13 +561,15 @@ class CalendarCommandHandler(CommandHandler):
 
         if errors:
             return CommandResult(
-                command="termin_delete", success=False,
+                command="termin_delete",
+                success=False,
                 text=f"❌ {deleted} gelöscht, {len(errors)} Fehler:\n"
-                     + "\n".join(errors),
+                + "\n".join(errors),
             )
 
         return CommandResult(
-            command="termin_delete", success=True,
+            command="termin_delete",
+            success=True,
             text=f"✅ {deleted} Termin{'e' if deleted != 1 else ''} gelöscht.",
         )
 
@@ -521,20 +577,23 @@ class CalendarCommandHandler(CommandHandler):
         """Löscht einen Termin per Index (1-basiert) aus dem letzten Ergebnis."""
         if not self._last_events:
             return CommandResult(
-                command="termin_delete", success=False,
+                command="termin_delete",
+                success=False,
                 text="Keine Termine zum Löschen. Frag erst nach Terminen.",
             )
 
         if index < 1 or index > len(self._last_events):
             return CommandResult(
-                command="termin_delete", success=False,
+                command="termin_delete",
+                success=False,
                 text=f"Index {index} ungültig. Es gibt {len(self._last_events)} Termine.",
             )
 
         event = self._last_events[index - 1]
         if not event.event_id:
             return CommandResult(
-                command="termin_delete", success=False,
+                command="termin_delete",
+                success=False,
                 text=f"Termin '{event.summary}' hat keine ID.",
             )
 
@@ -542,12 +601,14 @@ class CalendarCommandHandler(CommandHandler):
             self._calendar.delete_event(event.event_id)
             self._last_events.pop(index - 1)
             return CommandResult(
-                command="termin_delete", success=True,
+                command="termin_delete",
+                success=True,
                 text=f"Termin gelöscht: {event.summary}",
             )
         except Exception as e:
             return CommandResult(
-                command="termin_delete", success=False,
+                command="termin_delete",
+                success=False,
                 text=user_friendly_error(e, "Termin löschen"),
             )
 
@@ -556,16 +617,16 @@ class CalendarCommandHandler(CommandHandler):
         try:
             self._calendar.delete_event(event_id)
             # Aus Cache entfernen
-            self._last_events = [
-                e for e in self._last_events if e.event_id != event_id
-            ]
+            self._last_events = [e for e in self._last_events if e.event_id != event_id]
             return CommandResult(
-                command="termin_delete", success=True,
+                command="termin_delete",
+                success=True,
                 text=f"Termin gelöscht (ID: {event_id}).",
             )
         except Exception as e:
             return CommandResult(
-                command="termin_delete", success=False,
+                command="termin_delete",
+                success=False,
                 text=user_friendly_error(e, "Termin löschen"),
             )
 
@@ -573,28 +634,30 @@ class CalendarCommandHandler(CommandHandler):
         """Löscht einen Termin per Titel-Suche in den letzten Ergebnissen."""
         if not self._last_events:
             return CommandResult(
-                command="termin_delete", success=False,
+                command="termin_delete",
+                success=False,
                 text="Keine Termine zum Löschen. Frag erst nach Terminen.",
             )
 
         lower = title.lower()
         matches = [
-            e for e in self._last_events
-            if lower in e.summary.lower() and e.event_id
+            e for e in self._last_events if lower in e.summary.lower() and e.event_id
         ]
 
         if not matches:
             return CommandResult(
-                command="termin_delete", success=False,
+                command="termin_delete",
+                success=False,
                 text=f"Kein Termin mit '{title}' in den letzten Ergebnissen gefunden.",
             )
 
         if len(matches) > 1:
             names = "\n".join(f"  - {e.summary}" for e in matches)
             return CommandResult(
-                command="termin_delete", success=False,
+                command="termin_delete",
+                success=False,
                 text=f"Mehrere Treffer für '{title}':\n{names}\n"
-                     "Bitte genauer angeben oder Index nutzen (z.B. lösche den 1. termin).",
+                "Bitte genauer angeben oder Index nutzen (z.B. lösche den 1. termin).",
             )
 
         event = matches[0]
@@ -604,12 +667,14 @@ class CalendarCommandHandler(CommandHandler):
                 e for e in self._last_events if e.event_id != event.event_id
             ]
             return CommandResult(
-                command="termin_delete", success=True,
+                command="termin_delete",
+                success=True,
                 text=f"Termin gelöscht: {event.summary}",
             )
         except Exception as e:
             return CommandResult(
-                command="termin_delete", success=False,
+                command="termin_delete",
+                success=False,
                 text=user_friendly_error(e, "Termin löschen"),
             )
 
@@ -624,10 +689,18 @@ class CalendarCommandHandler(CommandHandler):
 
         # Ordinalzahlen
         ordinals = {
-            "ersten": 1, "erste": 1, "1": 1,
-            "zweiten": 2, "zweite": 2, "2": 2,
-            "dritten": 3, "dritte": 3, "3": 3,
-            "vierten": 4, "vierte": 4,
-            "fünften": 5, "fünfte": 5,
+            "ersten": 1,
+            "erste": 1,
+            "1": 1,
+            "zweiten": 2,
+            "zweite": 2,
+            "2": 2,
+            "dritten": 3,
+            "dritte": 3,
+            "3": 3,
+            "vierten": 4,
+            "vierte": 4,
+            "fünften": 5,
+            "fünfte": 5,
         }
         return ordinals.get(clean)

@@ -6,6 +6,7 @@ Verwaltet:
 - update alles → Server/Tower + RPi5 nacheinander
 - rollback → Auf Stand vor letztem Update zurücksetzen
 """
+
 from __future__ import annotations
 
 import json
@@ -17,7 +18,11 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from elder_berry.comms.commands.base import CommandHandler, CommandResult, user_friendly_error
+from elder_berry.comms.commands.base import (
+    CommandHandler,
+    CommandResult,
+    user_friendly_error,
+)
 from elder_berry.comms.commands.cmd_utils import CmdResult, run_cmd
 
 if TYPE_CHECKING:
@@ -122,24 +127,38 @@ class UpdateCommandHandler(CommandHandler):
     def keywords(self) -> dict[str, list[str]]:
         return {
             "update": [
-                "update dich", "aktualisiere dich", "neue funktionen",
-                "schau dir deine neuen funktionen an", "mach ein update",
-                "git pull und neustart", "update saleria",
+                "update dich",
+                "aktualisiere dich",
+                "neue funktionen",
+                "schau dir deine neuen funktionen an",
+                "mach ein update",
+                "git pull und neustart",
+                "update saleria",
             ],
             "update_rpi": [
-                "update rpi", "rpi aktualisieren", "rpi updaten",
-                "raspberry update", "aktualisiere den rpi",
+                "update rpi",
+                "rpi aktualisieren",
+                "rpi updaten",
+                "raspberry update",
+                "aktualisiere den rpi",
             ],
             "update_tower": [
-                "update tower", "tower aktualisieren", "tower updaten",
-                "aktualisiere den tower", "pc updaten",
+                "update tower",
+                "tower aktualisieren",
+                "tower updaten",
+                "aktualisiere den tower",
+                "pc updaten",
             ],
             "update_all": [
-                "update alles", "alles updaten", "alles aktualisieren",
+                "update alles",
+                "alles updaten",
+                "alles aktualisieren",
                 "update überall",
             ],
             "rollback": [
-                "update zurücksetzen", "zurückrollen", "mach update rückgängig",
+                "update zurücksetzen",
+                "zurückrollen",
+                "mach update rückgängig",
                 "alten stand wiederherstellen",
             ],
         }
@@ -189,7 +208,8 @@ class UpdateCommandHandler(CommandHandler):
         # --- Schritt 2: Prüfe ob Änderungen vorliegen ---
         behind = run_cmd(
             ["git", "rev-list", "--count", "HEAD..@{u}"],
-            cwd=cwd, timeout=10,
+            cwd=cwd,
+            timeout=10,
         )
         commits_behind = 0
         if behind.success and behind.output.strip().isdigit():
@@ -200,7 +220,7 @@ class UpdateCommandHandler(CommandHandler):
                 command="update",
                 success=True,
                 text="✅ Alles aktuell – kein neuer Code.\n"
-                     "Soll ich trotzdem neustarten? (ja/nein, 5 Min Timeout)",
+                "Soll ich trotzdem neustarten? (ja/nein, 5 Min Timeout)",
                 pending_confirmation=True,
                 pending_data={"action": "restart"},
             )
@@ -210,7 +230,8 @@ class UpdateCommandHandler(CommandHandler):
         # --- Schritt 3: Prüfe auf lokale Änderungen (uncommitted) ---
         status = run_cmd(
             ["git", "status", "-uno", "--porcelain"],
-            cwd=cwd, timeout=10,
+            cwd=cwd,
+            timeout=10,
         )
         if status.success and status.output.strip():
             return CommandResult(
@@ -226,15 +247,18 @@ class UpdateCommandHandler(CommandHandler):
         # --- Schritt 4: Backup + git pull ---
         old_hash = run_cmd(
             ["git", "rev-parse", "--short", "HEAD"],
-            cwd=cwd, timeout=5,
+            cwd=cwd,
+            timeout=5,
         )
         old_hash_full = run_cmd(
             ["git", "rev-parse", "HEAD"],
-            cwd=cwd, timeout=5,
+            cwd=cwd,
+            timeout=5,
         )
         branch = run_cmd(
             ["git", "rev-parse", "--abbrev-ref", "HEAD"],
-            cwd=cwd, timeout=5,
+            cwd=cwd,
+            timeout=5,
         )
 
         if old_hash_full.success:
@@ -255,7 +279,8 @@ class UpdateCommandHandler(CommandHandler):
 
         new_hash = run_cmd(
             ["git", "rev-parse", "--short", "HEAD"],
-            cwd=cwd, timeout=5,
+            cwd=cwd,
+            timeout=5,
         )
         if old_hash.success and new_hash.success:
             old_h = old_hash.output.strip()
@@ -263,7 +288,8 @@ class UpdateCommandHandler(CommandHandler):
             if _is_valid_git_hash(old_h) and _is_valid_git_hash(new_h):
                 log = run_cmd(
                     ["git", "log", "--oneline", f"{old_h}..{new_h}"],
-                    cwd=cwd, timeout=10,
+                    cwd=cwd,
+                    timeout=10,
                 )
                 if log.success and log.output.strip():
                     steps.append(f"📋 Änderungen:\n{log.output.strip()}")
@@ -276,7 +302,8 @@ class UpdateCommandHandler(CommandHandler):
             if _is_valid_git_hash(old_h) and _is_valid_git_hash(new_h):
                 diff_files = run_cmd(
                     ["git", "diff", "--name-only", f"{old_h}..{new_h}"],
-                    cwd=cwd, timeout=10,
+                    cwd=cwd,
+                    timeout=10,
                 )
         dep_files_changed = False
         if diff_files.success:
@@ -290,9 +317,17 @@ class UpdateCommandHandler(CommandHandler):
         if dep_files_changed:
             steps.append("📦 Dependencies geändert – installiere...")
             pip = run_cmd(
-                [sys.executable, "-m", "pip", "install", "-e",
-                 _pip_install_groups(), "--quiet"],
-                cwd=cwd, timeout=300,
+                [
+                    sys.executable,
+                    "-m",
+                    "pip",
+                    "install",
+                    "-e",
+                    _pip_install_groups(),
+                    "--quiet",
+                ],
+                cwd=cwd,
+                timeout=300,
             )
             if pip.success:
                 steps.append("✅ Dependencies installiert")
@@ -351,6 +386,7 @@ class UpdateCommandHandler(CommandHandler):
             )
         try:
             import httpx
+
             headers = {}
             if hasattr(self._tower, "_auth_headers"):
                 headers = self._tower._auth_headers()
@@ -455,8 +491,7 @@ class UpdateCommandHandler(CommandHandler):
             return CommandResult(
                 command="rollback",
                 success=False,
-                text="Kein Update zum Zurücksetzen. "
-                     "Backup-Datei nicht vorhanden.",
+                text="Kein Update zum Zurücksetzen. Backup-Datei nicht vorhanden.",
             )
 
         cwd = str(self._project_root)
@@ -466,27 +501,28 @@ class UpdateCommandHandler(CommandHandler):
         steps: list[str] = []
 
         steps.append(
-            f"🔙 Rollback auf {target_hash[:8]} "
-            f"(Branch: {branch}, Backup: {timestamp})"
+            f"🔙 Rollback auf {target_hash[:8]} (Branch: {branch}, Backup: {timestamp})"
         )
 
         # Prüfe ob Hash existiert
         verify = run_cmd(
             ["git", "cat-file", "-t", target_hash],
-            cwd=cwd, timeout=5,
+            cwd=cwd,
+            timeout=5,
         )
         if not verify.success:
             return CommandResult(
                 command="rollback",
                 success=False,
                 text=f"❌ Commit {target_hash[:8]} existiert nicht mehr im Repo. "
-                     "Manuelles Eingreifen nötig.",
+                "Manuelles Eingreifen nötig.",
             )
 
         # git reset --hard
         reset = run_cmd(
             ["git", "reset", "--hard", target_hash],
-            cwd=cwd, timeout=30,
+            cwd=cwd,
+            timeout=30,
         )
         if not reset.success:
             return CommandResult(
@@ -499,9 +535,17 @@ class UpdateCommandHandler(CommandHandler):
         # Dependencies neu installieren
         steps.append("📦 Installiere Dependencies...")
         pip = run_cmd(
-            [sys.executable, "-m", "pip", "install", "-e",
-             _pip_install_groups(), "--quiet"],
-            cwd=cwd, timeout=300,
+            [
+                sys.executable,
+                "-m",
+                "pip",
+                "install",
+                "-e",
+                _pip_install_groups(),
+                "--quiet",
+            ],
+            cwd=cwd,
+            timeout=300,
         )
         if pip.success:
             steps.append("✅ Dependencies installiert")

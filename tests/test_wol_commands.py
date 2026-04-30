@@ -1,4 +1,5 @@
 """Tests: WolCommandHandler – Wake-on-LAN via Magic Packet."""
+
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -9,6 +10,7 @@ from elder_berry.comms.commands.wol_commands import WolCommandHandler
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
+
 
 @pytest.fixture
 def secret_store():
@@ -31,6 +33,7 @@ def handler_no_store():
 # Interface Properties
 # ---------------------------------------------------------------------------
 
+
 class TestWolInterface:
     def test_simple_commands(self, handler):
         assert "wol" in handler.simple_commands
@@ -49,6 +52,7 @@ class TestWolInterface:
 # Execute Routing
 # ---------------------------------------------------------------------------
 
+
 class TestWolExecute:
     def test_unknown_command(self, handler):
         result = handler.execute("unknown", "unknown")
@@ -59,6 +63,7 @@ class TestWolExecute:
 # ---------------------------------------------------------------------------
 # WoL Command
 # ---------------------------------------------------------------------------
+
 
 class TestWolCommand:
     @patch("elder_berry.comms.commands.wol_commands.socket.socket")
@@ -99,7 +104,9 @@ class TestWolCommand:
 
     def test_mac_with_dashes(self, handler, secret_store):
         secret_store.get.return_value = "AA-BB-CC-DD-EE-FF"
-        with patch("elder_berry.comms.commands.wol_commands.socket.socket") as mock_sock_cls:
+        with patch(
+            "elder_berry.comms.commands.wol_commands.socket.socket"
+        ) as mock_sock_cls:
             mock_sock = MagicMock()
             mock_sock_cls.return_value = mock_sock
             result = handler.execute("wol", "wol")
@@ -107,7 +114,9 @@ class TestWolCommand:
 
     def test_mac_with_dots(self, handler, secret_store):
         secret_store.get.return_value = "AABB.CCDD.EEFF"
-        with patch("elder_berry.comms.commands.wol_commands.socket.socket") as mock_sock_cls:
+        with patch(
+            "elder_berry.comms.commands.wol_commands.socket.socket"
+        ) as mock_sock_cls:
             mock_sock = MagicMock()
             mock_sock_cls.return_value = mock_sock
             result = handler.execute("wol", "wol")

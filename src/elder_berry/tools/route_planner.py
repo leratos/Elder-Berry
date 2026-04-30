@@ -9,6 +9,7 @@ Verwendung:
     departure = planner.calculate_departure(arrival, result.duration_seconds)
     link = planner.generate_maps_link("Musterstr. 5", "Hauptstr. 12")
 """
+
 from __future__ import annotations
 
 import logging
@@ -118,12 +119,14 @@ class RoutePlanner:
 
     def generate_maps_link(self, origin: str, destination: str) -> str:
         """Google Maps Deep-Link (öffnet App auf Android/Desktop)."""
-        params = urlencode({
-            "api": "1",
-            "origin": origin,
-            "destination": destination,
-            "travelmode": "driving",
-        })
+        params = urlencode(
+            {
+                "api": "1",
+                "origin": origin,
+                "destination": destination,
+                "travelmode": "driving",
+            }
+        )
         return f"{_MAPS_LINK_BASE}?{params}"
 
     def _parse_response(self, data: dict) -> RouteResult:

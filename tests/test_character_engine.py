@@ -1,4 +1,5 @@
 """Tests für CharacterEngine (ABC) und SaleriaEngine."""
+
 import pytest
 
 from elder_berry.character.base import (
@@ -14,6 +15,7 @@ from elder_berry.character.saleria import SaleriaEngine
 # ---------------------------------------------------------------------------
 # DTO-Tests
 # ---------------------------------------------------------------------------
+
 
 class TestEmotion:
     """Tests für das Emotion Enum."""
@@ -48,8 +50,11 @@ class TestPersonality:
 
     def test_personality_with_boundaries(self):
         p = Personality(
-            name="Test", title="T", core_trait="c",
-            speaking_style="s", boundaries=["no violence"],
+            name="Test",
+            title="T",
+            core_trait="c",
+            speaking_style="s",
+            boundaries=["no violence"],
         )
         assert p.boundaries == ["no violence"]
 
@@ -92,6 +97,7 @@ class TestEmotionMapping:
 # ---------------------------------------------------------------------------
 # SaleriaEngine Tests
 # ---------------------------------------------------------------------------
+
 
 class TestSaleriaEngineInit:
     """Tests für SaleriaEngine Initialisierung."""
@@ -171,7 +177,7 @@ class TestSaleriaEngineEmotionExtraction:
 
     def test_extract_cheerful(self):
         engine = SaleriaEngine()
-        text = '[cheerful] Na, das hab ich doch gern gemacht!'
+        text = "[cheerful] Na, das hab ich doch gern gemacht!"
         assert engine.extract_emotion(text) is Emotion.CHEERFUL
 
     def test_extract_angry(self):
@@ -198,7 +204,7 @@ class TestSaleriaEngineEmotionExtraction:
 
     def test_extract_tag_in_middle_of_text(self):
         engine = SaleriaEngine()
-        text = 'Hier kommt [whisper] ein Geheimnis.'
+        text = "Hier kommt [whisper] ein Geheimnis."
         assert engine.extract_emotion(text) is Emotion.WHISPER
 
 

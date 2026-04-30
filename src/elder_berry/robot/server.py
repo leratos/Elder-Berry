@@ -18,6 +18,7 @@ Explizite Origins können per ``cors_origins``-Parameter hinzugefügt werden.
 
 Plattformhinweis: Läuft auf RPi5 (Linux) und Windows (Simulator).
 """
+
 from __future__ import annotations
 
 import logging
@@ -70,8 +71,10 @@ logger = logging.getLogger(__name__)
 # Pydantic Models (für FastAPI Request-Validierung)
 # ---------------------------------------------------------------------------
 
+
 class AvatarRequest(BaseModel):
     """Request: Emotion und/oder Sprechzustand setzen."""
+
     emotion: str | None = None
     is_speaking: bool | None = None
 
@@ -85,6 +88,7 @@ class DriveRequest(BaseModel):
     Internet steuert die Hardware) als auch log-injection-Mitigation
     (CodeQL erkennt Literal-Constraints als Sanitizer).
     """
+
     direction: Literal["forward", "backward", "left", "right", "stop"]
     speed: float = 0.5
     duration: float | None = None
@@ -92,35 +96,41 @@ class DriveRequest(BaseModel):
 
 class StopRequest(BaseModel):
     """Request: Notfall-Stopp."""
+
     reason: str = "manual"
 
 
 class TurntableRotateRequest(BaseModel):
     """Request: Drehteller rotieren."""
-    target_degrees: float | None = None    # Absolute Position
+
+    target_degrees: float | None = None  # Absolute Position
     relative_degrees: float | None = None  # Relative Rotation
 
 
 class HarmonyActivityRequest(BaseModel):
     """Request: Harmony-Aktivitaet starten."""
+
     activity: str  # z.B. "Fernsehen"
 
 
 class HarmonyCommandRequest(BaseModel):
     """Request: Harmony-Geraetebefehl senden."""
-    device: str    # z.B. "Receiver"
-    command: str   # z.B. "VolumeUp"
+
+    device: str  # z.B. "Receiver"
+    command: str  # z.B. "VolumeUp"
     repeat: int = 1
 
 
 class HarmonySceneStartRequest(BaseModel):
     """Request: Szene starten."""
+
     name: str  # z.B. "Gaming"
 
 
 # ---------------------------------------------------------------------------
 # Hardware-Abstraktionen (werden vom Simulator oder echten RPi implementiert)
 # ---------------------------------------------------------------------------
+
 
 class MotorController(ABC):
     """ABC für Motorsteuerung."""
@@ -231,6 +241,7 @@ class RobotTokenMiddleware(BaseHTTPMiddleware):
 # Server-Klasse
 # ---------------------------------------------------------------------------
 
+
 class RobotServer:
     """
     FastAPI-basierter Server für die Tower ↔ RPi5 Kommunikation.
@@ -314,7 +325,8 @@ class RobotServer:
                 logger.info("HarmonyAdapter getrennt beim Shutdown")
 
         self.app = FastAPI(
-            title="Elder-Berry Robot API", version="0.1.0",
+            title="Elder-Berry Robot API",
+            version="0.1.0",
             lifespan=lifespan,
         )
         # Phase 59: Robot-Token-Auth (optional, konfigurierbar).
@@ -322,10 +334,14 @@ class RobotServer:
         # CORS: standardmäßig nur Loopback. Der RobotServer ist ausschließlich
         # für Server-zu-Server-Aufrufe gedacht (Tower → RPi5 via SSH-Tunnel).
         # Browser-Direktzugriff ist nicht vorgesehen, daher kein wildcard.
-        _allowed_origins = cors_origins if cors_origins is not None else [
-            "http://localhost",
-            "http://127.0.0.1",
-        ]
+        _allowed_origins = (
+            cors_origins
+            if cors_origins is not None
+            else [
+                "http://localhost",
+                "http://127.0.0.1",
+            ]
+        )
         self.app.add_middleware(
             CORSMiddleware,
             allow_origins=_allowed_origins,
@@ -376,7 +392,8 @@ class RobotServer:
             if request.is_speaking is not None:
                 self._avatar.set_speaking(request.is_speaking)
                 logger.info(
-                    "Avatar Speaking: %s", safe_log(request.is_speaking),
+                    "Avatar Speaking: %s",
+                    safe_log(request.is_speaking),
                 )
 
             resp = ApiResponse(success=True, message="Avatar aktualisiert")
@@ -392,7 +409,8 @@ class RobotServer:
             # gilt CodeQL ebenfalls als getainted.
             logger.info(
                 "Motor: %s @ %d%%",
-                safe_log(request.direction), int(request.speed * 100),
+                safe_log(request.direction),
+                int(request.speed * 100),
             )
             resp = ApiResponse(
                 success=True,
@@ -423,26 +441,33 @@ class RobotServer:
         def camera_capture(quality: int = 85) -> dict:
             """Nimmt ein Bild auf und gibt JPEG als Base64 zurück."""
             if not self._camera:
-                return asdict(ApiResponse(
-                    success=False,
-                    message="Keine Kamera verfügbar",
-                ))
+                return asdict(
+                    ApiResponse(
+                        success=False,
+                        message="Keine Kamera verfügbar",
+                    )
+                )
             if not self._camera.is_available():
-                return asdict(ApiResponse(
-                    success=False,
-                    message="Kamera nicht erkannt",
-                ))
+                return asdict(
+                    ApiResponse(
+                        success=False,
+                        message="Kamera nicht erkannt",
+                    )
+                )
             # Bounds-Check: ungültige Werte außerhalb [1, 100] abfangen
             quality = max(1, min(100, quality))
             try:
                 import base64
+
                 jpeg_bytes = self._camera.capture_jpeg(quality=quality)
                 if not jpeg_bytes:
                     logger.error("Kamera-Capture: leeres JPEG erhalten")
-                    return asdict(ApiResponse(
-                        success=False,
-                        message="Kamera-Fehler – Details im Log.",
-                    ))
+                    return asdict(
+                        ApiResponse(
+                            success=False,
+                            message="Kamera-Fehler – Details im Log.",
+                        )
+                    )
                 b64 = base64.b64encode(jpeg_bytes).decode("ascii")
                 width, height = self._camera.get_resolution()
                 return {
@@ -455,10 +480,12 @@ class RobotServer:
                 }
             except Exception as e:
                 logger.error("Kamera-Capture fehlgeschlagen: %s", e)
-                return asdict(ApiResponse(
-                    success=False,
-                    message="Kamera-Fehler – Details im Log.",
-                ))
+                return asdict(
+                    ApiResponse(
+                        success=False,
+                        message="Kamera-Fehler – Details im Log.",
+                    )
+                )
 
         @self.app.get("/camera/status")
         def camera_status() -> dict:
@@ -477,14 +504,19 @@ class RobotServer:
         @self.app.post("/turntable/rotate")
         def turntable_rotate(request: TurntableRotateRequest) -> dict:
             if not self._turntable:
-                return asdict(ApiResponse(
-                    success=False, message="Kein Drehteller",
-                ))
+                return asdict(
+                    ApiResponse(
+                        success=False,
+                        message="Kein Drehteller",
+                    )
+                )
             if request.target_degrees is None and request.relative_degrees is None:
-                return asdict(ApiResponse(
-                    success=False,
-                    message="target_degrees oder relative_degrees erforderlich",
-                ))
+                return asdict(
+                    ApiResponse(
+                        success=False,
+                        message="target_degrees oder relative_degrees erforderlich",
+                    )
+                )
             try:
                 if request.target_degrees is not None:
                     self._turntable.rotate_to(request.target_degrees)
@@ -495,33 +527,53 @@ class RobotServer:
                 return asdict(ApiResponse(success=True, message=msg))
             except RuntimeError as e:
                 logger.error("Drehteller-Rotation fehlgeschlagen: %s", e)
-                return asdict(ApiResponse(success=False, message="Drehteller-Fehler – Details im Log."))
+                return asdict(
+                    ApiResponse(
+                        success=False, message="Drehteller-Fehler – Details im Log."
+                    )
+                )
 
         @self.app.post("/turntable/home")
         def turntable_home() -> dict:
             if not self._turntable:
-                return asdict(ApiResponse(
-                    success=False, message="Kein Drehteller",
-                ))
+                return asdict(
+                    ApiResponse(
+                        success=False,
+                        message="Kein Drehteller",
+                    )
+                )
             try:
                 self._turntable.home()
-                return asdict(ApiResponse(
-                    success=True, message="Homing gestartet",
-                ))
+                return asdict(
+                    ApiResponse(
+                        success=True,
+                        message="Homing gestartet",
+                    )
+                )
             except RuntimeError as e:
                 logger.error("Drehteller-Homing fehlgeschlagen: %s", e)
-                return asdict(ApiResponse(success=False, message="Drehteller-Fehler – Details im Log."))
+                return asdict(
+                    ApiResponse(
+                        success=False, message="Drehteller-Fehler – Details im Log."
+                    )
+                )
 
         @self.app.post("/turntable/stop")
         def turntable_stop() -> dict:
             if not self._turntable:
-                return asdict(ApiResponse(
-                    success=False, message="Kein Drehteller",
-                ))
+                return asdict(
+                    ApiResponse(
+                        success=False,
+                        message="Kein Drehteller",
+                    )
+                )
             self._turntable.stop()
-            return asdict(ApiResponse(
-                success=True, message="Rotation gestoppt",
-            ))
+            return asdict(
+                ApiResponse(
+                    success=True,
+                    message="Rotation gestoppt",
+                )
+            )
 
         @self.app.get("/turntable/status")
         def turntable_status() -> dict:
@@ -543,10 +595,12 @@ class RobotServer:
         def system_update() -> dict:
             """Git pull + pip install + systemctl restart."""
             if not self._project_root:
-                return asdict(ApiResponse(
-                    success=False,
-                    message="Projekt-Root nicht konfiguriert",
-                ))
+                return asdict(
+                    ApiResponse(
+                        success=False,
+                        message="Projekt-Root nicht konfiguriert",
+                    )
+                )
 
             cwd = str(self._project_root)
             steps: list[str] = []
@@ -555,37 +609,48 @@ class RobotServer:
             try:
                 r = subprocess.run(
                     ["git", "fetch", "origin"],
-                    capture_output=True, text=True,
-                    timeout=30, cwd=cwd,
+                    capture_output=True,
+                    text=True,
+                    timeout=30,
+                    cwd=cwd,
                 )
                 if r.returncode != 0:
                     logger.error("Git Fetch fehlgeschlagen: %s", r.stderr)
-                    return asdict(ApiResponse(
-                        success=False,
-                        message="Git Fetch fehlgeschlagen – Details im Log.",
-                    ))
+                    return asdict(
+                        ApiResponse(
+                            success=False,
+                            message="Git Fetch fehlgeschlagen – Details im Log.",
+                        )
+                    )
             except Exception as e:
                 logger.error("Git Fetch Fehler: %s", e)
-                return asdict(ApiResponse(
-                    success=False, message="Git Fetch Fehler – Details im Log.",
-                ))
+                return asdict(
+                    ApiResponse(
+                        success=False,
+                        message="Git Fetch Fehler – Details im Log.",
+                    )
+                )
 
             # 2. Commits behind?
             try:
                 r = subprocess.run(
                     ["git", "rev-list", "--count", "HEAD..@{u}"],
-                    capture_output=True, text=True,
-                    timeout=10, cwd=cwd,
+                    capture_output=True,
+                    text=True,
+                    timeout=10,
+                    cwd=cwd,
                 )
                 behind = int(r.stdout.strip()) if r.returncode == 0 else 0
             except Exception:
                 behind = 0
 
             if behind == 0:
-                return asdict(ApiResponse(
-                    success=True,
-                    message="Alles aktuell -- kein Update noetig.",
-                ))
+                return asdict(
+                    ApiResponse(
+                        success=True,
+                        message="Alles aktuell -- kein Update noetig.",
+                    )
+                )
 
             steps.append(f"{behind} neue(r) Commit(s)")
 
@@ -593,29 +658,37 @@ class RobotServer:
             try:
                 r = subprocess.run(
                     ["git", "pull", "--ff-only"],
-                    capture_output=True, text=True,
-                    timeout=60, cwd=cwd,
+                    capture_output=True,
+                    text=True,
+                    timeout=60,
+                    cwd=cwd,
                 )
                 if r.returncode != 0:
                     logger.error("Git Pull fehlgeschlagen: %s", r.stderr)
-                    return asdict(ApiResponse(
-                        success=False,
-                        message="Git Pull fehlgeschlagen – Details im Log.",
-                    ))
+                    return asdict(
+                        ApiResponse(
+                            success=False,
+                            message="Git Pull fehlgeschlagen – Details im Log.",
+                        )
+                    )
                 steps.append("Code aktualisiert")
             except Exception as e:
                 logger.error("Git Pull Fehler: %s", e)
-                return asdict(ApiResponse(
-                    success=False, message="Git Pull Fehler – Details im Log.",
-                ))
+                return asdict(
+                    ApiResponse(
+                        success=False,
+                        message="Git Pull Fehler – Details im Log.",
+                    )
+                )
 
             # 4. pip install (immer, RPi hat weniger extras)
             try:
                 r = subprocess.run(
-                    [sys.executable, "-m", "pip", "install", "-e", ".",
-                     "--quiet"],
-                    capture_output=True, text=True,
-                    timeout=300, cwd=cwd,
+                    [sys.executable, "-m", "pip", "install", "-e", ".", "--quiet"],
+                    capture_output=True,
+                    text=True,
+                    timeout=300,
+                    cwd=cwd,
                 )
                 if r.returncode == 0:
                     steps.append("Dependencies installiert")
@@ -635,10 +708,12 @@ class RobotServer:
             except Exception as e:
                 steps.append(f"Neustart fehlgeschlagen: {e}")
 
-            return asdict(ApiResponse(
-                success=True,
-                message=" | ".join(steps),
-            ))
+            return asdict(
+                ApiResponse(
+                    success=True,
+                    message=" | ".join(steps),
+                )
+            )
 
         # --- Harmony Hub ---
 
@@ -753,7 +828,8 @@ class RobotServer:
                 return {"success": True}
             except ValueError as e:
                 return JSONResponse(
-                    {"error": str(e)}, status_code=400,
+                    {"error": str(e)},
+                    status_code=400,
                 )
 
         @self.app.post("/harmony/scene/start")
@@ -776,7 +852,8 @@ class RobotServer:
                 )
             except SceneExecutionError as e:
                 return JSONResponse(
-                    {"error": str(e)}, status_code=503,
+                    {"error": str(e)},
+                    status_code=503,
                 )
 
         @self.app.delete("/harmony/scene/{name}")

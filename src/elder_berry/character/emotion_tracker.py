@@ -1,4 +1,5 @@
 """EmotionTracker – Emotionales Kurzzeitgedächtnis für persistente Stimmung."""
+
 from __future__ import annotations
 
 import logging

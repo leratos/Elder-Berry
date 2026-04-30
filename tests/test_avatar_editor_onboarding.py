@@ -3,6 +3,7 @@
 Prüft das Template statisch: HTML-Hooks, CSS-Klassen, JavaScript-Glue
 und der localStorage-Key. Kein Browser-Rendering.
 """
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -22,14 +23,13 @@ def html() -> str:
     Alle Assertions pruefen weiterhin die Zeichenfolgen unabhaengig davon,
     in welcher Datei sie letztendlich stehen.
     """
-    return "\n".join(
-        p.read_text(encoding="utf-8") for p in (_TEMPLATE, _CSS, _JS)
-    )
+    return "\n".join(p.read_text(encoding="utf-8") for p in (_TEMPLATE, _CSS, _JS))
 
 
 # ---------------------------------------------------------------------------
 # Struktur
 # ---------------------------------------------------------------------------
+
 
 class TestModalStructure:
     def test_overlay_element(self, html):
@@ -58,6 +58,7 @@ class TestModalStructure:
 # Aktionen
 # ---------------------------------------------------------------------------
 
+
 class TestActions:
     def test_dismiss_button(self, html):
         assert 'id="onboardingDismiss"' in html
@@ -84,14 +85,15 @@ class TestActions:
 # JavaScript-Glue
 # ---------------------------------------------------------------------------
 
+
 class TestJavaScript:
     def test_localstorage_key_defined(self, html):
         assert 'ONBOARDING_KEY = "elderberry.avatar.onboarding.seen"' in html
 
     def test_localstorage_check_on_load(self, html):
-        assert 'localStorage.getItem(ONBOARDING_KEY)' in html
+        assert "localStorage.getItem(ONBOARDING_KEY)" in html
         # Beim Dismiss wird gesetzt
-        assert 'localStorage.setItem(ONBOARDING_KEY' in html
+        assert "localStorage.setItem(ONBOARDING_KEY" in html
 
     def test_functions_defined(self, html):
         assert "function showOnboarding" in html
@@ -112,6 +114,7 @@ class TestJavaScript:
 # ---------------------------------------------------------------------------
 # CSS
 # ---------------------------------------------------------------------------
+
 
 class TestCss:
     def test_overlay_hidden_by_default(self, html):

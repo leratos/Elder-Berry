@@ -2,6 +2,7 @@
 
 Extrahiert aus remote_commands.py (Refactoring).
 """
+
 from __future__ import annotations
 
 import logging
@@ -9,7 +10,11 @@ import re
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from elder_berry.comms.commands.base import CommandHandler, CommandResult, user_friendly_error
+from elder_berry.comms.commands.base import (
+    CommandHandler,
+    CommandResult,
+    user_friendly_error,
+)
 from elder_berry.core.path_guard import PathGuard
 
 if TYPE_CHECKING:
@@ -50,11 +55,11 @@ DOCUMENT_SUMMARY_PATTERN = re.compile(
 # "scroll runter", "drueck Strg+S"
 # Toleriert natuerliche Sprache: "klick mal auf", "bitte klick auf", "auf X klicken"
 COMPUTER_USE_PATTERN = re.compile(
-    r"^(?:klick(?:e)?\s+(?:mal\s+)?auf\s+(.+)"   # klick [mal] auf <Element>
-    r"|(?:auf\s+(.+?)\s+klicken)"                  # auf <Element> klicken
-    r"|tippe\s+(.+)"                                # tippe <Text>
-    r"|scroll(?:e?)\s+(runter|hoch|nach\s+\w+)"    # scroll runter/hoch/nach unten
-    r"|dr\u00fcck(?:e)?\s+(.+))$",                  # drueck <Taste>
+    r"^(?:klick(?:e)?\s+(?:mal\s+)?auf\s+(.+)"  # klick [mal] auf <Element>
+    r"|(?:auf\s+(.+?)\s+klicken)"  # auf <Element> klicken
+    r"|tippe\s+(.+)"  # tippe <Text>
+    r"|scroll(?:e?)\s+(runter|hoch|nach\s+\w+)"  # scroll runter/hoch/nach unten
+    r"|dr\u00fcck(?:e)?\s+(.+))$",  # drueck <Taste>
     re.IGNORECASE,
 )
 
@@ -115,31 +120,56 @@ class AdvancedCommandHandler(CommandHandler):
     def keywords(self) -> dict[str, list[str]]:
         return {
             "web_summary": [
-                "fasse die seite zusammen", "webseite zusammenfassen",
-                "url zusammenfassen", "fasse den artikel zusammen",
-                "artikel zusammenfassen", "link zusammenfassen",
+                "fasse die seite zusammen",
+                "webseite zusammenfassen",
+                "url zusammenfassen",
+                "fasse den artikel zusammen",
+                "artikel zusammenfassen",
+                "link zusammenfassen",
             ],
             "document_summary": [
-                "fasse die pdf zusammen", "pdf zusammenfassen",
-                "dokument zusammenfassen", "zusammenfassung der datei",
-                "datei zusammenfassen", "fass das zusammen",
+                "fasse die pdf zusammen",
+                "pdf zusammenfassen",
+                "dokument zusammenfassen",
+                "zusammenfassung der datei",
+                "datei zusammenfassen",
+                "fass das zusammen",
             ],
             "audio_toggle": [
-                "audio lokal", "lokale wiedergabe", "ton am pc",
-                "sound am pc", "lautsprecher am pc",
+                "audio lokal",
+                "lokale wiedergabe",
+                "ton am pc",
+                "sound am pc",
+                "lautsprecher am pc",
             ],
             "computer_use": [
-                "klick auf", "klicke auf", "klick mal auf", "dr\u00fcck auf",
-                "tippe in", "scroll runter", "scroll hoch", "scroll nach",
-                "auf accept klicken", "auf ok klicken",
-                "auf den button klicken", "kannst du das anklicken",
+                "klick auf",
+                "klicke auf",
+                "klick mal auf",
+                "dr\u00fcck auf",
+                "tippe in",
+                "scroll runter",
+                "scroll hoch",
+                "scroll nach",
+                "auf accept klicken",
+                "auf ok klicken",
+                "auf den button klicken",
+                "kannst du das anklicken",
             ],
             "web_search": [
-                "such mir", "suche mir", "suche mal", "such mal",
-                "google mal", "google mir", "recherchiere",
-                "finde heraus", "im internet suchen",
-                "nachschauen im internet", "schau mal im netz",
-                "im netz suchen", "kannst du nachschauen",
+                "such mir",
+                "suche mir",
+                "suche mal",
+                "such mal",
+                "google mal",
+                "google mir",
+                "recherchiere",
+                "finde heraus",
+                "im internet suchen",
+                "nachschauen im internet",
+                "schau mal im netz",
+                "im netz suchen",
+                "kannst du nachschauen",
             ],
         }
 
@@ -173,7 +203,8 @@ class AdvancedCommandHandler(CommandHandler):
         """Liest ein PDF/TXT-Dokument und liefert den extrahierten Text."""
         if not self._document_reader:
             return CommandResult(
-                command="document_summary", success=False,
+                command="document_summary",
+                success=False,
                 text="DocumentReader nicht verf\u00fcgbar.",
             )
 
@@ -181,7 +212,8 @@ class AdvancedCommandHandler(CommandHandler):
         match = DOCUMENT_SUMMARY_PATTERN.search(raw_text.strip())
         if not match:
             return CommandResult(
-                command="document_summary", success=False,
+                command="document_summary",
+                success=False,
                 text="Pfad nicht erkannt. Beispiel: zusammenfassung C:\\Docs\\report.pdf",
             )
 
@@ -197,9 +229,10 @@ class AdvancedCommandHandler(CommandHandler):
             path_validated = True
         except PermissionError:
             return CommandResult(
-                command="document_summary", success=False,
+                command="document_summary",
+                success=False,
                 text="Zugriff verweigert. Datei liegt ausserhalb erlaubter "
-                     "Verzeichnisse (z.B. Documents, Downloads).",
+                "Verzeichnisse (z.B. Documents, Downloads).",
             )
         except FileNotFoundError:
             # Datei lokal nicht vorhanden -- NC-Fallback weiter unten.
@@ -209,9 +242,10 @@ class AdvancedCommandHandler(CommandHandler):
         # nach Pfad-Validierung)
         if not self._document_reader.is_supported(file_path):
             return CommandResult(
-                command="document_summary", success=False,
+                command="document_summary",
+                success=False,
                 text=f"Dateiformat '{file_path.suffix}' nicht unterst\u00fctzt. "
-                     f"Erlaubt: PDF, TXT.",
+                f"Erlaubt: PDF, TXT.",
             )
 
         # Datei nicht lokal lesbar -> Nextcloud-Download versuchen.
@@ -241,13 +275,15 @@ class AdvancedCommandHandler(CommandHandler):
 
         except FileNotFoundError:
             return CommandResult(
-                command="document_summary", success=False,
+                command="document_summary",
+                success=False,
                 text=f"Datei nicht gefunden: {file_path}",
             )
         except Exception as e:
             logger.error("Dokument-Zusammenfassung fehlgeschlagen: %s", e)
             return CommandResult(
-                command="document_summary", success=False,
+                command="document_summary",
+                success=False,
                 text=user_friendly_error(e, "Dokument"),
             )
         finally:
@@ -304,7 +340,9 @@ class AdvancedCommandHandler(CommandHandler):
                 local_path = self._nc_files.download(match.path, tmp_dir)
                 logger.info(
                     "NC-Download (Suche): '%s' → %s → %s",
-                    filename, match.path, local_path,
+                    filename,
+                    match.path,
+                    local_path,
                 )
                 return local_path
         except Exception as exc:
@@ -322,7 +360,8 @@ class AdvancedCommandHandler(CommandHandler):
         """Audio-Modus anzeigen oder umschalten."""
         if not self._audio_router:
             return CommandResult(
-                command="audio", success=False,
+                command="audio",
+                success=False,
                 text="AudioRouter nicht verf\u00fcgbar.",
             )
 
@@ -340,9 +379,14 @@ class AdvancedCommandHandler(CommandHandler):
         else:
             # Nur Status anzeigen (bei "audio" ohne Parameter)
             mode = self._audio_router.mode
-            local = "verf\u00fcgbar" if self._audio_router.local_available else "nicht verf\u00fcgbar"
+            local = (
+                "verf\u00fcgbar"
+                if self._audio_router.local_available
+                else "nicht verf\u00fcgbar"
+            )
             return CommandResult(
-                command="audio", success=True,
+                command="audio",
+                success=True,
                 text=f"Audio-Modus: {mode.value}\nLokale Wiedergabe: {local}",
             )
 
@@ -351,7 +395,8 @@ class AdvancedCommandHandler(CommandHandler):
             AudioOutputMode.MATRIX_AND_LOCAL: "Matrix + Lokal",
         }
         return CommandResult(
-            command="audio", success=True,
+            command="audio",
+            success=True,
             text=f"Audio-Modus: {mode_text.get(new_mode, new_mode.value)}",
         )
 
@@ -370,7 +415,8 @@ class AdvancedCommandHandler(CommandHandler):
         """
         if not self._computer_use:
             return CommandResult(
-                command="computer_use", success=False,
+                command="computer_use",
+                success=False,
                 text="Computer Use nicht verf\u00fcgbar (AnthropicClient oder ActionController fehlt).",
             )
 
@@ -382,7 +428,8 @@ class AdvancedCommandHandler(CommandHandler):
         except Exception as e:
             logger.error("Computer Use fehlgeschlagen: %s", e)
             return CommandResult(
-                command="computer_use", success=False,
+                command="computer_use",
+                success=False,
                 text=user_friendly_error(e, "Computer Use"),
             )
 
@@ -401,7 +448,8 @@ class AdvancedCommandHandler(CommandHandler):
         """Webseite abrufen und Klartext fuer LLM-Zusammenfassung liefern."""
         if not self._web_fetcher:
             return CommandResult(
-                command="web_summary", success=False,
+                command="web_summary",
+                success=False,
                 text="WebFetcher nicht verfuegbar.",
             )
 
@@ -409,7 +457,8 @@ class AdvancedCommandHandler(CommandHandler):
         match = WEB_SUMMARY_PATTERN.search(raw_text.strip())
         if not match:
             return CommandResult(
-                command="web_summary", success=False,
+                command="web_summary",
+                success=False,
                 text="URL nicht erkannt. Beispiel: fasse https://example.com zusammen",
             )
 
@@ -419,7 +468,8 @@ class AdvancedCommandHandler(CommandHandler):
             content = self._web_fetcher.fetch(url)
         except ValueError as exc:
             return CommandResult(
-                command="web_summary", success=False,
+                command="web_summary",
+                success=False,
                 text=f"Ungueltige URL: {exc}",
             )
         except Exception as exc:
@@ -438,10 +488,13 @@ class AdvancedCommandHandler(CommandHandler):
                             history_text=f"Webseite '{url}' (Snippet via Suche):\n\n{snippet}",
                         )
                 except Exception as search_exc:
-                    logger.warning("Brave-Search-Fallback fehlgeschlagen: %s", search_exc)
+                    logger.warning(
+                        "Brave-Search-Fallback fehlgeschlagen: %s", search_exc
+                    )
 
             return CommandResult(
-                command="web_summary", success=False,
+                command="web_summary",
+                success=False,
                 text=f"Seite konnte nicht gelesen werden: {exc}",
             )
 
@@ -469,7 +522,8 @@ class AdvancedCommandHandler(CommandHandler):
         """
         if not self._search_client:
             return CommandResult(
-                command="web_search", success=False,
+                command="web_search",
+                success=False,
                 text="Web-Suche nicht verf\u00fcgbar (Brave API-Key fehlt).",
             )
 
@@ -480,17 +534,26 @@ class AdvancedCommandHandler(CommandHandler):
         else:
             # Keyword-Match: versuche "suche" / "google" etc. zu entfernen
             query = raw_text.strip()
-            for prefix in ("such mir", "suche mir", "suche mal", "such mal",
-                           "google mal", "google mir", "recherchiere",
-                           "finde heraus", "im internet suchen"):
+            for prefix in (
+                "such mir",
+                "suche mir",
+                "suche mal",
+                "such mal",
+                "google mal",
+                "google mir",
+                "recherchiere",
+                "finde heraus",
+                "im internet suchen",
+            ):
                 lower = query.lower()
                 if lower.startswith(prefix):
-                    query = query[len(prefix):].strip()
+                    query = query[len(prefix) :].strip()
                     break
 
         if not query:
             return CommandResult(
-                command="web_search", success=False,
+                command="web_search",
+                success=False,
                 text="Bitte gib einen Suchbegriff an (z.B. 'suche Dachdecker Plattenburg').",
             )
 
@@ -499,7 +562,8 @@ class AdvancedCommandHandler(CommandHandler):
         except Exception as e:
             logger.error("Web-Suche fehlgeschlagen: %s", e)
             return CommandResult(
-                command="web_search", success=False,
+                command="web_search",
+                success=False,
                 text=user_friendly_error(e, "Web-Suche"),
             )
 

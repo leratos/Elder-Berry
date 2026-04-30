@@ -1,4 +1,5 @@
 """Tests für STT – TranscriptionResult, STTEngine ABC, FasterWhisperEngine."""
+
 from __future__ import annotations
 
 import importlib
@@ -24,6 +25,7 @@ requires_faster_whisper = pytest.mark.skipif(
 # Fixtures
 # ---------------------------------------------------------------------------
 
+
 @pytest.fixture
 def wav_file(tmp_path: Path) -> Path:
     """Erstellt eine minimale 1-Sekunde WAV-Datei (16kHz mono Stille)."""
@@ -48,6 +50,7 @@ def pcm_bytes() -> bytes:
 # ---------------------------------------------------------------------------
 # TranscriptionResult + TranscriptionSegment
 # ---------------------------------------------------------------------------
+
 
 class TestTranscriptionResult:
     def test_is_empty_true(self):
@@ -86,10 +89,12 @@ class TestTranscriptionResult:
 # FasterWhisperEngine – ohne echtes Modell
 # ---------------------------------------------------------------------------
 
+
 @requires_faster_whisper
 class TestFasterWhisperEngine:
     def _make_engine(self, **kwargs) -> "FasterWhisperEngine":
         from elder_berry.stt.faster_whisper_engine import FasterWhisperEngine
+
         return FasterWhisperEngine(**kwargs)
 
     def test_is_available(self):
@@ -114,19 +119,26 @@ class TestFasterWhisperEngine:
 
     def test_device_resolve_cpu(self, monkeypatch):
         from elder_berry.stt.faster_whisper_engine import FasterWhisperEngine
+
         # torch nicht verfügbar → CPU
-        monkeypatch.setattr("builtins.__import__",
-            lambda name, *a, **kw: (_ for _ in ()).throw(ImportError()) if name == "torch" else __import__(name, *a, **kw))
+        monkeypatch.setattr(
+            "builtins.__import__",
+            lambda name, *a, **kw: (_ for _ in ()).throw(ImportError())
+            if name == "torch"
+            else __import__(name, *a, **kw),
+        )
         device = FasterWhisperEngine._resolve_device("cpu")
         assert device == "cpu"
 
     def test_compute_type_auto_cuda(self):
         from elder_berry.stt.faster_whisper_engine import FasterWhisperEngine
+
         ct = FasterWhisperEngine._resolve_compute_type("auto", "cuda")
         assert ct == "float16"
 
     def test_compute_type_auto_cpu(self):
         from elder_berry.stt.faster_whisper_engine import FasterWhisperEngine
+
         ct = FasterWhisperEngine._resolve_compute_type("auto", "cpu")
         assert ct == "int8"
 
@@ -228,6 +240,7 @@ class TestFasterWhisperEngine:
 
     def test_write_wav_creates_valid_file(self, tmp_path: Path, pcm_bytes: bytes):
         from elder_berry.stt.faster_whisper_engine import FasterWhisperEngine
+
         path = tmp_path / "out.wav"
         FasterWhisperEngine._write_wav(path, pcm_bytes, 16000)
         assert path.exists()
@@ -258,6 +271,7 @@ class TestFasterWhisperEngine:
 
             def fake_load():
                 engine._model = mock_model
+
             mock_load.side_effect = fake_load
 
             engine.transcribe(wav_file)
@@ -277,14 +291,17 @@ class TestFasterWhisperEngine:
 # FasterWhisperEngine – Paket nicht installiert
 # ---------------------------------------------------------------------------
 
+
 class TestFasterWhisperNotInstalled:
     def test_raises_on_init_without_package(self):
         import sys
+
         # faster_whisper aus sys.modules entfernen wenn vorhanden
         saved = sys.modules.pop("faster_whisper", None)
         saved_flag = None
         try:
             import elder_berry.stt.faster_whisper_engine as fw_mod
+
             saved_flag = fw_mod._FASTER_WHISPER_AVAILABLE
             fw_mod._FASTER_WHISPER_AVAILABLE = False
             fw_mod._WhisperModel = None

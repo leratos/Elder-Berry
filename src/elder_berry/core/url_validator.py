@@ -16,6 +16,7 @@ folgender Fetch, keine langen Caches) ist der Schutz ausreichend. Fuer
 hoeheres Schutzniveau muesste httpx gegen die bereits resolvte IP sprechen
 (--> nicht in diesem Scope).
 """
+
 from __future__ import annotations
 
 import ipaddress
@@ -76,9 +77,7 @@ def ensure_public_url(url: str, *, allow_loopback: bool = False) -> str:
     try:
         addrinfo = socket.getaddrinfo(host, None)
     except socket.gaierror as exc:
-        raise UnsafeUrlError(
-            f"Host '{host}' nicht aufloesbar: {exc}"
-        ) from exc
+        raise UnsafeUrlError(f"Host '{host}' nicht aufloesbar: {exc}") from exc
 
     if not addrinfo:
         raise UnsafeUrlError(f"Host '{host}' liefert keine IP-Adresse.")

@@ -10,6 +10,7 @@ Unterstützte Formate:
 Alle Berechnungen erfolgen in lokaler Zeitzone, um Wochentage korrekt
 zu bestimmen.  Das Ergebnis wird als UTC-aware datetime zurückgegeben.
 """
+
 from __future__ import annotations
 
 import calendar
@@ -23,9 +24,7 @@ from zoneinfo import ZoneInfo
 
 VALID_TYPES = {"daily", "weekly", "monthly", "biweekly", "weekdays"}
 
-_RECURRENCE_RE = re.compile(
-    r"^(daily|weekly|monthly|biweekly|weekdays)(?::(\d+))?$"
-)
+_RECURRENCE_RE = re.compile(r"^(daily|weekly|monthly|biweekly|weekdays)(?::(\d+))?$")
 
 # ISO-Wochentag Mapping: Deutsch → Nummer (Mo=1 .. So=7)
 _WEEKDAY_MAP: dict[str, int] = {
@@ -47,9 +46,7 @@ DEFAULT_TIMEZONE = "Europe/Berlin"
 
 # "jeden montag", "jeden dienstag", ...
 _WEEKLY_RE = re.compile(
-    r"jede[nrm]?\s+("
-    + "|".join(_WEEKDAY_MAP.keys())
-    + r")",
+    r"jede[nrm]?\s+(" + "|".join(_WEEKDAY_MAP.keys()) + r")",
     re.IGNORECASE,
 )
 
@@ -138,8 +135,13 @@ def format_recurrence(recurrence: str) -> str:
 
     # Wochentag-Name aus ISO-Nummer
     day_names = {
-        1: "Montag", 2: "Dienstag", 3: "Mittwoch", 4: "Donnerstag",
-        5: "Freitag", 6: "Samstag", 7: "Sonntag",
+        1: "Montag",
+        2: "Dienstag",
+        3: "Mittwoch",
+        4: "Donnerstag",
+        5: "Freitag",
+        6: "Samstag",
+        7: "Sonntag",
     }
 
     if rtype == "weekly" and param:
@@ -159,6 +161,7 @@ def format_recurrence(recurrence: str) -> str:
 # -------------------------------------------------------------------------
 # Berechnung: nächster Fälligkeitstermin
 # -------------------------------------------------------------------------
+
 
 def validate_recurrence(recurrence: str) -> bool:
     """Prüft ob ein recurrence-String gültig ist.

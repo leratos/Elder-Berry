@@ -1,4 +1,5 @@
 """Tests für RPi5AvatarDisplay – PyGame gemockt."""
+
 from __future__ import annotations
 
 import threading
@@ -11,6 +12,7 @@ import pytest
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
+
 
 @pytest.fixture
 def mock_pygame():
@@ -49,16 +51,27 @@ def layered_assets(tmp_path):
         d.mkdir()
     # Mindest-Assets für NEUTRAL
     for name in [
-        "body/idle.png", "body/angry.png", "body/thinking.png",
-        "eye/eye_left_open.png", "eye/eye_right_open.png",
-        "eye/eye_left_close.png", "eye/eye_right_close.png",
-        "eye/eye_left_angry_open.png", "eye/eye_right_angry_open.png",
-        "eye/eye_left_side_open.png", "eye/eye_right_side_open.png",
-        "eye/eye_left_sad_open.png", "eye/eye_right_sad_open.png",
-        "eye/eye_left_surprise_open.png", "eye/eye_right_surprise_open.png",
-        "mouth/mouth_neutral_close.png", "mouth/mouth_halfopen.png",
-        "mouth/mouth_open.png", "mouth/mouth_idle_close.png",
-        "mouth/mouth_angry_open.png", "mouth/mouth_think_close.png",
+        "body/idle.png",
+        "body/angry.png",
+        "body/thinking.png",
+        "eye/eye_left_open.png",
+        "eye/eye_right_open.png",
+        "eye/eye_left_close.png",
+        "eye/eye_right_close.png",
+        "eye/eye_left_angry_open.png",
+        "eye/eye_right_angry_open.png",
+        "eye/eye_left_side_open.png",
+        "eye/eye_right_side_open.png",
+        "eye/eye_left_sad_open.png",
+        "eye/eye_right_sad_open.png",
+        "eye/eye_left_surprise_open.png",
+        "eye/eye_right_surprise_open.png",
+        "mouth/mouth_neutral_close.png",
+        "mouth/mouth_halfopen.png",
+        "mouth/mouth_open.png",
+        "mouth/mouth_idle_close.png",
+        "mouth/mouth_angry_open.png",
+        "mouth/mouth_think_close.png",
     ]:
         (tmp_path / name).write_bytes(b"\x89PNG" + b"\x00" * 40)
     return tmp_path
@@ -68,6 +81,7 @@ def layered_assets(tmp_path):
 def avatar_display(mock_pygame, layered_assets):
     """Erstellt ein RPi5AvatarDisplay (nicht gestartet)."""
     from elder_berry.robot.rpi5_avatar import RPi5AvatarDisplay
+
     return RPi5AvatarDisplay(
         width=720,
         height=1280,
@@ -79,6 +93,7 @@ def avatar_display(mock_pygame, layered_assets):
 # ---------------------------------------------------------------------------
 # Init + State
 # ---------------------------------------------------------------------------
+
 
 class TestRPi5AvatarInit:
     def test_initial_emotion_is_neutral(self, avatar_display):
@@ -95,12 +110,14 @@ class TestRPi5AvatarInit:
 
     def test_is_avatar_display(self, avatar_display):
         from elder_berry.robot.server import AvatarDisplay
+
         assert isinstance(avatar_display, AvatarDisplay)
 
 
 # ---------------------------------------------------------------------------
 # set_emotion / set_speaking (thread-safe)
 # ---------------------------------------------------------------------------
+
 
 class TestStateChanges:
     def test_set_emotion(self, avatar_display):
@@ -149,6 +166,7 @@ class TestStateChanges:
 # Render-Loop (Start / Stop)
 # ---------------------------------------------------------------------------
 
+
 class TestRenderLoop:
     def test_start_creates_thread(self, avatar_display, mock_pygame):
         # Renderer soll nach 1 Frame stoppen
@@ -185,14 +203,17 @@ class TestRenderLoop:
 # Fullscreen
 # ---------------------------------------------------------------------------
 
+
 class TestFullscreen:
     def test_fullscreen_default_true(self, mock_pygame, layered_assets):
         from elder_berry.robot.rpi5_avatar import RPi5AvatarDisplay
+
         avatar = RPi5AvatarDisplay(assets_dir=layered_assets)
         assert avatar._fullscreen is True
 
     def test_windowed_mode(self, mock_pygame, layered_assets):
         from elder_berry.robot.rpi5_avatar import RPi5AvatarDisplay
+
         avatar = RPi5AvatarDisplay(fullscreen=False, assets_dir=layered_assets)
         assert avatar._fullscreen is False
 
@@ -201,20 +222,24 @@ class TestFullscreen:
 # LayeredSpriteRenderer Fullscreen-Flag
 # ---------------------------------------------------------------------------
 
+
 class TestLayeredRendererFullscreen:
     def test_fullscreen_flag_sets_mode(self, mock_pygame, layered_assets):
         from elder_berry.avatar.layered_renderer import LayeredSpriteRenderer
+
         r = LayeredSpriteRenderer(assets_dir=layered_assets)
         r.initialize(720, 1280, fullscreen=True)
 
         flags = mock_pygame["pygame"].FULLSCREEN | mock_pygame["pygame"].NOFRAME
         mock_pygame["pygame"].display.set_mode.assert_called_once_with(
-            (720, 1280), flags,
+            (720, 1280),
+            flags,
         )
         mock_pygame["pygame"].mouse.set_visible.assert_called_once_with(False)
 
     def test_windowed_no_flags(self, mock_pygame, layered_assets):
         from elder_berry.avatar.layered_renderer import LayeredSpriteRenderer
+
         r = LayeredSpriteRenderer(assets_dir=layered_assets)
         r.initialize(720, 1280, fullscreen=False)
 
@@ -225,6 +250,7 @@ class TestLayeredRendererFullscreen:
 
     def test_resolution_720x1280(self, mock_pygame, layered_assets):
         from elder_berry.avatar.layered_renderer import LayeredSpriteRenderer
+
         r = LayeredSpriteRenderer(assets_dir=layered_assets)
         r.initialize(720, 1280)
         assert r._width == 720
@@ -235,10 +261,14 @@ class TestLayeredRendererFullscreen:
 # Lip-Sync Fix
 # ---------------------------------------------------------------------------
 
+
 class TestLipSyncFix:
-    def test_show_speaking_no_reset_when_already_speaking(self, mock_pygame, layered_assets):
+    def test_show_speaking_no_reset_when_already_speaking(
+        self, mock_pygame, layered_assets
+    ):
         """show_speaking(True) darf lip_sync_mouth nicht resetten wenn schon True."""
         from elder_berry.avatar.layered_renderer import LayeredSpriteRenderer
+
         r = LayeredSpriteRenderer(assets_dir=layered_assets)
         r.initialize(720, 1280)
 
@@ -252,6 +282,7 @@ class TestLipSyncFix:
     def test_show_speaking_resets_on_transition(self, mock_pygame, layered_assets):
         """show_speaking(True) resettet beim Übergang von False → True."""
         from elder_berry.avatar.layered_renderer import LayeredSpriteRenderer
+
         r = LayeredSpriteRenderer(assets_dir=layered_assets)
         r.initialize(720, 1280)
 
@@ -267,9 +298,11 @@ class TestLipSyncFix:
 # Idle-Animationen
 # ---------------------------------------------------------------------------
 
+
 class TestIdleAnimations:
     def test_idle_state_initial(self, mock_pygame, layered_assets):
         from elder_berry.avatar.layered_renderer import LayeredSpriteRenderer
+
         r = LayeredSpriteRenderer(assets_dir=layered_assets)
         r.initialize(720, 1280)
         assert r._idle_active is False
@@ -278,6 +311,7 @@ class TestIdleAnimations:
     def test_idle_triggers_after_interval(self, mock_pygame, layered_assets):
         from elder_berry.avatar.layered_renderer import LayeredSpriteRenderer
         import time as _time
+
         r = LayeredSpriteRenderer(assets_dir=layered_assets)
         r.initialize(720, 1280)
 
@@ -289,6 +323,7 @@ class TestIdleAnimations:
     def test_idle_ends_after_duration(self, mock_pygame, layered_assets):
         from elder_berry.avatar.layered_renderer import LayeredSpriteRenderer
         import time as _time
+
         r = LayeredSpriteRenderer(assets_dir=layered_assets)
         r.initialize(720, 1280)
 
@@ -304,6 +339,7 @@ class TestIdleAnimations:
     def test_idle_disabled_while_speaking(self, mock_pygame, layered_assets):
         from elder_berry.avatar.layered_renderer import LayeredSpriteRenderer
         import time as _time
+
         r = LayeredSpriteRenderer(assets_dir=layered_assets)
         r.initialize(720, 1280)
 

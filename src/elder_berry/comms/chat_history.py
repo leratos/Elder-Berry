@@ -13,6 +13,7 @@ Verwendung:
     history.add("@user:matrix.org", "assistant", "3 Mails gefunden: ...")
     context = history.format_for_prompt("@user:matrix.org")
 """
+
 from __future__ import annotations
 
 import logging
@@ -131,11 +132,11 @@ class ChatHistory:
             if new_summary and new_summary.strip():
                 with self._lock:
                     self._summaries[sender] = new_summary.strip()
-                logger.debug("Summary aktualisiert für %s (%d Zeichen)",
-                             sender, len(new_summary))
+                logger.debug(
+                    "Summary aktualisiert für %s (%d Zeichen)", sender, len(new_summary)
+                )
         except Exception:
-            logger.exception("Fehler beim Erstellen der Zusammenfassung für %s",
-                             sender)
+            logger.exception("Fehler beim Erstellen der Zusammenfassung für %s", sender)
 
     def get_summary(self, sender: str) -> str:
         """Gibt die aktuelle Rolling Summary für einen User zurück."""

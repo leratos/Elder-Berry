@@ -1,4 +1,5 @@
 """Tests für CoquiTTSEngine – Coqui TTS und Audio-Playback gemockt."""
+
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -11,6 +12,7 @@ from elder_berry.tts.coqui_engine import _clean_text_for_tts
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
+
 
 @pytest.fixture
 def voice_dir(tmp_path):
@@ -48,6 +50,7 @@ def mock_tts_module():
 def engine(voice_dir, mock_tts_module):
     """Erstellt eine CoquiTTSEngine mit gemocktem TTS."""
     from elder_berry.tts.coqui_engine import CoquiTTSEngine
+
     return CoquiTTSEngine(
         voice_map=voice_dir,
         default_speaker_wav=voice_dir["neutral"],
@@ -59,6 +62,7 @@ def engine(voice_dir, mock_tts_module):
 # Import / Instanziierung
 # ---------------------------------------------------------------------------
 
+
 class TestCoquiTTSEngineInit:
     def test_is_tts_engine(self, engine):
         assert isinstance(engine, TTSEngine)
@@ -69,6 +73,7 @@ class TestCoquiTTSEngineInit:
     def test_import_error_without_tts(self):
         with patch("elder_berry.tts.coqui_engine.TTS", None):
             from elder_berry.tts.coqui_engine import CoquiTTSEngine
+
             with pytest.raises(ImportError, match="Coqui TTS"):
                 CoquiTTSEngine()
 
@@ -76,6 +81,7 @@ class TestCoquiTTSEngineInit:
 # ---------------------------------------------------------------------------
 # Load / Unload (VRAM-Management)
 # ---------------------------------------------------------------------------
+
 
 class TestLoadUnload:
     def test_load_creates_model(self, engine, mock_tts_module):
@@ -118,6 +124,7 @@ class TestLoadUnload:
 # Voice-Map und Speaker-WAV Auflösung
 # ---------------------------------------------------------------------------
 
+
 class TestVoiceMap:
     def test_resolve_emotion(self, engine, voice_dir):
         path = engine._resolve_speaker_wav("cheerful")
@@ -133,6 +140,7 @@ class TestVoiceMap:
 
     def test_no_default_no_emotion_returns_none(self, mock_tts_module):
         from elder_berry.tts.coqui_engine import CoquiTTSEngine
+
         engine = CoquiTTSEngine(voice_map={}, default_speaker_wav=None)
         assert engine._resolve_speaker_wav(None) is None
 
@@ -140,6 +148,7 @@ class TestVoiceMap:
 # ---------------------------------------------------------------------------
 # generate_audio
 # ---------------------------------------------------------------------------
+
 
 class TestGenerateAudio:
     def test_generates_file(self, engine, mock_tts_module, tmp_path):
@@ -153,7 +162,9 @@ class TestGenerateAudio:
         engine.generate_audio("Hallo", output)
         assert engine.is_loaded
 
-    def test_uses_correct_speaker_wav(self, engine, mock_tts_module, tmp_path, voice_dir):
+    def test_uses_correct_speaker_wav(
+        self, engine, mock_tts_module, tmp_path, voice_dir
+    ):
         output = tmp_path / "output.wav"
         engine.generate_audio("Hallo", output, emotion="angry")
         call_kwargs = mock_tts_module["tts_instance"].tts_to_file.call_args
@@ -161,6 +172,7 @@ class TestGenerateAudio:
 
     def test_raises_without_speaker_wav(self, mock_tts_module, tmp_path):
         from elder_berry.tts.coqui_engine import CoquiTTSEngine
+
         engine = CoquiTTSEngine(voice_map={}, default_speaker_wav=None)
         with pytest.raises(ValueError, match="Speaker-WAV"):
             engine.generate_audio("Hallo", tmp_path / "out.wav")
@@ -175,6 +187,7 @@ class TestGenerateAudio:
 # ---------------------------------------------------------------------------
 # Volume / Rate
 # ---------------------------------------------------------------------------
+
 
 class TestVolumeRate:
     def test_default_volume(self, engine):
@@ -202,6 +215,7 @@ class TestVolumeRate:
 # Voices (VoiceInfo)
 # ---------------------------------------------------------------------------
 
+
 class TestVoices:
     def test_get_voices_returns_mapped(self, engine):
         voices = engine.get_voices()
@@ -224,6 +238,7 @@ class TestVoices:
 # ---------------------------------------------------------------------------
 # speak (Integration: generate + play)
 # ---------------------------------------------------------------------------
+
 
 class TestSpeak:
     def test_speak_empty_text_skips(self, engine, mock_tts_module):
@@ -251,6 +266,7 @@ class TestSpeak:
 # ---------------------------------------------------------------------------
 # Emoji-Bereinigung (_clean_text_for_tts)
 # ---------------------------------------------------------------------------
+
 
 class TestCleanTextForTts:
     def test_plain_text_unchanged(self):

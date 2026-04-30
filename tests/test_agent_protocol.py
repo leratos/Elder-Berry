@@ -1,4 +1,5 @@
 """Tests für Agent-Kommunikation: Protocol, Server, Client."""
+
 import io
 import wave
 from dataclasses import asdict
@@ -25,6 +26,7 @@ from elder_berry.agent.server import AgentServer, SUPPORTED_ACTIONS  # noqa: E40
 # Hilfsfunktionen
 # ---------------------------------------------------------------------------
 
+
 def make_wav_bytes(duration: float = 0.1, sample_rate: int = 22050) -> bytes:
     """Erzeugt gültige WAV-Bytes (Stille) für Tests."""
     n_frames = int(sample_rate * duration)
@@ -40,6 +42,7 @@ def make_wav_bytes(duration: float = 0.1, sample_rate: int = 22050) -> bytes:
 # ---------------------------------------------------------------------------
 # Mock ActionController
 # ---------------------------------------------------------------------------
+
 
 class MockActionController(ActionController):
     """Test-Double für ActionController."""
@@ -62,8 +65,9 @@ class MockActionController(ActionController):
     def move_mouse(self, x: int, y: int, duration: float = 0.25) -> None:
         self._record("move_mouse", x, y, duration=duration)
 
-    def click(self, x: int | None = None, y: int | None = None,
-              button: str = "left") -> None:
+    def click(
+        self, x: int | None = None, y: int | None = None, button: str = "left"
+    ) -> None:
         self._record("click", x=x, y=y, button=button)
 
     def list_windows(self) -> list[WindowInfo]:
@@ -97,6 +101,7 @@ class MockActionController(ActionController):
 # Fixtures
 # ---------------------------------------------------------------------------
 
+
 @pytest.fixture
 def mock_controller():
     return MockActionController()
@@ -110,12 +115,14 @@ def agent_server(mock_controller):
 @pytest.fixture
 def client(agent_server):
     from fastapi.testclient import TestClient
+
     return TestClient(agent_server.app)
 
 
 # ---------------------------------------------------------------------------
 # Protocol DTOs
 # ---------------------------------------------------------------------------
+
 
 class TestProtocolDTOs:
     def test_action_request_defaults(self):
@@ -168,14 +175,16 @@ class TestProtocolDTOs:
 
     def test_action_result_with_return_value(self):
         result = ActionResult(
-            success=True, action_type="get_volume",
+            success=True,
+            action_type="get_volume",
             return_value=0.75,
         )
         assert result.return_value == 0.75
 
     def test_action_result_failure(self):
         result = ActionResult(
-            success=False, action_type="unknown",
+            success=False,
+            action_type="unknown",
             message="Unbekannte Aktion: unknown",
         )
         assert result.success is False
@@ -195,6 +204,7 @@ class TestProtocolDTOs:
 # ---------------------------------------------------------------------------
 # Server: Health + Status
 # ---------------------------------------------------------------------------
+
 
 class TestAgentServerHealth:
     def test_health_endpoint(self, client):
@@ -219,11 +229,16 @@ class TestAgentServerHealth:
 # Server: Action Execution
 # ---------------------------------------------------------------------------
 
+
 class TestAgentServerActions:
     def test_press_key(self, client, mock_controller):
-        r = client.post("/action/execute", json={
-            "action_type": "press_key", "params": {"key": "enter"},
-        })
+        r = client.post(
+            "/action/execute",
+            json={
+                "action_type": "press_key",
+                "params": {"key": "enter"},
+            },
+        )
         assert r.status_code == 200
         data = r.json()
         assert data["success"] is True
@@ -231,39 +246,59 @@ class TestAgentServerActions:
         assert mock_controller.calls[-1][0] == "press_key"
 
     def test_type_text(self, client, mock_controller):
-        r = client.post("/action/execute", json={
-            "action_type": "type_text", "params": {"text": "hello"},
-        })
+        r = client.post(
+            "/action/execute",
+            json={
+                "action_type": "type_text",
+                "params": {"text": "hello"},
+            },
+        )
         assert r.status_code == 200
         assert r.json()["success"] is True
         assert mock_controller.calls[-1][0] == "type_text"
 
     def test_hotkey(self, client, mock_controller):
-        r = client.post("/action/execute", json={
-            "action_type": "hotkey", "params": {"keys": ["ctrl", "c"]},
-        })
+        r = client.post(
+            "/action/execute",
+            json={
+                "action_type": "hotkey",
+                "params": {"keys": ["ctrl", "c"]},
+            },
+        )
         assert r.status_code == 200
         assert r.json()["success"] is True
         assert mock_controller.calls[-1][0] == "hotkey"
 
     def test_move_mouse(self, client, mock_controller):
-        r = client.post("/action/execute", json={
-            "action_type": "move_mouse", "params": {"x": 100, "y": 200},
-        })
+        r = client.post(
+            "/action/execute",
+            json={
+                "action_type": "move_mouse",
+                "params": {"x": 100, "y": 200},
+            },
+        )
         assert r.status_code == 200
         assert r.json()["success"] is True
 
     def test_click(self, client, mock_controller):
-        r = client.post("/action/execute", json={
-            "action_type": "click", "params": {"x": 50, "y": 50, "button": "right"},
-        })
+        r = client.post(
+            "/action/execute",
+            json={
+                "action_type": "click",
+                "params": {"x": 50, "y": 50, "button": "right"},
+            },
+        )
         assert r.status_code == 200
         assert r.json()["success"] is True
 
     def test_list_windows(self, client):
-        r = client.post("/action/execute", json={
-            "action_type": "list_windows", "params": {},
-        })
+        r = client.post(
+            "/action/execute",
+            json={
+                "action_type": "list_windows",
+                "params": {},
+            },
+        )
         assert r.status_code == 200
         data = r.json()
         assert data["success"] is True
@@ -271,60 +306,92 @@ class TestAgentServerActions:
         assert data["return_value"][0]["title"] == "Test Window"
 
     def test_focus_window(self, client):
-        r = client.post("/action/execute", json={
-            "action_type": "focus_window", "params": {"title": "Test"},
-        })
+        r = client.post(
+            "/action/execute",
+            json={
+                "action_type": "focus_window",
+                "params": {"title": "Test"},
+            },
+        )
         assert r.status_code == 200
         assert r.json()["return_value"] is True
 
     def test_minimize_window(self, client):
-        r = client.post("/action/execute", json={
-            "action_type": "minimize_window", "params": {"title": "Test"},
-        })
+        r = client.post(
+            "/action/execute",
+            json={
+                "action_type": "minimize_window",
+                "params": {"title": "Test"},
+            },
+        )
         assert r.status_code == 200
         assert r.json()["return_value"] is True
 
     def test_maximize_window(self, client):
-        r = client.post("/action/execute", json={
-            "action_type": "maximize_window", "params": {"title": "Test"},
-        })
+        r = client.post(
+            "/action/execute",
+            json={
+                "action_type": "maximize_window",
+                "params": {"title": "Test"},
+            },
+        )
         assert r.status_code == 200
         assert r.json()["return_value"] is True
 
     def test_get_volume(self, client):
-        r = client.post("/action/execute", json={
-            "action_type": "get_volume", "params": {},
-        })
+        r = client.post(
+            "/action/execute",
+            json={
+                "action_type": "get_volume",
+                "params": {},
+            },
+        )
         assert r.status_code == 200
         assert r.json()["return_value"] == 0.75
 
     def test_set_volume(self, client, mock_controller):
-        r = client.post("/action/execute", json={
-            "action_type": "set_volume", "params": {"level": 0.5},
-        })
+        r = client.post(
+            "/action/execute",
+            json={
+                "action_type": "set_volume",
+                "params": {"level": 0.5},
+            },
+        )
         assert r.status_code == 200
         assert r.json()["success"] is True
 
     def test_mute(self, client, mock_controller):
-        r = client.post("/action/execute", json={
-            "action_type": "mute", "params": {"state": True},
-        })
+        r = client.post(
+            "/action/execute",
+            json={
+                "action_type": "mute",
+                "params": {"state": True},
+            },
+        )
         assert r.status_code == 200
         assert r.json()["success"] is True
 
     def test_unknown_action_fails(self, client):
-        r = client.post("/action/execute", json={
-            "action_type": "self_destruct", "params": {},
-        })
+        r = client.post(
+            "/action/execute",
+            json={
+                "action_type": "self_destruct",
+                "params": {},
+            },
+        )
         assert r.status_code == 200
         data = r.json()
         assert data["success"] is False
         assert "Unbekannte Aktion" in data["message"]
 
     def test_missing_params_fails(self, client):
-        r = client.post("/action/execute", json={
-            "action_type": "press_key", "params": {},
-        })
+        r = client.post(
+            "/action/execute",
+            json={
+                "action_type": "press_key",
+                "params": {},
+            },
+        )
         assert r.status_code == 200
         data = r.json()
         assert data["success"] is False
@@ -334,6 +401,7 @@ class TestAgentServerActions:
 # ---------------------------------------------------------------------------
 # Server: Audio Playback
 # ---------------------------------------------------------------------------
+
 
 class TestAgentServerAudio:
     @patch.object(AgentServer, "_play_wav")
@@ -378,6 +446,7 @@ class TestAgentServerAudio:
 # Server: Token-Auth (Security-Fix)
 # ---------------------------------------------------------------------------
 
+
 class TestAgentServerTokenAuth:
     """AgentServer schützt Endpoints mit Token-Auth wenn agent_token gesetzt."""
 
@@ -392,6 +461,7 @@ class TestAgentServerTokenAuth:
         """Backwards-Compat: ohne Token-Konfiguration kein Auth-Check."""
         server = self._make_server_with_token(None)
         from fastapi.testclient import TestClient
+
         c = TestClient(server.app, raise_server_exceptions=False)
         r = c.get("/health")
         assert r.status_code == 200
@@ -400,6 +470,7 @@ class TestAgentServerTokenAuth:
         """Mit konfiguriertem Token wird jeder Request ohne Token abgelehnt."""
         server = self._make_server_with_token("geheimtoken123")
         from fastapi.testclient import TestClient
+
         c = TestClient(server.app, raise_server_exceptions=False)
         r = c.get("/health")
         assert r.status_code == 401
@@ -407,6 +478,7 @@ class TestAgentServerTokenAuth:
     def test_correct_token_grants_access(self):
         server = self._make_server_with_token("geheimtoken123")
         from fastapi.testclient import TestClient
+
         c = TestClient(server.app, raise_server_exceptions=False)
         r = c.get("/health", headers={"X-Saleria-Agent-Token": "geheimtoken123"})
         assert r.status_code == 200
@@ -414,6 +486,7 @@ class TestAgentServerTokenAuth:
     def test_wrong_token_rejected(self):
         server = self._make_server_with_token("geheimtoken123")
         from fastapi.testclient import TestClient
+
         c = TestClient(server.app, raise_server_exceptions=False)
         r = c.get("/health", headers={"X-Saleria-Agent-Token": "falsch"})
         assert r.status_code == 401
@@ -421,6 +494,7 @@ class TestAgentServerTokenAuth:
     def test_post_action_protected_with_token(self):
         server = self._make_server_with_token("tok")
         from fastapi.testclient import TestClient
+
         c = TestClient(server.app, raise_server_exceptions=False)
         r = c.post(
             "/action/execute",
@@ -430,18 +504,23 @@ class TestAgentServerTokenAuth:
 
     def test_warning_logged_when_no_token(self, caplog):
         import logging
+
         with caplog.at_level(logging.WARNING, logger="elder_berry.agent.server"):
             self._make_server_with_token(None)
         messages = [r.message for r in caplog.records if r.levelno == logging.WARNING]
-        assert any("agent_token" in m.lower() or "elder_berry_agent_token" in m.lower()
-                   for m in messages), f"Token-Warning erwartet. Logs: {messages}"
+        assert any(
+            "agent_token" in m.lower() or "elder_berry_agent_token" in m.lower()
+            for m in messages
+        ), f"Token-Warning erwartet. Logs: {messages}"
 
     def test_no_warning_when_token_set(self, caplog):
         import logging
+
         with caplog.at_level(logging.WARNING, logger="elder_berry.agent.server"):
             self._make_server_with_token("supersecret")
         warning_messages = [
-            r.message for r in caplog.records
+            r.message
+            for r in caplog.records
             if r.levelno == logging.WARNING and "agent_token" in r.message.lower()
         ]
         assert warning_messages == []
@@ -453,6 +532,7 @@ class TestAgentClientToken:
     def test_token_sent_in_header(self):
         from elder_berry.agent.client import AgentClient
         from elder_berry.agent.server import AGENT_TOKEN_HEADER
+
         with patch("elder_berry.agent.client.httpx.Client") as mock_cls:
             AgentClient(base_url="http://localhost:8001", agent_token="mytoken")
         call_kwargs = mock_cls.call_args[1]
@@ -461,6 +541,7 @@ class TestAgentClientToken:
     def test_no_header_when_no_token(self):
         from elder_berry.agent.client import AgentClient
         from elder_berry.agent.server import AGENT_TOKEN_HEADER
+
         with patch("elder_berry.agent.client.httpx.Client") as mock_cls:
             AgentClient(base_url="http://localhost:8001", agent_token=None)
         call_kwargs = mock_cls.call_args[1]
@@ -472,13 +553,22 @@ class TestAgentClientToken:
 # Server: SUPPORTED_ACTIONS Liste
 # ---------------------------------------------------------------------------
 
+
 class TestSupportedActions:
     def test_all_action_types_covered(self):
         expected = {
-            "press_key", "type_text", "hotkey",
-            "move_mouse", "click",
-            "list_windows", "focus_window", "minimize_window", "maximize_window",
-            "get_volume", "set_volume", "mute",
+            "press_key",
+            "type_text",
+            "hotkey",
+            "move_mouse",
+            "click",
+            "list_windows",
+            "focus_window",
+            "minimize_window",
+            "maximize_window",
+            "get_volume",
+            "set_volume",
+            "mute",
         }
         assert set(SUPPORTED_ACTIONS) == expected
 
@@ -492,24 +582,30 @@ class TestSupportedActions:
 # AgentClient – Tests mit gemocktem httpx
 # ---------------------------------------------------------------------------
 
+
 class TestAgentClient:
     """Tests fuer AgentClient mit gemocktem httpx.Client."""
 
     def _make_client(self, mock_http):
         from elder_berry.agent.client import AgentClient
+
         with patch("elder_berry.agent.client.httpx.Client", return_value=mock_http):
             return AgentClient(base_url="http://localhost:8001", timeout=5.0)
 
     def test_init_sets_base_url(self):
         mock_http = MagicMock()
         from elder_berry.agent.client import AgentClient
-        with patch("elder_berry.agent.client.httpx.Client", return_value=mock_http) as mock_cls:
+
+        with patch(
+            "elder_berry.agent.client.httpx.Client", return_value=mock_http
+        ) as mock_cls:
             c = AgentClient(base_url="http://test:9000", timeout=3.0)
         mock_cls.assert_called_once()
         assert c._base_url == "http://test:9000"
 
     def test_init_strips_trailing_slash(self):
         from elder_berry.agent.client import AgentClient
+
         with patch("elder_berry.agent.client.httpx.Client"):
             c = AgentClient(base_url="http://test:9000/")
         assert c._base_url == "http://test:9000"
@@ -524,7 +620,10 @@ class TestAgentClient:
         mock_http = MagicMock()
         mock_resp = MagicMock()
         mock_resp.json.return_value = {
-            "status": "ok", "hostname": "laptop", "uptime": 42.0, "version": "0.1.0"
+            "status": "ok",
+            "hostname": "laptop",
+            "uptime": 42.0,
+            "version": "0.1.0",
         }
         mock_http.get.return_value = mock_resp
 
@@ -539,7 +638,10 @@ class TestAgentClient:
         mock_http = MagicMock()
         mock_resp = MagicMock()
         mock_resp.json.return_value = {
-            "status": "ok", "hostname": "", "uptime": 0.0, "version": "0.1.0"
+            "status": "ok",
+            "hostname": "",
+            "uptime": 0.0,
+            "version": "0.1.0",
         }
         mock_http.get.return_value = mock_resp
 
@@ -548,6 +650,7 @@ class TestAgentClient:
 
     def test_is_online_false_on_http_error(self):
         import httpx
+
         mock_http = MagicMock()
         mock_http.get.side_effect = httpx.ConnectError("unreachable")
 
@@ -565,8 +668,10 @@ class TestAgentClient:
         mock_http = MagicMock()
         mock_resp = MagicMock()
         mock_resp.json.return_value = {
-            "online": True, "hostname": "laptop",
-            "uptime": 5.0, "available_actions": ["press_key"]
+            "online": True,
+            "hostname": "laptop",
+            "uptime": 5.0,
+            "available_actions": ["press_key"],
         }
         mock_http.get.return_value = mock_resp
 
@@ -581,7 +686,9 @@ class TestAgentClient:
         mock_http = MagicMock()
         mock_resp = MagicMock()
         mock_resp.json.return_value = {
-            "success": True, "action_type": "press_key", "message": "ok"
+            "success": True,
+            "action_type": "press_key",
+            "message": "ok",
         }
         mock_http.post.return_value = mock_resp
 
@@ -599,7 +706,9 @@ class TestAgentClient:
         mock_http = MagicMock()
         mock_resp = MagicMock()
         mock_resp.json.return_value = {
-            "success": True, "action_type": "mute", "message": "ok"
+            "success": True,
+            "action_type": "mute",
+            "message": "ok",
         }
         mock_http.post.return_value = mock_resp
 

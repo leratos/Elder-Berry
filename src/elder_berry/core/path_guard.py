@@ -23,6 +23,7 @@ Konfiguration:
   ``;`` auf Windows, ``:`` auf Unix). Wenn gesetzt, ersetzt die Defaults
   vollstaendig.
 """
+
 from __future__ import annotations
 
 import logging
@@ -63,16 +64,16 @@ class PathGuard:
                 resolved = Path(base).expanduser().resolve(strict=False)
             except (OSError, ValueError) as exc:
                 logger.warning(
-                    "PathGuard: Basis-Pfad konnte nicht aufgeloest werden "
-                    "(%s): %s", base, exc,
+                    "PathGuard: Basis-Pfad konnte nicht aufgeloest werden (%s): %s",
+                    base,
+                    exc,
                 )
                 continue
             normalized.append(resolved)
 
         if not normalized:
             raise ValueError(
-                "PathGuard: mindestens ein gueltiges Basis-Verzeichnis "
-                "erforderlich."
+                "PathGuard: mindestens ein gueltiges Basis-Verzeichnis erforderlich."
             )
 
         self._allowed_bases: tuple[Path, ...] = tuple(normalized)
@@ -116,7 +117,8 @@ class PathGuard:
             # RuntimeError: Symlink-Loop. OSError: z.B. zu langer Pfad.
             security_logger.warning(
                 "PathGuard rejected unresolvable path: %r (%s)",
-                path_str, exc,
+                path_str,
+                exc,
             )
             raise PermissionError("Pfad konnte nicht aufgeloest werden.") from exc
 
@@ -129,9 +131,10 @@ class PathGuard:
                 continue
 
         security_logger.warning(
-            "PathGuard rejected path outside allowed bases: %r "
-            "(resolved=%r, bases=%r)",
-            path_str, str(resolved), [str(b) for b in self._allowed_bases],
+            "PathGuard rejected path outside allowed bases: %r (resolved=%r, bases=%r)",
+            path_str,
+            str(resolved),
+            [str(b) for b in self._allowed_bases],
         )
         raise PermissionError(
             "Pfad liegt ausserhalb erlaubter Verzeichnisse.",

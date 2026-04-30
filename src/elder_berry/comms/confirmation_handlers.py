@@ -37,7 +37,9 @@ class ConfirmationHandler:
         self._p = parent
 
     async def handle_confirm(
-        self, msg: IncomingMessage, action: PendingAction,
+        self,
+        msg: IncomingMessage,
+        action: PendingAction,
     ) -> None:
         """Führt eine bestätigte PendingAction aus."""
         if action.action_type in ("mail_reply", "mail_reply_modify"):
@@ -59,19 +61,22 @@ class ConfirmationHandler:
         else:
             logger.warning("Unbekannter PendingAction-Typ: %s", action.action_type)
             await self._p._channel.send_text(
-                msg.room_id, f"Unbekannte Aktion: {action.action_type}",
+                msg.room_id,
+                f"Unbekannte Aktion: {action.action_type}",
             )
             self._p._pending.clear(msg.sender)
 
     async def handle_modify(
-        self, msg: IncomingMessage, action: PendingAction,
+        self,
+        msg: IncomingMessage,
+        action: PendingAction,
     ) -> None:
         """Generiert einen neuen Draft basierend auf der Änderungsanweisung."""
         if action.action_type == "filing":
             hint = action.data.get("modify_instruction", "") or msg.body.strip()
             for prefix in ("ändern:", "Ändern:", "andern:", "ändern :", "Ändern :"):
                 if hint.lower().startswith(prefix.lower()):
-                    hint = hint[len(prefix):].strip()
+                    hint = hint[len(prefix) :].strip()
                     break
             await self._execute_filing_correction(msg, action, hint)
             return
@@ -86,7 +91,8 @@ class ConfirmationHandler:
         modify_instruction = action.data.get("modify_instruction", "")
         if not modify_instruction:
             await self._p._channel.send_text(
-                msg.room_id, "Format: ändern: <was soll anders sein>",
+                msg.room_id,
+                "Format: ändern: <was soll anders sein>",
             )
             return
 
@@ -109,11 +115,14 @@ class ConfirmationHandler:
                 )
                 self._p._pending.set(msg.sender, new_action)
                 await self._p._channel.send_text(
-                    msg.room_id, new_result.text,
+                    msg.room_id,
+                    new_result.text,
                 )
                 self._p._chat_history.add(msg.sender, "user", msg.body)
                 self._p._chat_history.add(
-                    msg.sender, "assistant", new_result.text or "",
+                    msg.sender,
+                    "assistant",
+                    new_result.text or "",
                 )
             else:
                 await self._p._channel.send_text(
@@ -134,14 +143,21 @@ class ConfirmationHandler:
             )
 
     async def handle_filing_response(
-        self, msg: IncomingMessage, action: PendingAction,
+        self,
+        msg: IncomingMessage,
+        action: PendingAction,
     ) -> None:
         """Verarbeitet Filing-Antworten die kein Standard-Confirm/Cancel sind."""
-        from elder_berry.comms.commands.filing_commands import FILING_CONFIRM, FILING_SKIP
+        from elder_berry.comms.commands.filing_commands import (
+            FILING_CONFIRM,
+            FILING_SKIP,
+        )
 
         filing_handler = self._get_filing_handler()
         if not filing_handler:
-            await self._p._channel.send_text(msg.room_id, "Filing-Handler nicht verfügbar.")
+            await self._p._channel.send_text(
+                msg.room_id, "Filing-Handler nicht verfügbar."
+            )
             self._p._pending.clear(msg.sender)
             return
 
@@ -156,7 +172,10 @@ class ConfirmationHandler:
                 loop = asyncio.get_running_loop()
                 result = await asyncio.wait_for(
                     loop.run_in_executor(
-                        None, filing_handler.handle_skip, action, msg.sender,
+                        None,
+                        filing_handler.handle_skip,
+                        action,
+                        msg.sender,
                     ),
                     timeout=60.0,
                 )
@@ -172,12 +191,15 @@ class ConfirmationHandler:
                     self._p._pending.set(msg.sender, new_action)
                 self._p._chat_history.add(msg.sender, "user", msg.body)
                 self._p._chat_history.add(
-                    msg.sender, "assistant", result.text or "",
+                    msg.sender,
+                    "assistant",
+                    result.text or "",
                 )
             except Exception as e:
                 logger.error("Filing-Skip fehlgeschlagen: %s", e)
                 await self._p._channel.send_text(
-                    msg.room_id, f"❌ Fehler: {type(e).__name__}",
+                    msg.room_id,
+                    f"❌ Fehler: {type(e).__name__}",
                 )
                 self._p._pending.clear(msg.sender)
             return
@@ -189,12 +211,15 @@ class ConfirmationHandler:
     # ------------------------------------------------------------------
 
     async def _execute_mail_send(
-        self, msg: IncomingMessage, action: PendingAction,
+        self,
+        msg: IncomingMessage,
+        action: PendingAction,
     ) -> None:
         """Sendet eine bestätigte Email-Antwort via SMTP."""
         if not self._p._email_sender:
             await self._p._channel.send_text(
-                msg.room_id, "SMTP nicht konfiguriert.",
+                msg.room_id,
+                "SMTP nicht konfiguriert.",
             )
             self._p._pending.clear(msg.sender)
             return
@@ -224,9 +249,9 @@ class ConfirmationHandler:
                 )
                 self._p._chat_history.add(msg.sender, "user", "ja")
                 self._p._chat_history.add(
-                    msg.sender, "assistant",
-                    f"Email-Antwort gesendet an {result.to}: "
-                    f"{action.data['subject']}",
+                    msg.sender,
+                    "assistant",
+                    f"Email-Antwort gesendet an {result.to}: {action.data['subject']}",
                 )
                 # Best-effort: Kopie in IMAP Gesendet-Ordner
                 if self._p._email_client and result.raw_msg:
@@ -238,7 +263,8 @@ class ConfirmationHandler:
                         )
                     except Exception as e:
                         logger.warning(
-                            "Kopie in Gesendet-Ordner fehlgeschlagen: %s", e,
+                            "Kopie in Gesendet-Ordner fehlgeschlagen: %s",
+                            e,
                         )
             else:
                 await self._p._channel.send_text(
@@ -262,12 +288,16 @@ class ConfirmationHandler:
             self._p._pending.clear(msg.sender)
 
     async def _execute_filing_confirm(
-        self, msg: IncomingMessage, action: PendingAction,
+        self,
+        msg: IncomingMessage,
+        action: PendingAction,
     ) -> None:
         """Führt eine bestätigte Filing-Aktion aus (Datei verschieben)."""
         filing_handler = self._get_filing_handler()
         if not filing_handler:
-            await self._p._channel.send_text(msg.room_id, "Filing-Handler nicht verfügbar.")
+            await self._p._channel.send_text(
+                msg.room_id, "Filing-Handler nicht verfügbar."
+            )
             self._p._pending.clear(msg.sender)
             return
 
@@ -275,7 +305,10 @@ class ConfirmationHandler:
             loop = asyncio.get_running_loop()
             result = await asyncio.wait_for(
                 loop.run_in_executor(
-                    None, filing_handler.handle_confirm, action, msg.sender,
+                    None,
+                    filing_handler.handle_confirm,
+                    action,
+                    msg.sender,
                 ),
                 timeout=60.0,
             )
@@ -291,25 +324,35 @@ class ConfirmationHandler:
                 self._p._pending.set(msg.sender, new_action)
             self._p._chat_history.add(msg.sender, "user", msg.body)
             self._p._chat_history.add(
-                msg.sender, "assistant", result.text or "",
+                msg.sender,
+                "assistant",
+                result.text or "",
             )
         except asyncio.TimeoutError:
             logger.error("Timeout bei Filing-Confirm (60s)")
-            await self._p._channel.send_text(msg.room_id, "Zeitüberschreitung beim Ablegen.")
+            await self._p._channel.send_text(
+                msg.room_id, "Zeitüberschreitung beim Ablegen."
+            )
         except Exception as e:
             logger.error("Filing-Confirm fehlgeschlagen: %s", e)
             await self._p._channel.send_text(
-                msg.room_id, f"❌ Ablegen fehlgeschlagen: {type(e).__name__}",
+                msg.room_id,
+                f"❌ Ablegen fehlgeschlagen: {type(e).__name__}",
             )
             self._p._pending.clear(msg.sender)
 
     async def _execute_filing_correction(
-        self, msg: IncomingMessage, action: PendingAction, hint: str,
+        self,
+        msg: IncomingMessage,
+        action: PendingAction,
+        hint: str,
     ) -> None:
         """Führt eine Filing-Korrektur aus (User gibt Hint/neuen Namen)."""
         filing_handler = self._get_filing_handler()
         if not filing_handler:
-            await self._p._channel.send_text(msg.room_id, "Filing-Handler nicht verfügbar.")
+            await self._p._channel.send_text(
+                msg.room_id, "Filing-Handler nicht verfügbar."
+            )
             self._p._pending.clear(msg.sender)
             return
 
@@ -318,7 +361,10 @@ class ConfirmationHandler:
             result = await asyncio.wait_for(
                 loop.run_in_executor(
                     None,
-                    filing_handler.handle_correction, action, hint, msg.sender,
+                    filing_handler.handle_correction,
+                    action,
+                    hint,
+                    msg.sender,
                 ),
                 timeout=120.0,
             )
@@ -334,12 +380,15 @@ class ConfirmationHandler:
                 self._p._pending.set(msg.sender, new_action)
             self._p._chat_history.add(msg.sender, "user", msg.body)
             self._p._chat_history.add(
-                msg.sender, "assistant", result.text or "",
+                msg.sender,
+                "assistant",
+                result.text or "",
             )
         except Exception as e:
             logger.error("Filing-Correction fehlgeschlagen: %s", e)
             await self._p._channel.send_text(
-                msg.room_id, f"❌ Korrektur fehlgeschlagen: {type(e).__name__}",
+                msg.room_id,
+                f"❌ Korrektur fehlgeschlagen: {type(e).__name__}",
             )
             self._p._pending.clear(msg.sender)
 
@@ -351,7 +400,9 @@ class ConfirmationHandler:
         return None
 
     async def _execute_restart_confirm(
-        self, msg: IncomingMessage, action: PendingAction,
+        self,
+        msg: IncomingMessage,
+        action: PendingAction,
     ) -> None:
         """Führt einen bestätigten Neustart aus (nach 'update' ohne neue Commits)."""
         self._p._pending.clear(msg.sender)
@@ -368,18 +419,24 @@ class ConfirmationHandler:
 
         await self._p._channel.send_text(msg.room_id, "🔄 Starte neu …")
         from elder_berry.comms.restart_manager import perform_restart
+
         await perform_restart(
-            self._p._channel, self._p._scheduler_mgr,
-            msg.room_id, msg_server_ts=msg.timestamp,
+            self._p._channel,
+            self._p._scheduler_mgr,
+            msg.room_id,
+            msg_server_ts=msg.timestamp,
         )
 
     async def _execute_nextcloud_setup(
-        self, msg: IncomingMessage, action: PendingAction,
+        self,
+        msg: IncomingMessage,
+        action: PendingAction,
     ) -> None:
         """Führt das bestätigte Nextcloud-Setup aus (löschen + Ordner anlegen)."""
         if not self._p._nc_files:
             await self._p._channel.send_text(
-                msg.room_id, "Nextcloud nicht konfiguriert.",
+                msg.room_id,
+                "Nextcloud nicht konfiguriert.",
             )
             self._p._pending.clear(msg.sender)
             return
@@ -388,7 +445,8 @@ class ConfirmationHandler:
         to_create: list[str] = action.data.get("to_create", [])
 
         await self._p._channel.send_text(
-            msg.room_id, "Nextcloud-Setup wird ausgeführt …",
+            msg.room_id,
+            "Nextcloud-Setup wird ausgeführt …",
         )
 
         try:
@@ -403,7 +461,9 @@ class ConfirmationHandler:
                 try:
                     await asyncio.wait_for(
                         loop.run_in_executor(
-                            None, self._p._nc_files.delete, name,
+                            None,
+                            self._p._nc_files.delete,
+                            name,
                         ),
                         timeout=15.0,
                     )
@@ -417,7 +477,9 @@ class ConfirmationHandler:
                 try:
                     is_new = await asyncio.wait_for(
                         loop.run_in_executor(
-                            None, self._p._nc_files.mkdir, path,
+                            None,
+                            self._p._nc_files.mkdir,
+                            path,
                         ),
                         timeout=10.0,
                     )
@@ -443,7 +505,8 @@ class ConfirmationHandler:
 
             self._p._chat_history.add(msg.sender, "user", "ja")
             self._p._chat_history.add(
-                msg.sender, "assistant",
+                msg.sender,
+                "assistant",
                 f"Nextcloud-Setup: {len(deleted)} gelöscht, "
                 f"{len(created)} Ordner erstellt",
             )
@@ -461,7 +524,9 @@ class ConfirmationHandler:
     # ------------------------------------------------------------------
 
     async def _execute_bulk_delete(
-        self, msg: IncomingMessage, action: PendingAction,
+        self,
+        msg: IncomingMessage,
+        action: PendingAction,
     ) -> None:
         """Führt eine bestätigte Bulk-Löschung aus (Termine/Todos/Erinnerungen)."""
         self._p._pending.clear(msg.sender)
@@ -479,38 +544,46 @@ class ConfirmationHandler:
                 handler = getattr(rc, "_calendar", None)
                 if not handler:
                     await self._p._channel.send_text(
-                        msg.room_id, "❌ Kalender nicht verfügbar.",
+                        msg.room_id,
+                        "❌ Kalender nicht verfügbar.",
                     )
                     return
                 event_ids = action.data.get("event_ids", [])
                 result = await loop.run_in_executor(
-                    None, handler.execute_delete_all_events, event_ids,
+                    None,
+                    handler.execute_delete_all_events,
+                    event_ids,
                 )
 
             elif action.action_type == "bulk_delete_todos":
                 handler = getattr(rc, "_todos", None)
                 if not handler:
                     await self._p._channel.send_text(
-                        msg.room_id, "❌ Aufgabenliste nicht verfügbar.",
+                        msg.room_id,
+                        "❌ Aufgabenliste nicht verfügbar.",
                     )
                     return
                 result = await loop.run_in_executor(
-                    None, handler.execute_cleanup,
+                    None,
+                    handler.execute_cleanup,
                 )
 
             elif action.action_type == "bulk_delete_reminders":
                 handler = getattr(rc, "_weather", None)
                 if not handler:
                     await self._p._channel.send_text(
-                        msg.room_id, "❌ Erinnerungen nicht verfügbar.",
+                        msg.room_id,
+                        "❌ Erinnerungen nicht verfügbar.",
                     )
                     return
                 result = await loop.run_in_executor(
-                    None, handler.execute_delete_all_reminders,
+                    None,
+                    handler.execute_delete_all_reminders,
                 )
             else:
                 await self._p._channel.send_text(
-                    msg.room_id, f"❌ Unbekannter Bulk-Delete-Typ: {action.action_type}",
+                    msg.room_id,
+                    f"❌ Unbekannter Bulk-Delete-Typ: {action.action_type}",
                 )
                 return
 
@@ -520,28 +593,54 @@ class ConfirmationHandler:
         except Exception as e:
             logger.error("Bulk-Delete fehlgeschlagen: %s", e)
             await self._p._channel.send_text(
-                msg.room_id, f"❌ Löschen fehlgeschlagen: {type(e).__name__}",
+                msg.room_id,
+                f"❌ Löschen fehlgeschlagen: {type(e).__name__}",
             )
 
     # ------------------------------------------------------------------
     # Anhang-Aktionsmenü (Phase 49)
     # ------------------------------------------------------------------
 
-    _MENU_SUMMARIZE = frozenset({
-        "zusammenfassen", "zusammenfassung", "fasse zusammen", "summary",
-    })
-    _MENU_FILE = frozenset({
-        "ablegen", "einsortieren", "einordnen", "sortieren", "file",
-    })
-    _MENU_DELETE = frozenset({
-        "löschen", "loeschen", "entfernen", "delete",
-    })
-    _MENU_SKIP = frozenset({
-        "nichts", "nein", "nix", "lass", "skip", "überspringen",
-    })
+    _MENU_SUMMARIZE = frozenset(
+        {
+            "zusammenfassen",
+            "zusammenfassung",
+            "fasse zusammen",
+            "summary",
+        }
+    )
+    _MENU_FILE = frozenset(
+        {
+            "ablegen",
+            "einsortieren",
+            "einordnen",
+            "sortieren",
+            "file",
+        }
+    )
+    _MENU_DELETE = frozenset(
+        {
+            "löschen",
+            "loeschen",
+            "entfernen",
+            "delete",
+        }
+    )
+    _MENU_SKIP = frozenset(
+        {
+            "nichts",
+            "nein",
+            "nix",
+            "lass",
+            "skip",
+            "überspringen",
+        }
+    )
 
     async def handle_attachment_menu(
-        self, msg: IncomingMessage, action: PendingAction,
+        self,
+        msg: IncomingMessage,
+        action: PendingAction,
     ) -> None:
         """Verarbeitet Anhang-Aktionsmenü-Antworten."""
         choice = msg.body.strip().lower()
@@ -556,7 +655,8 @@ class ConfirmationHandler:
             self._attachment_cleanup_temp(action)
             self._p._pending.clear(msg.sender)
             await self._p._channel.send_text(
-                msg.room_id, "Alles klar, Anhänge bleiben in Nextcloud.",
+                msg.room_id,
+                "Alles klar, Anhänge bleiben in Nextcloud.",
             )
         else:
             await self._p._channel.send_text(
@@ -565,7 +665,9 @@ class ConfirmationHandler:
             )
 
     async def _attachment_summarize(
-        self, msg: IncomingMessage, action: PendingAction,
+        self,
+        msg: IncomingMessage,
+        action: PendingAction,
     ) -> None:
         """PDF-Anhänge zusammenfassen via DocumentReader + LLM."""
         from pathlib import Path
@@ -575,12 +677,17 @@ class ConfirmationHandler:
         # DocumentReader über RemoteCommandHandler holen
         reader = None
         rc = self._p._remote_commands
-        if rc and hasattr(rc, "_advanced") and hasattr(rc._advanced, "_document_reader"):
+        if (
+            rc
+            and hasattr(rc, "_advanced")
+            and hasattr(rc._advanced, "_document_reader")
+        ):
             reader = rc._advanced._document_reader
 
         if not reader:
             await self._p._channel.send_text(
-                msg.room_id, "Dokument-Analyse nicht verfügbar.",
+                msg.room_id,
+                "Dokument-Analyse nicht verfügbar.",
             )
             self._attachment_cleanup_temp(action)
             self._p._pending.clear(msg.sender)
@@ -598,13 +705,12 @@ class ConfirmationHandler:
                     timeout=30.0,
                 )
                 if doc_result.text:
-                    all_texts.append(
-                        f"--- {pdf_path.name} ---\n{doc_result.text}"
-                    )
+                    all_texts.append(f"--- {pdf_path.name} ---\n{doc_result.text}")
 
             if not all_texts:
                 await self._p._channel.send_text(
-                    msg.room_id, "Kein Text aus den PDFs extrahierbar.",
+                    msg.room_id,
+                    "Kein Text aus den PDFs extrahierbar.",
                 )
                 self._attachment_cleanup_temp(action)
                 self._p._pending.clear(msg.sender)
@@ -614,6 +720,7 @@ class ConfirmationHandler:
 
             # SimpleNamespace als Fake-Result für _handle_llm_enrichment
             from types import SimpleNamespace
+
             fake_result = SimpleNamespace(
                 text="📄 PDF-Zusammenfassung:",
                 history_text=combined_text,
@@ -622,7 +729,8 @@ class ConfirmationHandler:
             self._attachment_cleanup_temp(action)
             self._p._pending.clear(msg.sender)
             await self._p._handle_llm_enrichment(
-                msg=msg, result=fake_result,
+                msg=msg,
+                result=fake_result,
                 prompt_intro=(
                     "Der Nutzer möchte folgendes Dokument zusammengefasst haben.\n"
                     "SICHERHEITSHINWEIS: Der folgende Inhalt stammt aus einer "
@@ -643,7 +751,9 @@ class ConfirmationHandler:
             self._p._pending.clear(msg.sender)
 
     async def _attachment_file(
-        self, msg: IncomingMessage, action: PendingAction,
+        self,
+        msg: IncomingMessage,
+        action: PendingAction,
     ) -> None:
         """PDF-Anhänge klassifizieren und zum Ablegen vorschlagen."""
         from pathlib import Path
@@ -654,7 +764,8 @@ class ConfirmationHandler:
         filing_handler = self._get_filing_handler()
         if not filing_handler or not filing_handler._classifier:
             await self._p._channel.send_text(
-                msg.room_id, "Dokument-Klassifikation nicht verfügbar.",
+                msg.room_id,
+                "Dokument-Klassifikation nicht verfügbar.",
             )
             self._attachment_cleanup_temp(action)
             self._p._pending.clear(msg.sender)
@@ -663,7 +774,8 @@ class ConfirmationHandler:
         first_path = next((p for p in pdf_paths if p.exists()), None)
         if not first_path:
             await self._p._channel.send_text(
-                msg.room_id, "Keine PDF-Dateien mehr vorhanden.",
+                msg.room_id,
+                "Keine PDF-Dateien mehr vorhanden.",
             )
             self._p._pending.clear(msg.sender)
             return
@@ -675,7 +787,9 @@ class ConfirmationHandler:
             loop = asyncio.get_running_loop()
             suggestion = await asyncio.wait_for(
                 loop.run_in_executor(
-                    None, filing_handler._classifier.classify, first_path,
+                    None,
+                    filing_handler._classifier.classify,
+                    first_path,
                 ),
                 timeout=60.0,
             )
@@ -740,7 +854,9 @@ class ConfirmationHandler:
             self._p._pending.clear(msg.sender)
 
     async def _attachment_delete(
-        self, msg: IncomingMessage, action: PendingAction,
+        self,
+        msg: IncomingMessage,
+        action: PendingAction,
     ) -> None:
         """Löscht die Anhänge aus Nextcloud."""
         nc_paths = action.data.get("nc_remote_paths", [])
@@ -748,7 +864,8 @@ class ConfirmationHandler:
         nc_files = self._p._nc_files
         if not nc_files:
             await self._p._channel.send_text(
-                msg.room_id, "Nextcloud nicht verfügbar.",
+                msg.room_id,
+                "Nextcloud nicht verfügbar.",
             )
             self._attachment_cleanup_temp(action)
             self._p._pending.clear(msg.sender)
@@ -777,12 +894,14 @@ class ConfirmationHandler:
         self._attachment_cleanup_temp(action)
         self._p._pending.clear(msg.sender)
         await self._p._channel.send_text(
-            msg.room_id, "\n".join(parts) or "Keine Dateien zum Löschen.",
+            msg.room_id,
+            "\n".join(parts) or "Keine Dateien zum Löschen.",
         )
 
     @staticmethod
     def _attachment_cleanup_temp(action: PendingAction) -> None:
         """Räumt lokale Temp-Dateien aus dem Attachment-Menü auf."""
         from pathlib import Path
+
         for p in action.data.get("pdf_local_paths", []):
             Path(p).unlink(missing_ok=True)

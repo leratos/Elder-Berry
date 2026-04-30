@@ -4,6 +4,7 @@ Prüft, dass Setup-Wizard und TowerAgent per Default auf 127.0.0.1 binden,
 die Env-Variablen greifen und die Grace-Period-Logik beim Upgrade korrekt
 ist (Marker-Datei, compat_mode-Flag, Banner im UI).
 """
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -15,7 +16,11 @@ try:
     from fastapi import FastAPI
     from fastapi.testclient import TestClient
 
-    from elder_berry.web.setup_wizard import run_setup_wizard, register_setup_wizard_routes
+    from elder_berry.web.setup_wizard import (
+        run_setup_wizard,
+        register_setup_wizard_routes,
+    )
+
     HAS_FASTAPI = True
 except ImportError:
     HAS_FASTAPI = False
@@ -34,6 +39,7 @@ class TestSetupWizardBind:
     def test_default_bind_is_loopback(self):
         """Default-Parameterwert muss 127.0.0.1 sein."""
         import inspect
+
         sig = inspect.signature(run_setup_wizard)
         assert sig.parameters["bind"].default == "127.0.0.1"
 
@@ -41,6 +47,7 @@ class TestSetupWizardBind:
     def test_bind_parameter_forwarded_to_uvicorn(self, mock_run, tmp_path):
         """Der bind-Wert wird an uvicorn.run(host=...) durchgereicht."""
         from elder_berry.core.secret_store import SecretStore
+
         store = SecretStore(base_dir=tmp_path)
 
         run_setup_wizard(store, port=9999, bind="192.168.1.50")
@@ -53,6 +60,7 @@ class TestSetupWizardBind:
     @patch("uvicorn.run")
     def test_compat_mode_sets_app_state(self, mock_run, tmp_path):
         from elder_berry.core.secret_store import SecretStore
+
         store = SecretStore(base_dir=tmp_path)
 
         run_setup_wizard(store, compat_mode=True)
@@ -64,6 +72,7 @@ class TestSetupWizardBind:
     @patch("uvicorn.run")
     def test_migration_marker_sets_app_state(self, mock_run, tmp_path):
         from elder_berry.core.secret_store import SecretStore
+
         store = SecretStore(base_dir=tmp_path)
         marker = tmp_path / ".phase57_migration_done"
 
@@ -90,6 +99,7 @@ class TestCompatBanner:
 
     def test_banner_present_in_compat_mode(self, tmp_path):
         from elder_berry.core.secret_store import SecretStore
+
         store = SecretStore(base_dir=tmp_path)
 
         app = self._make_wizard_app(store, compat_mode=True)
@@ -101,6 +111,7 @@ class TestCompatBanner:
 
     def test_banner_absent_in_normal_mode(self, tmp_path):
         from elder_berry.core.secret_store import SecretStore
+
         store = SecretStore(base_dir=tmp_path)
 
         app = self._make_wizard_app(store, compat_mode=False)
@@ -120,6 +131,7 @@ class TestMigrationMarker:
 
     def test_marker_written_on_complete(self, tmp_path):
         from elder_berry.core.secret_store import SecretStore
+
         store = SecretStore(base_dir=tmp_path)
         marker = tmp_path / ".phase57_migration_done"
 
@@ -143,6 +155,7 @@ class TestMigrationMarker:
 
     def test_no_marker_written_when_path_none(self, tmp_path):
         from elder_berry.core.secret_store import SecretStore
+
         store = SecretStore(base_dir=tmp_path)
 
         app = FastAPI()

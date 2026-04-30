@@ -9,6 +9,7 @@ Validiert:
 - Query-Strings werden weitergeleitet
 - Body wird transparent durchgereicht
 """
+
 from __future__ import annotations
 
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -109,10 +110,12 @@ class TestRobotHostMissing:
 class TestProxyMethods:
     @pytest.fixture
     def store(self) -> _FakeStore:
-        return _FakeStore({
-            ROBOT_HOST_KEY: "127.0.0.1:12800",
-            ROBOT_AUTH_TOKEN_KEY: "tok-abc-123",
-        })
+        return _FakeStore(
+            {
+                ROBOT_HOST_KEY: "127.0.0.1:12800",
+                ROBOT_AUTH_TOKEN_KEY: "tok-abc-123",
+            }
+        )
 
     @pytest.fixture
     def client(self, store):
@@ -126,7 +129,9 @@ class TestProxyMethods:
         assert r.status_code == 200
         assert r.json() == {"connected": True}
         assert upstream.request.call_args[0][0] == "GET"
-        assert upstream.request.call_args[0][1] == "http://127.0.0.1:12800/harmony/status"
+        assert (
+            upstream.request.call_args[0][1] == "http://127.0.0.1:12800/harmony/status"
+        )
 
     def test_post_with_body(self, client):
         upstream = _mock_upstream(content=b'{"ok": true}')
@@ -178,10 +183,12 @@ class TestProxyMethods:
 
 class TestHeaderHandling:
     def test_token_added_when_configured(self):
-        store = _FakeStore({
-            ROBOT_HOST_KEY: "127.0.0.1:12800",
-            ROBOT_AUTH_TOKEN_KEY: "secret-token-xyz",
-        })
+        store = _FakeStore(
+            {
+                ROBOT_HOST_KEY: "127.0.0.1:12800",
+                ROBOT_AUTH_TOKEN_KEY: "secret-token-xyz",
+            }
+        )
         app = _make_app(store)
         client = TestClient(app)
         upstream = _mock_upstream()
@@ -199,16 +206,16 @@ class TestHeaderHandling:
             client.get("/api/robot/health")
         sent_headers = upstream.request.call_args.kwargs["headers"]
         assert ROBOT_TOKEN_HEADER not in sent_headers
-        assert ROBOT_TOKEN_HEADER.lower() not in {
-            k.lower() for k in sent_headers
-        }
+        assert ROBOT_TOKEN_HEADER.lower() not in {k.lower() for k in sent_headers}
 
     def test_client_supplied_token_is_overwritten(self):
         """Defensiv: Client darf nicht eigenen Robot-Token einschmuggeln."""
-        store = _FakeStore({
-            ROBOT_HOST_KEY: "127.0.0.1:12800",
-            ROBOT_AUTH_TOKEN_KEY: "server-side-token",
-        })
+        store = _FakeStore(
+            {
+                ROBOT_HOST_KEY: "127.0.0.1:12800",
+                ROBOT_AUTH_TOKEN_KEY: "server-side-token",
+            }
+        )
         app = _make_app(store)
         client = TestClient(app)
         upstream = _mock_upstream()
@@ -262,9 +269,7 @@ class TestHeaderHandling:
         with patch("httpx.AsyncClient", return_value=upstream):
             r = client.get("/api/robot/health")
         # Kein CORS-Header in der Browser-Antwort
-        assert "access-control-allow-origin" not in {
-            k.lower() for k in r.headers
-        }
+        assert "access-control-allow-origin" not in {k.lower() for k in r.headers}
 
 
 # ---------------------------------------------------------------------------
@@ -275,10 +280,12 @@ class TestHeaderHandling:
 class TestErrorPaths:
     @pytest.fixture
     def client(self):
-        store = _FakeStore({
-            ROBOT_HOST_KEY: "127.0.0.1:12800",
-            ROBOT_AUTH_TOKEN_KEY: "tok",
-        })
+        store = _FakeStore(
+            {
+                ROBOT_HOST_KEY: "127.0.0.1:12800",
+                ROBOT_AUTH_TOKEN_KEY: "tok",
+            }
+        )
         return TestClient(_make_app(store))
 
     def test_connection_error_returns_502(self, client):
@@ -343,18 +350,22 @@ class TestErrorPaths:
 # SSRF Defense-in-Depth (CodeQL py/partial-ssrf)
 # ---------------------------------------------------------------------------
 
+
 class TestSSRFDefenseInDepth:
     """robot_host und upstream_path werden Format-validiert bevor httpx.request."""
 
-    @pytest.mark.parametrize("bad_host", [
-        "file:///etc/passwd",
-        "gopher://internal:70/",
-        "ftp://example.com",
-        "javascript:alert(1)",
-        "http://",
-        "https://",
-        "http://bad_host.example.com",  # underscore
-    ])
+    @pytest.mark.parametrize(
+        "bad_host",
+        [
+            "file:///etc/passwd",
+            "gopher://internal:70/",
+            "ftp://example.com",
+            "javascript:alert(1)",
+            "http://",
+            "https://",
+            "http://bad_host.example.com",  # underscore
+        ],
+    )
     def test_invalid_host_returns_503_without_request(self, bad_host):
         store = _FakeStore({ROBOT_HOST_KEY: bad_host})
         app = _make_app(store)
@@ -367,12 +378,15 @@ class TestSSRFDefenseInDepth:
         # KEIN HTTP-Request darf abgesetzt worden sein
         upstream.request.assert_not_called()
 
-    @pytest.mark.parametrize("good_host", [
-        "192.168.1.10:8001",
-        "rpi5.local:8001",
-        "http://192.168.1.10:8001",
-        "https://rpi5.example.com",
-    ])
+    @pytest.mark.parametrize(
+        "good_host",
+        [
+            "192.168.1.10:8001",
+            "rpi5.local:8001",
+            "http://192.168.1.10:8001",
+            "https://rpi5.example.com",
+        ],
+    )
     def test_valid_host_passes_validation(self, good_host):
         store = _FakeStore({ROBOT_HOST_KEY: good_host})
         app = _make_app(store)

@@ -1,4 +1,5 @@
 """Tests für Memory-System: MemoryEntry, MemoryContext, EmbeddingClient, ChromaMemoryStore."""
+
 import importlib
 from datetime import datetime, timezone
 from pathlib import Path
@@ -19,6 +20,7 @@ requires_chroma = pytest.mark.skipif(
 # Fixtures
 # ---------------------------------------------------------------------------
 
+
 def make_entry(
     role: str = "user",
     content: str = "Hallo",
@@ -37,6 +39,7 @@ def make_entry(
 # ---------------------------------------------------------------------------
 # MemoryEntry
 # ---------------------------------------------------------------------------
+
 
 class TestMemoryEntry:
     def test_create_generates_id(self):
@@ -64,13 +67,16 @@ class TestMemoryEntry:
         assert entry.metadata == {}
 
     def test_create_with_metadata(self):
-        entry = MemoryEntry.create("assistant", "Hi", "s1", metadata={"emotion": "cheerful"})
+        entry = MemoryEntry.create(
+            "assistant", "Hi", "s1", metadata={"emotion": "cheerful"}
+        )
         assert entry.metadata["emotion"] == "cheerful"
 
 
 # ---------------------------------------------------------------------------
 # MemoryContext
 # ---------------------------------------------------------------------------
+
 
 class TestMemoryContext:
     def test_is_empty_both_empty(self):
@@ -98,8 +104,11 @@ class TestMemoryContext:
         relevant = make_entry(content="Frühere Erinnerung", session_id="s1")
         # Verschiedene IDs damit relevant nicht gefiltert wird
         relevant = MemoryEntry(
-            id="other-id", role="user", content="Frühere Erinnerung",
-            timestamp=relevant.timestamp, session_id="s1"
+            id="other-id",
+            role="user",
+            content="Frühere Erinnerung",
+            timestamp=relevant.timestamp,
+            session_id="s1",
         )
         ctx = MemoryContext(recent=[recent], relevant=[relevant])
         text = ctx.to_prompt_text()
@@ -124,6 +133,7 @@ class TestMemoryContext:
 # OllamaEmbeddingClient
 # ---------------------------------------------------------------------------
 
+
 class TestOllamaEmbeddingClient:
     def test_is_available_true(self):
         client = OllamaEmbeddingClient()
@@ -133,6 +143,7 @@ class TestOllamaEmbeddingClient:
 
     def test_is_available_false_on_error(self):
         import httpx
+
         client = OllamaEmbeddingClient()
         with patch("httpx.get", side_effect=httpx.ConnectError("refused")):
             assert client.is_available() is False
@@ -158,6 +169,7 @@ class TestOllamaEmbeddingClient:
 
     def test_embed_raises_on_http_error(self):
         import httpx
+
         client = OllamaEmbeddingClient()
         mock_resp = MagicMock()
         mock_resp.status_code = 500
@@ -170,6 +182,7 @@ class TestOllamaEmbeddingClient:
 # ChromaMemoryStore – mit Mock-Collection
 # ---------------------------------------------------------------------------
 
+
 @requires_chroma
 class TestChromaMemoryStore:
     """Tests für ChromaMemoryStore mit gemockter ChromaDB-Collection."""
@@ -177,6 +190,7 @@ class TestChromaMemoryStore:
     def _make_store_with_mock(self, tmp_path: Path):
         """Erstellt einen ChromaMemoryStore mit gemockter Collection."""
         from elder_berry.memory.chroma_memory import ChromaMemoryStore
+
         store = ChromaMemoryStore(db_path=tmp_path)
         mock_col = MagicMock()
         store._collection = mock_col
@@ -185,16 +199,19 @@ class TestChromaMemoryStore:
     def test_init_requires_chromadb(self):
         """Import-Fehler wenn chromadb nicht installiert."""
         from elder_berry.memory.chroma_memory import _CHROMA_AVAILABLE
+
         assert _CHROMA_AVAILABLE is True  # Sonst wäre der Test geskippt
 
     def test_new_session_returns_uuid(self, tmp_path):
         from elder_berry.memory.chroma_memory import ChromaMemoryStore
+
         store = ChromaMemoryStore(db_path=tmp_path)
         sid = store.new_session()
         assert len(sid) == 36  # UUID4-Format
 
     def test_new_session_unique(self, tmp_path):
         from elder_berry.memory.chroma_memory import ChromaMemoryStore
+
         store = ChromaMemoryStore(db_path=tmp_path)
         assert store.new_session() != store.new_session()
 
@@ -219,6 +236,7 @@ class TestChromaMemoryStore:
 
     def test_get_recent_returns_entries_sorted(self, tmp_path):
         from elder_berry.memory.chroma_memory import ChromaMemoryStore
+
         store = ChromaMemoryStore(db_path=tmp_path)
         mock_col = MagicMock()
         store._collection = mock_col
@@ -230,8 +248,18 @@ class TestChromaMemoryStore:
             "ids": ["id2", "id1"],
             "documents": ["Zweite", "Erste"],
             "metadatas": [
-                {"role": "user", "session_id": "s1", "timestamp_iso": ts2.isoformat(), "timestamp_unix": ts2.timestamp()},
-                {"role": "user", "session_id": "s1", "timestamp_iso": ts1.isoformat(), "timestamp_unix": ts1.timestamp()},
+                {
+                    "role": "user",
+                    "session_id": "s1",
+                    "timestamp_iso": ts2.isoformat(),
+                    "timestamp_unix": ts2.timestamp(),
+                },
+                {
+                    "role": "user",
+                    "session_id": "s1",
+                    "timestamp_iso": ts1.isoformat(),
+                    "timestamp_unix": ts1.timestamp(),
+                },
             ],
         }
 
@@ -243,6 +271,7 @@ class TestChromaMemoryStore:
 
     def test_get_recent_limits_results(self, tmp_path):
         from elder_berry.memory.chroma_memory import ChromaMemoryStore
+
         store = ChromaMemoryStore(db_path=tmp_path)
         mock_col = MagicMock()
         store._collection = mock_col
@@ -254,7 +283,8 @@ class TestChromaMemoryStore:
             "documents": [f"Nachricht {i}" for i in range(5)],
             "metadatas": [
                 {
-                    "role": "user", "session_id": "s1",
+                    "role": "user",
+                    "session_id": "s1",
                     "timestamp_iso": ts_base.replace(hour=i).isoformat(),
                     "timestamp_unix": ts_base.replace(hour=i).timestamp(),
                 }
@@ -287,10 +317,16 @@ class TestChromaMemoryStore:
         mock_col.query.return_value = {
             "ids": [["id1"]],
             "documents": [["Relevante Erinnerung"]],
-            "metadatas": [[{
-                "role": "user", "session_id": "s1",
-                "timestamp_iso": ts.isoformat(), "timestamp_unix": ts.timestamp(),
-            }]],
+            "metadatas": [
+                [
+                    {
+                        "role": "user",
+                        "session_id": "s1",
+                        "timestamp_iso": ts.isoformat(),
+                        "timestamp_unix": ts.timestamp(),
+                    }
+                ]
+            ],
             "distances": [[0.1]],
         }
 
@@ -314,6 +350,7 @@ class TestChromaMemoryStore:
     def test_validate_dimension_match_ok(self, tmp_path):
         """Kein Fehler wenn Probe-Dimension mit Collection übereinstimmt."""
         from elder_berry.memory.chroma_memory import ChromaMemoryStore
+
         mock_embed = MagicMock()
         mock_embed.embed.return_value = [0.1] * 768
         store = ChromaMemoryStore(db_path=tmp_path, embedding_client=mock_embed)
@@ -327,6 +364,7 @@ class TestChromaMemoryStore:
     def test_validate_dimension_mismatch_raises(self, tmp_path):
         """RuntimeError wenn Probe-Dimension nicht zur Collection passt."""
         from elder_berry.memory.chroma_memory import ChromaMemoryStore
+
         mock_embed = MagicMock()
         mock_embed.embed.return_value = [0.1] * 384  # falsches Modell
         store = ChromaMemoryStore(db_path=tmp_path, embedding_client=mock_embed)
@@ -340,6 +378,7 @@ class TestChromaMemoryStore:
     def test_validate_dimension_skips_empty_collection(self, tmp_path):
         """Kein Check wenn Collection leer ist."""
         from elder_berry.memory.chroma_memory import ChromaMemoryStore
+
         mock_embed = MagicMock()
         store = ChromaMemoryStore(db_path=tmp_path, embedding_client=mock_embed)
         mock_col = MagicMock()
@@ -352,6 +391,7 @@ class TestChromaMemoryStore:
     def test_validate_dimension_skips_without_client(self, tmp_path):
         """Kein Check wenn kein EmbeddingClient gesetzt."""
         from elder_berry.memory.chroma_memory import ChromaMemoryStore
+
         store = ChromaMemoryStore(db_path=tmp_path, embedding_client=None)
         mock_col = MagicMock()
         mock_col.count.return_value = 5
@@ -365,6 +405,7 @@ class TestChromaMemoryStore:
 # Assistant + Memory Integration
 # ---------------------------------------------------------------------------
 
+
 class TestAssistantMemory:
     """Testet dass Assistant Memory korrekt nutzt."""
 
@@ -373,7 +414,9 @@ class TestAssistantMemory:
         from elder_berry.core.assistant import Assistant
 
         mock_llm = MagicMock()
-        mock_llm.generate.return_value = '{"action": null, "params": {}, "response": "Hallo!"}'
+        mock_llm.generate.return_value = (
+            '{"action": null, "params": {}, "response": "Hallo!"}'
+        )
         mock_db = MagicMock(spec=ActionsDB)
         mock_db.list_all.return_value = []
         mock_controller = MagicMock()
@@ -403,17 +446,22 @@ class TestAssistantMemory:
         mock_memory = MagicMock()
         mock_memory.new_session.return_value = "s1"
         entry = make_entry(content="Ältere Erinnerung", session_id="s0")
-        mock_memory.get_context.return_value = MemoryContext(recent=[entry], relevant=[])
+        mock_memory.get_context.return_value = MemoryContext(
+            recent=[entry], relevant=[]
+        )
 
         mock_llm = MagicMock()
         captured_prompts = []
+
         def capture_generate(prompt, system=""):
             captured_prompts.append(system)
             return '{"action": null, "params": {}, "response": "ok"}'
+
         mock_llm.generate.side_effect = capture_generate
 
         from elder_berry.actions.db import ActionsDB
         from elder_berry.core.assistant import Assistant
+
         mock_db = MagicMock(spec=ActionsDB)
         mock_db.list_all.return_value = []
         assistant = Assistant(

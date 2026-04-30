@@ -13,6 +13,7 @@ Endpunkte (aus Reverse-Engineering des Logitech-Protokolls):
 
 Plattformhinweis: Laeuft auf dem Rootserver (Linux), nicht auf RPi5 oder Tower.
 """
+
 from __future__ import annotations
 
 import json

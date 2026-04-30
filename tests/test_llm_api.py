@@ -20,6 +20,7 @@ pytestmark = pytest.mark.skipif(not HAS_DEPS, reason="Dependencies nicht install
 # Fake LLM-Clients
 # ------------------------------------------------------------------
 
+
 class FakeLLMClient(LLMClient):
     """Konfigurierbarer Fake-Client für Tests."""
 
@@ -63,6 +64,7 @@ class FakeSecretStore:
 # ------------------------------------------------------------------
 # LLMRouter unit tests (mode-Erweiterung)
 # ------------------------------------------------------------------
+
 
 class TestLLMRouterMode:
     """Tests für die mode-Erweiterung des LLMRouter."""
@@ -109,13 +111,17 @@ class TestLLMRouterMode:
 
     def test_select_client_local_only(self):
         router = self._make_router(
-            primary_available=True, fallback_available=True, mode="local_only",
+            primary_available=True,
+            fallback_available=True,
+            mode="local_only",
         )
         assert router.active_backend == "ollama"
 
     def test_select_client_local_only_no_fallback(self):
         router = self._make_router(
-            primary_available=True, fallback_available=False, mode="local_only",
+            primary_available=True,
+            fallback_available=False,
+            mode="local_only",
         )
         with pytest.raises(RuntimeError, match="local_only"):
             router.generate("test")
@@ -147,6 +153,7 @@ class TestLLMRouterMode:
 # LLM-API-Endpoint-Tests
 # ------------------------------------------------------------------
 
+
 def _make_client(
     primary_available: bool = True,
     fallback_available: bool = True,
@@ -159,7 +166,9 @@ def _make_client(
     store = FakeSecretStore() if with_store else None
     audio = AudioRouter(local_available=False)
     dashboard = SettingsDashboard(
-        audio_router=audio, secret_store=store, llm_router=router,
+        audio_router=audio,
+        secret_store=store,
+        llm_router=router,
     )
     return TestClient(dashboard.app), router, store
 

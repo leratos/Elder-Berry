@@ -1,4 +1,5 @@
 """Tests fuer HarmonyCommandHandler -- Pattern-Matching + Execution."""
+
 from __future__ import annotations
 
 from unittest.mock import MagicMock
@@ -23,26 +24,38 @@ from elder_berry.comms.commands.harmony_commands import (
 
 # -- Fixtures -------------------------------------------------------------- #
 
+
 @pytest.fixture
 def mock_robot():
     robot = MagicMock()
     robot.harmony_start_activity = MagicMock(return_value=True)
     robot.harmony_power_off = MagicMock(return_value=True)
     robot.harmony_send_command = MagicMock(return_value=True)
-    robot.harmony_status = MagicMock(return_value={
-        "connected": True, "current_activity": "Fernsehen",
-    })
-    robot.harmony_config = MagicMock(return_value={
-        "activities": ["Fernsehen", "Musik"],
-        "devices": ["Samsung TV", "Samsung TV"],
-    })
-    robot.harmony_start_scene = MagicMock(return_value={
-        "success": True, "steps_ok": 3, "steps_total": 3,
-    })
-    robot.harmony_scenes = MagicMock(return_value=[
-        {"name": "Gaming", "steps": []},
-        {"name": "Musik", "steps": []},
-    ])
+    robot.harmony_status = MagicMock(
+        return_value={
+            "connected": True,
+            "current_activity": "Fernsehen",
+        }
+    )
+    robot.harmony_config = MagicMock(
+        return_value={
+            "activities": ["Fernsehen", "Musik"],
+            "devices": ["Samsung TV", "Samsung TV"],
+        }
+    )
+    robot.harmony_start_scene = MagicMock(
+        return_value={
+            "success": True,
+            "steps_ok": 3,
+            "steps_total": 3,
+        }
+    )
+    robot.harmony_scenes = MagicMock(
+        return_value=[
+            {"name": "Gaming", "steps": []},
+            {"name": "Musik", "steps": []},
+        ]
+    )
     return robot
 
 
@@ -57,6 +70,7 @@ def handler_no_robot() -> HarmonyCommandHandler:
 
 
 # -- Pattern-Tests --------------------------------------------------------- #
+
 
 class TestPatterns:
     def test_activity_on_fernsehen(self):
@@ -133,6 +147,7 @@ class TestPatterns:
 
 # -- Handler-Execution-Tests ----------------------------------------------- #
 
+
 class TestExecution:
     def test_start_activity_success(self, handler, mock_robot):
         result = handler.execute("harmony_activity_on", "fernsehen an")
@@ -158,21 +173,24 @@ class TestExecution:
         result = handler.execute("harmony_volume_up", "lauter")
         assert result.success
         mock_robot.harmony_send_command.assert_called_once_with(
-            "Samsung TV", "VolumeUp",
+            "Samsung TV",
+            "VolumeUp",
         )
 
     def test_volume_down(self, handler, mock_robot):
         result = handler.execute("harmony_volume_down", "leiser")
         assert result.success
         mock_robot.harmony_send_command.assert_called_once_with(
-            "Samsung TV", "VolumeDown",
+            "Samsung TV",
+            "VolumeDown",
         )
 
     def test_mute(self, handler, mock_robot):
         result = handler.execute("harmony_mute", "stumm")
         assert result.success
         mock_robot.harmony_send_command.assert_called_once_with(
-            "Samsung TV", "Mute",
+            "Samsung TV",
+            "Mute",
         )
 
     def test_current_activity_active(self, handler, mock_robot):
@@ -182,7 +200,8 @@ class TestExecution:
 
     def test_current_activity_poweroff(self, handler, mock_robot):
         mock_robot.harmony_status.return_value = {
-            "connected": True, "current_activity": None,
+            "connected": True,
+            "current_activity": None,
         }
         result = handler.execute("harmony_current", "was ist an")
         assert result.success
@@ -201,7 +220,8 @@ class TestExecution:
 
     def test_list_commands_with_device(self, handler, mock_robot):
         result = handler.execute(
-            "harmony_list_commands", "harmony befehle Samsung TV",
+            "harmony_list_commands",
+            "harmony befehle Samsung TV",
         )
         assert result.success
 
@@ -221,7 +241,8 @@ class TestExecution:
 
     def test_current_hub_not_connected(self, handler, mock_robot):
         mock_robot.harmony_status.return_value = {
-            "connected": False, "current_activity": None,
+            "connected": False,
+            "current_activity": None,
         }
         result = handler.execute("harmony_current", "harmony status")
         assert not result.success
@@ -229,6 +250,7 @@ class TestExecution:
 
 
 # -- Kollisions-Tests ------------------------------------------------------ #
+
 
 class TestCollisions:
     def test_volume_no_collision_with_system_commands(self):
@@ -248,6 +270,7 @@ class TestCollisions:
 
 
 # -- Szenen-Pattern-Tests -------------------------------------------------- #
+
 
 class TestScenePatterns:
     def test_scene_start_basic(self):
@@ -284,6 +307,7 @@ class TestScenePatterns:
 
 # -- Szenen-Command-Tests ------------------------------------------------- #
 
+
 class TestSceneCommands:
     def test_scene_start_success(self, handler, mock_robot):
         result = handler.execute("harmony_scene_start", "szene Gaming")
@@ -299,7 +323,8 @@ class TestSceneCommands:
 
     def test_scene_start_failure(self, handler, mock_robot):
         mock_robot.harmony_start_scene.return_value = {
-            "success": False, "error": "Szene 'Nope' nicht gefunden",
+            "success": False,
+            "error": "Szene 'Nope' nicht gefunden",
         }
         result = handler.execute("harmony_scene_start", "szene Nope")
         assert not result.success
@@ -323,7 +348,8 @@ class TestSceneCommands:
 
     def test_scene_commands_no_robot(self, handler_no_robot):
         result = handler_no_robot.execute(
-            "harmony_scene_start", "szene Gaming",
+            "harmony_scene_start",
+            "szene Gaming",
         )
         assert not result.success
         assert "RobotClient" in result.text

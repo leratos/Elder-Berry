@@ -1,4 +1,5 @@
 """Tests: Assistant.process() mit system_status Aktion."""
+
 import json
 from unittest.mock import MagicMock
 
@@ -21,26 +22,31 @@ from elder_berry.system.info import (
 # Fixtures
 # ---------------------------------------------------------------------------
 
+
 @pytest.fixture
 def mock_llm_system_status():
     """LLM das system_status als Aktion zurückgibt."""
     llm = MagicMock(spec=LLMClient)
-    llm.generate.return_value = json.dumps({
-        "action": "system_status",
-        "params": {},
-        "response": "Hier ist der aktuelle Zustand deines PCs:",
-    })
+    llm.generate.return_value = json.dumps(
+        {
+            "action": "system_status",
+            "params": {},
+            "response": "Hier ist der aktuelle Zustand deines PCs:",
+        }
+    )
     return llm
 
 
 @pytest.fixture
 def mock_llm_no_action():
     llm = MagicMock(spec=LLMClient)
-    llm.generate.return_value = json.dumps({
-        "action": None,
-        "params": {},
-        "response": "Alles klar!",
-    })
+    llm.generate.return_value = json.dumps(
+        {
+            "action": None,
+            "params": {},
+            "response": "Alles klar!",
+        }
+    )
     return llm
 
 
@@ -83,8 +89,18 @@ def mock_system_monitor():
             )
         ],
         top_processes=[
-            {"pid": 1, "name": "ollama.exe", "cpu_percent": 25.0, "memory_percent": 8.5},
-            {"pid": 2, "name": "chrome.exe", "cpu_percent": 5.0, "memory_percent": 12.3},
+            {
+                "pid": 1,
+                "name": "ollama.exe",
+                "cpu_percent": 25.0,
+                "memory_percent": 8.5,
+            },
+            {
+                "pid": 2,
+                "name": "chrome.exe",
+                "cpu_percent": 5.0,
+                "memory_percent": 12.3,
+            },
             {"pid": 3, "name": "python.exe", "cpu_percent": 2.0, "memory_percent": 3.1},
         ],
     )
@@ -95,14 +111,21 @@ def mock_system_monitor():
 # system_status Aktion
 # ---------------------------------------------------------------------------
 
+
 class TestSystemStatus:
     def test_system_status_returns_data(
-        self, mock_llm_system_status, mock_db, mock_controller, mock_system_monitor,
+        self,
+        mock_llm_system_status,
+        mock_db,
+        mock_controller,
+        mock_system_monitor,
     ):
         """system_status Aktion liefert CPU/RAM/GPU Daten in der Response."""
         assistant = Assistant(
-            llm=mock_llm_system_status, actions_db=mock_db,
-            controller=mock_controller, system_monitor=mock_system_monitor,
+            llm=mock_llm_system_status,
+            actions_db=mock_db,
+            controller=mock_controller,
+            system_monitor=mock_system_monitor,
         )
         result = assistant.process("Wie geht es meinem PC?")
 
@@ -115,12 +138,18 @@ class TestSystemStatus:
         assert "RTX 4070 Ti Super" in result.response
 
     def test_system_status_includes_processes(
-        self, mock_llm_system_status, mock_db, mock_controller, mock_system_monitor,
+        self,
+        mock_llm_system_status,
+        mock_db,
+        mock_controller,
+        mock_system_monitor,
     ):
         """Top-Prozesse sind in der Response enthalten."""
         assistant = Assistant(
-            llm=mock_llm_system_status, actions_db=mock_db,
-            controller=mock_controller, system_monitor=mock_system_monitor,
+            llm=mock_llm_system_status,
+            actions_db=mock_db,
+            controller=mock_controller,
+            system_monitor=mock_system_monitor,
         )
         result = assistant.process("PC Status?")
 
@@ -128,12 +157,18 @@ class TestSystemStatus:
         assert "chrome.exe" in result.response
 
     def test_system_status_includes_llm_response(
-        self, mock_llm_system_status, mock_db, mock_controller, mock_system_monitor,
+        self,
+        mock_llm_system_status,
+        mock_db,
+        mock_controller,
+        mock_system_monitor,
     ):
         """LLM-Antwort wird beibehalten, Systemdaten angehängt."""
         assistant = Assistant(
-            llm=mock_llm_system_status, actions_db=mock_db,
-            controller=mock_controller, system_monitor=mock_system_monitor,
+            llm=mock_llm_system_status,
+            actions_db=mock_db,
+            controller=mock_controller,
+            system_monitor=mock_system_monitor,
         )
         result = assistant.process("Status?")
 
@@ -141,12 +176,17 @@ class TestSystemStatus:
         assert "CPU:" in result.response
 
     def test_system_status_without_monitor(
-        self, mock_llm_system_status, mock_db, mock_controller,
+        self,
+        mock_llm_system_status,
+        mock_db,
+        mock_controller,
     ):
         """Ohne SystemMonitor: action_success False, nur LLM-Response."""
         assistant = Assistant(
-            llm=mock_llm_system_status, actions_db=mock_db,
-            controller=mock_controller, system_monitor=None,
+            llm=mock_llm_system_status,
+            actions_db=mock_db,
+            controller=mock_controller,
+            system_monitor=None,
         )
         result = assistant.process("PC Status?")
 
@@ -155,15 +195,20 @@ class TestSystemStatus:
         assert "CPU:" not in result.response
 
     def test_system_status_monitor_error(
-        self, mock_llm_system_status, mock_db, mock_controller,
+        self,
+        mock_llm_system_status,
+        mock_db,
+        mock_controller,
     ):
         """SystemMonitor wirft Exception: graceful degradation."""
         monitor = MagicMock(spec=SystemMonitor)
         monitor.get_info.side_effect = RuntimeError("psutil error")
 
         assistant = Assistant(
-            llm=mock_llm_system_status, actions_db=mock_db,
-            controller=mock_controller, system_monitor=monitor,
+            llm=mock_llm_system_status,
+            actions_db=mock_db,
+            controller=mock_controller,
+            system_monitor=monitor,
         )
         result = assistant.process("Status?")
 
@@ -171,27 +216,37 @@ class TestSystemStatus:
         assert result.action_success is False
 
     def test_system_status_no_gpu(
-        self, mock_llm_system_status, mock_db, mock_controller,
+        self,
+        mock_llm_system_status,
+        mock_db,
+        mock_controller,
     ):
         """System ohne GPU: kein GPU-Abschnitt, aber CPU/RAM vorhanden."""
         monitor = MagicMock(spec=SystemMonitor)
         monitor.get_info.return_value = SystemInfo(
             platform="Linux",
             cpu=CpuInfo(
-                usage_percent=10.0, per_core_percent=[10.0],
-                freq_mhz=None, core_count=1, thread_count=1,
+                usage_percent=10.0,
+                per_core_percent=[10.0],
+                freq_mhz=None,
+                core_count=1,
+                thread_count=1,
             ),
             ram=RamInfo(
-                total_mb=4096.0, used_mb=2000.0,
-                available_mb=2096.0, usage_percent=48.8,
+                total_mb=4096.0,
+                used_mb=2000.0,
+                available_mb=2096.0,
+                usage_percent=48.8,
             ),
             gpus=[],
             top_processes=[],
         )
 
         assistant = Assistant(
-            llm=mock_llm_system_status, actions_db=mock_db,
-            controller=mock_controller, system_monitor=monitor,
+            llm=mock_llm_system_status,
+            actions_db=mock_db,
+            controller=mock_controller,
+            system_monitor=monitor,
         )
         result = assistant.process("Status?")
 
@@ -201,25 +256,35 @@ class TestSystemStatus:
         assert "GPU:" not in result.response
 
     def test_system_status_no_freq(
-        self, mock_llm_system_status, mock_db, mock_controller,
+        self,
+        mock_llm_system_status,
+        mock_db,
+        mock_controller,
     ):
         """CPU ohne Frequenz-Info: kein MHz im Output."""
         monitor = MagicMock(spec=SystemMonitor)
         monitor.get_info.return_value = SystemInfo(
             platform="Linux",
             cpu=CpuInfo(
-                usage_percent=5.0, per_core_percent=[5.0],
-                freq_mhz=None, core_count=4, thread_count=4,
+                usage_percent=5.0,
+                per_core_percent=[5.0],
+                freq_mhz=None,
+                core_count=4,
+                thread_count=4,
             ),
             ram=RamInfo(
-                total_mb=8192.0, used_mb=4000.0,
-                available_mb=4192.0, usage_percent=48.8,
+                total_mb=8192.0,
+                used_mb=4000.0,
+                available_mb=4192.0,
+                usage_percent=48.8,
             ),
         )
 
         assistant = Assistant(
-            llm=mock_llm_system_status, actions_db=mock_db,
-            controller=mock_controller, system_monitor=monitor,
+            llm=mock_llm_system_status,
+            actions_db=mock_db,
+            controller=mock_controller,
+            system_monitor=monitor,
         )
         result = assistant.process("Status?")
 
@@ -231,13 +296,18 @@ class TestSystemStatus:
 # Rückwärtskompatibilität
 # ---------------------------------------------------------------------------
 
+
 class TestBackwardCompatibility:
     def test_without_system_monitor(
-        self, mock_llm_no_action, mock_db, mock_controller,
+        self,
+        mock_llm_no_action,
+        mock_db,
+        mock_controller,
     ):
         """Assistant ohne SystemMonitor funktioniert wie bisher."""
         assistant = Assistant(
-            llm=mock_llm_no_action, actions_db=mock_db,
+            llm=mock_llm_no_action,
+            actions_db=mock_db,
             controller=mock_controller,
         )
         result = assistant.process("Hallo")

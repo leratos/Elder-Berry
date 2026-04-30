@@ -9,6 +9,7 @@ Verwendung:
     today = client.get_today()
     days = client.get_days(3)
 """
+
 from __future__ import annotations
 
 import logging
@@ -97,6 +98,7 @@ WMO_EMOJIS: dict[int, str] = {
 # DTOs
 # ---------------------------------------------------------------------------
 
+
 @dataclass(frozen=True)
 class WeatherData:
     """Aktuelles Wetter (Snapshot)."""
@@ -127,6 +129,7 @@ class WeatherForecast:
 # ---------------------------------------------------------------------------
 # WeatherClient
 # ---------------------------------------------------------------------------
+
 
 class WeatherClient:
     """Open-Meteo Wetter-Client.
@@ -235,13 +238,18 @@ class WeatherClient:
 
     # get_today ist jetzt oberhalb von get_days definiert (mit location-Parameter)
 
-    def get_today(self, location: tuple[str, str, str] | None = None) -> WeatherForecast:
+    def get_today(
+        self, location: tuple[str, str, str] | None = None
+    ) -> WeatherForecast:
         """Tagesprognose: Min/Max Temperatur, Niederschlag."""
         forecasts = self.get_days(1, location=location)
         return forecasts[0]
 
     def get_days(
-        self, days: int = 3, *, location: tuple[str, str, str] | None = None,
+        self,
+        days: int = 3,
+        *,
+        location: tuple[str, str, str] | None = None,
     ) -> list[WeatherForecast]:
         """Mehrtagesprognose (max 7 Tage).
 
@@ -280,7 +288,9 @@ class WeatherClient:
                     temp_min=float(daily["temperature_2m_min"][i]),
                     temp_max=float(daily["temperature_2m_max"][i]),
                     precipitation_mm=float(daily["precipitation_sum"][i]),
-                    precipitation_probability=int(daily["precipitation_probability_max"][i]),
+                    precipitation_probability=int(
+                        daily["precipitation_probability_max"][i]
+                    ),
                     weather_code=code,
                     description=WMO_DESCRIPTIONS.get(code, f"Code {code}"),
                     city=city,
@@ -313,7 +323,9 @@ class WeatherClient:
             day_name = _format_day_name(fc.date)
             rain = ""
             if fc.precipitation_mm > 0 or fc.precipitation_probability > 30:
-                rain = f"  🌧️ {fc.precipitation_mm:.1f}mm ({fc.precipitation_probability}%)"
+                rain = (
+                    f"  🌧️ {fc.precipitation_mm:.1f}mm ({fc.precipitation_probability}%)"
+                )
             lines.append(
                 f"  {emoji} {day_name}: {fc.temp_min:.0f}–{fc.temp_max:.0f}°C, "
                 f"{fc.description}{rain}"
@@ -327,7 +339,13 @@ class WeatherClient:
 # ---------------------------------------------------------------------------
 
 _DAY_NAMES = {
-    0: "Mo", 1: "Di", 2: "Mi", 3: "Do", 4: "Fr", 5: "Sa", 6: "So",
+    0: "Mo",
+    1: "Di",
+    2: "Mi",
+    3: "Do",
+    4: "Fr",
+    5: "Sa",
+    6: "So",
 }
 
 
@@ -337,6 +355,7 @@ def _format_day_name(d: date) -> str:
     if d == today:
         return "Heute"
     from datetime import timedelta
+
     if d == today + timedelta(days=1):
         return "Morgen"
     day_abbr = _DAY_NAMES.get(d.weekday(), "??")

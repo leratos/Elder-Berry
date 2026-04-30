@@ -1,4 +1,5 @@
 """Tests: RemoteCommandHandler – Direkte Befehle via Matrix."""
+
 import subprocess
 from pathlib import Path
 from unittest.mock import MagicMock, patch
@@ -33,6 +34,7 @@ from elder_berry.comms.remote_commands import RemoteCommandHandler
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
+
 
 def _make_monitor_mock():
     """Erstellt einen Mock-SystemMonitor mit realistischen Daten."""
@@ -89,6 +91,7 @@ def _make_secret_store_mock(mac="AA:BB:CC:DD:EE:FF"):
 # CommandResult DTO
 # ---------------------------------------------------------------------------
 
+
 class TestCommandResult:
     def test_creation_text_only(self):
         result = CommandResult(command="status", success=True, text="OK")
@@ -99,8 +102,10 @@ class TestCommandResult:
 
     def test_creation_with_image(self):
         result = CommandResult(
-            command="screenshot", success=True,
-            text="Screenshot aufgenommen.", image_path=Path("/tmp/screen.png"),
+            command="screenshot",
+            success=True,
+            text="Screenshot aufgenommen.",
+            image_path=Path("/tmp/screen.png"),
         )
         assert result.image_path == Path("/tmp/screen.png")
 
@@ -112,8 +117,10 @@ class TestCommandResult:
 
     def test_creation_with_file(self):
         result = CommandResult(
-            command="send_file", success=True,
-            text="Datei wird gesendet.", file_path=Path("/tmp/datei.pdf"),
+            command="send_file",
+            success=True,
+            text="Datei wird gesendet.",
+            file_path=Path("/tmp/datei.pdf"),
         )
         assert result.file_path == Path("/tmp/datei.pdf")
 
@@ -121,6 +128,7 @@ class TestCommandResult:
 # ---------------------------------------------------------------------------
 # parse_command
 # ---------------------------------------------------------------------------
+
 
 class TestParseCommand:
     def test_status(self):
@@ -166,7 +174,10 @@ class TestParseCommand:
     def test_keyword_screenshot_in_sentence(self):
         handler = RemoteCommandHandler()
         assert handler.parse_command("schick mir ein screenshot") == "screenshot"
-        assert handler.parse_command("Schick mir bitte ein Screenshot vom pc") == "screenshot"
+        assert (
+            handler.parse_command("Schick mir bitte ein Screenshot vom pc")
+            == "screenshot"
+        )
         assert handler.parse_command("mach mal ein Bildschirmfoto") == "screenshot"
 
     def test_keyword_status_in_sentence(self):
@@ -261,8 +272,12 @@ class TestParseCommand:
     # --- Tier 3: Download ---
     def test_download(self):
         handler = RemoteCommandHandler()
-        assert handler.parse_command("download https://example.com/file.zip") == "download"
-        assert handler.parse_command("download http://example.com/data.csv") == "download"
+        assert (
+            handler.parse_command("download https://example.com/file.zip") == "download"
+        )
+        assert (
+            handler.parse_command("download http://example.com/data.csv") == "download"
+        )
 
     def test_download_no_url(self):
         handler = RemoteCommandHandler()
@@ -304,6 +319,7 @@ class TestParseCommand:
 # ---------------------------------------------------------------------------
 # execute: status
 # ---------------------------------------------------------------------------
+
 
 class TestCmdStatus:
     def test_status_success(self):
@@ -347,6 +363,7 @@ class TestCmdStatus:
 # execute: screenshot
 # ---------------------------------------------------------------------------
 
+
 class TestCmdScreenshot:
     """Phase 55.2: Screenshot-Tests dürfen nicht die echte mss-API
     aufrufen, weil SendMessageTimeoutW-Broadcasts und Display-State auf
@@ -360,7 +377,10 @@ class TestCmdScreenshot:
         screenshot = MagicMock()
         screenshot.rgb = b"\x00" * 12
         screenshot.size = (2, 2)
-        sct.monitors = [{"top": 0, "left": 0}, {"top": 0, "left": 0, "width": 100, "height": 100}]
+        sct.monitors = [
+            {"top": 0, "left": 0},
+            {"top": 0, "left": 0, "width": 100, "height": 100},
+        ]
         sct.grab.return_value = screenshot
 
         cm = MagicMock()
@@ -373,6 +393,7 @@ class TestCmdScreenshot:
         def _to_png(rgb, size, output=None):
             if output:
                 Path(output).write_bytes(png_bytes)
+
         mss_tools = MagicMock()
         mss_tools.to_png.side_effect = _to_png
         mss_mod.tools = mss_tools
@@ -386,11 +407,18 @@ class TestCmdScreenshot:
         with patch.dict("sys.modules", {"mss": mss_mod, "mss.tools": mss_tools}):
             with patch.object(
                 type(handler._handlers[0]) if handler._handlers else object,
-                "_wake_monitor", lambda *a, **kw: None, create=True,
+                "_wake_monitor",
+                lambda *a, **kw: None,
+                create=True,
             ):
                 # Simpler: direkt _wake_monitor auf dem SystemCommandHandler mocken
-                from elder_berry.comms.commands.system_commands import SystemCommandHandler
-                with patch.object(SystemCommandHandler, "_wake_monitor", lambda *a, **kw: None):
+                from elder_berry.comms.commands.system_commands import (
+                    SystemCommandHandler,
+                )
+
+                with patch.object(
+                    SystemCommandHandler, "_wake_monitor", lambda *a, **kw: None
+                ):
                     result = handler.execute("screenshot", "screenshot")
 
         assert result.command == "screenshot"
@@ -405,8 +433,11 @@ class TestCmdScreenshot:
 
         handler = RemoteCommandHandler()
         from elder_berry.comms.commands.system_commands import SystemCommandHandler
+
         with patch.dict("sys.modules", {"mss": mss_mod, "mss.tools": mss_tools}):
-            with patch.object(SystemCommandHandler, "_wake_monitor", lambda *a, **kw: None):
+            with patch.object(
+                SystemCommandHandler, "_wake_monitor", lambda *a, **kw: None
+            ):
                 result = handler.execute("screenshot", "screenshot")
 
         assert result.command == "screenshot"
@@ -421,6 +452,7 @@ class TestCmdScreenshot:
         # Simuliere fehlenden mss-Import
         with patch.dict("sys.modules", {"mss": None, "mss.tools": None}):
             import builtins
+
             original_import = builtins.__import__
 
             def mock_import(name, *args, **kwargs):
@@ -438,6 +470,7 @@ class TestCmdScreenshot:
 # ---------------------------------------------------------------------------
 # execute: media
 # ---------------------------------------------------------------------------
+
 
 class TestCmdMedia:
     def test_pause(self):
@@ -509,6 +542,7 @@ class TestCmdMedia:
 # ---------------------------------------------------------------------------
 # execute: volume
 # ---------------------------------------------------------------------------
+
 
 class TestCmdVolume:
     def test_volume_50(self):
@@ -588,10 +622,12 @@ class TestCmdVolume:
 # execute: clipboard
 # ---------------------------------------------------------------------------
 
+
 class TestCmdClipboard:
     def test_clipboard_read_success(self):
         handler = RemoteCommandHandler()
         import builtins
+
         original_import = builtins.__import__
 
         mock_pyperclip = MagicMock()
@@ -611,6 +647,7 @@ class TestCmdClipboard:
     def test_clipboard_read_empty(self):
         handler = RemoteCommandHandler()
         import builtins
+
         original_import = builtins.__import__
 
         mock_pyperclip = MagicMock()
@@ -630,6 +667,7 @@ class TestCmdClipboard:
     def test_clipboard_read_no_pyperclip(self):
         handler = RemoteCommandHandler()
         import builtins
+
         original_import = builtins.__import__
 
         def mock_import(name, *args, **kwargs):
@@ -646,6 +684,7 @@ class TestCmdClipboard:
     def test_clipboard_write_success(self):
         handler = RemoteCommandHandler()
         import builtins
+
         original_import = builtins.__import__
 
         mock_pyperclip = MagicMock()
@@ -665,6 +704,7 @@ class TestCmdClipboard:
     def test_clipboard_write_colon_format(self):
         handler = RemoteCommandHandler()
         import builtins
+
         original_import = builtins.__import__
 
         mock_pyperclip = MagicMock()
@@ -683,6 +723,7 @@ class TestCmdClipboard:
     def test_clipboard_write_space_format(self):
         handler = RemoteCommandHandler()
         import builtins
+
         original_import = builtins.__import__
 
         mock_pyperclip = MagicMock()
@@ -701,6 +742,7 @@ class TestCmdClipboard:
     def test_clipboard_write_no_pyperclip(self):
         handler = RemoteCommandHandler()
         import builtins
+
         original_import = builtins.__import__
 
         def mock_import(name, *args, **kwargs):
@@ -718,6 +760,7 @@ class TestCmdClipboard:
 # ---------------------------------------------------------------------------
 # execute: send_file
 # ---------------------------------------------------------------------------
+
 
 class TestCmdSendFile:
     def test_send_file_success(self, tmp_path):
@@ -782,6 +825,7 @@ class TestCmdSendFile:
 # execute: process control
 # ---------------------------------------------------------------------------
 
+
 class TestCmdProcessControl:
     def test_start_not_in_whitelist(self):
         handler = RemoteCommandHandler()
@@ -823,6 +867,7 @@ class TestCmdProcessControl:
         mock_psutil.AccessDenied = type("AccessDenied", (Exception,), {})
 
         import builtins
+
         original_import = builtins.__import__
 
         def mock_import(name, *args, **kwargs):
@@ -834,7 +879,10 @@ class TestCmdProcessControl:
             result = handler.execute("kill_process", "kill blender")
 
         assert result.success is False
-        assert "nicht gefunden" in result.text.lower() or "kein laufender" in result.text.lower()
+        assert (
+            "nicht gefunden" in result.text.lower()
+            or "kein laufender" in result.text.lower()
+        )
 
     def test_kill_success(self):
         handler = RemoteCommandHandler()
@@ -848,6 +896,7 @@ class TestCmdProcessControl:
         mock_psutil.AccessDenied = type("AccessDenied", (Exception,), {})
 
         import builtins
+
         original_import = builtins.__import__
 
         def mock_import(name, *args, **kwargs):
@@ -866,6 +915,7 @@ class TestCmdProcessControl:
 # ---------------------------------------------------------------------------
 # execute: wake-on-lan
 # ---------------------------------------------------------------------------
+
 
 class TestCmdWoL:
     def test_wol_success(self):
@@ -924,6 +974,7 @@ class TestCmdWoL:
 # ---------------------------------------------------------------------------
 # execute: git
 # ---------------------------------------------------------------------------
+
 
 class TestCmdGit:
     def test_git_status(self, tmp_path):
@@ -994,6 +1045,7 @@ class TestCmdGit:
 # execute: docker
 # ---------------------------------------------------------------------------
 
+
 class TestCmdDocker:
     def test_docker_ps(self):
         handler = RemoteCommandHandler()
@@ -1059,6 +1111,7 @@ class TestCmdDocker:
 # execute: download
 # ---------------------------------------------------------------------------
 
+
 class TestCmdDownload:
     def test_download_success(self, tmp_path):
         handler = RemoteCommandHandler(download_dir=tmp_path)
@@ -1071,6 +1124,7 @@ class TestCmdDownload:
         mock_response.raise_for_status = MagicMock()
 
         import builtins
+
         original_import = builtins.__import__
 
         mock_httpx = MagicMock()
@@ -1084,7 +1138,9 @@ class TestCmdDownload:
             return original_import(name, *args, **kwargs)
 
         with patch("builtins.__import__", side_effect=mock_import):
-            result = handler.execute("download", "download https://example.com/file.zip")
+            result = handler.execute(
+                "download", "download https://example.com/file.zip"
+            )
 
         assert result.success is True
         assert "file.zip" in result.text
@@ -1105,6 +1161,7 @@ class TestCmdDownload:
         mock_response.raise_for_status = MagicMock()
 
         import builtins
+
         original_import = builtins.__import__
 
         mock_httpx = MagicMock()
@@ -1118,7 +1175,9 @@ class TestCmdDownload:
             return original_import(name, *args, **kwargs)
 
         with patch("builtins.__import__", side_effect=mock_import):
-            result = handler.execute("download", "download https://example.com/large.bin")
+            result = handler.execute(
+                "download", "download https://example.com/large.bin"
+            )
 
         assert result.success is False
         assert "zu groß" in result.text
@@ -1127,6 +1186,7 @@ class TestCmdDownload:
 # ---------------------------------------------------------------------------
 # execute: unknown command
 # ---------------------------------------------------------------------------
+
 
 class TestUnknownCommand:
     def test_unknown(self):
@@ -1140,6 +1200,7 @@ class TestUnknownCommand:
 # ---------------------------------------------------------------------------
 # Volume-Pattern Regex
 # ---------------------------------------------------------------------------
+
 
 class TestVolumePattern:
     def test_matches(self):
@@ -1162,6 +1223,7 @@ class TestVolumePattern:
 # MEDIA_KEYS Mapping
 # ---------------------------------------------------------------------------
 
+
 class TestMediaKeys:
     def test_all_keys_mapped(self):
         assert MEDIA_KEYS["pause"] == "playpause"
@@ -1175,6 +1237,7 @@ class TestMediaKeys:
 # ---------------------------------------------------------------------------
 # Neue Regex-Patterns
 # ---------------------------------------------------------------------------
+
 
 class TestNewPatterns:
     def test_clip_write_pattern(self):
@@ -1234,6 +1297,7 @@ class TestNewPatterns:
 # ---------------------------------------------------------------------------
 # execute: avatar
 # ---------------------------------------------------------------------------
+
 
 class TestCmdHilfe:
     def test_hilfe_returns_overview(self):
@@ -1365,6 +1429,7 @@ class TestCmdAvatar:
 # Restart-Command
 # ---------------------------------------------------------------------------
 
+
 class TestRestartCommand:
     """Tests für den restart/neustart Command."""
 
@@ -1416,6 +1481,7 @@ class TestRestartCommand:
 # Calendar-Commands
 # ---------------------------------------------------------------------------
 
+
 class TestCalendarCommands:
     def test_parse_termine(self):
         handler = RemoteCommandHandler()
@@ -1441,11 +1507,17 @@ class TestCalendarCommands:
         """
         handler = RemoteCommandHandler()
         assert handler.parse_command("was steht heute im kalender") is None
-        assert handler.parse_command("ja trag bitte den termin in den kalender ein") is None
+        assert (
+            handler.parse_command("ja trag bitte den termin in den kalender ein")
+            is None
+        )
 
     def test_parse_termin_create(self):
         handler = RemoteCommandHandler()
-        assert handler.parse_command("termin: Zahnarzt 2026-03-20 14:00") == "termin_create"
+        assert (
+            handler.parse_command("termin: Zahnarzt 2026-03-20 14:00")
+            == "termin_create"
+        )
 
     def test_parse_termin_create_morgen(self):
         handler = RemoteCommandHandler()
@@ -1453,7 +1525,9 @@ class TestCalendarCommands:
 
     def test_parse_termin_create_uebermorgen(self):
         handler = RemoteCommandHandler()
-        assert handler.parse_command("termin: Meeting übermorgen 10:00") == "termin_create"
+        assert (
+            handler.parse_command("termin: Meeting übermorgen 10:00") == "termin_create"
+        )
 
     def test_parse_termin_create_dd_mm(self):
         handler = RemoteCommandHandler()
@@ -1461,23 +1535,37 @@ class TestCalendarCommands:
 
     def test_parse_termin_create_dd_mm_yyyy(self):
         handler = RemoteCommandHandler()
-        assert handler.parse_command("termin: Zahnarzt 30.03.2026 14:00") == "termin_create"
+        assert (
+            handler.parse_command("termin: Zahnarzt 30.03.2026 14:00")
+            == "termin_create"
+        )
 
     def test_parse_termin_create_mit_um(self):
         handler = RemoteCommandHandler()
-        assert handler.parse_command("termin: Zahnarzt morgen um 14:00") == "termin_create"
+        assert (
+            handler.parse_command("termin: Zahnarzt morgen um 14:00") == "termin_create"
+        )
 
     def test_parse_termin_create_mit_uhr(self):
         handler = RemoteCommandHandler()
-        assert handler.parse_command("termin: Zahnarzt morgen 14:00 Uhr") == "termin_create"
+        assert (
+            handler.parse_command("termin: Zahnarzt morgen 14:00 Uhr")
+            == "termin_create"
+        )
 
     def test_parse_erstelle_termin(self):
         handler = RemoteCommandHandler()
-        assert handler.parse_command("erstelle termin Zahnarzt morgen 14:00") == "termin_create"
+        assert (
+            handler.parse_command("erstelle termin Zahnarzt morgen 14:00")
+            == "termin_create"
+        )
 
     def test_parse_erstelle_einen_termin(self):
         handler = RemoteCommandHandler()
-        assert handler.parse_command("erstelle einen termin Meeting 30.03 10:00") == "termin_create"
+        assert (
+            handler.parse_command("erstelle einen termin Meeting 30.03 10:00")
+            == "termin_create"
+        )
 
     def test_execute_termine_no_calendar(self):
         handler = RemoteCommandHandler()
@@ -1631,6 +1719,7 @@ class TestTerminDeleteCommand:
     def _make_events(self, n=3):
         from elder_berry.tools.google_calendar import CalendarEvent
         from datetime import datetime
+
         return [
             CalendarEvent(
                 summary=f"Termin {i}",
@@ -1797,6 +1886,7 @@ class TestTerminDeleteCommand:
 # ---------------------------------------------------------------------------
 # Email-Commands
 # ---------------------------------------------------------------------------
+
 
 class TestEmailCommands:
     def test_parse_mails(self):
@@ -1978,6 +2068,7 @@ class TestMailAttachmentCommand:
 # Wetter-Commands
 # ---------------------------------------------------------------------------
 
+
 class TestWeatherParse:
     """Parse-Tests für Wetter-Commands."""
 
@@ -2029,14 +2120,23 @@ class TestWeatherExecute:
 
         mock_weather = MagicMock()
         mock_weather.get_current.return_value = WeatherData(
-            temperature=14.2, apparent_temperature=12.5,
-            humidity=65, wind_speed=12.3,
-            weather_code=2, description="Teilweise bewölkt", city="Berlin",
+            temperature=14.2,
+            apparent_temperature=12.5,
+            humidity=65,
+            wind_speed=12.3,
+            weather_code=2,
+            description="Teilweise bewölkt",
+            city="Berlin",
         )
         mock_weather.get_today.return_value = WeatherForecast(
-            date=date.today(), temp_min=8.2, temp_max=16.5,
-            precipitation_mm=0.0, precipitation_probability=10,
-            weather_code=2, description="Teilweise bewölkt", city="Berlin",
+            date=date.today(),
+            temp_min=8.2,
+            temp_max=16.5,
+            precipitation_mm=0.0,
+            precipitation_probability=10,
+            weather_code=2,
+            description="Teilweise bewölkt",
+            city="Berlin",
         )
         mock_weather.format_current.return_value = "⛅ Wetter in Berlin: 14.2°C"
         mock_weather.format_forecast.return_value = "📅 Vorhersage: 8–17°C"
@@ -2056,14 +2156,24 @@ class TestWeatherExecute:
         mock_weather = MagicMock()
         mock_weather.get_days.return_value = [
             WeatherForecast(
-                date=date.today(), temp_min=8.0, temp_max=16.0,
-                precipitation_mm=0.0, precipitation_probability=5,
-                weather_code=0, description="Klar", city="Berlin",
+                date=date.today(),
+                temp_min=8.0,
+                temp_max=16.0,
+                precipitation_mm=0.0,
+                precipitation_probability=5,
+                weather_code=0,
+                description="Klar",
+                city="Berlin",
             ),
             WeatherForecast(
-                date=date.today() + timedelta(days=1), temp_min=10.0, temp_max=18.0,
-                precipitation_mm=1.5, precipitation_probability=30,
-                weather_code=61, description="Leichter Regen", city="Berlin",
+                date=date.today() + timedelta(days=1),
+                temp_min=10.0,
+                temp_max=18.0,
+                precipitation_mm=1.5,
+                precipitation_probability=30,
+                weather_code=61,
+                description="Leichter Regen",
+                city="Berlin",
             ),
         ]
         mock_weather.format_forecast.return_value = "📅 Morgen: 10–18°C"
@@ -2092,6 +2202,7 @@ class TestWeatherExecute:
 # ---------------------------------------------------------------------------
 # Timer & Erinnerungen
 # ---------------------------------------------------------------------------
+
 
 class TestTimerParse:
     """Parse-Tests für Timer/Erinnerung-Commands."""
@@ -2144,6 +2255,7 @@ class TestTimerExecute:
 
     def test_timer_success(self, tmp_path):
         from elder_berry.tools.reminder_store import ReminderStore
+
         store = ReminderStore(db_path=tmp_path / "test.db")
 
         handler = RemoteCommandHandler(reminder_store=store)
@@ -2160,6 +2272,7 @@ class TestTimerExecute:
 
     def test_erinnerungen_empty(self, tmp_path):
         from elder_berry.tools.reminder_store import ReminderStore
+
         store = ReminderStore(db_path=tmp_path / "test.db")
 
         handler = RemoteCommandHandler(reminder_store=store)
@@ -2172,8 +2285,11 @@ class TestTimerExecute:
     def test_erinnerungen_with_entries(self, tmp_path):
         from elder_berry.tools.reminder_store import ReminderStore
         from datetime import datetime, timezone, timedelta
+
         store = ReminderStore(db_path=tmp_path / "test.db")
-        store.add("_timer_user", "Wäsche", datetime.now(timezone.utc) + timedelta(hours=1))
+        store.add(
+            "_timer_user", "Wäsche", datetime.now(timezone.utc) + timedelta(hours=1)
+        )
 
         handler = RemoteCommandHandler(reminder_store=store)
         result = handler.execute("erinnerungen", "erinnerungen")
@@ -2185,9 +2301,14 @@ class TestTimerExecute:
     def test_reminder_delete_all_asks_confirmation(self, tmp_path):
         from elder_berry.tools.reminder_store import ReminderStore
         from datetime import datetime, timezone, timedelta
+
         store = ReminderStore(db_path=tmp_path / "test.db")
-        store.add("_timer_user", "Eins", datetime.now(timezone.utc) + timedelta(hours=1))
-        store.add("_timer_user", "Zwei", datetime.now(timezone.utc) + timedelta(hours=2))
+        store.add(
+            "_timer_user", "Eins", datetime.now(timezone.utc) + timedelta(hours=1)
+        )
+        store.add(
+            "_timer_user", "Zwei", datetime.now(timezone.utc) + timedelta(hours=2)
+        )
 
         handler = RemoteCommandHandler(reminder_store=store)
         result = handler.execute("reminder_delete", "lösche alle erinnerungen")
@@ -2203,6 +2324,7 @@ class TestTimerExecute:
 # ---------------------------------------------------------------------------
 # Briefing-Commands
 # ---------------------------------------------------------------------------
+
 
 class TestBriefingParse:
     def test_parse_briefing(self):
@@ -2250,6 +2372,7 @@ class TestBriefingExecute:
 # ---------------------------------------------------------------------------
 # Mail per ID
 # ---------------------------------------------------------------------------
+
 
 class TestMailByIdParse:
     def test_parse_mail_99(self):
@@ -2323,6 +2446,7 @@ class TestMailByIdExecute:
 # Dokument-Zusammenfassung (Phase 11)
 # ---------------------------------------------------------------------------
 
+
 class TestDocumentSummaryPattern:
     """Regex-Pattern für Dokument-Zusammenfassung."""
 
@@ -2356,15 +2480,21 @@ class TestDocumentSummaryParseCommand:
 
     def test_zusammenfassung_recognized(self):
         handler = RemoteCommandHandler()
-        assert handler.parse_command(r"zusammenfassung C:\test.pdf") == "document_summary"
+        assert (
+            handler.parse_command(r"zusammenfassung C:\test.pdf") == "document_summary"
+        )
 
     def test_fasse_zusammen_recognized(self):
         handler = RemoteCommandHandler()
-        assert handler.parse_command(r"fasse zusammen C:\test.txt") == "document_summary"
+        assert (
+            handler.parse_command(r"fasse zusammen C:\test.txt") == "document_summary"
+        )
 
     def test_fasse_path_zusammen_recognized(self):
         handler = RemoteCommandHandler()
-        assert handler.parse_command(r"fasse C:\test.pdf zusammen") == "document_summary"
+        assert (
+            handler.parse_command(r"fasse C:\test.pdf zusammen") == "document_summary"
+        )
 
     def test_keyword_map_match(self):
         handler = RemoteCommandHandler()
@@ -2402,7 +2532,8 @@ class TestDocumentSummaryExecute:
         reader = DocumentReader()
         handler = RemoteCommandHandler(document_reader=reader)
         result = handler.execute(
-            "document_summary", r"zusammenfassung C:\nope\missing.pdf",
+            "document_summary",
+            r"zusammenfassung C:\nope\missing.pdf",
         )
         assert result.success is False
         assert "nicht gefunden" in result.text
@@ -2499,6 +2630,7 @@ class TestAudioExecute:
 
     def test_audio_status_with_router(self):
         from elder_berry.core.audio_router import AudioRouter
+
         router = AudioRouter(local_available=True)
         handler = RemoteCommandHandler(audio_router=router)
         result = handler.execute("audio", "audio")
@@ -2507,6 +2639,7 @@ class TestAudioExecute:
 
     def test_audio_lokal_an(self):
         from elder_berry.core.audio_router import AudioOutputMode, AudioRouter
+
         router = AudioRouter(local_available=True)
         handler = RemoteCommandHandler(audio_router=router)
         result = handler.execute("audio_toggle", "audio lokal an")
@@ -2516,6 +2649,7 @@ class TestAudioExecute:
 
     def test_audio_lokal_aus(self):
         from elder_berry.core.audio_router import AudioOutputMode, AudioRouter
+
         router = AudioRouter(
             default_mode=AudioOutputMode.MATRIX_AND_LOCAL,
             local_available=True,
@@ -2528,6 +2662,7 @@ class TestAudioExecute:
 
     def test_audio_lokal_an_no_capability(self):
         from elder_berry.core.audio_router import AudioOutputMode, AudioRouter
+
         router = AudioRouter(local_available=False)
         handler = RemoteCommandHandler(audio_router=router)
         result = handler.execute("audio_toggle", "audio lokal an")
@@ -2540,47 +2675,58 @@ class TestAudioExecute:
 # Computer Use – Pattern, Parse, Execute
 # ===========================================================================
 
+
 class TestComputerUsePattern:
     """Tests für COMPUTER_USE_PATTERN."""
 
     def test_klick_auf(self):
         from elder_berry.comms.commands.advanced_commands import COMPUTER_USE_PATTERN
+
         assert COMPUTER_USE_PATTERN.match("klick auf den OK-Button")
 
     def test_klicke_auf(self):
         from elder_berry.comms.commands.advanced_commands import COMPUTER_USE_PATTERN
+
         assert COMPUTER_USE_PATTERN.match("klicke auf das Suchfeld")
 
     def test_tippe(self):
         from elder_berry.comms.commands.advanced_commands import COMPUTER_USE_PATTERN
+
         assert COMPUTER_USE_PATTERN.match("tippe Hello World")
 
     def test_scroll_runter(self):
         from elder_berry.comms.commands.advanced_commands import COMPUTER_USE_PATTERN
+
         assert COMPUTER_USE_PATTERN.match("scroll runter")
 
     def test_scroll_hoch(self):
         from elder_berry.comms.commands.advanced_commands import COMPUTER_USE_PATTERN
+
         assert COMPUTER_USE_PATTERN.match("scroll hoch")
 
     def test_drueck(self):
         from elder_berry.comms.commands.advanced_commands import COMPUTER_USE_PATTERN
+
         assert COMPUTER_USE_PATTERN.match("drück Strg+S")
 
     def test_druecke(self):
         from elder_berry.comms.commands.advanced_commands import COMPUTER_USE_PATTERN
+
         assert COMPUTER_USE_PATTERN.match("drücke Enter")
 
     def test_klick_mal_auf(self):
         from elder_berry.comms.commands.advanced_commands import COMPUTER_USE_PATTERN
+
         assert COMPUTER_USE_PATTERN.match("klick mal auf das X oben rechts")
 
     def test_auf_element_klicken(self):
         from elder_berry.comms.commands.advanced_commands import COMPUTER_USE_PATTERN
+
         assert COMPUTER_USE_PATTERN.match("auf accept klicken")
 
     def test_no_match_random(self):
         from elder_berry.comms.commands.advanced_commands import COMPUTER_USE_PATTERN
+
         assert COMPUTER_USE_PATTERN.match("hallo wie geht es dir") is None
 
 
@@ -2606,11 +2752,16 @@ class TestComputerUseParseCommand:
     def test_keyword_klick_auf_in_sentence(self):
         handler = RemoteCommandHandler()
         # "klick auf" als Keyword im Satz → "computer_use"
-        assert handler.parse_command("bitte klick auf den Discord Button") == "computer_use"
+        assert (
+            handler.parse_command("bitte klick auf den Discord Button")
+            == "computer_use"
+        )
 
     def test_klick_mal_auf(self):
         handler = RemoteCommandHandler()
-        assert handler.parse_command("klick mal auf das X oben rechts") == "computer_use"
+        assert (
+            handler.parse_command("klick mal auf das X oben rechts") == "computer_use"
+        )
 
     def test_kannst_du_auf_klicken(self):
         handler = RemoteCommandHandler()
@@ -2650,6 +2801,7 @@ class TestComputerUseExecute:
 
     def test_execution_error(self):
         from unittest.mock import MagicMock
+
         mock_cu = MagicMock()
         mock_cu.execute_instruction.side_effect = RuntimeError("Boom")
         handler = RemoteCommandHandler(computer_use=mock_cu)
@@ -2682,39 +2834,46 @@ class TestComputerUseExecute:
 # Web-Suche (Brave Search)
 # ---------------------------------------------------------------------------
 
+
 class TestWebSearchPattern:
     """WEB_SEARCH_PATTERN Regex Tests."""
 
     def test_suche_basic(self):
         from elder_berry.comms.commands.advanced_commands import WEB_SEARCH_PATTERN
+
         m = WEB_SEARCH_PATTERN.match("suche Dachdecker Plattenburg")
         assert m
         assert m.group(1) == "Dachdecker Plattenburg"
 
     def test_such_mal(self):
         from elder_berry.comms.commands.advanced_commands import WEB_SEARCH_PATTERN
+
         m = WEB_SEARCH_PATTERN.match("such mal Python Tutorial")
         assert m
         assert m.group(1) == "Python Tutorial"
 
     def test_google(self):
         from elder_berry.comms.commands.advanced_commands import WEB_SEARCH_PATTERN
+
         m = WEB_SEARCH_PATTERN.match("google Rezept Lasagne")
         assert m
         assert m.group(1) == "Rezept Lasagne"
 
     def test_finde(self):
         from elder_berry.comms.commands.advanced_commands import WEB_SEARCH_PATTERN
+
         m = WEB_SEARCH_PATTERN.match("finde Dachdecker in der Nähe")
         assert m
         assert m.group(1) == "Dachdecker in der Nähe"
 
     def test_no_match_empty(self):
         from elder_berry.comms.commands.advanced_commands import WEB_SEARCH_PATTERN
+
         assert WEB_SEARCH_PATTERN.match("suche") is None
 
     def test_case_insensitive(self):
         from elder_berry.comms.commands.advanced_commands import WEB_SEARCH_PATTERN
+
         m = WEB_SEARCH_PATTERN.match("SUCHE Test")
         assert m
         assert m.group(1) == "Test"
@@ -2741,7 +2900,10 @@ class TestWebSearchParseCommand:
 
     def test_keyword_google_mal(self):
         handler = RemoteCommandHandler()
-        assert handler.parse_command("google mal wie das Wetter in Berlin ist") == "web_search"
+        assert (
+            handler.parse_command("google mal wie das Wetter in Berlin ist")
+            == "web_search"
+        )
 
     def test_mail_suche_has_priority(self):
         """Mail-Suche hat Vorrang vor Web-Suche."""
@@ -2787,6 +2949,7 @@ class TestWebSearchExecute:
 
     def test_search_error(self):
         from unittest.mock import MagicMock
+
         mock_client = MagicMock()
         mock_client.search.side_effect = RuntimeError("API Error")
 
@@ -2804,6 +2967,7 @@ class TestWebSearchExecute:
     def test_empty_query_via_execute(self):
         """Leerer Query bei execute → Fehler."""
         from unittest.mock import MagicMock
+
         mock_client = MagicMock()
 
         handler = RemoteCommandHandler(search_client=mock_client)

@@ -1,4 +1,5 @@
 """Tests: FileCommandHandler – Clipboard, Send-File, Download."""
+
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -16,6 +17,7 @@ from elder_berry.comms.commands.file_commands import (
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
+
 
 @pytest.fixture
 def handler(tmp_path):
@@ -37,12 +39,16 @@ def handler_no_roots(tmp_path):
 # Pattern Tests
 # ---------------------------------------------------------------------------
 
+
 class TestClipWritePattern:
-    @pytest.mark.parametrize("text", [
-        "clip: hello world",
-        "clip hello world",
-        "CLIP: test",
-    ])
+    @pytest.mark.parametrize(
+        "text",
+        [
+            "clip: hello world",
+            "clip hello world",
+            "CLIP: test",
+        ],
+    )
     def test_valid(self, text):
         assert CLIP_WRITE_PATTERN.match(text) is not None
 
@@ -51,12 +57,15 @@ class TestClipWritePattern:
 
 
 class TestSendFilePattern:
-    @pytest.mark.parametrize("text", [
-        r"schick mir C:\Users\test.pdf",
-        "send file /home/user/test.pdf",
-        "sende mir /tmp/file.txt",
-        r"sende datei C:\docs\file.pdf",
-    ])
+    @pytest.mark.parametrize(
+        "text",
+        [
+            r"schick mir C:\Users\test.pdf",
+            "send file /home/user/test.pdf",
+            "sende mir /tmp/file.txt",
+            r"sende datei C:\docs\file.pdf",
+        ],
+    )
     def test_valid(self, text):
         assert SEND_FILE_PATTERN.search(text) is not None
 
@@ -65,10 +74,13 @@ class TestSendFilePattern:
 
 
 class TestDownloadPattern:
-    @pytest.mark.parametrize("text", [
-        "download https://example.com/file.zip",
-        "download http://test.org/data.csv",
-    ])
+    @pytest.mark.parametrize(
+        "text",
+        [
+            "download https://example.com/file.zip",
+            "download http://test.org/data.csv",
+        ],
+    )
     def test_valid(self, text):
         assert DOWNLOAD_PATTERN.match(text) is not None
 
@@ -79,6 +91,7 @@ class TestDownloadPattern:
 # ---------------------------------------------------------------------------
 # Interface
 # ---------------------------------------------------------------------------
+
 
 class TestFileInterface:
     def test_simple_commands(self, handler):
@@ -97,6 +110,7 @@ class TestFileInterface:
 # ---------------------------------------------------------------------------
 # Clipboard Read
 # ---------------------------------------------------------------------------
+
 
 class TestClipboardRead:
     def test_read_success(self, handler):
@@ -125,6 +139,7 @@ class TestClipboardRead:
 
     def test_read_no_pyperclip(self, handler):
         import builtins
+
         original_import = builtins.__import__
 
         def mock_import(name, *args, **kwargs):
@@ -141,6 +156,7 @@ class TestClipboardRead:
 # ---------------------------------------------------------------------------
 # Clipboard Write
 # ---------------------------------------------------------------------------
+
 
 class TestClipboardWrite:
     def test_write_success(self, handler):
@@ -159,6 +175,7 @@ class TestClipboardWrite:
 # ---------------------------------------------------------------------------
 # Send File
 # ---------------------------------------------------------------------------
+
 
 class TestSendFile:
     def test_send_success(self, handler, tmp_path):
@@ -194,6 +211,7 @@ class TestSendFile:
     def test_send_file_outside_roots(self, handler, tmp_path):
         """Datei außerhalb der erlaubten Roots wird abgelehnt."""
         import tempfile
+
         outside = Path(tempfile.gettempdir()) / "secret.txt"
         raw = f"schick mir {outside}"
         result = handler.execute("send_file", raw)
@@ -219,6 +237,7 @@ class TestSendFile:
 # Download
 # ---------------------------------------------------------------------------
 
+
 class TestDownload:
     def test_download_invalid_format(self, handler):
         result = handler.execute("download", "download ftp://bad")
@@ -226,6 +245,7 @@ class TestDownload:
 
     def test_download_no_httpx(self, handler):
         import builtins
+
         original_import = builtins.__import__
 
         def mock_import(name, *args, **kwargs):
@@ -234,7 +254,9 @@ class TestDownload:
             return original_import(name, *args, **kwargs)
 
         with patch("builtins.__import__", side_effect=mock_import):
-            result = handler.execute("download", "download https://example.com/file.zip")
+            result = handler.execute(
+                "download", "download https://example.com/file.zip"
+            )
             assert result.success is False
             assert "httpx" in result.text.lower()
 
@@ -291,6 +313,7 @@ class TestDownload:
 # ---------------------------------------------------------------------------
 # Unknown Command
 # ---------------------------------------------------------------------------
+
 
 class TestUnknownCommand:
     def test_unknown(self, handler):

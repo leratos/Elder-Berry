@@ -7,6 +7,7 @@ Verwendung:
 Fragt interaktiv nach IMAP-/SMTP-Host, Benutzername und Passwort,
 testet die Verbindungen und speichert alles im SecretStore (verschlüsselt).
 """
+
 import sys
 from pathlib import Path
 
@@ -94,6 +95,7 @@ def main() -> None:
 
     try:
         import imaplib
+
         if port == 993:
             conn = imaplib.IMAP4_SSL(host, port)
         else:
@@ -183,12 +185,12 @@ def main() -> None:
     print("Credentials gespeichert im SecretStore (verschlüsselt).")
     print()
     print("Verwendung in Saleria:")
-    print('  mails                → Ungelesene Mails')
-    print('  mails 3              → Mails der letzten 3 Tage')
-    print('  mail zusammenfassung → Detaillierte Auflistung')
+    print("  mails                → Ungelesene Mails")
+    print("  mails 3              → Mails der letzten 3 Tage")
+    print("  mail zusammenfassung → Detaillierte Auflistung")
     if smtp_host:
-        print('  antworte auf mail 3 ...  → E-Mail-Antwort mit Draft')
-        print('  mail antwort 3 sage ... → Antwort generieren lassen')
+        print("  antworte auf mail 3 ...  → E-Mail-Antwort mit Draft")
+        print("  mail antwort 3 sage ... → Antwort generieren lassen")
 
 
 if __name__ == "__main__":

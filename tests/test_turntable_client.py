@@ -7,6 +7,7 @@ from elder_berry.robot.client import RobotClient
 
 def _mock_transport(responses: dict):
     """Erstellt einen MockTransport der auf URL-Pfade reagiert."""
+
     def handler(request: httpx.Request) -> httpx.Response:
         path = request.url.path
         method = request.method
@@ -14,15 +15,20 @@ def _mock_transport(responses: dict):
         if key in responses:
             return httpx.Response(200, json=responses[key])
         return httpx.Response(404, json={"error": "not found"})
+
     return httpx.MockTransport(handler)
 
 
 class TestSystemClient:
-
     def test_update_rpi(self):
-        transport = _mock_transport({
-            "POST /system/update": {"success": True, "message": "2 Commits | Code aktualisiert"},
-        })
+        transport = _mock_transport(
+            {
+                "POST /system/update": {
+                    "success": True,
+                    "message": "2 Commits | Code aktualisiert",
+                },
+            }
+        )
         client = RobotClient.__new__(RobotClient)
         client._client = httpx.Client(transport=transport, base_url="http://test")
         resp = client.update_rpi()
@@ -31,52 +37,73 @@ class TestSystemClient:
 
 
 class TestTurntableClient:
-
     def test_rotate_turntable_absolute(self):
-        transport = _mock_transport({
-            "POST /turntable/rotate": {"success": True, "message": "Rotation zu 90 Grad gestartet"},
-        })
+        transport = _mock_transport(
+            {
+                "POST /turntable/rotate": {
+                    "success": True,
+                    "message": "Rotation zu 90 Grad gestartet",
+                },
+            }
+        )
         client = RobotClient.__new__(RobotClient)
         client._client = httpx.Client(transport=transport, base_url="http://test")
         resp = client.rotate_turntable(target_degrees=90)
         assert resp.success is True
 
     def test_rotate_turntable_relative(self):
-        transport = _mock_transport({
-            "POST /turntable/rotate": {"success": True, "message": "Rotation um 45 Grad gestartet"},
-        })
+        transport = _mock_transport(
+            {
+                "POST /turntable/rotate": {
+                    "success": True,
+                    "message": "Rotation um 45 Grad gestartet",
+                },
+            }
+        )
         client = RobotClient.__new__(RobotClient)
         client._client = httpx.Client(transport=transport, base_url="http://test")
         resp = client.rotate_turntable(relative_degrees=45)
         assert resp.success is True
 
     def test_home_turntable(self):
-        transport = _mock_transport({
-            "POST /turntable/home": {"success": True, "message": "Homing gestartet"},
-        })
+        transport = _mock_transport(
+            {
+                "POST /turntable/home": {
+                    "success": True,
+                    "message": "Homing gestartet",
+                },
+            }
+        )
         client = RobotClient.__new__(RobotClient)
         client._client = httpx.Client(transport=transport, base_url="http://test")
         resp = client.home_turntable()
         assert resp.success is True
 
     def test_stop_turntable(self):
-        transport = _mock_transport({
-            "POST /turntable/stop": {"success": True, "message": "Rotation gestoppt"},
-        })
+        transport = _mock_transport(
+            {
+                "POST /turntable/stop": {
+                    "success": True,
+                    "message": "Rotation gestoppt",
+                },
+            }
+        )
         client = RobotClient.__new__(RobotClient)
         client._client = httpx.Client(transport=transport, base_url="http://test")
         resp = client.stop_turntable()
         assert resp.success is True
 
     def test_turntable_status(self):
-        transport = _mock_transport({
-            "GET /turntable/status": {
-                "available": True,
-                "is_homed": True,
-                "is_moving": False,
-                "position_degrees": 45.0,
-            },
-        })
+        transport = _mock_transport(
+            {
+                "GET /turntable/status": {
+                    "available": True,
+                    "is_homed": True,
+                    "is_moving": False,
+                    "position_degrees": 45.0,
+                },
+            }
+        )
         client = RobotClient.__new__(RobotClient)
         client._client = httpx.Client(transport=transport, base_url="http://test")
         status = client.turntable_status()

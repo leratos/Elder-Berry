@@ -3,6 +3,7 @@
 Definiert das Interface für Kommunikationskanäle (Matrix, Discord, etc.).
 Jede Implementierung muss connect/disconnect/send/receive abbilden.
 """
+
 from __future__ import annotations
 
 from abc import ABC, abstractmethod

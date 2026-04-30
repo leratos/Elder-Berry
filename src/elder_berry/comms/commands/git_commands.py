@@ -14,6 +14,7 @@ die Whitelist verhindert aber, dass ein Matrix-User git-Flags mit Datei-
 Schreibeffekt (``--output-*``, ``-o``) oder unerwartetem Verhalten
 (``--exec``, ``-c core.pager=...``) nutzen kann.
 """
+
 from __future__ import annotations
 
 import logging
@@ -22,7 +23,11 @@ import shlex
 import subprocess
 from pathlib import Path
 
-from elder_berry.comms.commands.base import CommandHandler, CommandResult, user_friendly_error
+from elder_berry.comms.commands.base import (
+    CommandHandler,
+    CommandResult,
+    user_friendly_error,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -55,8 +60,8 @@ _GIT_LOG_ARG_PATTERNS: tuple[re.Pattern[str], ...] = (
     re.compile(r"^--all$"),
     re.compile(r"^--decorate$"),
     re.compile(r"^--graph$"),
-    re.compile(r"^-n$"),                                  # folgender Token = int
-    re.compile(r"^-\d{1,4}$"),                            # Kurzform: -5
+    re.compile(r"^-n$"),  # folgender Token = int
+    re.compile(r"^-\d{1,4}$"),  # Kurzform: -5
     re.compile(r"^--max-count=\d{1,4}$"),
     re.compile(r"^--since=[\w\- :.,T+Z]{1,40}$"),
     re.compile(r"^--until=[\w\- :.,T+Z]{1,40}$"),
@@ -64,7 +69,7 @@ _GIT_LOG_ARG_PATTERNS: tuple[re.Pattern[str], ...] = (
     re.compile(r"^--after=[\w\- :.,T+Z]{1,40}$"),
     re.compile(r"^--author=[\w@.\- ]{1,64}$"),
     re.compile(r"^--grep=[\w\s\-.,:/()]{1,100}$"),
-    re.compile(r"^\d{1,4}$"),                             # Wert nach -n
+    re.compile(r"^\d{1,4}$"),  # Wert nach -n
     _COMMIT_HASH_RE,
     _HEAD_REF_RE,
 )
@@ -85,14 +90,17 @@ _GIT_DIFF_ARG_PATTERNS: tuple[re.Pattern[str], ...] = (
 def _error_examples(subcmd: str) -> str:
     """Subcommand-spezifische Beispiele fuer erlaubte Argumente."""
     if subcmd == "log":
-        return "--oneline, -n 5, --since=yesterday, --author=user, <commit-hash>, HEAD~3"
+        return (
+            "--oneline, -n 5, --since=yesterday, --author=user, <commit-hash>, HEAD~3"
+        )
     if subcmd == "diff":
         return "--stat, --name-only, --cached, <commit-hash>, HEAD~3"
     return "(keine zusaetzlichen Argumente erlaubt)"
 
 
 def _validate_extra_args(
-    subcmd: str, args: list[str],
+    subcmd: str,
+    args: list[str],
 ) -> tuple[bool, str | None]:
     """Prueft jedes Token aus ``args`` gegen die Whitelist zum Subcommand.
 
@@ -164,7 +172,7 @@ class GitCommandHandler(CommandHandler):
                 command="git",
                 success=False,
                 text=f"Git-Befehl '{subcmd}' nicht erlaubt. "
-                     f"Erlaubt: {', '.join(sorted(GIT_WHITELIST))}",
+                f"Erlaubt: {', '.join(sorted(GIT_WHITELIST))}",
             )
 
         cmd = ["git", subcmd]
@@ -185,7 +193,9 @@ class GitCommandHandler(CommandHandler):
             ok, bad = _validate_extra_args(subcmd, tokens)
             if not ok:
                 logger.warning(
-                    "Git-Argument abgelehnt (subcmd=%s, bad=%r)", subcmd, bad,
+                    "Git-Argument abgelehnt (subcmd=%s, bad=%r)",
+                    subcmd,
+                    bad,
                 )
                 return CommandResult(
                     command="git",

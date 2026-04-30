@@ -1,6 +1,5 @@
 """Tests für user_friendly_error() und not_configured() aus base.py."""
 
-
 from elder_berry.comms.commands.base import (
     SETUP_STEPS,
     CommandHandler,
@@ -10,6 +9,7 @@ from elder_berry.comms.commands.base import (
 
 
 # -- user_friendly_error --------------------------------------------------
+
 
 class TestUserFriendlyError:
     """Tests für die Exception → Nutzertext-Konvertierung."""
@@ -68,7 +68,6 @@ class TestUserFriendlyError:
         assert "viele Anfragen" in msg
 
     def test_rate_limit_exception_type(self):
-
         class RateLimitError(Exception):
             pass
 
@@ -139,6 +138,7 @@ class TestUserFriendlyError:
 
 # -- not_configured --------------------------------------------------------
 
+
 class _DummyHandler(CommandHandler):
     """Minimaler Handler zum Testen von not_configured()."""
 
@@ -172,6 +172,7 @@ class TestNotConfigured:
 
 
 # -- SETUP_STEPS -----------------------------------------------------------
+
 
 class TestSetupSteps:
     """Grundlegende Prüfungen des Step-Mappings."""

@@ -17,6 +17,7 @@ Beispiel-Szene:
         ]
     }
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -150,29 +151,34 @@ class HarmonySceneManager:
 
             if not device or not cmd:
                 result["steps_failed"] += 1
-                result["errors"].append(
-                    f"Step {i}: device oder cmd fehlt"
-                )
+                result["errors"].append(f"Step {i}: device oder cmd fehlt")
                 continue
 
             success = await self._adapter.send_command(
-                device=device, command=cmd,
+                device=device,
+                command=cmd,
             )
 
             if success:
                 result["steps_ok"] += 1
                 logger.info(
                     "Szene '%s' Step %d/%d: %s → %s ✓",
-                    name, i + 1, len(steps), device, cmd,
+                    name,
+                    i + 1,
+                    len(steps),
+                    device,
+                    cmd,
                 )
             else:
                 result["steps_failed"] += 1
-                result["errors"].append(
-                    f"Step {i}: {device} → {cmd} fehlgeschlagen"
-                )
+                result["errors"].append(f"Step {i}: {device} → {cmd} fehlgeschlagen")
                 logger.warning(
                     "Szene '%s' Step %d/%d: %s → %s ✗",
-                    name, i + 1, len(steps), device, cmd,
+                    name,
+                    i + 1,
+                    len(steps),
+                    device,
+                    cmd,
                 )
 
             if delay > 0:
@@ -180,7 +186,9 @@ class HarmonySceneManager:
 
         logger.info(
             "Szene '%s' abgeschlossen: %d/%d OK",
-            name, result["steps_ok"], result["steps_total"],
+            name,
+            result["steps_ok"],
+            result["steps_total"],
         )
         return result
 

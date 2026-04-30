@@ -30,6 +30,7 @@ Trade-off vs. ``rotate_session_secret()``
   des Aufrufers (der bekommt aber sofort ein frisches Cookie).
   Drastischer; gewollt fuer "alle Geraete abmelden".
 """
+
 from __future__ import annotations
 
 import hashlib
@@ -108,18 +109,22 @@ class SessionRevocationList:
                 # wachsen. In der Praxis unerreichbar.
                 security_logger.error(
                     "SessionRevocationList: Hard-Cap %d erreicht, "
-                    "neuer revoke wird verworfen", _MAX_ENTRIES_HARD_CAP,
+                    "neuer revoke wird verworfen",
+                    _MAX_ENTRIES_HARD_CAP,
                 )
                 return
             self._entries[digest] = float(expires_at)
             self._persist()
         security_logger.info(
             "Session revoked (digest=%s, ttl=%ds)",
-            digest[:12], int(expires_at - ts),
+            digest[:12],
+            int(expires_at - ts),
         )
 
     def is_revoked(
-        self, cookie_value: str, now: float | None = None,
+        self,
+        cookie_value: str,
+        now: float | None = None,
     ) -> bool:
         """``True`` wenn der Cookie auf der Sperrliste steht."""
         ts = now if now is not None else time.time()
@@ -158,7 +163,8 @@ class SessionRevocationList:
         if stale:
             logger.debug(
                 "SessionRevocationList: %d/%d Eintraege abgelaufen, entfernt",
-                len(stale), before,
+                len(stale),
+                before,
             )
             self._persist()
 
@@ -171,7 +177,8 @@ class SessionRevocationList:
             logger.warning(
                 "SessionRevocationList: Persistenz-Datei %s kaputt (%s) "
                 "-- starte mit leerer Sperrliste",
-                self._persist_path, exc,
+                self._persist_path,
+                exc,
             )
             return
         if not isinstance(raw, dict):
@@ -188,7 +195,8 @@ class SessionRevocationList:
         if loaded:
             logger.info(
                 "SessionRevocationList: %d aktive Eintraege aus %s geladen",
-                len(loaded), self._persist_path,
+                len(loaded),
+                self._persist_path,
             )
 
     def _persist(self) -> None:
@@ -207,5 +215,6 @@ class SessionRevocationList:
         except OSError as exc:
             logger.warning(
                 "SessionRevocationList: Persistenz nach %s fehlgeschlagen (%s)",
-                self._persist_path, exc,
+                self._persist_path,
+                exc,
             )

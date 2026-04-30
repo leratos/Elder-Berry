@@ -13,6 +13,7 @@ Verwendung:
         # An LLM zur Zusammenfassung übergeben
         ...
 """
+
 from __future__ import annotations
 
 import logging
@@ -108,8 +109,7 @@ class DocumentReader:
             import fitz  # pymupdf
         except ImportError:
             raise RuntimeError(
-                "pymupdf ist nicht installiert. "
-                "Installiere es mit: pip install pymupdf"
+                "pymupdf ist nicht installiert. Installiere es mit: pip install pymupdf"
             ) from None
 
         try:
@@ -135,18 +135,19 @@ class DocumentReader:
             truncated = len(text) > self._max_chars
 
             if truncated:
-                text = text[:self._max_chars]
+                text = text[: self._max_chars]
 
             # Prüfe ob überhaupt Text extrahiert wurde
             stripped = text.strip()
             if not stripped:
                 logger.warning(
                     "PDF enthält keinen extrahierbaren Text: %s (%d Seiten)",
-                    path.name, pages,
+                    path.name,
+                    pages,
                 )
                 return DocumentResult(
                     text="[Kein Text erkannt – möglicherweise ein gescanntes Dokument. "
-                         "OCR wird in dieser Version nicht unterstützt.]",
+                    "OCR wird in dieser Version nicht unterstützt.]",
                     pages=pages,
                     truncated=False,
                     source=path.name,
@@ -193,16 +194,14 @@ class DocumentReader:
             except UnicodeDecodeError:
                 continue
             except Exception as e:
-                raise RuntimeError(
-                    f"Textdatei konnte nicht gelesen werden: {e}"
-                ) from e
+                raise RuntimeError(f"Textdatei konnte nicht gelesen werden: {e}") from e
 
         if text is None:
             raise RuntimeError(f"Textdatei nicht dekodierbar: {path}")
 
         truncated = len(text) > self._max_chars
         if truncated:
-            text = text[:self._max_chars] + (
+            text = text[: self._max_chars] + (
                 f"\n\n[... Text nach {self._max_chars:,} Zeichen gekürzt.]"
             )
 

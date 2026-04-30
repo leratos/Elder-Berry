@@ -5,6 +5,7 @@ Maintainer-Werte laedt es Patterns aus einer optionalen Datei
 ``.public-readiness-blocklist.txt``. Diese Tests decken den Loader,
 das Default-Fallback-Verhalten und das End-to-End-Scannen ab.
 """
+
 from __future__ import annotations
 
 import re
@@ -54,10 +55,7 @@ class TestLoadBlocklistPatterns:
 
     def test_skips_comment_lines(self, tmp_path: Path) -> None:
         content = (
-            "# header comment\n"
-            "real-pattern\\.com\n"
-            "# another comment\n"
-            "second-pattern\n"
+            "# header comment\nreal-pattern\\.com\n# another comment\nsecond-pattern\n"
         )
         (tmp_path / BLOCKLIST_FILENAME).write_text(content, encoding="utf-8")
         patterns = _load_blocklist_patterns(tmp_path)
@@ -160,9 +158,7 @@ class TestBuildCategories:
         lan_ip = next(c for c in cats if c.key == "lan_ip")
         matrix = next(c for c in cats if c.key == "matrix_id")
         assert any(p.search("10.0.0.5") for p in lan_ip.patterns)
-        assert any(
-            p.search("@bot:matrix.example.com") for p in matrix.patterns
-        )
+        assert any(p.search("@bot:matrix.example.com") for p in matrix.patterns)
 
 
 # ---------------------------------------------------------------------------
@@ -191,9 +187,7 @@ class TestScanFile:
             "\\bsecret-host\\b\n", encoding="utf-8"
         )
         target = tmp_path / "module.py"
-        target.write_text(
-            "URL = 'https://secret-host/api'\n", encoding="utf-8"
-        )
+        target.write_text("URL = 'https://secret-host/api'\n", encoding="utf-8")
         cats = build_categories(tmp_path)
         results = _make_results(cats)
         _scan_file(target, tmp_path, results, cats)
@@ -211,9 +205,7 @@ class TestScanFile:
         # Frisches Repo ohne example.com / your-domain.tld im Code:
         # Default-Blocklist soll NICHTS finden.
         target = tmp_path / "clean.py"
-        target.write_text(
-            "x = 1\nprint('hello world')\n", encoding="utf-8"
-        )
+        target.write_text("x = 1\nprint('hello world')\n", encoding="utf-8")
         cats = build_categories(tmp_path)
         results = _make_results(cats)
         _scan_file(target, tmp_path, results, cats)
@@ -223,15 +215,11 @@ class TestScanFile:
                 f"{[f.match for f in stats.findings]}"
             )
 
-    def test_default_blocklist_finds_skeleton_string(
-        self, tmp_path: Path
-    ) -> None:
+    def test_default_blocklist_finds_skeleton_string(self, tmp_path: Path) -> None:
         # Wenn ein Fork example.com im Code hat, soll das Skeleton-Pattern
         # das anzeigen -- als Demo, dass das Tool grundsaetzlich laeuft.
         target = tmp_path / "config.py"
-        target.write_text(
-            "DOMAIN = 'example.com'\n", encoding="utf-8"
-        )
+        target.write_text("DOMAIN = 'example.com'\n", encoding="utf-8")
         cats = build_categories(tmp_path)
         results = _make_results(cats)
         _scan_file(target, tmp_path, results, cats)
@@ -239,14 +227,10 @@ class TestScanFile:
         assert len(custom.findings) == 1
         assert custom.findings[0].match.lower() == "example.com"
 
-    def test_lan_ip_still_works_independent_of_blocklist(
-        self, tmp_path: Path
-    ) -> None:
+    def test_lan_ip_still_works_independent_of_blocklist(self, tmp_path: Path) -> None:
         # Kein Blocklist-File; LAN-IP-Erkennung muss trotzdem laufen.
         target = tmp_path / "config.py"
-        target.write_text(
-            "HOST = '10.20.30.40'  # internes Geraet\n", encoding="utf-8"
-        )
+        target.write_text("HOST = '10.20.30.40'  # internes Geraet\n", encoding="utf-8")
         cats = build_categories(tmp_path)
         results = _make_results(cats)
         _scan_file(target, tmp_path, results, cats)
@@ -258,9 +242,7 @@ class TestScanFile:
         self, tmp_path: Path
     ) -> None:
         target = tmp_path / "config.py"
-        target.write_text(
-            "BOT = '@elder:matrix.example.com'\n", encoding="utf-8"
-        )
+        target.write_text("BOT = '@elder:matrix.example.com'\n", encoding="utf-8")
         cats = build_categories(tmp_path)
         results = _make_results(cats)
         _scan_file(target, tmp_path, results, cats)

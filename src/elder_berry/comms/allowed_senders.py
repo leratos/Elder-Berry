@@ -15,6 +15,7 @@ ab.
 Dieses Modul hält keine Logging-Config-Side-Effects und ist deshalb
 frei importierbar aus Tests, die den Root-Logger sauber halten müssen.
 """
+
 from __future__ import annotations
 
 from typing import Protocol
@@ -51,6 +52,5 @@ def load_allowed_senders(secret_store: _SecretStoreLike) -> frozenset[str]:
         if sender_list:
             return frozenset(sender_list)
     raise ValueError(
-        "matrix_allowed_senders ist nicht gesetzt, leer oder enthält "
-        "nur Trennzeichen",
+        "matrix_allowed_senders ist nicht gesetzt, leer oder enthält nur Trennzeichen",
     )

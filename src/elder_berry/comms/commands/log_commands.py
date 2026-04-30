@@ -10,6 +10,7 @@ Commands:
   log warnings [n] – Nur WARNING+ (default 10)
   log security [n] – Aus security.log (default 10)
 """
+
 from __future__ import annotations
 
 import logging
@@ -70,9 +71,17 @@ class LogCommandHandler(CommandHandler):
     def keywords(self) -> dict[str, list[str]]:
         return {
             "log": [
-                "log", "logs", "logfile", "log-datei", "log datei",
-                "zeig log", "zeig mir log", "letzte log",
-                "fehlermeldungen", "fehler log", "error log",
+                "log",
+                "logs",
+                "logfile",
+                "log-datei",
+                "log datei",
+                "zeig log",
+                "zeig mir log",
+                "letzte log",
+                "fehlermeldungen",
+                "fehler log",
+                "error log",
                 "was sagen die logs",
             ],
         }
@@ -80,7 +89,8 @@ class LogCommandHandler(CommandHandler):
     def execute(self, command: str, raw_text: str) -> CommandResult:
         if command != "log":
             return CommandResult(
-                command=command, success=False,
+                command=command,
+                success=False,
                 text=f"Unbekannter Command: {command}",
             )
 
@@ -90,7 +100,8 @@ class LogCommandHandler(CommandHandler):
         match = LOG_PATTERN.match(raw_text.strip())
         if not match:
             return CommandResult(
-                command="log", success=False,
+                command="log",
+                success=False,
                 text=(
                     "Nutze: log [n] / log errors [n] / "
                     "log warnings [n] / log security [n]"
@@ -113,7 +124,8 @@ class LogCommandHandler(CommandHandler):
 
         if not log_file.exists():
             return CommandResult(
-                command="log", success=False,
+                command="log",
+                success=False,
                 text=f"❌ Log-Datei nicht gefunden: {log_file.name}",
             )
 
@@ -122,13 +134,15 @@ class LogCommandHandler(CommandHandler):
         except OSError as e:
             logger.error("Log-Datei lesen fehlgeschlagen: %s", e)
             return CommandResult(
-                command="log", success=False,
+                command="log",
+                success=False,
                 text=f"❌ Log-Datei konnte nicht gelesen werden: {type(e).__name__}",
             )
 
         if not entries:
             return CommandResult(
-                command="log", success=True,
+                command="log",
+                success=True,
                 text=f"{title}\n(keine Einträge gefunden)",
             )
 
@@ -138,7 +152,9 @@ class LogCommandHandler(CommandHandler):
             text = text[:MAX_RESPONSE_CHARS] + "\n[...gekürzt]"
 
         return CommandResult(
-            command="log", success=True, text=text,
+            command="log",
+            success=True,
+            text=text,
         )
 
     @staticmethod
@@ -160,7 +176,9 @@ class LogCommandHandler(CommandHandler):
 
     @staticmethod
     def _read_last_entries(
-        log_file: Path, count: int, filter_level: set[str] | None,
+        log_file: Path,
+        count: int,
+        filter_level: set[str] | None,
     ) -> list[str]:
         """Liest die letzten N Einträge – optional gefiltert nach Log-Level.
 
@@ -176,7 +194,9 @@ class LogCommandHandler(CommandHandler):
             lines = _tail_lines(f, read_lines)
 
         if filter_level:
-            filtered = [line for line in lines if _line_matches_level(line, filter_level)]
+            filtered = [
+                line for line in lines if _line_matches_level(line, filter_level)
+            ]
             return filtered[-count:]
 
         return lines[-count:]

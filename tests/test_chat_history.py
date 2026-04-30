@@ -2,6 +2,7 @@
 
 Inkl. Rolling Summary (Phase 23).
 """
+
 import time
 
 import pytest
@@ -16,6 +17,7 @@ from elder_berry.comms.chat_history import (
 # ---------------------------------------------------------------------------
 # ChatMessage DTO
 # ---------------------------------------------------------------------------
+
 
 class TestChatMessage:
     def test_frozen(self):
@@ -33,6 +35,7 @@ class TestChatMessage:
 # ---------------------------------------------------------------------------
 # ChatHistory – Basis
 # ---------------------------------------------------------------------------
+
 
 class TestChatHistoryBasic:
     def test_empty_history(self):
@@ -187,6 +190,7 @@ class TestChatHistoryFormat:
 # ---------------------------------------------------------------------------
 # Rolling Summary (Phase 23)
 # ---------------------------------------------------------------------------
+
 
 def _sync_summarizer(old_summary: str, evicted: list[ChatMessage]) -> str:
     """Test-Summarizer: gibt deterministisches Ergebnis zurück."""

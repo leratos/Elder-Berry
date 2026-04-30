@@ -2,6 +2,7 @@
 
 Testet: erweiterte Geburtstage (morgen/diese Woche), Jahrestage, Auto-Sync.
 """
+
 from __future__ import annotations
 
 from datetime import datetime
@@ -64,8 +65,7 @@ class TestBirthdaySectionExtended:
         assert "in 4 Tagen" in briefing
 
     def test_birthday_with_group(self, store: ContactStore) -> None:
-        store.add(USER, "Lisa", birthday="1990-06-15",
-                  categories="Familie, Freunde")
+        store.add(USER, "Lisa", birthday="1990-06-15", categories="Familie, Freunde")
         scheduler = _make_scheduler(store)
         briefing = scheduler.build_briefing(now=_WEDNESDAY)
         assert "[Familie]" in briefing
@@ -111,7 +111,8 @@ class TestAnniversarySection:
 
 class TestAutoSync:
     def test_auto_sync_called_before_briefing(
-        self, store: ContactStore,
+        self,
+        store: ContactStore,
     ) -> None:
         from elder_berry.tools.carddav_sync import SyncResult
 
@@ -122,7 +123,8 @@ class TestAutoSync:
         mock_sync.sync.assert_called_once_with(store, USER)
 
     def test_auto_sync_failure_does_not_crash(
-        self, store: ContactStore,
+        self,
+        store: ContactStore,
     ) -> None:
         mock_sync = MagicMock()
         mock_sync.sync.side_effect = Exception("Connection refused")

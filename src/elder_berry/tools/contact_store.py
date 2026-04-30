@@ -12,6 +12,7 @@ Verwendung:
     contact = store.find_by_email("@user:matrix.org", "info@mueller-immo.de")
     results = store.search("@user:matrix.org", "Müller")
 """
+
 from __future__ import annotations
 
 import json
@@ -27,15 +28,19 @@ _DEFAULT_DB_PATH = Path.home() / ".elder-berry" / "contacts.db"
 
 # Mapping: vCard TEL TYPE → deutscher Label
 _PHONE_TYPE_LABELS: dict[str, str] = {
-    "cell": "Mobil", "mobile": "Mobil",
-    "home": "Privat", "work": "Arbeit",
-    "voice": "Telefon", "fax": "Fax",
+    "cell": "Mobil",
+    "mobile": "Mobil",
+    "home": "Privat",
+    "work": "Arbeit",
+    "voice": "Telefon",
+    "fax": "Fax",
     "pager": "Pager",
 }
 
 # Mapping: vCard EMAIL TYPE → deutscher Label
 _EMAIL_TYPE_LABELS: dict[str, str] = {
-    "home": "Privat", "work": "Arbeit",
+    "home": "Privat",
+    "work": "Arbeit",
     "internet": "Email",
 }
 
@@ -151,7 +156,8 @@ class Contact:
             else:
                 for ei in email_items:
                     label = _EMAIL_TYPE_LABELS.get(
-                        ei.get("type", ""), ei.get("type", ""),
+                        ei.get("type", ""),
+                        ei.get("type", ""),
                     )
                     lines.append(f"  Email ({label}): {ei.get('email', '')}")
         # Phones
@@ -162,7 +168,8 @@ class Contact:
             else:
                 for pi in phone_items:
                     label = _PHONE_TYPE_LABELS.get(
-                        pi.get("type", ""), pi.get("type", ""),
+                        pi.get("type", ""),
+                        pi.get("type", ""),
                     )
                     lines.append(f"  Telefon ({label}): {pi.get('number', '')}")
         lines.append(f"  Anrede: {self.formality}")
@@ -205,7 +212,8 @@ class Contact:
                 parts = []
                 for pi in phone_items:
                     label = _PHONE_TYPE_LABELS.get(
-                        pi.get("type", ""), pi.get("type", ""),
+                        pi.get("type", ""),
+                        pi.get("type", ""),
                     )
                     parts.append(f"{pi.get('number', '')} ({label})")
                 lines.append(f"Telefon: {', '.join(parts)}")
@@ -218,7 +226,8 @@ class Contact:
                 parts = []
                 for ei in email_items:
                     label = _EMAIL_TYPE_LABELS.get(
-                        ei.get("type", ""), ei.get("type", ""),
+                        ei.get("type", ""),
+                        ei.get("type", ""),
                     )
                     parts.append(f"{ei.get('email', '')} ({label})")
                 lines.append(f"Email: {', '.join(parts)}")
@@ -252,7 +261,8 @@ class ContactStore:
         self._db_path = db_path or _DEFAULT_DB_PATH
         self._db_path.parent.mkdir(parents=True, exist_ok=True)
         self._conn = sqlite3.connect(
-            str(self._db_path), check_same_thread=False,
+            str(self._db_path),
+            check_same_thread=False,
         )
         self._conn.execute("PRAGMA journal_mode=WAL")
         self._create_tables()
@@ -421,8 +431,19 @@ class ContactStore:
                 "SELECT id, user_id, name, email, role, formality, phone, "
                 "notes, birthday, created_at, updated_at FROM contacts_v1",
             ).fetchall()
-            for (id_, user_id, name, old_email, role, formality, old_phone,
-                 notes, birthday, created_at, updated_at) in rows:
+            for (
+                id_,
+                user_id,
+                name,
+                old_email,
+                role,
+                formality,
+                old_phone,
+                notes,
+                birthday,
+                created_at,
+                updated_at,
+            ) in rows:
                 emails_json = "[]"
                 if old_email:
                     emails_json = json.dumps(
@@ -437,9 +458,19 @@ class ContactStore:
                     "INSERT INTO contacts (id, user_id, name, emails, phones, "
                     "role, formality, notes, birthday, created_at, updated_at) "
                     "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                    (id_, user_id, name, emails_json, phones_json,
-                     role, formality or "förmlich", notes, birthday,
-                     created_at, updated_at),
+                    (
+                        id_,
+                        user_id,
+                        name,
+                        emails_json,
+                        phones_json,
+                        role,
+                        formality or "förmlich",
+                        notes,
+                        birthday,
+                        created_at,
+                        updated_at,
+                    ),
                 )
 
             # Alte Tabelle entfernen
@@ -457,9 +488,21 @@ class ContactStore:
     # ------------------------------------------------------------------
 
     _ALL_FIELDS = (
-        "name", "emails", "phones", "role", "formality", "notes",
-        "birthday", "address", "organization", "title", "categories",
-        "nickname", "anniversary", "url", "vcard_uid",
+        "name",
+        "emails",
+        "phones",
+        "role",
+        "formality",
+        "notes",
+        "birthday",
+        "address",
+        "organization",
+        "title",
+        "categories",
+        "nickname",
+        "anniversary",
+        "url",
+        "vcard_uid",
     )
 
     def add(self, user_id: str, name: str, **kwargs: str) -> Contact:
@@ -552,7 +595,10 @@ class ContactStore:
         return self._get_by_rowid(contact_id)
 
     def add_or_update_by_vcard_uid(
-        self, user_id: str, vcard_uid: str, **kwargs: str,
+        self,
+        user_id: str,
+        vcard_uid: str,
+        **kwargs: str,
     ) -> Contact:
         """Kontakt per vCard-UID finden und aktualisieren, oder neu anlegen.
 
@@ -596,8 +642,7 @@ class ContactStore:
     def find_by_name(self, user_id: str, name: str) -> Contact | None:
         """Kontakt per Name finden (case-insensitive)."""
         row = self._conn.execute(
-            "SELECT * FROM contacts "
-            "WHERE user_id=? AND name=? COLLATE NOCASE",
+            "SELECT * FROM contacts WHERE user_id=? AND name=? COLLATE NOCASE",
             (user_id, name.strip()),
         ).fetchone()
         return self._row_to_contact(row) if row else None
@@ -612,8 +657,7 @@ class ContactStore:
         ).fetchone()
         return self._row_to_contact(row) if row else None
 
-    def search(self, user_id: str, query: str,
-               limit: int = 10) -> list[Contact]:
+    def search(self, user_id: str, query: str, limit: int = 10) -> list[Contact]:
         """Volltextsuche über alle Kontakte (FTS5 MATCH)."""
         try:
             fts_query = query.strip() + "*"
@@ -644,21 +688,22 @@ class ContactStore:
         ).fetchone()
         return self._row_to_contact(row) if row else None
 
-    def get_birthdays_today(self, user_id: str,
-                            today: date | None = None) -> list[Contact]:
+    def get_birthdays_today(
+        self, user_id: str, today: date | None = None
+    ) -> list[Contact]:
         """Kontakte deren Geburtstag heute ist."""
         if today is None:
             today = date.today()
         mm_dd = today.strftime("%m-%d")
         rows = self._conn.execute(
-            "SELECT * FROM contacts "
-            "WHERE user_id=? AND birthday LIKE ?",
+            "SELECT * FROM contacts WHERE user_id=? AND birthday LIKE ?",
             (user_id, f"%-{mm_dd}"),
         ).fetchall()
         return [self._row_to_contact(r) for r in rows]
 
-    def get_upcoming_birthdays(self, user_id: str, days: int = 7,
-                               today: date | None = None) -> list[Contact]:
+    def get_upcoming_birthdays(
+        self, user_id: str, days: int = 7, today: date | None = None
+    ) -> list[Contact]:
         """Kontakte deren Geburtstag in den nächsten N Tagen ist."""
         if today is None:
             today = date.today()
@@ -674,8 +719,9 @@ class ContactStore:
             results.extend(self._row_to_contact(r) for r in rows)
         return results
 
-    def get_upcoming_anniversaries(self, user_id: str, days: int = 7,
-                                   today: date | None = None) -> list[Contact]:
+    def get_upcoming_anniversaries(
+        self, user_id: str, days: int = 7, today: date | None = None
+    ) -> list[Contact]:
         """Kontakte deren Jahrestag in den nächsten N Tagen ist."""
         if today is None:
             today = date.today()
@@ -691,8 +737,7 @@ class ContactStore:
             results.extend(self._row_to_contact(r) for r in rows)
         return results
 
-    def find_by_category(self, user_id: str,
-                         category: str) -> list[Contact]:
+    def find_by_category(self, user_id: str, category: str) -> list[Contact]:
         """Kontakte die eine bestimmte Kategorie/Gruppe haben."""
         # categories ist komma-separiert, z.B. "Familie, Arbeit"
         rows = self._conn.execute(
@@ -715,7 +760,8 @@ class ContactStore:
     def delete_all(self, user_id: str) -> int:
         """Löscht alle Kontakte eines Users. Gibt Anzahl zurück."""
         cursor = self._conn.execute(
-            "DELETE FROM contacts WHERE user_id=?", (user_id,),
+            "DELETE FROM contacts WHERE user_id=?",
+            (user_id,),
         )
         self._conn.commit()
         return cursor.rowcount
@@ -727,7 +773,8 @@ class ContactStore:
     def delete(self, contact_id: int) -> bool:
         """Kontakt per ID löschen. Returns True wenn gelöscht."""
         cursor = self._conn.execute(
-            "DELETE FROM contacts WHERE id=?", (contact_id,),
+            "DELETE FROM contacts WHERE id=?",
+            (contact_id,),
         )
         self._conn.commit()
         return cursor.rowcount > 0
@@ -735,8 +782,7 @@ class ContactStore:
     def delete_by_name(self, user_id: str, name: str) -> bool:
         """Kontakt per Name löschen (case-insensitive)."""
         cursor = self._conn.execute(
-            "DELETE FROM contacts WHERE user_id=? "
-            "AND name=? COLLATE NOCASE",
+            "DELETE FROM contacts WHERE user_id=? AND name=? COLLATE NOCASE",
             (user_id, name.strip()),
         )
         self._conn.commit()
@@ -764,19 +810,45 @@ class ContactStore:
     @staticmethod
     def _row_to_contact(row: tuple) -> Contact:
         """Konvertiert DB-Row in Contact-DTO."""
-        (id_, user_id, name, emails, phones, role, formality,
-         notes, birthday, address, organization, title, categories,
-         nickname, anniversary, url, vcard_uid,
-         created_at, updated_at) = row
+        (
+            id_,
+            user_id,
+            name,
+            emails,
+            phones,
+            role,
+            formality,
+            notes,
+            birthday,
+            address,
+            organization,
+            title,
+            categories,
+            nickname,
+            anniversary,
+            url,
+            vcard_uid,
+            created_at,
+            updated_at,
+        ) = row
         return Contact(
-            id=id_, user_id=user_id, name=name,
-            emails=emails or "[]", phones=phones or "[]",
-            role=role or "", formality=formality or "förmlich",
-            notes=notes or "", birthday=birthday or "",
-            address=address or "", organization=organization or "",
-            title=title or "", categories=categories or "",
-            nickname=nickname or "", anniversary=anniversary or "",
-            url=url or "", vcard_uid=vcard_uid or "",
+            id=id_,
+            user_id=user_id,
+            name=name,
+            emails=emails or "[]",
+            phones=phones or "[]",
+            role=role or "",
+            formality=formality or "förmlich",
+            notes=notes or "",
+            birthday=birthday or "",
+            address=address or "",
+            organization=organization or "",
+            title=title or "",
+            categories=categories or "",
+            nickname=nickname or "",
+            anniversary=anniversary or "",
+            url=url or "",
+            vcard_uid=vcard_uid or "",
             created_at=datetime.fromisoformat(created_at),
             updated_at=datetime.fromisoformat(updated_at),
         )

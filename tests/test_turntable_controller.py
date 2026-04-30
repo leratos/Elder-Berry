@@ -1,4 +1,5 @@
 """Tests fuer TurntableController ABC + SimulatedTurntable + Hilfsfunktionen."""
+
 import math
 import threading
 from unittest.mock import MagicMock, patch
@@ -88,6 +89,7 @@ class TestSimulatedTurntable:
 # Helpers for RPi5TurntableController tests
 # ---------------------------------------------------------------------------
 
+
 def _make_lgpio_mock() -> MagicMock:
     """Create a minimal lgpio mock with necessary constants."""
     lgpio_mock = MagicMock()
@@ -120,6 +122,7 @@ def _make_rpi5_turntable(lgpio_mock: MagicMock):
 # RPi5TurntableController – unit tests with mocked lgpio
 # ---------------------------------------------------------------------------
 
+
 class TestRPi5TurntableInit:
     def test_init_claims_gpio(self) -> None:
         lgpio_mock = _make_lgpio_mock()
@@ -139,6 +142,7 @@ class TestRPi5TurntableInit:
     def test_init_no_lgpio_raises(self) -> None:
         with patch.dict("sys.modules", {"lgpio": None}):
             from elder_berry.robot.turntable_controller import RPi5TurntableController
+
             with pytest.raises((ImportError, TypeError)):
                 RPi5TurntableController()
 
@@ -256,9 +260,7 @@ class TestRPi5RunHome:
         ctrl._step_delay_ms = 0.0
 
         # Use a small limit to trigger error quickly
-        with patch(
-            "elder_berry.robot.turntable_controller.HOMING_STEP_LIMIT", 3
-        ):
+        with patch("elder_berry.robot.turntable_controller.HOMING_STEP_LIMIT", 3):
             ctrl._run_home()
 
         assert ctrl._is_homed is False

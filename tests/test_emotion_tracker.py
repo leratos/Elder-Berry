@@ -1,4 +1,5 @@
 """Tests für EmotionTracker – Emotionales Kurzzeitgedächtnis."""
+
 from datetime import datetime, timedelta
 
 
@@ -10,8 +11,8 @@ from elder_berry.character.emotion_tracker import EmotionTracker, EmotionEntry
 # EmotionEntry DTO
 # ---------------------------------------------------------------------------
 
-class TestEmotionEntry:
 
+class TestEmotionEntry:
     def test_fields(self):
         ts = datetime(2026, 3, 19, 12, 0)
         entry = EmotionEntry(emotion=Emotion.CHEERFUL, timestamp=ts)
@@ -23,8 +24,8 @@ class TestEmotionEntry:
 # EmotionTracker – record & Ringbuffer
 # ---------------------------------------------------------------------------
 
-class TestRecord:
 
+class TestRecord:
     def test_record_single(self):
         tracker = EmotionTracker()
         tracker.record(Emotion.CHEERFUL)
@@ -49,7 +50,10 @@ class TestRecord:
         tracker.record(Emotion.SAD, ts_base + timedelta(minutes=1))
         tracker.record(Emotion.ANGRY, ts_base + timedelta(minutes=2))
         # CHEERFUL sollte rausgeflogen sein
-        assert tracker.dominant_emotion(ts_base + timedelta(minutes=2)) is not Emotion.CHEERFUL
+        assert (
+            tracker.dominant_emotion(ts_base + timedelta(minutes=2))
+            is not Emotion.CHEERFUL
+        )
 
     def test_record_with_custom_timestamp(self):
         tracker = EmotionTracker()
@@ -69,8 +73,8 @@ class TestRecord:
 # Decay
 # ---------------------------------------------------------------------------
 
-class TestDecay:
 
+class TestDecay:
     def test_active_entries_within_decay(self):
         tracker = EmotionTracker(decay_minutes=30)
         now = datetime(2026, 3, 19, 12, 0)
@@ -111,8 +115,8 @@ class TestDecay:
 # dominant_emotion
 # ---------------------------------------------------------------------------
 
-class TestDominantEmotion:
 
+class TestDominantEmotion:
     def test_empty_tracker_returns_neutral(self):
         tracker = EmotionTracker()
         assert tracker.dominant_emotion() is Emotion.NEUTRAL
@@ -126,19 +130,24 @@ class TestDominantEmotion:
     def test_majority_wins(self):
         tracker = EmotionTracker(max_entries=5)
         now = datetime(2026, 3, 19, 12, 0)
-        for i, emotion in enumerate([
-            Emotion.CHEERFUL, Emotion.CHEERFUL, Emotion.CHEERFUL,
-            Emotion.SAD, Emotion.ANGRY,
-        ]):
+        for i, emotion in enumerate(
+            [
+                Emotion.CHEERFUL,
+                Emotion.CHEERFUL,
+                Emotion.CHEERFUL,
+                Emotion.SAD,
+                Emotion.ANGRY,
+            ]
+        ):
             tracker.record(emotion, now + timedelta(seconds=i))
         assert tracker.dominant_emotion(now + timedelta(seconds=5)) is Emotion.CHEERFUL
 
     def test_tie_returns_one_of_tied(self):
         tracker = EmotionTracker(max_entries=4)
         now = datetime(2026, 3, 19, 12, 0)
-        for i, emotion in enumerate([
-            Emotion.SAD, Emotion.SAD, Emotion.ANGRY, Emotion.ANGRY
-        ]):
+        for i, emotion in enumerate(
+            [Emotion.SAD, Emotion.SAD, Emotion.ANGRY, Emotion.ANGRY]
+        ):
             tracker.record(emotion, now + timedelta(seconds=i))
         result = tracker.dominant_emotion(now + timedelta(seconds=5))
         assert result in (Emotion.SAD, Emotion.ANGRY)
@@ -148,8 +157,8 @@ class TestDominantEmotion:
 # get_trend
 # ---------------------------------------------------------------------------
 
-class TestGetTrend:
 
+class TestGetTrend:
     def test_no_entries_returns_none(self):
         tracker = EmotionTracker()
         assert tracker.get_trend() is None
@@ -193,8 +202,8 @@ class TestGetTrend:
 # get_mood_summary
 # ---------------------------------------------------------------------------
 
-class TestGetMoodSummary:
 
+class TestGetMoodSummary:
     def test_empty_returns_none(self):
         tracker = EmotionTracker()
         assert tracker.get_mood_summary() is None
@@ -236,10 +245,11 @@ class TestGetMoodSummary:
 # SaleriaEngine Integration
 # ---------------------------------------------------------------------------
 
-class TestSaleriaIntegration:
 
+class TestSaleriaIntegration:
     def test_extract_emotion_feeds_tracker(self):
         from elder_berry.character.saleria import SaleriaEngine
+
         engine = SaleriaEngine()
         engine.extract_emotion("[cheerful] Hallo!")
         engine.extract_emotion("[angry] Grr!")
@@ -250,11 +260,13 @@ class TestSaleriaIntegration:
 
     def test_get_mood_context_none_initially(self):
         from elder_berry.character.saleria import SaleriaEngine
+
         engine = SaleriaEngine()
         assert engine.get_mood_context() is None
 
     def test_get_mood_context_after_single_emotion(self):
         from elder_berry.character.saleria import SaleriaEngine
+
         engine = SaleriaEngine()
         engine.extract_emotion("[sad] Das ist traurig.")
         context = engine.get_mood_context()
@@ -264,6 +276,7 @@ class TestSaleriaIntegration:
     def test_neutral_fallback_not_tracked(self):
         """Wenn kein Tag gefunden → NEUTRAL returned, aber NICHT im Tracker."""
         from elder_berry.character.saleria import SaleriaEngine
+
         engine = SaleriaEngine()
         result = engine.extract_emotion("Kein Tag hier.")
         assert result is Emotion.NEUTRAL
@@ -275,8 +288,8 @@ class TestSaleriaIntegration:
 # Assistant Integration
 # ---------------------------------------------------------------------------
 
-class TestAssistantIntegration:
 
+class TestAssistantIntegration:
     def test_mood_context_in_system_prompt(self):
         """Prüft dass mood_context im generierten System-Prompt auftaucht."""
         from unittest.mock import MagicMock
@@ -289,13 +302,17 @@ class TestAssistantIntegration:
         engine.extract_emotion("[angry] Nochmal!")
 
         llm = MagicMock()
-        llm.generate.return_value = '{"action": null, "params": {}, "response": "[neutral] Ok."}'
+        llm.generate.return_value = (
+            '{"action": null, "params": {}, "response": "[neutral] Ok."}'
+        )
         actions_db = MagicMock()
         actions_db.list_all.return_value = []
         controller = MagicMock()
 
         assistant = Assistant(
-            llm=llm, actions_db=actions_db, controller=controller,
+            llm=llm,
+            actions_db=actions_db,
+            controller=controller,
             character=engine,
         )
         assistant.process("Hallo")

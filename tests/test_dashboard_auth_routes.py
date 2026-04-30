@@ -43,10 +43,9 @@ def client(auth: DashboardAuthManager) -> TestClient:
 
 # -- /api/dashboard/auth/status -------------------------------------- #
 
+
 class TestAuthStatus:
-    def test_initial_state_no_password(
-        self, client: TestClient
-    ) -> None:
+    def test_initial_state_no_password(self, client: TestClient) -> None:
         r = client.get("/api/dashboard/auth/status")
         assert r.status_code == 200
         data = r.json()
@@ -77,10 +76,9 @@ class TestAuthStatus:
 
 # -- /api/dashboard/login -------------------------------------------- #
 
+
 class TestLogin:
-    def test_login_no_password_set(
-        self, client: TestClient
-    ) -> None:
+    def test_login_no_password_set(self, client: TestClient) -> None:
         r = client.post(
             "/api/dashboard/login",
             json={"password": "anything"},
@@ -131,6 +129,7 @@ class TestLogin:
 
 # -- /api/dashboard/logout ------------------------------------------- #
 
+
 class TestLogout:
     def test_logout_clears_cookie(
         self, client: TestClient, auth: DashboardAuthManager
@@ -144,9 +143,7 @@ class TestLogout:
         sc = r.headers.get("set-cookie", "")
         assert COOKIE_NAME in sc
 
-    def test_logout_works_without_cookie(
-        self, client: TestClient
-    ) -> None:
+    def test_logout_works_without_cookie(self, client: TestClient) -> None:
         r = client.post("/api/dashboard/logout")
         assert r.status_code == 200
 
@@ -185,6 +182,7 @@ class TestLogoutServerSideRevocation:
         assert r.json()["revoked"] is True
         # verify_session muss diesen Cookie nun ablehnen
         from elder_berry.web.dashboard_auth import InvalidSessionError
+
         with pytest.raises(InvalidSessionError):
             auth.verify_session(cookie)
 
@@ -223,6 +221,7 @@ class TestLogoutServerSideRevocation:
 
 
 # -- /api/dashboard/password ----------------------------------------- #
+
 
 class TestChangePassword:
     def test_set_initial_password(
@@ -313,16 +312,12 @@ class TestChangePassword:
 class TestLogoutAll:
     """Globales Logout -- rotiert das Session-Secret."""
 
-    def test_requires_login_cookie(
-        self, client: TestClient
-    ) -> None:
+    def test_requires_login_cookie(self, client: TestClient) -> None:
         r = client.post("/api/dashboard/logout-all")
         assert r.status_code == 401
         assert r.json()["code"] == "auth_required"
 
-    def test_rejects_invalid_cookie(
-        self, client: TestClient
-    ) -> None:
+    def test_rejects_invalid_cookie(self, client: TestClient) -> None:
         client.cookies.set(COOKIE_NAME, "not.a.valid.cookie")
         r = client.post("/api/dashboard/logout-all")
         assert r.status_code == 401
@@ -343,6 +338,7 @@ class TestLogoutAll:
 
         # Nach Rotation: altes Cookie wird mit InvalidSessionError abgelehnt
         from elder_berry.web.dashboard_auth import InvalidSessionError
+
         with pytest.raises(InvalidSessionError):
             auth.verify_session(old_cookie)
 
@@ -382,6 +378,7 @@ class TestLogoutAll:
 
         # Device B's Cookie ist jetzt tot
         from elder_berry.web.dashboard_auth import InvalidSessionError
+
         with pytest.raises(InvalidSessionError):
             auth.verify_session(cookie_b)
 

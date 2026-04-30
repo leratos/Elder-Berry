@@ -12,6 +12,7 @@ Verwendung:
 Plattformhinweis: Für RPi5 (Linux, Python 3.13).
 Kann zum Testen auch auf Windows laufen (--windowed).
 """
+
 from __future__ import annotations
 
 import argparse
@@ -103,23 +104,32 @@ def parse_args() -> argparse.Namespace:
         description="Elder-Berry RPi5 – Avatar-Display + Robot-API",
     )
     parser.add_argument(
-        "--windowed", action="store_true",
+        "--windowed",
+        action="store_true",
         help="Fenster-Modus statt Fullscreen (für Debugging)",
     )
     parser.add_argument(
-        "--width", type=int, default=720,
+        "--width",
+        type=int,
+        default=720,
         help="Display-Breite in Pixeln (default: 720)",
     )
     parser.add_argument(
-        "--height", type=int, default=1280,
+        "--height",
+        type=int,
+        default=1280,
         help="Display-Höhe in Pixeln (default: 1280)",
     )
     parser.add_argument(
-        "--port", type=int, default=8000,
+        "--port",
+        type=int,
+        default=8000,
         help="API-Port (default: 8000)",
     )
     parser.add_argument(
-        "--host", type=str, default="0.0.0.0",
+        "--host",
+        type=str,
+        default="0.0.0.0",
         help="API-Host (default: 0.0.0.0)",
     )
     return parser.parse_args()
@@ -166,6 +176,7 @@ def main() -> None:
     camera = None
     try:
         from elder_berry.robot.camera_controller import RPi5Camera
+
         camera = RPi5Camera(resolution=(1920, 1080))
         if camera.is_available():
             logger.info("Kamera erkannt: RPi Camera Module 3")
@@ -179,6 +190,7 @@ def main() -> None:
     turntable = None
     try:
         from elder_berry.robot.turntable_controller import RPi5TurntableController
+
         turntable = RPi5TurntableController(step_delay_ms=2.0)
         logger.info("Drehteller initialisiert (Homing manuell via API)")
     except ImportError:
@@ -191,6 +203,7 @@ def main() -> None:
     harmony = None
     try:
         from elder_berry.robot.harmony_adapter import HarmonyAdapter
+
         harmony = HarmonyAdapter(hub_ip="192.168.50.133")
         logger.info("HarmonyAdapter initialisiert (IP: 192.168.50.133)")
     except ImportError:
@@ -203,6 +216,7 @@ def main() -> None:
     try:
         from elder_berry.robot.alexa_skill_handler import AlexaRequestVerifier
         from elder_berry.core.secret_store import SecretStore
+
         _skill_id = SecretStore().get_or_none("alexa_skill_id")
         if _skill_id:
             alexa_verifier = AlexaRequestVerifier(application_id=_skill_id)
@@ -254,8 +268,12 @@ def main() -> None:
     # -- Start -----------------------------------------------------------------
     logger.info("=" * 60)
     logger.info("Elder-Berry RPi5")
-    logger.info("Display: %dx%d %s", args.width, args.height,
-                "fullscreen" if fullscreen else "windowed")
+    logger.info(
+        "Display: %dx%d %s",
+        args.width,
+        args.height,
+        "fullscreen" if fullscreen else "windowed",
+    )
     logger.info("API: http://%s:%d", args.host, args.port)
     logger.info("=" * 60)
 

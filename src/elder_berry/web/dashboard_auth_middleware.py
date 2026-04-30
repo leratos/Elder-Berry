@@ -73,11 +73,13 @@ class DashboardAuthMiddleware(BaseHTTPMiddleware):
     )
     # Endpoints, die innerhalb der geschützten Präfixe trotzdem offen
     # bleiben müssen (Login-Endpoints selbst).
-    UNPROTECTED_EXACT: frozenset[str] = frozenset({
-        "/api/dashboard/login",
-        "/api/dashboard/logout",
-        "/api/dashboard/auth/status",
-    })
+    UNPROTECTED_EXACT: frozenset[str] = frozenset(
+        {
+            "/api/dashboard/login",
+            "/api/dashboard/logout",
+            "/api/dashboard/auth/status",
+        }
+    )
     # Wizard-Pfade: bedingt offen (nur vor First-Run).
     WIZARD_PREFIX = "/api/setup"
     SETUP_COMPLETE_KEY = "setup_wizard_completed"
@@ -128,7 +130,10 @@ class DashboardAuthMiddleware(BaseHTTPMiddleware):
             client_host = request.client.host if request.client else "unbekannt"
             logger.info(
                 "Login fehlt/ungültig für %s %s von %s: %s",
-                request.method, path, client_host, exc,
+                request.method,
+                path,
+                client_host,
+                exc,
             )
             return JSONResponse(
                 {
@@ -151,6 +156,7 @@ class DashboardAuthMiddleware(BaseHTTPMiddleware):
         # Antwort -- der Browser erbt das alte Cookie und faellt beim
         # naechsten Request automatisch in den 401-Pfad oben.
         import time
+
         remaining = int(payload["exp"]) - int(time.time())
         if remaining < self._auth.ttl_seconds // 2:
             try:
@@ -159,7 +165,9 @@ class DashboardAuthMiddleware(BaseHTTPMiddleware):
                 logger.info(
                     "Sliding-Renewal abgelehnt fuer %s %s (%s) -- altes "
                     "Cookie laeuft naturalmente ab.",
-                    request.method, path, exc,
+                    request.method,
+                    path,
+                    exc,
                 )
             else:
                 response.set_cookie(

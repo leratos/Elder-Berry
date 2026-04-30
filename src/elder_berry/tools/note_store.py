@@ -11,6 +11,7 @@ Verwendung:
     store.add_note("@user:matrix.org", "Vermieter Müller, Kaution 1200€")
     results = store.search("@user:matrix.org", "Vermieter")
 """
+
 from __future__ import annotations
 
 import logging
@@ -290,8 +291,9 @@ class NoteStore:
         ).fetchall()
         return [self._row_to_note(r) for r in rows]
 
-    def get_notes_from_date(self, user_id: str, month: int, day: int,
-                            limit: int = 5) -> list[Note]:
+    def get_notes_from_date(
+        self, user_id: str, month: int, day: int, limit: int = 5
+    ) -> list[Note]:
         """Notizen die an einem bestimmten Tag erstellt wurden (±1 Tag Toleranz).
 
         Sucht über alle Jahre hinweg nach Notizen deren created_at auf
@@ -312,9 +314,7 @@ class NoteStore:
         except ValueError:
             return []
 
-        conditions = " OR ".join(
-            "created_at LIKE ?" for _ in dates
-        )
+        conditions = " OR ".join("created_at LIKE ?" for _ in dates)
         params: list[str | int] = [user_id]
         for d in dates:
             # created_at ist ISO: '2025-03-28T12:00:00+00:00'

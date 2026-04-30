@@ -1,4 +1,5 @@
 """Tests: WeatherClient – Open-Meteo API Integration."""
+
 from datetime import date
 from unittest.mock import MagicMock, patch
 
@@ -18,16 +19,19 @@ from elder_berry.tools.weather_client import (
 # Fixtures
 # ---------------------------------------------------------------------------
 
+
 def _make_store(with_coords: bool = True):
     """Erstellt einen Mock-SecretStore mit oder ohne Wetter-Koordinaten."""
     store = MagicMock()
     if with_coords:
+
         def get_or_none(key):
             return {
                 "weather_latitude": "52.52",
                 "weather_longitude": "13.41",
                 "weather_city": "Berlin",
             }.get(key)
+
         store.get_or_none.side_effect = get_or_none
     else:
         store.get_or_none.return_value = None
@@ -71,21 +75,30 @@ MOCK_DAILY_RESPONSE_3DAYS = {
 # DTO-Tests
 # ---------------------------------------------------------------------------
 
+
 class TestWeatherData:
     def test_frozen(self):
         wd = WeatherData(
-            temperature=14.2, apparent_temperature=12.5,
-            humidity=65, wind_speed=12.3,
-            weather_code=2, description="Teilweise bewölkt", city="Berlin",
+            temperature=14.2,
+            apparent_temperature=12.5,
+            humidity=65,
+            wind_speed=12.3,
+            weather_code=2,
+            description="Teilweise bewölkt",
+            city="Berlin",
         )
         with pytest.raises(AttributeError):
             wd.temperature = 99.0
 
     def test_fields(self):
         wd = WeatherData(
-            temperature=14.2, apparent_temperature=12.5,
-            humidity=65, wind_speed=12.3,
-            weather_code=2, description="Teilweise bewölkt", city="Berlin",
+            temperature=14.2,
+            apparent_temperature=12.5,
+            humidity=65,
+            wind_speed=12.3,
+            weather_code=2,
+            description="Teilweise bewölkt",
+            city="Berlin",
         )
         assert wd.temperature == 14.2
         assert wd.apparent_temperature == 12.5
@@ -99,18 +112,28 @@ class TestWeatherData:
 class TestWeatherForecast:
     def test_frozen(self):
         fc = WeatherForecast(
-            date=date(2026, 3, 17), temp_min=8.2, temp_max=16.5,
-            precipitation_mm=2.1, precipitation_probability=45,
-            weather_code=61, description="Leichter Regen", city="Berlin",
+            date=date(2026, 3, 17),
+            temp_min=8.2,
+            temp_max=16.5,
+            precipitation_mm=2.1,
+            precipitation_probability=45,
+            weather_code=61,
+            description="Leichter Regen",
+            city="Berlin",
         )
         with pytest.raises(AttributeError):
             fc.temp_min = 0.0
 
     def test_fields(self):
         fc = WeatherForecast(
-            date=date(2026, 3, 17), temp_min=8.2, temp_max=16.5,
-            precipitation_mm=2.1, precipitation_probability=45,
-            weather_code=61, description="Leichter Regen", city="Berlin",
+            date=date(2026, 3, 17),
+            temp_min=8.2,
+            temp_max=16.5,
+            precipitation_mm=2.1,
+            precipitation_probability=45,
+            weather_code=61,
+            description="Leichter Regen",
+            city="Berlin",
         )
         assert fc.date == date(2026, 3, 17)
         assert fc.temp_min == 8.2
@@ -124,6 +147,7 @@ class TestWeatherForecast:
 # ---------------------------------------------------------------------------
 # WMO-Mappings
 # ---------------------------------------------------------------------------
+
 
 class TestWMOMappings:
     def test_descriptions_contains_main_codes(self):
@@ -147,6 +171,7 @@ class TestWMOMappings:
 # get_current()
 # ---------------------------------------------------------------------------
 
+
 class TestGetCurrent:
     def test_success(self):
         store = _make_store()
@@ -156,7 +181,9 @@ class TestGetCurrent:
         mock_resp.json.return_value = MOCK_CURRENT_RESPONSE
         mock_resp.raise_for_status.return_value = None
 
-        with patch("elder_berry.tools.weather_client.WeatherClient._get_client") as mock_get:
+        with patch(
+            "elder_berry.tools.weather_client.WeatherClient._get_client"
+        ) as mock_get:
             mock_http = MagicMock()
             mock_http.get.return_value = mock_resp
             mock_get.return_value = mock_http
@@ -185,11 +212,16 @@ class TestGetCurrent:
 
         mock_resp = MagicMock()
         import httpx
+
         mock_resp.raise_for_status.side_effect = httpx.HTTPStatusError(
-            "500 Error", request=MagicMock(), response=MagicMock(),
+            "500 Error",
+            request=MagicMock(),
+            response=MagicMock(),
         )
 
-        with patch("elder_berry.tools.weather_client.WeatherClient._get_client") as mock_get:
+        with patch(
+            "elder_berry.tools.weather_client.WeatherClient._get_client"
+        ) as mock_get:
             mock_http = MagicMock()
             mock_http.get.return_value = mock_resp
             mock_get.return_value = mock_http
@@ -202,6 +234,7 @@ class TestGetCurrent:
 # get_today() / get_days()
 # ---------------------------------------------------------------------------
 
+
 class TestGetToday:
     def test_returns_single_forecast(self):
         store = _make_store()
@@ -211,7 +244,9 @@ class TestGetToday:
         mock_resp.json.return_value = MOCK_DAILY_RESPONSE_1DAY
         mock_resp.raise_for_status.return_value = None
 
-        with patch("elder_berry.tools.weather_client.WeatherClient._get_client") as mock_get:
+        with patch(
+            "elder_berry.tools.weather_client.WeatherClient._get_client"
+        ) as mock_get:
             mock_http = MagicMock()
             mock_http.get.return_value = mock_resp
             mock_get.return_value = mock_http
@@ -233,7 +268,9 @@ class TestGetDays:
         mock_resp.json.return_value = MOCK_DAILY_RESPONSE_3DAYS
         mock_resp.raise_for_status.return_value = None
 
-        with patch("elder_berry.tools.weather_client.WeatherClient._get_client") as mock_get:
+        with patch(
+            "elder_berry.tools.weather_client.WeatherClient._get_client"
+        ) as mock_get:
             mock_http = MagicMock()
             mock_http.get.return_value = mock_resp
             mock_get.return_value = mock_http
@@ -255,7 +292,9 @@ class TestGetDays:
         mock_resp.json.return_value = MOCK_DAILY_RESPONSE_3DAYS
         mock_resp.raise_for_status.return_value = None
 
-        with patch("elder_berry.tools.weather_client.WeatherClient._get_client") as mock_get:
+        with patch(
+            "elder_berry.tools.weather_client.WeatherClient._get_client"
+        ) as mock_get:
             mock_http = MagicMock()
             mock_http.get.return_value = mock_resp
             mock_get.return_value = mock_http
@@ -271,13 +310,18 @@ class TestGetDays:
 # format_current() / format_forecast()
 # ---------------------------------------------------------------------------
 
+
 class TestFormatCurrent:
     def test_contains_emoji_temp_city(self):
         client = WeatherClient(secret_store=_make_store())
         data = WeatherData(
-            temperature=14.2, apparent_temperature=12.5,
-            humidity=65, wind_speed=12.3,
-            weather_code=2, description="Teilweise bewölkt", city="Berlin",
+            temperature=14.2,
+            apparent_temperature=12.5,
+            humidity=65,
+            wind_speed=12.3,
+            weather_code=2,
+            description="Teilweise bewölkt",
+            city="Berlin",
         )
         text = client.format_current(data)
         assert "Berlin" in text
@@ -290,9 +334,13 @@ class TestFormatCurrent:
     def test_unknown_code_gets_default_emoji(self):
         client = WeatherClient(secret_store=_make_store())
         data = WeatherData(
-            temperature=10.0, apparent_temperature=8.0,
-            humidity=50, wind_speed=5.0,
-            weather_code=999, description="Code 999", city="Test",
+            temperature=10.0,
+            apparent_temperature=8.0,
+            humidity=50,
+            wind_speed=5.0,
+            weather_code=999,
+            description="Code 999",
+            city="Test",
         )
         text = client.format_current(data)
         assert "🌡️" in text  # Default-Emoji
@@ -303,9 +351,14 @@ class TestFormatForecast:
         client = WeatherClient(secret_store=_make_store())
         forecasts = [
             WeatherForecast(
-                date=date(2026, 3, 17), temp_min=8.2, temp_max=16.5,
-                precipitation_mm=2.1, precipitation_probability=45,
-                weather_code=61, description="Leichter Regen", city="Berlin",
+                date=date(2026, 3, 17),
+                temp_min=8.2,
+                temp_max=16.5,
+                precipitation_mm=2.1,
+                precipitation_probability=45,
+                weather_code=61,
+                description="Leichter Regen",
+                city="Berlin",
             ),
         ]
         text = client.format_forecast(forecasts)
@@ -324,9 +377,14 @@ class TestFormatForecast:
         client = WeatherClient(secret_store=_make_store())
         forecasts = [
             WeatherForecast(
-                date=date(2026, 3, 18), temp_min=9.5, temp_max=18.0,
-                precipitation_mm=0.0, precipitation_probability=10,
-                weather_code=1, description="Überwiegend klar", city="Berlin",
+                date=date(2026, 3, 18),
+                temp_min=9.5,
+                temp_max=18.0,
+                precipitation_mm=0.0,
+                precipitation_probability=10,
+                weather_code=1,
+                description="Überwiegend klar",
+                city="Berlin",
             ),
         ]
         text = client.format_forecast(forecasts)
@@ -337,12 +395,14 @@ class TestFormatForecast:
 # _format_day_name()
 # ---------------------------------------------------------------------------
 
+
 class TestFormatDayName:
     def test_today(self):
         assert _format_day_name(date.today()) == "Heute"
 
     def test_tomorrow(self):
         from datetime import timedelta
+
         assert _format_day_name(date.today() + timedelta(days=1)) == "Morgen"
 
     def test_other_day(self):

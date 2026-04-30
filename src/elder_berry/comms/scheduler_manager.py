@@ -4,6 +4,7 @@ Löst die Kopplung zwischen MatrixBridge und den einzelnen Schedulern.
 Statt private Attribute der Scheduler zu setzen, werden Callbacks über
 öffentliche Methoden registriert.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -74,7 +75,9 @@ class SchedulerManager:
 
         return send
 
-    def register(self, name: str, scheduler, callback_attr: str, prefix: str = "") -> None:
+    def register(
+        self, name: str, scheduler, callback_attr: str, prefix: str = ""
+    ) -> None:
         """Registriert einen Scheduler mit thread-safe Callback.
 
         Args:
@@ -95,12 +98,14 @@ class SchedulerManager:
                 scheduler.start()
                 logger.info("Scheduler '%s' gestartet", name)
             except Exception as e:
-                logger.error("Scheduler '%s' konnte nicht gestartet werden: %s", name, e)
+                logger.error(
+                    "Scheduler '%s' konnte nicht gestartet werden: %s", name, e
+                )
 
     def stop_all(self) -> None:
         """Stoppt alle laufenden Scheduler."""
         for name, scheduler in self._schedulers:
-            if hasattr(scheduler, 'is_running') and scheduler.is_running:
+            if hasattr(scheduler, "is_running") and scheduler.is_running:
                 try:
                     scheduler.stop()
                     logger.info("Scheduler '%s' gestoppt", name)

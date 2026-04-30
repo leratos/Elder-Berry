@@ -1,4 +1,5 @@
 """PC-Steuerung – Windows-Implementierung."""
+
 import logging
 import platform
 
@@ -7,7 +8,7 @@ try:
     import pygetwindow as gw
 
     pyautogui.FAILSAFE = True  # Maus in Ecke oben links → Abbruch
-    pyautogui.PAUSE = 0.05     # Kurze Pause zwischen Aktionen
+    pyautogui.PAUSE = 0.05  # Kurze Pause zwischen Aktionen
 except (ImportError, KeyError):
     # KeyError: 'DISPLAY' auf Linux ohne X11; ImportError wenn Paket fehlt.
     # Wird erst zur Laufzeit relevant – _check_platform() fängt das ab.
@@ -51,9 +52,7 @@ class WindowsActionController(ActionController):
             from pycaw.pycaw import AudioUtilities, IAudioEndpointVolume
 
             devices = AudioUtilities.GetSpeakers()
-            interface = devices.Activate(
-                IAudioEndpointVolume._iid_, CLSCTX_ALL, None
-            )
+            interface = devices.Activate(IAudioEndpointVolume._iid_, CLSCTX_ALL, None)
             self._volume_interface = interface.QueryInterface(IAudioEndpointVolume)
         return self._volume_interface
 
@@ -81,8 +80,9 @@ class WindowsActionController(ActionController):
         logger.debug("move_mouse: (%d, %d)", x, y)
         pyautogui.moveTo(x, y, duration=duration)
 
-    def click(self, x: int | None = None, y: int | None = None,
-              button: str = "left") -> None:
+    def click(
+        self, x: int | None = None, y: int | None = None, button: str = "left"
+    ) -> None:
         logger.debug("click: (%s, %s) button=%s", x, y, button)
         pyautogui.click(x=x, y=y, button=button)
 
@@ -154,7 +154,9 @@ class WindowsActionController(ActionController):
 
     def set_volume(self, level: float) -> None:
         if not 0.0 <= level <= 1.0:
-            raise ValueError(f"Volume level muss zwischen 0.0 und 1.0 liegen, war: {level}")
+            raise ValueError(
+                f"Volume level muss zwischen 0.0 und 1.0 liegen, war: {level}"
+            )
         vol = self._get_volume_interface()
         vol.SetMasterVolumeLevelScalar(level, None)
         logger.info("set_volume: %.2f", level)

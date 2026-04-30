@@ -8,6 +8,7 @@ Commands:
     cloud inhalt <query>        – Search inside file contents (Full text search)
     cloud link <pfad>           – Create public share link
 """
+
 from __future__ import annotations
 
 import logging
@@ -15,7 +16,11 @@ import re
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from elder_berry.comms.commands.base import CommandHandler, CommandResult, user_friendly_error
+from elder_berry.comms.commands.base import (
+    CommandHandler,
+    CommandResult,
+    user_friendly_error,
+)
 
 if TYPE_CHECKING:
     from elder_berry.tools.nextcloud_files import NextcloudFilesClient
@@ -140,12 +145,17 @@ class CloudCommandHandler(CommandHandler):
             "cloud_list": ["nextcloud dateien", "cloud dateien", "nextcloud ordner"],
             "cloud_search": ["nextcloud suche", "cloud suche"],
             "cloud_content_search": [
-                "cloud inhalt", "cloud durchsuche", "cloud volltext",
-                "nextcloud inhalt", "nextcloud durchsuche",
+                "cloud inhalt",
+                "cloud durchsuche",
+                "cloud volltext",
+                "nextcloud inhalt",
+                "nextcloud durchsuche",
             ],
             "nextcloud_setup": [
-                "nextcloud einrichten", "richte nextcloud ein",
-                "cloud einrichten", "nextcloud setup",
+                "nextcloud einrichten",
+                "richte nextcloud ein",
+                "cloud einrichten",
+                "nextcloud setup",
             ],
         }
 
@@ -202,6 +212,7 @@ class CloudCommandHandler(CommandHandler):
             )
 
         from elder_berry.tools.nextcloud_files import MAX_UPLOAD_SIZE_BYTES
+
         size = local_path.stat().st_size
         if size > MAX_UPLOAD_SIZE_BYTES:
             return CommandResult(

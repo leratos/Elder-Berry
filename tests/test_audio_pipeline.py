@@ -1,4 +1,5 @@
 """Tests: AudioPipeline – Audio-Verarbeitung für die MatrixBridge."""
+
 import asyncio
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock
@@ -12,6 +13,7 @@ from elder_berry.comms.audio_pipeline import AudioPipeline
 # Helper
 # ---------------------------------------------------------------------------
 
+
 def run_async(coro):
     """Führt eine Coroutine synchron aus (für Tests ohne pytest-asyncio)."""
     return asyncio.run(coro)
@@ -20,6 +22,7 @@ def run_async(coro):
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
+
 
 @pytest.fixture
 def channel():
@@ -135,6 +138,7 @@ def _make_file_msg(file_data=b"fake_pdf", file_name="doc.pdf"):
 # Properties
 # ---------------------------------------------------------------------------
 
+
 class TestAudioPipelineProperties:
     def test_audio_to_matrix_true(self, pipeline):
         assert pipeline.audio_to_matrix is True
@@ -152,6 +156,7 @@ class TestAudioPipelineProperties:
 # Audio Message Handling
 # ---------------------------------------------------------------------------
 
+
 class TestHandleAudioMessage:
     def test_no_stt_sends_warning(self, pipeline_no_stt, channel):
         async def _test():
@@ -160,6 +165,7 @@ class TestHandleAudioMessage:
             channel.send_text.assert_called_once()
             text = channel.send_text.call_args[0][1]
             assert "nicht unterstützt" in text.lower() or "STT" in text
+
         run_async(_test())
 
     def test_stt_transcribe_and_callback(self, pipeline, stt):
@@ -175,6 +181,7 @@ class TestHandleAudioMessage:
             # Callback should receive a text message with transcribed text
             text_msg = cb.call_args[0][0]
             assert text_msg.body == "Hallo Welt"
+
         run_async(_test())
 
     def test_stt_empty_result(self, pipeline, stt, channel):
@@ -189,6 +196,7 @@ class TestHandleAudioMessage:
             channel.send_text.assert_called_once()
             text = channel.send_text.call_args[0][1]
             assert "nicht verstehen" in text.lower()
+
         run_async(_test())
 
     def test_stt_exception(self, pipeline, stt, channel):
@@ -200,12 +208,14 @@ class TestHandleAudioMessage:
             channel.send_text.assert_called_once()
             text = channel.send_text.call_args[0][1]
             assert "RuntimeError" in text
+
         run_async(_test())
 
 
 # ---------------------------------------------------------------------------
 # File Message Handling
 # ---------------------------------------------------------------------------
+
 
 class TestHandleFileMessage:
     def test_no_document_reader(self, pipeline_no_stt, channel):
@@ -215,6 +225,7 @@ class TestHandleFileMessage:
             channel.send_text.assert_called_once()
             text = channel.send_text.call_args[0][1]
             assert "nicht verfügbar" in text.lower()
+
         run_async(_test())
 
     def test_unsupported_format(self, pipeline_with_doc, channel):
@@ -224,12 +235,14 @@ class TestHandleFileMessage:
             channel.send_text.assert_called_once()
             text = channel.send_text.call_args[0][1]
             assert "nicht unterstützt" in text.lower()
+
         run_async(_test())
 
 
 # ---------------------------------------------------------------------------
 # send_audio_if_available
 # ---------------------------------------------------------------------------
+
 
 class TestSendAudioIfAvailable:
     def test_no_audio_path(self, pipeline, channel):
@@ -238,6 +251,7 @@ class TestSendAudioIfAvailable:
             result.audio_path = None
             await pipeline.send_audio_if_available("!room", result, None)
             channel.send_audio.assert_not_called()
+
         run_async(_test())
 
     def test_audio_path_nonexistent(self, pipeline, channel):
@@ -249,6 +263,7 @@ class TestSendAudioIfAvailable:
             result.audio_path = mock_path
             await pipeline.send_audio_if_available("!room", result, None)
             channel.send_audio.assert_not_called()
+
         run_async(_test())
 
     def test_sends_ogg_to_channel(self, pipeline, channel, audio_converter, tmp_path):
@@ -261,4 +276,5 @@ class TestSendAudioIfAvailable:
             await pipeline.send_audio_if_available("!room", result, wav_file)
             audio_converter.to_ogg_opus.assert_called_once()
             channel.send_audio.assert_called_once()
+
         run_async(_test())

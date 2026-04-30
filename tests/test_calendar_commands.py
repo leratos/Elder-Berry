@@ -1,4 +1,5 @@
 """Tests: CalendarCommandHandler – Termin CRUD, Pattern-Matching."""
+
 from datetime import datetime, date, timedelta
 from unittest.mock import MagicMock
 
@@ -18,6 +19,7 @@ from elder_berry.comms.commands.calendar_commands import (
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
+
 
 def _make_event(summary="Zahnarzt", event_id="evt123"):
     evt = MagicMock()
@@ -52,13 +54,17 @@ def handler_no_calendar():
 # Pattern Tests
 # ---------------------------------------------------------------------------
 
+
 class TestTerminePattern:
-    @pytest.mark.parametrize("text,param", [
-        ("termine morgen", "morgen"),
-        ("termine woche", "woche"),
-        ("termine 5", "5"),
-        ("Termine Morgen", "Morgen"),
-    ])
+    @pytest.mark.parametrize(
+        "text,param",
+        [
+            ("termine morgen", "morgen"),
+            ("termine woche", "woche"),
+            ("termine 5", "5"),
+            ("Termine Morgen", "Morgen"),
+        ],
+    )
     def test_valid(self, text, param):
         m = TERMINE_PATTERN.match(text.lower())
         assert m is not None
@@ -68,15 +74,18 @@ class TestTerminePattern:
 
 
 class TestTerminCreatePattern:
-    @pytest.mark.parametrize("text", [
-        "termin: Zahnarzt morgen 14:00",
-        "termin: Meeting 2026-03-30 10:00",
-        "termin: Call 30.03 15:30",
-        "termin: Test 30.03.2026 09:00",
-        "erstelle termin Meeting morgen 14:00",
-        "termin Zahnarzt übermorgen 10:00",
-        "termin: Lunch morgen um 12:30 Uhr",
-    ])
+    @pytest.mark.parametrize(
+        "text",
+        [
+            "termin: Zahnarzt morgen 14:00",
+            "termin: Meeting 2026-03-30 10:00",
+            "termin: Call 30.03 15:30",
+            "termin: Test 30.03.2026 09:00",
+            "erstelle termin Meeting morgen 14:00",
+            "termin Zahnarzt übermorgen 10:00",
+            "termin: Lunch morgen um 12:30 Uhr",
+        ],
+    )
     def test_valid(self, text):
         assert TERMIN_CREATE_PATTERN.match(text) is not None
 
@@ -99,7 +108,9 @@ class TestTerminCreatePattern:
         assert m.group(4).lower() == "jährlich"
 
     def test_recurrence_daily_with_time(self):
-        m = TERMIN_CREATE_PATTERN.match("termin: Standup morgen 09:00 täglich wiederholen")
+        m = TERMIN_CREATE_PATTERN.match(
+            "termin: Standup morgen 09:00 täglich wiederholen"
+        )
         assert m is not None
         assert m.group(3) == "09:00"
         assert m.group(4).lower() == "täglich"
@@ -116,23 +127,29 @@ class TestTerminCreatePattern:
 
 
 class TestTerminDeletePattern:
-    @pytest.mark.parametrize("text", [
-        "termin löschen abc123",
-        "lösche termin abc123",
-        "lösche den termin abc123",
-        "lösche alle termine",
-        "entferne termin test",
-    ])
+    @pytest.mark.parametrize(
+        "text",
+        [
+            "termin löschen abc123",
+            "lösche termin abc123",
+            "lösche den termin abc123",
+            "lösche alle termine",
+            "entferne termin test",
+        ],
+    )
     def test_valid(self, text):
         assert TERMIN_DELETE_PATTERN.match(text) is not None
 
 
 class TestTerminSearchPattern:
-    @pytest.mark.parametrize("text", [
-        "termin suche Zahnarzt",
-        "suche den termin Meeting",
-        "termine suche Arzt",
-    ])
+    @pytest.mark.parametrize(
+        "text",
+        [
+            "termin suche Zahnarzt",
+            "suche den termin Meeting",
+            "termine suche Arzt",
+        ],
+    )
     def test_valid(self, text):
         assert TERMIN_SEARCH_PATTERN.search(text) is not None
 
@@ -140,6 +157,7 @@ class TestTerminSearchPattern:
 # ---------------------------------------------------------------------------
 # _parse_natural_date
 # ---------------------------------------------------------------------------
+
 
 class TestParseNaturalDate:
     def test_morgen(self):
@@ -177,6 +195,7 @@ class TestParseNaturalDate:
 # Interface
 # ---------------------------------------------------------------------------
 
+
 class TestCalendarInterface:
     def test_simple_commands(self, handler):
         cmds = handler.simple_commands
@@ -198,6 +217,7 @@ class TestCalendarInterface:
 # ---------------------------------------------------------------------------
 # Termine (Query)
 # ---------------------------------------------------------------------------
+
 
 class TestTermineQuery:
     def test_termine_today(self, handler, calendar):
@@ -252,6 +272,7 @@ class TestTermineQuery:
 # Termin Create
 # ---------------------------------------------------------------------------
 
+
 class TestTerminCreate:
     def test_create_morgen(self, handler, calendar):
         evt = _make_event("Zahnarzt", "new123")
@@ -262,7 +283,9 @@ class TestTerminCreate:
         calendar.create_event.assert_called_once()
 
     def test_create_no_calendar(self, handler_no_calendar):
-        result = handler_no_calendar.execute("termin_create", "termin: Test morgen 14:00")
+        result = handler_no_calendar.execute(
+            "termin_create", "termin: Test morgen 14:00"
+        )
         assert result.success is False
 
     def test_create_invalid_format(self, handler):
@@ -283,6 +306,7 @@ class TestTerminCreate:
 # ---------------------------------------------------------------------------
 # Termin Search
 # ---------------------------------------------------------------------------
+
 
 class TestTerminSearch:
     def test_search_success(self, handler, calendar):
@@ -309,6 +333,7 @@ class TestTerminSearch:
 # ---------------------------------------------------------------------------
 # Termin Delete
 # ---------------------------------------------------------------------------
+
 
 class TestTerminDelete:
     def test_delete_by_index(self, handler, calendar):
@@ -368,12 +393,20 @@ class TestTerminDelete:
 # _parse_index
 # ---------------------------------------------------------------------------
 
+
 class TestParseIndex:
-    @pytest.mark.parametrize("text,expected", [
-        ("1", 1), ("2.", 2), ("den 1.", 1),
-        ("ersten", 1), ("zweiten", 2), ("dritten", 3),
-        ("die erste", 1),
-    ])
+    @pytest.mark.parametrize(
+        "text,expected",
+        [
+            ("1", 1),
+            ("2.", 2),
+            ("den 1.", 1),
+            ("ersten", 1),
+            ("zweiten", 2),
+            ("dritten", 3),
+            ("die erste", 1),
+        ],
+    )
     def test_valid(self, text, expected):
         assert CalendarCommandHandler._parse_index(text) == expected
 
@@ -389,17 +422,21 @@ class TestParseIndex:
 # _parse_recurrence
 # ---------------------------------------------------------------------------
 
+
 class TestParseRecurrence:
-    @pytest.mark.parametrize("text,expected_freq", [
-        ("jährlich", "YEARLY"),
-        ("yearly", "YEARLY"),
-        ("monatlich", "MONTHLY"),
-        ("monthly", "MONTHLY"),
-        ("wöchentlich", "WEEKLY"),
-        ("weekly", "WEEKLY"),
-        ("täglich", "DAILY"),
-        ("daily", "DAILY"),
-    ])
+    @pytest.mark.parametrize(
+        "text,expected_freq",
+        [
+            ("jährlich", "YEARLY"),
+            ("yearly", "YEARLY"),
+            ("monatlich", "MONTHLY"),
+            ("monthly", "MONTHLY"),
+            ("wöchentlich", "WEEKLY"),
+            ("weekly", "WEEKLY"),
+            ("täglich", "DAILY"),
+            ("daily", "DAILY"),
+        ],
+    )
     def test_valid(self, text, expected_freq):
         result = _parse_recurrence(text)
         assert result == [f"RRULE:FREQ={expected_freq}"]
@@ -418,6 +455,7 @@ class TestParseRecurrence:
 # Termin Create – All-Day + Recurrence
 # ---------------------------------------------------------------------------
 
+
 class TestTerminCreateAllDay:
     def test_create_all_day(self, handler, calendar):
         evt = _make_event("Urlaub", "new_ad")
@@ -433,7 +471,8 @@ class TestTerminCreateAllDay:
         evt = _make_event("Geburtstag Lisa", "new_rec")
         calendar.create_event.return_value = evt
         result = handler.execute(
-            "termin_create", "termin: Geburtstag Lisa 28.09 jährlich",
+            "termin_create",
+            "termin: Geburtstag Lisa 28.09 jährlich",
         )
         assert result.success is True
         call_kwargs = calendar.create_event.call_args.kwargs
@@ -445,7 +484,8 @@ class TestTerminCreateAllDay:
         evt = _make_event("Standup", "new_daily")
         calendar.create_event.return_value = evt
         result = handler.execute(
-            "termin_create", "termin: Standup morgen 09:00 täglich wiederholen",
+            "termin_create",
+            "termin: Standup morgen 09:00 täglich wiederholen",
         )
         assert result.success is True
         call_kwargs = calendar.create_event.call_args.kwargs
@@ -466,6 +506,7 @@ class TestTerminCreateAllDay:
 # ---------------------------------------------------------------------------
 # Unknown Command
 # ---------------------------------------------------------------------------
+
 
 class TestUnknownCommand:
     def test_unknown(self, handler):

@@ -6,6 +6,7 @@ Bilder werden via Claude Vision analysiert (describe_image).
 
 OCR-Fallback: Stirling-PDF auf dem eigenen Server.
 """
+
 from __future__ import annotations
 
 import base64
@@ -51,8 +52,13 @@ MANUAL_SUBFOLDERS = frozenset({"3D-Druck", "Elektronik", "Netzwerk", "Smart-Home
 
 # Umlaut-Mapping für Dateinamen-Bereinigung
 _UMLAUT_MAP = {
-    "ä": "ae", "ö": "oe", "ü": "ue", "ß": "ss",
-    "Ä": "Ae", "Ö": "Oe", "Ü": "Ue",
+    "ä": "ae",
+    "ö": "oe",
+    "ü": "ue",
+    "ß": "ss",
+    "Ä": "Ae",
+    "Ö": "Oe",
+    "Ü": "Ue",
 }
 
 
@@ -143,10 +149,13 @@ class DocumentClassifier:
 
         try:
             response = self._llm.generate(
-                prompt=user_prompt, system=system_prompt,
+                prompt=user_prompt,
+                system=system_prompt,
             )
         except RuntimeError:
-            logger.warning("LLM nicht erreichbar für Klassifizierung von %s", file_path.name)
+            logger.warning(
+                "LLM nicht erreichbar für Klassifizierung von %s", file_path.name
+            )
             return self._fallback_suggestion(file_path)
 
         return self._parse_response(response, file_path)
@@ -161,7 +170,9 @@ class DocumentClassifier:
         parts = hint.strip().split(None, 1)
         if parts and parts[0] in VALID_CATEGORIES:
             category = parts[0]
-            description = _clean_description(parts[1]) if len(parts) > 1 else file_path.stem
+            description = (
+                _clean_description(parts[1]) if len(parts) > 1 else file_path.stem
+            )
             target_folder = self._resolve_target_folder(category, "")
             today = date.today().isoformat()
             filename = f"{today}_{category}_{description}{file_path.suffix}"
@@ -177,11 +188,14 @@ class DocumentClassifier:
         # Hint als Korrektur an Ollama
         text = self._extract_text(file_path)
         system_prompt, user_prompt = self._build_prompt(text, file_path.name)
-        user_prompt += f"\n\nDer Nutzer hat korrigiert: {hint}. Passe deinen Vorschlag an."
+        user_prompt += (
+            f"\n\nDer Nutzer hat korrigiert: {hint}. Passe deinen Vorschlag an."
+        )
 
         try:
             response = self._llm.generate(
-                prompt=user_prompt, system=system_prompt,
+                prompt=user_prompt,
+                system=system_prompt,
             )
         except RuntimeError:
             logger.warning("LLM nicht erreichbar für Korrektur von %s", file_path.name)
@@ -245,14 +259,16 @@ class DocumentClassifier:
             image_b64 = base64.b64encode(image_bytes).decode("ascii")
             ext = file_path.suffix.lower()
             media_type = {
-                ".jpg": "image/jpeg", ".jpeg": "image/jpeg",
-                ".png": "image/png", ".webp": "image/webp",
+                ".jpg": "image/jpeg",
+                ".jpeg": "image/jpeg",
+                ".png": "image/png",
+                ".webp": "image/webp",
             }.get(ext, "image/jpeg")
             return self._llm.describe_image(
                 image_base64=image_b64,
                 prompt="Beschreibe dieses Dokument/Bild kurz auf Deutsch. "
-                       "Was ist der Inhalt? Welche Firma/Organisation? "
-                       "Gibt es ein Datum?",
+                "Was ist der Inhalt? Welche Firma/Organisation? "
+                "Gibt es ein Datum?",
                 media_type=media_type,
             )
         except (RuntimeError, OSError) as exc:
@@ -263,8 +279,7 @@ class DocumentClassifier:
         """Baut System- und User-Prompt für die Klassifizierung."""
         if text:
             user_prompt = (
-                f"Dateiname: {filename}\n\n"
-                f"Dokumentinhalt:\n{text[:MAX_CLASSIFY_CHARS]}"
+                f"Dateiname: {filename}\n\nDokumentinhalt:\n{text[:MAX_CLASSIFY_CHARS]}"
             )
         else:
             user_prompt = (

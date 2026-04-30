@@ -1,4 +1,5 @@
 """RobotClient – Tower-seitiger Client für die RPi5-Kommunikation."""
+
 from __future__ import annotations
 
 import logging
@@ -96,13 +97,15 @@ class RobotClient:
     def set_speaking(self, is_speaking: bool) -> ApiResponse:
         """Aktiviert/deaktiviert Lip-Sync auf dem RPi5-Display."""
         r = self._client.post(
-            "/avatar/emotion", json={"is_speaking": is_speaking},
+            "/avatar/emotion",
+            json={"is_speaking": is_speaking},
         )
         r.raise_for_status()
         return ApiResponse(**r.json())
 
-    def set_avatar(self, emotion: str | None = None,
-                   is_speaking: bool | None = None) -> ApiResponse:
+    def set_avatar(
+        self, emotion: str | None = None, is_speaking: bool | None = None
+    ) -> ApiResponse:
         """Setzt Emotion und Sprechzustand gleichzeitig."""
         payload = {}
         if emotion is not None:
@@ -168,6 +171,7 @@ class RobotClient:
             return None
 
         import base64
+
         return base64.b64decode(data["image_base64"])
 
     def camera_status(self) -> dict:
@@ -267,7 +271,8 @@ class RobotClient:
         """POST /harmony/activity"""
         try:
             r = self._client.post(
-                "/harmony/activity", json={"activity": activity},
+                "/harmony/activity",
+                json={"activity": activity},
             )
             r.raise_for_status()
             return r.json().get("success", False)
@@ -276,7 +281,10 @@ class RobotClient:
             return False
 
     def harmony_send_command(
-        self, device: str, command: str, repeat: int = 1,
+        self,
+        device: str,
+        command: str,
+        repeat: int = 1,
     ) -> bool:
         """POST /harmony/command"""
         try:
@@ -316,7 +324,8 @@ class RobotClient:
         """POST /harmony/scene/start → Szene starten."""
         try:
             r = self._client.post(
-                "/harmony/scene/start", json={"name": name},
+                "/harmony/scene/start",
+                json={"name": name},
             )
             r.raise_for_status()
             return r.json()

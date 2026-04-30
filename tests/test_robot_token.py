@@ -1,4 +1,5 @@
 """Tests fuer RobotServer Token-Authentifizierung und Startup-Verhalten."""
+
 import logging
 
 import pytest
@@ -11,6 +12,7 @@ try:
         SimulatedSensors,
     )
     from elder_berry.robot.server import RobotServer
+
     HAS_FASTAPI = True
 except ImportError:
     HAS_FASTAPI = False
@@ -35,17 +37,19 @@ class TestRobotTokenWarning:
         with caplog.at_level(logging.WARNING, logger="elder_berry.robot.server"):
             _create_server(robot_token=None)
         messages = [r.message for r in caplog.records if r.levelno == logging.WARNING]
-        assert any("robot_token" in m.lower() or "elder_berry_robot_token" in m.lower()
-                   for m in messages), (
-            f"Erwartetes Token-Warning nicht gefunden. Logs: {messages}"
-        )
+        assert any(
+            "robot_token" in m.lower() or "elder_berry_robot_token" in m.lower()
+            for m in messages
+        ), f"Erwartetes Token-Warning nicht gefunden. Logs: {messages}"
 
     def test_warning_logged_when_empty_string(self, caplog):
         with caplog.at_level(logging.WARNING, logger="elder_berry.robot.server"):
             _create_server(robot_token="")
         messages = [r.message for r in caplog.records if r.levelno == logging.WARNING]
-        assert any("robot_token" in m.lower() or "elder_berry_robot_token" in m.lower()
-                   for m in messages), (
+        assert any(
+            "robot_token" in m.lower() or "elder_berry_robot_token" in m.lower()
+            for m in messages
+        ), (
             f"Erwartetes Token-Warning für leeren String nicht gefunden. Logs: {messages}"
         )
 
@@ -53,7 +57,8 @@ class TestRobotTokenWarning:
         with caplog.at_level(logging.WARNING, logger="elder_berry.robot.server"):
             _create_server(robot_token="supersecrettoken123")
         warning_messages = [
-            r.message for r in caplog.records
+            r.message
+            for r in caplog.records
             if r.levelno == logging.WARNING and "robot_token" in r.message.lower()
         ]
         assert warning_messages == [], (
@@ -159,7 +164,9 @@ class TestCameraCaptureSecurity:
         """Exceptions im Kamera-Code dürfen nicht im Response-Text stehen."""
         camera = MagicMock()
         camera.is_available.return_value = True
-        camera.capture_jpeg.side_effect = RuntimeError("INTERNAL_SECRET_PATH:/dev/video0")
+        camera.capture_jpeg.side_effect = RuntimeError(
+            "INTERNAL_SECRET_PATH:/dev/video0"
+        )
 
         server = self._create_server_with_camera(camera)
         client = TestClient(server.app, raise_server_exceptions=False)

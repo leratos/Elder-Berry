@@ -4,7 +4,6 @@ Reine Pattern-Tests (keine Mocks, kein Netzwerk).
 Prueft sowohl neue Varianten als auch Rueckwaertskompatibilitaet.
 """
 
-
 # ---------------------------------------------------------------------------
 # system_commands – VOLUME_PATTERN
 # ---------------------------------------------------------------------------
@@ -533,6 +532,7 @@ class TestCrossHandlerConflicts:
     def test_loesche_mail_not_todo(self):
         """'lösche mail #5' matcht Mail, nicht Todo."""
         from elder_berry.comms.commands.todo_commands import TODO_DELETE_PATTERN
+
         assert MAIL_DELETE_PATTERN.match("lösche mail #5")
         assert not TODO_DELETE_PATTERN.match("lösche mail #5")
 

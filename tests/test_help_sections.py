@@ -1,4 +1,5 @@
 """Tests für Phase 51.1 – Kategorisierte Hilfe (help_sections.py)."""
+
 from __future__ import annotations
 
 

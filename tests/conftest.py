@@ -12,6 +12,7 @@ Tests, die explizit das Fehlen oder ein fremdes Origin pruefen wollen
 ``pytestmark = pytest.mark.no_default_origin`` -- dann greift der
 Patch nicht.
 """
+
 from __future__ import annotations
 
 import pytest
@@ -40,9 +41,8 @@ def _default_origin_for_testclient(request, monkeypatch):
 
     def patched_request(self, method, url, **kwargs):
         headers = dict(kwargs.get("headers") or {})
-        if (
-            str(method).upper() in {"POST", "PUT", "PATCH", "DELETE"}
-            and not any(k.lower() == "origin" for k in headers)
+        if str(method).upper() in {"POST", "PUT", "PATCH", "DELETE"} and not any(
+            k.lower() == "origin" for k in headers
         ):
             headers["origin"] = _DEFAULT_TEST_ORIGIN
         kwargs["headers"] = headers

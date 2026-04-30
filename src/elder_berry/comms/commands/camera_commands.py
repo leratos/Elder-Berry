@@ -1,4 +1,5 @@
 """CameraCommandHandler -- Kamera-Befehle (Foto, Vision-Analyse)."""
+
 from __future__ import annotations
 
 import base64
@@ -8,7 +9,11 @@ import tempfile
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from elder_berry.comms.commands.base import CommandHandler, CommandResult, user_friendly_error
+from elder_berry.comms.commands.base import (
+    CommandHandler,
+    CommandResult,
+    user_friendly_error,
+)
 
 if TYPE_CHECKING:
     from elder_berry.llm.anthropic_client import AnthropicClient
@@ -57,15 +62,23 @@ class CameraCommandHandler(CommandHandler):
     def keywords(self) -> dict[str, list[str]]:
         return {
             "foto": [
-                "mach ein foto", "nimm ein bild auf", "kamerabild",
-                "fotografier", "knips", "mach ein bild",
+                "mach ein foto",
+                "nimm ein bild auf",
+                "kamerabild",
+                "fotografier",
+                "knips",
+                "mach ein bild",
             ],
             "camera_describe": [
-                "was siehst du", "was sieht die kamera",
-                "schau mal was", "schau mal ob",
-                "guck mal was", "guck mal ob",
+                "was siehst du",
+                "was sieht die kamera",
+                "schau mal was",
+                "schau mal ob",
+                "guck mal was",
+                "guck mal ob",
                 "was ist vor dir",
-                "kannst du sehen", "siehst du was",
+                "kannst du sehen",
+                "siehst du was",
                 "zeig mir was du siehst",
                 "beschreibe deine umgebung",
             ],
@@ -103,7 +116,9 @@ class CameraCommandHandler(CommandHandler):
     def _save_temp_jpeg(self, jpeg_bytes: bytes) -> Path:
         """Speichert JPEG-Bytes als temp-Datei."""
         tmp = tempfile.NamedTemporaryFile(
-            suffix=".jpg", prefix="camera_", delete=False,
+            suffix=".jpg",
+            prefix="camera_",
+            delete=False,
         )
         tmp_path = Path(tmp.name)
         tmp.write(jpeg_bytes)
@@ -133,7 +148,9 @@ class CameraCommandHandler(CommandHandler):
         jpeg_bytes, error = self._capture_image()
         if error:
             return CommandResult(
-                command="camera_describe", success=False, text=error,
+                command="camera_describe",
+                success=False,
+                text=error,
             )
 
         tmp_path = self._save_temp_jpeg(jpeg_bytes)
@@ -144,7 +161,7 @@ class CameraCommandHandler(CommandHandler):
                 command="camera_describe",
                 success=True,
                 text="Foto aufgenommen. (Vision-Analyse nicht verfügbar – "
-                     "AnthropicClient fehlt oder kein API-Key)",
+                "AnthropicClient fehlt oder kein API-Key)",
                 image_path=tmp_path,
             )
 

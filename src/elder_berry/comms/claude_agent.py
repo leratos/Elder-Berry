@@ -19,6 +19,7 @@ Verwendung:
     result = agent.process("Was war der letzte Arbeitsschritt?")
     print(result.summary)
 """
+
 from __future__ import annotations
 
 import json
@@ -37,18 +38,20 @@ DEFAULT_MODEL = "claude-sonnet-4-6"
 JOURNAL_TAIL_LINES = 80
 
 # Erlaubte Aktionen (Whitelist)
-ALLOWED_ACTIONS = frozenset({
-    "read_file",
-    "write_file",
-    "append_file",
-    "list_directory",
-    "search_files",
-    "system_status",
-    "screenshot",
-    "run_tests",
-    "git_status",
-    "answer_only",
-})
+ALLOWED_ACTIONS = frozenset(
+    {
+        "read_file",
+        "write_file",
+        "append_file",
+        "list_directory",
+        "search_files",
+        "system_status",
+        "screenshot",
+        "run_tests",
+        "git_status",
+        "answer_only",
+    }
+)
 
 # Verzeichnisse in denen write_file erlaubt ist (relativ zum Projekt-Root)
 WRITABLE_DIRS = ("docs",)
@@ -224,6 +227,7 @@ class ClaudeAgent:
 
         # Versuch 2: JSON aus Markdown-Codeblock extrahieren
         import re
+
         json_match = re.search(r"```(?:json)?\s*\n?(.*?)\n?\s*```", text, re.DOTALL)
         if json_match:
             try:
@@ -236,13 +240,17 @@ class ClaudeAgent:
         brace_end = text.rfind("}")
         if brace_start != -1 and brace_end > brace_start:
             try:
-                return json.loads(text[brace_start:brace_end + 1])
+                return json.loads(text[brace_start : brace_end + 1])
             except json.JSONDecodeError:
                 pass
 
-        raise ValueError(f"Konnte kein gültiges JSON in der Antwort finden: {text[:200]}")
+        raise ValueError(
+            f"Konnte kein gültiges JSON in der Antwort finden: {text[:200]}"
+        )
 
-    def _validate_action(self, parsed: dict[str, Any]) -> tuple[str, dict[str, Any], str]:
+    def _validate_action(
+        self, parsed: dict[str, Any]
+    ) -> tuple[str, dict[str, Any], str]:
         """Validiert die geparste Aktion gegen die Whitelist.
 
         Returns:
@@ -285,9 +293,7 @@ class ClaudeAgent:
         resolved = (self._project_root / clean).resolve()
 
         if not resolved.is_relative_to(self._project_root):
-            raise ValueError(
-                f"Pfad '{relative_path}' liegt außerhalb des Projekts"
-            )
+            raise ValueError(f"Pfad '{relative_path}' liegt außerhalb des Projekts")
 
         return resolved
 
@@ -335,7 +341,8 @@ class ClaudeAgent:
         path_str = params.get("path", "")
         if not path_str:
             return AgentResult(
-                success=False, action_taken="read_file",
+                success=False,
+                action_taken="read_file",
                 summary="Kein Pfad angegeben.",
             )
 
@@ -343,18 +350,22 @@ class ClaudeAgent:
             resolved = self._validate_path(path_str)
         except ValueError as e:
             return AgentResult(
-                success=False, action_taken="read_file", summary=str(e),
+                success=False,
+                action_taken="read_file",
+                summary=str(e),
             )
 
         if not resolved.exists():
             return AgentResult(
-                success=False, action_taken="read_file",
+                success=False,
+                action_taken="read_file",
                 summary=f"Datei nicht gefunden: {path_str}",
             )
 
         if not resolved.is_file():
             return AgentResult(
-                success=False, action_taken="read_file",
+                success=False,
+                action_taken="read_file",
                 summary=f"Kein reguläre Datei: {path_str}",
             )
 
@@ -364,13 +375,15 @@ class ClaudeAgent:
             if len(content) > 5000:
                 content = content[:5000] + "\n... (gekürzt, Datei hat mehr Inhalt)"
             return AgentResult(
-                success=True, action_taken="read_file",
+                success=True,
+                action_taken="read_file",
                 summary=f"Datei gelesen: {path_str}",
                 details=content,
             )
         except Exception as e:
             return AgentResult(
-                success=False, action_taken="read_file",
+                success=False,
+                action_taken="read_file",
                 summary=f"Fehler beim Lesen: {e}",
             )
 
@@ -381,7 +394,8 @@ class ClaudeAgent:
 
         if not path_str:
             return AgentResult(
-                success=False, action_taken="write_file",
+                success=False,
+                action_taken="write_file",
                 summary="Kein Pfad angegeben.",
             )
 
@@ -389,19 +403,23 @@ class ClaudeAgent:
             resolved = self._validate_writable_path(path_str)
         except ValueError as e:
             return AgentResult(
-                success=False, action_taken="write_file", summary=str(e),
+                success=False,
+                action_taken="write_file",
+                summary=str(e),
             )
 
         try:
             resolved.parent.mkdir(parents=True, exist_ok=True)
             resolved.write_text(content, encoding="utf-8")
             return AgentResult(
-                success=True, action_taken="write_file",
+                success=True,
+                action_taken="write_file",
                 summary=f"Datei geschrieben: {path_str}",
             )
         except Exception as e:
             return AgentResult(
-                success=False, action_taken="write_file",
+                success=False,
+                action_taken="write_file",
                 summary=f"Fehler beim Schreiben: {e}",
             )
 
@@ -412,7 +430,8 @@ class ClaudeAgent:
 
         if not path_str:
             return AgentResult(
-                success=False, action_taken="append_file",
+                success=False,
+                action_taken="append_file",
                 summary="Kein Pfad angegeben.",
             )
 
@@ -420,7 +439,9 @@ class ClaudeAgent:
             resolved = self._validate_appendable_path(path_str)
         except ValueError as e:
             return AgentResult(
-                success=False, action_taken="append_file", summary=str(e),
+                success=False,
+                action_taken="append_file",
+                summary=str(e),
             )
 
         try:
@@ -433,12 +454,14 @@ class ClaudeAgent:
                 if not content.endswith("\n"):
                     f.write("\n")
             return AgentResult(
-                success=True, action_taken="append_file",
+                success=True,
+                action_taken="append_file",
                 summary=f"Text angehängt an: {path_str}",
             )
         except Exception as e:
             return AgentResult(
-                success=False, action_taken="append_file",
+                success=False,
+                action_taken="append_file",
                 summary=f"Fehler beim Anhängen: {e}",
             )
 
@@ -450,18 +473,22 @@ class ClaudeAgent:
             resolved = self._validate_path(path_str)
         except ValueError as e:
             return AgentResult(
-                success=False, action_taken="list_directory", summary=str(e),
+                success=False,
+                action_taken="list_directory",
+                summary=str(e),
             )
 
         if not resolved.exists():
             return AgentResult(
-                success=False, action_taken="list_directory",
+                success=False,
+                action_taken="list_directory",
                 summary=f"Verzeichnis nicht gefunden: {path_str}",
             )
 
         if not resolved.is_dir():
             return AgentResult(
-                success=False, action_taken="list_directory",
+                success=False,
+                action_taken="list_directory",
                 summary=f"Kein Verzeichnis: {path_str}",
             )
 
@@ -479,13 +506,15 @@ class ClaudeAgent:
                 header += " (erste 100 angezeigt)"
 
             return AgentResult(
-                success=True, action_taken="list_directory",
+                success=True,
+                action_taken="list_directory",
                 summary=header,
                 details="\n".join(lines),
             )
         except Exception as e:
             return AgentResult(
-                success=False, action_taken="list_directory",
+                success=False,
+                action_taken="list_directory",
                 summary=f"Fehler beim Auflisten: {e}",
             )
 
@@ -496,7 +525,8 @@ class ClaudeAgent:
 
         if not pattern:
             return AgentResult(
-                success=False, action_taken="search_files",
+                success=False,
+                action_taken="search_files",
                 summary="Kein Suchmuster angegeben.",
             )
 
@@ -504,7 +534,9 @@ class ClaudeAgent:
             resolved = self._validate_path(path_str)
         except ValueError as e:
             return AgentResult(
-                success=False, action_taken="search_files", summary=str(e),
+                success=False,
+                action_taken="search_files",
+                summary=str(e),
             )
 
         try:
@@ -525,13 +557,15 @@ class ClaudeAgent:
                 header += " (erste 50 angezeigt)"
 
             return AgentResult(
-                success=True, action_taken="search_files",
+                success=True,
+                action_taken="search_files",
                 summary=header,
                 details="\n".join(safe_matches) if safe_matches else "(keine Treffer)",
             )
         except Exception as e:
             return AgentResult(
-                success=False, action_taken="search_files",
+                success=False,
+                action_taken="search_files",
                 summary=f"Fehler bei der Suche: {e}",
             )
 
@@ -539,6 +573,7 @@ class ClaudeAgent:
         """Gibt den Systemstatus zurück (delegiert an SystemMonitor)."""
         try:
             from elder_berry.system.info import SystemMonitor
+
             monitor = SystemMonitor()
             info = monitor.get_info(top_processes=5)
 
@@ -555,13 +590,15 @@ class ClaudeAgent:
                 )
 
             return AgentResult(
-                success=True, action_taken="system_status",
+                success=True,
+                action_taken="system_status",
                 summary="Systemstatus abgerufen.",
                 details="\n".join(lines),
             )
         except Exception as e:
             return AgentResult(
-                success=False, action_taken="system_status",
+                success=False,
+                action_taken="system_status",
                 summary=f"Systemstatus nicht verfügbar: {e}",
             )
 
@@ -576,30 +613,36 @@ class ClaudeAgent:
             import mss.tools
         except ImportError:
             return AgentResult(
-                success=False, action_taken="screenshot",
+                success=False,
+                action_taken="screenshot",
                 summary="mss nicht installiert (pip install mss).",
             )
 
         try:
             import tempfile as tmp_mod
+
             with mss.mss() as sct:
                 monitor = sct.monitors[1]
                 shot = sct.grab(monitor)
                 tmp = tmp_mod.NamedTemporaryFile(
-                    suffix=".png", prefix="agent_screenshot_", delete=False,
+                    suffix=".png",
+                    prefix="agent_screenshot_",
+                    delete=False,
                 )
                 tmp_path = Path(tmp.name)
                 tmp.close()
                 mss.tools.to_png(shot.rgb, shot.size, output=str(tmp_path))
 
             return AgentResult(
-                success=True, action_taken="screenshot",
+                success=True,
+                action_taken="screenshot",
                 summary="Screenshot aufgenommen.",
                 details=str(tmp_path),
             )
         except Exception as e:
             return AgentResult(
-                success=False, action_taken="screenshot",
+                success=False,
+                action_taken="screenshot",
                 summary=f"Screenshot fehlgeschlagen: {e}",
             )
 
@@ -614,7 +657,9 @@ class ClaudeAgent:
                 cmd.append(str(resolved))
             except ValueError as e:
                 return AgentResult(
-                    success=False, action_taken="run_tests", summary=str(e),
+                    success=False,
+                    action_taken="run_tests",
+                    summary=str(e),
                 )
 
         try:
@@ -625,27 +670,38 @@ class ClaudeAgent:
                 text=True,
                 timeout=120,
             )
-            output = result.stdout[-3000:] if len(result.stdout) > 3000 else result.stdout
+            output = (
+                result.stdout[-3000:] if len(result.stdout) > 3000 else result.stdout
+            )
             if result.returncode == 0:
                 return AgentResult(
-                    success=True, action_taken="run_tests",
+                    success=True,
+                    action_taken="run_tests",
                     summary="Tests bestanden.",
                     details=output,
                 )
             else:
                 return AgentResult(
-                    success=False, action_taken="run_tests",
+                    success=False,
+                    action_taken="run_tests",
                     summary=f"Tests fehlgeschlagen (Exit-Code {result.returncode}).",
-                    details=output + ("\n--- STDERR ---\n" + result.stderr[-1000:] if result.stderr else ""),
+                    details=output
+                    + (
+                        "\n--- STDERR ---\n" + result.stderr[-1000:]
+                        if result.stderr
+                        else ""
+                    ),
                 )
         except subprocess.TimeoutExpired:
             return AgentResult(
-                success=False, action_taken="run_tests",
+                success=False,
+                action_taken="run_tests",
                 summary="Tests abgebrochen (Timeout 120s).",
             )
         except Exception as e:
             return AgentResult(
-                success=False, action_taken="run_tests",
+                success=False,
+                action_taken="run_tests",
                 summary=f"Fehler beim Ausführen der Tests: {e}",
             )
 
@@ -655,12 +711,16 @@ class ClaudeAgent:
             status = subprocess.run(
                 ["git", "status", "--short"],
                 cwd=str(self._project_root),
-                capture_output=True, text=True, timeout=10,
+                capture_output=True,
+                text=True,
+                timeout=10,
             )
             log = subprocess.run(
                 ["git", "log", "--oneline", "-10"],
                 cwd=str(self._project_root),
-                capture_output=True, text=True, timeout=10,
+                capture_output=True,
+                text=True,
+                timeout=10,
             )
 
             lines = ["--- git status ---"]
@@ -669,18 +729,23 @@ class ClaudeAgent:
             lines.append(log.stdout.strip())
 
             return AgentResult(
-                success=True, action_taken="git_status",
+                success=True,
+                action_taken="git_status",
                 summary="Git-Status abgerufen.",
                 details="\n".join(lines),
             )
         except Exception as e:
             return AgentResult(
-                success=False, action_taken="git_status",
+                success=False,
+                action_taken="git_status",
                 summary=f"Git-Status nicht verfügbar: {e}",
             )
 
     def _execute_action(
-        self, action: str, params: dict[str, Any], summary: str,
+        self,
+        action: str,
+        params: dict[str, Any],
+        summary: str,
     ) -> AgentResult:
         """Führt eine validierte Aktion aus.
 
@@ -694,7 +759,9 @@ class ClaudeAgent:
         """
         if action == "answer_only":
             return AgentResult(
-                success=True, action_taken="answer_only", summary=summary,
+                success=True,
+                action_taken="answer_only",
+                summary=summary,
             )
 
         if action == "read_file":
@@ -725,7 +792,8 @@ class ClaudeAgent:
             return self._exec_git_status()
 
         return AgentResult(
-            success=False, action_taken=action,
+            success=False,
+            action_taken=action,
             summary=f"Aktion '{action}' hat keinen Handler.",
         )
 
@@ -747,7 +815,8 @@ class ClaudeAgent:
         """
         if not user_message or not user_message.strip():
             return AgentResult(
-                success=False, action_taken="none",
+                success=False,
+                action_taken="none",
                 summary="Leere Nachricht erhalten.",
             )
 
@@ -755,7 +824,9 @@ class ClaudeAgent:
             client = self._get_client()
         except ImportError as e:
             return AgentResult(
-                success=False, action_taken="none", summary=str(e),
+                success=False,
+                action_taken="none",
+                summary=str(e),
             )
 
         system_prompt = self._build_system_prompt()
@@ -772,7 +843,8 @@ class ClaudeAgent:
         except Exception as e:
             logger.error("Claude API Fehler: %s", e)
             return AgentResult(
-                success=False, action_taken="none",
+                success=False,
+                action_taken="none",
                 summary=f"Claude API Fehler: {type(e).__name__}: {e}",
             )
 
@@ -784,7 +856,8 @@ class ClaudeAgent:
 
         if not raw_text.strip():
             return AgentResult(
-                success=False, action_taken="none",
+                success=False,
+                action_taken="none",
                 summary="Leere Antwort von Claude erhalten.",
             )
 
@@ -795,7 +868,8 @@ class ClaudeAgent:
             logger.warning("JSON-Parsing fehlgeschlagen: %s", e)
             # Fallback: Rohtext als answer_only behandeln
             return AgentResult(
-                success=True, action_taken="answer_only",
+                success=True,
+                action_taken="answer_only",
                 summary=raw_text[:500],
             )
 
@@ -805,11 +879,15 @@ class ClaudeAgent:
         except ValueError as e:
             logger.warning("Aktions-Validierung fehlgeschlagen: %s", e)
             return AgentResult(
-                success=False, action_taken="none", summary=str(e),
+                success=False,
+                action_taken="none",
+                summary=str(e),
             )
 
         # Aktion ausführen
         logger.info(
-            "ClaudeAgent: Aktion '%s' mit params=%s", action, params,
+            "ClaudeAgent: Aktion '%s' mit params=%s",
+            action,
+            params,
         )
         return self._execute_action(action, params, summary)

@@ -191,9 +191,7 @@ def _get_setup_status(secret_store: SecretStore) -> dict[str, Any]:
     }
 
 
-def register_setup_wizard_routes(
-    app: FastAPI, secret_store: SecretStore
-) -> None:
+def register_setup_wizard_routes(app: FastAPI, secret_store: SecretStore) -> None:
     """Registriert die Setup-Wizard-Endpoints auf der FastAPI-App."""
 
     @app.get("/setup")
@@ -206,6 +204,7 @@ def register_setup_wizard_routes(
         """
         if force != 1 and secret_store.has(SETUP_COMPLETE_KEY):
             from fastapi.responses import RedirectResponse
+
             return RedirectResponse(url="/settings", status_code=307)
         template_path = _TEMPLATE_DIR / "setup_wizard.html"
         if not template_path.exists():
@@ -251,11 +250,13 @@ def register_setup_wizard_routes(
             else:
                 val = secret_store.get_or_none(key)
                 values[key] = {"value": val} if val else {"is_set": False}
-        return JSONResponse({
-            "step": step_num,
-            "name": step_def["name"],
-            "values": values,
-        })
+        return JSONResponse(
+            {
+                "step": step_num,
+                "name": step_def["name"],
+                "values": values,
+            }
+        )
 
     @app.post("/api/setup/step/{step_num}")
     async def setup_step_save(step_num: int, body: dict = Body(...)):
@@ -266,9 +267,7 @@ def register_setup_wizard_routes(
                 status_code=400,
             )
         step_def = WIZARD_STEPS[step_num - 1]
-        allowed_keys = set(
-            step_def["required_keys"] + step_def["optional_keys"]
-        )
+        allowed_keys = set(step_def["required_keys"] + step_def["optional_keys"])
 
         # Pflicht-Keys prüfen (auch Whitespace-only abfangen)
         # Bereits gespeicherte Keys akzeptieren (z.B. nach Page-Refresh)
@@ -301,11 +300,13 @@ def register_setup_wizard_routes(
         elif step_num == 5:
             tests = await _run_email_tests(secret_store)
 
-        return JSONResponse({
-            "success": True,
-            "saved_keys": saved_keys,
-            "tests": tests,
-        })
+        return JSONResponse(
+            {
+                "success": True,
+                "saved_keys": saved_keys,
+                "tests": tests,
+            }
+        )
 
     @app.get("/api/setup/prerequisites")
     async def setup_prerequisites():
@@ -319,9 +320,7 @@ def register_setup_wizard_routes(
             result = await _run_single_test(service, body)
             return JSONResponse(result)
         except ValueError as e:
-            return JSONResponse(
-                {"error": str(e)}, status_code=400
-            )
+            return JSONResponse({"error": str(e)}, status_code=400)
 
     @app.post("/api/setup/dashboard-password")
     async def setup_dashboard_password(body: dict = Body(...)):
@@ -331,6 +330,7 @@ def register_setup_wizard_routes(
         ``/api/setup/complete`` den Abschluss.
         """
         from elder_berry.web.dashboard_auth import DashboardAuthManager
+
         password = body.get("password", "")
         if not isinstance(password, str) or not password:
             return JSONResponse(
@@ -356,11 +356,12 @@ def register_setup_wizard_routes(
         gestartet wird.
         """
         from elder_berry.web.dashboard_auth import PASSWORD_HASH_KEY
+
         if not secret_store.has(PASSWORD_HASH_KEY):
             return JSONResponse(
                 {
                     "error": "Dashboard-Passwort muss gesetzt sein, bevor "
-                             "das Setup abgeschlossen werden kann.",
+                    "das Setup abgeschlossen werden kann.",
                     "code": "dashboard_password_required",
                 },
                 status_code=409,
@@ -374,15 +375,16 @@ def register_setup_wizard_routes(
         from elder_berry.web.settings_token_middleware import (
             invalidate_setup_completion_cache,
         )
+
         invalidate_setup_completion_cache()
 
         # Phase 58: Auch den Cache der DashboardAuthMiddleware
         # invalidieren – nach Wizard-Abschluss verlangt /api/setup
         # auch dort einen Login.
         from elder_berry.web.dashboard_auth_middleware import (
-            invalidate_setup_completion_cache as
-            invalidate_auth_setup_cache,
+            invalidate_setup_completion_cache as invalidate_auth_setup_cache,
         )
+
         invalidate_auth_setup_cache()
 
         # Phase 57.1a: Marker-Datei schreiben, damit die Grace-Period
@@ -395,31 +397,42 @@ def register_setup_wizard_routes(
                 logger.info("Phase-57-Migration-Marker angelegt: %s", marker)
             except OSError as exc:
                 logger.warning(
-                    "Migration-Marker konnte nicht geschrieben werden: %s", exc,
+                    "Migration-Marker konnte nicht geschrieben werden: %s",
+                    exc,
                 )
 
         # Im Standalone-Modus Server nach kurzer Verzögerung beenden
         if getattr(app.state, "standalone", False):
             import asyncio
+
             async def _shutdown():
                 await asyncio.sleep(1.0)
                 logger.info("Standalone-Wizard wird beendet")
                 import os
                 import signal
+
                 os.kill(os.getpid(), signal.SIGINT)
+
             asyncio.create_task(_shutdown())
 
-        return JSONResponse({
-            "success": True,
-            "redirect": "/",
-            "standalone": getattr(app.state, "standalone", False),
-        })
+        return JSONResponse(
+            {
+                "success": True,
+                "redirect": "/",
+                "standalone": getattr(app.state, "standalone", False),
+            }
+        )
 
     @app.get("/api/setup/providers")
     async def setup_providers():
         """Liefert die Liste der bekannten E-Mail-Provider."""
         result = {}
-        for name, (imap_host, imap_port, smtp_host, smtp_port) in EMAIL_PROVIDERS.items():
+        for name, (
+            imap_host,
+            imap_port,
+            smtp_host,
+            smtp_port,
+        ) in EMAIL_PROVIDERS.items():
             result[name] = {
                 "imap_host": imap_host,
                 "imap_port": imap_port,
@@ -484,12 +497,14 @@ def register_setup_wizard_routes(
             return JSONResponse({"success": False, "error": "Ort nicht gefunden."})
         hit = data[0]
         try:
-            return JSONResponse({
-                "success": True,
-                "lat": float(hit["lat"]),
-                "lon": float(hit["lon"]),
-                "display_name": str(hit.get("display_name", "")),
-            })
+            return JSONResponse(
+                {
+                    "success": True,
+                    "lat": float(hit["lat"]),
+                    "lon": float(hit["lon"]),
+                    "display_name": str(hit.get("display_name", "")),
+                }
+            )
         except (KeyError, TypeError, ValueError) as exc:
             logger.warning("Geocoding-Antwortformat unerwartet: %s", exc)
             return JSONResponse(
@@ -518,7 +533,10 @@ async def _run_matrix_tests(secret_store: SecretStore) -> dict[str, Any]:
         return {"matrix": {"success": False, "error": "Fehlende Angaben"}}
     return {
         "matrix": await SetupTests.test_matrix(
-            homeserver, user_id, token, room_id  # type: ignore[arg-type]
+            homeserver,
+            user_id,
+            token,
+            room_id,  # type: ignore[arg-type]
         )
     }
 
@@ -532,7 +550,9 @@ async def _run_nextcloud_tests(secret_store: SecretStore) -> dict[str, Any]:
         return {"nextcloud": {"success": False, "error": "Fehlende Angaben"}}
     return {
         "nextcloud": await SetupTests.test_nextcloud(
-            url, user, pw  # type: ignore[arg-type]
+            url,
+            user,
+            pw,  # type: ignore[arg-type]
         )
     }
 
@@ -559,9 +579,7 @@ async def _run_email_tests(secret_store: SecretStore) -> dict[str, Any]:
     }
 
 
-async def _run_single_test(
-    service: str, params: dict[str, Any]
-) -> dict[str, Any]:
+async def _run_single_test(service: str, params: dict[str, Any]) -> dict[str, Any]:
     """Führt einen einzelnen Verbindungstest aus."""
     if service == "anthropic":
         if "api_key" not in params:

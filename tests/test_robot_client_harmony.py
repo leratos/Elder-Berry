@@ -1,4 +1,5 @@
 """Tests fuer Harmony-Methoden in RobotClient."""
+
 from __future__ import annotations
 
 from unittest.mock import MagicMock
@@ -10,6 +11,7 @@ from elder_berry.robot.client import RobotClient
 
 
 # -- Fixtures -------------------------------------------------------------- #
+
 
 @pytest.fixture
 def mock_transport():
@@ -62,25 +64,34 @@ def _json_response(data: dict, status_code: int = 200) -> httpx.Response:
 
 # -- Tests ----------------------------------------------------------------- #
 
+
 class TestHarmonyStatus:
     def test_harmony_status_connected(self):
-        client = _make_client({
-            ("GET", "/harmony/status"): _json_response({
-                "connected": True,
-                "current_activity": "Fernsehen",
-            }),
-        })
+        client = _make_client(
+            {
+                ("GET", "/harmony/status"): _json_response(
+                    {
+                        "connected": True,
+                        "current_activity": "Fernsehen",
+                    }
+                ),
+            }
+        )
         result = client.harmony_status()
         assert result["connected"] is True
         assert result["current_activity"] == "Fernsehen"
 
     def test_harmony_status_disconnected(self):
-        client = _make_client({
-            ("GET", "/harmony/status"): _json_response({
-                "connected": False,
-                "current_activity": None,
-            }),
-        })
+        client = _make_client(
+            {
+                ("GET", "/harmony/status"): _json_response(
+                    {
+                        "connected": False,
+                        "current_activity": None,
+                    }
+                ),
+            }
+        )
         result = client.harmony_status()
         assert result["connected"] is False
 
@@ -93,12 +104,16 @@ class TestHarmonyStatus:
 
 class TestHarmonyConfig:
     def test_harmony_config_returns_dict(self):
-        client = _make_client({
-            ("GET", "/harmony/config"): _json_response({
-                "activities": ["Fernsehen", "Musik"],
-                "devices": ["Denon AVR-X3500H"],
-            }),
-        })
+        client = _make_client(
+            {
+                ("GET", "/harmony/config"): _json_response(
+                    {
+                        "activities": ["Fernsehen", "Musik"],
+                        "devices": ["Denon AVR-X3500H"],
+                    }
+                ),
+            }
+        )
         result = client.harmony_config()
         assert "Fernsehen" in result["activities"]
         assert "Denon AVR-X3500H" in result["devices"]
@@ -111,21 +126,33 @@ class TestHarmonyConfig:
 
 class TestHarmonyConfigDetailed:
     def test_harmony_config_detailed_returns_dict(self):
-        client = _make_client({
-            ("GET", "/harmony/config/detailed"): _json_response({
-                "activities": [
-                    {"id": "38979034", "label": "Fernsehen",
-                     "volume_device": "Denon AVR-X3500H"},
-                ],
-                "devices": [
-                    {"id": "74828509", "label": "Denon AVR-X3500H",
-                     "control_groups": [
-                         {"name": "Volume",
-                          "commands": ["VolumeUp", "VolumeDown"]},
-                     ]},
-                ],
-            }),
-        })
+        client = _make_client(
+            {
+                ("GET", "/harmony/config/detailed"): _json_response(
+                    {
+                        "activities": [
+                            {
+                                "id": "38979034",
+                                "label": "Fernsehen",
+                                "volume_device": "Denon AVR-X3500H",
+                            },
+                        ],
+                        "devices": [
+                            {
+                                "id": "74828509",
+                                "label": "Denon AVR-X3500H",
+                                "control_groups": [
+                                    {
+                                        "name": "Volume",
+                                        "commands": ["VolumeUp", "VolumeDown"],
+                                    },
+                                ],
+                            },
+                        ],
+                    }
+                ),
+            }
+        )
         result = client.harmony_config_detailed()
         assert len(result["activities"]) == 1
         assert result["activities"][0]["volume_device"] == "Denon AVR-X3500H"
@@ -139,12 +166,16 @@ class TestHarmonyConfigDetailed:
 
 class TestHarmonyLayouts:
     def test_harmony_layouts_returns_dict(self):
-        client = _make_client({
-            ("GET", "/harmony/layouts"): _json_response({
-                "activities": {"Fernsehen": {"sections": []}},
-                "devices": {},
-            }),
-        })
+        client = _make_client(
+            {
+                ("GET", "/harmony/layouts"): _json_response(
+                    {
+                        "activities": {"Fernsehen": {"sections": []}},
+                        "devices": {},
+                    }
+                ),
+            }
+        )
         result = client.harmony_layouts()
         assert "Fernsehen" in result["activities"]
 
@@ -154,9 +185,11 @@ class TestHarmonyLayouts:
         assert result == {"activities": {}, "devices": {}}
 
     def test_harmony_save_layouts_success(self):
-        client = _make_client({
-            ("POST", "/harmony/layouts"): _json_response({"success": True}),
-        })
+        client = _make_client(
+            {
+                ("POST", "/harmony/layouts"): _json_response({"success": True}),
+            }
+        )
         assert client.harmony_save_layouts({"test": True}) is True
 
     def test_harmony_save_layouts_connection_error(self):
@@ -166,11 +199,15 @@ class TestHarmonyLayouts:
 
 class TestHarmonyScenes:
     def test_harmony_scenes_returns_list(self):
-        client = _make_client({
-            ("GET", "/harmony/scenes"): _json_response({
-                "scenes": [{"name": "Gaming", "steps": []}],
-            }),
-        })
+        client = _make_client(
+            {
+                ("GET", "/harmony/scenes"): _json_response(
+                    {
+                        "scenes": [{"name": "Gaming", "steps": []}],
+                    }
+                ),
+            }
+        )
         result = client.harmony_scenes()
         assert len(result) == 1
         assert result[0]["name"] == "Gaming"
@@ -180,9 +217,11 @@ class TestHarmonyScenes:
         assert client.harmony_scenes() == []
 
     def test_harmony_save_scene_success(self):
-        client = _make_client({
-            ("POST", "/harmony/scenes"): _json_response({"success": True}),
-        })
+        client = _make_client(
+            {
+                ("POST", "/harmony/scenes"): _json_response({"success": True}),
+            }
+        )
         assert client.harmony_save_scene({"name": "Test", "steps": []}) is True
 
     def test_harmony_save_scene_connection_error(self):
@@ -190,11 +229,17 @@ class TestHarmonyScenes:
         assert client.harmony_save_scene({}) is False
 
     def test_harmony_start_scene_success(self):
-        client = _make_client({
-            ("POST", "/harmony/scene/start"): _json_response({
-                "success": True, "steps_ok": 2, "steps_total": 2,
-            }),
-        })
+        client = _make_client(
+            {
+                ("POST", "/harmony/scene/start"): _json_response(
+                    {
+                        "success": True,
+                        "steps_ok": 2,
+                        "steps_total": 2,
+                    }
+                ),
+            }
+        )
         result = client.harmony_start_scene("Gaming")
         assert result["success"] is True
         assert result["steps_ok"] == 2
@@ -205,11 +250,13 @@ class TestHarmonyScenes:
         assert result["success"] is False
 
     def test_harmony_delete_scene_success(self):
-        client = _make_client({
-            ("DELETE", "/harmony/scene/Gaming"): _json_response(
-                {"success": True},
-            ),
-        })
+        client = _make_client(
+            {
+                ("DELETE", "/harmony/scene/Gaming"): _json_response(
+                    {"success": True},
+                ),
+            }
+        )
         assert client.harmony_delete_scene("Gaming") is True
 
     def test_harmony_delete_scene_connection_error(self):
@@ -219,19 +266,29 @@ class TestHarmonyScenes:
 
 class TestHarmonyStartActivity:
     def test_harmony_start_activity_success(self):
-        client = _make_client({
-            ("POST", "/harmony/activity"): _json_response({
-                "success": True, "activity": "Fernsehen",
-            }),
-        })
+        client = _make_client(
+            {
+                ("POST", "/harmony/activity"): _json_response(
+                    {
+                        "success": True,
+                        "activity": "Fernsehen",
+                    }
+                ),
+            }
+        )
         assert client.harmony_start_activity("Fernsehen") is True
 
     def test_harmony_start_activity_failure(self):
-        client = _make_client({
-            ("POST", "/harmony/activity"): _json_response({
-                "success": False, "activity": "Gaming",
-            }),
-        })
+        client = _make_client(
+            {
+                ("POST", "/harmony/activity"): _json_response(
+                    {
+                        "success": False,
+                        "activity": "Gaming",
+                    }
+                ),
+            }
+        )
         assert client.harmony_start_activity("Gaming") is False
 
     def test_harmony_start_activity_connection_error(self):
@@ -241,15 +298,19 @@ class TestHarmonyStartActivity:
 
 class TestHarmonySendCommand:
     def test_harmony_send_command_success(self):
-        client = _make_client({
-            ("POST", "/harmony/command"): _json_response({"success": True}),
-        })
+        client = _make_client(
+            {
+                ("POST", "/harmony/command"): _json_response({"success": True}),
+            }
+        )
         assert client.harmony_send_command("Receiver", "VolumeUp") is True
 
     def test_harmony_send_command_failure(self):
-        client = _make_client({
-            ("POST", "/harmony/command"): _json_response({"success": False}),
-        })
+        client = _make_client(
+            {
+                ("POST", "/harmony/command"): _json_response({"success": False}),
+            }
+        )
         assert client.harmony_send_command("Receiver", "VolumeUp") is False
 
     def test_harmony_send_command_connection_error(self):
@@ -259,15 +320,19 @@ class TestHarmonySendCommand:
 
 class TestHarmonyPowerOff:
     def test_harmony_power_off_success(self):
-        client = _make_client({
-            ("POST", "/harmony/off"): _json_response({"success": True}),
-        })
+        client = _make_client(
+            {
+                ("POST", "/harmony/off"): _json_response({"success": True}),
+            }
+        )
         assert client.harmony_power_off() is True
 
     def test_harmony_power_off_failure(self):
-        client = _make_client({
-            ("POST", "/harmony/off"): _json_response({"success": False}),
-        })
+        client = _make_client(
+            {
+                ("POST", "/harmony/off"): _json_response({"success": False}),
+            }
+        )
         assert client.harmony_power_off() is False
 
     def test_harmony_power_off_connection_error(self):

@@ -1,4 +1,5 @@
 """Tests für ErrorCollectorHandler – Deduplizierung, Rate-Limiting, Alerting."""
+
 import logging
 import time
 from unittest.mock import MagicMock
@@ -135,7 +136,9 @@ class TestRateLimiting:
         """Max-Alerts pro Fenster wird eingehalten."""
         callback = MagicMock()
         handler = ErrorCollectorHandler(
-            alert_callback=callback, cooldown=0, max_alerts=3,
+            alert_callback=callback,
+            cooldown=0,
+            max_alerts=3,
         )
         logger = logging.getLogger("test.rate")
         logger.addHandler(handler)
@@ -151,7 +154,9 @@ class TestRateLimiting:
         """Nach Ablauf des Rate-Fensters werden wieder Alerts gesendet."""
         callback = MagicMock()
         handler = ErrorCollectorHandler(
-            alert_callback=callback, cooldown=0, max_alerts=2,
+            alert_callback=callback,
+            cooldown=0,
+            max_alerts=2,
         )
         # Manuell das Fenster in die Vergangenheit setzen
         handler._window_start = time.monotonic() - 700  # > 600s RATE_WINDOW

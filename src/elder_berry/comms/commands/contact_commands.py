@@ -14,6 +14,7 @@ Commands:
 - was ist die adresse von <Name>?           → Feld-Abfrage
 - kontakte gruppe <Name>                     → Gruppen-Listing
 """
+
 from __future__ import annotations
 
 import json
@@ -49,14 +50,15 @@ CONTACT_ADD_NATURAL_PATTERN = re.compile(
 
 CONTACT_UPDATE_PATTERN = re.compile(
     r"kontakt\s+(?:(?:ändern|bearbeiten|update)\s+)?(?:"
-    r"#?(\d+)[:\s]+"              # Branch 1: numerische ID (#118 oder 118)
-    r"|#([\w]+)\s*:\s*"           # Branch 2: #Name gefolgt von : (#lisa:)
+    r"#?(\d+)[:\s]+"  # Branch 1: numerische ID (#118 oder 118)
+    r"|#([\w]+)\s*:\s*"  # Branch 2: #Name gefolgt von : (#lisa:)
     r")(.+)",
     re.IGNORECASE,
 )
 
 CONTACT_WHO_PATTERN = re.compile(
-    r"^wer\s+ist\s+(.+?)\??\s*$", re.IGNORECASE,
+    r"^wer\s+ist\s+(.+?)\??\s*$",
+    re.IGNORECASE,
 )
 
 CONTACT_LOOKUP_PATTERN = re.compile(
@@ -67,7 +69,8 @@ CONTACT_LOOKUP_PATTERN = re.compile(
 )
 
 CONTACT_SEARCH_PATTERN = re.compile(
-    r"^kontakte?\s+suche?\s+(.+)$", re.IGNORECASE,
+    r"^kontakte?\s+suche?\s+(.+)$",
+    re.IGNORECASE,
 )
 
 CONTACT_DELETE_PATTERN = re.compile(
@@ -97,33 +100,69 @@ CONTACT_GROUP_PATTERN = re.compile(
 )
 
 _FORMALITY_FOERMLICH = {"förmlich", "formell", "sie", "höflich", "distanziert"}
-_FORMALITY_LOCKER = {"locker", "informell", "du", "persönlich", "freundschaftlich",
-                      "casual", "vertraut", "familiär"}
+_FORMALITY_LOCKER = {
+    "locker",
+    "informell",
+    "du",
+    "persönlich",
+    "freundschaftlich",
+    "casual",
+    "vertraut",
+    "familiär",
+}
 
 
 _FIELD_ALIASES: dict[str, str] = {
     "name": "name",
-    "email": "emails", "mail": "emails", "e-mail": "emails", "emails": "emails",
-    "rolle": "role", "role": "role", "beziehung": "role",
-    "anrede": "formality", "formality": "formality",
-    "notizen": "notes", "notes": "notes", "notiz": "notes",
-    "vermerk": "notes", "anmerkung": "notes",
-    "geburtstag": "birthday", "birthday": "birthday",
-    "telefon": "phones", "phone": "phones", "phones": "phones",
-    "tel": "phones", "nummer": "phones", "handy": "phones",
-    "mobil": "phones", "telefonnummer": "phones", "handynummer": "phones",
-    "adresse": "address", "address": "address", "anschrift": "address",
-    "organisation": "organization", "organization": "organization",
-    "firma": "organization", "unternehmen": "organization",
-    "titel": "title", "title": "title", "jobtitel": "title",
+    "email": "emails",
+    "mail": "emails",
+    "e-mail": "emails",
+    "emails": "emails",
+    "rolle": "role",
+    "role": "role",
+    "beziehung": "role",
+    "anrede": "formality",
+    "formality": "formality",
+    "notizen": "notes",
+    "notes": "notes",
+    "notiz": "notes",
+    "vermerk": "notes",
+    "anmerkung": "notes",
+    "geburtstag": "birthday",
+    "birthday": "birthday",
+    "telefon": "phones",
+    "phone": "phones",
+    "phones": "phones",
+    "tel": "phones",
+    "nummer": "phones",
+    "handy": "phones",
+    "mobil": "phones",
+    "telefonnummer": "phones",
+    "handynummer": "phones",
+    "adresse": "address",
+    "address": "address",
+    "anschrift": "address",
+    "organisation": "organization",
+    "organization": "organization",
+    "firma": "organization",
+    "unternehmen": "organization",
+    "titel": "title",
+    "title": "title",
+    "jobtitel": "title",
     "position": "title",
-    "gruppe": "categories", "gruppen": "categories",
-    "kategorie": "categories", "kategorien": "categories",
+    "gruppe": "categories",
+    "gruppen": "categories",
+    "kategorie": "categories",
+    "kategorien": "categories",
     "categories": "categories",
-    "spitzname": "nickname", "nickname": "nickname",
-    "jahrestag": "anniversary", "anniversary": "anniversary",
+    "spitzname": "nickname",
+    "nickname": "nickname",
+    "jahrestag": "anniversary",
+    "anniversary": "anniversary",
     "hochzeitstag": "anniversary",
-    "website": "url", "url": "url", "webseite": "url",
+    "website": "url",
+    "url": "url",
+    "webseite": "url",
     "homepage": "url",
     "vcard_uid": "vcard_uid",
 }
@@ -133,12 +172,16 @@ _ALLOWED_FIELDS_DISPLAY = (
     "adresse, firma, titel, gruppe, spitzname, jahrestag, website"
 )
 
+
 class ContactCommandHandler(CommandHandler):
     """Kontaktbuch-Commands für Matrix."""
 
-    def __init__(self, contact_store: ContactStore | None = None,
-                 default_user_id: str = "",
-                 carddav_sync: CardDAVSyncClient | None = None) -> None:
+    def __init__(
+        self,
+        contact_store: ContactStore | None = None,
+        default_user_id: str = "",
+        carddav_sync: CardDAVSyncClient | None = None,
+    ) -> None:
         self._store = contact_store
         self._default_user_id = default_user_id
         self._carddav_sync = carddav_sync
@@ -166,26 +209,36 @@ class ContactCommandHandler(CommandHandler):
     def keywords(self) -> dict[str, list[str]]:
         return {
             "kontakte": [
-                "kontakte", "adressbuch", "kontaktliste",
-                "meine kontakte", "alle kontakte",
+                "kontakte",
+                "adressbuch",
+                "kontaktliste",
+                "meine kontakte",
+                "alle kontakte",
             ],
             "contact_add": [
-                "neuer kontakt", "kontakt speichern",
-                "kontakt anlegen", "kontakt hinzufügen",
+                "neuer kontakt",
+                "kontakt speichern",
+                "kontakt anlegen",
+                "kontakt hinzufügen",
             ],
             "contact_who": [
-                "wer ist", "kennst du",
+                "wer ist",
+                "kennst du",
             ],
             "contact_search": [
-                "kontakt suche", "kontakt finden",
-                "finde kontakt", "suche kontakt",
+                "kontakt suche",
+                "kontakt finden",
+                "finde kontakt",
+                "suche kontakt",
             ],
             "contact_delete": [
-                "kontakt löschen", "kontakt entfernen",
+                "kontakt löschen",
+                "kontakt entfernen",
                 "lösche kontakt",
             ],
             "contact_update": [
-                "kontakt ändern", "kontakt bearbeiten",
+                "kontakt ändern",
+                "kontakt bearbeiten",
                 "kontakt aktualisieren",
             ],
         }
@@ -228,8 +281,9 @@ class ContactCommandHandler(CommandHandler):
         handler = dispatch.get(command)
         if handler:
             return handler(raw_text)
-        return CommandResult(command=command, success=False,
-                             text=f"Unbekannter Command: {command}")
+        return CommandResult(
+            command=command, success=False, text=f"Unbekannter Command: {command}"
+        )
 
     # ------------------------------------------------------------------
     # Commands
@@ -238,46 +292,67 @@ class ContactCommandHandler(CommandHandler):
     def _cmd_add(self, raw_text: str) -> CommandResult:
         match = CONTACT_ADD_PATTERN.match(raw_text.strip())
         if not match:
-            return CommandResult(command="contact_add", success=False,
-                                 text="Format: kontakt: Name, Rolle, Email, Anrede")
+            return CommandResult(
+                command="contact_add",
+                success=False,
+                text="Format: kontakt: Name, Rolle, Email, Anrede",
+            )
         fields = self._parse_contact_fields(match.group(1))
         if not fields or not fields.get("name"):
-            return CommandResult(command="contact_add", success=False,
-                                 text="Mindestens ein Name ist nötig.")
+            return CommandResult(
+                command="contact_add",
+                success=False,
+                text="Mindestens ein Name ist nötig.",
+            )
         user_id = self._default_user_id
         contact = self._store.add(
-            user_id, name=fields.pop("name"), **fields,
+            user_id,
+            name=fields.pop("name"),
+            **fields,
         )
         return CommandResult(
-            command="contact_add", success=True,
+            command="contact_add",
+            success=True,
             text=f"📇 Kontakt gespeichert: {contact.format_short()}",
         )
 
     def _cmd_add_natural(self, raw_text: str) -> CommandResult:
         match = CONTACT_ADD_NATURAL_PATTERN.match(raw_text.strip())
         if not match:
-            return CommandResult(command="contact_add_natural", success=False,
-                                 text="Format: kontakt: Name, Rolle, Email, Anrede")
+            return CommandResult(
+                command="contact_add_natural",
+                success=False,
+                text="Format: kontakt: Name, Rolle, Email, Anrede",
+            )
         name = (match.group(1) or match.group(2) or match.group(3) or "").strip()
         if not name:
-            return CommandResult(command="contact_add_natural", success=False,
-                                 text="Mindestens ein Name ist nötig.")
+            return CommandResult(
+                command="contact_add_natural",
+                success=False,
+                text="Mindestens ein Name ist nötig.",
+            )
         fields = self._parse_contact_fields(name)
         user_id = self._default_user_id
         contact = self._store.add(
-            user_id, name=fields.pop("name"), **fields,
+            user_id,
+            name=fields.pop("name"),
+            **fields,
         )
         return CommandResult(
-            command="contact_add_natural", success=True,
+            command="contact_add_natural",
+            success=True,
             text=f"📇 Kontakt gespeichert: {contact.format_short()}",
         )
 
     def _cmd_update(self, raw_text: str) -> CommandResult:
         match = CONTACT_UPDATE_PATTERN.search(raw_text.strip())
         if not match:
-            return CommandResult(command="contact_update", success=False,
-                                 text="Format: kontakt ändern #ID: feld=wert")
-        id_str = match.group(1)   # Branch 1: numerische ID
+            return CommandResult(
+                command="contact_update",
+                success=False,
+                text="Format: kontakt ändern #ID: feld=wert",
+            )
+        id_str = match.group(1)  # Branch 1: numerische ID
         name_str = match.group(2)  # Branch 2: Name nach #
         fields_raw = match.group(3).strip()
 
@@ -288,8 +363,11 @@ class ContactCommandHandler(CommandHandler):
             contact = self._find_contact_for_query(name_str)
         if not contact:
             label = f"#{id_str}" if id_str else f"'{name_str}'"
-            return CommandResult(command="contact_update", success=False,
-                                 text=f"Kontakt {label} nicht gefunden.")
+            return CommandResult(
+                command="contact_update",
+                success=False,
+                text=f"Kontakt {label} nicht gefunden.",
+            )
 
         updates: dict[str, str] = {}
         warnings: list[str] = []
@@ -305,19 +383,26 @@ class ContactCommandHandler(CommandHandler):
                 )
         if not updates and not warnings:
             return CommandResult(
-                command="contact_update", success=False,
-                text=None, fallthrough=True,
+                command="contact_update",
+                success=False,
+                text=None,
+                fallthrough=True,
             )
         contact_id = contact.id
         contact = self._store.update(contact_id, **updates)
         if not contact:
-            return CommandResult(command="contact_update", success=False,
-                                 text=f"Kontakt #{contact_id} nicht gefunden.")
+            return CommandResult(
+                command="contact_update",
+                success=False,
+                text=f"Kontakt #{contact_id} nicht gefunden.",
+            )
         text = f"📇 Aktualisiert: {contact.format_short()}"
         if warnings:
             text += "\n" + "\n".join(warnings)
         return CommandResult(
-            command="contact_update", success=True, text=text,
+            command="contact_update",
+            success=True,
+            text=text,
         )
 
     @staticmethod
@@ -364,19 +449,22 @@ class ContactCommandHandler(CommandHandler):
         user_id = self._default_user_id
         exact = self._store.find_by_name(user_id, name)
         if exact:
-            return CommandResult(command=command, success=True,
-                                 text=exact.format_detail())
+            return CommandResult(
+                command=command, success=True, text=exact.format_detail()
+            )
         results = self._store.search(user_id, name, limit=5)
         if len(results) == 1:
-            return CommandResult(command=command, success=True,
-                                 text=results[0].format_detail())
+            return CommandResult(
+                command=command, success=True, text=results[0].format_detail()
+            )
         if len(results) > 1:
             lines = [f"📇 {len(results)} Kontakte gefunden – welchen meinst du?"]
             for c in results:
                 lines.append(f"  {c.format_short()}")
             return CommandResult(command=command, success=True, text="\n".join(lines))
-        return CommandResult(command=command, success=False,
-                             text=None, fallthrough=True)
+        return CommandResult(
+            command=command, success=False, text=None, fallthrough=True
+        )
 
     def _find_contact_for_query(self, name: str) -> Contact | None:
         """Sucht Kontakt für Feld-Abfragen: exakt → direkt, FTS → 1 Treffer."""
@@ -392,35 +480,44 @@ class ContactCommandHandler(CommandHandler):
     def _cmd_who(self, raw_text: str) -> CommandResult:
         match = CONTACT_WHO_PATTERN.match(raw_text.strip())
         if not match:
-            return CommandResult(command="contact_who", success=False,
-                                 text=None, fallthrough=True)
+            return CommandResult(
+                command="contact_who", success=False, text=None, fallthrough=True
+            )
         return self._find_contact_fuzzy(match.group(1).strip(), "contact_who")
 
     def _cmd_lookup(self, raw_text: str) -> CommandResult:
         match = CONTACT_LOOKUP_PATTERN.match(raw_text.strip())
         if not match:
-            return CommandResult(command="contact_lookup", success=False,
-                                 text=None, fallthrough=True)
+            return CommandResult(
+                command="contact_lookup", success=False, text=None, fallthrough=True
+            )
         name_str = match.group(1) or match.group(2) or match.group(4)
         id_str = match.group(3)
         if id_str:
             contact = self._store.get_by_id(int(id_str))
             if contact:
-                return CommandResult(command="contact_lookup", success=True,
-                                     text=contact.format_detail())
-            return CommandResult(command="contact_lookup", success=False,
-                                 text=None, fallthrough=True)
+                return CommandResult(
+                    command="contact_lookup", success=True, text=contact.format_detail()
+                )
+            return CommandResult(
+                command="contact_lookup", success=False, text=None, fallthrough=True
+            )
         if name_str:
             return self._find_contact_fuzzy(name_str.strip(), "contact_lookup")
-        return CommandResult(command="contact_lookup", success=False,
-                             text=None, fallthrough=True)
+        return CommandResult(
+            command="contact_lookup", success=False, text=None, fallthrough=True
+        )
 
     def _cmd_field_query(self, raw_text: str) -> CommandResult:
         """Beantwortet gezielte Feld-Abfragen wie 'wann hat Lisa Geburtstag?'."""
         match = CONTACT_FIELD_QUERY_PATTERN.match(raw_text.strip())
         if not match:
-            return CommandResult(command="contact_field_query", success=False,
-                                 text=None, fallthrough=True)
+            return CommandResult(
+                command="contact_field_query",
+                success=False,
+                text=None,
+                fallthrough=True,
+            )
 
         groups = match.groups()
         # Gruppen: (0) wann hat X geburtstag, (1) wann ist Xs geburtstag,
@@ -451,20 +548,24 @@ class ContactCommandHandler(CommandHandler):
                 break
 
         if not name or not query_type:
-            return CommandResult(command="contact_field_query", success=False,
-                                 text=None, fallthrough=True)
+            return CommandResult(
+                command="contact_field_query",
+                success=False,
+                text=None,
+                fallthrough=True,
+            )
 
         contact = self._find_contact_for_query(name)
         if not contact:
             return CommandResult(
-                command="contact_field_query", success=False,
+                command="contact_field_query",
+                success=False,
                 text=f"Kontakt '{name}' nicht gefunden.",
             )
 
         return self._format_field_answer(contact, query_type)
 
-    def _format_field_answer(self, contact: Contact,
-                             query_type: str) -> CommandResult:
+    def _format_field_answer(self, contact: Contact, query_type: str) -> CommandResult:
         """Formatiert die Antwort für eine Feld-Abfrage."""
         name = contact.name
 
@@ -508,10 +609,12 @@ class ContactCommandHandler(CommandHandler):
                 text = f"{name}: {phone_items[0].get('number', '')}"
             else:
                 from elder_berry.tools.contact_store import _PHONE_TYPE_LABELS
+
                 lines = [f"{name} hat {len(phone_items)} Nummern:"]
                 for pi in phone_items:
                     label = _PHONE_TYPE_LABELS.get(
-                        pi.get("type", ""), pi.get("type", ""),
+                        pi.get("type", ""),
+                        pi.get("type", ""),
                     )
                     lines.append(f"  {label}: {pi.get('number', '')}")
                 text = "\n".join(lines)
@@ -524,10 +627,12 @@ class ContactCommandHandler(CommandHandler):
                 text = f"{name}: {email_items[0].get('email', '')}"
             else:
                 from elder_berry.tools.contact_store import _EMAIL_TYPE_LABELS
+
                 lines = [f"{name} hat {len(email_items)} Email-Adressen:"]
                 for ei in email_items:
                     label = _EMAIL_TYPE_LABELS.get(
-                        ei.get("type", ""), ei.get("type", ""),
+                        ei.get("type", ""),
+                        ei.get("type", ""),
                     )
                     lines.append(f"  {label}: {ei.get('email', '')}")
                 text = "\n".join(lines)
@@ -552,22 +657,29 @@ class ContactCommandHandler(CommandHandler):
             text = f"Feld '{query_type}' unbekannt."
 
         return CommandResult(
-            command="contact_field_query", success=True, text=text,
+            command="contact_field_query",
+            success=True,
+            text=text,
         )
 
     def _cmd_group(self, raw_text: str) -> CommandResult:
         """Listet alle Kontakte einer Gruppe/Kategorie."""
         match = CONTACT_GROUP_PATTERN.match(raw_text.strip())
         if not match:
-            return CommandResult(command="contact_group", success=False,
-                                 text="Format: kontakte gruppe <Name>")
+            return CommandResult(
+                command="contact_group",
+                success=False,
+                text="Format: kontakte gruppe <Name>",
+            )
         group_name = match.group(1).strip()
         contacts = self._store.find_by_category(
-            self._default_user_id, group_name,
+            self._default_user_id,
+            group_name,
         )
         if not contacts:
             return CommandResult(
-                command="contact_group", success=True,
+                command="contact_group",
+                success=True,
                 text=f"Keine Kontakte in der Gruppe '{group_name}'.",
             )
         lines = [f"📇 Gruppe '{group_name}' ({len(contacts)} Kontakte):"]
@@ -580,60 +692,77 @@ class ContactCommandHandler(CommandHandler):
                 parts.append(f"📞 {phone}")
             lines.append(f"  {' '.join(parts)}")
         return CommandResult(
-            command="contact_group", success=True, text="\n".join(lines),
+            command="contact_group",
+            success=True,
+            text="\n".join(lines),
         )
 
     def _cmd_search(self, raw_text: str) -> CommandResult:
         match = CONTACT_SEARCH_PATTERN.match(raw_text.strip())
         if not match:
-            return CommandResult(command="contact_search", success=False,
-                                 text="Format: kontakte suche <Begriff>")
+            return CommandResult(
+                command="contact_search",
+                success=False,
+                text="Format: kontakte suche <Begriff>",
+            )
         query = match.group(1).strip()
         results = self._store.search(self._default_user_id, query)
         if not results:
-            return CommandResult(command="contact_search", success=True,
-                                 text="Keine Kontakte gefunden.")
+            return CommandResult(
+                command="contact_search", success=True, text="Keine Kontakte gefunden."
+            )
         lines = [f"📇 {len(results)} Treffer:"]
         for c in results:
             lines.append(f"  {c.format_short()}")
-        return CommandResult(command="contact_search", success=True,
-                             text="\n".join(lines))
+        return CommandResult(
+            command="contact_search", success=True, text="\n".join(lines)
+        )
 
     def _cmd_list(self, _raw_text: str) -> CommandResult:
         contacts = self._store.list_all(self._default_user_id, limit=200)
         if not contacts:
-            return CommandResult(command="kontakte", success=True,
-                                 text="Keine Kontakte gespeichert.")
+            return CommandResult(
+                command="kontakte", success=True, text="Keine Kontakte gespeichert."
+            )
         lines = [f"📇 {len(contacts)} Kontakte:"]
         for c in contacts:
             lines.append(f"  {c.format_short()}")
-        return CommandResult(command="kontakte", success=True,
-                             text="\n".join(lines))
+        return CommandResult(command="kontakte", success=True, text="\n".join(lines))
 
     def _cmd_delete(self, raw_text: str) -> CommandResult:
         match = CONTACT_DELETE_PATTERN.match(raw_text.strip())
         if not match:
-            return CommandResult(command="contact_delete", success=False,
-                                 text="Format: kontakt löschen #<ID> oder <Name>")
+            return CommandResult(
+                command="contact_delete",
+                success=False,
+                text="Format: kontakt löschen #<ID> oder <Name>",
+            )
         id_str = match.group(1)
         name_str = match.group(2)
         if id_str:
             ok = self._store.delete(int(id_str))
             label = f"#{id_str}"
         else:
-            ok = self._store.delete_by_name(
-                self._default_user_id, name_str.strip())
+            ok = self._store.delete_by_name(self._default_user_id, name_str.strip())
             label = name_str.strip()
         if ok:
-            return CommandResult(command="contact_delete", success=True,
-                                 text=f"📇 Kontakt {label} gelöscht.")
-        return CommandResult(command="contact_delete", success=False,
-                             text=f"Kontakt {label} nicht gefunden.")
+            return CommandResult(
+                command="contact_delete",
+                success=True,
+                text=f"📇 Kontakt {label} gelöscht.",
+            )
+        return CommandResult(
+            command="contact_delete",
+            success=False,
+            text=f"Kontakt {label} nicht gefunden.",
+        )
 
     def _cmd_sync(self, raw_text: str) -> CommandResult:
         if not self._carddav_sync:
             return self.not_configured(
-                "contact_sync", "CardDAV-Sync (Nextcloud)", setup_step=4,
+                "contact_sync",
+                "CardDAV-Sync (Nextcloud)",
+                setup_step=4,
             )
         match = CONTACT_SYNC_PATTERN.match(raw_text.strip())
         direction = match.group(1).lower() if match and match.group(1) else None
@@ -649,29 +778,32 @@ class ContactCommandHandler(CommandHandler):
                 for data in remote_data:
                     vcard_uid = data.pop("vcard_uid", "")
                     self._store.add_or_update_by_vcard_uid(
-                        user_id, vcard_uid=vcard_uid, **data,
+                        user_id,
+                        vcard_uid=vcard_uid,
+                        **data,
                     )
                     pulled += 1
                 from elder_berry.tools.carddav_sync import SyncResult
+
                 result = SyncResult(pulled=pulled)
             elif direction == "reset":
                 result = self._carddav_sync.reset_and_pull(
-                    self._store, user_id,
+                    self._store,
+                    user_id,
                 )
             else:
                 result = self._carddav_sync.sync(self._store, user_id)
         except Exception as exc:
             logger.error("CardDAV Sync fehlgeschlagen: %s", exc)
             return CommandResult(
-                command="contact_sync", success=False,
+                command="contact_sync",
+                success=False,
                 text=f"Sync fehlgeschlagen: {exc}",
             )
 
         text = f"📇 Kontakte-Sync abgeschlossen: {result}"
         if result.errors:
-            text += "\n⚠️ Fehler:\n" + "\n".join(
-                f"  - {e}" for e in result.errors
-            )
+            text += "\n⚠️ Fehler:\n" + "\n".join(f"  - {e}" for e in result.errors)
         return CommandResult(command="contact_sync", success=True, text=text)
 
     # ------------------------------------------------------------------
@@ -713,11 +845,9 @@ class ContactCommandHandler(CommandHandler):
         matches = list(_ASSIGN_RE.finditer(raw))
         if matches:
             # Text vor der ersten Zuweisung → normal per Komma splitten
-            prefix = raw[:matches[0].start()].strip().rstrip(",").strip()
+            prefix = raw[: matches[0].start()].strip().rstrip(",").strip()
             if prefix:
-                remaining_parts = [
-                    p.strip() for p in prefix.split(",") if p.strip()
-                ]
+                remaining_parts = [p.strip() for p in prefix.split(",") if p.strip()]
 
             # Jede Zuweisung: Wert geht bis zur nächsten Zuweisung oder Ende
             for i, m in enumerate(matches):
@@ -746,8 +876,12 @@ class ContactCommandHandler(CommandHandler):
             return {}
 
         result: dict[str, str] = {
-            "name": "", "emails": "[]", "role": "",
-            "formality": "förmlich", "notes": "", "phones": "[]",
+            "name": "",
+            "emails": "[]",
+            "role": "",
+            "formality": "förmlich",
+            "notes": "",
+            "phones": "[]",
         }
 
         for part in parts:

@@ -1,4 +1,5 @@
 """Tests: SetupTests – Verbindungstests für den Setup-Wizard."""
+
 import asyncio
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -24,6 +25,7 @@ def _run(coro):
 # ---------------------------------------------------------------------------
 # Anthropic
 # ---------------------------------------------------------------------------
+
 
 class TestAnthropic:
     def test_valid_key(self):
@@ -54,6 +56,7 @@ class TestAnthropic:
 # Matrix
 # ---------------------------------------------------------------------------
 
+
 class TestMatrix:
     def test_login_with_room(self):
         mock_client = AsyncMock()
@@ -66,12 +69,14 @@ class TestMatrix:
         mock_nio = MagicMock()
         mock_nio.AsyncClient = MagicMock(return_value=mock_client)
         with patch.dict("sys.modules", {"nio": mock_nio}):
-            result = _run(SetupTests.test_matrix(
-                "https://matrix.example.com",
-                "@saleria:example.com",
-                "syt_valid_token",
-                "!room:example.com",
-            ))
+            result = _run(
+                SetupTests.test_matrix(
+                    "https://matrix.example.com",
+                    "@saleria:example.com",
+                    "syt_valid_token",
+                    "!room:example.com",
+                )
+            )
         assert result["success"] is True
         assert result["user_id"] == "@saleria:example.com"
         assert result.get("room_joined") is True
@@ -86,11 +91,13 @@ class TestMatrix:
         mock_nio = MagicMock()
         mock_nio.AsyncClient = MagicMock(return_value=mock_client)
         with patch.dict("sys.modules", {"nio": mock_nio}):
-            result = _run(SetupTests.test_matrix(
-                "https://matrix.example.com",
-                "@saleria:example.com",
-                "syt_valid_token",
-            ))
+            result = _run(
+                SetupTests.test_matrix(
+                    "https://matrix.example.com",
+                    "@saleria:example.com",
+                    "syt_valid_token",
+                )
+            )
         assert result["success"] is True
         assert "room_joined" not in result
 
@@ -102,11 +109,13 @@ class TestMatrix:
         mock_nio = MagicMock()
         mock_nio.AsyncClient = MagicMock(return_value=mock_client)
         with patch.dict("sys.modules", {"nio": mock_nio}):
-            result = _run(SetupTests.test_matrix(
-                "https://matrix.example.com",
-                "@saleria:example.com",
-                "syt_invalid",
-            ))
+            result = _run(
+                SetupTests.test_matrix(
+                    "https://matrix.example.com",
+                    "@saleria:example.com",
+                    "syt_invalid",
+                )
+            )
         assert result["success"] is False
         # Fehlerdetails werden nur geloggt, nicht in der Response (stack-trace-exposure)
         assert "Details im Log" in result["error"]
@@ -115,6 +124,7 @@ class TestMatrix:
 # ---------------------------------------------------------------------------
 # Nextcloud
 # ---------------------------------------------------------------------------
+
 
 class TestNextcloud:
     def test_all_ok(self):
@@ -129,9 +139,9 @@ class TestNextcloud:
             mock_client.__aexit__ = AsyncMock(return_value=False)
             mock_cls.return_value = mock_client
 
-            result = _run(SetupTests.test_nextcloud(
-                "https://cloud.example.com", "user", "pass"
-            ))
+            result = _run(
+                SetupTests.test_nextcloud("https://cloud.example.com", "user", "pass")
+            )
         assert result["success"] is True
         assert result["webdav"] is True
         assert result["caldav"] is True
@@ -155,9 +165,9 @@ class TestNextcloud:
             mock_client.__aexit__ = AsyncMock(return_value=False)
             mock_cls.return_value = mock_client
 
-            result = _run(SetupTests.test_nextcloud(
-                "https://cloud.example.com", "user", "pass"
-            ))
+            result = _run(
+                SetupTests.test_nextcloud("https://cloud.example.com", "user", "pass")
+            )
         assert result["success"] is False
         assert result["webdav"] is True
 
@@ -165,16 +175,16 @@ class TestNextcloud:
         """Server nicht erreichbar."""
         with patch("elder_berry.web.setup_tests.httpx.AsyncClient") as mock_cls:
             mock_client = AsyncMock()
-            mock_client.request = AsyncMock(
-                side_effect=Exception("Connection refused")
-            )
+            mock_client.request = AsyncMock(side_effect=Exception("Connection refused"))
             mock_client.__aenter__ = AsyncMock(return_value=mock_client)
             mock_client.__aexit__ = AsyncMock(return_value=False)
             mock_cls.return_value = mock_client
 
-            result = _run(SetupTests.test_nextcloud(
-                "https://unreachable.example.com", "user", "pass"
-            ))
+            result = _run(
+                SetupTests.test_nextcloud(
+                    "https://unreachable.example.com", "user", "pass"
+                )
+            )
         assert result["success"] is False
         assert result["webdav"] is False
 
@@ -183,10 +193,13 @@ class TestNextcloud:
 # E-Mail
 # ---------------------------------------------------------------------------
 
+
 class TestEmail:
     def test_imap_and_smtp_ok(self):
-        with patch("elder_berry.web.setup_tests.imaplib.IMAP4_SSL") as mock_imap, \
-             patch("elder_berry.web.setup_tests.smtplib.SMTP_SSL") as mock_smtp:
+        with (
+            patch("elder_berry.web.setup_tests.imaplib.IMAP4_SSL") as mock_imap,
+            patch("elder_berry.web.setup_tests.smtplib.SMTP_SSL") as mock_smtp,
+        ):
             imap_inst = MagicMock()
             imap_inst.search.return_value = ("OK", [b"1 2 3"])
             mock_imap.return_value = imap_inst
@@ -194,36 +207,50 @@ class TestEmail:
             smtp_inst = MagicMock()
             mock_smtp.return_value = smtp_inst
 
-            result = _run(SetupTests.test_email(
-                "imap.example.com", 993,
-                "smtp.example.com", 465,
-                "user@example.com", "pass",
-            ))
+            result = _run(
+                SetupTests.test_email(
+                    "imap.example.com",
+                    993,
+                    "smtp.example.com",
+                    465,
+                    "user@example.com",
+                    "pass",
+                )
+            )
         assert result["success"] is True
         assert result["imap"] is True
         assert result["smtp"] is True
         assert result["unread"] == 3
 
     def test_imap_failure(self):
-        with patch("elder_berry.web.setup_tests.imaplib.IMAP4_SSL") as mock_imap, \
-             patch("elder_berry.web.setup_tests.smtplib.SMTP_SSL") as mock_smtp:
+        with (
+            patch("elder_berry.web.setup_tests.imaplib.IMAP4_SSL") as mock_imap,
+            patch("elder_berry.web.setup_tests.smtplib.SMTP_SSL") as mock_smtp,
+        ):
             mock_imap.side_effect = Exception("Auth failed")
             smtp_inst = MagicMock()
             mock_smtp.return_value = smtp_inst
 
-            result = _run(SetupTests.test_email(
-                "imap.example.com", 993,
-                "smtp.example.com", 465,
-                "user@example.com", "wrongpass",
-            ))
+            result = _run(
+                SetupTests.test_email(
+                    "imap.example.com",
+                    993,
+                    "smtp.example.com",
+                    465,
+                    "user@example.com",
+                    "wrongpass",
+                )
+            )
         assert result["success"] is False
         assert result["imap"] is False
         assert result["smtp"] is True
 
     def test_smtp_starttls(self):
         """SMTP mit Port 587 (STARTTLS statt SSL)."""
-        with patch("elder_berry.web.setup_tests.imaplib.IMAP4_SSL") as mock_imap, \
-             patch("elder_berry.web.setup_tests.smtplib.SMTP") as mock_smtp:
+        with (
+            patch("elder_berry.web.setup_tests.imaplib.IMAP4_SSL") as mock_imap,
+            patch("elder_berry.web.setup_tests.smtplib.SMTP") as mock_smtp,
+        ):
             imap_inst = MagicMock()
             imap_inst.search.return_value = ("OK", [b""])
             mock_imap.return_value = imap_inst
@@ -231,11 +258,16 @@ class TestEmail:
             smtp_inst = MagicMock()
             mock_smtp.return_value = smtp_inst
 
-            result = _run(SetupTests.test_email(
-                "imap.example.com", 993,
-                "smtp.example.com", 587,
-                "user@example.com", "pass",
-            ))
+            result = _run(
+                SetupTests.test_email(
+                    "imap.example.com",
+                    993,
+                    "smtp.example.com",
+                    587,
+                    "user@example.com",
+                    "pass",
+                )
+            )
         assert result["success"] is True
         assert result["unread"] == 0
         smtp_inst.starttls.assert_called_once()
@@ -253,6 +285,7 @@ class TestEmail:
 # ---------------------------------------------------------------------------
 # Ollama
 # ---------------------------------------------------------------------------
+
 
 class TestOllama:
     def test_available(self):
@@ -279,6 +312,7 @@ class TestOllama:
 # ---------------------------------------------------------------------------
 # Brave Search
 # ---------------------------------------------------------------------------
+
 
 class TestBrave:
     def test_valid_key(self):
@@ -314,6 +348,7 @@ class TestBrave:
 # Prerequisites
 # ---------------------------------------------------------------------------
 
+
 class TestPrerequisites:
     def test_python_version(self):
         result = SetupTests.check_prerequisites()
@@ -340,25 +375,32 @@ class TestPrerequisites:
 # URL-Validator (SSRF-Schutz)
 # ---------------------------------------------------------------------------
 
+
 class TestValidateExternalURL:
-    @pytest.mark.parametrize("url", [
-        "https://cloud.example.com",
-        "http://nextcloud.local",
-        "https://192.168.1.10",
-        "https://nc.example.com:8443/sub/path",
-        "  https://example.com  ",  # wird getrimmt
-    ])
+    @pytest.mark.parametrize(
+        "url",
+        [
+            "https://cloud.example.com",
+            "http://nextcloud.local",
+            "https://192.168.1.10",
+            "https://nc.example.com:8443/sub/path",
+            "  https://example.com  ",  # wird getrimmt
+        ],
+    )
     def test_accepts_valid_http_urls(self, url):
         result = _validate_external_url(url)
         assert result == url.strip()
 
-    @pytest.mark.parametrize("url", [
-        "file:///etc/passwd",
-        "gopher://internal:70/",
-        "ftp://example.com",
-        "javascript:alert(1)",
-        "data:text/plain,hello",
-    ])
+    @pytest.mark.parametrize(
+        "url",
+        [
+            "file:///etc/passwd",
+            "gopher://internal:70/",
+            "ftp://example.com",
+            "javascript:alert(1)",
+            "data:text/plain,hello",
+        ],
+    )
     def test_rejects_non_http_schemes(self, url):
         with pytest.raises(InvalidExternalURLError):
             _validate_external_url(url)
@@ -367,13 +409,16 @@ class TestValidateExternalURL:
         with pytest.raises(InvalidExternalURLError):
             _validate_external_url("https://attacker:x@cloud.example.com")
 
-    @pytest.mark.parametrize("url", [
-        "",
-        "   ",
-        "https://",
-        "http:///path",
-        "not-a-url",
-    ])
+    @pytest.mark.parametrize(
+        "url",
+        [
+            "",
+            "   ",
+            "https://",
+            "http:///path",
+            "not-a-url",
+        ],
+    )
     def test_rejects_empty_or_malformed(self, url):
         with pytest.raises(InvalidExternalURLError):
             _validate_external_url(url)

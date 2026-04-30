@@ -1,4 +1,5 @@
 """Tests fuer Harmony-Endpoints in RobotServer."""
+
 from __future__ import annotations
 
 from unittest.mock import AsyncMock, MagicMock
@@ -13,6 +14,7 @@ from elder_berry.robot.server import RobotServer
 
 # -- Fixtures -------------------------------------------------------------- #
 
+
 def _make_mock_deps():
     """Erzeugt minimale Mock-Dependencies fuer RobotServer."""
     motors = MagicMock()
@@ -21,7 +23,9 @@ def _make_mock_deps():
     avatar.get_state.return_value = {"emotion": "neutral", "speaking": False}
     sensors = MagicMock()
     sensors.get_battery.return_value = MagicMock(
-        percentage=100, voltage=5.0, charging=False,
+        percentage=100,
+        voltage=5.0,
+        charging=False,
     )
     sensors.get_all.return_value = {}
     return motors, avatar, sensors
@@ -55,11 +59,15 @@ def mock_scene_manager(tmp_path, mock_harmony):
 
 @pytest.fixture
 def client_with_harmony(
-    mock_harmony, mock_layout_manager, mock_scene_manager,
+    mock_harmony,
+    mock_layout_manager,
+    mock_scene_manager,
 ) -> TestClient:
     motors, avatar, sensors = _make_mock_deps()
     server = RobotServer(
-        motors=motors, avatar=avatar, sensors=sensors,
+        motors=motors,
+        avatar=avatar,
+        sensors=sensors,
         harmony=mock_harmony,
         harmony_layouts=mock_layout_manager,
         harmony_scenes=mock_scene_manager,
@@ -75,6 +83,7 @@ def client_without_harmony() -> TestClient:
 
 
 # -- Tests ----------------------------------------------------------------- #
+
 
 class TestHarmonyStatus:
     def test_get_status_connected(self, client_with_harmony, mock_harmony):
@@ -96,7 +105,8 @@ class TestHarmonyStatus:
 
 class TestHarmonyConfig:
     def test_get_config_returns_activities_and_devices(
-        self, client_with_harmony,
+        self,
+        client_with_harmony,
     ):
         r = client_with_harmony.get("/harmony/config")
         assert r.status_code == 200
@@ -108,7 +118,8 @@ class TestHarmonyConfig:
 class TestHarmonyActivity:
     def test_post_activity_success(self, client_with_harmony, mock_harmony):
         r = client_with_harmony.post(
-            "/harmony/activity", json={"activity": "Fernsehen"},
+            "/harmony/activity",
+            json={"activity": "Fernsehen"},
         )
         assert r.status_code == 200
         data = r.json()
@@ -119,7 +130,8 @@ class TestHarmonyActivity:
     def test_post_activity_not_found(self, client_with_harmony, mock_harmony):
         mock_harmony.start_activity = AsyncMock(return_value=False)
         r = client_with_harmony.post(
-            "/harmony/activity", json={"activity": "Gaming"},
+            "/harmony/activity",
+            json={"activity": "Gaming"},
         )
         assert r.status_code == 200
         assert r.json()["success"] is False
@@ -135,7 +147,9 @@ class TestHarmonyCommand:
         assert r.json()["success"] is True
 
     def test_post_command_device_not_found(
-        self, client_with_harmony, mock_harmony,
+        self,
+        client_with_harmony,
+        mock_harmony,
     ):
         mock_harmony.send_command = AsyncMock(return_value=False)
         r = client_with_harmony.post(
@@ -157,7 +171,9 @@ class TestHarmonyCommand:
         assert r.status_code == 200
         assert r.json()["success"] is True
         mock_harmony.send_command.assert_awaited_once_with(
-            device="Denon AVR-X3500H", command="VolumeUp", repeat=3,
+            device="Denon AVR-X3500H",
+            command="VolumeUp",
+            repeat=3,
         )
 
 
@@ -171,15 +187,21 @@ class TestHarmonyOff:
 
 DETAILED_CONFIG = {
     "activities": [
-        {"id": "38979034", "label": "Fernsehen",
-         "volume_device": "Denon AVR-X3500H",
-         "channel_device": "Samsung TV"},
+        {
+            "id": "38979034",
+            "label": "Fernsehen",
+            "volume_device": "Denon AVR-X3500H",
+            "channel_device": "Samsung TV",
+        },
     ],
     "devices": [
-        {"id": "74828509", "label": "Denon AVR-X3500H",
-         "control_groups": [
-             {"name": "Volume", "commands": ["VolumeUp", "VolumeDown", "Mute"]},
-         ]},
+        {
+            "id": "74828509",
+            "label": "Denon AVR-X3500H",
+            "control_groups": [
+                {"name": "Volume", "commands": ["VolumeUp", "VolumeDown", "Mute"]},
+            ],
+        },
     ],
 }
 
@@ -248,7 +270,8 @@ class TestHarmonyScenes:
 
     def test_save_scene_invalid(self, client_with_harmony):
         r = client_with_harmony.post(
-            "/harmony/scenes", json={"name": ""},
+            "/harmony/scenes",
+            json={"name": ""},
         )
         assert r.status_code == 400
 
@@ -259,7 +282,8 @@ class TestHarmonyScenes:
         }
         client_with_harmony.post("/harmony/scenes", json=scene)
         r = client_with_harmony.post(
-            "/harmony/scene/start", json={"name": "Gaming"},
+            "/harmony/scene/start",
+            json={"name": "Gaming"},
         )
         assert r.status_code == 200
         assert r.json()["success"] is True
@@ -267,7 +291,8 @@ class TestHarmonyScenes:
 
     def test_start_scene_not_found(self, client_with_harmony):
         r = client_with_harmony.post(
-            "/harmony/scene/start", json={"name": "Nope"},
+            "/harmony/scene/start",
+            json={"name": "Nope"},
         )
         assert r.status_code == 404
 
@@ -291,7 +316,8 @@ class TestHarmonyScenes:
 
     def test_start_scene_503_without_config(self, client_without_harmony):
         r = client_without_harmony.post(
-            "/harmony/scene/start", json={"name": "Gaming"},
+            "/harmony/scene/start",
+            json={"name": "Gaming"},
         )
         assert r.status_code == 503
 
@@ -331,7 +357,8 @@ class TestHarmony503:
 
     def test_activity_503_when_not_configured(self, client_without_harmony):
         r = client_without_harmony.post(
-            "/harmony/activity", json={"activity": "Fernsehen"},
+            "/harmony/activity",
+            json={"activity": "Fernsehen"},
         )
         assert r.status_code == 503
 

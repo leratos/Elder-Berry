@@ -18,6 +18,7 @@ Sicherheit:
   - Timestamp: max. 150 Sekunden alt (verhindert Replay-Angriffe)
   - ApplicationId: optional, prüft gegen konfigurierten Skill-ID-Wert
 """
+
 from __future__ import annotations
 
 import base64
@@ -156,6 +157,7 @@ class AlexaRequestVerifier:
 
         try:
             import httpx
+
             async with httpx.AsyncClient() as client:
                 resp = await client.get(url, timeout=5.0)
                 resp.raise_for_status()
@@ -167,6 +169,7 @@ class AlexaRequestVerifier:
 
         try:
             from cryptography import x509
+
             cert = x509.load_pem_x509_certificate(pem_data)
         except Exception as exc:
             raise AlexaVerificationError(
@@ -193,7 +196,9 @@ class AlexaRequestVerifier:
             )
             dns_names = san_ext.value.get_values_for_type(cx509.DNSName)
         except cx509.ExtensionNotFound:
-            raise AlexaVerificationError("Zertifikat enthält keine SAN-Extension") from None
+            raise AlexaVerificationError(
+                "Zertifikat enthält keine SAN-Extension"
+            ) from None
 
         if _CERT_ALEXA_SAN not in dns_names:
             raise AlexaVerificationError(
@@ -251,15 +256,9 @@ class AlexaRequestVerifier:
 
     def _verify_application_id(self, body: dict) -> None:
         """Prüft die Skill-ApplicationId gegen den konfigurierten Wert."""
-        app_id = (
-            body.get("session", {})
-            .get("application", {})
-            .get("applicationId", "")
-        )
+        app_id = body.get("session", {}).get("application", {}).get("applicationId", "")
         if app_id != self._application_id:
-            raise AlexaVerificationError(
-                f"Unbekannte applicationId: {app_id!r}"
-            )
+            raise AlexaVerificationError(f"Unbekannte applicationId: {app_id!r}")
 
 
 # -- Geraet fuer Lautstaerke (Samsung TV steuert Denon via ARC/CEC) ------- #
@@ -377,15 +376,14 @@ class AlexaSkillHandler:
         if intent_name == "AMAZON.HelpIntent":
             result = AlexaResult(
                 text="Du kannst sagen: Fernsehen an, Musik an, "
-                     "alles aus, lauter, leiser, stumm, oder was läuft.",
+                "alles aus, lauter, leiser, stumm, oder was läuft.",
                 end_session=False,
             )
             return self.build_alexa_response(result)
 
         if intent_name == "AMAZON.FallbackIntent":
             result = AlexaResult(
-                text="Das habe ich nicht verstanden. "
-                     "Sag zum Beispiel: Fernsehen an.",
+                text="Das habe ich nicht verstanden. Sag zum Beispiel: Fernsehen an.",
                 success=False,
                 end_session=False,
             )
@@ -463,7 +461,8 @@ class AlexaSkillHandler:
 
         try:
             success = await self._harmony.send_command(
-                device=_VOLUME_DEVICE, command=command,
+                device=_VOLUME_DEVICE,
+                command=command,
             )
             if success:
                 return AlexaResult(text=f"{label}.")
@@ -483,4 +482,6 @@ class AlexaSkillHandler:
             return AlexaResult(text="Nichts aktiv. Alles ist aus.")
         except Exception as e:
             logger.error("Alexa current Fehler: %s", e)
-            return AlexaResult(text="Status konnte nicht abgefragt werden.", success=False)
+            return AlexaResult(
+                text="Status konnte nicht abgefragt werden.", success=False
+            )

@@ -2,6 +2,7 @@
 
 Extrahiert aus remote_commands.py (Refactoring).
 """
+
 from __future__ import annotations
 
 import logging
@@ -10,7 +11,11 @@ import tempfile
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from elder_berry.comms.commands.base import CommandHandler, CommandResult, user_friendly_error
+from elder_berry.comms.commands.base import (
+    CommandHandler,
+    CommandResult,
+    user_friendly_error,
+)
 
 if TYPE_CHECKING:
     from elder_berry.actions.base import ActionController
@@ -46,8 +51,16 @@ AVATAR_EMOTION_PATTERN = re.compile(
 
 # Gueltige Emotionen fuer Avatar-Rendering (lowercase -> Emotion-Name)
 AVATAR_EMOTIONS = {
-    "neutral", "cheerful", "angry", "sarcastic", "motivated",
-    "thoughtful", "whisper", "shy", "depressed", "sad",
+    "neutral",
+    "cheerful",
+    "angry",
+    "sarcastic",
+    "motivated",
+    "thoughtful",
+    "whisper",
+    "shy",
+    "depressed",
+    "sad",
 }
 
 
@@ -68,11 +81,16 @@ class SystemCommandHandler(CommandHandler):
 
     @property
     def simple_commands(self) -> set[str]:
-        return (
-            {"status", "systemstatus", "screenshot", "screen",
-             "avatar", "selfie", "restart", "neustart"}
-            | set(MEDIA_KEYS)
-        )
+        return {
+            "status",
+            "systemstatus",
+            "screenshot",
+            "screen",
+            "avatar",
+            "selfie",
+            "restart",
+            "neustart",
+        } | set(MEDIA_KEYS)
 
     @property
     def patterns(self) -> list[tuple[re.Pattern, str, bool, bool]]:
@@ -97,45 +115,79 @@ class SystemCommandHandler(CommandHandler):
     def keywords(self) -> dict[str, list[str]]:
         return {
             "screenshot": [
-                "screenshot", "bildschirmfoto", "bildschirm zeig",
-                "mach ein foto vom bildschirm", "zeig mir den bildschirm",
+                "screenshot",
+                "bildschirmfoto",
+                "bildschirm zeig",
+                "mach ein foto vom bildschirm",
+                "zeig mir den bildschirm",
                 "was ist auf dem bildschirm",
             ],
             "status": [
-                "systemstatus", "systemzustand", "pc status", "pc-status",
-                "wie geht es dem pc", "wie l\u00e4uft der pc", "cpu auslastung",
-                "ram auslastung", "speicherverbrauch",
+                "systemstatus",
+                "systemzustand",
+                "pc status",
+                "pc-status",
+                "wie geht es dem pc",
+                "wie l\u00e4uft der pc",
+                "cpu auslastung",
+                "ram auslastung",
+                "speicherverbrauch",
             ],
             "pause": [
-                "pausier", "stopp musik", "musik stopp", "musik aus",
-                "musik pausieren", "halt die musik an",
+                "pausier",
+                "stopp musik",
+                "musik stopp",
+                "musik aus",
+                "musik pausieren",
+                "halt die musik an",
             ],
             "play": [
-                "musik an", "weiterspielen", "abspielen",
-                "musik weiter", "spiel weiter",
+                "musik an",
+                "weiterspielen",
+                "abspielen",
+                "musik weiter",
+                "spiel weiter",
             ],
             "skip": [
-                "n\u00e4chster song", "n\u00e4chstes lied", "\u00fcberspringen",
+                "n\u00e4chster song",
+                "n\u00e4chstes lied",
+                "\u00fcberspringen",
                 "n\u00e4chster track",
             ],
             "prev": [
-                "vorheriger song", "vorheriges lied", "lied zur\u00fcck",
-                "vorheriger track", "song zur\u00fcck",
+                "vorheriger song",
+                "vorheriges lied",
+                "lied zur\u00fcck",
+                "vorheriger track",
+                "song zur\u00fcck",
             ],
             "volume": [
-                "lautst\u00e4rke", "leiser", "lauter", "ton leiser", "ton lauter",
+                "lautst\u00e4rke",
+                "leiser",
+                "lauter",
+                "ton leiser",
+                "ton lauter",
             ],
             "avatar": [
-                "zeig dich", "wie siehst du aus", "bild von dir",
-                "schick ein bild von dir", "selfie",
+                "zeig dich",
+                "wie siehst du aus",
+                "bild von dir",
+                "schick ein bild von dir",
+                "selfie",
             ],
             "hilfe": [
-                "was kannst du", "was geht", "welche befehle",
-                "welche commands", "zeig mir die befehle",
+                "was kannst du",
+                "was geht",
+                "welche befehle",
+                "welche commands",
+                "zeig mir die befehle",
             ],
             "restart": [
-                "starte neu", "neustart", "restart dich",
-                "bitte neustarten", "starte dich neu",
+                "starte neu",
+                "neustart",
+                "restart dich",
+                "bitte neustarten",
+                "starte dich neu",
             ],
         }
 
@@ -185,6 +237,7 @@ class SystemCommandHandler(CommandHandler):
 
         try:
             import httpx
+
             r = httpx.get(
                 f"http://{self._tower_agent.host}/system",
                 timeout=5.0,
@@ -262,11 +315,12 @@ class SystemCommandHandler(CommandHandler):
             # Disk-Info (psutil)
             try:
                 import psutil
+
                 for part in psutil.disk_partitions():
                     try:
                         usage = psutil.disk_usage(part.mountpoint)
-                        total_gb = usage.total / (1024 ** 3)
-                        used_gb = usage.used / (1024 ** 3)
+                        total_gb = usage.total / (1024**3)
+                        used_gb = usage.used / (1024**3)
                         lines.append(
                             f"Disk {part.mountpoint}: "
                             f"{used_gb:.1f} / {total_gb:.1f} GB "
@@ -309,13 +363,17 @@ class SystemCommandHandler(CommandHandler):
         Auf Nicht-Windows-Plattformen wird immer False zurückgegeben.
         """
         import sys
+
         if sys.platform != "win32":
             return False
         try:
             import ctypes
+
             DESKTOP_READOBJECTS = 0x0001
             hdesk = ctypes.windll.user32.OpenInputDesktop(
-                0, False, DESKTOP_READOBJECTS,
+                0,
+                False,
+                DESKTOP_READOBJECTS,
             )
             if hdesk:
                 ctypes.windll.user32.CloseDesktop(hdesk)
@@ -341,6 +399,7 @@ class SystemCommandHandler(CommandHandler):
         länger zum Rendern der ersten vollen Frame brauchen.
         """
         import sys
+
         if sys.platform != "win32":
             return
         try:
@@ -455,6 +514,7 @@ class SystemCommandHandler(CommandHandler):
         if self._is_black(rgb):
             logger.debug("Screenshot schwarz – warte 1,5s und wiederhole")
             import time
+
             time.sleep(1.5)
             grabbed = _grab()
             if grabbed is None:
@@ -463,7 +523,9 @@ class SystemCommandHandler(CommandHandler):
 
         try:
             tmp = tempfile.NamedTemporaryFile(
-                suffix=".png", prefix="screenshot_", delete=False,
+                suffix=".png",
+                prefix="screenshot_",
+                delete=False,
             )
             tmp_path = Path(tmp.name)
             tmp.close()
@@ -490,6 +552,7 @@ class SystemCommandHandler(CommandHandler):
 
         try:
             import httpx
+
             r = httpx.get(
                 f"http://{self._tower_agent.host}/screenshot",
                 timeout=10.0,
@@ -499,7 +562,9 @@ class SystemCommandHandler(CommandHandler):
             png_bytes = r.content
 
             tmp = tempfile.NamedTemporaryFile(
-                suffix=".png", prefix="screenshot_tower_", delete=False,
+                suffix=".png",
+                prefix="screenshot_tower_",
+                delete=False,
             )
             tmp_path = Path(tmp.name)
             tmp.write(png_bytes)
@@ -611,7 +676,10 @@ class SystemCommandHandler(CommandHandler):
             return tower_result
 
         if local_result is not None:
-            if local_result.text == "Avatar Datei-Rendering ist lokal nicht implementiert.":
+            if (
+                local_result.text
+                == "Avatar Datei-Rendering ist lokal nicht implementiert."
+            ):
                 return CommandResult(
                     command="avatar",
                     success=False,
@@ -631,6 +699,7 @@ class SystemCommandHandler(CommandHandler):
             return None
 
         from elder_berry.character.base import Emotion
+
         try:
             emotion = Emotion(emotion_str)
         except ValueError:
@@ -638,7 +707,9 @@ class SystemCommandHandler(CommandHandler):
 
         try:
             tmp = tempfile.NamedTemporaryFile(
-                suffix=".png", prefix="avatar_", delete=False,
+                suffix=".png",
+                prefix="avatar_",
+                delete=False,
             )
             tmp_path = Path(tmp.name)
             tmp.close()
@@ -673,6 +744,7 @@ class SystemCommandHandler(CommandHandler):
 
         try:
             import httpx
+
             r = httpx.get(
                 f"http://{self._tower_agent.host}/avatar",
                 params={"emotion": emotion_str},
@@ -683,13 +755,17 @@ class SystemCommandHandler(CommandHandler):
             png_bytes = r.content
 
             tmp = tempfile.NamedTemporaryFile(
-                suffix=".png", prefix="avatar_tower_", delete=False,
+                suffix=".png",
+                prefix="avatar_tower_",
+                delete=False,
             )
             tmp_path = Path(tmp.name)
             tmp.write(png_bytes)
             tmp.close()
 
-            logger.info("Avatar via TowerAgent: %s, %d bytes", emotion_str, len(png_bytes))
+            logger.info(
+                "Avatar via TowerAgent: %s, %d bytes", emotion_str, len(png_bytes)
+            )
             return CommandResult(
                 command="avatar",
                 success=True,
