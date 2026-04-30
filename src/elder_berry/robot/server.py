@@ -852,7 +852,11 @@ class RobotServer:
                     status_code=404,
                 )
             except SceneExecutionError as e:
-                logger.exception("Harmony scene execution failed: %s", request.name)
+                logger.exception(
+                    "Harmony scene execution failed: %s (%s)",
+                    safe_log(request.name),
+                    safe_log(e),
+                )
                 return JSONResponse(
                     {"error": "Szene konnte nicht ausgefuehrt werden"},
                     status_code=503,
