@@ -827,8 +827,9 @@ class RobotServer:
                 self._harmony_scenes.save_scene(request)
                 return {"success": True}
             except ValueError as e:
+                logger.warning("Invalid harmony scene payload: %s", e)
                 return JSONResponse(
-                    {"error": str(e)},
+                    {"error": "Ungueltige Szenen-Konfiguration"},
                     status_code=400,
                 )
 
