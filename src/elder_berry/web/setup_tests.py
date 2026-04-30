@@ -138,10 +138,11 @@ class SetupTests:
         try:
             safe_url = _validate_external_url(url)
         except InvalidExternalURLError as exc:
+            logger.warning("Nextcloud-URL-Validierung fehlgeschlagen: %s", exc)
             return {
                 **results,
                 "success": False,
-                "error": str(exc),
+                "error": "Ungültige Nextcloud-URL.",
             }
         auth = (user, password)
         base = safe_url.rstrip("/")
