@@ -215,6 +215,7 @@ module = [
     "elder_berry.core.context_enricher",
     "elder_berry.core.task_chain",
     "elder_berry.core.smart_context",
+    "elder_berry.core.secret_store",
 ]
 strict = true
 
