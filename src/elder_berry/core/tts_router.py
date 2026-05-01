@@ -11,8 +11,9 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from collections.abc import Coroutine
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from elder_berry.tts.base import TTSEngine, VoiceInfo
 
@@ -57,7 +58,7 @@ class TTSRouter(TTSEngine):
         self._rate = 200
         self._volume = 1.0
 
-    def _run_async(self, coro):
+    def _run_async[T](self, coro: Coroutine[Any, Any, T]) -> T:
         """Führt eine Coroutine synchron aus (für TTSEngine-Interface).
 
         Assistant.process() läuft in einem ThreadPoolExecutor. Wir müssen

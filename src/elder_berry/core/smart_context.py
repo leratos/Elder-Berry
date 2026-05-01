@@ -26,7 +26,8 @@ from __future__ import annotations
 
 import logging
 import re
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from collections.abc import Callable
+from concurrent.futures import Future, ThreadPoolExecutor, as_completed
 from concurrent.futures import TimeoutError as FuturesTimeoutError
 from datetime import datetime, timezone
 from enum import Enum
@@ -351,11 +352,10 @@ class SmartContextProvider:
         results: dict[ContextSource, str] = {}
 
         with ThreadPoolExecutor(max_workers=min(len(sources), 6)) as pool:
-            future_to_source = {}
+            future_to_source: dict[Future[str], ContextSource] = {}
             for source in sources:
                 fn = self._get_query_fn(source, user_input)
-                if fn:
-                    future_to_source[pool.submit(fn)] = source
+                future_to_source[pool.submit(fn)] = source
 
             try:
                 for future in as_completed(
@@ -385,8 +385,16 @@ class SmartContextProvider:
 
         return results
 
-    def _get_query_fn(self, source: ContextSource, user_input: str):
-        """Gibt die passende Query-Funktion für eine Quelle zurück."""
+    def _get_query_fn(
+        self,
+        source: ContextSource,
+        user_input: str,
+    ) -> Callable[[], str]:
+        """Gibt die passende Query-Funktion für eine Quelle zurück.
+
+        Das match ist exhaustive über alle ContextSource-Werte; mypy
+        erkennt das und braucht keinen Catch-All.
+        """
         match source:
             case ContextSource.CALENDAR:
                 return self._query_calendar
@@ -400,12 +408,17 @@ class SmartContextProvider:
                 return lambda: self._query_contacts(user_input)
             case ContextSource.WEATHER:
                 return self._query_weather
-        return None
 
     # --- Einzelne Query-Methoden ---
 
     def _query_calendar(self) -> str:
-        """Holt heutige Termine."""
+        """Holt heutige Termine.
+
+        Vorbedingung: ``_calendar is not None`` -- gefiltert in
+        ``_filter_available``. Das ``assert`` macht die Bedingung
+        lokal sichtbar und gibt mypy das Narrowing.
+        """
+        assert self._calendar is not None
         events = self._calendar.get_today()
         if not events:
             return ""
@@ -416,10 +429,12 @@ class SmartContextProvider:
 
     def _query_todos(self) -> str:
         """Holt offene Aufgaben als Briefing-Text."""
+        assert self._task_client is not None
         return self._task_client.format_for_briefing()
 
     def _query_reminders(self) -> str:
         """Holt heutige und überfällige Erinnerungen."""
+        assert self._reminder_store is not None
         user_id = self._default_user_id or None
         pending = self._reminder_store.get_pending(user_id)
         if not pending:
@@ -447,6 +462,7 @@ class SmartContextProvider:
 
     def _query_notes(self, user_input: str) -> str:
         """Durchsucht NoteStore nach dem User-Input."""
+        assert self._note_store is not None
         if not self._default_user_id:
             return ""
         results = self._note_store.search(self._default_user_id, user_input, 3)
@@ -461,6 +477,7 @@ class SmartContextProvider:
 
     def _query_contacts(self, user_input: str) -> str:
         """Durchsucht ContactStore nach dem User-Input."""
+        assert self._contact_store is not None
         if not self._default_user_id:
             return ""
         results = self._contact_store.search(
@@ -477,6 +494,7 @@ class SmartContextProvider:
 
     def _query_weather(self) -> str:
         """Holt aktuelle Wetterdaten."""
+        assert self._weather_client is not None
         result = self._weather_client.get_current()
         return (
             f"🌤️ Wetter: {result.description}, {result.temperature}°C"

@@ -210,6 +210,12 @@ module = [
     "elder_berry.core.audio_router",
     "elder_berry.core.url_validator",
     "elder_berry.core.startup_summary",
+    "elder_berry.core.stt_router",
+    "elder_berry.core.tts_router",
+    "elder_berry.core.context_enricher",
+    "elder_berry.core.task_chain",
+    "elder_berry.core.smart_context",
+    "elder_berry.core.secret_store",
 ]
 strict = true
 
