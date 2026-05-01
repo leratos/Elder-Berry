@@ -38,6 +38,7 @@ from fastapi.staticfiles import StaticFiles
 # statt eines TYPE_CHECKING-Imports, damit der Zyklus auch in den
 # Annotationen aufgebrochen ist.
 from elder_berry.core.log_sanitize import safe_log
+from elder_berry.core.secret_store import SecretNotFoundError
 from elder_berry.web.llm_api import register_llm_routes
 from elder_berry.web.secrets_api import register_secrets_routes
 from elder_berry.web.secrets_registry import (
@@ -708,7 +709,8 @@ class SettingsDashboard:
             if body.get("action") == "remove":
                 try:
                     self._secret_store.delete(self.ALLOWED_SENDERS_KEY)
-                except Exception:
+                except SecretNotFoundError:
+                    # Idempotent: Allowed-Senders-Key kann bereits fehlen.
                     pass
                 logger.info("Allowed-Senders entfernt")
                 return JSONResponse(

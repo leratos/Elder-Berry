@@ -197,6 +197,8 @@ def register_dashboard_auth_routes(
                 authenticated = True
                 expires_at = int(payload["exp"])
             except InvalidSessionError:
+                # Default-Fallback ist bereits "not authenticated" -- Cookie
+                # ungueltig/abgelaufen ist hier kein Fehler, sondern erwartet.
                 pass
         return JSONResponse(
             {

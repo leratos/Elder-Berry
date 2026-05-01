@@ -265,6 +265,7 @@ class BridgeMessageHandler:
                     "Zeitüberschreitung bei der Command-Ausführung.",
                 )
             except Exception:
+                # Best-effort: Timeout-Notification darf den Outer-Handler nicht crashen.
                 pass
         except Exception as e:
             logger.error(
@@ -375,6 +376,7 @@ class BridgeMessageHandler:
                     "Zeitüberschreitung beim Claude-Agent. Bitte erneut versuchen.",
                 )
             except Exception:
+                # Best-effort: Timeout-Notification darf den Outer-Handler nicht crashen.
                 pass
         except Exception as e:
             logger.error(
@@ -716,6 +718,7 @@ class BridgeMessageHandler:
                     "Zeitüberschreitung bei der Verarbeitung. Bitte erneut versuchen.",
                 )
             except Exception:
+                # Best-effort: Timeout-Notification darf den Outer-Handler nicht crashen.
                 pass
         except Exception as e:
             logger.error(
@@ -815,6 +818,7 @@ class BridgeMessageHandler:
                     "Zeitüberschreitung bei der Multi-Step-Verarbeitung.",
                 )
             except Exception:
+                # Best-effort: Timeout-Notification darf den Outer-Handler nicht crashen.
                 pass
         except Exception as e:
             logger.error(

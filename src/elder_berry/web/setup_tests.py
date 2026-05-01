@@ -172,7 +172,7 @@ class SetupTests:
         auth = (user, password)
         base = safe_url.rstrip("/")
         async with httpx.AsyncClient(timeout=10, follow_redirects=False) as client:
-            # WebDAV
+            # WebDAV -- isoliert: Fehler einer Probe darf die anderen nicht abbrechen.
             try:
                 r = await client.request(
                     "PROPFIND",
@@ -181,9 +181,9 @@ class SetupTests:
                     headers={"Depth": "0"},
                 )
                 results["webdav"] = r.status_code in (207, 200)
-            except Exception:
+            except httpx.HTTPError:
                 pass
-            # CalDAV
+            # CalDAV -- isoliert: Fehler einer Probe darf die anderen nicht abbrechen.
             try:
                 r = await client.request(
                     "PROPFIND",
@@ -192,9 +192,9 @@ class SetupTests:
                     headers={"Depth": "0"},
                 )
                 results["caldav"] = r.status_code in (207, 200)
-            except Exception:
+            except httpx.HTTPError:
                 pass
-            # CardDAV
+            # CardDAV -- isoliert: Fehler einer Probe darf die anderen nicht abbrechen.
             try:
                 r = await client.request(
                     "PROPFIND",
@@ -203,7 +203,7 @@ class SetupTests:
                     headers={"Depth": "0"},
                 )
                 results["carddav"] = r.status_code in (207, 200)
-            except Exception:
+            except httpx.HTTPError:
                 pass
         results["success"] = all(results[k] for k in ("webdav", "caldav", "carddav"))
         return results
