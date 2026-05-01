@@ -3,6 +3,7 @@
 import asyncio
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import httpx
 import pytest
 
 from elder_berry.web.setup_tests import (
@@ -175,7 +176,9 @@ class TestNextcloud:
         """Server nicht erreichbar."""
         with patch("elder_berry.web.setup_tests.httpx.AsyncClient") as mock_cls:
             mock_client = AsyncMock()
-            mock_client.request = AsyncMock(side_effect=Exception("Connection refused"))
+            mock_client.request = AsyncMock(
+                side_effect=httpx.ConnectError("Connection refused")
+            )
             mock_client.__aenter__ = AsyncMock(return_value=mock_client)
             mock_client.__aexit__ = AsyncMock(return_value=False)
             mock_cls.return_value = mock_client

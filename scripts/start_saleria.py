@@ -474,7 +474,10 @@ def _check_local_audio(assistant) -> bool:
         try:
             if agent.is_online():
                 return True
-        except Exception:
+        except AttributeError:
+            # Duck-typing-Fallback: assistant._agent ist nicht der erwartete
+            # AgentClient (z.B. Test-Stub ohne is_online). is_online() selbst
+            # faengt Netz-Fehler intern und liefert False.
             pass
 
     # sounddevice verfügbar?

@@ -185,6 +185,8 @@ class AudioPipeline:
                     "Dokument-Verarbeitung nicht verfügbar.",
                 )
             except Exception:
+                # Best-effort: User-Notification ist nett-zu-haben, darf aber
+                # die Document-Pipeline nicht crashen wenn der Channel kurz weg ist.
                 pass
             return
 

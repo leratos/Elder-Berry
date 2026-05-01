@@ -428,8 +428,7 @@ class TestPostAllowedSenders:
         """Entfernen wenn nicht vorhanden: kein Fehler."""
         from unittest.mock import MagicMock
 
-        class SecretNotFoundError(Exception):
-            pass
+        from elder_berry.core.secret_store import SecretNotFoundError
 
         mock_store = MagicMock()
         mock_store.delete.side_effect = SecretNotFoundError("nicht da")

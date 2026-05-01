@@ -1674,6 +1674,7 @@ class TestBridgeAudioRouting:
         try:
             os.unlink(tmp_name)
         except FileNotFoundError:
+            # Test-Cleanup: tmp-Datei wurde u.U. nie angelegt (Mock-Pfad).
             pass
 
         assert len(channel._sent_texts) == 1

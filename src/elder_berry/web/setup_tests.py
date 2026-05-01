@@ -19,6 +19,8 @@ from urllib.parse import urlparse
 
 import httpx
 
+from elder_berry.core.log_sanitize import safe_log
+
 logger = logging.getLogger(__name__)
 
 
@@ -172,7 +174,7 @@ class SetupTests:
         auth = (user, password)
         base = safe_url.rstrip("/")
         async with httpx.AsyncClient(timeout=10, follow_redirects=False) as client:
-            # WebDAV
+            # WebDAV -- isoliert: Fehler einer Probe darf die anderen nicht abbrechen.
             try:
                 r = await client.request(
                     "PROPFIND",
@@ -181,9 +183,9 @@ class SetupTests:
                     headers={"Depth": "0"},
                 )
                 results["webdav"] = r.status_code in (207, 200)
-            except Exception:
-                pass
-            # CalDAV
+            except httpx.HTTPError as exc:
+                logger.debug("WebDAV-Probe fehlgeschlagen: %s", safe_log(exc))
+            # CalDAV -- isoliert: Fehler einer Probe darf die anderen nicht abbrechen.
             try:
                 r = await client.request(
                     "PROPFIND",
@@ -192,9 +194,9 @@ class SetupTests:
                     headers={"Depth": "0"},
                 )
                 results["caldav"] = r.status_code in (207, 200)
-            except Exception:
-                pass
-            # CardDAV
+            except httpx.HTTPError as exc:
+                logger.debug("CalDAV-Probe fehlgeschlagen: %s", safe_log(exc))
+            # CardDAV -- isoliert: Fehler einer Probe darf die anderen nicht abbrechen.
             try:
                 r = await client.request(
                     "PROPFIND",
@@ -203,8 +205,8 @@ class SetupTests:
                     headers={"Depth": "0"},
                 )
                 results["carddav"] = r.status_code in (207, 200)
-            except Exception:
-                pass
+            except httpx.HTTPError as exc:
+                logger.debug("CardDAV-Probe fehlgeschlagen: %s", safe_log(exc))
         results["success"] = all(results[k] for k in ("webdav", "caldav", "carddav"))
         return results
 
