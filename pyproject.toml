@@ -177,6 +177,7 @@ module = [
     "elder_berry.core.error_collector",
     "elder_berry.core.audio_router",
     "elder_berry.core.url_validator",
+    "elder_berry.core.startup_summary",
 ]
 strict = true
 
