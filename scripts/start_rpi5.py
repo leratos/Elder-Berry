@@ -132,6 +132,18 @@ def parse_args() -> argparse.Namespace:
         default="0.0.0.0",
         help="API-Host (default: 0.0.0.0)",
     )
+    parser.add_argument(
+        "--rotation",
+        type=int,
+        choices=[0, 180],
+        default=180,
+        help=(
+            "Display-Rotation in Grad (0 oder 180). Default: 180 -- "
+            "Saleria steht im Geh\u00e4use baulich auf dem Kopf, daher "
+            "180\u00b0 Drehung im Render. RPi5 ignoriert "
+            "display_lcd_rotate= im KMS-Modus."
+        ),
+    )
     return parser.parse_args()
 
 
@@ -166,6 +178,7 @@ def main() -> None:
         width=args.width,
         height=args.height,
         fullscreen=fullscreen,
+        rotation=args.rotation,
     )
 
     # -- Motoren + Sensoren (erstmal Simulator, echte Hardware kommt später) ----
@@ -269,10 +282,11 @@ def main() -> None:
     logger.info("=" * 60)
     logger.info("Elder-Berry RPi5")
     logger.info(
-        "Display: %dx%d %s",
+        "Display: %dx%d %s rotation=%d\u00b0",
         args.width,
         args.height,
         "fullscreen" if fullscreen else "windowed",
+        args.rotation,
     )
     logger.info("API: http://%s:%d", args.host, args.port)
     logger.info("=" * 60)

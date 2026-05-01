@@ -65,14 +65,32 @@ sudo raspi-config
 sudo usermod -aG video,render pi
 ```
 
-Display ist physisch um 180° gedreht (Kamera-Flachband geht sonst in die falsche Richtung).
-Rotation in `/boot/firmware/config.txt`:
+Das DSI-Display ist im Gehäuse baulich um 180° verdreht eingebaut
+(Flachband-Führung). Die Drehung passiert **im Render**, nicht in der
+Firmware:
 
-```
-display_lcd_rotate=2
+```bash
+python scripts/start_rpi5.py --rotation 180   # Default
+python scripts/start_rpi5.py --rotation 0     # falls Hardware-Einbau wechselt
 ```
 
-Danach Reboot nötig. Dreht Display + Touch-Input gemeinsam.
+> **Warum nicht `display_lcd_rotate=`?**
+> Auf RPi5 mit `vc4-kms-v3d`-Treiber (Default seit Bookworm) wird
+> `display_lcd_rotate=` in `/boot/firmware/config.txt` **ignoriert**.
+> Die Option stammt aus der Legacy-Firmware-Pipeline und greift im
+> KMS-Modus nicht. Wenn pygame ausserhalb eines Compositors läuft
+> (`XDG_SESSION_TYPE=tty`), gibt es auch keinen Compositor, der die
+> Rotation übernehmen könnte. Daher wird die Drehung über
+> `pygame.transform.flip()` direkt im Render-Loop gemacht
+> (siehe `LayeredSpriteRenderer.update()`).
+>
+> Unterstützte Werte: `0` und `180`. `90`/`270` sind nicht
+> implementiert (würden Width/Height-Tausch und Buffer-Refactor
+> erfordern und werden im Pepper's-Ghost-Setup nicht gebraucht).
+
+Für Autostart per systemd: `--rotation 180` an die `ExecStart`-Zeile
+hängen oder Default beibehalten (RPi5AvatarDisplay nutzt 180° als
+Default).
 
 ### 7. Statische IP (empfohlen)
 
@@ -264,7 +282,7 @@ Vom Handy aus (Element):
 | "Host key verification failed" | `ssh-keygen -R elderberry.local` |
 | Display bleibt schwarz | `SDL_VIDEODRIVER=kmsdrm` gesetzt? DSI-Kabel prüfen |
 | `kmsdrm not available` | `pygame-ce` statt `pygame` installiert? `pip install pygame-ce` |
-| Display steht Kopf | `display_lcd_rotate=2` in `/boot/firmware/config.txt` + Reboot |
+| Display steht Kopf | `python scripts/start_rpi5.py --rotation 180` (Default) -- nicht `display_lcd_rotate=`, das wirkt auf RPi5/KMS nicht |
 | `Permission denied` auf Display | `sudo usermod -aG video,render pi` + neu einloggen |
 | Statische IP geht nicht | `nmcli con show "preconfigured"` prüfen |
 | Harmony Hub nicht erreichbar | Hub-IP `192.168.50.133` anpingen, WLAN-Netz identisch? |
