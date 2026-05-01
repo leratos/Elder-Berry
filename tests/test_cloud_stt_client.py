@@ -1,15 +1,21 @@
 """Tests: CloudSTTClient – Groq Whisper API."""
+
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import httpx
 import pytest
 
-from elder_berry.tools.cloud_stt_client import CloudSTTClient, CloudSTTError, _guess_mime
+from elder_berry.tools.cloud_stt_client import (
+    CloudSTTClient,
+    CloudSTTError,
+    _guess_mime,
+)
 
 
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
+
 
 def _make_client(**kwargs) -> CloudSTTClient:
     defaults = {"api_key": "groq-test-key"}
@@ -43,6 +49,7 @@ def _mock_response(status_code=200, json_data=None, raise_error=None):
 # Constructor
 # ---------------------------------------------------------------------------
 
+
 class TestConstructor:
     def test_valid_params(self):
         client = _make_client()
@@ -70,6 +77,7 @@ class TestConstructor:
 # ---------------------------------------------------------------------------
 # transcribe()
 # ---------------------------------------------------------------------------
+
 
 class TestTranscribe:
     @pytest.fixture
@@ -115,7 +123,9 @@ class TestTranscribe:
         resp = _mock_response(
             status_code=500,
             raise_error=httpx.HTTPStatusError(
-                "500", request=request, response=raw_resp,
+                "500",
+                request=request,
+                response=raw_resp,
             ),
         )
         mock_http = _mock_http_client(post_response=resp)
@@ -203,6 +213,7 @@ class TestTranscribe:
 # ---------------------------------------------------------------------------
 # _guess_mime()
 # ---------------------------------------------------------------------------
+
 
 class TestGuessMime:
     def test_ogg(self):

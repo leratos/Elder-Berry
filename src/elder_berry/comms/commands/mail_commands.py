@@ -7,6 +7,7 @@ Commands:
 - mail <ID> / mail #<ID>
 - antworte auf #<ID> <Anweisung>  (Phase 28: Email-Reply)
 """
+
 from __future__ import annotations
 
 import logging
@@ -15,7 +16,11 @@ import tempfile
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from elder_berry.comms.commands.base import CommandHandler, CommandResult, user_friendly_error
+from elder_berry.comms.commands.base import (
+    CommandHandler,
+    CommandResult,
+    user_friendly_error,
+)
 
 if TYPE_CHECKING:
     from elder_berry.core.anthropic_client import AnthropicClient
@@ -162,29 +167,50 @@ class MailCommandHandler(CommandHandler):
     def keywords(self) -> dict[str, list[str]]:
         return {
             "mails": [
-                "neue mails", "ungelesene mails", "emails",
-                "e-mails", "posteingang", "post", "nachrichten",
-                "eingang", "hab ich mails", "gibt es neue mails",
-                "sind mails da", "mails checken", "mail check",
-                "post abholen", "neue nachrichten",
+                "neue mails",
+                "ungelesene mails",
+                "emails",
+                "e-mails",
+                "posteingang",
+                "post",
+                "nachrichten",
+                "eingang",
+                "hab ich mails",
+                "gibt es neue mails",
+                "sind mails da",
+                "mails checken",
+                "mail check",
+                "post abholen",
+                "neue nachrichten",
             ],
             "mail_summary": [
-                "mail zusammenfassung", "mails zusammenfassung",
-                "fasse mails zusammen", "mails zusammenfassen",
+                "mail zusammenfassung",
+                "mails zusammenfassung",
+                "fasse mails zusammen",
+                "mails zusammenfassen",
             ],
             "mail_search": [
-                "mail suche", "suche die mail", "finde mails",
-                "mail finden", "mails durchsuchen",
+                "mail suche",
+                "suche die mail",
+                "finde mails",
+                "mail finden",
+                "mails durchsuchen",
             ],
             "mail_reply": [
-                "antworte auf mail", "beantworte mail",
-                "antwort auf die mail", "mail beantworten",
-                "gib auf die mail", "schreib auf die mail",
+                "antworte auf mail",
+                "beantworte mail",
+                "antwort auf die mail",
+                "mail beantworten",
+                "gib auf die mail",
+                "schreib auf die mail",
             ],
             "mail_delete": [
-                "lösche die mail", "mail löschen",
-                "lösch die mail", "entferne die mail",
-                "lösche die email", "email löschen",
+                "lösche die mail",
+                "mail löschen",
+                "lösch die mail",
+                "entferne die mail",
+                "lösche die email",
+                "email löschen",
             ],
         }
 
@@ -205,7 +231,8 @@ class MailCommandHandler(CommandHandler):
             return self._cmd_mail_reply_modify(raw_text)
 
         return CommandResult(
-            command=command, success=False,
+            command=command,
+            success=False,
             text=f"Unbekannter Mail-Command: {command}",
         )
 
@@ -224,7 +251,8 @@ class MailCommandHandler(CommandHandler):
                 mails = self._email_client.get_unread(max_results=10)
                 if not mails:
                     return CommandResult(
-                        command="mails", success=True,
+                        command="mails",
+                        success=True,
                         text="Keine ungelesenen E-Mails.",
                     )
                 self._last_mails = mails
@@ -260,7 +288,8 @@ class MailCommandHandler(CommandHandler):
         match = MAIL_SEARCH_PATTERN.search(raw_text.strip())
         if not match:
             return CommandResult(
-                command="mail_search", success=False,
+                command="mail_search",
+                success=False,
                 text="Suchbegriff fehlt. Beispiel: mail suche Rechnung",
             )
 
@@ -270,7 +299,8 @@ class MailCommandHandler(CommandHandler):
             mails = self._email_client.search(query, max_results=10)
             if not mails:
                 return CommandResult(
-                    command="mail_search", success=True,
+                    command="mail_search",
+                    success=True,
                     text=f"Keine Mails gefunden für '{query}'.",
                 )
 
@@ -282,14 +312,17 @@ class MailCommandHandler(CommandHandler):
             history = f"Suche '{query}' ({len(mails)} Treffer):\n"
             history += self._email_client.format_mails_detailed(mails)
             return CommandResult(
-                command="mail_search", success=True,
-                text=text, history_text=history,
+                command="mail_search",
+                success=True,
+                text=text,
+                history_text=history,
             )
 
         except Exception as e:
             logger.error("Mail-Suche fehlgeschlagen: %s", e)
             return CommandResult(
-                command="mail_search", success=False,
+                command="mail_search",
+                success=False,
                 text=user_friendly_error(e, "Mail-Suche"),
             )
 
@@ -301,7 +334,8 @@ class MailCommandHandler(CommandHandler):
         match = MAIL_ATTACHMENT_PATTERN.search(raw_text.strip())
         if not match:
             return CommandResult(
-                command="mail_attachment", success=False,
+                command="mail_attachment",
+                success=False,
                 text="Mail-ID fehlt. Beispiel: mail anhang 123",
             )
 
@@ -309,7 +343,8 @@ class MailCommandHandler(CommandHandler):
         msg_id = (match.group(1) or match.group(2) or match.group(3) or "").strip()
         if not msg_id:
             return CommandResult(
-                command="mail_attachment", success=False,
+                command="mail_attachment",
+                success=False,
                 text="Keine Mail-ID angegeben.",
             )
 
@@ -318,7 +353,8 @@ class MailCommandHandler(CommandHandler):
 
             if not attachments:
                 return CommandResult(
-                    command="mail_attachment", success=True,
+                    command="mail_attachment",
+                    success=True,
                     text=f"Keine Anhänge in Mail #{msg_id}.",
                 )
 
@@ -328,7 +364,8 @@ class MailCommandHandler(CommandHandler):
             for filename, data in attachments:
                 suffix = Path(filename).suffix or ".bin"
                 tmp = tempfile.NamedTemporaryFile(
-                    suffix=suffix, prefix=f"mail_{msg_id}_",
+                    suffix=suffix,
+                    prefix=f"mail_{msg_id}_",
                     delete=False,
                 )
                 tmp.write(data)
@@ -350,7 +387,8 @@ class MailCommandHandler(CommandHandler):
         except Exception as e:
             logger.error("Mail-Anhang fehlgeschlagen (UID %s): %s", msg_id, e)
             return CommandResult(
-                command="mail_attachment", success=False,
+                command="mail_attachment",
+                success=False,
                 text=user_friendly_error(e, "Anhang abrufen"),
             )
 
@@ -362,7 +400,8 @@ class MailCommandHandler(CommandHandler):
         match = MAIL_ID_PATTERN.match(raw_text.strip().lower())
         if not match:
             return CommandResult(
-                command="mail_by_id", success=False,
+                command="mail_by_id",
+                success=False,
                 text="Format: mail <ID> (z.B. mail 99 oder mail #99)",
             )
 
@@ -373,7 +412,8 @@ class MailCommandHandler(CommandHandler):
 
             if not mail:
                 return CommandResult(
-                    command="mail_by_id", success=False,
+                    command="mail_by_id",
+                    success=False,
                     text=f"Mail #{msg_id} nicht gefunden.",
                 )
 
@@ -406,7 +446,8 @@ class MailCommandHandler(CommandHandler):
         except Exception as e:
             logger.error("Mail UID %s abrufen fehlgeschlagen: %s", msg_id, e)
             return CommandResult(
-                command="mail_by_id", success=False,
+                command="mail_by_id",
+                success=False,
                 text=user_friendly_error(e, "Mail abrufen"),
             )
 
@@ -430,9 +471,10 @@ class MailCommandHandler(CommandHandler):
         # Keine ID angegeben → letzte abgerufene Mail
         if not self._last_mails:
             return CommandResult(
-                command="mail_delete", success=False,
+                command="mail_delete",
+                success=False,
                 text="Keine Mail zum Löschen. Ruf erst Mails ab "
-                     "(z.B. 'mails' oder 'mail #123').",
+                "(z.B. 'mails' oder 'mail #123').",
             )
 
         if len(self._last_mails) == 1:
@@ -440,16 +482,18 @@ class MailCommandHandler(CommandHandler):
             return self._delete_mail_by_uid(mail.msg_id)
 
         return CommandResult(
-            command="mail_delete", success=False,
+            command="mail_delete",
+            success=False,
             text=f"Welche? Es gibt {len(self._last_mails)} Mails.\n"
-                 "Sag z.B. 'lösche mail #123' mit der ID aus der Liste.",
+            "Sag z.B. 'lösche mail #123' mit der ID aus der Liste.",
         )
 
     def _delete_mail_by_uid(self, msg_id: str) -> CommandResult:
         """Löscht eine einzelne Mail per UID."""
         if not msg_id:
             return CommandResult(
-                command="mail_delete", success=False,
+                command="mail_delete",
+                success=False,
                 text="Keine Mail-ID angegeben.",
             )
 
@@ -458,16 +502,16 @@ class MailCommandHandler(CommandHandler):
         except Exception as e:
             logger.error("Mail UID %s löschen fehlgeschlagen: %s", msg_id, e)
             return CommandResult(
-                command="mail_delete", success=False,
+                command="mail_delete",
+                success=False,
                 text=user_friendly_error(e, "Mail löschen"),
             )
 
         # Aus _last_mails entfernen
-        self._last_mails = [
-            m for m in self._last_mails if m.msg_id != msg_id
-        ]
+        self._last_mails = [m for m in self._last_mails if m.msg_id != msg_id]
         return CommandResult(
-            command="mail_delete", success=True,
+            command="mail_delete",
+            success=True,
             text=f"Mail #{msg_id} gelöscht.",
         )
 
@@ -487,9 +531,10 @@ class MailCommandHandler(CommandHandler):
         msg_id, instruction = self._parse_reply_args(raw_text)
         if not msg_id:
             return CommandResult(
-                command="mail_reply", success=False,
+                command="mail_reply",
+                success=False,
                 text="Format: antworte auf #<ID> <Anweisung>\n"
-                     "Beispiel: antworte auf #4523 positiv, bedanke dich",
+                "Beispiel: antworte auf #4523 positiv, bedanke dich",
             )
 
         try:
@@ -497,13 +542,15 @@ class MailCommandHandler(CommandHandler):
         except Exception as e:
             logger.error("Mail UID %s abrufen fehlgeschlagen: %s", msg_id, e)
             return CommandResult(
-                command="mail_reply", success=False,
+                command="mail_reply",
+                success=False,
                 text=user_friendly_error(e, f"Mail #{msg_id}"),
             )
 
         if not original:
             return CommandResult(
-                command="mail_reply", success=False,
+                command="mail_reply",
+                success=False,
                 text=f"Mail #{msg_id} nicht gefunden.",
             )
 
@@ -512,7 +559,8 @@ class MailCommandHandler(CommandHandler):
         except Exception as e:
             logger.error("Draft-Generierung fehlgeschlagen: %s", e)
             return CommandResult(
-                command="mail_reply", success=False,
+                command="mail_reply",
+                success=False,
                 text=f"Draft-Generierung fehlgeschlagen: {type(e).__name__}",
             )
 
@@ -562,7 +610,8 @@ class MailCommandHandler(CommandHandler):
         match = MAIL_REPLY_MODIFY_PATTERN.match(raw_text.strip())
         if not match:
             return CommandResult(
-                command="mail_reply_modify", success=False,
+                command="mail_reply_modify",
+                success=False,
                 text="Ungültiges Format für Änderung.",
             )
 
@@ -574,13 +623,15 @@ class MailCommandHandler(CommandHandler):
         except Exception as e:
             logger.error("Mail UID %s abrufen fehlgeschlagen: %s", msg_id, e)
             return CommandResult(
-                command="mail_reply_modify", success=False,
+                command="mail_reply_modify",
+                success=False,
                 text=user_friendly_error(e, f"Mail #{msg_id}"),
             )
 
         if not original:
             return CommandResult(
-                command="mail_reply_modify", success=False,
+                command="mail_reply_modify",
+                success=False,
                 text=f"Mail #{msg_id} nicht gefunden.",
             )
 
@@ -589,7 +640,8 @@ class MailCommandHandler(CommandHandler):
         except Exception as e:
             logger.error("Draft-Änderung fehlgeschlagen: %s", e)
             return CommandResult(
-                command="mail_reply_modify", success=False,
+                command="mail_reply_modify",
+                success=False,
                 text=f"Draft-Änderung fehlgeschlagen: {type(e).__name__}",
             )
 
@@ -639,9 +691,7 @@ class MailCommandHandler(CommandHandler):
         Raises:
             RuntimeError: Bei API-Fehlern.
         """
-        date_str = (
-            original.date.strftime("%d.%m.%Y %H:%M") if original.date else "?"
-        )
+        date_str = original.date.strftime("%d.%m.%Y %H:%M") if original.date else "?"
         prompt = (
             f"Original-Mail:\n"
             f"Von: {original.sender}\n"
@@ -657,13 +707,11 @@ class MailCommandHandler(CommandHandler):
         if self._contacts and self._default_user_id:
             sender_email = self._extract_email_address(original.sender)
             contact = self._contacts.find_by_email(
-                self._default_user_id, sender_email,
+                self._default_user_id,
+                sender_email,
             )
             if contact:
-                system += (
-                    f"\n\nKontext zum Empfänger:\n"
-                    f"{contact.format_for_llm()}\n"
-                )
+                system += f"\n\nKontext zum Empfänger:\n{contact.format_for_llm()}\n"
 
         return self._anthropic.generate(prompt, system=system)
 

@@ -1,4 +1,5 @@
 """Tests: recurrence – Berechnung und Parsing wiederkehrender Erinnerungen."""
+
 from datetime import datetime, timezone
 
 import pytest
@@ -24,6 +25,7 @@ def _dt(year, month, day, hour=9, minute=0, tz=TZ):
 # ---------------------------------------------------------------------------
 # validate_recurrence
 # ---------------------------------------------------------------------------
+
 
 class TestValidateRecurrence:
     def test_daily(self):
@@ -72,6 +74,7 @@ class TestValidateRecurrence:
 # parse_recurrence
 # ---------------------------------------------------------------------------
 
+
 class TestParseRecurrence:
     def test_taeglich(self):
         assert parse_recurrence("täglich") == "daily"
@@ -111,6 +114,7 @@ class TestParseRecurrence:
 # format_recurrence
 # ---------------------------------------------------------------------------
 
+
 class TestFormatRecurrence:
     def test_daily(self):
         assert format_recurrence("daily") == "täglich"
@@ -142,6 +146,7 @@ class TestFormatRecurrence:
 # calculate_next_due – daily
 # ---------------------------------------------------------------------------
 
+
 class TestCalculateNextDueDaily:
     def test_next_day(self):
         due = _dt(2026, 3, 19, 9, 0)
@@ -161,6 +166,7 @@ class TestCalculateNextDueDaily:
 # ---------------------------------------------------------------------------
 # calculate_next_due – weekdays
 # ---------------------------------------------------------------------------
+
 
 class TestCalculateNextDueWeekdays:
     def test_friday_to_monday(self):
@@ -192,6 +198,7 @@ class TestCalculateNextDueWeekdays:
 # calculate_next_due – weekly
 # ---------------------------------------------------------------------------
 
+
 class TestCalculateNextDueWeekly:
     def test_one_week_later(self):
         # 2026-03-19 Donnerstag, weekly:4 (Do=4)
@@ -206,6 +213,7 @@ class TestCalculateNextDueWeekly:
 # calculate_next_due – biweekly
 # ---------------------------------------------------------------------------
 
+
 class TestCalculateNextDueBiweekly:
     def test_two_weeks_later(self):
         due = _dt(2026, 3, 19, 9, 0)
@@ -218,6 +226,7 @@ class TestCalculateNextDueBiweekly:
 # ---------------------------------------------------------------------------
 # calculate_next_due – monthly
 # ---------------------------------------------------------------------------
+
 
 class TestCalculateNextDueMonthly:
     def test_next_month(self):
@@ -247,6 +256,7 @@ class TestCalculateNextDueMonthly:
 # ---------------------------------------------------------------------------
 # Edge Cases
 # ---------------------------------------------------------------------------
+
 
 class TestEdgeCases:
     def test_invalid_recurrence_raises(self):

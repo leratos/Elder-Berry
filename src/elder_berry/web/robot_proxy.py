@@ -22,6 +22,7 @@ Schutz: Der Pfad ``/api/robot`` ist Teil der ``DashboardAuthMiddleware
 .PROTECTED_PREFIXES``, d.h. ohne gueltiges Login-Cookie kommt nichts
 durch.
 """
+
 from __future__ import annotations
 
 import logging
@@ -108,34 +109,57 @@ DEFAULT_TIMEOUT = httpx.Timeout(connect=3.0, read=20.0, write=10.0, pool=5.0)
 # - cookie: Saleria-Session-Cookie hat auf dem RPi5 nichts zu suchen
 # - x-saleria-robot-token: Wird vom Proxy selbst gesetzt (aus SecretStore)
 # - content-length: Wird von httpx aus dem Body neu errechnet
-_BLOCKED_REQUEST_HEADERS = frozenset({
-    "host", "cookie", "connection", "keep-alive", "proxy-authenticate",
-    "proxy-authorization", "te", "trailer", "transfer-encoding",
-    "upgrade", "content-length", "x-saleria-robot-token",
-})
+_BLOCKED_REQUEST_HEADERS = frozenset(
+    {
+        "host",
+        "cookie",
+        "connection",
+        "keep-alive",
+        "proxy-authenticate",
+        "proxy-authorization",
+        "te",
+        "trailer",
+        "transfer-encoding",
+        "upgrade",
+        "content-length",
+        "x-saleria-robot-token",
+    }
+)
 
 # Headers, die NICHT zurueck zum Client gehen.
 # - Hop-by-hop wie oben
 # - set-cookie: RobotServer setzt keine Cookies, defensiv weglassen
 # - access-control-*: CORS-Header werden von der CORS-Middleware
 #   im Saleria-FastAPI selbst gesetzt; doppelte Header = Browser-Konfusion
-_BLOCKED_RESPONSE_HEADERS = frozenset({
-    "connection", "keep-alive", "proxy-authenticate",
-    "proxy-authorization", "te", "trailer", "transfer-encoding",
-    "upgrade", "content-length", "set-cookie",
-    "access-control-allow-origin", "access-control-allow-credentials",
-    "access-control-allow-methods", "access-control-allow-headers",
-    "access-control-expose-headers", "access-control-max-age",
-})
+_BLOCKED_RESPONSE_HEADERS = frozenset(
+    {
+        "connection",
+        "keep-alive",
+        "proxy-authenticate",
+        "proxy-authorization",
+        "te",
+        "trailer",
+        "transfer-encoding",
+        "upgrade",
+        "content-length",
+        "set-cookie",
+        "access-control-allow-origin",
+        "access-control-allow-credentials",
+        "access-control-allow-methods",
+        "access-control-allow-headers",
+        "access-control-expose-headers",
+        "access-control-max-age",
+    }
+)
 
 
 def _filter_request_headers(
-    headers: dict[str, str], token: str | None,
+    headers: dict[str, str],
+    token: str | None,
 ) -> dict[str, str]:
     """Baut die Header-Map fuer den Upstream-Request."""
     out = {
-        k: v for k, v in headers.items()
-        if k.lower() not in _BLOCKED_REQUEST_HEADERS
+        k: v for k, v in headers.items() if k.lower() not in _BLOCKED_REQUEST_HEADERS
     }
     if token:
         out[ROBOT_TOKEN_HEADER] = token
@@ -145,8 +169,7 @@ def _filter_request_headers(
 def _filter_response_headers(headers) -> dict[str, str]:
     """Baut die Header-Map fuer die Antwort an den Browser."""
     return {
-        k: v for k, v in headers.items()
-        if k.lower() not in _BLOCKED_RESPONSE_HEADERS
+        k: v for k, v in headers.items() if k.lower() not in _BLOCKED_RESPONSE_HEADERS
     }
 
 
@@ -195,7 +218,8 @@ def register_robot_proxy_routes(
         # geschrumpft und ``file:///`` zu ``http://file:/``.
         if not _is_safe_host(host):
             logger.warning(
-                "Robot-Proxy: ungueltiger robot_host: %s", safe_log(host),
+                "Robot-Proxy: ungueltiger robot_host: %s",
+                safe_log(host),
             )
             return JSONResponse(
                 {
@@ -247,7 +271,8 @@ def register_robot_proxy_routes(
         except httpx.ConnectError as exc:
             logger.warning(
                 "Robot-Proxy: Connection zu %s fehlgeschlagen: %s",
-                safe_log(target_url), exc,
+                safe_log(target_url),
+                exc,
             )
             return JSONResponse(
                 {
@@ -261,7 +286,8 @@ def register_robot_proxy_routes(
             )
         except httpx.TimeoutException:
             logger.warning(
-                "Robot-Proxy: Timeout fuer %s", safe_log(target_url),
+                "Robot-Proxy: Timeout fuer %s",
+                safe_log(target_url),
             )
             return JSONResponse(
                 {
@@ -272,7 +298,8 @@ def register_robot_proxy_routes(
             )
         except httpx.RequestError:
             logger.exception(
-                "Robot-Proxy: Request-Fehler fuer %s", safe_log(target_url),
+                "Robot-Proxy: Request-Fehler fuer %s",
+                safe_log(target_url),
             )
             return JSONResponse(
                 {

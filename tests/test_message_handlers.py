@@ -1,4 +1,5 @@
 """Tests: BridgeMessageHandler – Nachrichtenverarbeitung für die MatrixBridge."""
+
 import asyncio
 import time
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -13,6 +14,7 @@ from elder_berry.comms.pending_confirmation import PendingAction
 # Helper
 # ---------------------------------------------------------------------------
 
+
 def run_async(coro):
     """Führt eine Coroutine synchron aus (für Tests ohne pytest-asyncio)."""
     return asyncio.run(coro)
@@ -21,6 +23,7 @@ def run_async(coro):
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
+
 
 @pytest.fixture
 def channel():
@@ -68,8 +71,15 @@ def email_sender():
 
 
 @pytest.fixture
-def handler(channel, assistant, audio_pipeline, chat_history,
-            pending, remote_commands, email_sender):
+def handler(
+    channel,
+    assistant,
+    audio_pipeline,
+    chat_history,
+    pending,
+    remote_commands,
+    email_sender,
+):
     return BridgeMessageHandler(
         channel=channel,
         assistant=assistant,
@@ -95,73 +105,101 @@ def _make_msg(body="hallo", sender="@user:matrix.org", room_id="!room:matrix.org
 # Remote Command Handling
 # ---------------------------------------------------------------------------
 
+
 class TestHandleRemoteCommand:
     def test_command_success(self, handler, channel, remote_commands):
         async def _test():
             from elder_berry.comms.commands.base import CommandResult
+
             remote_commands.execute.return_value = CommandResult(
-                command="status", success=True, text="CPU: 25%",
+                command="status",
+                success=True,
+                text="CPU: 25%",
             )
             msg = _make_msg("status")
             await handler.handle_remote_command(msg, "status")
             channel.send_text.assert_called_once()
             assert "CPU" in channel.send_text.call_args[0][1]
+
         run_async(_test())
 
     def test_command_fallthrough(self, handler, channel, remote_commands, assistant):
         async def _test():
             from elder_berry.comms.commands.base import CommandResult
+
             remote_commands.execute.return_value = CommandResult(
-                command="test", success=False, text="", fallthrough=True,
+                command="test",
+                success=False,
+                text="",
+                fallthrough=True,
             )
             # Mock handle_assistant_message to avoid deep call chain
             handler.handle_assistant_message = AsyncMock()
             msg = _make_msg("unrecognized command")
             await handler.handle_remote_command(msg, "test")
             handler.handle_assistant_message.assert_called_once()
+
         run_async(_test())
 
     def test_command_with_image(self, handler, channel, remote_commands, tmp_path):
         async def _test():
             from elder_berry.comms.commands.base import CommandResult
+
             img = tmp_path / "screenshot.png"
             img.write_bytes(b"PNG")
             remote_commands.execute.return_value = CommandResult(
-                command="screenshot", success=True, text="Screenshot",
+                command="screenshot",
+                success=True,
+                text="Screenshot",
                 image_path=img,
             )
             msg = _make_msg("screenshot")
             await handler.handle_remote_command(msg, "screenshot")
             channel.send_image.assert_called_once()
+
         run_async(_test())
 
     def test_command_with_restart(self, handler, channel, remote_commands):
         async def _test():
             from elder_berry.comms.commands.base import CommandResult
+
             remote_commands.execute.return_value = CommandResult(
-                command="restart", success=True, text="Restarting...",
+                command="restart",
+                success=True,
+                text="Restarting...",
                 restart=True,
             )
             msg = _make_msg("restart")
             # perform_restart is imported lazily inside the method
-            with patch("elder_berry.comms.restart_manager.perform_restart", new_callable=AsyncMock) as mock_restart:
+            with patch(
+                "elder_berry.comms.restart_manager.perform_restart",
+                new_callable=AsyncMock,
+            ) as mock_restart:
                 await handler.handle_remote_command(msg, "restart")
                 mock_restart.assert_called_once()
+
         run_async(_test())
 
     def test_restart_cooldown(self, handler, channel, remote_commands):
         async def _test():
             from elder_berry.comms.commands.base import CommandResult
+
             remote_commands.execute.return_value = CommandResult(
-                command="restart", success=True, text="Restarting...",
+                command="restart",
+                success=True,
+                text="Restarting...",
                 restart=True,
             )
             handler.restart_cooldown_until = time.monotonic() + 300
             msg = _make_msg("restart")
-            with patch("elder_berry.comms.restart_manager.perform_restart", new_callable=AsyncMock) as mock_restart:
+            with patch(
+                "elder_berry.comms.restart_manager.perform_restart",
+                new_callable=AsyncMock,
+            ) as mock_restart:
                 await handler.handle_remote_command(msg, "restart")
                 mock_restart.assert_not_called()
             assert "Cooldown" in channel.send_text.call_args_list[-1][0][1]
+
         run_async(_test())
 
     def test_command_timeout(self, handler, channel, remote_commands):
@@ -169,17 +207,24 @@ class TestHandleRemoteCommand:
             remote_commands.execute.side_effect = asyncio.TimeoutError()
             # run_in_executor won't actually be used in test — we need to
             # make the executor raise. Let's patch at a higher level.
-            with patch.object(handler, "handle_remote_command", wraps=handler.handle_remote_command):
+            with patch.object(
+                handler, "handle_remote_command", wraps=handler.handle_remote_command
+            ):
                 # Actually, we need to simulate timeout more carefully.
                 # Let's just test that TimeoutError is caught
                 pass
+
         run_async(_test())
 
-    def test_command_pending_confirmation(self, handler, channel, remote_commands, pending):
+    def test_command_pending_confirmation(
+        self, handler, channel, remote_commands, pending
+    ):
         async def _test():
             from elder_berry.comms.commands.base import CommandResult
+
             remote_commands.execute.return_value = CommandResult(
-                command="mail_reply", success=True,
+                command="mail_reply",
+                success=True,
                 text="Draft preview...",
                 pending_confirmation=True,
                 pending_data={"msg_id": "123", "draft_text": "Hi"},
@@ -188,37 +233,47 @@ class TestHandleRemoteCommand:
             await handler.handle_remote_command(msg, "mail_reply")
             pending.set.assert_called_once()
             channel.send_text.assert_called()
+
         run_async(_test())
 
     def test_command_with_file(self, handler, channel, remote_commands, tmp_path):
         async def _test():
             from elder_berry.comms.commands.base import CommandResult
+
             f = tmp_path / "test.pdf"
             f.write_bytes(b"PDF")
             remote_commands.execute.return_value = CommandResult(
-                command="send_file", success=True, text="Sending...",
+                command="send_file",
+                success=True,
+                text="Sending...",
                 file_path=f,
             )
             msg = _make_msg("schick mir test.pdf")
             await handler.handle_remote_command(msg, "send_file")
             channel.send_file.assert_called_once()
+
         run_async(_test())
 
     def test_command_error_logged(self, handler, channel, remote_commands):
         async def _test():
             from elder_berry.comms.commands.base import CommandResult
+
             remote_commands.execute.return_value = CommandResult(
-                command="test", success=False, text="Error occurred",
+                command="test",
+                success=False,
+                text="Error occurred",
             )
             msg = _make_msg("test")
             await handler.handle_remote_command(msg, "test")
             channel.send_text.assert_called_once()
+
         run_async(_test())
 
 
 # ---------------------------------------------------------------------------
 # Pending Confirmation
 # ---------------------------------------------------------------------------
+
 
 class TestHandlePendingConfirm:
     def test_mail_send_success(self, handler, channel, email_sender, pending):
@@ -241,6 +296,7 @@ class TestHandlePendingConfirm:
             # Check that success message was sent
             calls = [c[0][1] for c in channel.send_text.call_args_list]
             assert any("gesendet" in c.lower() for c in calls)
+
         run_async(_test())
 
     def test_unknown_action_type(self, handler, channel, pending):
@@ -253,6 +309,7 @@ class TestHandlePendingConfirm:
             msg = _make_msg("ja")
             await handler.handle_pending_confirm(msg, action)
             pending.clear.assert_called_once()
+
         run_async(_test())
 
     def test_restart_confirm_triggers_restart(self, handler, channel, pending):
@@ -270,7 +327,9 @@ class TestHandlePendingConfirm:
                 await handler.handle_pending_confirm(msg, action)
                 mock_restart.assert_called_once()
             pending.clear.assert_called_once()
+
         from unittest.mock import AsyncMock
+
         run_async(_test())
 
     def test_restart_confirm_cooldown(self, handler, channel, pending):
@@ -286,6 +345,7 @@ class TestHandlePendingConfirm:
             pending.clear.assert_called_once()
             calls = [c[0][1] for c in channel.send_text.call_args_list]
             assert any("Cooldown" in c for c in calls)
+
         run_async(_test())
 
     def test_mail_send_no_smtp(self, handler, channel, pending):
@@ -301,12 +361,14 @@ class TestHandlePendingConfirm:
             pending.clear.assert_called_once()
             calls = [c[0][1] for c in channel.send_text.call_args_list]
             assert any("SMTP" in c for c in calls)
+
         run_async(_test())
 
 
 # ---------------------------------------------------------------------------
 # Pending Modify
 # ---------------------------------------------------------------------------
+
 
 class TestHandlePendingModify:
     def test_unsupported_action_type(self, handler, channel):
@@ -320,6 +382,7 @@ class TestHandlePendingModify:
             await handler.handle_pending_modify(msg, action)
             channel.send_text.assert_called_once()
             assert "nicht unterstützt" in channel.send_text.call_args[0][1].lower()
+
         run_async(_test())
 
     def test_no_modify_instruction(self, handler, channel):
@@ -332,12 +395,14 @@ class TestHandlePendingModify:
             msg = _make_msg("ändern:")
             await handler.handle_pending_modify(msg, action)
             channel.send_text.assert_called_once()
+
         run_async(_test())
 
 
 # ---------------------------------------------------------------------------
 # Claude Agent
 # ---------------------------------------------------------------------------
+
 
 class TestHandleClaudeAgent:
     def test_no_agent(self, handler, channel):
@@ -349,12 +414,14 @@ class TestHandleClaudeAgent:
                 await handler.handle_claude_agent(msg, "test")
             except AttributeError:
                 pass  # Expected since claude_agent is None
+
         run_async(_test())
 
 
 # ---------------------------------------------------------------------------
 # Assistant Message
 # ---------------------------------------------------------------------------
+
 
 class TestHandleAssistantMessage:
     def test_basic_flow(self, handler, channel, assistant, chat_history):
@@ -372,6 +439,7 @@ class TestHandleAssistantMessage:
             chat_history.add.assert_called()
             channel.send_text.assert_called_once()
             assert "Hallo" in channel.send_text.call_args[0][1]
+
         run_async(_test())
 
 
@@ -379,9 +447,14 @@ class TestHandleAssistantMessage:
 # Retry LLM Remote Command – generate_raw bypass
 # ---------------------------------------------------------------------------
 
+
 class TestRetryLlmRemoteCommand:
     def test_retry_uses_generate_raw_not_process(
-        self, handler, assistant, remote_commands, chat_history,
+        self,
+        handler,
+        assistant,
+        remote_commands,
+        chat_history,
     ):
         async def _test():
             assistant.generate_raw.return_value = "termine"
@@ -395,10 +468,15 @@ class TestRetryLlmRemoteCommand:
             assistant.generate_raw.assert_called_once()
             assistant.process.assert_not_called()
             assert result == "termine"
+
         run_async(_test())
 
     def test_retry_returns_none_if_not_parseable(
-        self, handler, assistant, remote_commands, chat_history,
+        self,
+        handler,
+        assistant,
+        remote_commands,
+        chat_history,
     ):
         async def _test():
             assistant.generate_raw.return_value = "ich weiß nicht"
@@ -410,10 +488,15 @@ class TestRetryLlmRemoteCommand:
             result = await handler._retry_llm_remote_command(msg, "xyz")
 
             assert result is None
+
         run_async(_test())
 
     def test_retry_handles_exception(
-        self, handler, assistant, remote_commands, chat_history,
+        self,
+        handler,
+        assistant,
+        remote_commands,
+        chat_history,
     ):
         async def _test():
             assistant.generate_raw.side_effect = RuntimeError("LLM down")
@@ -424,4 +507,5 @@ class TestRetryLlmRemoteCommand:
             result = await handler._retry_llm_remote_command(msg, "test")
 
             assert result is None
+
         run_async(_test())

@@ -1,4 +1,5 @@
 """Tests für PDFCommandHandler – StirlingPDFClient + Nextcloud gemockt."""
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -201,7 +202,8 @@ class TestExecution:
 
         with patch("tempfile.mkdtemp", return_value=str(tmp_path)):
             result = handler.execute(
-                "pdf_merge", "pdf zusammenfügen A.pdf B.pdf",
+                "pdf_merge",
+                "pdf zusammenfügen A.pdf B.pdf",
             )
 
         assert result.success is True
@@ -248,7 +250,8 @@ class TestExecution:
 
         with patch("tempfile.mkdtemp", return_value=str(tmp_path)):
             result = handler.execute(
-                "pdf_compress", "pdf komprimieren Geheim.pdf",
+                "pdf_compress",
+                "pdf komprimieren Geheim.pdf",
             )
 
         assert result.success is False
@@ -268,7 +271,8 @@ class TestExecution:
 
         with patch("tempfile.mkdtemp", return_value=str(tmp_path)):
             result = handler.execute(
-                "pdf_compress", "pdf komprimieren Vertrag",
+                "pdf_compress",
+                "pdf komprimieren Vertrag",
             )
 
         assert result.success is False
@@ -302,14 +306,16 @@ class TestExecution:
 
         with patch("tempfile.mkdtemp", return_value=str(tmp_path)):
             result = handler_no_nc.execute(
-                "pdf_compress", f"pdf komprimieren {local_pdf}",
+                "pdf_compress",
+                f"pdf komprimieren {local_pdf}",
             )
 
         assert result.success is True
         assert "Komprimiert" in result.text
 
     def test_commands_in_help(
-        self, handler: PDFCommandHandler,
+        self,
+        handler: PDFCommandHandler,
     ) -> None:
         """command_descriptions vorhanden."""
         descs = handler.command_descriptions
@@ -338,7 +344,8 @@ class TestExecution:
 
         with patch("tempfile.mkdtemp", return_value=str(tmp_path)):
             result = handler_no_nc.execute(
-                "pdf_ocr", f"pdf ocr {local_pdf}",
+                "pdf_ocr",
+                f"pdf ocr {local_pdf}",
             )
 
         assert result.success is True
@@ -346,29 +353,39 @@ class TestExecution:
 
 # ── Additional coverage: helper functions, error paths, all commands ───
 
+
 class TestHelperFunctions:
     def test_is_local_path_unix(self) -> None:
         from elder_berry.comms.commands.pdf_commands import _is_local_path
+
         assert _is_local_path("/home/user/test.pdf") is True
 
     def test_is_local_path_windows(self) -> None:
         from elder_berry.comms.commands.pdf_commands import _is_local_path
+
         assert _is_local_path("C:/Users/test.pdf") is True
 
     def test_is_local_path_nc_name(self) -> None:
         from elder_berry.comms.commands.pdf_commands import _is_local_path
+
         assert _is_local_path("report.pdf") is False
 
     def test_split_filenames_simple(self) -> None:
         from elder_berry.comms.commands.pdf_commands import _split_filenames
+
         assert _split_filenames("a.pdf b.pdf") == ["a.pdf", "b.pdf"]
 
     def test_split_filenames_quoted(self) -> None:
         from elder_berry.comms.commands.pdf_commands import _split_filenames
-        assert _split_filenames('"my file.pdf" other.pdf') == ["my file.pdf", "other.pdf"]
+
+        assert _split_filenames('"my file.pdf" other.pdf') == [
+            "my file.pdf",
+            "other.pdf",
+        ]
 
     def test_split_filenames_single(self) -> None:
         from elder_berry.comms.commands.pdf_commands import _split_filenames
+
         assert _split_filenames("only.pdf") == ["only.pdf"]
 
 
@@ -421,9 +438,7 @@ class TestUploadNcResult:
 
 
 class TestUnknownCommand:
-    def test_unknown_command_returns_failure(
-        self, handler: PDFCommandHandler
-    ) -> None:
+    def test_unknown_command_returns_failure(self, handler: PDFCommandHandler) -> None:
         result = handler.execute("pdf_nonexistent", "pdf nonexistent test")
         assert result.success is False
         assert "Unbekannter" in result.text
@@ -442,6 +457,7 @@ class TestLocalPathNotFound:
 
 
 # ── Merge error paths ──────────────────────────────────────────────────
+
 
 class TestMergeErrors:
     def test_merge_bad_pattern(self, handler: PDFCommandHandler) -> None:
@@ -468,8 +484,11 @@ class TestMergeErrors:
         assert result.success is False
 
     def test_merge_spdf_failure(
-        self, handler: PDFCommandHandler, mock_spdf: MagicMock,
-        mock_nc: MagicMock, tmp_path: Path
+        self,
+        handler: PDFCommandHandler,
+        mock_spdf: MagicMock,
+        mock_nc: MagicMock,
+        tmp_path: Path,
     ) -> None:
         dl_a = tmp_path / "A.pdf"
         dl_b = tmp_path / "B.pdf"
@@ -493,9 +512,7 @@ class TestMergeErrors:
         )
 
         with patch("tempfile.mkdtemp", return_value=str(tmp_path)):
-            result = handler.execute(
-                "pdf_merge", "pdf zusammenfügen A.pdf B.pdf"
-            )
+            result = handler.execute("pdf_merge", "pdf zusammenfügen A.pdf B.pdf")
         assert result.success is False
         assert "Stirling" in result.text
 
@@ -523,6 +540,7 @@ class TestMergeErrors:
 
 # ── Split command ───────────────────────────────────────────────────────
 
+
 class TestSplitCommand:
     def test_split_bad_pattern(self, handler: PDFCommandHandler) -> None:
         result = handler.execute("pdf_split", "pdf aufteilen")
@@ -530,8 +548,11 @@ class TestSplitCommand:
         assert "Format" in result.text
 
     def test_split_nc_workflow(
-        self, handler: PDFCommandHandler, mock_spdf: MagicMock,
-        mock_nc: MagicMock, tmp_path: Path
+        self,
+        handler: PDFCommandHandler,
+        mock_spdf: MagicMock,
+        mock_nc: MagicMock,
+        tmp_path: Path,
     ) -> None:
         mock_nc.search.return_value = [_NCFile("Doc.pdf", "Docs/Doc.pdf")]
         dl_file = tmp_path / "Doc.pdf"
@@ -555,8 +576,11 @@ class TestSplitCommand:
         assert "Hochgeladen" in result.text
 
     def test_split_failure(
-        self, handler: PDFCommandHandler, mock_spdf: MagicMock,
-        mock_nc: MagicMock, tmp_path: Path
+        self,
+        handler: PDFCommandHandler,
+        mock_spdf: MagicMock,
+        mock_nc: MagicMock,
+        tmp_path: Path,
     ) -> None:
         mock_nc.search.return_value = [_NCFile("Doc.pdf", "Docs/Doc.pdf")]
         dl_file = tmp_path / "Doc.pdf"
@@ -603,6 +627,7 @@ class TestSplitCommand:
 
 # ── Compress error paths ────────────────────────────────────────────────
 
+
 class TestCompressErrors:
     def test_compress_bad_pattern(self, handler: PDFCommandHandler) -> None:
         result = handler.execute("pdf_compress", "pdf komprimieren")
@@ -610,8 +635,11 @@ class TestCompressErrors:
         assert "Format" in result.text
 
     def test_compress_spdf_failure(
-        self, handler: PDFCommandHandler, mock_spdf: MagicMock,
-        mock_nc: MagicMock, tmp_path: Path
+        self,
+        handler: PDFCommandHandler,
+        mock_spdf: MagicMock,
+        mock_nc: MagicMock,
+        tmp_path: Path,
     ) -> None:
         mock_nc.search.return_value = [_NCFile("Big.pdf", "Docs/Big.pdf")]
         dl_file = tmp_path / "Big.pdf"
@@ -628,6 +656,7 @@ class TestCompressErrors:
 
 # ── OCR error paths ─────────────────────────────────────────────────────
 
+
 class TestOcrErrors:
     def test_ocr_bad_pattern(self, handler: PDFCommandHandler) -> None:
         result = handler.execute("pdf_ocr", "pdf ocr")
@@ -635,8 +664,11 @@ class TestOcrErrors:
         assert "Format" in result.text
 
     def test_ocr_spdf_failure(
-        self, handler: PDFCommandHandler, mock_spdf: MagicMock,
-        mock_nc: MagicMock, tmp_path: Path
+        self,
+        handler: PDFCommandHandler,
+        mock_spdf: MagicMock,
+        mock_nc: MagicMock,
+        tmp_path: Path,
     ) -> None:
         mock_nc.search.return_value = [_NCFile("Scan.pdf", "Scans/Scan.pdf")]
         dl_file = tmp_path / "Scan.pdf"
@@ -672,6 +704,7 @@ class TestOcrErrors:
 
 # ── ToWord command ──────────────────────────────────────────────────────
 
+
 class TestToWordCommand:
     def test_to_word_bad_pattern(self, handler: PDFCommandHandler) -> None:
         result = handler.execute("pdf_to_word", "pdf zu word")
@@ -679,8 +712,11 @@ class TestToWordCommand:
         assert "Format" in result.text
 
     def test_to_word_nc_workflow(
-        self, handler: PDFCommandHandler, mock_spdf: MagicMock,
-        mock_nc: MagicMock, tmp_path: Path
+        self,
+        handler: PDFCommandHandler,
+        mock_spdf: MagicMock,
+        mock_nc: MagicMock,
+        tmp_path: Path,
     ) -> None:
         mock_nc.search.return_value = [_NCFile("Bericht.pdf", "Docs/Bericht.pdf")]
         dl_file = tmp_path / "Bericht.pdf"
@@ -700,8 +736,11 @@ class TestToWordCommand:
         assert "Hochgeladen" in result.text
 
     def test_to_word_failure(
-        self, handler: PDFCommandHandler, mock_spdf: MagicMock,
-        mock_nc: MagicMock, tmp_path: Path
+        self,
+        handler: PDFCommandHandler,
+        mock_spdf: MagicMock,
+        mock_nc: MagicMock,
+        tmp_path: Path,
     ) -> None:
         mock_nc.search.return_value = [_NCFile("Doc.pdf", "Docs/Doc.pdf")]
         dl_file = tmp_path / "Doc.pdf"
@@ -743,6 +782,7 @@ class TestToWordCommand:
 
 # ── FromFile command ────────────────────────────────────────────────────
 
+
 class TestFromFileCommand:
     def test_from_file_bad_pattern(self, handler: PDFCommandHandler) -> None:
         result = handler.execute("pdf_from_file", "zu pdf")
@@ -750,8 +790,11 @@ class TestFromFileCommand:
         assert "Format" in result.text
 
     def test_from_file_nc_workflow(
-        self, handler: PDFCommandHandler, mock_spdf: MagicMock,
-        mock_nc: MagicMock, tmp_path: Path
+        self,
+        handler: PDFCommandHandler,
+        mock_spdf: MagicMock,
+        mock_nc: MagicMock,
+        tmp_path: Path,
     ) -> None:
         mock_nc.search.return_value = [_NCFile("Brief.docx", "Docs/Brief.docx")]
         dl_file = tmp_path / "Brief.docx"
@@ -771,8 +814,11 @@ class TestFromFileCommand:
         assert "Hochgeladen" in result.text
 
     def test_from_file_failure(
-        self, handler: PDFCommandHandler, mock_spdf: MagicMock,
-        mock_nc: MagicMock, tmp_path: Path
+        self,
+        handler: PDFCommandHandler,
+        mock_spdf: MagicMock,
+        mock_nc: MagicMock,
+        tmp_path: Path,
     ) -> None:
         mock_nc.search.return_value = [_NCFile("Brief.docx", "Docs/Brief.docx")]
         dl_file = tmp_path / "Brief.docx"
@@ -814,6 +860,7 @@ class TestFromFileCommand:
 
 # ── ExtractImages command ───────────────────────────────────────────────
 
+
 class TestExtractImagesCommand:
     def test_extract_images_bad_pattern(self, handler: PDFCommandHandler) -> None:
         result = handler.execute("pdf_extract_images", "pdf bilder")
@@ -821,8 +868,11 @@ class TestExtractImagesCommand:
         assert "Format" in result.text
 
     def test_extract_images_nc_workflow(
-        self, handler: PDFCommandHandler, mock_spdf: MagicMock,
-        mock_nc: MagicMock, tmp_path: Path
+        self,
+        handler: PDFCommandHandler,
+        mock_spdf: MagicMock,
+        mock_nc: MagicMock,
+        tmp_path: Path,
     ) -> None:
         mock_nc.search.return_value = [_NCFile("Katalog.pdf", "Docs/Katalog.pdf")]
         dl_file = tmp_path / "Katalog.pdf"
@@ -846,8 +896,11 @@ class TestExtractImagesCommand:
         assert "Hochgeladen" in result.text
 
     def test_extract_images_failure(
-        self, handler: PDFCommandHandler, mock_spdf: MagicMock,
-        mock_nc: MagicMock, tmp_path: Path
+        self,
+        handler: PDFCommandHandler,
+        mock_spdf: MagicMock,
+        mock_nc: MagicMock,
+        tmp_path: Path,
     ) -> None:
         mock_nc.search.return_value = [_NCFile("Doc.pdf", "Docs/Doc.pdf")]
         dl_file = tmp_path / "Doc.pdf"
@@ -892,8 +945,11 @@ class TestExtractImagesCommand:
         assert result.success is False
 
     def test_extract_images_nc_no_output_paths(
-        self, handler: PDFCommandHandler, mock_spdf: MagicMock,
-        mock_nc: MagicMock, tmp_path: Path
+        self,
+        handler: PDFCommandHandler,
+        mock_spdf: MagicMock,
+        mock_nc: MagicMock,
+        tmp_path: Path,
     ) -> None:
         """Wenn keine output_paths → kein Upload, aber success=True."""
         mock_nc.search.return_value = [_NCFile("Doc.pdf", "Docs/Doc.pdf")]
@@ -924,6 +980,7 @@ class TestPathTraversalGuard:
         allowed_base: Path,
     ) -> PDFCommandHandler:
         from elder_berry.core.path_guard import PathGuard
+
         return PDFCommandHandler(
             stirling_pdf=mock_spdf,
             nextcloud_files=None,
@@ -931,7 +988,9 @@ class TestPathTraversalGuard:
         )
 
     def test_local_path_outside_base_blocked(
-        self, mock_spdf: MagicMock, tmp_path: Path,
+        self,
+        mock_spdf: MagicMock,
+        tmp_path: Path,
     ) -> None:
         """Existierende Datei ausserhalb der Base -> Zugriff verweigert."""
         safe_base = tmp_path / "safe"
@@ -943,7 +1002,8 @@ class TestPathTraversalGuard:
 
         with patch("tempfile.mkdtemp", return_value=str(safe_base)):
             result = handler.execute(
-                "pdf_compress", f"pdf komprimieren {outside_pdf}",
+                "pdf_compress",
+                f"pdf komprimieren {outside_pdf}",
             )
 
         assert result.success is False
@@ -954,7 +1014,9 @@ class TestPathTraversalGuard:
         mock_spdf.compress.assert_not_called()
 
     def test_local_path_dotdot_blocked(
-        self, mock_spdf: MagicMock, tmp_path: Path,
+        self,
+        mock_spdf: MagicMock,
+        tmp_path: Path,
     ) -> None:
         """`../`-Traversal wird via resolve() aufgeloest und abgewiesen."""
         safe_base = tmp_path / "safe"
@@ -967,7 +1029,8 @@ class TestPathTraversalGuard:
 
         with patch("tempfile.mkdtemp", return_value=str(safe_base)):
             result = handler.execute(
-                "pdf_ocr", f"pdf ocr {traversal}",
+                "pdf_ocr",
+                f"pdf ocr {traversal}",
             )
 
         assert result.success is False
@@ -975,7 +1038,9 @@ class TestPathTraversalGuard:
         mock_spdf.ocr.assert_not_called()
 
     def test_local_path_inside_base_allowed(
-        self, mock_spdf: MagicMock, tmp_path: Path,
+        self,
+        mock_spdf: MagicMock,
+        tmp_path: Path,
     ) -> None:
         """Datei innerhalb der Base wird normal verarbeitet."""
         safe_base = tmp_path / "safe"
@@ -992,14 +1057,17 @@ class TestPathTraversalGuard:
         handler = self._make_handler(mock_spdf, safe_base)
         with patch("tempfile.mkdtemp", return_value=str(safe_base)):
             result = handler.execute(
-                "pdf_compress", f"pdf komprimieren {ok_pdf}",
+                "pdf_compress",
+                f"pdf komprimieren {ok_pdf}",
             )
 
         assert result.success is True
         mock_spdf.compress.assert_called_once()
 
     def test_merge_blocks_traversal_in_first_file(
-        self, mock_spdf: MagicMock, tmp_path: Path,
+        self,
+        mock_spdf: MagicMock,
+        tmp_path: Path,
     ) -> None:
         """Bei merge wird auch der erste Datei-Argument validiert."""
         safe_base = tmp_path / "safe"
@@ -1012,7 +1080,8 @@ class TestPathTraversalGuard:
         handler = self._make_handler(mock_spdf, safe_base)
         with patch("tempfile.mkdtemp", return_value=str(safe_base)):
             result = handler.execute(
-                "pdf_merge", f"pdf zusammenfügen {outside} {ok_b}",
+                "pdf_merge",
+                f"pdf zusammenfügen {outside} {ok_b}",
             )
 
         assert result.success is False

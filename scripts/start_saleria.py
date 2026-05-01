@@ -15,6 +15,7 @@ Voraussetzungen Tower (Windows):
     Ollama läuft: ollama serve
     Embedding-Modell: ollama pull nomic-embed-text
 """
+
 from __future__ import annotations
 
 import argparse
@@ -34,6 +35,7 @@ _PROJECT_ROOT = Path(
 sys.path.insert(0, str(_PROJECT_ROOT / "src"))
 
 from dotenv import load_dotenv
+
 load_dotenv(_PROJECT_ROOT / ".env")
 
 # logs/ Verzeichnis anlegen (für RotatingFileHandler)
@@ -110,6 +112,7 @@ if __name__ == "__main__":
 # Argument-Parser
 # ---------------------------------------------------------------------------
 
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Elder-Berry Assistentin – Saleria Berry",
@@ -121,10 +124,18 @@ def parse_args() -> argparse.Namespace:
         default="matrix",
         help="Eingabe-Modus (Standard: matrix). 'agent' startet nur den TowerServer.",
     )
-    parser.add_argument("--no-memory", action="store_true", help="RAG-Gedächtnis deaktivieren")
-    parser.add_argument("--no-tts", action="store_true", help="Sprachausgabe deaktivieren")
+    parser.add_argument(
+        "--no-memory", action="store_true", help="RAG-Gedächtnis deaktivieren"
+    )
+    parser.add_argument(
+        "--no-tts", action="store_true", help="Sprachausgabe deaktivieren"
+    )
     parser.add_argument("--no-avatar", action="store_true", help="Avatar deaktivieren")
-    parser.add_argument("--whisper-model", default="medium", help="Whisper-Modell (tiny/base/small/medium/large-v3)")
+    parser.add_argument(
+        "--whisper-model",
+        default="medium",
+        help="Whisper-Modell (tiny/base/small/medium/large-v3)",
+    )
     parser.add_argument("--debug", action="store_true", help="Debug-Logging aktivieren")
     return parser.parse_args()
 
@@ -133,6 +144,7 @@ def parse_args() -> argparse.Namespace:
 # Secrets → Env-Variablen (damit LLMRouter + andere Komponenten sie finden)
 # ---------------------------------------------------------------------------
 
+
 def _check_first_run() -> bool:
     """Prüft ob die Minimal-Konfiguration vorhanden ist.
 
@@ -140,6 +152,7 @@ def _check_first_run() -> bool:
     """
     try:
         from elder_berry.core.secret_store import SecretStore
+
         store = SecretStore()
         required = ["matrix_access_token", "matrix_user_id", "matrix_homeserver"]
         return all(store.has(k) for k in required)
@@ -151,6 +164,7 @@ def load_secrets_to_env():
     """Lädt API-Keys aus SecretStore in os.environ (wenn nicht bereits gesetzt)."""
     try:
         from elder_berry.core.secret_store import SecretStore
+
         store = SecretStore()
 
         key_map = {
@@ -177,12 +191,16 @@ from elder_berry.comms.allowed_senders import load_allowed_senders  # noqa: E402
 # Komponenten-Initialisierung
 # ---------------------------------------------------------------------------
 
+
 def init_llm():
     from elder_berry.llm.router import LLMRouter
+
     router = LLMRouter.create_default()
     backend = router.active_backend
     if backend == "none":
-        logger.error("Kein LLM-Backend verfügbar! ANTHROPIC_API_KEY setzen oder Ollama starten.")
+        logger.error(
+            "Kein LLM-Backend verfügbar! ANTHROPIC_API_KEY setzen oder Ollama starten."
+        )
         sys.exit(1)
     logger.info("LLM-Backend: %s", backend)
     return router
@@ -190,7 +208,10 @@ def init_llm():
 
 def init_actions_db():
     from elder_berry.actions.db import ActionsDB
-    db_path = Path(os.environ.get("DATA_PATH", Path.home() / ".elder-berry" / "actions.db"))
+
+    db_path = Path(
+        os.environ.get("DATA_PATH", Path.home() / ".elder-berry" / "actions.db")
+    )
     db_path.parent.mkdir(parents=True, exist_ok=True)
     db = ActionsDB(db_path)
     logger.info("ActionsDB: %s", db_path)
@@ -204,6 +225,7 @@ def init_controller():
         return _make_dummy_controller()
     try:
         from elder_berry.actions.windows_controller import WindowsActionController
+
         ctrl = WindowsActionController()
         logger.info("ActionController: WindowsActionController")
         return ctrl
@@ -216,6 +238,7 @@ def _make_dummy_controller():
     """Minimaler Dummy-Controller für Nicht-Windows-Umgebungen."""
     from unittest.mock import MagicMock
     from elder_berry.actions.base import ActionController
+
     dummy = MagicMock(spec=ActionController)
     dummy.press_key.return_value = None
     dummy.type_text.return_value = None
@@ -224,6 +247,7 @@ def _make_dummy_controller():
 
 def init_character():
     from elder_berry.character.saleria import SaleriaEngine
+
     engine = SaleriaEngine()
     logger.info("Charakter: %s", engine._personality.name)
     return engine
@@ -293,6 +317,7 @@ def _init_local_tts(character=None):
     if platform.system() == "Windows":
         try:
             from elder_berry.tts.windows_engine import WindowsTTSEngine
+
             tts = WindowsTTSEngine()
             logger.info("TTS lokal: WindowsTTSEngine (SAPI5)")
             return tts
@@ -365,6 +390,7 @@ def _init_tower_agent(store=None):
 
         if store is None:
             from elder_berry.core.secret_store import SecretStore
+
             store = SecretStore()
 
         tower_host = store.get_or_none("tower_host")
@@ -372,9 +398,8 @@ def _init_tower_agent(store=None):
             return None
 
         # Phase 57.3: Token für den Tower-Server
-        tower_token = (
-            os.environ.get("ELDER_BERRY_TOWER_TOKEN")
-            or store.get_or_none("tower_auth_token")
+        tower_token = os.environ.get("ELDER_BERRY_TOWER_TOKEN") or store.get_or_none(
+            "tower_auth_token"
         )
         if not tower_token:
             logger.warning(
@@ -398,10 +423,10 @@ def init_memory(no_memory: bool):
     try:
         from elder_berry.memory.chroma_memory import ChromaMemoryStore
         from elder_berry.memory.embedding import OllamaEmbeddingClient
-        db_path = Path(os.environ.get(
-            "MEMORY_DB_PATH",
-            Path.home() / ".elder-berry" / "memory"
-        ))
+
+        db_path = Path(
+            os.environ.get("MEMORY_DB_PATH", Path.home() / ".elder-berry" / "memory")
+        )
         embedding_model = os.environ.get("EMBEDDING_MODEL", "nomic-embed-text")
         embed_client = OllamaEmbeddingClient(model=embedding_model)
         if not embed_client.is_available():
@@ -426,6 +451,7 @@ def init_avatar(no_avatar: bool):
         return None
     try:
         from elder_berry.avatar.layered_renderer import LayeredSpriteRenderer
+
         renderer = LayeredSpriteRenderer()
         logger.info("Avatar: LayeredSpriteRenderer")
         return renderer
@@ -436,6 +462,7 @@ def init_avatar(no_avatar: bool):
 
 def init_system_monitor():
     from elder_berry.system.info import SystemMonitor
+
     return SystemMonitor()
 
 
@@ -453,6 +480,7 @@ def _check_local_audio(assistant) -> bool:
     # sounddevice verfügbar?
     try:
         import sounddevice  # noqa: F401
+
         return True
     except ImportError:
         pass
@@ -464,6 +492,7 @@ def init_audio_converter():
     """AudioConverter für WAV→OGG/Opus (Matrix-Sprachnachrichten)."""
     try:
         from elder_berry.comms.audio_converter import AudioConverter
+
         converter = AudioConverter()
         if converter.ffmpeg_available:
             logger.info("AudioConverter: ffmpeg verfügbar")
@@ -493,12 +522,15 @@ def init_stt(mode: str, whisper_model: str, event_loop=None):
     # Option 2: Lokales FasterWhisper
     try:
         from elder_berry.stt.faster_whisper_engine import FasterWhisperEngine
+
         stt = FasterWhisperEngine(model_size=whisper_model)
         logger.info("STT: FasterWhisperEngine (Modell: %s)", whisper_model)
         return stt
     except ImportError:
         if mode == "voice":
-            logger.error("STT: faster-whisper nicht installiert (pip install faster-whisper)")
+            logger.error(
+                "STT: faster-whisper nicht installiert (pip install faster-whisper)"
+            )
             sys.exit(1)
         else:
             logger.warning(
@@ -549,6 +581,7 @@ def _init_stt_router(event_loop=None):
 # Lauf-Modi
 # ---------------------------------------------------------------------------
 
+
 def run_agent(port: int = 8090):
     """Agent-Modus: Startet nur den TowerServer (FastAPI) ohne Bot/LLM.
 
@@ -560,8 +593,7 @@ def run_agent(port: int = 8090):
         import uvicorn
     except ImportError:
         logger.error(
-            "uvicorn nicht installiert. "
-            "Installiere mit: pip install -e '.[tower]'"
+            "uvicorn nicht installiert. Installiere mit: pip install -e '.[tower]'"
         )
         sys.exit(1)
 
@@ -573,10 +605,12 @@ def run_agent(port: int = 8090):
     if not tower_token:
         try:
             from elder_berry.core.secret_store import SecretStore
+
             store = SecretStore()
             tower_token = store.get_or_none("tower_auth_token")
             if not tower_token:
                 import secrets as _sec
+
                 tower_token = _sec.token_hex(32)
                 store.set("tower_auth_token", tower_token)
                 logger.info("Tower-Token automatisch generiert und gespeichert")
@@ -598,7 +632,9 @@ def run_agent(port: int = 8090):
     print("\n─── Saleria Agent-Modus (TowerServer) ───")
     print(f"  Endpunkte: /status, /tts, /stt, /action, /screenshot")
     print(f"  Port: {port}")
-    print(f"  Token: {'aus Env' if os.environ.get('ELDER_BERRY_TOWER_TOKEN') == tower_token else 'aus SecretStore'}")
+    print(
+        f"  Token: {'aus Env' if os.environ.get('ELDER_BERRY_TOWER_TOKEN') == tower_token else 'aus SecretStore'}"
+    )
     print("  Ctrl+C zum Beenden\n")
 
     # Phase 57.1: Loopback-Default
@@ -607,7 +643,8 @@ def run_agent(port: int = 8090):
         logger.warning(
             "TowerServer lauscht auf %s:%d – Steuerung ist im Netz "
             "erreichbar. Nur im vertrauenswürdigen Netz nutzen.",
-            tower_bind, port,
+            tower_bind,
+            port,
         )
     uvicorn.run(
         "tower.tower_server:app",
@@ -695,12 +732,13 @@ def _init_matrix_channel(secrets):
 
     # Phase 67: kein Phantasie-Default mehr -- wenn der Homeserver fehlt,
     # bricht der Start sauber ab statt gegen matrix.example.com zu reden.
-    homeserver = (
-        secrets.get_or_none("matrix_homeserver")
-        or os.environ.get("MATRIX_HOMESERVER")
+    homeserver = secrets.get_or_none("matrix_homeserver") or os.environ.get(
+        "MATRIX_HOMESERVER"
     )
     user_id = secrets.get_or_none("matrix_user_id") or os.environ.get("MATRIX_USER_ID")
-    token = secrets.get_or_none("matrix_access_token") or os.environ.get("MATRIX_ACCESS_TOKEN")
+    token = secrets.get_or_none("matrix_access_token") or os.environ.get(
+        "MATRIX_ACCESS_TOKEN"
+    )
     room_id = secrets.get_or_none("matrix_room_id") or os.environ.get("MATRIX_ROOM_ID")
 
     if not homeserver or not user_id or not token:
@@ -716,7 +754,9 @@ def _init_matrix_channel(secrets):
 
     allowed_rooms = [room_id] if room_id else None
     channel = MatrixChannel(
-        homeserver=homeserver, user_id=user_id, access_token=token,
+        homeserver=homeserver,
+        user_id=user_id,
+        access_token=token,
         allowed_rooms=allowed_rooms,
     )
     return channel, user_id, room_id
@@ -733,10 +773,11 @@ def _init_productivity_services(secrets, default_user_id):
     if secrets.get_or_none("nextcloud_url"):
         try:
             from elder_berry.tools.caldav_calendar import CalDAVCalendarClient
+
             cal = CalDAVCalendarClient(secret_store=secrets)
             if cal.is_available():
                 calendar_client = cal
-                logger.info("Calendar: Nextcloud CalDAV (%s)", secrets.get("nextcloud_url"))
+                logger.info("Calendar: Nextcloud CalDAV konfiguriert")
         except ImportError:
             logger.debug("CalDAV: caldav-Library nicht installiert")
         except Exception as e:
@@ -746,6 +787,7 @@ def _init_productivity_services(secrets, default_user_id):
     if calendar_client is None:
         try:
             from elder_berry.tools.google_calendar import GoogleCalendarClient
+
             cal = GoogleCalendarClient(secret_store=secrets)
             if cal.is_available():
                 calendar_client = cal
@@ -764,6 +806,7 @@ def _init_productivity_services(secrets, default_user_id):
     if secrets.get_or_none("email_imap_host"):
         try:
             from elder_berry.tools.email_client import IMAPEmailClient
+
             svc["email_client"] = IMAPEmailClient.from_secret_store(secrets)
             logger.info("Email: IMAP %s", secrets.get("email_imap_host"))
         except Exception as e:
@@ -773,6 +816,7 @@ def _init_productivity_services(secrets, default_user_id):
     if svc.get("email_client") and secrets.get_or_none("email_user"):
         try:
             from elder_berry.tools.email_sender import EmailSender
+
             sender = EmailSender.from_secret_store(secrets)
             if sender.is_available():
                 svc["email_sender"] = sender
@@ -785,6 +829,7 @@ def _init_productivity_services(secrets, default_user_id):
     # ContactStore
     try:
         from elder_berry.tools.contact_store import ContactStore
+
         svc["contact_store"] = ContactStore()
         logger.info("ContactStore initialisiert: %s", svc["contact_store"]._db_path)
     except Exception as e:
@@ -793,6 +838,7 @@ def _init_productivity_services(secrets, default_user_id):
     # CalDAVTaskClient (Nextcloud Tasks – ersetzt TodoStore)
     try:
         from elder_berry.tools.caldav_tasks import CalDAVTaskClient
+
         svc["task_client"] = CalDAVTaskClient(secret_store=secrets)
         logger.info("CalDAVTaskClient initialisiert")
     except Exception as e:
@@ -812,6 +858,7 @@ def _init_productivity_services(secrets, default_user_id):
         else:
             try:
                 from elder_berry.tools.gym_data import GymDataClient
+
                 svc["gym_client"] = GymDataClient(
                     secret_store=secrets,
                     base_url=gym_url,
@@ -823,6 +870,7 @@ def _init_productivity_services(secrets, default_user_id):
     # Weather
     try:
         from elder_berry.tools.weather_client import WeatherClient
+
         svc["weather"] = WeatherClient(secret_store=secrets)
         logger.info("Weather: aktiv")
     except Exception as e:
@@ -831,6 +879,7 @@ def _init_productivity_services(secrets, default_user_id):
     # NoteStore
     try:
         from elder_berry.tools.note_store import NoteStore
+
         svc["note_store"] = NoteStore()
         logger.info("NoteStore: aktiv (DB: %s)", svc["note_store"]._db_path)
     except Exception as e:
@@ -840,6 +889,7 @@ def _init_productivity_services(secrets, default_user_id):
     try:
         from elder_berry.tools.reminder_store import ReminderStore
         from elder_berry.comms.reminder_scheduler import ReminderScheduler
+
         svc["reminder_store"] = ReminderStore()
         svc["reminder_scheduler"] = ReminderScheduler(
             store=svc["reminder_store"],
@@ -853,6 +903,7 @@ def _init_productivity_services(secrets, default_user_id):
     if secrets.get_or_none("nextcloud_url"):
         try:
             from elder_berry.tools.nextcloud_files import NextcloudFilesClient
+
             nc = NextcloudFilesClient(secret_store=secrets)
             if nc.is_available():
                 svc["nextcloud_files"] = nc
@@ -866,6 +917,7 @@ def _init_productivity_services(secrets, default_user_id):
     if secrets.get_or_none("stirling_pdf_url"):
         try:
             from elder_berry.tools.stirling_pdf import StirlingPDFClient
+
             spdf = StirlingPDFClient(secret_store=secrets)
             if spdf.is_available():
                 svc["stirling_pdf"] = spdf
@@ -879,6 +931,7 @@ def _init_productivity_services(secrets, default_user_id):
     if secrets.get_or_none("nextcloud_url"):
         try:
             from elder_berry.tools.carddav_sync import CardDAVSyncClient
+
             carddav = CardDAVSyncClient(secret_store=secrets)
             if carddav.is_available():
                 svc["carddav_sync"] = carddav
@@ -894,6 +947,7 @@ def _init_productivity_services(secrets, default_user_id):
     if secrets.get_or_none("google_maps_api_key"):
         try:
             from elder_berry.tools.route_planner import RoutePlanner
+
             svc["route_planner"] = RoutePlanner(
                 api_key=secrets.get("google_maps_api_key"),
             )
@@ -904,6 +958,7 @@ def _init_productivity_services(secrets, default_user_id):
     # Daily Briefing
     try:
         from elder_berry.comms.briefing_scheduler import BriefingScheduler
+
         svc["briefing_scheduler"] = BriefingScheduler(
             send_briefing=lambda text: None,
             calendar=svc.get("calendar"),
@@ -927,13 +982,14 @@ def _init_productivity_services(secrets, default_user_id):
 def _init_context_and_tools(secrets, assistant, svc):
     """Initialisiert ContextEnricher, CalendarWatcher und Werkzeuge."""
     default_user_id = (
-        secrets.get_or_none("matrix_allowed_senders") or ""
-    ).split(",")[0].strip()
+        (secrets.get_or_none("matrix_allowed_senders") or "").split(",")[0].strip()
+    )
     tools = {}
 
     # SmartContextProvider (automatische Kontext-Anreicherung für LLM-Anfragen)
     try:
         from elder_berry.core.smart_context import SmartContextProvider
+
         tools["smart_context_provider"] = SmartContextProvider(
             calendar=svc.get("calendar"),
             task_client=svc.get("task_client"),
@@ -943,21 +999,29 @@ def _init_context_and_tools(secrets, assistant, svc):
             weather_client=svc.get("weather"),
             default_user_id=default_user_id,
         )
-        smart_sources = [s for s, v in [
-            ("Calendar", svc.get("calendar")),
-            ("Tasks", svc.get("task_client")),
-            ("Notes", svc.get("note_store")),
-            ("Contacts", svc.get("contact_store")),
-            ("Reminders", svc.get("reminder_store")),
-            ("Weather", svc.get("weather")),
-        ] if v]
-        logger.info("SmartContextProvider: aktiv (Quellen: %s)", ", ".join(smart_sources) or "keine")
+        smart_sources = [
+            s
+            for s, v in [
+                ("Calendar", svc.get("calendar")),
+                ("Tasks", svc.get("task_client")),
+                ("Notes", svc.get("note_store")),
+                ("Contacts", svc.get("contact_store")),
+                ("Reminders", svc.get("reminder_store")),
+                ("Weather", svc.get("weather")),
+            ]
+            if v
+        ]
+        logger.info(
+            "SmartContextProvider: aktiv (Quellen: %s)",
+            ", ".join(smart_sources) or "keine",
+        )
     except Exception as e:
         logger.warning("SmartContextProvider nicht verfügbar: %s", e)
 
     # ContextEnricher
     try:
         from elder_berry.core.context_enricher import ContextEnricher
+
         tools["context_enricher"] = ContextEnricher(
             note_store=svc.get("note_store"),
             email_client=svc.get("email_client"),
@@ -966,11 +1030,18 @@ def _init_context_and_tools(secrets, assistant, svc):
             llm=assistant._llm,
             default_user_id=default_user_id,
         )
-        sources = [s for s, v in [
-            ("Notes", svc.get("note_store")), ("Mail", svc.get("email_client")),
-            ("Weather", svc.get("weather")),
-        ] if v]
-        logger.info("ContextEnricher: aktiv (Quellen: %s)", ", ".join(sources) or "keine")
+        sources = [
+            s
+            for s, v in [
+                ("Notes", svc.get("note_store")),
+                ("Mail", svc.get("email_client")),
+                ("Weather", svc.get("weather")),
+            ]
+            if v
+        ]
+        logger.info(
+            "ContextEnricher: aktiv (Quellen: %s)", ", ".join(sources) or "keine"
+        )
     except Exception as e:
         logger.warning("ContextEnricher nicht verfügbar: %s", e)
 
@@ -978,6 +1049,7 @@ def _init_context_and_tools(secrets, assistant, svc):
     if svc.get("calendar"):
         try:
             from elder_berry.comms.calendar_watcher import CalendarWatcher
+
             tools["calendar_watcher"] = CalendarWatcher(
                 send_alert=lambda text: None,
                 calendar=svc["calendar"],
@@ -991,12 +1063,14 @@ def _init_context_and_tools(secrets, assistant, svc):
 
     # DocumentReader
     from elder_berry.tools.document_reader import DocumentReader
+
     tools["document_reader"] = DocumentReader()
 
     # DocumentClassifier (benötigt AnthropicClient + DocumentReader + optional Stirling-PDF)
     try:
         from elder_berry.llm.anthropic_client import AnthropicClient
         from elder_berry.tools.document_classifier import DocumentClassifier
+
         anthropic_client = AnthropicClient()
         if anthropic_client.is_available():
             tools["document_classifier"] = DocumentClassifier(
@@ -1006,12 +1080,15 @@ def _init_context_and_tools(secrets, assistant, svc):
             )
             logger.info("DocumentClassifier: aktiv (Anthropic + DocumentReader)")
         else:
-            logger.warning("DocumentClassifier: nicht verfügbar (Anthropic API Key fehlt)")
+            logger.warning(
+                "DocumentClassifier: nicht verfügbar (Anthropic API Key fehlt)"
+            )
     except Exception as e:
         logger.warning("DocumentClassifier nicht verfügbar: %s", e)
 
     # AudioRouter
     from elder_berry.core.audio_router import AudioRouter
+
     local_audio_available = _check_local_audio(assistant)
     tools["audio_router"] = AudioRouter(local_available=local_audio_available)
     logger.info(
@@ -1024,13 +1101,17 @@ def _init_context_and_tools(secrets, assistant, svc):
         try:
             from elder_berry.actions.computer_use import ComputerUseController
             from elder_berry.llm.anthropic_client import AnthropicClient
+
             cu_client = AnthropicClient()
             if cu_client.is_available():
                 tools["computer_use"] = ComputerUseController(
                     anthropic_client=cu_client,
                     controller=assistant._controller,
                 )
-                logger.info("ComputerUseController: aktiv (Monitor %d)", tools["computer_use"].monitor_index)
+                logger.info(
+                    "ComputerUseController: aktiv (Monitor %d)",
+                    tools["computer_use"].monitor_index,
+                )
             else:
                 logger.info("ComputerUseController: inaktiv (ANTHROPIC_API_KEY fehlt)")
         except Exception as e:
@@ -1039,6 +1120,7 @@ def _init_context_and_tools(secrets, assistant, svc):
     # WebFetcher
     try:
         from elder_berry.tools.web_fetcher import WebFetcher
+
         tools["web_fetcher"] = WebFetcher()
         logger.info("WebFetcher: aktiv")
     except Exception as e:
@@ -1048,6 +1130,7 @@ def _init_context_and_tools(secrets, assistant, svc):
     if secrets.get_or_none("brave_api_key"):
         try:
             from elder_berry.tools.brave_search_client import BraveSearchClient
+
             tools["search_client"] = BraveSearchClient(secret_store=secrets)
             logger.info("BraveSearchClient: aktiv")
         except Exception as e:
@@ -1058,6 +1141,7 @@ def _init_context_and_tools(secrets, assistant, svc):
     # Vision-Client (Kamera)
     try:
         from elder_berry.llm.anthropic_client import AnthropicClient
+
         vision = AnthropicClient()
         if vision.is_available():
             tools["vision_client"] = vision
@@ -1085,8 +1169,8 @@ def run_matrix(assistant, stt=None, avatar=None, audio_converter=None, robot=Non
 
     # Default-User-ID (erster konfigurierter Sender)
     default_user_id = (
-        secrets.get_or_none("matrix_allowed_senders") or ""
-    ).split(",")[0].strip()
+        (secrets.get_or_none("matrix_allowed_senders") or "").split(",")[0].strip()
+    )
 
     # --- 2. Produktivitäts-Services ---
     svc = _init_productivity_services(secrets, default_user_id)
@@ -1141,11 +1225,16 @@ def run_matrix(assistant, stt=None, avatar=None, audio_converter=None, robot=Non
 
     # --- 5. ClaudeAgent ---
     claude_agent = None
-    anthropic_key = secrets.get_or_none("anthropic_api_key") or os.environ.get("ANTHROPIC_API_KEY")
+    anthropic_key = secrets.get_or_none("anthropic_api_key") or os.environ.get(
+        "ANTHROPIC_API_KEY"
+    )
     if anthropic_key:
         try:
             from elder_berry.comms.claude_agent import ClaudeAgent
-            claude_agent = ClaudeAgent(api_key=anthropic_key, project_root=_PROJECT_ROOT)
+
+            claude_agent = ClaudeAgent(
+                api_key=anthropic_key, project_root=_PROJECT_ROOT
+            )
             logger.info("ClaudeAgent: aktiv")
         except Exception as e:
             logger.warning("ClaudeAgent nicht verfügbar: %s", e)
@@ -1184,8 +1273,7 @@ def run_matrix(assistant, stt=None, avatar=None, audio_converter=None, robot=Non
 
     def summarizer(old_summary: str, evicted: list[ChatMessage]) -> str:
         evicted_text = "\n".join(
-            f"{'User' if m.role == 'user' else 'Saleria'}: {m.text}"
-            for m in evicted
+            f"{'User' if m.role == 'user' else 'Saleria'}: {m.text}" for m in evicted
         )
         prompt = (
             f"Bisherige Zusammenfassung: {old_summary or 'Keine'}\n\n"
@@ -1219,6 +1307,7 @@ def run_matrix(assistant, stt=None, avatar=None, audio_converter=None, robot=Non
     # --- 8. Dashboard + Start ---
     try:
         from elder_berry.web.settings_dashboard import SettingsDashboard
+
         # Phase 52.1a: Loopback-Default + Token-Schutz
         settings_bind = os.environ.get("ELDER_BERRY_SETTINGS_BIND", "127.0.0.1")
         # Phase 58: Login-Layer aktiv (überlebt VPN-Leak, schützt auch GET).
@@ -1249,10 +1338,17 @@ def run_matrix(assistant, stt=None, avatar=None, audio_converter=None, robot=Non
 
     # Phase 52.2: Startup-Summary
     summary = _build_startup_summary(
-        assistant=assistant, stt=stt, robot=robot, secrets=secrets,
-        svc=svc, tools=tools, tower_agent=tower_agent,
-        matrix_user_id=user_id, matrix_room_id=room_id,
-        allowed_senders=allowed_senders, claude_agent=claude_agent,
+        assistant=assistant,
+        stt=stt,
+        robot=robot,
+        secrets=secrets,
+        svc=svc,
+        tools=tools,
+        tower_agent=tower_agent,
+        matrix_user_id=user_id,
+        matrix_room_id=room_id,
+        allowed_senders=allowed_senders,
+        claude_agent=claude_agent,
     )
     print()
     print(summary.render())
@@ -1267,6 +1363,7 @@ def run_matrix(assistant, stt=None, avatar=None, audio_converter=None, robot=Non
     try:
         bridge.start()
         import time
+
         while True:
             time.sleep(1)
     except KeyboardInterrupt:
@@ -1280,9 +1377,20 @@ def run_matrix(assistant, stt=None, avatar=None, audio_converter=None, robot=Non
 # Phase 52.2 – Startup Summary Helpers
 # ---------------------------------------------------------------------------
 
+
 def _build_startup_summary(
-    *, assistant, stt, robot, secrets, svc, tools, tower_agent,
-    matrix_user_id, matrix_room_id, allowed_senders, claude_agent,
+    *,
+    assistant,
+    stt,
+    robot,
+    secrets,
+    svc,
+    tools,
+    tower_agent,
+    matrix_user_id,
+    matrix_room_id,
+    allowed_senders,
+    claude_agent,
 ):
     """Sammelt Komponenten-Status nach dem Init und gibt eine StartupSummary
     zurück. Reine Introspektion – keine Seiteneffekte."""
@@ -1303,7 +1411,9 @@ def _build_startup_summary(
         summary.add("TTS", "ok", type(assistant._tts).__name__)
     else:
         summary.add("TTS", "warn", "deaktiviert")
-    summary.add("STT", "ok" if stt else "warn", type(stt).__name__ if stt else "deaktiviert")
+    summary.add(
+        "STT", "ok" if stt else "warn", type(stt).__name__ if stt else "deaktiviert"
+    )
     summary.add(
         "Avatar",
         "ok" if getattr(assistant, "_avatar", None) else "warn",
@@ -1372,7 +1482,10 @@ def _maybe_send_summary_to_matrix(summary, channel, room_id) -> None:
         message = summary.to_matrix_message()
         send = getattr(channel, "send_text", None) or getattr(channel, "send", None)
         if send is None:
-            logger.debug("Channel %s hat keine send-Methode – Summary nicht gesendet", type(channel).__name__)
+            logger.debug(
+                "Channel %s hat keine send-Methode – Summary nicht gesendet",
+                type(channel).__name__,
+            )
             return
         send(room_id, message)
     except Exception as exc:
@@ -1382,6 +1495,7 @@ def _maybe_send_summary_to_matrix(summary, channel, room_id) -> None:
 # ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
+
 
 def main():
     args = parse_args()
@@ -1407,12 +1521,15 @@ def main():
     if not _check_first_run():
         logger.info("Erste Ausführung erkannt – starte Setup-Wizard")
         from elder_berry.core.secret_store import SecretStore
+
         store = SecretStore()
 
         # Phase 57.1: Bind-Adresse bestimmen
         setup_bind = os.environ.get("ELDER_BERRY_SETUP_BIND", "127.0.0.1")
         compat_mode = False
-        migration_marker = _PROJECT_ROOT.parent / ".elder-berry" / ".phase57_migration_done"
+        migration_marker = (
+            _PROJECT_ROOT.parent / ".elder-berry" / ".phase57_migration_done"
+        )
         home_env = os.environ.get("ELDER_BERRY_HOME")
         if home_env:
             migration_marker = Path(home_env) / ".phase57_migration_done"
@@ -1445,8 +1562,10 @@ def main():
         print("  Öffne http://localhost:8090/setup im Browser\n")
         import webbrowser
         from threading import Timer
+
         Timer(1.5, webbrowser.open, args=["http://localhost:8090/setup"]).start()
         from elder_berry.web.setup_wizard import run_setup_wizard
+
         run_setup_wizard(
             store,
             port=8090,
@@ -1473,14 +1592,14 @@ def main():
     try:
         from elder_berry.core.secret_store import SecretStore
         from elder_berry.robot.client import RobotClient
+
         _secrets = SecretStore()
         robot_host = _secrets.get_or_none("robot_host")
         if robot_host:
             # Phase 59: Robot-Token analog zu Tower-Token – erst Env, dann Store.
-            robot_token = (
-                os.environ.get("ELDER_BERRY_ROBOT_TOKEN")
-                or _secrets.get_or_none("robot_auth_token")
-            )
+            robot_token = os.environ.get(
+                "ELDER_BERRY_ROBOT_TOKEN"
+            ) or _secrets.get_or_none("robot_auth_token")
             if not robot_token:
                 logger.warning(
                     "RobotClient: kein Robot-Token konfiguriert – Requests "
@@ -1498,6 +1617,7 @@ def main():
         logger.debug("RobotClient nicht verfügbar: %s", e)
 
     from elder_berry.core.assistant import Assistant
+
     assistant = Assistant(
         llm=llm,
         actions_db=db,
@@ -1516,7 +1636,13 @@ def main():
     elif args.mode == "voice":
         run_voice(assistant, stt)
     else:
-        run_matrix(assistant, stt=stt, avatar=avatar, audio_converter=audio_converter, robot=robot)
+        run_matrix(
+            assistant,
+            stt=stt,
+            avatar=avatar,
+            audio_converter=audio_converter,
+            robot=robot,
+        )
 
 
 _LOCK_FILE = _PROJECT_ROOT / ".saleria.lock"
@@ -1543,9 +1669,11 @@ def _acquire_instance_lock() -> None:
         try:
             if platform.system() == "Windows":
                 import msvcrt
+
                 msvcrt.locking(_lock_fh.fileno(), msvcrt.LK_NBLCK, 1)
             else:
                 import fcntl
+
                 fcntl.flock(_lock_fh, fcntl.LOCK_EX | fcntl.LOCK_NB)
             # Lock erfolgreich erworben
             break
@@ -1555,7 +1683,8 @@ def _acquire_instance_lock() -> None:
             if attempt < max_attempts - 1:
                 logger.info(
                     "Lock belegt, warte 1s (Versuch %d/%d)...",
-                    attempt + 1, max_attempts,
+                    attempt + 1,
+                    max_attempts,
                 )
                 time.sleep(1)
                 continue
@@ -1583,6 +1712,7 @@ def _release_instance_lock() -> None:
     try:
         if platform.system() == "Windows":
             import msvcrt
+
             _lock_fh.seek(0)
             msvcrt.locking(_lock_fh.fileno(), msvcrt.LK_UNLCK, 1)
     except Exception:

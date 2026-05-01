@@ -1,4 +1,5 @@
 """Tests für ComputerUseController – Vision-gesteuerte PC-Bedienung."""
+
 from __future__ import annotations
 
 import importlib
@@ -15,23 +16,21 @@ from elder_berry.actions.computer_use import (
 )
 
 _mss_installed = importlib.util.find_spec("mss") is not None
-requires_mss = pytest.mark.skipif(
-    not _mss_installed, reason="mss nicht installiert"
-)
+requires_mss = pytest.mark.skipif(not _mss_installed, reason="mss nicht installiert")
 
 _pil_installed = importlib.util.find_spec("PIL") is not None
-requires_pil = pytest.mark.skipif(
-    not _pil_installed, reason="Pillow nicht installiert"
-)
+requires_pil = pytest.mark.skipif(not _pil_installed, reason="Pillow nicht installiert")
 
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
 
+
 def _make_controller() -> MagicMock:
     """Erstellt einen Mock-ActionController."""
     from elder_berry.actions.base import ActionController
+
     mock = MagicMock(spec=ActionController)
     return mock
 
@@ -39,6 +38,7 @@ def _make_controller() -> MagicMock:
 def _make_anthropic_client(action: ComputerUseAction | None = None) -> MagicMock:
     """Erstellt einen Mock-AnthropicClient."""
     from elder_berry.llm.anthropic_client import AnthropicClient
+
     mock = MagicMock(spec=AnthropicClient)
     mock.is_available.return_value = True
     if action:
@@ -59,12 +59,11 @@ def _make_monitor_data():
 # ComputerUseResult DTO
 # ---------------------------------------------------------------------------
 
+
 class TestComputerUseResult:
     def test_success_result(self):
         action = ComputerUseAction(action="left_click", coordinate=(100, 200))
-        result = ComputerUseResult(
-            action=action, success=True, message="OK"
-        )
+        result = ComputerUseResult(action=action, success=True, message="OK")
         assert result.success is True
         assert result.verification_image_path is None
         assert result.error is None
@@ -82,7 +81,9 @@ class TestComputerUseResult:
         img.touch()
         action = ComputerUseAction(action="left_click", coordinate=(50, 50))
         result = ComputerUseResult(
-            action=action, success=True, message="OK",
+            action=action,
+            success=True,
+            message="OK",
             verification_image_path=img,
         )
         assert result.verification_image_path == img
@@ -92,11 +93,10 @@ class TestComputerUseResult:
 # ComputerUseController – Init + Monitor
 # ---------------------------------------------------------------------------
 
+
 class TestControllerInit:
     def test_default_monitor_index(self):
-        ctrl = ComputerUseController(
-            _make_anthropic_client(), _make_controller()
-        )
+        ctrl = ComputerUseController(_make_anthropic_client(), _make_controller())
         assert ctrl.monitor_index == 1
 
     def test_custom_monitor_index(self):
@@ -106,17 +106,13 @@ class TestControllerInit:
         assert ctrl.monitor_index == 2
 
     def test_monitor_index_setter(self):
-        ctrl = ComputerUseController(
-            _make_anthropic_client(), _make_controller()
-        )
+        ctrl = ComputerUseController(_make_anthropic_client(), _make_controller())
         ctrl.monitor_index = 3
         assert ctrl.monitor_index == 3
 
     @requires_mss
     def test_get_available_monitors(self):
-        ctrl = ComputerUseController(
-            _make_anthropic_client(), _make_controller()
-        )
+        ctrl = ComputerUseController(_make_anthropic_client(), _make_controller())
         monitors = ctrl.get_available_monitors()
         assert isinstance(monitors, list)
         # Mindestens 1 Monitor
@@ -130,11 +126,10 @@ class TestControllerInit:
 # ComputerUseController – execute_instruction
 # ---------------------------------------------------------------------------
 
+
 class TestExecuteInstruction:
     def test_mss_missing(self):
-        ctrl = ComputerUseController(
-            _make_anthropic_client(), _make_controller()
-        )
+        ctrl = ComputerUseController(_make_anthropic_client(), _make_controller())
         with patch("elder_berry.actions.computer_use._MSS_AVAILABLE", False):
             result = ctrl.execute_instruction("klick auf OK")
         assert result.success is False
@@ -142,10 +137,10 @@ class TestExecuteInstruction:
 
     @requires_mss
     def test_screenshot_failed(self):
-        ctrl = ComputerUseController(
-            _make_anthropic_client(), _make_controller()
-        )
-        with patch.object(ctrl, "_capture_screenshot", side_effect=RuntimeError("fail")):
+        ctrl = ComputerUseController(_make_anthropic_client(), _make_controller())
+        with patch.object(
+            ctrl, "_capture_screenshot", side_effect=RuntimeError("fail")
+        ):
             result = ctrl.execute_instruction("klick auf OK")
         assert result.success is False
         assert result.error == "screenshot_failed"
@@ -172,7 +167,9 @@ class TestExecuteInstruction:
 
         with (
             patch.object(ctrl, "_capture_screenshot", return_value=("b64", 1280, 720)),
-            patch.object(ctrl, "_get_monitor_geometry", return_value=(1920, 1080, 0, 0)),
+            patch.object(
+                ctrl, "_get_monitor_geometry", return_value=(1920, 1080, 0, 0)
+            ),
             patch.object(ctrl, "_take_verification_screenshot", return_value=None),
             patch("elder_berry.actions.computer_use.time") as mock_time,
         ):
@@ -188,6 +185,7 @@ class TestExecuteInstruction:
 # ---------------------------------------------------------------------------
 # _execute_action – Einzelne Aktionen
 # ---------------------------------------------------------------------------
+
 
 class TestExecuteAction:
     def _make_ctrl(self):
@@ -259,8 +257,10 @@ class TestExecuteAction:
     def test_scroll_down(self):
         ctrl = self._make_ctrl()
         action = ComputerUseAction(
-            action="scroll", coordinate=(640, 360),
-            scroll_direction="down", scroll_amount=3,
+            action="scroll",
+            coordinate=(640, 360),
+            scroll_direction="down",
+            scroll_amount=3,
         )
         mock_pag = MagicMock()
         with patch.dict("sys.modules", {"pyautogui": mock_pag}):
@@ -271,8 +271,10 @@ class TestExecuteAction:
     def test_scroll_up(self):
         ctrl = self._make_ctrl()
         action = ComputerUseAction(
-            action="scroll", coordinate=(640, 360),
-            scroll_direction="up", scroll_amount=5,
+            action="scroll",
+            coordinate=(640, 360),
+            scroll_direction="up",
+            scroll_amount=5,
         )
         mock_pag = MagicMock()
         with patch.dict("sys.modules", {"pyautogui": mock_pag}):
@@ -315,6 +317,7 @@ class TestExecuteAction:
 # _describe_action
 # ---------------------------------------------------------------------------
 
+
 class TestDescribeAction:
     def test_click(self):
         action = ComputerUseAction(action="left_click", coordinate=(100, 200))
@@ -354,13 +357,12 @@ class TestDescribeAction:
 # _capture_screenshot (mit Resize)
 # ---------------------------------------------------------------------------
 
+
 class TestCaptureScreenshot:
     @requires_mss
     @requires_pil
     def test_screenshot_resized_if_too_wide(self):
-        ctrl = ComputerUseController(
-            _make_anthropic_client(), _make_controller()
-        )
+        ctrl = ComputerUseController(_make_anthropic_client(), _make_controller())
         # Mock mss um konsistente Daten zu liefern
         mock_screenshot = MagicMock()
         mock_screenshot.width = 1920

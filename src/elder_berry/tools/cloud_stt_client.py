@@ -6,6 +6,7 @@ Groq Free Tier: kostenlos, schnell, ~500 Requests/Tag.
 Benötigt:
     - groq_api_key (SecretStore)
 """
+
 from __future__ import annotations
 
 import logging
@@ -82,7 +83,10 @@ class CloudSTTClient:
         try:
             async with httpx.AsyncClient(timeout=_DEFAULT_TIMEOUT) as client:
                 response = await client.post(
-                    self.GROQ_URL, headers=headers, files=files, data=data,
+                    self.GROQ_URL,
+                    headers=headers,
+                    files=files,
+                    data=data,
                 )
                 if response.status_code == 401:
                     raise CloudSTTError("Ungültiger Groq API Key")
@@ -94,7 +98,9 @@ class CloudSTTClient:
                 text = result.get("text", "").strip()
                 logger.debug(
                     "Cloud-STT: %d bytes → '%s' (%s)",
-                    len(audio_bytes), text[:60], lang or "auto",
+                    len(audio_bytes),
+                    text[:60],
+                    lang or "auto",
                 )
                 return text
 
@@ -102,8 +108,10 @@ class CloudSTTClient:
             raise CloudSTTError("Groq STT Timeout: %s" % e) from e
         except httpx.HTTPStatusError as e:
             raise CloudSTTError(
-                "Groq STT HTTP %d: %s" % (
-                    e.response.status_code, e.response.text[:200],
+                "Groq STT HTTP %d: %s"
+                % (
+                    e.response.status_code,
+                    e.response.text[:200],
                 ),
             ) from e
         except CloudSTTError:

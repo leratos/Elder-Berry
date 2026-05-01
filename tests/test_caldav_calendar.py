@@ -1,4 +1,5 @@
 """Tests für CalDAVCalendarClient – CalDAV komplett gemockt."""
+
 from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
@@ -17,11 +18,13 @@ except ImportError:
     _has_icalendar = False
 
 needs_icalendar = pytest.mark.skipif(
-    not _has_icalendar, reason="icalendar nicht installiert",
+    not _has_icalendar,
+    reason="icalendar nicht installiert",
 )
 
 
 # ── Helpers ──────────────────────────────────────────────────────────
+
 
 def _make_secret_store(**overrides):
     """Erstellt einen Mock-SecretStore mit Nextcloud-Credentials."""
@@ -93,6 +96,7 @@ def _client_with_calendar(mock_calendar=None):
 
 # ── Credentials & Verfügbarkeit ──────────────────────────────────────
 
+
 class TestCredentialsAndAvailability:
     def test_init_from_secret_store(self):
         store = _make_secret_store()
@@ -121,7 +125,9 @@ class TestCredentialsAndAvailability:
         store = _make_secret_store()
         client = CalDAVCalendarClient(secret_store=store)
 
-        with patch.object(client, "_get_calendar", side_effect=ConnectionError("timeout")):
+        with patch.object(
+            client, "_get_calendar", side_effect=ConnectionError("timeout")
+        ):
             assert client.is_available() is False
 
     def test_lazy_calendar_init(self):
@@ -133,6 +139,7 @@ class TestCredentialsAndAvailability:
 
 
 # ── Events abrufen ───────────────────────────────────────────────────
+
 
 class TestGetEvents:
     @needs_icalendar
@@ -150,8 +157,16 @@ class TestGetEvents:
     @needs_icalendar
     def test_get_events_multiple_days(self):
         client, cal = _client_with_calendar()
-        ev1 = _make_caldav_event(_make_ical(summary="A", uid="1", dtstart="20260330T100000", dtend="20260330T110000"))
-        ev2 = _make_caldav_event(_make_ical(summary="B", uid="2", dtstart="20260402T090000", dtend="20260402T100000"))
+        ev1 = _make_caldav_event(
+            _make_ical(
+                summary="A", uid="1", dtstart="20260330T100000", dtend="20260330T110000"
+            )
+        )
+        ev2 = _make_caldav_event(
+            _make_ical(
+                summary="B", uid="2", dtstart="20260402T090000", dtend="20260402T100000"
+            )
+        )
         cal.search.return_value = [ev2, ev1]  # unsortiert
 
         events = client.get_events(days=7)
@@ -187,7 +202,10 @@ class TestGetEvents:
         end = datetime(2026, 4, 7, tzinfo=timezone.utc)
         client.get_events_range(start=start, end=end)
         call_kwargs = cal.search.call_args
-        assert call_kwargs.kwargs.get("start") == start or call_kwargs[1].get("start") == start
+        assert (
+            call_kwargs.kwargs.get("start") == start
+            or call_kwargs[1].get("start") == start
+        )
 
     @needs_icalendar
     def test_get_events_max_results(self):
@@ -195,10 +213,14 @@ class TestGetEvents:
         # 5 Events zurückgeben, aber max_results=3
         days = ["20260325", "20260326", "20260327", "20260328", "20260329"]
         icals = [
-            _make_caldav_event(_make_ical(
-                summary=f"Ev{i}", uid=f"uid{i}",
-                dtstart=f"{days[i]}T100000", dtend=f"{days[i]}T110000",
-            ))
+            _make_caldav_event(
+                _make_ical(
+                    summary=f"Ev{i}",
+                    uid=f"uid{i}",
+                    dtstart=f"{days[i]}T100000",
+                    dtend=f"{days[i]}T110000",
+                )
+            )
             for i in range(5)
         ]
         cal.search.return_value = icals
@@ -208,8 +230,22 @@ class TestGetEvents:
     @needs_icalendar
     def test_get_events_sorted(self):
         client, cal = _client_with_calendar()
-        late = _make_caldav_event(_make_ical(summary="Spät", uid="l", dtstart="20260330T180000", dtend="20260330T190000"))
-        early = _make_caldav_event(_make_ical(summary="Früh", uid="e", dtstart="20260330T080000", dtend="20260330T090000"))
+        late = _make_caldav_event(
+            _make_ical(
+                summary="Spät",
+                uid="l",
+                dtstart="20260330T180000",
+                dtend="20260330T190000",
+            )
+        )
+        early = _make_caldav_event(
+            _make_ical(
+                summary="Früh",
+                uid="e",
+                dtstart="20260330T080000",
+                dtend="20260330T090000",
+            )
+        )
         cal.search.return_value = [late, early]
 
         events = client.get_events(days=1)
@@ -218,6 +254,7 @@ class TestGetEvents:
 
 
 # ── Suche ────────────────────────────────────────────────────────────
+
 
 @needs_icalendar
 class TestSearchEvents:
@@ -249,6 +286,7 @@ class TestSearchEvents:
 
 
 # ── Event erstellen ──────────────────────────────────────────────────
+
 
 class TestCreateEvent:
     def test_create_event_normal(self):
@@ -288,7 +326,9 @@ class TestCreateEvent:
         client, cal = _client_with_calendar()
         start = datetime(2026, 9, 28)
         client.create_event(
-            "Geburtstag", start, all_day=True,
+            "Geburtstag",
+            start,
+            all_day=True,
             recurrence=["RRULE:FREQ=YEARLY"],
         )
         ical_str = cal.save_event.call_args[0][0]
@@ -298,8 +338,11 @@ class TestCreateEvent:
         client, cal = _client_with_calendar()
         start = datetime(2026, 3, 30, 10, 0)
         result = client.create_event(
-            "Test", start, duration_minutes=30,
-            description="Notiz", location="Büro",
+            "Test",
+            start,
+            duration_minutes=30,
+            description="Notiz",
+            location="Büro",
         )
         assert isinstance(result, CalendarEvent)
         assert result.description == "Notiz"
@@ -307,6 +350,7 @@ class TestCreateEvent:
 
 
 # ── Event löschen ────────────────────────────────────────────────────
+
 
 class TestDeleteEvent:
     def test_delete_event_success(self):
@@ -335,12 +379,15 @@ class TestDeleteEvent:
 
 # ── Parsing ──────────────────────────────────────────────────────────
 
+
 @needs_icalendar
 class TestParseEvent:
     def test_parse_event_normal(self):
         ical = _make_ical(
-            summary="Meeting", uid="m1",
-            dtstart="20260330T140000", dtend="20260330T150000",
+            summary="Meeting",
+            uid="m1",
+            dtstart="20260330T140000",
+            dtend="20260330T150000",
         )
         event = CalDAVCalendarClient._parse_event(_make_caldav_event(ical))
         assert event.summary == "Meeting"
@@ -351,8 +398,10 @@ class TestParseEvent:
 
     def test_parse_event_all_day(self):
         ical = _make_ical(
-            summary="Urlaub", uid="u1",
-            dtstart="20260715", dtend="20260716",
+            summary="Urlaub",
+            uid="u1",
+            dtstart="20260715",
+            dtend="20260716",
             all_day=True,
         )
         event = CalDAVCalendarClient._parse_event(_make_caldav_event(ical))
@@ -362,16 +411,20 @@ class TestParseEvent:
 
     def test_parse_event_no_dtend(self):
         ical = _make_ical(
-            summary="Quickie", uid="q1",
-            dtstart="20260330T100000", dtend=None,
+            summary="Quickie",
+            uid="q1",
+            dtstart="20260330T100000",
+            dtend=None,
         )
         event = CalDAVCalendarClient._parse_event(_make_caldav_event(ical))
         assert event.end == event.start + timedelta(hours=1)
 
     def test_parse_event_with_location_and_description(self):
         ical = _make_ical(
-            summary="Arzt", uid="a1",
-            location="Praxis", description="Blutabnahme",
+            summary="Arzt",
+            uid="a1",
+            location="Praxis",
+            description="Blutabnahme",
         )
         event = CalDAVCalendarClient._parse_event(_make_caldav_event(ical))
         assert event.location == "Praxis"
@@ -384,6 +437,7 @@ class TestParseEvent:
 
 
 # ── Connection Recovery ──────────────────────────────────────────────
+
 
 class TestConnectionRecovery:
     def test_retry_after_connection_error(self):

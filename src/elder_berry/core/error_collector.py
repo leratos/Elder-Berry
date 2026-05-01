@@ -5,6 +5,7 @@ und sendet optional Alerts über einen Callback (z.B. Matrix-Nachricht).
 
 Rate-Limiting verhindert Matrix-Spam bei API-Ausfällen oder Loops.
 """
+
 from __future__ import annotations
 
 import logging

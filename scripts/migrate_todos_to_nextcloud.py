@@ -12,6 +12,7 @@ Verwendung:
     python scripts/migrate_todos_to_nextcloud.py --db-path /pfad/zu/todos.db
     python scripts/migrate_todos_to_nextcloud.py --dry-run
 """
+
 from __future__ import annotations
 
 import argparse
@@ -73,7 +74,10 @@ def migrate(db_path: Path, dry_run: bool = False) -> None:
         for todo in all_todos:
             logger.info(
                 "  Würde migrieren: #%d %s (prio=%s, cat=%s)",
-                todo.id, todo.text, todo.priority, todo.category,
+                todo.id,
+                todo.text,
+                todo.priority,
+                todo.category,
             )
         store.close()
         return
@@ -103,7 +107,8 @@ def migrate(db_path: Path, dry_run: bool = False) -> None:
         if todo.text in existing:
             logger.info(
                 "  Übersprungen (bereits vorhanden): #%d %s",
-                todo.id, todo.text,
+                todo.id,
+                todo.text,
             )
             skipped += 1
             continue
@@ -115,14 +120,18 @@ def migrate(db_path: Path, dry_run: bool = False) -> None:
         )
         logger.info(
             "  Migriert: #%d %s (prio=%s, cat=%s)",
-            todo.id, todo.text, todo.priority, todo.category,
+            todo.id,
+            todo.text,
+            todo.priority,
+            todo.category,
         )
         migrated += 1
 
     store.close()
     logger.info(
         "Migration abgeschlossen: %d migriert, %d übersprungen",
-        migrated, skipped,
+        migrated,
+        skipped,
     )
 
 

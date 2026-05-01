@@ -12,6 +12,7 @@ keine Auth (Backwards-Compat / Tests), aber Startup-Warning.
 
 Plattformhinweis: Läuft auf Windows (Laptop).
 """
+
 from __future__ import annotations
 
 import io
@@ -92,10 +93,18 @@ class AgentTokenMiddleware(BaseHTTPMiddleware):
 
 # Alle Aktionen die der ActionController unterstützt
 SUPPORTED_ACTIONS = [
-    "press_key", "type_text", "hotkey",
-    "move_mouse", "click",
-    "list_windows", "focus_window", "minimize_window", "maximize_window",
-    "get_volume", "set_volume", "mute",
+    "press_key",
+    "type_text",
+    "hotkey",
+    "move_mouse",
+    "click",
+    "list_windows",
+    "focus_window",
+    "minimize_window",
+    "maximize_window",
+    "get_volume",
+    "set_volume",
+    "mute",
 ]
 
 
@@ -103,8 +112,10 @@ SUPPORTED_ACTIONS = [
 # Pydantic Models (FastAPI Request-Validierung)
 # ---------------------------------------------------------------------------
 
+
 class ActionRequestModel(BaseModel):
     """Request: Aktion ausführen."""
+
     action_type: str
     params: dict = {}
 
@@ -112,6 +123,7 @@ class ActionRequestModel(BaseModel):
 # ---------------------------------------------------------------------------
 # Server-Klasse
 # ---------------------------------------------------------------------------
+
 
 class AgentServer:
     """
@@ -195,7 +207,9 @@ class AgentServer:
                 )
             except Exception as e:
                 logger.error("Audio-Playback fehlgeschlagen: %s", e)
-                resp = ApiResponse(success=False, message="Audio-Fehler – Details im Log.")
+                resp = ApiResponse(
+                    success=False, message="Audio-Fehler – Details im Log."
+                )
             return asdict(resp)
 
     def _execute(self, action_type: str, params: dict) -> ActionResult:
@@ -237,18 +251,21 @@ class AgentServer:
                 self._controller.press_key(params["key"])
             case "type_text":
                 self._controller.type_text(
-                    params["text"], interval=params.get("interval", 0.02),
+                    params["text"],
+                    interval=params.get("interval", 0.02),
                 )
             case "hotkey":
                 self._controller.hotkey(*params["keys"])
             case "move_mouse":
                 self._controller.move_mouse(
-                    params["x"], params["y"],
+                    params["x"],
+                    params["y"],
                     duration=params.get("duration", 0.25),
                 )
             case "click":
                 self._controller.click(
-                    x=params.get("x"), y=params.get("y"),
+                    x=params.get("x"),
+                    y=params.get("y"),
                     button=params.get("button", "left"),
                 )
             case "list_windows":

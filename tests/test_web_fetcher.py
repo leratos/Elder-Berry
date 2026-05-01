@@ -1,4 +1,5 @@
 """Tests: WebFetcher + WEB_SUMMARY_PATTERN + _cmd_web_summary."""
+
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -16,6 +17,7 @@ from elder_berry.tools.web_fetcher import WebContent, WebFetcher
 # Fixtures
 # ---------------------------------------------------------------------------
 
+
 @pytest.fixture(autouse=True)
 def _patch_dns_to_public(monkeypatch):
     """Mockt socket.getaddrinfo so, dass Hostnames in Tests auf eine
@@ -26,8 +28,10 @@ def _patch_dns_to_public(monkeypatch):
     abhaengig (langsam, offline-CI-feindlich). Tests, die explizit
     private IPs testen wollen, ueberschreiben diesen Mock lokal.
     """
+
     def resolver(host, *args, **kwargs):
         return [(None, None, None, None, ("93.184.216.34", 0))]
+
     monkeypatch.setattr(
         "elder_berry.core.url_validator.socket.getaddrinfo",
         resolver,
@@ -61,6 +65,7 @@ def handler(mock_fetcher):
 # ---------------------------------------------------------------------------
 # Pattern-Tests (kein HTTP)
 # ---------------------------------------------------------------------------
+
 
 class TestWebSummaryPattern:
     def test_pattern_simple_url(self):
@@ -117,6 +122,7 @@ class TestWebSummaryPattern:
 # WebContent DTO
 # ---------------------------------------------------------------------------
 
+
 class TestWebContent:
     def test_frozen(self):
         wc = WebContent(url="https://x.com", title="X", text="hello", truncated=False)
@@ -132,11 +138,16 @@ class TestWebContent:
 # WebFetcher Unit Tests (mit unittest.mock)
 # ---------------------------------------------------------------------------
 
+
 class TestWebFetcherFetch:
     def test_fetch_success_returns_web_content(self, fetcher):
         html = "<html><title>Test Page</title><body><p>Hello world</p></body></html>"
-        with patch.object(fetcher, "_download", return_value=html), \
-             patch.object(fetcher, "_extract", return_value=("Test Page", "Hello world")):
+        with (
+            patch.object(fetcher, "_download", return_value=html),
+            patch.object(
+                fetcher, "_extract", return_value=("Test Page", "Hello world")
+            ),
+        ):
             result = fetcher.fetch("https://example.com")
         assert isinstance(result, WebContent)
         assert result.url == "https://example.com"
@@ -146,61 +157,77 @@ class TestWebFetcherFetch:
 
     def test_fetch_uses_trafilatura_extraction(self, fetcher):
         html = "<html><title>T</title><body><p>Content</p></body></html>"
-        with patch.object(fetcher, "_download", return_value=html), \
-             patch(
-                 "elder_berry.tools.web_fetcher.WebFetcher._extract_trafilatura",
-                 return_value=("T", "Content"),
-             ):
+        with (
+            patch.object(fetcher, "_download", return_value=html),
+            patch(
+                "elder_berry.tools.web_fetcher.WebFetcher._extract_trafilatura",
+                return_value=("T", "Content"),
+            ),
+        ):
             result = fetcher.fetch("https://example.com")
         assert result.text == "Content"
         assert result.title == "T"
 
     def test_fetch_fallback_beautifulsoup_when_trafilatura_none(self, fetcher):
         html = "<html><title>BS Title</title><body><p>Fallback text</p></body></html>"
-        with patch.object(fetcher, "_download", return_value=html), \
-             patch(
-                 "elder_berry.tools.web_fetcher.WebFetcher._extract_trafilatura",
-                 return_value=("", ""),
-             ), \
-             patch(
-                 "elder_berry.tools.web_fetcher.WebFetcher._extract_beautifulsoup",
-                 return_value=("BS Title", "Fallback text"),
-             ):
+        with (
+            patch.object(fetcher, "_download", return_value=html),
+            patch(
+                "elder_berry.tools.web_fetcher.WebFetcher._extract_trafilatura",
+                return_value=("", ""),
+            ),
+            patch(
+                "elder_berry.tools.web_fetcher.WebFetcher._extract_beautifulsoup",
+                return_value=("BS Title", "Fallback text"),
+            ),
+        ):
             result = fetcher.fetch("https://example.com")
         assert result.title == "BS Title"
         assert result.text == "Fallback text"
 
     def test_fetch_truncates_at_max_chars(self, small_fetcher):
         long_text = "A" * 100
-        with patch.object(small_fetcher, "_download", return_value="<html></html>"), \
-             patch.object(small_fetcher, "_extract", return_value=("Title", long_text)):
+        with (
+            patch.object(small_fetcher, "_download", return_value="<html></html>"),
+            patch.object(small_fetcher, "_extract", return_value=("Title", long_text)),
+        ):
             result = small_fetcher.fetch("https://example.com")
         assert len(result.text) == 50
         assert result.truncated is True
 
     def test_fetch_sets_truncated_true_when_cut(self, small_fetcher):
         text_exact = "A" * 51  # 1 char over limit
-        with patch.object(small_fetcher, "_download", return_value="<html></html>"), \
-             patch.object(small_fetcher, "_extract", return_value=("T", text_exact)):
+        with (
+            patch.object(small_fetcher, "_download", return_value="<html></html>"),
+            patch.object(small_fetcher, "_extract", return_value=("T", text_exact)),
+        ):
             result = small_fetcher.fetch("https://example.com")
         assert result.truncated is True
 
     def test_fetch_not_truncated_when_under_limit(self, small_fetcher):
         text_short = "A" * 50  # exactly at limit
-        with patch.object(small_fetcher, "_download", return_value="<html></html>"), \
-             patch.object(small_fetcher, "_extract", return_value=("T", text_short)):
+        with (
+            patch.object(small_fetcher, "_download", return_value="<html></html>"),
+            patch.object(small_fetcher, "_extract", return_value=("T", text_short)),
+        ):
             result = small_fetcher.fetch("https://example.com")
         assert result.truncated is False
 
     def test_fetch_timeout_raises_meaningful_error(self, fetcher):
         import httpx
-        with patch.object(fetcher, "_download", side_effect=httpx.TimeoutException("timeout")):
+
+        with patch.object(
+            fetcher, "_download", side_effect=httpx.TimeoutException("timeout")
+        ):
             with pytest.raises(httpx.TimeoutException):
                 fetcher.fetch("https://example.com")
 
     def test_fetch_connection_error_raises_meaningful_error(self, fetcher):
         import httpx
-        with patch.object(fetcher, "_download", side_effect=httpx.ConnectError("refused")):
+
+        with patch.object(
+            fetcher, "_download", side_effect=httpx.ConnectError("refused")
+        ):
             with pytest.raises(httpx.ConnectError):
                 fetcher.fetch("https://example.com")
 
@@ -215,8 +242,10 @@ class TestWebFetcherFetch:
             fetcher.fetch("")
 
     def test_fetch_empty_extraction_raises_error(self, fetcher):
-        with patch.object(fetcher, "_download", return_value="<html></html>"), \
-             patch.object(fetcher, "_extract", return_value=("Title", "")):
+        with (
+            patch.object(fetcher, "_download", return_value="<html></html>"),
+            patch.object(fetcher, "_extract", return_value=("Title", "")),
+        ):
             with pytest.raises(RuntimeError, match="Kein Text"):
                 fetcher.fetch("https://example.com")
 
@@ -283,6 +312,7 @@ class TestWebFetcherSSRFProtection:
         manuelle Redirect-Validierung wuerde follow_redirects=True den
         SSRF-Check umgehen.
         """
+
         def selective_resolver(host, *args, **kwargs):
             if host == "trusted.example.com":
                 return [(None, None, None, None, ("93.184.216.34", 0))]
@@ -341,6 +371,7 @@ class TestWebFetcherSizeLimit:
 
     def test_default_max_response_bytes_is_5mb(self, fetcher):
         from elder_berry.tools.web_fetcher import DEFAULT_MAX_RESPONSE_BYTES
+
         assert fetcher._max_response_bytes == DEFAULT_MAX_RESPONSE_BYTES
         assert DEFAULT_MAX_RESPONSE_BYTES == 5 * 1024 * 1024
 
@@ -417,6 +448,7 @@ class TestWebFetcherSizeLimit:
 # ---------------------------------------------------------------------------
 # Handler Tests (mock WebFetcher)
 # ---------------------------------------------------------------------------
+
 
 class TestCmdWebSummary:
     def test_cmd_web_summary_success(self, handler, mock_fetcher):

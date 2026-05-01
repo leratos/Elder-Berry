@@ -106,22 +106,24 @@ def _build_app(
 
 # -- Geschützte Pfade ohne Cookie -> 401 ----------------------------- #
 
+
 class TestProtectedWithoutCookie:
-    @pytest.mark.parametrize("method,path", [
-        ("get", "/api/secrets/status"),
-        ("post", "/api/settings/values"),
-        ("get", "/api/system/health"),
-        ("get", "/api/avatar/assets"),
-        ("get", "/avatar/editor"),
-        # Phase 66: Robot-Proxy darf nur eingeloggt erreicht werden,
-        # sonst koennte ein nicht-authentifizierter Browser den RPi5
-        # ueber die Saleria-Bruecke steuern.
-        ("get", "/api/robot/harmony/status"),
-        ("post", "/api/robot/harmony/command"),
-    ])
-    def test_blocks_without_cookie(
-        self, method: str, path: str
-    ) -> None:
+    @pytest.mark.parametrize(
+        "method,path",
+        [
+            ("get", "/api/secrets/status"),
+            ("post", "/api/settings/values"),
+            ("get", "/api/system/health"),
+            ("get", "/api/avatar/assets"),
+            ("get", "/avatar/editor"),
+            # Phase 66: Robot-Proxy darf nur eingeloggt erreicht werden,
+            # sonst koennte ein nicht-authentifizierter Browser den RPi5
+            # ueber die Saleria-Bruecke steuern.
+            ("get", "/api/robot/harmony/status"),
+            ("post", "/api/robot/harmony/command"),
+        ],
+    )
+    def test_blocks_without_cookie(self, method: str, path: str) -> None:
         app, _, _ = _build_app()
         client = TestClient(app)
         response = getattr(client, method)(path)
@@ -131,18 +133,23 @@ class TestProtectedWithoutCookie:
 
 # -- Offene Pfade ohne Cookie -> 200 --------------------------------- #
 
+
 class TestUnprotected:
-    @pytest.mark.parametrize("path", [
-        "/",
-        "/static/style.css",
-        "/api/dashboard/auth/status",
-        "/api/dashboard/login",
-    ])
+    @pytest.mark.parametrize(
+        "path",
+        [
+            "/",
+            "/static/style.css",
+            "/api/dashboard/auth/status",
+            "/api/dashboard/login",
+        ],
+    )
     def test_open_endpoints_pass(self, path: str) -> None:
         app, _, _ = _build_app()
         client = TestClient(app)
-        response = client.get(path) if path != "/api/dashboard/login" \
-            else client.post(path)
+        response = (
+            client.get(path) if path != "/api/dashboard/login" else client.post(path)
+        )
         assert response.status_code == 200
 
     def test_harmony_open(self) -> None:
@@ -153,6 +160,7 @@ class TestUnprotected:
 
 
 # -- Wizard-Exemption ------------------------------------------------ #
+
 
 class TestWizardExemption:
     def test_wizard_open_before_first_run(self) -> None:
@@ -178,6 +186,7 @@ class TestWizardExemption:
 
 # -- Mit gültigem Cookie -> 200 ------------------------------------- #
 
+
 class TestWithValidCookie:
     def test_valid_cookie_passes(self) -> None:
         app, auth, _ = _build_app()
@@ -201,6 +210,7 @@ class TestWithValidCookie:
 
 
 # -- Sliding Renewal ------------------------------------------------- #
+
 
 class TestSlidingRenewal:
     def test_old_cookie_gets_refreshed(self, monkeypatch) -> None:
@@ -245,6 +255,7 @@ class TestSlidingRenewal:
 
 # -- Cache-Invalidation --------------------------------------------- #
 
+
 class TestCacheInvalidation:
     def test_invalidate_after_setup_complete(self) -> None:
         store = _FakeStore()
@@ -259,6 +270,7 @@ class TestCacheInvalidation:
         from elder_berry.web.dashboard_auth_middleware import (
             invalidate_setup_completion_cache,
         )
+
         invalidate_setup_completion_cache()
 
         # Nachher: Wizard verlangt Login

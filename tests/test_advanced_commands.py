@@ -1,4 +1,5 @@
 """Tests: AdvancedCommandHandler – Computer Use, Web Search, Document Summary, Audio."""
+
 from unittest.mock import MagicMock
 
 import pytest
@@ -15,6 +16,7 @@ from elder_berry.comms.commands.advanced_commands import (
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
+
 
 @pytest.fixture
 def search_client():
@@ -42,6 +44,7 @@ def document_reader():
 def audio_router():
     router = MagicMock()
     from unittest.mock import PropertyMock
+
     type(router).mode = PropertyMock(return_value=MagicMock(value="matrix_only"))
     router.local_available = False
     return router
@@ -77,14 +80,18 @@ def handler_minimal():
 # Pattern Tests
 # ---------------------------------------------------------------------------
 
+
 class TestAudioLocalPattern:
-    @pytest.mark.parametrize("text,flag", [
-        ("audio lokal an", "an"),
-        ("audio lokal aus", "aus"),
-        ("audio lokal ein", "ein"),
-        ("audio lokal off", "off"),
-        ("audio lokal on", "on"),
-    ])
+    @pytest.mark.parametrize(
+        "text,flag",
+        [
+            ("audio lokal an", "an"),
+            ("audio lokal aus", "aus"),
+            ("audio lokal ein", "ein"),
+            ("audio lokal off", "off"),
+            ("audio lokal on", "on"),
+        ],
+    )
     def test_valid(self, text, flag):
         m = AUDIO_LOCAL_PATTERN.match(text)
         assert m is not None
@@ -95,24 +102,30 @@ class TestAudioLocalPattern:
 
 
 class TestDocumentSummaryPattern:
-    @pytest.mark.parametrize("text", [
-        r"zusammenfassung C:\docs\report.pdf",
-        "zusammenfassung /home/user/doc.pdf",
-        r"fasse C:\docs\report.pdf zusammen",
-    ])
+    @pytest.mark.parametrize(
+        "text",
+        [
+            r"zusammenfassung C:\docs\report.pdf",
+            "zusammenfassung /home/user/doc.pdf",
+            r"fasse C:\docs\report.pdf zusammen",
+        ],
+    )
     def test_valid(self, text):
         assert DOCUMENT_SUMMARY_PATTERN.search(text) is not None
 
 
 class TestComputerUsePattern:
-    @pytest.mark.parametrize("text", [
-        "klick auf den OK-Button",
-        "klicke auf Accept",
-        "tippe Hello World",
-        "scroll runter",
-        "scroll hoch",
-        "drücke Strg+S",
-    ])
+    @pytest.mark.parametrize(
+        "text",
+        [
+            "klick auf den OK-Button",
+            "klicke auf Accept",
+            "tippe Hello World",
+            "scroll runter",
+            "scroll hoch",
+            "drücke Strg+S",
+        ],
+    )
     def test_valid(self, text):
         assert COMPUTER_USE_PATTERN.match(text) is not None
 
@@ -121,12 +134,15 @@ class TestComputerUsePattern:
 
 
 class TestWebSearchPattern:
-    @pytest.mark.parametrize("text", [
-        "suche Dachdecker",
-        "such mal Python Tutorial",
-        "google Rezept Lasagne",
-        "finde Dachdecker",
-    ])
+    @pytest.mark.parametrize(
+        "text",
+        [
+            "suche Dachdecker",
+            "such mal Python Tutorial",
+            "google Rezept Lasagne",
+            "finde Dachdecker",
+        ],
+    )
     def test_valid(self, text):
         assert WEB_SEARCH_PATTERN.match(text) is not None
 
@@ -134,6 +150,7 @@ class TestWebSearchPattern:
 # ---------------------------------------------------------------------------
 # Interface
 # ---------------------------------------------------------------------------
+
 
 class TestAdvancedInterface:
     def test_simple_commands(self, handler):
@@ -156,6 +173,7 @@ class TestAdvancedInterface:
 # ---------------------------------------------------------------------------
 # Document Summary
 # ---------------------------------------------------------------------------
+
 
 class TestDocumentSummary:
     def test_success(self, handler, document_reader):
@@ -210,6 +228,7 @@ class TestDocumentSummary:
 # Audio
 # ---------------------------------------------------------------------------
 
+
 class TestAudio:
     def test_audio_status(self, handler, audio_router):
         result = handler.execute("audio", "audio")
@@ -234,6 +253,7 @@ class TestAudio:
 # ---------------------------------------------------------------------------
 # Computer Use
 # ---------------------------------------------------------------------------
+
 
 class TestComputerUse:
     def test_success(self, handler, computer_use):
@@ -264,6 +284,7 @@ class TestComputerUse:
 # ---------------------------------------------------------------------------
 # Web Search
 # ---------------------------------------------------------------------------
+
 
 class TestWebSearch:
     def test_success(self, handler, search_client):
@@ -302,6 +323,7 @@ class TestWebSearch:
 # Unknown Command
 # ---------------------------------------------------------------------------
 
+
 class TestUnknownCommand:
     def test_unknown(self, handler):
         result = handler.execute("unknown", "unknown")
@@ -312,11 +334,13 @@ class TestUnknownCommand:
 # _download_from_nc: Temp-Dir-Leak Fixes (Security-Fix)
 # ---------------------------------------------------------------------------
 
+
 class TestDownloadFromNcTempDir:
     """Temp-Verzeichnisse werden in allen Fehlerpfaden korrekt aufgeräumt."""
 
     def _make_handler_with_nc(self, nc_mock):
         from elder_berry.comms.commands.advanced_commands import AdvancedCommandHandler
+
         handler = AdvancedCommandHandler.__new__(AdvancedCommandHandler)
         handler._nc_files = nc_mock
         return handler
@@ -366,6 +390,7 @@ class TestDownloadFromNcTempDir:
 # Path-Traversal-Schutz (Phase 69 Security-Fix)
 # ---------------------------------------------------------------------------
 
+
 class TestDocumentSummaryPathTraversal:
     """PathGuard verhindert, dass Matrix-Sender beliebige Dateien lesen."""
 
@@ -373,6 +398,7 @@ class TestDocumentSummaryPathTraversal:
         """Handler mit PathGuard auf eine Test-Base eingeschraenkt."""
         from elder_berry.comms.commands.advanced_commands import AdvancedCommandHandler
         from elder_berry.core.path_guard import PathGuard
+
         return AdvancedCommandHandler(
             document_reader=document_reader,
             path_guard=PathGuard([allowed_base]),

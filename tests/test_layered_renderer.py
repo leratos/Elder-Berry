@@ -1,4 +1,5 @@
 """Tests für LayeredSpriteRenderer – PyGame gemockt."""
+
 import time
 from unittest.mock import MagicMock, patch
 
@@ -11,6 +12,7 @@ from elder_berry.character.base import Emotion
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
+
 
 @pytest.fixture
 def mock_pygame():
@@ -43,27 +45,66 @@ def mock_pygame():
 def layered_assets(tmp_path):
     """Erstellt temporäre Asset-Ordner mit Dummy-PNGs."""
     for subdir, names in [
-        ("body", [
-            "idle", "angry", "thinking", "relaxed", "shy",
-            "welcome", "confident", "tired",
-        ]),
-        ("eye", [
-            "eye_left_open", "eye_left_close", "eye_left_angry_open",
-            "eye_left_sad_open", "eye_left_surprise_open", "eye_left_side_open",
-            "eye_left_cheerful_open", "eye_left_shy_open", "eye_left_tired_open",
-            "eye_left_confident_open", "eye_left_welcome_open",
-            "eye_right_open", "eye_right_close", "eye_right_angry_open",
-            "eye_right_sad_open", "eye_right_surprise_open", "eye_right_side_open",
-            "eye_right_cheerful_open", "eye_right_shy_open", "eye_right_tired_open",
-            "eye_right_confident_open", "eye_right_welcome_open",
-        ]),
-        ("mouth", [
-            "mouth_neutral_close", "mouth_idle_close", "mouth_think_close",
-            "mouth_halfopen", "mouth_open", "mouth_angry_open",
-            "mouth_friendly_open", "mouth_smirk_open", "mouth_grin",
-            "mouth_shy_close", "mouth_pout", "mouth_tired_close",
-            "mouth_tiny", "mouth_wide", "mouth_confident_halfopen",
-        ]),
+        (
+            "body",
+            [
+                "idle",
+                "angry",
+                "thinking",
+                "relaxed",
+                "shy",
+                "welcome",
+                "confident",
+                "tired",
+            ],
+        ),
+        (
+            "eye",
+            [
+                "eye_left_open",
+                "eye_left_close",
+                "eye_left_angry_open",
+                "eye_left_sad_open",
+                "eye_left_surprise_open",
+                "eye_left_side_open",
+                "eye_left_cheerful_open",
+                "eye_left_shy_open",
+                "eye_left_tired_open",
+                "eye_left_confident_open",
+                "eye_left_welcome_open",
+                "eye_right_open",
+                "eye_right_close",
+                "eye_right_angry_open",
+                "eye_right_sad_open",
+                "eye_right_surprise_open",
+                "eye_right_side_open",
+                "eye_right_cheerful_open",
+                "eye_right_shy_open",
+                "eye_right_tired_open",
+                "eye_right_confident_open",
+                "eye_right_welcome_open",
+            ],
+        ),
+        (
+            "mouth",
+            [
+                "mouth_neutral_close",
+                "mouth_idle_close",
+                "mouth_think_close",
+                "mouth_halfopen",
+                "mouth_open",
+                "mouth_angry_open",
+                "mouth_friendly_open",
+                "mouth_smirk_open",
+                "mouth_grin",
+                "mouth_shy_close",
+                "mouth_pout",
+                "mouth_tired_close",
+                "mouth_tiny",
+                "mouth_wide",
+                "mouth_confident_halfopen",
+            ],
+        ),
     ]:
         d = tmp_path / subdir
         d.mkdir()
@@ -76,6 +117,7 @@ def layered_assets(tmp_path):
 def renderer(mock_pygame, layered_assets):
     """Erstellt einen initialisierten LayeredSpriteRenderer."""
     from elder_berry.avatar.layered_renderer import LayeredSpriteRenderer
+
     r = LayeredSpriteRenderer(assets_dir=layered_assets)
     r.initialize(512, 1024)
     return r
@@ -84,6 +126,7 @@ def renderer(mock_pygame, layered_assets):
 # ---------------------------------------------------------------------------
 # Init
 # ---------------------------------------------------------------------------
+
 
 class TestLayeredRendererInit:
     def test_is_avatar_renderer(self, renderer):
@@ -98,11 +141,13 @@ class TestLayeredRendererInit:
     def test_import_error_without_pygame(self):
         with patch("elder_berry.avatar.layered_renderer.pygame", None):
             from elder_berry.avatar.layered_renderer import LayeredSpriteRenderer
+
             with pytest.raises(ImportError, match="pygame"):
                 LayeredSpriteRenderer()
 
     def test_initializes_pygame(self, mock_pygame, layered_assets):
         from elder_berry.avatar.layered_renderer import LayeredSpriteRenderer
+
         r = LayeredSpriteRenderer(assets_dir=layered_assets)
         r.initialize(720, 1280)
         mock_pygame["pygame"].init.assert_called_once()
@@ -114,6 +159,7 @@ class TestLayeredRendererInit:
 
     def test_default_height_1024(self, mock_pygame, layered_assets):
         from elder_berry.avatar.layered_renderer import LayeredSpriteRenderer
+
         r = LayeredSpriteRenderer(assets_dir=layered_assets)
         r.initialize()
         mock_pygame["pygame"].display.set_mode.assert_called_with((512, 1024))
@@ -122,6 +168,7 @@ class TestLayeredRendererInit:
 # ---------------------------------------------------------------------------
 # Emotion
 # ---------------------------------------------------------------------------
+
 
 class TestEmotionDisplay:
     def test_show_emotion_changes_state(self, renderer):
@@ -138,37 +185,45 @@ class TestEmotionDisplay:
 # Emotion Mapping
 # ---------------------------------------------------------------------------
 
+
 class TestEmotionMapping:
     def test_all_emotions_have_mapping(self):
         from elder_berry.avatar.layered_renderer import EMOTION_MAP
+
         for emotion in Emotion:
             assert emotion in EMOTION_MAP, f"Emotion {emotion} fehlt im Mapping"
 
     def test_angry_uses_angry_body(self):
         from elder_berry.avatar.layered_renderer import EMOTION_MAP
+
         layers = EMOTION_MAP[Emotion.ANGRY]
         assert layers.body == "angry"
         assert layers.can_blink is False
 
     def test_thoughtful_uses_thinking_body(self):
         from elder_berry.avatar.layered_renderer import EMOTION_MAP
+
         layers = EMOTION_MAP[Emotion.THOUGHTFUL]
         assert layers.body == "thinking"
 
     def test_neutral_uses_relaxed_body(self):
         from elder_berry.avatar.layered_renderer import EMOTION_MAP
+
         assert EMOTION_MAP[Emotion.NEUTRAL].body == "relaxed"
 
     def test_neutral_can_blink(self):
         from elder_berry.avatar.layered_renderer import EMOTION_MAP
+
         assert EMOTION_MAP[Emotion.NEUTRAL].can_blink is True
 
     def test_sad_cannot_blink(self):
         from elder_berry.avatar.layered_renderer import EMOTION_MAP
+
         assert EMOTION_MAP[Emotion.SAD].can_blink is False
 
     def test_shy_uses_shy_body_and_eyes(self):
         from elder_berry.avatar.layered_renderer import EMOTION_MAP
+
         layers = EMOTION_MAP[Emotion.SHY]
         assert layers.body == "shy"
         assert layers.eye_left == "eye_left_shy_open"
@@ -176,23 +231,27 @@ class TestEmotionMapping:
 
     def test_cheerful_uses_welcome_body(self):
         from elder_berry.avatar.layered_renderer import EMOTION_MAP
+
         layers = EMOTION_MAP[Emotion.CHEERFUL]
         assert layers.body == "welcome"
         assert layers.mouth == "mouth_friendly_open"
 
     def test_motivated_uses_confident_body(self):
         from elder_berry.avatar.layered_renderer import EMOTION_MAP
+
         layers = EMOTION_MAP[Emotion.MOTIVATED]
         assert layers.body == "confident"
         assert layers.mouth == "mouth_grin"
 
     def test_sarcastic_uses_smirk(self):
         from elder_berry.avatar.layered_renderer import EMOTION_MAP
+
         layers = EMOTION_MAP[Emotion.SARCASTIC]
         assert layers.mouth == "mouth_smirk_open"
 
     def test_depressed_uses_tired_body(self):
         from elder_berry.avatar.layered_renderer import EMOTION_MAP
+
         layers = EMOTION_MAP[Emotion.DEPRESSED]
         assert layers.body == "tired"
         assert layers.mouth == "mouth_pout"
@@ -200,6 +259,7 @@ class TestEmotionMapping:
     def test_each_emotion_has_distinct_combination(self):
         """Jede Emotion hat eine visuell unterscheidbare Kombination."""
         from elder_berry.avatar.layered_renderer import EMOTION_MAP
+
         combos = set()
         for emotion, layers in EMOTION_MAP.items():
             combo = (layers.body, layers.eye_left, layers.mouth)
@@ -212,6 +272,7 @@ class TestEmotionMapping:
 # ---------------------------------------------------------------------------
 # Speaking / Lip-Sync
 # ---------------------------------------------------------------------------
+
 
 class TestSpeaking:
     def test_speaking_default_false(self, renderer):
@@ -257,6 +318,7 @@ class TestSpeaking:
 # Breathing
 # ---------------------------------------------------------------------------
 
+
 class TestBreathing:
     def test_breathing_enabled_by_default(self, renderer):
         assert renderer._breathing_enabled is True
@@ -264,10 +326,13 @@ class TestBreathing:
     def test_breathing_offset_changes_over_time(self, renderer):
         """Breathing erzeugt unterschiedliche Y-Offsets."""
         import math
+
         offsets = set()
         for t in range(10):
-            offset = int(math.sin(t * 0.5 * renderer._breathing_speed)
-                         * renderer._breathing_amplitude)
+            offset = int(
+                math.sin(t * 0.5 * renderer._breathing_speed)
+                * renderer._breathing_amplitude
+            )
             offsets.add(offset)
         assert len(offsets) >= 2
 
@@ -286,6 +351,7 @@ class TestBreathing:
 # Blink
 # ---------------------------------------------------------------------------
 
+
 class TestBlink:
     def test_blink_not_active_initially(self, renderer):
         assert not renderer._blink_active
@@ -303,6 +369,7 @@ class TestBlink:
 
     def test_blink_schedules_next(self, renderer):
         from elder_berry.avatar.layered_renderer import BLINK_MIN_INTERVAL
+
         renderer._blink_active = True
         renderer._blink_end_time = 0
         now = time.monotonic()
@@ -313,6 +380,7 @@ class TestBlink:
 # ---------------------------------------------------------------------------
 # Update (Render Loop)
 # ---------------------------------------------------------------------------
+
 
 class TestUpdate:
     def test_update_fills_black_background(self, renderer, mock_pygame):
@@ -350,6 +418,7 @@ class TestUpdate:
 # Shutdown
 # ---------------------------------------------------------------------------
 
+
 class TestShutdown:
     def test_shutdown_stops_running(self, renderer):
         renderer.shutdown()
@@ -370,6 +439,7 @@ class TestShutdown:
 # YAML Config Loading
 # ---------------------------------------------------------------------------
 
+
 class TestYAMLConfig:
     def test_loads_yaml_config_when_present(self, renderer):
         """Renderer lädt YAML-Config wenn vorhanden."""
@@ -383,7 +453,11 @@ class TestYAMLConfig:
             d.mkdir()
             (d / "dummy.png").write_bytes(b"\x89PNG" + b"\x00" * 40)
 
-        from elder_berry.avatar.layered_renderer import LayeredSpriteRenderer, EMOTION_MAP
+        from elder_berry.avatar.layered_renderer import (
+            LayeredSpriteRenderer,
+            EMOTION_MAP,
+        )
+
         r = LayeredSpriteRenderer(assets_dir=tmp_path)
         # Kein avatar_config.yaml → Fallback
         assert r._emotion_map is EMOTION_MAP
@@ -402,9 +476,11 @@ class TestYAMLConfig:
 # AvatarConfigLoader
 # ---------------------------------------------------------------------------
 
+
 class TestAvatarConfigLoader:
     def test_load_valid_config(self):
         from elder_berry.avatar.avatar_config_loader import load_avatar_config
+
         config = load_avatar_config()
         assert config is not None
         assert len(config.emotions) == 10
@@ -413,11 +489,13 @@ class TestAvatarConfigLoader:
 
     def test_load_missing_file(self, tmp_path):
         from elder_berry.avatar.avatar_config_loader import load_avatar_config
+
         result = load_avatar_config(tmp_path / "nonexistent.yaml")
         assert result is None
 
     def test_load_invalid_yaml(self, tmp_path):
         from elder_berry.avatar.avatar_config_loader import load_avatar_config
+
         bad_file = tmp_path / "bad.yaml"
         bad_file.write_text("not: [valid: yaml: {{", encoding="utf-8")
         result = load_avatar_config(bad_file)
@@ -425,6 +503,7 @@ class TestAvatarConfigLoader:
 
     def test_lip_sync_config(self):
         from elder_berry.avatar.avatar_config_loader import load_avatar_config
+
         config = load_avatar_config()
         assert len(config.lip_sync_weights) >= 3
         assert config.lip_sync_interval > 0
@@ -432,6 +511,7 @@ class TestAvatarConfigLoader:
 
     def test_breathing_config(self):
         from elder_berry.avatar.avatar_config_loader import load_avatar_config
+
         config = load_avatar_config()
         assert config.breathing_enabled is True
         assert config.breathing_speed > 0
@@ -439,6 +519,7 @@ class TestAvatarConfigLoader:
 
     def test_idle_actions_config(self):
         from elder_berry.avatar.avatar_config_loader import load_avatar_config
+
         config = load_avatar_config()
         assert len(config.idle_actions) >= 3
         for action in config.idle_actions:
@@ -447,6 +528,7 @@ class TestAvatarConfigLoader:
 
     def test_emotion_layers_fields(self):
         from elder_berry.avatar.avatar_config_loader import load_avatar_config
+
         config = load_avatar_config()
         neutral = config.emotions[Emotion.NEUTRAL]
         assert neutral.body == "relaxed"

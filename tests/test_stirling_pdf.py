@@ -1,4 +1,5 @@
 """Tests für StirlingPDFClient – HTTP komplett gemockt."""
+
 from __future__ import annotations
 
 import zipfile
@@ -82,7 +83,8 @@ class TestAvailability:
         assert c.is_available() is False
 
     def test_is_available_server_unreachable(
-        self, client: StirlingPDFClient,
+        self,
+        client: StirlingPDFClient,
     ) -> None:
         with patch("httpx.get", side_effect=httpx.ConnectError("refused")):
             assert client.is_available() is False
@@ -93,7 +95,9 @@ class TestAvailability:
 
 class TestMerge:
     def test_merge_two_pdfs(
-        self, client: StirlingPDFClient, tmp_path: Path,
+        self,
+        client: StirlingPDFClient,
+        tmp_path: Path,
     ) -> None:
         pdf1 = tmp_path / "a.pdf"
         pdf2 = tmp_path / "b.pdf"
@@ -112,7 +116,9 @@ class TestMerge:
         assert "2 PDFs" in result.message
 
     def test_merge_too_few_files(
-        self, client: StirlingPDFClient, tmp_path: Path,
+        self,
+        client: StirlingPDFClient,
+        tmp_path: Path,
     ) -> None:
         pdf = tmp_path / "only.pdf"
         pdf.write_bytes(b"%PDF")
@@ -121,7 +127,9 @@ class TestMerge:
         assert "Mindestens 2" in result.message
 
     def test_merge_server_error(
-        self, client: StirlingPDFClient, tmp_path: Path,
+        self,
+        client: StirlingPDFClient,
+        tmp_path: Path,
     ) -> None:
         pdf1 = tmp_path / "a.pdf"
         pdf2 = tmp_path / "b.pdf"
@@ -141,14 +149,19 @@ class TestMerge:
 
 class TestSplit:
     def test_split_pages_zip(
-        self, client: StirlingPDFClient, sample_pdf: Path, tmp_path: Path,
+        self,
+        client: StirlingPDFClient,
+        sample_pdf: Path,
+        tmp_path: Path,
     ) -> None:
         output_dir = tmp_path / "split_out"
-        zip_content = _make_zip({
-            "page_1.pdf": b"%PDF page 1",
-            "page_2.pdf": b"%PDF page 2",
-            "page_3.pdf": b"%PDF page 3",
-        })
+        zip_content = _make_zip(
+            {
+                "page_1.pdf": b"%PDF page 1",
+                "page_2.pdf": b"%PDF page 2",
+                "page_3.pdf": b"%PDF page 3",
+            }
+        )
         resp = MagicMock(status_code=200, content=zip_content)
         with patch("httpx.post", return_value=resp):
             result = client.split(sample_pdf, "1-3", output_dir)
@@ -158,7 +171,10 @@ class TestSplit:
         assert "3 Datei" in result.message
 
     def test_split_single_page(
-        self, client: StirlingPDFClient, sample_pdf: Path, tmp_path: Path,
+        self,
+        client: StirlingPDFClient,
+        sample_pdf: Path,
+        tmp_path: Path,
     ) -> None:
         output_dir = tmp_path / "split_single"
         single_content = b"%PDF single page"
@@ -176,7 +192,10 @@ class TestSplit:
 
 class TestCompress:
     def test_compress_default_level(
-        self, client: StirlingPDFClient, sample_pdf: Path, tmp_path: Path,
+        self,
+        client: StirlingPDFClient,
+        sample_pdf: Path,
+        tmp_path: Path,
     ) -> None:
         output = tmp_path / "compressed.pdf"
         # Smaller than original
@@ -192,7 +211,10 @@ class TestCompress:
         assert call_data.kwargs["data"]["optimizeLevel"] == "5"
 
     def test_compress_custom_level(
-        self, client: StirlingPDFClient, sample_pdf: Path, tmp_path: Path,
+        self,
+        client: StirlingPDFClient,
+        sample_pdf: Path,
+        tmp_path: Path,
     ) -> None:
         output = tmp_path / "compressed9.pdf"
         resp = MagicMock(status_code=200, content=b"%PDF tiny")
@@ -204,7 +226,9 @@ class TestCompress:
         assert call_data.kwargs["data"]["optimizeLevel"] == "9"
 
     def test_compress_file_smaller(
-        self, client: StirlingPDFClient, tmp_path: Path,
+        self,
+        client: StirlingPDFClient,
+        tmp_path: Path,
     ) -> None:
         pdf = tmp_path / "big.pdf"
         pdf.write_bytes(b"x" * 10000)
@@ -223,7 +247,10 @@ class TestCompress:
 
 class TestOCR:
     def test_ocr_default_languages(
-        self, client: StirlingPDFClient, sample_pdf: Path, tmp_path: Path,
+        self,
+        client: StirlingPDFClient,
+        sample_pdf: Path,
+        tmp_path: Path,
     ) -> None:
         output = tmp_path / "ocr.pdf"
         resp = MagicMock(status_code=200, content=b"%PDF with text")
@@ -236,7 +263,10 @@ class TestOCR:
         assert call_data.kwargs["data"]["ocrType"] == "force-ocr"
 
     def test_ocr_success(
-        self, client: StirlingPDFClient, sample_pdf: Path, tmp_path: Path,
+        self,
+        client: StirlingPDFClient,
+        sample_pdf: Path,
+        tmp_path: Path,
     ) -> None:
         output = tmp_path / "ocr_result.pdf"
         resp = MagicMock(status_code=200, content=b"%PDF ocr result")
@@ -253,7 +283,10 @@ class TestOCR:
 
 class TestConvert:
     def test_to_word_success(
-        self, client: StirlingPDFClient, sample_pdf: Path, tmp_path: Path,
+        self,
+        client: StirlingPDFClient,
+        sample_pdf: Path,
+        tmp_path: Path,
     ) -> None:
         output = tmp_path / "result.docx"
         resp = MagicMock(status_code=200, content=b"PK\x03\x04 docx content")
@@ -265,7 +298,10 @@ class TestConvert:
         assert "Word" in result.message
 
     def test_to_pdf_from_docx(
-        self, client: StirlingPDFClient, sample_docx: Path, tmp_path: Path,
+        self,
+        client: StirlingPDFClient,
+        sample_docx: Path,
+        tmp_path: Path,
     ) -> None:
         output = tmp_path / "converted.pdf"
         resp = MagicMock(status_code=200, content=b"%PDF from docx")
@@ -277,7 +313,10 @@ class TestConvert:
         assert "PDF konvertiert" in result.message
 
     def test_to_pdf_from_image(
-        self, client: StirlingPDFClient, sample_png: Path, tmp_path: Path,
+        self,
+        client: StirlingPDFClient,
+        sample_png: Path,
+        tmp_path: Path,
     ) -> None:
         output = tmp_path / "from_image.pdf"
         resp = MagicMock(status_code=200, content=b"%PDF from png")
@@ -293,13 +332,18 @@ class TestConvert:
 
 class TestExtractImages:
     def test_extract_images_success(
-        self, client: StirlingPDFClient, sample_pdf: Path, tmp_path: Path,
+        self,
+        client: StirlingPDFClient,
+        sample_pdf: Path,
+        tmp_path: Path,
     ) -> None:
         output_dir = tmp_path / "images"
-        zip_content = _make_zip({
-            "img_1.png": b"\x89PNG image 1",
-            "img_2.jpg": b"\xff\xd8\xff image 2",
-        })
+        zip_content = _make_zip(
+            {
+                "img_1.png": b"\x89PNG image 1",
+                "img_2.jpg": b"\xff\xd8\xff image 2",
+            }
+        )
         resp = MagicMock(status_code=200, content=zip_content)
         with patch("httpx.post", return_value=resp):
             result = client.extract_images(sample_pdf, output_dir)
@@ -309,7 +353,10 @@ class TestExtractImages:
         assert "2 Bild" in result.message
 
     def test_extract_images_no_images(
-        self, client: StirlingPDFClient, sample_pdf: Path, tmp_path: Path,
+        self,
+        client: StirlingPDFClient,
+        sample_pdf: Path,
+        tmp_path: Path,
     ) -> None:
         output_dir = tmp_path / "empty_images"
         zip_content = _make_zip({})  # Leere ZIP
@@ -326,10 +373,14 @@ class TestExtractImages:
 
 class TestErrors:
     def test_api_timeout(
-        self, client: StirlingPDFClient, sample_pdf: Path, tmp_path: Path,
+        self,
+        client: StirlingPDFClient,
+        sample_pdf: Path,
+        tmp_path: Path,
     ) -> None:
         with patch(
-            "httpx.post", side_effect=httpx.TimeoutException("timeout"),
+            "httpx.post",
+            side_effect=httpx.TimeoutException("timeout"),
         ):
             result = client.compress(sample_pdf, tmp_path / "out.pdf")
 
@@ -337,7 +388,10 @@ class TestErrors:
         assert "nicht erreichbar" in result.message
 
     def test_api_auth_error(
-        self, client: StirlingPDFClient, sample_pdf: Path, tmp_path: Path,
+        self,
+        client: StirlingPDFClient,
+        sample_pdf: Path,
+        tmp_path: Path,
     ) -> None:
         resp = MagicMock(status_code=401, text="Unauthorized")
         with patch("httpx.post", return_value=resp):
@@ -347,7 +401,10 @@ class TestErrors:
         assert "401" in result.message
 
     def test_invalid_pdf(
-        self, client: StirlingPDFClient, sample_pdf: Path, tmp_path: Path,
+        self,
+        client: StirlingPDFClient,
+        sample_pdf: Path,
+        tmp_path: Path,
     ) -> None:
         resp = MagicMock(status_code=400, text="Invalid PDF file")
         with patch("httpx.post", return_value=resp):

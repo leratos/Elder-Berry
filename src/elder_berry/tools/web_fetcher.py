@@ -11,6 +11,7 @@ liess ``httpx.get()`` die komplette Antwort durch und der ``max_chars``-
 Trim griff erst NACH dem Read -- ein Server konnte uns mit beliebig
 grossen Antworten den Speicher fluten (DoS).
 """
+
 from __future__ import annotations
 
 import logging
@@ -155,7 +156,9 @@ class WebFetcher:
                 return self._read_capped(response, current_url)
 
     def _read_capped(
-        self, response: httpx.Response, current_url: str,
+        self,
+        response: httpx.Response,
+        current_url: str,
     ) -> str:
         """Liest den Stream chunk-weise, hart begrenzt auf ``max_response_bytes``.
 

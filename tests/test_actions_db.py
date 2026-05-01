@@ -1,4 +1,5 @@
 """Tests für ActionsDB."""
+
 import sqlite3
 
 import pytest

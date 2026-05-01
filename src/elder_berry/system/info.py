@@ -20,13 +20,14 @@ import psutil
 # Daten-Klassen (DTOs)
 # ---------------------------------------------------------------------------
 
+
 @dataclass
 class CpuInfo:
-    usage_percent: float          # aktuelle Gesamtauslastung in %
-    per_core_percent: list[float] # Auslastung je Kern
-    freq_mhz: float | None        # aktuelle Taktfrequenz in MHz (None wenn nicht verfügbar)
-    core_count: int               # physische Kerne
-    thread_count: int             # logische Threads
+    usage_percent: float  # aktuelle Gesamtauslastung in %
+    per_core_percent: list[float]  # Auslastung je Kern
+    freq_mhz: float | None  # aktuelle Taktfrequenz in MHz (None wenn nicht verfügbar)
+    core_count: int  # physische Kerne
+    thread_count: int  # logische Threads
 
 
 @dataclass
@@ -60,6 +61,7 @@ class SystemInfo:
 # SystemMonitor-Klasse
 # ---------------------------------------------------------------------------
 
+
 class SystemMonitor:
     """
     Liest Systemdaten aus: CPU, RAM, GPU, Prozesse.
@@ -78,7 +80,7 @@ class SystemMonitor:
 
     def get_ram(self) -> RamInfo:
         mem = psutil.virtual_memory()
-        to_mb = 1 / (1024 ** 2)
+        to_mb = 1 / (1024**2)
         return RamInfo(
             total_mb=mem.total * to_mb,
             used_mb=mem.used * to_mb,
@@ -97,8 +99,7 @@ class SystemMonitor:
             return []
 
         query = (
-            "name,memory.total,memory.used,memory.free,"
-            "utilization.gpu,temperature.gpu"
+            "name,memory.total,memory.used,memory.free,utilization.gpu,temperature.gpu"
         )
         try:
             result = subprocess.run(
@@ -119,14 +120,16 @@ class SystemMonitor:
             if len(parts) != 6:
                 continue
             try:
-                gpus.append(GpuInfo(
-                    name=parts[0],
-                    vram_total_mb=float(parts[1]),
-                    vram_used_mb=float(parts[2]),
-                    vram_free_mb=float(parts[3]),
-                    gpu_util_percent=float(parts[4]),
-                    temperature_c=float(parts[5]),
-                ))
+                gpus.append(
+                    GpuInfo(
+                        name=parts[0],
+                        vram_total_mb=float(parts[1]),
+                        vram_used_mb=float(parts[2]),
+                        vram_free_mb=float(parts[3]),
+                        gpu_util_percent=float(parts[4]),
+                        temperature_c=float(parts[5]),
+                    )
+                )
             except ValueError:
                 continue
         return gpus
@@ -134,15 +137,19 @@ class SystemMonitor:
     def get_top_processes(self, n: int = 10) -> list[dict]:
         """Gibt die n CPU-intensivsten Prozesse zurück."""
         procs = []
-        for proc in psutil.process_iter(["pid", "name", "cpu_percent", "memory_percent"]):
+        for proc in psutil.process_iter(
+            ["pid", "name", "cpu_percent", "memory_percent"]
+        ):
             try:
                 info = proc.info
-                procs.append({
-                    "pid": info["pid"],
-                    "name": info["name"],
-                    "cpu_percent": info["cpu_percent"] or 0.0,
-                    "memory_percent": round(info["memory_percent"] or 0.0, 2),
-                })
+                procs.append(
+                    {
+                        "pid": info["pid"],
+                        "name": info["name"],
+                        "cpu_percent": info["cpu_percent"] or 0.0,
+                        "memory_percent": round(info["memory_percent"] or 0.0, 2),
+                    }
+                )
             except (psutil.NoSuchProcess, psutil.AccessDenied):
                 continue
         return sorted(procs, key=lambda p: p["cpu_percent"], reverse=True)[:n]

@@ -6,6 +6,7 @@ Ablauf:
 3. Loop: Emotion wählen → Text eingeben → Saleria spricht
 4. Bei "exit": XTTS entladen, fertig
 """
+
 import os
 import sys
 from pathlib import Path
@@ -123,14 +124,14 @@ def main() -> None:
             tag = f"[{emo.value}]"
             if text.lower().startswith(tag):
                 current_emotion = emo
-                text = text[len(tag):].strip()
+                text = text[len(tag) :].strip()
                 print(f"  Emotion gewechselt: {current_emotion.value}")
                 break
 
         if not text:
             continue
 
-        print(f"  Saleria ({current_emotion.value}): \"{text}\"")
+        print(f'  Saleria ({current_emotion.value}): "{text}"')
         print("  Generiere Audio...", end="", flush=True)
         try:
             engine.speak(text, emotion=current_emotion.value)

@@ -9,6 +9,7 @@ Erkennt natürliche Spracheingaben wie:
 Löst Kontaktnamen über ContactStore auf, berechnet Fahrtdauer via
 RoutePlanner und liefert Abfahrtszeit + Google-Maps-Link.
 """
+
 from __future__ import annotations
 
 import logging
@@ -16,7 +17,11 @@ import re
 from datetime import datetime, timedelta
 from typing import TYPE_CHECKING
 
-from elder_berry.comms.commands.base import CommandHandler, CommandResult, user_friendly_error
+from elder_berry.comms.commands.base import (
+    CommandHandler,
+    CommandResult,
+    user_friendly_error,
+)
 
 if TYPE_CHECKING:
     from elder_berry.tools.contact_store import ContactStore
@@ -57,8 +62,13 @@ _TIME_PATTERN = re.compile(
 )
 
 _WEEKDAY_MAP: dict[str, int] = {
-    "montag": 0, "dienstag": 1, "mittwoch": 2, "donnerstag": 3,
-    "freitag": 4, "samstag": 5, "sonntag": 6,
+    "montag": 0,
+    "dienstag": 1,
+    "mittwoch": 2,
+    "donnerstag": 3,
+    "freitag": 4,
+    "samstag": 5,
+    "sonntag": 6,
 }
 
 
@@ -105,13 +115,13 @@ def parse_arrival_time(text: str) -> datetime | None:
                 target_date = now.date() + timedelta(days=days_ahead)
                 break
 
-    return datetime(target_date.year, target_date.month, target_date.day,
-                    hour, minute)
+    return datetime(target_date.year, target_date.month, target_date.day, hour, minute)
 
 
 # ---------------------------------------------------------------------------
 # Handler
 # ---------------------------------------------------------------------------
+
 
 class RouteCommandHandler(CommandHandler):
     """Routenplanung via Google Maps Directions API."""
@@ -138,19 +148,24 @@ class RouteCommandHandler(CommandHandler):
     def keywords(self) -> dict[str, list[str]]:
         return {
             "route_plan": [
-                "plane fahrt", "plane reise", "plane route",
-                "navigation zu", "navigiere zu",
-                "wie komme ich", "wie fahre ich",
-                "route zu", "fahrt zu",
+                "plane fahrt",
+                "plane reise",
+                "plane route",
+                "navigation zu",
+                "navigiere zu",
+                "wie komme ich",
+                "wie fahre ich",
+                "route zu",
+                "fahrt zu",
             ],
         }
 
     @property
     def command_descriptions(self) -> list[str]:
         return [
-            'plane fahrt zu <Name>: Route von Zuhause zu Kontakt berechnen',
-            'fahrt von <Name> zu <Name>: Route zwischen zwei Kontakten',
-            'wie komme ich zu <Name>: Route von Zuhause berechnen',
+            "plane fahrt zu <Name>: Route von Zuhause zu Kontakt berechnen",
+            "fahrt von <Name> zu <Name>: Route zwischen zwei Kontakten",
+            "wie komme ich zu <Name>: Route von Zuhause berechnen",
             'Optional Ankunftszeit: "morgen um 16 uhr", "übermorgen 10 uhr"',
         ]
 
@@ -172,7 +187,9 @@ class RouteCommandHandler(CommandHandler):
         m = ROUTE_FROM_TO_PATTERN.search(raw_text)
         if not m:
             return CommandResult(
-                command="route_from_to", success=False, fallthrough=True,
+                command="route_from_to",
+                success=False,
+                fallthrough=True,
             )
         origin_name = m.group(1).strip()
         dest_name = m.group(2).strip()
@@ -185,7 +202,9 @@ class RouteCommandHandler(CommandHandler):
         m = ROUTE_PLAN_PATTERN.search(raw_text)
         if not m:
             return CommandResult(
-                command="route_plan", success=False, fallthrough=True,
+                command="route_plan",
+                success=False,
+                fallthrough=True,
             )
         dest_name = m.group(1).strip()
         dest_name = self._strip_time_suffix(dest_name)
@@ -205,28 +224,28 @@ class RouteCommandHandler(CommandHandler):
         dest_addr = self._resolve_address(dest_name)
 
         if not origin_addr:
-            is_home = (
-                origin_name is None
-                or origin_name.lower() in self._HOME_SYNONYMS
-            )
+            is_home = origin_name is None or origin_name.lower() in self._HOME_SYNONYMS
             if is_home:
                 return CommandResult(
-                    command=command, success=True,
+                    command=command,
+                    success=True,
                     text="Bitte lege einen Kontakt mit Gruppe 'home' an, "
-                         "damit ich deinen Startpunkt kenne.",
+                    "damit ich deinen Startpunkt kenne.",
                 )
             return CommandResult(
-                command=command, success=True,
+                command=command,
+                success=True,
                 text=f"Ich konnte keine Adresse für '{origin_name}' finden. "
-                     f"Ist eine Adresse im Kontakt hinterlegt?",
+                f"Ist eine Adresse im Kontakt hinterlegt?",
             )
 
         if not dest_addr:
             return CommandResult(
-                command=command, success=True,
+                command=command,
+                success=True,
                 text=f"Ich konnte keine Adresse für '{dest_name}' finden. "
-                     f"Verwende einen Kontaktnamen oder eine direkte Adresse "
-                     f"(z.B. Musterstr. 1, 12345 Berlin).",
+                f"Verwende einen Kontaktnamen oder eine direkte Adresse "
+                f"(z.B. Musterstr. 1, 12345 Berlin).",
             )
 
         # 2. Ankunftszeit parsen
@@ -235,16 +254,19 @@ class RouteCommandHandler(CommandHandler):
         # 3. Route abfragen
         try:
             from elder_berry.tools.route_planner import RouteError
+
             result = self._planner.get_route(origin_addr, dest_addr)
         except RouteError as e:
             return CommandResult(
-                command=command, success=True,
+                command=command,
+                success=True,
                 text=user_friendly_error(e, "Route"),
             )
         except Exception as e:
             logger.error("Route-API Fehler: %s", e)
             return CommandResult(
-                command=command, success=True,
+                command=command,
+                success=True,
                 text=user_friendly_error(e, "Routenberechnung"),
             )
 
@@ -252,7 +274,8 @@ class RouteCommandHandler(CommandHandler):
         departure_info = ""
         if arrival:
             departure = self._planner.calculate_departure(
-                arrival, result.duration_seconds,
+                arrival,
+                result.duration_seconds,
             )
             departure_info = (
                 f"Du solltest spätestens um {departure.strftime('%H:%M')} "
@@ -294,7 +317,8 @@ class RouteCommandHandler(CommandHandler):
         """
         if name is None or name.lower() in self._HOME_SYNONYMS:
             homes = self._contacts.find_by_group(
-                self._default_user_id, "home",
+                self._default_user_id,
+                "home",
             )
             if homes:
                 addr = homes[0].address

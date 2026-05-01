@@ -1406,6 +1406,18 @@ Self-Suggestion) angelegt – Roadmap der nächsten Modernisierungs-Reihe.
 
 - Konzept: `docs/concepts/phase-75-repo-hygiene.md`
 
+## Phase 75b – Format-Sweep mit ruff-format 🎨 ✅ ABGESCHLOSSEN
+
+Folge-Quick-Win nach Phase 75: einmalige Reformatierung der gesamten
+Python-Codebase mit `ruff format`, damit der Stand konsistent ist und
+nicht weiter driftet. `pre-commit`-Hook von `stages: [manual]` zurück
+auf default gestellt – ab jetzt prüft jeder Commit auf Format-Konsistenz.
+Tests vor/nach identisch (5016 passed, 3 skipped). Reine Format-Phase
+ohne Code-Verhalten – Commit-SHA Kandidat für `.git-blame-ignore-revs`
+(optionale Folge).
+
+- Konzept: `docs/concepts/phase-75b-format-sweep.md`
+
 ## Phase 68 – Public-Release-Vorbereitung (laufend)
 
 Vorbereitung des Repos für Public-Release. In kleinen Tranchen, parallel

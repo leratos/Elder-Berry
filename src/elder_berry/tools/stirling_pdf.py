@@ -4,6 +4,7 @@ Supports merge, split, compress, OCR, convert (PDF↔Word), and image extraction
 Credentials are read from SecretStore:
     stirling_pdf_url, stirling_pdf_api_key
 """
+
 from __future__ import annotations
 
 import logging
@@ -54,9 +55,9 @@ class StirlingPDFClient:
     """REST-Client für die Stirling-PDF API."""
 
     def __init__(self, secret_store: SecretStore) -> None:
-        self._base_url = (
-            secret_store.get_or_none("stirling_pdf_url") or ""
-        ).rstrip("/")
+        self._base_url = (secret_store.get_or_none("stirling_pdf_url") or "").rstrip(
+            "/"
+        )
         self._api_key = secret_store.get_or_none("stirling_pdf_api_key") or ""
 
     @property
@@ -115,8 +116,7 @@ class StirlingPDFClient:
             raise StirlingPDFError("Authentifizierung fehlgeschlagen (401)")
         if response.status_code >= 400:
             raise StirlingPDFError(
-                f"API-Fehler: HTTP {response.status_code} – "
-                f"{response.text[:200]}"
+                f"API-Fehler: HTTP {response.status_code} – {response.text[:200]}"
             )
 
         if output_path:
@@ -135,7 +135,8 @@ class StirlingPDFClient:
         tmp = None
         try:
             tmp = tempfile.NamedTemporaryFile(
-                suffix=".zip", delete=False,
+                suffix=".zip",
+                delete=False,
             )
             tmp.write(content)
             tmp.close()
@@ -161,7 +162,7 @@ class StirlingPDFClient:
         mime_map = {
             ".pdf": "application/pdf",
             ".docx": "application/vnd.openxmlformats-officedocument"
-                     ".wordprocessingml.document",
+            ".wordprocessingml.document",
             ".doc": "application/msword",
             ".png": "image/png",
             ".jpg": "image/jpeg",
@@ -208,7 +209,10 @@ class StirlingPDFClient:
             return PDFResult(success=False, message=str(exc))
 
     def split(
-        self, pdf_path: Path, pages: str, output_dir: Path,
+        self,
+        pdf_path: Path,
+        pages: str,
+        output_dir: Path,
     ) -> PDFResult:
         """Teilt eine PDF nach Seitenangabe.
 
@@ -247,7 +251,10 @@ class StirlingPDFClient:
         )
 
     def compress(
-        self, pdf_path: Path, output_path: Path, level: int = 5,
+        self,
+        pdf_path: Path,
+        output_path: Path,
+        level: int = 5,
     ) -> PDFResult:
         """Komprimiert eine PDF.
 
@@ -282,7 +289,10 @@ class StirlingPDFClient:
             return PDFResult(success=False, message=str(exc))
 
     def ocr(
-        self, pdf_path: Path, output_path: Path, languages: str = "deu+eng",
+        self,
+        pdf_path: Path,
+        output_path: Path,
+        languages: str = "deu+eng",
     ) -> PDFResult:
         """Führt OCR auf einer PDF aus.
 
@@ -362,7 +372,9 @@ class StirlingPDFClient:
             return PDFResult(success=False, message=str(exc))
 
     def extract_images(
-        self, pdf_path: Path, output_dir: Path,
+        self,
+        pdf_path: Path,
+        output_dir: Path,
     ) -> PDFResult:
         """Extrahiert Bilder aus einer PDF.
 

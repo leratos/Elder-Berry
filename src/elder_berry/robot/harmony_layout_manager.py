@@ -6,6 +6,7 @@ sowohl fuer Aktivitaeten (kuratiert) als auch fuer Geraete (auto-generiert).
 
 Speicherort: ~/.elder-berry/harmony_layouts.json
 """
+
 from __future__ import annotations
 
 import json
@@ -36,18 +37,12 @@ _DEFAULT_FERNSEHEN_LAYOUT: dict[str, Any] = {
             "type": "grid",
             "columns": 3,
             "buttons": [
-                {"device": "Denon AV-Empfänger", "cmd": "VolumeDown",
-                 "label": "Vol-"},
-                {"device": "Denon AV-Empfänger", "cmd": "Mute",
-                 "label": "Stumm"},
-                {"device": "Denon AV-Empfänger", "cmd": "VolumeUp",
-                 "label": "Vol+"},
-                {"device": "Samsung TV", "cmd": "ChannelUp",
-                 "label": "CH▲"},
-                {"device": "Samsung TV", "cmd": "ChannelPrev",
-                 "label": "CH←"},
-                {"device": "Samsung TV", "cmd": "ChannelDown",
-                 "label": "CH▼"},
+                {"device": "Denon AV-Empfänger", "cmd": "VolumeDown", "label": "Vol-"},
+                {"device": "Denon AV-Empfänger", "cmd": "Mute", "label": "Stumm"},
+                {"device": "Denon AV-Empfänger", "cmd": "VolumeUp", "label": "Vol+"},
+                {"device": "Samsung TV", "cmd": "ChannelUp", "label": "CH▲"},
+                {"device": "Samsung TV", "cmd": "ChannelPrev", "label": "CH←"},
+                {"device": "Samsung TV", "cmd": "ChannelDown", "label": "CH▼"},
             ],
         },
         {
@@ -124,9 +119,7 @@ class HarmonyLayoutManager:
 
         # Default Fernsehen-Layout wenn nicht vorhanden
         if "Fernsehen" not in self._layouts["activities"]:
-            self._layouts["activities"]["Fernsehen"] = (
-                _DEFAULT_FERNSEHEN_LAYOUT
-            )
+            self._layouts["activities"]["Fernsehen"] = _DEFAULT_FERNSEHEN_LAYOUT
             changed = True
 
         # Geraete-Layouts: auto-generiert aus ControlGroups
@@ -155,16 +148,15 @@ class HarmonyLayoutManager:
             if not commands:
                 continue
 
-            buttons = [
-                {"device": label, "cmd": cmd, "label": cmd}
-                for cmd in commands
-            ]
-            sections.append({
-                "label": group_name,
-                "type": "grid",
-                "columns": 3,
-                "buttons": buttons,
-            })
+            buttons = [{"device": label, "cmd": cmd, "label": cmd} for cmd in commands]
+            sections.append(
+                {
+                    "label": group_name,
+                    "type": "grid",
+                    "columns": 3,
+                    "buttons": buttons,
+                }
+            )
 
         return sections
 

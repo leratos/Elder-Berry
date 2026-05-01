@@ -1,4 +1,5 @@
 """Tests: ProcessCommandHandler – Prozess-Start/Kill (Whitelist)."""
+
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -14,6 +15,7 @@ from elder_berry.comms.commands.process_commands import (
 # Fixtures
 # ---------------------------------------------------------------------------
 
+
 @pytest.fixture
 def handler():
     return ProcessCommandHandler()
@@ -23,23 +25,30 @@ def handler():
 # Pattern Tests
 # ---------------------------------------------------------------------------
 
+
 class TestStartProcessPattern:
-    @pytest.mark.parametrize("text,program", [
-        ("starte chrome", "chrome"),
-        ("start firefox", "firefox"),
-        ("öffne notepad", "notepad"),
-        ("open vlc", "vlc"),
-        ("Starte Chrome", "Chrome"),
-    ])
+    @pytest.mark.parametrize(
+        "text,program",
+        [
+            ("starte chrome", "chrome"),
+            ("start firefox", "firefox"),
+            ("öffne notepad", "notepad"),
+            ("open vlc", "vlc"),
+            ("Starte Chrome", "Chrome"),
+        ],
+    )
     def test_valid_patterns(self, text, program):
         m = START_PROCESS_PATTERN.match(text)
         assert m is not None
         assert m.group(1) == program
 
-    @pytest.mark.parametrize("text", [
-        "starte",           # kein Programm
-        "start",            # kein Programm
-    ])
+    @pytest.mark.parametrize(
+        "text",
+        [
+            "starte",  # kein Programm
+            "start",  # kein Programm
+        ],
+    )
     def test_invalid_patterns(self, text):
         assert START_PROCESS_PATTERN.match(text) is None
 
@@ -49,26 +58,32 @@ class TestStartProcessPattern:
         assert m is not None
         assert m.group(1).strip() == "Visual Studio Code"
 
-    @pytest.mark.parametrize("text", [
-        "starte tv",
-        "starte fernsehen",
-        "starte musik",
-        "starte tv an",
-        "starte dich neu",
-        "starte neu",
-    ])
+    @pytest.mark.parametrize(
+        "text",
+        [
+            "starte tv",
+            "starte fernsehen",
+            "starte musik",
+            "starte tv an",
+            "starte dich neu",
+            "starte neu",
+        ],
+    )
     def test_excluded_patterns(self, text):
         """Harmony-Aktivitaeten und System-Keywords duerfen nicht matchen."""
         assert START_PROCESS_PATTERN.match(text) is None
 
 
 class TestKillProcessPattern:
-    @pytest.mark.parametrize("text,process", [
-        ("kill blender", "blender"),
-        ("beende chrome", "chrome"),
-        ("stoppe vlc", "vlc"),
-        ("schließe discord", "discord"),
-    ])
+    @pytest.mark.parametrize(
+        "text,process",
+        [
+            ("kill blender", "blender"),
+            ("beende chrome", "chrome"),
+            ("stoppe vlc", "vlc"),
+            ("schließe discord", "discord"),
+        ],
+    )
     def test_valid_patterns(self, text, process):
         m = KILL_PROCESS_PATTERN.match(text)
         assert m is not None
@@ -78,6 +93,7 @@ class TestKillProcessPattern:
 # ---------------------------------------------------------------------------
 # Interface
 # ---------------------------------------------------------------------------
+
 
 class TestProcessInterface:
     def test_patterns_registered(self, handler):
@@ -94,6 +110,7 @@ class TestProcessInterface:
 # ---------------------------------------------------------------------------
 # Start Process
 # ---------------------------------------------------------------------------
+
 
 class TestStartProcess:
     def test_unknown_command_routing(self, handler):
@@ -135,6 +152,7 @@ class TestStartProcess:
 # Kill Process
 # ---------------------------------------------------------------------------
 
+
 class TestKillProcess:
     @patch("psutil.process_iter")
     def test_kill_success(self, mock_iter, handler):
@@ -175,6 +193,7 @@ class TestKillProcess:
 
     def test_kill_psutil_not_installed(self, handler):
         import builtins
+
         original_import = builtins.__import__
 
         def mock_import(name, *args, **kwargs):

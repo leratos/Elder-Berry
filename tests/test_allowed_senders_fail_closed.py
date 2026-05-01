@@ -10,6 +10,7 @@ konfiguriert" strikt fail-closed:
   (doppelte Verteidigungslinie für Dev-/Test-Pfade, die die Bridge
   direkt instanziieren).
 """
+
 from __future__ import annotations
 
 import asyncio

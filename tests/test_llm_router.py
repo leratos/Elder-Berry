@@ -1,4 +1,5 @@
 """Tests für LLMRouter – Anthropic/Ollama Routing-Logik."""
+
 import importlib
 from unittest.mock import MagicMock, patch
 
@@ -20,7 +21,10 @@ from elder_berry.llm.router import LLMRouter
 # Hilfsfunktion: Mock-LLMClients erzeugen
 # ---------------------------------------------------------------------------
 
-def make_mock_client(available: bool = True, response: str = "ok", name: str = "mock") -> MagicMock:
+
+def make_mock_client(
+    available: bool = True, response: str = "ok", name: str = "mock"
+) -> MagicMock:
     mock = MagicMock(spec=LLMClient)
     mock.is_available.return_value = available
     mock.generate.return_value = response
@@ -33,6 +37,7 @@ def make_mock_client(available: bool = True, response: str = "ok", name: str = "
 # ---------------------------------------------------------------------------
 # AnthropicClient
 # ---------------------------------------------------------------------------
+
 
 class TestAnthropicClient:
     def test_is_available_with_key(self, monkeypatch):
@@ -105,6 +110,7 @@ class TestAnthropicClient:
     def test_api_status_error_raises_runtime(self, monkeypatch):
         monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-test")
         import anthropic
+
         client = AnthropicClient()
         mock_sdk_client = MagicMock()
         mock_sdk_client.messages.create.side_effect = anthropic.APIStatusError(
@@ -118,6 +124,7 @@ class TestAnthropicClient:
 # ---------------------------------------------------------------------------
 # ComputerUseAction DTO
 # ---------------------------------------------------------------------------
+
 
 class TestComputerUseAction:
     def test_frozen_dataclass(self):
@@ -153,6 +160,7 @@ class TestComputerUseAction:
 # ---------------------------------------------------------------------------
 # AnthropicClient.computer_use()
 # ---------------------------------------------------------------------------
+
 
 class TestAnthropicComputerUse:
     def test_computer_use_raises_without_key(self):
@@ -329,6 +337,7 @@ class TestAnthropicComputerUse:
 # OllamaClient
 # ---------------------------------------------------------------------------
 
+
 class TestOllamaClient:
     def test_is_available_true(self):
         client = OllamaClient()
@@ -338,6 +347,7 @@ class TestOllamaClient:
 
     def test_is_available_false_on_connection_error(self):
         import httpx
+
         client = OllamaClient()
         with patch("httpx.get", side_effect=httpx.ConnectError("refused")):
             assert client.is_available() is False
@@ -370,6 +380,7 @@ class TestOllamaClient:
 # ---------------------------------------------------------------------------
 # OpenRouterClient
 # ---------------------------------------------------------------------------
+
 
 class TestOpenRouterClient:
     def test_is_available_with_key(self, monkeypatch):
@@ -409,17 +420,24 @@ class TestOpenRouterClient:
 # LLMRouter – neue primary/fallback Signatur
 # ---------------------------------------------------------------------------
 
+
 class TestLLMRouter:
     def test_prefers_primary_when_available(self):
-        primary = make_mock_client(available=True, response="Anthropic-Antwort", name="anthropic")
-        fallback = make_mock_client(available=True, response="Ollama-Antwort", name="ollama")
+        primary = make_mock_client(
+            available=True, response="Anthropic-Antwort", name="anthropic"
+        )
+        fallback = make_mock_client(
+            available=True, response="Ollama-Antwort", name="ollama"
+        )
         router = LLMRouter(primary=primary, fallback=fallback)
         assert router.generate("test") == "Anthropic-Antwort"
         fallback.generate.assert_not_called()
 
     def test_falls_back_to_fallback(self):
         primary = make_mock_client(available=False, name="anthropic")
-        fallback = make_mock_client(available=True, response="Ollama-Antwort", name="ollama")
+        fallback = make_mock_client(
+            available=True, response="Ollama-Antwort", name="ollama"
+        )
         router = LLMRouter(primary=primary, fallback=fallback)
         assert router.generate("test") == "Ollama-Antwort"
 

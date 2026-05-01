@@ -1,4 +1,5 @@
 """Aktions-Datenbank – Befehl → Aktion Mapping (SQLite, selbstlernend)."""
+
 import sqlite3
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -87,7 +88,9 @@ class ActionsDB:
 
     def delete(self, trigger: str) -> None:
         with self._connect() as conn:
-            conn.execute("DELETE FROM actions WHERE trigger = ?", (trigger.lower().strip(),))
+            conn.execute(
+                "DELETE FROM actions WHERE trigger = ?", (trigger.lower().strip(),)
+            )
 
     def list_all(self) -> list[Action]:
         with self._connect() as conn:

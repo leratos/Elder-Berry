@@ -1,4 +1,5 @@
 """Abstrakte Basisklasse für Avatar-Renderer."""
+
 from abc import ABC, abstractmethod
 from pathlib import Path
 
@@ -66,7 +67,9 @@ class AvatarRenderer(ABC):
         ...
 
     def render_to_file(
-        self, output_path: Path, emotion: Emotion = Emotion.NEUTRAL,
+        self,
+        output_path: Path,
+        emotion: Emotion = Emotion.NEUTRAL,
     ) -> Path:
         """Rendert den Avatar mit gegebener Emotion als PNG-Datei.
 

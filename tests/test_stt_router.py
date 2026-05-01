@@ -1,4 +1,5 @@
 """Tests: STTRouter – STT-Routing mit Cloud-STT + Tower-Fallback."""
+
 from unittest.mock import AsyncMock
 
 import pytest
@@ -11,6 +12,7 @@ from elder_berry.tools.cloud_stt_client import CloudSTTError
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
+
 
 def _make_cloud(text: str = "Hallo Welt", fail: bool = False):
     """Mock-CloudSTTClient."""
@@ -41,16 +43,19 @@ def _make_router(cloud=None, tower=None):
 
 def _stub_run_async(result):
     """Ersatz für STTRouter._run_async; schließt die Coroutine sauber."""
+
     def runner(coro):
         if hasattr(coro, "close"):
             coro.close()
         return result
+
     return runner
 
 
 # ---------------------------------------------------------------------------
 # transcribe_async() – Routing-Logik
 # ---------------------------------------------------------------------------
+
 
 class TestTranscribeAsync:
     async def test_cloud_success(self):
@@ -126,7 +131,8 @@ class TestTranscribeAsync:
         await router.transcribe_async(b"\x00" * 100, filename="msg.mp3")
 
         cloud.transcribe.assert_awaited_once_with(
-            b"\x00" * 100, filename="msg.mp3",
+            b"\x00" * 100,
+            filename="msg.mp3",
         )
 
     async def test_result_has_language(self):
@@ -142,6 +148,7 @@ class TestTranscribeAsync:
 # transcribe() – Datei-basiert (sync via _run_async)
 # ---------------------------------------------------------------------------
 
+
 class TestTranscribe:
     def test_reads_file_and_transcribes(self, tmp_path):
         """transcribe() liest Datei und ruft Cloud-STT auf."""
@@ -150,10 +157,12 @@ class TestTranscribe:
 
         router = _make_router(cloud=_make_cloud(text="Datei erkannt"))
         called = {"n": 0}
+
         def fake(coro):
             coro.close()
             called["n"] += 1
             return TranscriptionResult(text="Datei erkannt", language="de")
+
         router._run_async = fake
 
         result = router.transcribe(audio_file)
@@ -168,10 +177,12 @@ class TestTranscribe:
 
         router = _make_router()
         called = {"n": 0}
+
         def fake(coro):
             coro.close()
             called["n"] += 1
             return TranscriptionResult(text="OK")
+
         router._run_async = fake
 
         router.transcribe(audio_file)
@@ -182,6 +193,7 @@ class TestTranscribe:
 # ---------------------------------------------------------------------------
 # transcribe_bytes()
 # ---------------------------------------------------------------------------
+
 
 class TestTranscribeBytes:
     def test_creates_wav_and_transcribes(self):
@@ -201,6 +213,7 @@ class TestTranscribeBytes:
 # ---------------------------------------------------------------------------
 # STTEngine Interface
 # ---------------------------------------------------------------------------
+
 
 class TestSTTEngineInterface:
     def test_is_available(self):

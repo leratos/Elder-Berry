@@ -5,6 +5,7 @@ thematische Sektionen aufgeteilt. Der Nutzer tippt ``hilfe`` für die
 Übersicht und ``hilfe <kategorie>`` für die Details einer Sektion.
 ``hilfe alles`` zeigt weiterhin den Volltext.
 """
+
 from __future__ import annotations
 
 CATEGORY_LABELS: dict[str, str] = {
@@ -33,7 +34,6 @@ HELP_SECTIONS: dict[str, str] = {
   hilfe / help – Kategorien-Übersicht
   hilfe <kategorie> – Details einer Kategorie
   hilfe alles – Vollständige Hilfe (alle Commands)""",
-
     "medien": """Medien:
   pause / play – Musik pausieren/fortsetzen
   skip / next – Nächster Track
@@ -47,7 +47,6 @@ Audio:
 
 Sprachnachrichten:
   🎤 OGG/Opus → Whisper STT → Saleria antwortet (Text + Sprache)""",
-
     "avatar": """Avatar:
   selfie / avatar – Bild von Saleria senden
   selfie <emotion> – Mit Emotion (angry, cheerful, sad, ...)
@@ -55,7 +54,6 @@ Sprachnachrichten:
 Kamera:
   foto / kamera – Foto aufnehmen und senden
   was siehst du [kontext] – Kamerabild + KI-Beschreibung""",
-
     "dateien": """Clipboard:
   clipboard – Zwischenablage lesen
   clip: <text> – Text in Zwischenablage schreiben
@@ -63,7 +61,6 @@ Kamera:
 Dateien:
   schick mir <pfad> – Datei senden (max 50 MB, nur erlaubte Verzeichnisse)
   download <url> – Datei herunterladen""",
-
     "cloud": """Cloud (Nextcloud):
   cloud upload <pfad> [ziel] – Datei zu Nextcloud hochladen
   cloud download <pfad> – Datei aus Nextcloud herunterladen
@@ -84,7 +81,6 @@ PDF-Verarbeitung (Stirling-PDF):
   pdf zu word <datei> – PDF → Word konvertieren
   zu pdf <datei> – Word/Bild → PDF konvertieren
   pdf bilder <datei> – Bilder aus PDF extrahieren""",
-
     "kalender": """Kalender:
   termine – Termine heute
   termine morgen – Termine morgen
@@ -96,7 +92,6 @@ PDF-Verarbeitung (Stirling-PDF):
   lösche termin <Titel/ID> – Termin löschen
   lösche den 2. termin – Per Index aus letztem Ergebnis
   lösche alle termine – Alle aus letztem Ergebnis löschen""",
-
     "mail": """E-Mail:
   mails – Ungelesene E-Mails
   mails 5 – Letzte 5 Tage
@@ -109,13 +104,11 @@ PDF-Verarbeitung (Stirling-PDF):
     → Saleria zeigt Entwurf, du bestätigst mit 'ja'
   lösche mail #<ID> – Mail löschen
   lösche die mail – Letzte abgerufene Mail löschen""",
-
     "fitness": """Fitness (Berry-Gym):
   training – Zusammenfassung (letztes Training, Woche, Gewicht)
   training details – Letztes Training mit allen Sätzen
   training woche – Trainings der letzten 7 Tage
   prs – Personal Records (letzte 30 Tage)""",
-
     "wetter": """Wetter:
   wetter – Aktuelles Wetter
   wetter morgen – Wetterprognose morgen
@@ -139,7 +132,6 @@ Timer & Erinnerungen:
 
 Briefing:
   briefing – Tagesübersicht (Wetter + Termine + Erinnerungen)""",
-
     "notizen": """📝 Notizen & Wissen:
   merk dir: <schlüssel> ist <wert>  – Fakt speichern (z.B. merk dir: WLAN Büro ist xyz123)
   notiz: <text>                      – Freitext-Notiz speichern
@@ -148,7 +140,6 @@ Briefing:
   notizen                            – Alle Notizen anzeigen (max 20)
   notiz löschen #<id>                – Notiz per ID löschen
   vergiss <schlüssel>                – KV-Fakt vergessen""",
-
     "kontakte": """📇 Kontakte:
   kontakt: Name, Rolle, Email, Anrede – Kontakt anlegen
     Beispiel: kontakt: Herr Müller, Vermieter, info@mueller.de, förmlich
@@ -159,7 +150,6 @@ Briefing:
   kontakte sync – Kontakte mit Nextcloud synchronisieren
   kontakte sync push – Nur lokal → Nextcloud
   kontakte sync pull – Nur Nextcloud → lokal""",
-
     "todos": """✅ Aufgaben (To-Do):
   todo: <text> – Aufgabe anlegen (optional: , hoch/mittel, Kategorie)
   todos / aufgaben – Offene Aufgaben anzeigen
@@ -170,7 +160,6 @@ Briefing:
   todo löschen #<ID> – Aufgabe löschen
   todos erledigt – Erledigte Aufgaben anzeigen
   todos aufräumen – Alle erledigten löschen""",
-
     "smart-home": """Harmony Hub (Smart Home):
   <aktivität> an – Aktivität starten (z.B. fernsehen an, musik an)
   alles aus / harmony aus – Alle Geräte ausschalten
@@ -192,7 +181,6 @@ Drehteller:
   schau nach links/rechts – Drehteller in Richtung drehen
   drehteller stopp – Rotation sofort abbrechen
   drehteller status – Aktuelle Position anzeigen""",
-
     "web": """Web-Suche:
   suche <Begriff> – Im Internet suchen
   such mal <Begriff> – Alias für suche
@@ -221,7 +209,6 @@ Claude-Agent:
   fahrt von <Name> zu <Name> – Route zwischen zwei Kontakten
   wie komme ich zu <Name> – Route von Zuhause
   Optional: "morgen um 16 uhr", "übermorgen 10 uhr" → Abfahrtszeit""",
-
     "system": """Prozesse:
   starte <programm> – Programm starten (Whitelist)
   kill <prozess> – Prozess beenden (Whitelist)
@@ -244,7 +231,6 @@ System:
   alles ok? – Kurzform für Systemcheck
   Prüft: Git, Python, Disk, RAM, Ollama, SecretStore, Imports, Dependencies
   + Fähigkeiten: LLM, Kalender, Mail, Nextcloud, Wetter, TTS, STT, Memory, ...""",
-
     "diagnose": """📋 Log-Zugriff (Remote-Debugging):
   log [n] – Letzte N Einträge aus elder_berry.log (default 10, max 50)
   log errors [n] – Nur ERROR/CRITICAL-Einträge

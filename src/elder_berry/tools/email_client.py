@@ -13,6 +13,7 @@ Verwendung:
     mails = client.get_recent(days=3, max_results=20)
     summary = client.format_mails(mails)
 """
+
 from __future__ import annotations
 
 import email
@@ -131,7 +132,9 @@ class IMAPEmailClient:
         return self._fetch_mails("UNSEEN", max_results=max_results, is_unread=True)
 
     def get_recent(
-        self, days: int = 3, max_results: int = 20,
+        self,
+        days: int = 3,
+        max_results: int = 20,
     ) -> list[EmailMessage]:
         """Holt E-Mails der letzten N Tage.
 
@@ -144,11 +147,16 @@ class IMAPEmailClient:
         """
         since = (datetime.now() - timedelta(days=days)).strftime("%d-%b-%Y")
         return self._fetch_mails(
-            f"SINCE {since}", max_results=max_results, is_unread=False,
+            f"SINCE {since}",
+            max_results=max_results,
+            is_unread=False,
         )
 
     def search(
-        self, query: str, max_results: int = 10, days: int = 90,
+        self,
+        query: str,
+        max_results: int = 10,
+        days: int = 90,
     ) -> list[EmailMessage]:
         """Sucht E-Mails nach Betreff, Absender oder Body-Inhalt.
 
@@ -171,17 +179,14 @@ class IMAPEmailClient:
         if len(words) == 1:
             # Ein Wort: einfache OR-Suche über alle Felder
             criteria = (
-                f'(OR OR SUBJECT "{query}" FROM "{query}" BODY "{query}") '
-                f'SINCE {since}'
+                f'(OR OR SUBJECT "{query}" FROM "{query}" BODY "{query}") SINCE {since}'
             )
         else:
             # Mehrere Wörter: jedes Wort muss irgendwo vorkommen (OR über Felder)
             # "RK Bedachung" → Mails die "RK" UND "Bedachung" irgendwo enthalten
             word_criteria = []
             for w in words:
-                word_criteria.append(
-                    f'(OR OR SUBJECT "{w}" FROM "{w}" BODY "{w}")'
-                )
+                word_criteria.append(f'(OR OR SUBJECT "{w}" FROM "{w}" BODY "{w}")')
             criteria = " ".join(word_criteria) + f" SINCE {since}"
 
         return self._fetch_mails(criteria, max_results=max_results, is_unread=False)
@@ -229,7 +234,8 @@ class IMAPEmailClient:
         return "\n".join(parts)
 
     def get_attachments(
-        self, msg_id: str,
+        self,
+        msg_id: str,
     ) -> list[tuple[str, bytes]]:
         """Holt Anhänge einer E-Mail per IMAP UID.
 
@@ -350,7 +356,9 @@ class IMAPEmailClient:
             raise RuntimeError(f"Mail löschen fehlgeschlagen: {e}") from e
 
     def copy_to_sent_folder(
-        self, msg_bytes: bytes, sent_folder: str = "",
+        self,
+        msg_bytes: bytes,
+        sent_folder: str = "",
     ) -> bool:
         """Kopiert eine gesendete E-Mail in den IMAP Gesendet-Ordner.
 
@@ -372,32 +380,37 @@ class IMAPEmailClient:
             folder = sent_folder or self._detect_sent_folder(conn)
             if not folder:
                 logger.warning(
-                    "Gesendet-Ordner nicht gefunden – "
-                    "Mail wird nicht in Sent kopiert"
+                    "Gesendet-Ordner nicht gefunden – Mail wird nicht in Sent kopiert"
                 )
                 conn.logout()
                 return False
 
             result, _ = conn.append(
-                folder, "\\Seen", None, msg_bytes,
+                folder,
+                "\\Seen",
+                None,
+                msg_bytes,
             )
             conn.logout()
 
             if result == "OK":
                 logger.info(
-                    "Mail in Gesendet-Ordner '%s' kopiert", folder,
+                    "Mail in Gesendet-Ordner '%s' kopiert",
+                    folder,
                 )
                 return True
 
             logger.warning(
                 "IMAP APPEND in '%s' fehlgeschlagen: %s",
-                folder, result,
+                folder,
+                result,
             )
             return False
 
         except Exception as e:
             logger.warning(
-                "Kopie in Gesendet-Ordner fehlgeschlagen: %s", e,
+                "Kopie in Gesendet-Ordner fehlgeschlagen: %s",
+                e,
             )
             return False
 
@@ -420,9 +433,14 @@ class IMAPEmailClient:
                 for item in data:
                     if not item:
                         continue
-                    line = item.decode("utf-8", errors="replace") if isinstance(
-                        item, bytes,
-                    ) else str(item)
+                    line = (
+                        item.decode("utf-8", errors="replace")
+                        if isinstance(
+                            item,
+                            bytes,
+                        )
+                        else str(item)
+                    )
                     if "\\Sent" in line:
                         # Format: '(\\Sent \\HasNoChildren) "/" "Sent"'
                         # Ordnername ist das letzte Element in Anführungszeichen
@@ -433,8 +451,13 @@ class IMAPEmailClient:
             logger.debug("IMAP LIST für Sent-Erkennung fehlgeschlagen: %s", e)
 
         # Versuch 2: Bekannte Ordnernamen direkt prüfen
-        for candidate in ("Sent", "INBOX.Sent", "Gesendet", "Sent Items",
-                          "Sent Messages"):
+        for candidate in (
+            "Sent",
+            "INBOX.Sent",
+            "Gesendet",
+            "Sent Items",
+            "Sent Messages",
+        ):
             try:
                 result, _ = conn.select(candidate, readonly=True)
                 if result == "OK":
@@ -487,7 +510,9 @@ class IMAPEmailClient:
                 _, data = conn.uid("search", None, search_criteria)
             except UnicodeEncodeError:
                 _, data = conn.uid(
-                    "search", "CHARSET", "UTF-8",
+                    "search",
+                    "CHARSET",
+                    "UTF-8",
                     search_criteria.encode("utf-8"),
                 )
             uids = data[0].split() if data[0] else []
@@ -505,7 +530,9 @@ class IMAPEmailClient:
                     raw = msg_data[0][1]
                     uid_str = uid.decode() if isinstance(uid, bytes) else str(uid)
                     parsed = self._parse_email(
-                        raw, is_unread=is_unread, msg_id=uid_str,
+                        raw,
+                        is_unread=is_unread,
+                        msg_id=uid_str,
                     )
                     if parsed:
                         mails.append(parsed)
@@ -521,7 +548,9 @@ class IMAPEmailClient:
 
     @staticmethod
     def _parse_email(
-        raw: bytes, is_unread: bool = True, msg_id: str = "",
+        raw: bytes,
+        is_unread: bool = True,
+        msg_id: str = "",
     ) -> EmailMessage | None:
         """Parst eine rohe E-Mail in ein EmailMessage-Objekt."""
         msg = email.message_from_bytes(raw)
@@ -589,7 +618,9 @@ class IMAPEmailClient:
                     html_parts.append(part)
 
             # text/plain bevorzugt
-            target = text_parts[0] if text_parts else (html_parts[0] if html_parts else None)
+            target = (
+                text_parts[0] if text_parts else (html_parts[0] if html_parts else None)
+            )
             if target:
                 return IMAPEmailClient._decode_payload(target)
             return ""

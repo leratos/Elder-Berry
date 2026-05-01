@@ -6,6 +6,7 @@ Verwaltet:
 - Lokale Wiedergabe: sounddevice / AgentClient
 - Datei-Nachrichten: PDF/TXT via DocumentReader + LLM-Zusammenfassung
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -68,8 +69,7 @@ class AudioPipeline:
     def audio_to_matrix(self) -> bool:
         """True wenn TTS-Audio als Datei generiert werden soll (für Matrix)."""
         return (
-            self._audio_converter is not None
-            and self._audio_converter.ffmpeg_available
+            self._audio_converter is not None and self._audio_converter.ffmpeg_available
         )
 
     def set_message_callback(self, callback) -> None:
@@ -107,19 +107,23 @@ class AudioPipeline:
 
             logger.debug(
                 "Audio-Nachricht transkribieren: %s (%d bytes)",
-                tmp_path.name, len(msg.audio_data),
+                tmp_path.name,
+                len(msg.audio_data),
             )
 
             result = await asyncio.wait_for(
                 loop.run_in_executor(
-                    None, self._stt.transcribe, tmp_path,
+                    None,
+                    self._stt.transcribe,
+                    tmp_path,
                 ),
                 timeout=self._stt_timeout,
             )
 
             if result.is_empty():
                 logger.info(
-                    "STT: kein Text erkannt (Sender: %s)", msg.sender,
+                    "STT: kein Text erkannt (Sender: %s)",
+                    msg.sender,
                 )
                 await self._channel.send_text(
                     msg.room_id,
@@ -137,6 +141,7 @@ class AudioPipeline:
 
             # Transkription als Text-Nachricht weiterverarbeiten
             from elder_berry.comms.message_channel import IncomingMessage as IM
+
             text_msg = IM(
                 sender=msg.sender,
                 room_id=msg.room_id,
@@ -149,7 +154,8 @@ class AudioPipeline:
 
         except Exception as e:
             logger.error(
-                "Fehler bei Audio-Transkription: %s", e,
+                "Fehler bei Audio-Transkription: %s",
+                e,
                 extra={"sender": msg.sender, "handler": "stt"},
             )
             try:
@@ -183,6 +189,7 @@ class AudioPipeline:
             return
 
         from elder_berry.tools.document_reader import DocumentReader
+
         if not DocumentReader.is_supported(Path(file_name)):
             logger.info("Nicht unterstütztes Dateiformat: %s", file_name)
             try:
@@ -202,27 +209,30 @@ class AudioPipeline:
             # mktemp() und write_bytes() einen Symlink auf eine Ziel-
             # datei legen koennen.
             with tempfile.NamedTemporaryFile(
-                suffix=suffix, delete=False,
+                suffix=suffix,
+                delete=False,
             ) as fh:
                 fh.write(msg.file_data)
                 tmp_file = Path(fh.name)
 
             logger.info(
                 "Datei verarbeiten: %s (%d bytes)",
-                file_name, len(msg.file_data),
+                file_name,
+                len(msg.file_data),
             )
 
             loop = asyncio.get_running_loop()
             result = await asyncio.wait_for(
                 loop.run_in_executor(
-                    None, self._document_reader.read_file, tmp_file,
+                    None,
+                    self._document_reader.read_file,
+                    tmp_file,
                 ),
                 timeout=30.0,
             )
 
             doc_context = (
-                f"Dokument '{result.source}' ({result.pages} Seiten):\n\n"
-                f"{result.text}"
+                f"Dokument '{result.source}' ({result.pages} Seiten):\n\n{result.text}"
             )
             self._chat_history.add(msg.sender, "user", f"[Datei: {file_name}]")
             self._chat_history.add(msg.sender, "assistant", doc_context)
@@ -239,12 +249,17 @@ class AudioPipeline:
             tmp_wav: Path | None = None
             if self.audio_to_matrix:
                 with tempfile.NamedTemporaryFile(
-                    suffix=".wav", delete=False,
+                    suffix=".wav",
+                    delete=False,
                 ) as fh:
                     tmp_wav = Path(fh.name)
             llm_result = await asyncio.wait_for(
                 loop.run_in_executor(
-                    None, self._assistant.process, summary_prompt, tmp_wav, chat_context,
+                    None,
+                    self._assistant.process,
+                    summary_prompt,
+                    tmp_wav,
+                    chat_context,
                 ),
                 timeout=120.0,
             )
@@ -261,7 +276,9 @@ class AudioPipeline:
 
         except Exception as e:
             logger.error(
-                "Datei-Verarbeitung fehlgeschlagen (%s): %s", file_name, e,
+                "Datei-Verarbeitung fehlgeschlagen (%s): %s",
+                file_name,
+                e,
                 extra={"sender": msg.sender, "handler": "document"},
             )
             try:
@@ -276,7 +293,10 @@ class AudioPipeline:
                 tmp_file.unlink(missing_ok=True)
 
     async def send_audio_if_available(
-        self, room_id: str, result, tmp_wav: Path | None,
+        self,
+        room_id: str,
+        result,
+        tmp_wav: Path | None,
     ) -> None:
         """Konvertiert WAV→OGG und sendet Audio an Matrix (wenn vorhanden)."""
         if not result.audio_path or not result.audio_path.exists():
@@ -288,7 +308,8 @@ class AudioPipeline:
         try:
             tmp_ogg = result.audio_path.with_suffix(".ogg")
             ogg_path, _duration = self._audio_converter.to_ogg_opus(
-                result.audio_path, output_path=tmp_ogg,
+                result.audio_path,
+                output_path=tmp_ogg,
             )
             await self._channel.send_audio(room_id, ogg_path)
             logger.debug("Sprachnachricht gesendet: %s", ogg_path.name)

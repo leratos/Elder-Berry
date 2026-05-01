@@ -1,4 +1,5 @@
 """Ollama-Client – lokales LLM auf dem Tower."""
+
 import httpx
 
 from .base import LLMClient
@@ -49,7 +50,10 @@ class OllamaClient(LLMClient):
             raise RuntimeError(f"Ollama nicht erreichbar: {e}") from e
 
     def generate_with_image(
-        self, prompt: str, image_base64: str, system: str = "",
+        self,
+        prompt: str,
+        image_base64: str,
+        system: str = "",
         model: str | None = None,
     ) -> str:
         """Sendet Prompt + Bild an ein multimodales Ollama-Modell.
@@ -69,11 +73,13 @@ class OllamaClient(LLMClient):
         messages = []
         if system:
             messages.append({"role": "system", "content": system})
-        messages.append({
-            "role": "user",
-            "content": prompt,
-            "images": [image_base64],
-        })
+        messages.append(
+            {
+                "role": "user",
+                "content": prompt,
+                "images": [image_base64],
+            }
+        )
 
         try:
             resp = httpx.post(

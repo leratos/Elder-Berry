@@ -1,4 +1,5 @@
 """Tests für scripts/start_saleria.py – Argument-Parsing, ELDER_BERRY_HOME, Agent-Modus."""
+
 from __future__ import annotations
 
 import os
@@ -26,6 +27,7 @@ class TestParseArgs:
         """Hilfsfunktion: parse_args mit gesetztem sys.argv."""
         with patch("sys.argv", ["start_saleria.py"] + args):
             from start_saleria import parse_args
+
             return parse_args()
 
     def test_default_mode_is_matrix(self):
@@ -80,6 +82,7 @@ class TestElderBerryHome:
     def test_project_root_default(self):
         """Ohne ELDER_BERRY_HOME: _PROJECT_ROOT = scripts/../"""
         from start_saleria import _PROJECT_ROOT as root
+
         # Sollte das Repo-Root sein (enthält pyproject.toml)
         assert (root / "pyproject.toml").exists()
 
@@ -124,11 +127,15 @@ class TestRunAgent:
                 mock_sys.path = sys.path.copy()
                 mock_sys.exit = sys.exit
                 # Importiere uvicorn nochmal im Kontext
-                with patch("builtins.__import__", side_effect=_import_with_mock_uvicorn(mock_uvicorn)):
+                with patch(
+                    "builtins.__import__",
+                    side_effect=_import_with_mock_uvicorn(mock_uvicorn),
+                ):
                     pass
 
         # Einfacherer Test: prüfe dass uvicorn.run im Source vorkommt
         import inspect
+
         source = inspect.getsource(run_agent)
         assert "uvicorn.run" in source
         assert "tower.tower_server:app" in source
@@ -142,6 +149,7 @@ class TestRunAgent:
         """run_agent versucht tower.tower_server zu importieren."""
         import inspect
         from start_saleria import run_agent
+
         source = inspect.getsource(run_agent)
         assert "tower.tower_server" in source
 
@@ -149,23 +157,26 @@ class TestRunAgent:
         """Im Agent-Modus wird kein LLM initialisiert."""
         import inspect
         from start_saleria import main
+
         source = inspect.getsource(main)
         # Agent-Modus returned vor init_llm()
-        agent_block_idx = source.index("mode == \"agent\"")
+        agent_block_idx = source.index('mode == "agent"')
         return_idx = source.index("return", agent_block_idx)
         init_llm_idx = source.index("init_llm()")
-        assert return_idx < init_llm_idx, \
-            "Agent-Modus muss vor init_llm() returnen"
+        assert return_idx < init_llm_idx, "Agent-Modus muss vor init_llm() returnen"
 
 
 def _import_with_mock_uvicorn(mock):
     """Import-Hook der uvicorn durch einen Mock ersetzt."""
-    original_import = __builtins__.__import__ if hasattr(__builtins__, "__import__") else __import__
+    original_import = (
+        __builtins__.__import__ if hasattr(__builtins__, "__import__") else __import__
+    )
 
     def custom_import(name, *args, **kwargs):
         if name == "uvicorn":
             return mock
         return original_import(name, *args, **kwargs)
+
     return custom_import
 
 
@@ -180,24 +191,28 @@ class TestMainModeRouting:
     def test_main_routes_terminal(self):
         import inspect
         from start_saleria import main
+
         source = inspect.getsource(main)
         assert "run_terminal" in source
 
     def test_main_routes_voice(self):
         import inspect
         from start_saleria import main
+
         source = inspect.getsource(main)
         assert "run_voice" in source
 
     def test_main_routes_matrix(self):
         import inspect
         from start_saleria import main
+
         source = inspect.getsource(main)
         assert "run_matrix" in source
 
     def test_main_routes_agent(self):
         import inspect
         from start_saleria import main
+
         source = inspect.getsource(main)
         assert "run_agent" in source
 

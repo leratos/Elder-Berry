@@ -30,6 +30,7 @@ Verwendung:
     if cmd:
         result = handler.execute(cmd, "status")
 """
+
 from __future__ import annotations
 
 import difflib
@@ -552,10 +553,8 @@ class RemoteCommandHandler:
         if command == "hilfe:alles":
             return CommandResult(command="hilfe", success=True, text=HELP_TEXT)
         if command.startswith("hilfe:?"):
-            unknown = command[len("hilfe:?"):]
-            text = (
-                f"Unbekannte Hilfe-Kategorie: '{unknown}'.\n\n" + HELP_OVERVIEW
-            )
+            unknown = command[len("hilfe:?") :]
+            text = f"Unbekannte Hilfe-Kategorie: '{unknown}'.\n\n" + HELP_OVERVIEW
             return CommandResult(command="hilfe", success=True, text=text)
         if command.startswith("hilfe:"):
             category = command.split(":", 1)[1]
@@ -601,7 +600,10 @@ class RemoteCommandHandler:
             return None
         candidates = sorted(self._simple_commands)
         matches = difflib.get_close_matches(
-            first_token, candidates, n=1, cutoff=0.75,
+            first_token,
+            candidates,
+            n=1,
+            cutoff=0.75,
         )
         if not matches:
             return None

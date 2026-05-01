@@ -43,6 +43,7 @@ def auth(store: _FakeStore) -> DashboardAuthManager:
 
 # -- Constructor / TTL ----------------------------------------------- #
 
+
 class TestConstructor:
     def test_default_ttl_is_12h(self, auth: DashboardAuthManager) -> None:
         assert auth.ttl_seconds == 12 * 3600
@@ -62,68 +63,53 @@ class TestConstructor:
 
 # -- Password Management --------------------------------------------- #
 
+
 class TestPasswordManagement:
-    def test_is_password_set_false_initially(
-        self, auth: DashboardAuthManager
-    ) -> None:
+    def test_is_password_set_false_initially(self, auth: DashboardAuthManager) -> None:
         assert auth.is_password_set() is False
 
-    def test_set_and_verify_password(
-        self, auth: DashboardAuthManager
-    ) -> None:
+    def test_set_and_verify_password(self, auth: DashboardAuthManager) -> None:
         auth.set_password("supersecret123")
         assert auth.is_password_set() is True
         assert auth.verify_password("supersecret123") is True
 
-    def test_verify_wrong_password(
-        self, auth: DashboardAuthManager
-    ) -> None:
+    def test_verify_wrong_password(self, auth: DashboardAuthManager) -> None:
         auth.set_password("supersecret123")
         assert auth.verify_password("wrong") is False
 
-    def test_password_too_short_raises(
-        self, auth: DashboardAuthManager
-    ) -> None:
+    def test_password_too_short_raises(self, auth: DashboardAuthManager) -> None:
         with pytest.raises(ValueError):
             auth.set_password("short")
 
-    def test_empty_password_raises(
-        self, auth: DashboardAuthManager
-    ) -> None:
+    def test_empty_password_raises(self, auth: DashboardAuthManager) -> None:
         with pytest.raises(ValueError):
             auth.set_password("")
 
-    def test_password_too_long_raises(
-        self, auth: DashboardAuthManager
-    ) -> None:
+    def test_password_too_long_raises(self, auth: DashboardAuthManager) -> None:
         with pytest.raises(ValueError):
             auth.set_password("a" * 73)
 
-    def test_unicode_password_within_72_bytes(
-        self, auth: DashboardAuthManager
-    ) -> None:
+    def test_unicode_password_within_72_bytes(self, auth: DashboardAuthManager) -> None:
         # "ä" = 2 bytes UTF-8 → 36 chars × 2 = 72 Bytes
         pw = "ä" * 36
         auth.set_password(pw)
         assert auth.verify_password(pw) is True
 
-    def test_verify_without_password_raises(
-        self, auth: DashboardAuthManager
-    ) -> None:
+    def test_verify_without_password_raises(self, auth: DashboardAuthManager) -> None:
         with pytest.raises(PasswordNotSetError):
             auth.verify_password("anything")
 
     def test_password_hash_stored_in_secretstore(
-        self, auth: DashboardAuthManager, store: _FakeStore,
+        self,
+        auth: DashboardAuthManager,
+        store: _FakeStore,
     ) -> None:
         auth.set_password("supersecret123")
         stored = store.get_or_none(PASSWORD_HASH_KEY)
         assert stored is not None
         assert stored.startswith("$2b$")  # bcrypt-Format
 
-    def test_overwriting_password_works(
-        self, auth: DashboardAuthManager
-    ) -> None:
+    def test_overwriting_password_works(self, auth: DashboardAuthManager) -> None:
         auth.set_password("original12345")
         auth.set_password("changed123456")
         assert auth.verify_password("changed123456") is True
@@ -131,6 +117,7 @@ class TestPasswordManagement:
 
 
 # -- Session-Cookie -------------------------------------------------- #
+
 
 class TestSessionCookie:
     def test_issue_session_returns_cookie_and_exp(
@@ -140,54 +127,44 @@ class TestSessionCookie:
         assert "." in cookie
         assert exp == 1000 + auth.ttl_seconds
 
-    def test_verify_valid_session(
-        self, auth: DashboardAuthManager
-    ) -> None:
+    def test_verify_valid_session(self, auth: DashboardAuthManager) -> None:
         cookie, _ = auth.issue_session(now=1000)
         payload = auth.verify_session(cookie, now=1100)
         assert payload["iat"] == 1000
         assert payload["exp"] == 1000 + auth.ttl_seconds
 
-    def test_verify_expired_session_raises(
-        self, auth: DashboardAuthManager
-    ) -> None:
+    def test_verify_expired_session_raises(self, auth: DashboardAuthManager) -> None:
         cookie, exp = auth.issue_session(now=1000)
         with pytest.raises(InvalidSessionError):
             auth.verify_session(cookie, now=exp + 1)
 
-    def test_verify_empty_cookie_raises(
-        self, auth: DashboardAuthManager
-    ) -> None:
+    def test_verify_empty_cookie_raises(self, auth: DashboardAuthManager) -> None:
         with pytest.raises(InvalidSessionError):
             auth.verify_session(None)
         with pytest.raises(InvalidSessionError):
             auth.verify_session("")
 
-    def test_verify_malformed_cookie_raises(
-        self, auth: DashboardAuthManager
-    ) -> None:
+    def test_verify_malformed_cookie_raises(self, auth: DashboardAuthManager) -> None:
         with pytest.raises(InvalidSessionError):
             auth.verify_session("notvalid")
 
-    def test_tampered_signature_rejected(
-        self, auth: DashboardAuthManager
-    ) -> None:
+    def test_tampered_signature_rejected(self, auth: DashboardAuthManager) -> None:
         cookie, _ = auth.issue_session(now=1000)
         payload, sig = cookie.rsplit(".", 1)
         tampered = f"{payload}.AAAA{sig[4:]}"
         with pytest.raises(InvalidSessionError):
             auth.verify_session(tampered, now=1100)
 
-    def test_tampered_payload_rejected(
-        self, auth: DashboardAuthManager
-    ) -> None:
+    def test_tampered_payload_rejected(self, auth: DashboardAuthManager) -> None:
         cookie, _ = auth.issue_session(now=1000)
         _, sig = cookie.rsplit(".", 1)
         # Anderes Payload, alte Signatur → muss scheitern
         import base64
         import json
+
         new_payload = json.dumps(
-            {"iat": 1000, "exp": 9999999999}, sort_keys=True,
+            {"iat": 1000, "exp": 9999999999},
+            sort_keys=True,
             separators=(",", ":"),
         ).encode("utf-8")
         encoded = base64.urlsafe_b64encode(new_payload).rstrip(b"=").decode("ascii")
@@ -195,9 +172,7 @@ class TestSessionCookie:
         with pytest.raises(InvalidSessionError):
             auth.verify_session(tampered, now=1100)
 
-    def test_cookie_from_other_secret_rejected(
-        self, store: _FakeStore
-    ) -> None:
+    def test_cookie_from_other_secret_rejected(self, store: _FakeStore) -> None:
         a1 = DashboardAuthManager(store)
         cookie, _ = a1.issue_session(now=1000)
         # Secret rotieren → altes Cookie ungültig
@@ -206,14 +181,18 @@ class TestSessionCookie:
             a1.verify_session(cookie, now=1100)
 
     def test_session_secret_auto_generated(
-        self, auth: DashboardAuthManager, store: _FakeStore,
+        self,
+        auth: DashboardAuthManager,
+        store: _FakeStore,
     ) -> None:
         assert store.get_or_none(SESSION_SECRET_KEY) is None
         auth.issue_session(now=1000)
         assert store.get_or_none(SESSION_SECRET_KEY) is not None
 
     def test_session_secret_persists_across_calls(
-        self, auth: DashboardAuthManager, store: _FakeStore,
+        self,
+        auth: DashboardAuthManager,
+        store: _FakeStore,
     ) -> None:
         auth.issue_session(now=1000)
         first = store.get_or_none(SESSION_SECRET_KEY)
@@ -224,6 +203,7 @@ class TestSessionCookie:
 
 # -- Sliding Renewal ------------------------------------------------- #
 
+
 class TestExtendSession:
     def test_extend_returns_new_cookie_with_later_exp(
         self, auth: DashboardAuthManager
@@ -233,15 +213,14 @@ class TestExtendSession:
         assert new_exp > original_exp
         assert new_exp == 5000 + auth.ttl_seconds
 
-    def test_extend_expired_session_raises(
-        self, auth: DashboardAuthManager
-    ) -> None:
+    def test_extend_expired_session_raises(self, auth: DashboardAuthManager) -> None:
         cookie, exp = auth.issue_session(now=1000)
         with pytest.raises(InvalidSessionError):
             auth.extend_session(cookie, now=exp + 1)
 
 
 # -- Constants ------------------------------------------------------- #
+
 
 class TestConstants:
     def test_cookie_name_is_eb_prefixed(self) -> None:
@@ -265,11 +244,14 @@ class TestAbsoluteLifetimeCap:
         # ttl=12 h, expliziter cap=1 h -> Cookie waere sofort ueber Cap
         with pytest.raises(ValueError):
             DashboardAuthManager(
-                store, ttl_hours=12, max_absolute_lifetime_hours=1,
+                store,
+                ttl_hours=12,
+                max_absolute_lifetime_hours=1,
             )
 
     def test_long_ttl_default_cap_follows_ttl(
-        self, store: _FakeStore,
+        self,
+        store: _FakeStore,
     ) -> None:
         """Regression: ttl_hours > 24 ohne expliziten Cap soll NICHT
         raisen. Der Default war frueher fix 24 -- damit hat jede TTL
@@ -281,23 +263,28 @@ class TestAbsoluteLifetimeCap:
             assert auth.max_absolute_lifetime_seconds == hours * 3600
 
     def test_short_ttl_default_cap_stays_24(
-        self, store: _FakeStore,
+        self,
+        store: _FakeStore,
     ) -> None:
         """ttl_hours <= 24 -> Cap bleibt bei 24 h (Default)."""
         auth = DashboardAuthManager(store, ttl_hours=12)
         assert auth.max_absolute_lifetime_seconds == 24 * 3600
 
     def test_explicit_cap_overrides_default(
-        self, store: _FakeStore,
+        self,
+        store: _FakeStore,
     ) -> None:
         """Wer den Cap bewusst hochzieht, gewinnt."""
         auth = DashboardAuthManager(
-            store, ttl_hours=12, max_absolute_lifetime_hours=72,
+            store,
+            ttl_hours=12,
+            max_absolute_lifetime_hours=72,
         )
         assert auth.max_absolute_lifetime_seconds == 72 * 3600
 
     def test_issue_session_writes_iat_original(
-        self, auth: DashboardAuthManager,
+        self,
+        auth: DashboardAuthManager,
     ) -> None:
         cookie, _ = auth.issue_session(now=1000)
         payload = auth.verify_session(cookie, now=1100)
@@ -305,10 +292,13 @@ class TestAbsoluteLifetimeCap:
         assert payload["iat"] == 1000
 
     def test_session_within_cap_passes(
-        self, store: _FakeStore,
+        self,
+        store: _FakeStore,
     ) -> None:
         auth = DashboardAuthManager(
-            store, ttl_hours=24, max_absolute_lifetime_hours=24,
+            store,
+            ttl_hours=24,
+            max_absolute_lifetime_hours=24,
         )
         cookie, _ = auth.issue_session(now=1000)
         # 23 h spaeter -- noch im Cap (auch noch innerhalb exp)
@@ -316,10 +306,13 @@ class TestAbsoluteLifetimeCap:
         assert payload["iat_original"] == 1000
 
     def test_session_beyond_cap_rejected(
-        self, store: _FakeStore,
+        self,
+        store: _FakeStore,
     ) -> None:
         auth = DashboardAuthManager(
-            store, ttl_hours=24, max_absolute_lifetime_hours=24,
+            store,
+            ttl_hours=24,
+            max_absolute_lifetime_hours=24,
         )
         # extend_session laeuft im selben "Login" und reicht iat_original
         # weiter -- nach 24 h ist die Session hart raus.
@@ -333,10 +326,13 @@ class TestAbsoluteLifetimeCap:
             auth.verify_session(cookie2, now=1000 + 24 * 3600 + 1)
 
     def test_extend_preserves_iat_original(
-        self, store: _FakeStore,
+        self,
+        store: _FakeStore,
     ) -> None:
         auth = DashboardAuthManager(
-            store, ttl_hours=1, max_absolute_lifetime_hours=24,
+            store,
+            ttl_hours=1,
+            max_absolute_lifetime_hours=24,
         )
         cookie, _ = auth.issue_session(now=1000)
         new_cookie, _ = auth.extend_session(cookie, now=2000)
@@ -345,10 +341,13 @@ class TestAbsoluteLifetimeCap:
         assert payload["iat"] == 2000
 
     def test_extend_beyond_cap_rejected(
-        self, store: _FakeStore,
+        self,
+        store: _FakeStore,
     ) -> None:
         auth = DashboardAuthManager(
-            store, ttl_hours=4, max_absolute_lifetime_hours=8,
+            store,
+            ttl_hours=4,
+            max_absolute_lifetime_hours=8,
         )
         # Sliding-Renewals fuettern iat_original durch -- nach 6 h sind
         # wir noch im Cap, exp des frischesten Cookies waere 1000+10 h.
@@ -360,7 +359,8 @@ class TestAbsoluteLifetimeCap:
             auth.extend_session(cookie3, now=1000 + 9 * 3600)
 
     def test_legacy_cookie_without_iat_original_fallback_to_iat(
-        self, store: _FakeStore,
+        self,
+        store: _FakeStore,
     ) -> None:
         """Migration: Cookies aus Phase-58/65 haben kein iat_original.
 
@@ -374,18 +374,24 @@ class TestAbsoluteLifetimeCap:
         import json
 
         auth = DashboardAuthManager(
-            store, ttl_hours=8, max_absolute_lifetime_hours=8,
+            store,
+            ttl_hours=8,
+            max_absolute_lifetime_hours=8,
         )
         # Manuell ein Legacy-Cookie ohne iat_original erzeugen
         secret = auth._get_session_secret()
         # exp weit in der Zukunft, damit der exp-Check nicht vorher greift
         legacy_payload = {"iat": 1000, "exp": 1000 + 24 * 3600}
         payload_bytes = json.dumps(
-            legacy_payload, sort_keys=True, separators=(",", ":"),
+            legacy_payload,
+            sort_keys=True,
+            separators=(",", ":"),
         ).encode("utf-8")
         encoded = base64.urlsafe_b64encode(payload_bytes).rstrip(b"=").decode("ascii")
         digest = hmac.new(
-            secret, encoded.encode("ascii"), hashlib.sha256,
+            secret,
+            encoded.encode("ascii"),
+            hashlib.sha256,
         ).digest()
         sig = base64.urlsafe_b64encode(digest).rstrip(b"=").decode("ascii")
         legacy_cookie = f"{encoded}.{sig}"
@@ -396,7 +402,8 @@ class TestAbsoluteLifetimeCap:
         assert "iat_original" not in payload
 
     def test_legacy_cookie_beyond_cap_rejected(
-        self, store: _FakeStore,
+        self,
+        store: _FakeStore,
     ) -> None:
         """Legacy-Cookie ohne iat_original wird auch durch den Cap erfasst."""
         import base64
@@ -405,17 +412,23 @@ class TestAbsoluteLifetimeCap:
         import json
 
         auth = DashboardAuthManager(
-            store, ttl_hours=8, max_absolute_lifetime_hours=8,
+            store,
+            ttl_hours=8,
+            max_absolute_lifetime_hours=8,
         )
         secret = auth._get_session_secret()
         # Legacy-Cookie mit iat=1000, sehr langem exp
         legacy_payload = {"iat": 1000, "exp": 1000 + 100 * 3600}
         payload_bytes = json.dumps(
-            legacy_payload, sort_keys=True, separators=(",", ":"),
+            legacy_payload,
+            sort_keys=True,
+            separators=(",", ":"),
         ).encode("utf-8")
         encoded = base64.urlsafe_b64encode(payload_bytes).rstrip(b"=").decode("ascii")
         digest = hmac.new(
-            secret, encoded.encode("ascii"), hashlib.sha256,
+            secret,
+            encoded.encode("ascii"),
+            hashlib.sha256,
         ).digest()
         sig = base64.urlsafe_b64encode(digest).rstrip(b"=").decode("ascii")
         legacy_cookie = f"{encoded}.{sig}"
@@ -432,7 +445,8 @@ class TestAbsoluteLifetimeCap:
 
 class TestServerSideRevocation:
     def test_no_revocation_list_returns_false(
-        self, auth: DashboardAuthManager,
+        self,
+        auth: DashboardAuthManager,
     ) -> None:
         cookie, _ = auth.issue_session(now=1000)
         assert auth.revoke_session(cookie, now=1100) is False
@@ -454,7 +468,8 @@ class TestServerSideRevocation:
             auth.verify_session(cookie, now=1200)
 
     def test_revoke_invalid_cookie_returns_false(
-        self, store: _FakeStore,
+        self,
+        store: _FakeStore,
     ) -> None:
         from elder_berry.web.session_revocation_list import SessionRevocationList
 
@@ -466,23 +481,27 @@ class TestServerSideRevocation:
         assert len(rl) == 0
 
     def test_revoke_empty_cookie_returns_false(
-        self, store: _FakeStore,
+        self,
+        store: _FakeStore,
     ) -> None:
         from elder_berry.web.session_revocation_list import SessionRevocationList
 
         auth = DashboardAuthManager(
-            store, revocation_list=SessionRevocationList(),
+            store,
+            revocation_list=SessionRevocationList(),
         )
         assert auth.revoke_session(None) is False
         assert auth.revoke_session("") is False
 
     def test_other_session_unaffected_by_revoke(
-        self, store: _FakeStore,
+        self,
+        store: _FakeStore,
     ) -> None:
         from elder_berry.web.session_revocation_list import SessionRevocationList
 
         auth = DashboardAuthManager(
-            store, revocation_list=SessionRevocationList(),
+            store,
+            revocation_list=SessionRevocationList(),
         )
         # Unterschiedliche iat -> unterschiedliche Cookie-Strings, sonst
         # waeren beide Cookies bytes-identisch und der gleiche Hash.
@@ -496,12 +515,14 @@ class TestServerSideRevocation:
             auth.verify_session(cookie_a, now=1200)
 
     def test_extend_session_blocked_after_revoke(
-        self, store: _FakeStore,
+        self,
+        store: _FakeStore,
     ) -> None:
         from elder_berry.web.session_revocation_list import SessionRevocationList
 
         auth = DashboardAuthManager(
-            store, revocation_list=SessionRevocationList(),
+            store,
+            revocation_list=SessionRevocationList(),
         )
         cookie, _ = auth.issue_session(now=1000)
         auth.revoke_session(cookie, now=1100)

@@ -52,6 +52,7 @@ class _DashboardLike(Protocol):
     def _notify_change(self, key: str, new_value: str) -> None:
         pass
 
+
 __all__ = [
     "SECRET_REGISTRY",
     "SecretRegistryEntry",
@@ -89,10 +90,7 @@ def register_secrets_routes(app: FastAPI, dashboard: _DashboardLike) -> None:
             if meta and "updated_at" in meta:
                 item["updated_at"] = meta["updated_at"]
             categories.setdefault(cat, []).append(item)
-        result = [
-            {"name": name, "keys": keys}
-            for name, keys in categories.items()
-        ]
+        result = [{"name": name, "keys": keys} for name, keys in categories.items()]
         return JSONResponse({"available": True, "categories": result})
 
     @app.post("/api/secrets/set")
@@ -127,13 +125,18 @@ def register_secrets_routes(app: FastAPI, dashboard: _DashboardLike) -> None:
         client_host = request.client.host if request.client else "unbekannt"
         logger.info(
             "AUDIT: secret '%s' gesetzt von %s",
-            safe_log(key), safe_log(client_host),
+            safe_log(key),
+            safe_log(client_host),
         )
-        return JSONResponse({
-            "success": True,
-            "key": key,
-            "requires_restart": entry.get("requires_restart", False) if entry else False,
-        })
+        return JSONResponse(
+            {
+                "success": True,
+                "key": key,
+                "requires_restart": entry.get("requires_restart", False)
+                if entry
+                else False,
+            }
+        )
 
     @app.post("/api/secrets/delete")
     async def secrets_delete(request: Request, body: dict = Body(...)):
@@ -158,7 +161,8 @@ def register_secrets_routes(app: FastAPI, dashboard: _DashboardLike) -> None:
         client_host = request.client.host if request.client else "unbekannt"
         logger.info(
             "AUDIT: secret '%s' gelöscht von %s",
-            safe_log(key), safe_log(client_host),
+            safe_log(key),
+            safe_log(client_host),
         )
         return JSONResponse({"success": True, "key": key})
 
@@ -166,21 +170,28 @@ def register_secrets_routes(app: FastAPI, dashboard: _DashboardLike) -> None:
     async def settings_export():
         """Exportiert alle nicht-sensitiven Werte + Namen gesetzter sensitiver Keys."""
         from datetime import datetime, timezone
+
         non_sensitive: dict[str, str] = {}
         sensitive_keys_set: list[str] = []
         for entry in SECRET_REGISTRY:
             key = entry["key"]
             is_sensitive = entry.get("sensitive", True)
-            value = dashboard._secret_store.get_or_none(key) if dashboard._secret_store else None
+            value = (
+                dashboard._secret_store.get_or_none(key)
+                if dashboard._secret_store
+                else None
+            )
             if is_sensitive:
                 if value is not None:
                     sensitive_keys_set.append(key)
             else:
                 if value is not None:
                     non_sensitive[key] = value
-        return JSONResponse({
-            "export_version": 1,
-            "exported_at": datetime.now(timezone.utc).isoformat(),
-            "non_sensitive": non_sensitive,
-            "sensitive_keys_set": sensitive_keys_set,
-        })
+        return JSONResponse(
+            {
+                "export_version": 1,
+                "exported_at": datetime.now(timezone.utc).isoformat(),
+                "non_sensitive": non_sensitive,
+                "sensitive_keys_set": sensitive_keys_set,
+            }
+        )

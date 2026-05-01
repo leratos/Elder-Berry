@@ -22,6 +22,7 @@ Verwendung auf RPi5:
     - Steps pro Umdrehung: 4096 Half-Steps (= 64 * 64 / 8 * 8)
     - ~5.625° pro Full-Step, ~2.8125° pro Half-Step
 """
+
 from __future__ import annotations
 
 import argparse
@@ -142,26 +143,35 @@ def main() -> None:
         description="28BYJ-48 Stepper-Motor Test (lgpio)",
     )
     parser.add_argument(
-        "--steps", type=int, default=STEPS_PER_REV,
+        "--steps",
+        type=int,
+        default=STEPS_PER_REV,
         help=f"Anzahl Half-Steps (default: {STEPS_PER_REV} = 1 Umdrehung)",
     )
     parser.add_argument(
-        "--ccw", action="store_true",
+        "--ccw",
+        action="store_true",
         help="Gegen den Uhrzeigersinn drehen",
     )
     parser.add_argument(
-        "--speed", type=float, default=2.0,
+        "--speed",
+        type=float,
+        default=2.0,
         help="Delay zwischen Steps in ms (default: 2.0, langsamer = höher)",
     )
     parser.add_argument(
-        "--interactive", "-i", action="store_true",
+        "--interactive",
+        "-i",
+        action="store_true",
         help="Interaktiver Modus (Tastatur-Steuerung)",
     )
     args = parser.parse_args()
 
     print(f"28BYJ-48 Stepper Test")
-    print(f"  Pins: IN1=GPIO{PINS[0]}, IN2=GPIO{PINS[1]}, "
-          f"IN3=GPIO{PINS[2]}, IN4=GPIO{PINS[3]}")
+    print(
+        f"  Pins: IN1=GPIO{PINS[0]}, IN2=GPIO{PINS[1]}, "
+        f"IN3=GPIO{PINS[2]}, IN4=GPIO{PINS[3]}"
+    )
     print(f"  Speed: {args.speed}ms/step")
 
     chip = setup_gpio()
@@ -176,8 +186,10 @@ def main() -> None:
             degrees = abs(total) / STEPS_PER_REV * 360
             duration = abs(total) * args.speed / 1000
 
-            print(f"\n  Drehe {degrees:.1f}° {direction} "
-                  f"({abs(total)} Steps, ~{duration:.1f}s)...")
+            print(
+                f"\n  Drehe {degrees:.1f}° {direction} "
+                f"({abs(total)} Steps, ~{duration:.1f}s)..."
+            )
 
             step(chip, total, args.speed)
             print("  Fertig ✓")

@@ -1,4 +1,5 @@
 """Tests für FilingCommandHandler – Aufräumen des Nextcloud-Eingangs."""
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -172,7 +173,8 @@ def test_confirm_moves_file(handler, nc):
         result = handler.handle_confirm(action, "@user:matrix")
 
     nc.move.assert_called_once_with(
-        "Eingang/Scan.pdf", "Dokumente/Haus/2026-04-02_Haus_Angebot.pdf",
+        "Eingang/Scan.pdf",
+        "Dokumente/Haus/2026-04-02_Haus_Angebot.pdf",
     )
     assert result.success
     assert "Eingang ist leer" in result.text

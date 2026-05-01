@@ -1,4 +1,5 @@
 """AgentClient – Tower-seitiger Client für die Laptop-Kommunikation."""
+
 from __future__ import annotations
 
 import logging
@@ -82,7 +83,9 @@ class AgentClient:
 
     # --- Aktionen ---
 
-    def execute_action(self, action_type: str, params: dict | None = None) -> ActionResult:
+    def execute_action(
+        self, action_type: str, params: dict | None = None
+    ) -> ActionResult:
         """Sendet einen Aktionsbefehl an den Laptop-Agent."""
         r = self._client.post(
             "/action/execute",

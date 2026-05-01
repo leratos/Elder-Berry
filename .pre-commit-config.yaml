@@ -23,14 +23,11 @@ repos:
           - --select=E9,W605,F401,B
           - --ignore=B008
         types_or: [python]
-      # Phase 75: ruff-format auf manual gestellt, weil ein erster Lauf
-      # 300 Dateien reformatieren wuerde -- das gehoert in eine separate
-      # Format-Sweep-Phase (geplant als 75b), nicht hier.
-      # Manueller Aufruf, wenn gewollt:
-      #   pre-commit run --hook-stage manual ruff-format
+      # Phase 75b (2026-05-01): ruff-format-Sweep ueber 300 Dateien
+      # gelaufen, Codebase ist jetzt format-konsistent. Hook laeuft
+      # ab jetzt bei jedem Commit, damit der Stand nicht wieder driftet.
       - id: ruff-format
         types_or: [python]
-        stages: [manual]
 
   # ---------------------------------------------------------------
   # Standard-Checks aus dem pre-commit-hooks-Paket.

@@ -1,4 +1,5 @@
 """Tests fuer AlexaSkillHandler und AlexaRequestVerifier -- Alexa Custom Skill auf RPi5."""
+
 from __future__ import annotations
 
 import asyncio
@@ -23,6 +24,7 @@ def _run(coro):
 
 
 # -- Fixtures -------------------------------------------------------------- #
+
 
 @pytest.fixture()
 def harmony():
@@ -90,6 +92,7 @@ def _session_ended_request() -> dict:
 
 # -- Request Parsing ------------------------------------------------------- #
 
+
 class TestAlexaRequestParsing:
     """Tests fuer parse_alexa_request()."""
 
@@ -127,6 +130,7 @@ class TestAlexaRequestParsing:
 
 # -- Response Building ----------------------------------------------------- #
 
+
 class TestAlexaResponseBuilding:
     """Tests fuer build_alexa_response()."""
 
@@ -146,8 +150,8 @@ class TestAlexaResponseBuilding:
 
 # -- LaunchRequest --------------------------------------------------------- #
 
-class TestLaunchRequest:
 
+class TestLaunchRequest:
     def test_launch_returns_greeting(self, handler):
         resp = _run(handler.handle_request(_launch_request()))
         text = resp["response"]["outputSpeech"]["text"]
@@ -157,8 +161,8 @@ class TestLaunchRequest:
 
 # -- Activity Intents ------------------------------------------------------ #
 
-class TestActivityIntents:
 
+class TestActivityIntents:
     def test_tv_an_intent(self, handler, harmony):
         resp = _run(handler.handle_request(_intent_request("TVAnIntent")))
         text = resp["response"]["outputSpeech"]["text"]
@@ -188,8 +192,8 @@ class TestActivityIntents:
 
 # -- AllesAusIntent -------------------------------------------------------- #
 
-class TestAllesAusIntent:
 
+class TestAllesAusIntent:
     def test_alles_aus(self, handler, harmony):
         resp = _run(handler.handle_request(_intent_request("AllesAusIntent")))
         text = resp["response"]["outputSpeech"]["text"]
@@ -205,26 +209,29 @@ class TestAllesAusIntent:
 
 # -- Volume Intents -------------------------------------------------------- #
 
-class TestVolumeIntents:
 
+class TestVolumeIntents:
     def test_lauter(self, handler, harmony):
         resp = _run(handler.handle_request(_intent_request("LauterIntent")))
         text = resp["response"]["outputSpeech"]["text"]
         assert "lauter" in text.lower()
         harmony.send_command.assert_called_once_with(
-            device="Samsung TV", command="VolumeUp",
+            device="Samsung TV",
+            command="VolumeUp",
         )
 
     def test_leiser(self, handler, harmony):
         _run(handler.handle_request(_intent_request("LeiserIntent")))
         harmony.send_command.assert_called_once_with(
-            device="Samsung TV", command="VolumeDown",
+            device="Samsung TV",
+            command="VolumeDown",
         )
 
     def test_stumm(self, handler, harmony):
         _run(handler.handle_request(_intent_request("StummIntent")))
         harmony.send_command.assert_called_once_with(
-            device="Samsung TV", command="Mute",
+            device="Samsung TV",
+            command="Mute",
         )
 
     def test_volume_failure(self, handler, harmony):
@@ -236,8 +243,8 @@ class TestVolumeIntents:
 
 # -- StatusIntent ---------------------------------------------------------- #
 
-class TestStatusIntent:
 
+class TestStatusIntent:
     def test_was_laeuft(self, handler, harmony):
         resp = _run(handler.handle_request(_intent_request("StatusIntent")))
         text = resp["response"]["outputSpeech"]["text"]
@@ -252,8 +259,8 @@ class TestStatusIntent:
 
 # -- Amazon Built-in Intents ----------------------------------------------- #
 
-class TestBuiltinIntents:
 
+class TestBuiltinIntents:
     def test_cancel_intent(self, handler):
         resp = _run(handler.handle_request(_intent_request("AMAZON.CancelIntent")))
         text = resp["response"]["outputSpeech"]["text"]
@@ -280,46 +287,54 @@ class TestBuiltinIntents:
 
 # -- No Harmony ------------------------------------------------------------ #
 
-class TestNoHarmony:
 
+class TestNoHarmony:
     def test_activity_without_harmony(self, handler_no_harmony):
-        resp = _run(handler_no_harmony.handle_request(
-            _intent_request("TVAnIntent"),
-        ))
+        resp = _run(
+            handler_no_harmony.handle_request(
+                _intent_request("TVAnIntent"),
+            )
+        )
         text = resp["response"]["outputSpeech"]["text"]
         assert "nicht verfügbar" in text.lower()
 
     def test_off_without_harmony(self, handler_no_harmony):
-        resp = _run(handler_no_harmony.handle_request(
-            _intent_request("AllesAusIntent"),
-        ))
+        resp = _run(
+            handler_no_harmony.handle_request(
+                _intent_request("AllesAusIntent"),
+            )
+        )
         text = resp["response"]["outputSpeech"]["text"]
         assert "nicht verfügbar" in text.lower()
 
     def test_volume_without_harmony(self, handler_no_harmony):
-        resp = _run(handler_no_harmony.handle_request(
-            _intent_request("LauterIntent"),
-        ))
+        resp = _run(
+            handler_no_harmony.handle_request(
+                _intent_request("LauterIntent"),
+            )
+        )
         text = resp["response"]["outputSpeech"]["text"]
         assert "nicht verfügbar" in text.lower()
 
 
 # -- Unknown Intent -------------------------------------------------------- #
 
-class TestUnknownIntent:
 
+class TestUnknownIntent:
     def test_unknown_intent(self, handler):
-        resp = _run(handler.handle_request(
-            _intent_request("PizzaBestellenIntent"),
-        ))
+        resp = _run(
+            handler.handle_request(
+                _intent_request("PizzaBestellenIntent"),
+            )
+        )
         text = resp["response"]["outputSpeech"]["text"]
         assert "kenne ich" in text.lower() or "nicht" in text.lower()
 
 
 # -- Session End ----------------------------------------------------------- #
 
-class TestSessionEnd:
 
+class TestSessionEnd:
     def test_session_ended(self, handler):
         resp = _run(handler.handle_request(_session_ended_request()))
         assert resp["response"]["shouldEndSession"] is True
@@ -335,9 +350,7 @@ class TestSessionEnd:
 # ---------------------------------------------------------------------------
 
 # Hilfswerte
-_VALID_CERT_URL = (
-    "https://s3.amazonaws.com/echo.api/echo-api-cert-7.pem"
-)
+_VALID_CERT_URL = "https://s3.amazonaws.com/echo.api/echo-api-cert-7.pem"
 _VALID_SIGNATURE = base64.b64encode(b"fakesig").decode()
 _APP_ID = "amzn1.ask.skill.test-skill-id"
 
@@ -461,21 +474,25 @@ class TestAlexaRequestVerifierMissingHeaders:
         verifier = AlexaRequestVerifier()
         body = _intent_body_dict()
         with pytest.raises(AlexaVerificationError, match="SignatureCertChainUrl"):
-            _run(verifier.verify(
-                headers={"signature": _VALID_SIGNATURE},
-                body_bytes=json.dumps(body).encode(),
-                body_dict=body,
-            ))
+            _run(
+                verifier.verify(
+                    headers={"signature": _VALID_SIGNATURE},
+                    body_bytes=json.dumps(body).encode(),
+                    body_dict=body,
+                )
+            )
 
     def test_missing_signature_header(self):
         verifier = AlexaRequestVerifier()
         body = _intent_body_dict()
         with pytest.raises(AlexaVerificationError, match="Signature"):
-            _run(verifier.verify(
-                headers={"signaturecertchainurl": _VALID_CERT_URL},
-                body_bytes=json.dumps(body).encode(),
-                body_dict=body,
-            ))
+            _run(
+                verifier.verify(
+                    headers={"signaturecertchainurl": _VALID_CERT_URL},
+                    body_bytes=json.dumps(body).encode(),
+                    body_dict=body,
+                )
+            )
 
 
 class TestAlexaRequestVerifierSignature:
@@ -485,9 +502,7 @@ class TestAlexaRequestVerifierSignature:
         # Nicht-Base64-String als Signatur
         mock_cert = MagicMock()
         with pytest.raises(AlexaVerificationError, match="Base64"):
-            AlexaRequestVerifier._verify_signature(
-                mock_cert, "!!not-base64!!", b"body"
-            )
+            AlexaRequestVerifier._verify_signature(mock_cert, "!!not-base64!!", b"body")
 
     def test_wrong_signature_rejected(self):
         from cryptography.hazmat.primitives.asymmetric import rsa, padding
@@ -511,7 +526,9 @@ class TestAlexaRequestVerifierSignature:
             .sign(private_key, hashes.SHA256())
         )
         # Falsche Signatur (signiert anderes Dokument)
-        wrong_sig = private_key.sign(b"other content", padding.PKCS1v15(), hashes.SHA256())
+        wrong_sig = private_key.sign(
+            b"other content", padding.PKCS1v15(), hashes.SHA256()
+        )
         wrong_sig_b64 = base64.b64encode(wrong_sig).decode()
 
         with pytest.raises(AlexaVerificationError, match="ungültig"):

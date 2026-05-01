@@ -67,7 +67,9 @@ class StartupSummary:
         if not component or not component.strip():
             raise ValueError("component darf nicht leer sein.")
         self._entries.append(
-            _SummaryEntry(component=component.strip(), status=status, detail=detail.strip()),
+            _SummaryEntry(
+                component=component.strip(), status=status, detail=detail.strip()
+            ),
         )
 
     def __len__(self) -> int:
@@ -112,10 +114,7 @@ class StartupSummary:
             empty = "║ " + "(keine Komponenten)".center(content_width) + " ║"
             return "\n".join([top, title_line, sep, empty, bottom])
 
-        body = [
-            "║ " + line.ljust(content_width) + " ║"
-            for line in lines
-        ]
+        body = ["║ " + line.ljust(content_width) + " ║" for line in lines]
         return "\n".join([top, title_line, sep, *body, bottom])
 
     def _format_lines(self) -> list[str]:

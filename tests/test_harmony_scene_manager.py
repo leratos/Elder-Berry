@@ -1,4 +1,5 @@
 """Tests fuer HarmonySceneManager."""
+
 from __future__ import annotations
 
 import asyncio
@@ -55,11 +56,13 @@ def mock_adapter():
 @pytest.fixture
 def manager_with_adapter(scenes_path, mock_adapter):
     return HarmonySceneManager(
-        adapter=mock_adapter, scenes_path=scenes_path,
+        adapter=mock_adapter,
+        scenes_path=scenes_path,
     )
 
 
 # -- Initialisierung ------------------------------------------------------- #
+
 
 class TestInit:
     def test_empty_when_no_file(self, manager):
@@ -67,7 +70,8 @@ class TestInit:
 
     def test_loads_existing_file(self, scenes_path):
         scenes_path.write_text(
-            json.dumps([SAMPLE_SCENE]), encoding="utf-8",
+            json.dumps([SAMPLE_SCENE]),
+            encoding="utf-8",
         )
         mgr = HarmonySceneManager(scenes_path=scenes_path)
         assert len(mgr.list_scenes()) == 1
@@ -85,6 +89,7 @@ class TestInit:
 
 
 # -- CRUD ------------------------------------------------------------------ #
+
 
 class TestCRUD:
     def test_save_scene(self, manager):
@@ -165,6 +170,7 @@ class TestCRUD:
 
 # -- Ausfuehrung ---------------------------------------------------------- #
 
+
 def _run(coro):
     """Hilfsfunktion: async Coroutine synchron ausfuehren."""
     return asyncio.new_event_loop().run_until_complete(coro)
@@ -181,7 +187,9 @@ class TestExecution:
         assert mock_adapter.send_command.await_count == 3
 
     def test_start_scene_with_failure(
-        self, manager_with_adapter, mock_adapter,
+        self,
+        manager_with_adapter,
+        mock_adapter,
     ):
         mock_adapter.send_command = AsyncMock(
             side_effect=[True, False, True],
@@ -202,24 +210,33 @@ class TestExecution:
             _run(manager.start_scene("Gaming"))
 
     def test_start_scene_sends_correct_commands(
-        self, manager_with_adapter, mock_adapter,
+        self,
+        manager_with_adapter,
+        mock_adapter,
     ):
         manager_with_adapter.save_scene(SAMPLE_SCENE)
         _run(manager_with_adapter.start_scene("Gaming"))
         calls = mock_adapter.send_command.call_args_list
         assert calls[0].kwargs == {"device": "Denon AV-Empfänger", "command": "PowerOn"}
-        assert calls[1].kwargs == {"device": "Denon AV-Empfänger", "command": "InputGame"}
+        assert calls[1].kwargs == {
+            "device": "Denon AV-Empfänger",
+            "command": "InputGame",
+        }
         assert calls[2].kwargs == {"device": "Samsung TV", "command": "PowerOn"}
 
     def test_start_scene_case_insensitive(
-        self, manager_with_adapter, mock_adapter,
+        self,
+        manager_with_adapter,
+        mock_adapter,
     ):
         manager_with_adapter.save_scene(SAMPLE_SCENE)
         result = _run(manager_with_adapter.start_scene("gaming"))
         assert result["steps_ok"] == 3
 
     def test_start_scene_skips_invalid_steps(
-        self, manager_with_adapter, mock_adapter,
+        self,
+        manager_with_adapter,
+        mock_adapter,
     ):
         scene = {
             "name": "Broken",
@@ -235,7 +252,9 @@ class TestExecution:
         assert result["steps_failed"] == 2
 
     def test_start_scene_empty_steps(
-        self, manager_with_adapter, mock_adapter,
+        self,
+        manager_with_adapter,
+        mock_adapter,
     ):
         scene = {"name": "Empty", "steps": []}
         manager_with_adapter.save_scene(scene)

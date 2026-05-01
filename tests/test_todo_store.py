@@ -1,4 +1,5 @@
 """Tests für TodoStore (Phase 30)."""
+
 from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
@@ -181,8 +182,7 @@ class TestCleanup:
         store.complete(t.id)
         # Manuell completed_at auf vor 100 Tagen setzen
         old = (datetime.now(timezone.utc) - timedelta(days=100)).isoformat()
-        store._conn.execute(
-            "UPDATE todos SET completed_at=? WHERE id=?", (old, t.id))
+        store._conn.execute("UPDATE todos SET completed_at=? WHERE id=?", (old, t.id))
         store._conn.commit()
         assert store.cleanup(days=90) == 1
 

@@ -6,6 +6,7 @@ braucht das Template zwingend /static/js/setup_wizard.js und
 /static/css/setup_wizard.css -- fehlt der Static-Mount, sind alle
 JS-Handler tot und das Setup blockiert.
 """
+
 from __future__ import annotations
 
 import pytest
@@ -18,12 +19,23 @@ class FakeStore:
     def __init__(self) -> None:
         self._d: dict[str, str] = {}
 
-    def has(self, k: str) -> bool: return k in self._d
-    def get(self, k: str) -> str: return self._d[k]
-    def get_or_none(self, k: str) -> str | None: return self._d.get(k)
-    def set(self, k: str, v: str) -> None: self._d[k] = v
-    def delete(self, k: str) -> None: del self._d[k]
-    def list_keys(self) -> list[str]: return list(self._d.keys())
+    def has(self, k: str) -> bool:
+        return k in self._d
+
+    def get(self, k: str) -> str:
+        return self._d[k]
+
+    def get_or_none(self, k: str) -> str | None:
+        return self._d.get(k)
+
+    def set(self, k: str, v: str) -> None:
+        self._d[k] = v
+
+    def delete(self, k: str) -> None:
+        del self._d[k]
+
+    def list_keys(self) -> list[str]:
+        return list(self._d.keys())
 
 
 @pytest.fixture

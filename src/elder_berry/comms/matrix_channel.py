@@ -14,6 +14,7 @@ Verwendung:
     channel.on_message(my_callback)
     await channel.sync_loop()
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -72,7 +73,9 @@ class MatrixChannel(MessageChannel):
         store_path: str | None = None,
     ) -> None:
         if not password and not access_token:
-            raise ValueError("Entweder password oder access_token muss angegeben werden")
+            raise ValueError(
+                "Entweder password oder access_token muss angegeben werden"
+            )
 
         self._homeserver = homeserver
         self._user_id = user_id
@@ -109,7 +112,8 @@ class MatrixChannel(MessageChannel):
                 )
             logger.info(
                 "Matrix-Login erfolgreich: %s (Device: %s)",
-                self._user_id, response.device_id,
+                self._user_id,
+                response.device_id,
             )
 
         # Initialer Sync – markiert alles als gelesen, damit wir nur neue
@@ -215,7 +219,10 @@ class MatrixChannel(MessageChannel):
             )
 
         logger.debug(
-            "Audio gesendet an %s: %s (%d bytes)", room_id, filename, file_size,
+            "Audio gesendet an %s: %s (%d bytes)",
+            room_id,
+            filename,
+            file_size,
         )
 
     async def send_image(self, room_id: str, image_path: Path) -> None:
@@ -270,7 +277,10 @@ class MatrixChannel(MessageChannel):
             )
 
         logger.debug(
-            "Bild gesendet an %s: %s (%d bytes)", room_id, filename, file_size,
+            "Bild gesendet an %s: %s (%d bytes)",
+            room_id,
+            filename,
+            file_size,
         )
 
     async def send_file(self, room_id: str, file_path: Path) -> None:
@@ -325,7 +335,10 @@ class MatrixChannel(MessageChannel):
             )
 
         logger.debug(
-            "Datei gesendet an %s: %s (%d bytes)", room_id, filename, file_size,
+            "Datei gesendet an %s: %s (%d bytes)",
+            room_id,
+            filename,
+            file_size,
         )
 
     def on_message(self, callback: MessageCallback) -> None:
@@ -356,7 +369,9 @@ class MatrixChannel(MessageChannel):
                 if not self._should_sync:
                     break
                 logger.warning(
-                    "Sync-Fehler: %s – Retry in %ds", e, SYNC_RETRY_DELAY,
+                    "Sync-Fehler: %s – Retry in %ds",
+                    e,
+                    SYNC_RETRY_DELAY,
                 )
                 await asyncio.sleep(SYNC_RETRY_DELAY)
 
@@ -388,7 +403,9 @@ class MatrixChannel(MessageChannel):
 
             response = await self._client.join(room_id)
             if isinstance(response, JoinError):
-                logger.warning("Raum-Beitritt fehlgeschlagen %s: %s", room_id, response.message)
+                logger.warning(
+                    "Raum-Beitritt fehlgeschlagen %s: %s", room_id, response.message
+                )
             else:
                 logger.info("Raum beigetreten: %s", room_id)
 
@@ -425,7 +442,8 @@ class MatrixChannel(MessageChannel):
         # Room-Whitelist prüfen
         if self._allowed_rooms and room.room_id not in self._allowed_rooms:
             logger.debug(
-                "Nachricht aus nicht erlaubtem Raum ignoriert: %s", room.room_id,
+                "Nachricht aus nicht erlaubtem Raum ignoriert: %s",
+                room.room_id,
             )
             return
 
@@ -444,7 +462,9 @@ class MatrixChannel(MessageChannel):
                 await callback(msg)
             except Exception as e:
                 logger.error(
-                    "Callback-Fehler für Nachricht von %s: %s", msg.sender, e,
+                    "Callback-Fehler für Nachricht von %s: %s",
+                    msg.sender,
+                    e,
                 )
 
     async def _on_room_audio(self, room, event: RoomMessageAudio) -> None:
@@ -464,17 +484,20 @@ class MatrixChannel(MessageChannel):
         # Room-Whitelist prüfen
         if self._allowed_rooms and room.room_id not in self._allowed_rooms:
             logger.debug(
-                "Audio-Nachricht aus nicht erlaubtem Raum ignoriert: %s", room.room_id,
+                "Audio-Nachricht aus nicht erlaubtem Raum ignoriert: %s",
+                room.room_id,
             )
             return
 
         # MXC-URL parsen: mxc://server/mediaid
         mxc_url: str = getattr(event, "url", "") or ""
         if not mxc_url.startswith("mxc://"):
-            logger.warning("Audio-Nachricht ohne gültige MXC-URL ignoriert: %s", mxc_url)
+            logger.warning(
+                "Audio-Nachricht ohne gültige MXC-URL ignoriert: %s", mxc_url
+            )
             return
 
-        mxc_path = mxc_url[len("mxc://"):]
+        mxc_path = mxc_url[len("mxc://") :]
         if "/" not in mxc_path:
             logger.warning("Ungültige MXC-URL (kein Slash): %s", mxc_url)
             return
@@ -489,7 +512,9 @@ class MatrixChannel(MessageChannel):
 
         logger.debug(
             "Audio empfangen von %s: %s (%d bytes)",
-            event.sender, filename, len(audio_bytes),
+            event.sender,
+            filename,
+            len(audio_bytes),
         )
 
         msg = IncomingMessage(
@@ -506,7 +531,9 @@ class MatrixChannel(MessageChannel):
                 await callback(msg)
             except Exception as e:
                 logger.error(
-                    "Callback-Fehler für Audio-Nachricht von %s: %s", msg.sender, e,
+                    "Callback-Fehler für Audio-Nachricht von %s: %s",
+                    msg.sender,
+                    e,
                 )
 
     async def _on_room_file(self, room, event: RoomMessageFile) -> None:
@@ -526,17 +553,20 @@ class MatrixChannel(MessageChannel):
         # Room-Whitelist prüfen
         if self._allowed_rooms and room.room_id not in self._allowed_rooms:
             logger.debug(
-                "Datei-Nachricht aus nicht erlaubtem Raum ignoriert: %s", room.room_id,
+                "Datei-Nachricht aus nicht erlaubtem Raum ignoriert: %s",
+                room.room_id,
             )
             return
 
         # MXC-URL parsen: mxc://server/mediaid
         mxc_url: str = getattr(event, "url", "") or ""
         if not mxc_url.startswith("mxc://"):
-            logger.warning("Datei-Nachricht ohne gültige MXC-URL ignoriert: %s", mxc_url)
+            logger.warning(
+                "Datei-Nachricht ohne gültige MXC-URL ignoriert: %s", mxc_url
+            )
             return
 
-        mxc_path = mxc_url[len("mxc://"):]
+        mxc_path = mxc_url[len("mxc://") :]
         if "/" not in mxc_path:
             logger.warning("Ungültige MXC-URL (kein Slash): %s", mxc_url)
             return
@@ -552,7 +582,9 @@ class MatrixChannel(MessageChannel):
 
         logger.debug(
             "Datei empfangen von %s: %s (%d bytes)",
-            event.sender, filename, len(file_bytes),
+            event.sender,
+            filename,
+            len(file_bytes),
         )
 
         msg = IncomingMessage(
@@ -570,11 +602,15 @@ class MatrixChannel(MessageChannel):
                 await callback(msg)
             except Exception as e:
                 logger.error(
-                    "Callback-Fehler für Datei-Nachricht von %s: %s", msg.sender, e,
+                    "Callback-Fehler für Datei-Nachricht von %s: %s",
+                    msg.sender,
+                    e,
                 )
 
     async def _authenticated_download(
-        self, server_name: str, media_id: str,
+        self,
+        server_name: str,
+        media_id: str,
     ) -> bytes | None:
         """Lädt eine Datei vom Matrix-Server (authentifiziert).
 
@@ -617,7 +653,8 @@ class MatrixChannel(MessageChannel):
 
         if isinstance(download_resp, DownloadError):
             logger.error(
-                "Audio-Download fehlgeschlagen: %s", download_resp.message,
+                "Audio-Download fehlgeschlagen: %s",
+                download_resp.message,
             )
             return None
 

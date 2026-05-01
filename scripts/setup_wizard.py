@@ -9,6 +9,7 @@ Verwendung:
     python scripts/setup_wizard.py
     python scripts/setup_wizard.py --port 8090
 """
+
 from __future__ import annotations
 
 import argparse
@@ -36,7 +37,9 @@ logger = logging.getLogger(__name__)
 def main() -> None:
     parser = argparse.ArgumentParser(description="Elder-Berry Setup-Wizard")
     parser.add_argument("--port", type=int, default=8090, help="Port (Default: 8090)")
-    parser.add_argument("--no-browser", action="store_true", help="Browser nicht öffnen")
+    parser.add_argument(
+        "--no-browser", action="store_true", help="Browser nicht öffnen"
+    )
     args = parser.parse_args()
 
     from elder_berry.core.secret_store import SecretStore
@@ -55,6 +58,7 @@ def main() -> None:
         Timer(1.5, webbrowser.open, args=[url]).start()
 
     from elder_berry.web.setup_wizard import run_setup_wizard
+
     run_setup_wizard(secret_store, port=args.port)
 
 

@@ -19,6 +19,7 @@ Verwendung:
     ...
     watcher.stop()
 """
+
 from __future__ import annotations
 
 import logging
@@ -144,7 +145,9 @@ class CalendarWatcher:
                 already_sent = self._reminded_events.get(event.event_id, set())
                 if minutes_until <= reminder_min and reminder_min not in already_sent:
                     self._send_reminder(event, reminder_min)
-                    self._reminded_events.setdefault(event.event_id, set()).add(reminder_min)
+                    self._reminded_events.setdefault(event.event_id, set()).add(
+                        reminder_min
+                    )
 
         self._cleanup_past_events(events)
 
@@ -169,10 +172,7 @@ class CalendarWatcher:
             text += f"\n  📍 {event.location}"
 
         # Kontext-Anreicherung nur beim ersten Reminder
-        if (
-            self._context_enricher
-            and minutes == max(self._reminder_minutes)
-        ):
+        if self._context_enricher and minutes == max(self._reminder_minutes):
             try:
                 result = self._context_enricher.enrich_event(
                     title=event.summary,
@@ -184,7 +184,8 @@ class CalendarWatcher:
             except Exception as e:
                 logger.warning(
                     "Kontext-Anreicherung fehlgeschlagen für '%s': %s",
-                    event.summary, e,
+                    event.summary,
+                    e,
                 )
 
         try:

@@ -1,4 +1,5 @@
 """Abstrakte Basisklassen und DTOs für Speech-to-Text."""
+
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
@@ -9,8 +10,9 @@ from pathlib import Path
 @dataclass(frozen=True)
 class TranscriptionSegment:
     """Ein einzelnes Segment einer Transkription mit Zeitstempeln."""
-    start: float    # Sekunden
-    end: float      # Sekunden
+
+    start: float  # Sekunden
+    end: float  # Sekunden
     text: str
 
 
@@ -25,6 +27,7 @@ class TranscriptionResult:
         confidence: Durchschnittliche Konfidenz 0.0–1.0 oder None wenn nicht verfügbar.
         segments:   Einzelne Segmente mit Zeitstempeln (optional).
     """
+
     text: str
     language: str | None = None
     confidence: float | None = None

@@ -21,6 +21,7 @@ try:
         _VALID_KEY_RE,
     )
     from elder_berry.web.settings_dashboard import SettingsDashboard
+
     HAS_FASTAPI = True
 except ImportError:
     HAS_FASTAPI = False
@@ -34,8 +35,7 @@ class TestRegistryIntegrity:
     def test_no_duplicate_keys(self):
         keys = [entry["key"] for entry in SECRET_REGISTRY]
         assert len(keys) == len(set(keys)), (
-            f"Doppelte Keys gefunden: "
-            f"{[k for k in keys if keys.count(k) > 1]}"
+            f"Doppelte Keys gefunden: {[k for k in keys if keys.count(k) > 1]}"
         )
 
     def test_all_keys_match_naming_pattern(self):
@@ -74,8 +74,7 @@ class TestBehaviorEntries:
         for entry in SECRET_REGISTRY:
             if entry.get("behavior"):
                 assert entry.get("sensitive", True) is False, (
-                    f"Behavior-Setting '{entry['key']}' darf nicht "
-                    f"sensitive=True sein."
+                    f"Behavior-Setting '{entry['key']}' darf nicht sensitive=True sein."
                 )
 
     def test_required_behavior_keys_present(self):
@@ -118,6 +117,7 @@ class TestRegistryToSettingDefinition:
 
     def _dashboard(self):
         from elder_berry.core.audio_router import AudioRouter
+
         return SettingsDashboard(audio_router=AudioRouter(local_available=True))
 
     def test_all_dashboard_definitions_buildable(self):

@@ -1,4 +1,5 @@
 """Tests für AvatarRenderer ABC und SpriteRenderer – PyGame gemockt."""
+
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -11,6 +12,7 @@ from elder_berry.character.base import Emotion
 # ABC-Tests
 # ---------------------------------------------------------------------------
 
+
 class TestAvatarRendererABC:
     def test_cannot_instantiate_abc(self):
         with pytest.raises(TypeError):
@@ -20,6 +22,7 @@ class TestAvatarRendererABC:
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
+
 
 @pytest.fixture
 def mock_pygame():
@@ -63,6 +66,7 @@ def sprite_dir(tmp_path):
 def renderer(mock_pygame, sprite_dir):
     """Erstellt einen initialisierten SpriteRenderer."""
     from elder_berry.avatar.sprite_renderer import SpriteRenderer
+
     r = SpriteRenderer(assets_dir=sprite_dir)
     r.initialize(512, 512)
     return r
@@ -71,6 +75,7 @@ def renderer(mock_pygame, sprite_dir):
 # ---------------------------------------------------------------------------
 # Init
 # ---------------------------------------------------------------------------
+
 
 class TestSpriteRendererInit:
     def test_is_avatar_renderer(self, renderer):
@@ -85,11 +90,13 @@ class TestSpriteRendererInit:
     def test_import_error_without_pygame(self):
         with patch("elder_berry.avatar.sprite_renderer.pygame", None):
             from elder_berry.avatar.sprite_renderer import SpriteRenderer
+
             with pytest.raises(ImportError, match="pygame"):
                 SpriteRenderer()
 
     def test_initializes_pygame(self, mock_pygame, sprite_dir):
         from elder_berry.avatar.sprite_renderer import SpriteRenderer
+
         r = SpriteRenderer(assets_dir=sprite_dir)
         r.initialize(800, 600)
         mock_pygame["pygame"].init.assert_called_once()
@@ -102,6 +109,7 @@ class TestSpriteRendererInit:
 # ---------------------------------------------------------------------------
 # Emotion
 # ---------------------------------------------------------------------------
+
 
 class TestEmotionDisplay:
     def test_show_emotion_changes_state(self, renderer):
@@ -122,6 +130,7 @@ class TestEmotionDisplay:
 # Speaking Indicator
 # ---------------------------------------------------------------------------
 
+
 class TestSpeakingIndicator:
     def test_speaking_default_false(self, renderer):
         assert not renderer._is_speaking
@@ -139,6 +148,7 @@ class TestSpeakingIndicator:
 # ---------------------------------------------------------------------------
 # Update (Render Loop)
 # ---------------------------------------------------------------------------
+
 
 class TestUpdate:
     def test_update_fills_background(self, renderer, mock_pygame):
@@ -178,6 +188,7 @@ class TestUpdate:
 # ---------------------------------------------------------------------------
 # Shutdown
 # ---------------------------------------------------------------------------
+
 
 class TestShutdown:
     def test_shutdown_stops_running(self, renderer):

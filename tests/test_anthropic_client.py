@@ -1,4 +1,5 @@
 """Tests für AnthropicClient – generate, describe_image, computer_use, Fehlerbehandlung."""
+
 from __future__ import annotations
 
 import importlib
@@ -17,6 +18,7 @@ from elder_berry.llm.anthropic_client import AnthropicClient, ComputerUseAction
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def _make_client(api_key: str = "sk-ant-test") -> AnthropicClient:
     """Erstellt einen AnthropicClient mit gesetztem Key."""
@@ -71,6 +73,7 @@ def _make_tool_use_block(
 # Konstruktor & Verfügbarkeit
 # ---------------------------------------------------------------------------
 
+
 class TestAnthropicClientInit:
     def test_default_model(self):
         client = AnthropicClient()
@@ -119,6 +122,7 @@ class TestAnthropicAvailability:
 # _get_client / _check_available
 # ---------------------------------------------------------------------------
 
+
 class TestAnthropicInternals:
     @requires_anthropic
     def test_get_client_lazy_init(self):
@@ -157,6 +161,7 @@ class TestAnthropicInternals:
 # ---------------------------------------------------------------------------
 # generate()
 # ---------------------------------------------------------------------------
+
 
 class TestAnthropicGenerate:
     @requires_anthropic
@@ -221,10 +226,13 @@ class TestAnthropicGenerate:
     @requires_anthropic
     def test_api_status_error(self):
         import anthropic
+
         client = _make_client()
         sdk = _inject_sdk_mock(client)
         sdk.messages.create.side_effect = anthropic.APIStatusError(
-            "error", response=MagicMock(status_code=500), body={},
+            "error",
+            response=MagicMock(status_code=500),
+            body={},
         )
         with pytest.raises(RuntimeError, match="Anthropic API-Fehler"):
             client.generate("test")
@@ -232,6 +240,7 @@ class TestAnthropicGenerate:
     @requires_anthropic
     def test_api_connection_error(self):
         import anthropic
+
         client = _make_client()
         sdk = _inject_sdk_mock(client)
         sdk.messages.create.side_effect = anthropic.APIConnectionError(
@@ -244,10 +253,13 @@ class TestAnthropicGenerate:
     def test_rate_limit_error(self):
         """RateLimitError ist Subklasse von APIStatusError → wird dort gefangen."""
         import anthropic
+
         client = _make_client()
         sdk = _inject_sdk_mock(client)
         sdk.messages.create.side_effect = anthropic.RateLimitError(
-            "rate limited", response=MagicMock(status_code=429), body={},
+            "rate limited",
+            response=MagicMock(status_code=429),
+            body={},
         )
         with pytest.raises(RuntimeError, match="Anthropic API-Fehler"):
             client.generate("test")
@@ -257,12 +269,15 @@ class TestAnthropicGenerate:
 # describe_image()
 # ---------------------------------------------------------------------------
 
+
 class TestAnthropicDescribeImage:
     @requires_anthropic
     def test_happy_path(self):
         client = _make_client()
         sdk = _inject_sdk_mock(client)
-        sdk.messages.create.return_value = _make_message_response("Ein Hund auf einer Wiese.")
+        sdk.messages.create.return_value = _make_message_response(
+            "Ein Hund auf einer Wiese."
+        )
 
         result = client.describe_image("base64data", prompt="Was siehst du?")
         assert result == "Ein Hund auf einer Wiese."
@@ -275,7 +290,9 @@ class TestAnthropicDescribeImage:
         sdk.messages.create.return_value = _make_message_response("ok")
 
         client.describe_image(
-            "imgdata", prompt="Beschreibe!", system="Sei präzise.",
+            "imgdata",
+            prompt="Beschreibe!",
+            system="Sei präzise.",
             media_type="image/png",
         )
         kwargs = sdk.messages.create.call_args.kwargs
@@ -321,10 +338,13 @@ class TestAnthropicDescribeImage:
     @requires_anthropic
     def test_api_status_error(self):
         import anthropic
+
         client = _make_client()
         sdk = _inject_sdk_mock(client)
         sdk.messages.create.side_effect = anthropic.APIStatusError(
-            "error", response=MagicMock(status_code=400), body={},
+            "error",
+            response=MagicMock(status_code=400),
+            body={},
         )
         with pytest.raises(RuntimeError, match="Anthropic API-Fehler"):
             client.describe_image("imgdata")
@@ -332,6 +352,7 @@ class TestAnthropicDescribeImage:
     @requires_anthropic
     def test_connection_error(self):
         import anthropic
+
         client = _make_client()
         sdk = _inject_sdk_mock(client)
         sdk.messages.create.side_effect = anthropic.APIConnectionError(
@@ -344,10 +365,13 @@ class TestAnthropicDescribeImage:
     def test_rate_limit_error(self):
         """RateLimitError ist Subklasse von APIStatusError → wird dort gefangen."""
         import anthropic
+
         client = _make_client()
         sdk = _inject_sdk_mock(client)
         sdk.messages.create.side_effect = anthropic.RateLimitError(
-            "rate limited", response=MagicMock(status_code=429), body={},
+            "rate limited",
+            response=MagicMock(status_code=429),
+            body={},
         )
         with pytest.raises(RuntimeError, match="Anthropic API-Fehler"):
             client.describe_image("imgdata")
@@ -356,6 +380,7 @@ class TestAnthropicDescribeImage:
 # ---------------------------------------------------------------------------
 # computer_use()
 # ---------------------------------------------------------------------------
+
 
 class TestAnthropicComputerUse:
     @requires_anthropic
@@ -391,8 +416,10 @@ class TestAnthropicComputerUse:
         client = _make_client()
         sdk = _inject_sdk_mock(client)
         block = _make_tool_use_block(
-            "scroll", coordinate=[400, 500],
-            scroll_direction="down", scroll_amount=3,
+            "scroll",
+            coordinate=[400, 500],
+            scroll_direction="down",
+            scroll_amount=3,
         )
         resp = MagicMock()
         resp.content = [block]
@@ -456,10 +483,13 @@ class TestAnthropicComputerUse:
     @requires_anthropic
     def test_api_status_error(self):
         import anthropic
+
         client = _make_client()
         sdk = _inject_sdk_mock(client)
         sdk.beta.messages.create.side_effect = anthropic.APIStatusError(
-            "error", response=MagicMock(status_code=500), body={},
+            "error",
+            response=MagicMock(status_code=500),
+            body={},
         )
         with pytest.raises(RuntimeError, match="Anthropic API-Fehler"):
             client.computer_use("b64", "Klick", 1920, 1080)
@@ -467,6 +497,7 @@ class TestAnthropicComputerUse:
     @requires_anthropic
     def test_connection_error(self):
         import anthropic
+
         client = _make_client()
         sdk = _inject_sdk_mock(client)
         sdk.beta.messages.create.side_effect = anthropic.APIConnectionError(
@@ -479,10 +510,13 @@ class TestAnthropicComputerUse:
     def test_rate_limit_error(self):
         """RateLimitError ist Subklasse von APIStatusError → wird dort gefangen."""
         import anthropic
+
         client = _make_client()
         sdk = _inject_sdk_mock(client)
         sdk.beta.messages.create.side_effect = anthropic.RateLimitError(
-            "rate limited", response=MagicMock(status_code=429), body={},
+            "rate limited",
+            response=MagicMock(status_code=429),
+            body={},
         )
         with pytest.raises(RuntimeError, match="Anthropic API-Fehler"):
             client.computer_use("b64", "Klick", 1920, 1080)
@@ -492,9 +526,12 @@ class TestAnthropicComputerUse:
 # _parse_computer_use_response – statische Methode
 # ---------------------------------------------------------------------------
 
+
 class TestParseComputerUseResponse:
     def test_extracts_click(self):
-        block = _make_tool_use_block("left_click", coordinate=[100, 200], block_id="id1")
+        block = _make_tool_use_block(
+            "left_click", coordinate=[100, 200], block_id="id1"
+        )
         resp = MagicMock()
         resp.content = [block]
 

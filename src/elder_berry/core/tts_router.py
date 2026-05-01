@@ -6,6 +6,7 @@ Fallback2: Lokale TTSEngine (CoquiTTS/WindowsTTS, wenn verfügbar)
 
 Implementiert TTSEngine, damit Assistant den Router transparent nutzen kann.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -120,7 +121,10 @@ class TTSRouter(TTSEngine):
             logger.debug("TTSRouter.speak() – kein lokales Audio verfügbar")
 
     def generate_audio(
-        self, text: str, output_path: Path, emotion: str | None = None,
+        self,
+        text: str,
+        output_path: Path,
+        emotion: str | None = None,
     ) -> Path:
         """Generiert Audio-Datei via ElevenLabs, Tower oder lokaler Engine.
 
@@ -146,7 +150,8 @@ class TTSRouter(TTSEngine):
 
             logger.debug(
                 "TTS-Audio geschrieben: %s (%d bytes)",
-                actual_path.name, len(audio_bytes),
+                actual_path.name,
+                len(audio_bytes),
             )
             return actual_path
 
@@ -182,4 +187,6 @@ class TTSRouter(TTSEngine):
 
     def set_voice(self, voice_id: str) -> None:
         """Stimme setzen – bei ElevenLabs über Voice-ID im Constructor."""
-        logger.debug("set_voice('%s') ignoriert – Voice über ElevenLabs config", voice_id)
+        logger.debug(
+            "set_voice('%s') ignoriert – Voice über ElevenLabs config", voice_id
+        )

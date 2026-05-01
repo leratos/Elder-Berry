@@ -1,4 +1,5 @@
 """Tests: SystemCommandHandler – System, Media, Volume, Avatar, Screenshot, Restart."""
+
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -15,6 +16,7 @@ from elder_berry.comms.commands.system_commands import (
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
+
 
 @pytest.fixture
 def monitor():
@@ -61,13 +63,17 @@ def handler_minimal():
 # Pattern Tests
 # ---------------------------------------------------------------------------
 
+
 class TestVolumePattern:
-    @pytest.mark.parametrize("text,level", [
-        ("volume 50", "50"),
-        ("vol 75", "75"),
-        ("lautstärke 30", "30"),
-        ("lautstarke 100", "100"),
-    ])
+    @pytest.mark.parametrize(
+        "text,level",
+        [
+            ("volume 50", "50"),
+            ("vol 75", "75"),
+            ("lautstärke 30", "30"),
+            ("lautstarke 100", "100"),
+        ],
+    )
     def test_valid(self, text, level):
         m = VOLUME_PATTERN.search(text)
         assert m is not None
@@ -78,11 +84,14 @@ class TestVolumePattern:
 
 
 class TestAvatarEmotionPattern:
-    @pytest.mark.parametrize("text,emotion", [
-        ("avatar angry", "angry"),
-        ("selfie cheerful", "cheerful"),
-        ("avatar neutral", "neutral"),
-    ])
+    @pytest.mark.parametrize(
+        "text,emotion",
+        [
+            ("avatar angry", "angry"),
+            ("selfie cheerful", "cheerful"),
+            ("avatar neutral", "neutral"),
+        ],
+    )
     def test_valid(self, text, emotion):
         m = AVATAR_EMOTION_PATTERN.match(text)
         assert m is not None
@@ -95,6 +104,7 @@ class TestAvatarEmotionPattern:
 # ---------------------------------------------------------------------------
 # Interface
 # ---------------------------------------------------------------------------
+
 
 class TestSystemInterface:
     def test_simple_commands(self, handler):
@@ -123,6 +133,7 @@ class TestSystemInterface:
 # Status Command
 # ---------------------------------------------------------------------------
 
+
 class TestStatusCommand:
     def test_status_success(self, handler, monitor):
         result = handler.execute("status", "status")
@@ -145,8 +156,11 @@ class TestStatusCommand:
 # Media Commands
 # ---------------------------------------------------------------------------
 
+
 class TestMediaCommands:
-    @pytest.mark.parametrize("cmd", ["pause", "play", "skip", "next", "prev", "previous"])
+    @pytest.mark.parametrize(
+        "cmd", ["pause", "play", "skip", "next", "prev", "previous"]
+    )
     def test_media_success(self, handler, controller, cmd):
         result = handler.execute(cmd, cmd)
         assert result.success is True
@@ -166,6 +180,7 @@ class TestMediaCommands:
 # ---------------------------------------------------------------------------
 # Volume Command
 # ---------------------------------------------------------------------------
+
 
 class TestVolumeCommand:
     def test_volume_success(self, handler, controller):
@@ -197,11 +212,15 @@ class TestVolumeCommand:
 # Screenshot Command
 # ---------------------------------------------------------------------------
 
+
 class TestScreenshotCommand:
-    @patch("elder_berry.comms.commands.system_commands.SystemCommandHandler._wake_monitor")
+    @patch(
+        "elder_berry.comms.commands.system_commands.SystemCommandHandler._wake_monitor"
+    )
     def test_screenshot_no_mss(self, mock_wake, handler):
         with patch.dict("sys.modules", {"mss": None}):
             import builtins
+
             original_import = builtins.__import__
 
             def mock_import(name, *args, **kwargs):
@@ -226,8 +245,10 @@ class TestScreenshotCommand:
         mock_response.content = b"\x89PNG\r\n\x1a\nfake_png_data"
 
         # Lokales mss blockieren, httpx.get mocken
-        with patch.object(handler, "_screenshot_local", return_value=None), \
-             patch("httpx.get", return_value=mock_response):
+        with (
+            patch.object(handler, "_screenshot_local", return_value=None),
+            patch("httpx.get", return_value=mock_response),
+        ):
             result = handler.execute("screenshot", "screenshot")
             assert result.success is True
             assert "Tower" in result.text
@@ -239,6 +260,7 @@ class TestScreenshotCommand:
     def test_screenshot_local_preferred_over_tower(self, handler):
         """Lokaler Screenshot hat Vorrang vor TowerAgent."""
         from elder_berry.comms.commands.base import CommandResult
+
         local_result = CommandResult(
             command="screenshot",
             success=True,
@@ -264,24 +286,29 @@ class TestIsBlack:
 
     def test_empty_bytes_is_black(self):
         from elder_berry.comms.commands.system_commands import SystemCommandHandler
+
         assert SystemCommandHandler._is_black(b"") is True
 
     def test_all_zero_is_black(self):
         from elder_berry.comms.commands.system_commands import SystemCommandHandler
+
         assert SystemCommandHandler._is_black(bytes(3000)) is True
 
     def test_bright_pixels_not_black(self):
         from elder_berry.comms.commands.system_commands import SystemCommandHandler
+
         # Weißes Bild: alle Bytes = 255
         assert SystemCommandHandler._is_black(bytes([255] * 3000)) is False
 
     def test_dark_but_not_black_not_black(self):
         from elder_berry.comms.commands.system_commands import SystemCommandHandler
+
         # Dunkelgrau (30/255 ≈ 12% Helligkeit) → über Schwelle → kein Schwarz
         assert SystemCommandHandler._is_black(bytes([30] * 3000)) is False
 
     def test_nearly_black_is_black(self):
         from elder_berry.comms.commands.system_commands import SystemCommandHandler
+
         # Sehr dunkler Wert (5/255) → unter Schwelle → gilt als schwarz
         assert SystemCommandHandler._is_black(bytes([5] * 3000)) is True
 
@@ -304,24 +331,25 @@ class TestIsLocked:
 
     def test_non_windows_returns_false(self):
         from elder_berry.comms.commands.system_commands import SystemCommandHandler
+
         with patch("sys.platform", "linux"):
             assert SystemCommandHandler._is_locked() is False
 
     def test_windows_unlocked_returns_false(self):
         import sys
         from elder_berry.comms.commands.system_commands import SystemCommandHandler
+
         stub = self._fake_ctypes(open_desktop_retval=1)  # valider Handle → entsperrt
-        with patch("sys.platform", "win32"), \
-             patch.dict(sys.modules, {"ctypes": stub}):
+        with patch("sys.platform", "win32"), patch.dict(sys.modules, {"ctypes": stub}):
             assert SystemCommandHandler._is_locked() is False
         stub.windll.user32.CloseDesktop.assert_called_once_with(1)
 
     def test_windows_locked_returns_true(self):
         import sys
         from elder_berry.comms.commands.system_commands import SystemCommandHandler
+
         stub = self._fake_ctypes(open_desktop_retval=0)  # NULL → gesperrt
-        with patch("sys.platform", "win32"), \
-             patch.dict(sys.modules, {"ctypes": stub}):
+        with patch("sys.platform", "win32"), patch.dict(sys.modules, {"ctypes": stub}):
             assert SystemCommandHandler._is_locked() is True
 
 
@@ -352,16 +380,20 @@ class TestScreenshotLockStatus:
         fake_mss = MagicMock()
         fake_mss.mss.return_value = ctx_mgr
 
-        fake_tools = MagicMock()   # to_png ist ein No-op MagicMock
+        fake_tools = MagicMock()  # to_png ist ein No-op MagicMock
         # Wichtig: fake_mss.tools auf fake_tools setzen, damit
         # `mss.tools.to_png` im Produktionscode auf fake_tools zeigt.
         fake_mss.tools = fake_tools
 
         return fake_mss, fake_tools
 
-    @patch("elder_berry.comms.commands.system_commands.SystemCommandHandler._wake_monitor")
-    @patch("elder_berry.comms.commands.system_commands.SystemCommandHandler._is_locked",
-           return_value=True)
+    @patch(
+        "elder_berry.comms.commands.system_commands.SystemCommandHandler._wake_monitor"
+    )
+    @patch(
+        "elder_berry.comms.commands.system_commands.SystemCommandHandler._is_locked",
+        return_value=True,
+    )
     def test_locked_status_in_text(self, mock_locked, mock_wake):
         """Wenn PC gesperrt: Text enthält '(PC gesperrt)'."""
         import sys
@@ -377,9 +409,13 @@ class TestScreenshotLockStatus:
         assert result.success is True
         assert "gesperrt" in result.text
 
-    @patch("elder_berry.comms.commands.system_commands.SystemCommandHandler._wake_monitor")
-    @patch("elder_berry.comms.commands.system_commands.SystemCommandHandler._is_locked",
-           return_value=False)
+    @patch(
+        "elder_berry.comms.commands.system_commands.SystemCommandHandler._wake_monitor"
+    )
+    @patch(
+        "elder_berry.comms.commands.system_commands.SystemCommandHandler._is_locked",
+        return_value=False,
+    )
     def test_unlocked_no_lock_hint(self, mock_locked, mock_wake):
         """Wenn PC nicht gesperrt: kein Sperrhinweis im Text."""
         import sys
@@ -395,9 +431,13 @@ class TestScreenshotLockStatus:
         assert result.success is True
         assert "gesperrt" not in result.text
 
-    @patch("elder_berry.comms.commands.system_commands.SystemCommandHandler._wake_monitor")
-    @patch("elder_berry.comms.commands.system_commands.SystemCommandHandler._is_locked",
-           return_value=False)
+    @patch(
+        "elder_berry.comms.commands.system_commands.SystemCommandHandler._wake_monitor"
+    )
+    @patch(
+        "elder_berry.comms.commands.system_commands.SystemCommandHandler._is_locked",
+        return_value=False,
+    )
     def test_png_write_error_returns_none(self, mock_locked, mock_wake):
         """PNG-Schreibfehler → None (Tower-Fallback statt harter Ausnahme)."""
         import sys
@@ -416,6 +456,7 @@ class TestScreenshotLockStatus:
 # ---------------------------------------------------------------------------
 # Avatar Command
 # ---------------------------------------------------------------------------
+
 
 class TestAvatarCommand:
     def test_avatar_default_emotion(self, handler, avatar_renderer):
@@ -468,6 +509,7 @@ class TestAvatarCommand:
 # Restart Command
 # ---------------------------------------------------------------------------
 
+
 class TestRestartCommand:
     def test_restart(self, handler):
         result = handler.execute("restart", "restart")
@@ -485,6 +527,7 @@ class TestRestartCommand:
 # ---------------------------------------------------------------------------
 # Unknown Command
 # ---------------------------------------------------------------------------
+
 
 class TestUnknownCommand:
     def test_unknown(self, handler):

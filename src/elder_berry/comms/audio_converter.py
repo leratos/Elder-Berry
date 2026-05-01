@@ -14,6 +14,7 @@ Verwendung:
     converter = AudioConverter()
     ogg_path, duration_ms = converter.to_ogg_opus(Path("input.wav"))
 """
+
 from __future__ import annotations
 
 import json
@@ -104,12 +105,16 @@ class AudioConverter:
 
         cmd = [
             "ffmpeg",
-            "-y",               # vorhandene Ziel-Datei überschreiben
+            "-y",  # vorhandene Ziel-Datei überschreiben
             "-hide_banner",
-            "-loglevel", "error",
-            "-i", str(input_path),
-            "-c:a", "libopus",
-            "-b:a", bitrate,
+            "-loglevel",
+            "error",
+            "-i",
+            str(input_path),
+            "-c:a",
+            "libopus",
+            "-b:a",
+            bitrate,
             str(output_path),
         ]
         try:
@@ -141,7 +146,10 @@ class AudioConverter:
 
         logger.debug(
             "Konvertiert: %s → %s (%d ms, %s)",
-            input_path.name, output_path.name, duration_ms, bitrate,
+            input_path.name,
+            output_path.name,
+            duration_ms,
+            bitrate,
         )
         return output_path, duration_ms
 
@@ -182,9 +190,12 @@ class AudioConverter:
 
         cmd = [
             "ffprobe",
-            "-v", "error",
-            "-show_entries", "format=duration",
-            "-of", "json",
+            "-v",
+            "error",
+            "-show_entries",
+            "format=duration",
+            "-of",
+            "json",
             str(path),
         ]
         try:

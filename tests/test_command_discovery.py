@@ -1,4 +1,5 @@
 """Tests für Phase 51.2 (Did-you-mean) und 51.3 (Füllwort-Stripping)."""
+
 from __future__ import annotations
 
 
@@ -70,8 +71,7 @@ class TestDidYouMean:
     def test_long_sentence_no_suggestion(self) -> None:
         # Ganze Sätze gehen ans LLM, nicht an did-you-mean
         assert (
-            self.handler.suggest_command("was denkst du über das wetter heute")
-            is None
+            self.handler.suggest_command("was denkst du über das wetter heute") is None
         )
 
     def test_unrelated_word_no_suggestion(self) -> None:

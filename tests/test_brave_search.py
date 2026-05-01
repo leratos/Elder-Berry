@@ -1,4 +1,5 @@
 """Tests: BraveSearchClient – Brave Search API Integration."""
+
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -14,12 +15,15 @@ from elder_berry.tools.brave_search_client import (
 # Fixtures
 # ---------------------------------------------------------------------------
 
+
 def _make_store(with_key: bool = True):
     """Erstellt einen Mock-SecretStore mit oder ohne Brave API-Key."""
     store = MagicMock()
     if with_key:
+
         def get_or_none(key):
             return {"brave_api_key": "test-api-key-123"}.get(key)
+
         store.get_or_none.side_effect = get_or_none
     else:
         store.get_or_none.return_value = None
@@ -57,6 +61,7 @@ MOCK_NO_WEB_KEY_RESPONSE = {"query": {"original": "test"}}
 # DTO Tests
 # ---------------------------------------------------------------------------
 
+
 class TestSearchResultDTO:
     """SearchResult Dataclass Tests."""
 
@@ -79,6 +84,7 @@ class TestSearchResultDTO:
 # ---------------------------------------------------------------------------
 # Init Tests
 # ---------------------------------------------------------------------------
+
 
 class TestBraveSearchClientInit:
     """BraveSearchClient Initialisierung."""
@@ -103,6 +109,7 @@ class TestBraveSearchClientInit:
 # ---------------------------------------------------------------------------
 # Search Tests
 # ---------------------------------------------------------------------------
+
 
 class TestBraveSearchClientSearch:
     """BraveSearchClient.search() Tests."""
@@ -253,6 +260,7 @@ class TestBraveSearchClientSearch:
 # Format Tests
 # ---------------------------------------------------------------------------
 
+
 class TestFormatResults:
     """format_results() Tests."""
 
@@ -289,7 +297,9 @@ class TestFormatResults:
     def test_format_cleans_html(self):
         store = _make_store()
         client = BraveSearchClient(secret_store=store)
-        results = [SearchResult("Test", "https://t.de", "Ein <strong>fetter</strong> Text")]
+        results = [
+            SearchResult("Test", "https://t.de", "Ein <strong>fetter</strong> Text")
+        ]
         text = client.format_results(results)
 
         assert "<strong>" not in text
@@ -339,6 +349,7 @@ class TestFormatResultsDetailed:
 # Helper Tests
 # ---------------------------------------------------------------------------
 
+
 class TestCleanDescription:
     """_clean_description() Tests."""
 
@@ -349,10 +360,14 @@ class TestCleanDescription:
         assert _clean_description("Normaler Text") == "Normaler Text"
 
     def test_strong_tags(self):
-        assert _clean_description("Ein <strong>fetter</strong> Text") == "Ein fetter Text"
+        assert (
+            _clean_description("Ein <strong>fetter</strong> Text") == "Ein fetter Text"
+        )
 
     def test_mixed_tags(self):
-        assert _clean_description("<em>kursiv</em> und <b>fett</b>") == "kursiv und fett"
+        assert (
+            _clean_description("<em>kursiv</em> und <b>fett</b>") == "kursiv und fett"
+        )
 
     def test_strips_whitespace(self):
         assert _clean_description("  Leerzeichen  ") == "Leerzeichen"

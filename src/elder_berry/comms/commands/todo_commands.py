@@ -15,6 +15,7 @@ Commands:
 Nummern (#1, #2, ...) sind Session-Indizes, die bei jeder Auflistung
 neu vergeben werden. Intern werden sie auf CalDAV-UIDs aufgelöst.
 """
+
 from __future__ import annotations
 
 import logging
@@ -31,7 +32,8 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 TODO_ADD_PATTERN = re.compile(
-    r"^(?:bitte\s+)?(?:todo|aufgabe)[:\s]+(.+)$", re.IGNORECASE,
+    r"^(?:bitte\s+)?(?:todo|aufgabe)[:\s]+(.+)$",
+    re.IGNORECASE,
 )
 
 TODO_COMPLETE_PATTERN = re.compile(
@@ -58,7 +60,8 @@ TODO_DELETE_PATTERN = re.compile(
 )
 
 TODO_FILTER_PATTERN = re.compile(
-    r"^(?:todos?|aufgaben)\s+(.+)$", re.IGNORECASE,
+    r"^(?:todos?|aufgaben)\s+(.+)$",
+    re.IGNORECASE,
 )
 
 
@@ -92,13 +95,22 @@ class TodoCommandHandler(CommandHandler):
     def keywords(self) -> dict[str, list[str]]:
         return {
             "todos": [
-                "todos", "aufgaben", "to-do", "to do",
-                "meine aufgaben", "offene aufgaben",
-                "was muss ich noch", "aufgabenliste", "todo liste",
+                "todos",
+                "aufgaben",
+                "to-do",
+                "to do",
+                "meine aufgaben",
+                "offene aufgaben",
+                "was muss ich noch",
+                "aufgabenliste",
+                "todo liste",
             ],
             "todo_add": [
-                "neues todo", "neue aufgabe", "todo hinzufügen",
-                "aufgabe hinzufügen", "aufgabe anlegen",
+                "neues todo",
+                "neue aufgabe",
+                "todo hinzufügen",
+                "aufgabe hinzufügen",
+                "aufgabe anlegen",
             ],
         }
 
@@ -117,7 +129,8 @@ class TodoCommandHandler(CommandHandler):
         if not self._client:
             return self.not_configured(command, "Aufgabenliste")
         dispatch = {
-            "todos": self._cmd_list, "aufgaben": self._cmd_list,
+            "todos": self._cmd_list,
+            "aufgaben": self._cmd_list,
             "todo": self._cmd_list,
             "todo_add": self._cmd_add,
             "todo_complete": self._cmd_complete,
@@ -129,8 +142,9 @@ class TodoCommandHandler(CommandHandler):
         handler = dispatch.get(command)
         if handler:
             return handler(raw_text)
-        return CommandResult(command=command, success=False,
-                             text=f"Unbekannter Command: {command}")
+        return CommandResult(
+            command=command, success=False, text=f"Unbekannter Command: {command}"
+        )
 
     # ------------------------------------------------------------------
     # Session-Index
@@ -138,9 +152,7 @@ class TodoCommandHandler(CommandHandler):
 
     def _build_index(self, items) -> None:
         """Baut den Session-Index auf: #1 → uid, #2 → uid, ..."""
-        self._index_map = {
-            i + 1: item.uid for i, item in enumerate(items)
-        }
+        self._index_map = {i + 1: item.uid for i, item in enumerate(items)}
 
     def _resolve_index(self, index: int) -> str | None:
         """Löst einen Session-Index (#N) auf die CalDAV-UID auf."""
@@ -161,120 +173,163 @@ class TodoCommandHandler(CommandHandler):
     def _cmd_add(self, raw_text: str) -> CommandResult:
         match = TODO_ADD_PATTERN.match(raw_text.strip())
         if not match:
-            return CommandResult(command="todo_add", success=False,
-                                 text="Text fehlt. Beispiel: todo: Einkaufen gehen")
+            return CommandResult(
+                command="todo_add",
+                success=False,
+                text="Text fehlt. Beispiel: todo: Einkaufen gehen",
+            )
         fields = self._parse_todo_fields(match.group(1))
         if not fields or not fields.get("text"):
-            return CommandResult(command="todo_add", success=False,
-                                 text="Text fehlt. Beispiel: todo: Einkaufen gehen, hoch, Haushalt")
+            return CommandResult(
+                command="todo_add",
+                success=False,
+                text="Text fehlt. Beispiel: todo: Einkaufen gehen, hoch, Haushalt",
+            )
         item = self._client.add(
             text=fields["text"],
             priority=fields.get("priority", "niedrig"),
             category=fields.get("category", ""),
             due=fields.get("due"),
         )
-        return CommandResult(command="todo_add", success=True,
-                             text=f"✅ Aufgabe: {item.format_short()}")
+        return CommandResult(
+            command="todo_add", success=True, text=f"✅ Aufgabe: {item.format_short()}"
+        )
 
     def _cmd_complete(self, raw_text: str) -> CommandResult:
         match = TODO_COMPLETE_PATTERN.search(raw_text.strip())
         if not match:
-            return CommandResult(command="todo_complete", success=False,
-                                 text="Welche Aufgabe? Beispiel: todo erledigt #1")
+            return CommandResult(
+                command="todo_complete",
+                success=False,
+                text="Welche Aufgabe? Beispiel: todo erledigt #1",
+            )
         idx = int(match.group(1) or match.group(2))
         uid = self._resolve_index(idx)
         if not uid:
             return CommandResult(
-                command="todo_complete", success=False,
+                command="todo_complete",
+                success=False,
                 text=f"Aufgabe #{idx} nicht im Index. "
-                     "Zeige zuerst die Liste mit 'todos'.",
+                "Zeige zuerst die Liste mit 'todos'.",
             )
         item = self._client.complete(uid)
         if item:
-            return CommandResult(command="todo_complete", success=True,
-                                 text=f"✅ Erledigt: {item.text}")
-        return CommandResult(command="todo_complete", success=False,
-                             text=f"Aufgabe #{idx} nicht gefunden oder bereits erledigt.")
+            return CommandResult(
+                command="todo_complete", success=True, text=f"✅ Erledigt: {item.text}"
+            )
+        return CommandResult(
+            command="todo_complete",
+            success=False,
+            text=f"Aufgabe #{idx} nicht gefunden oder bereits erledigt.",
+        )
 
     def _cmd_reopen(self, raw_text: str) -> CommandResult:
         match = TODO_REOPEN_PATTERN.search(raw_text.strip())
         if not match:
-            return CommandResult(command="todo_reopen", success=False,
-                                 text="Welche Aufgabe? Beispiel: todo wieder öffnen #1")
+            return CommandResult(
+                command="todo_reopen",
+                success=False,
+                text="Welche Aufgabe? Beispiel: todo wieder öffnen #1",
+            )
         idx = int(match.group(1) or match.group(2))
         uid = self._resolve_index(idx)
         if not uid:
             return CommandResult(
-                command="todo_reopen", success=False,
+                command="todo_reopen",
+                success=False,
                 text=f"Aufgabe #{idx} nicht im Index. "
-                     "Zeige zuerst die Liste mit 'todos erledigt'.",
+                "Zeige zuerst die Liste mit 'todos erledigt'.",
             )
         item = self._client.reopen(uid)
         if item:
-            return CommandResult(command="todo_reopen", success=True,
-                                 text=f"🔄 Wieder offen: {item.text}")
-        return CommandResult(command="todo_reopen", success=False,
-                             text=f"Aufgabe #{idx} nicht gefunden oder nicht erledigt.")
+            return CommandResult(
+                command="todo_reopen",
+                success=True,
+                text=f"🔄 Wieder offen: {item.text}",
+            )
+        return CommandResult(
+            command="todo_reopen",
+            success=False,
+            text=f"Aufgabe #{idx} nicht gefunden oder nicht erledigt.",
+        )
 
     def _cmd_priority(self, raw_text: str) -> CommandResult:
         match = TODO_PRIORITY_PATTERN.search(raw_text.strip())
         if not match:
-            return CommandResult(command="todo_priority", success=False,
-                                 text="Nicht erkannt. Beispiel: todo priorität #1 hoch")
+            return CommandResult(
+                command="todo_priority",
+                success=False,
+                text="Nicht erkannt. Beispiel: todo priorität #1 hoch",
+            )
         idx = int(match.group(1) or match.group(3))
         prio = (match.group(2) or match.group(4)).lower()
         uid = self._resolve_index(idx)
         if not uid:
             return CommandResult(
-                command="todo_priority", success=False,
+                command="todo_priority",
+                success=False,
                 text=f"Aufgabe #{idx} nicht im Index. "
-                     "Zeige zuerst die Liste mit 'todos'.",
+                "Zeige zuerst die Liste mit 'todos'.",
             )
         try:
             item = self._client.update_priority(uid, prio)
         except ValueError as e:
-            return CommandResult(command="todo_priority", success=False,
-                                 text=str(e))
+            return CommandResult(command="todo_priority", success=False, text=str(e))
         if item:
-            return CommandResult(command="todo_priority", success=True,
-                                 text=f"✅ Priorität: {item.format_short()}")
-        return CommandResult(command="todo_priority", success=False,
-                             text=f"Aufgabe #{idx} nicht gefunden.")
+            return CommandResult(
+                command="todo_priority",
+                success=True,
+                text=f"✅ Priorität: {item.format_short()}",
+            )
+        return CommandResult(
+            command="todo_priority",
+            success=False,
+            text=f"Aufgabe #{idx} nicht gefunden.",
+        )
 
     def _cmd_delete(self, raw_text: str) -> CommandResult:
         match = TODO_DELETE_PATTERN.match(raw_text.strip())
         if not match:
-            return CommandResult(command="todo_delete", success=False,
-                                 text="Welche Aufgabe? Beispiel: todo löschen #1")
+            return CommandResult(
+                command="todo_delete",
+                success=False,
+                text="Welche Aufgabe? Beispiel: todo löschen #1",
+            )
         idx = int(match.group(1))
         uid = self._resolve_index(idx)
         if not uid:
             return CommandResult(
-                command="todo_delete", success=False,
+                command="todo_delete",
+                success=False,
                 text=f"Aufgabe #{idx} nicht im Index. "
-                     "Zeige zuerst die Liste mit 'todos'.",
+                "Zeige zuerst die Liste mit 'todos'.",
             )
         if self._client.delete(uid):
-            return CommandResult(command="todo_delete", success=True,
-                                 text=f"🗑️ Aufgabe #{idx} gelöscht.")
-        return CommandResult(command="todo_delete", success=False,
-                             text=f"Aufgabe #{idx} nicht gefunden.")
+            return CommandResult(
+                command="todo_delete", success=True, text=f"🗑️ Aufgabe #{idx} gelöscht."
+            )
+        return CommandResult(
+            command="todo_delete", success=False, text=f"Aufgabe #{idx} nicht gefunden."
+        )
 
     def _cmd_list(self, _raw_text: str) -> CommandResult:
         items = self._client.get_open()
         if not items:
-            return CommandResult(command="todos", success=True,
-                                 text="📋 Keine offenen Aufgaben.")
+            return CommandResult(
+                command="todos", success=True, text="📋 Keine offenen Aufgaben."
+            )
         text = self._format_items(
-            items, f"📋 {len(items)} offene Aufgaben:",
+            items,
+            f"📋 {len(items)} offene Aufgaben:",
         )
         return CommandResult(command="todos", success=True, text=text)
 
     def _cmd_filter(self, raw_text: str) -> CommandResult:
         match = TODO_FILTER_PATTERN.match(raw_text.strip())
         if not match:
-            return CommandResult(command="todo_filter", success=False,
-                                 text="Format: todos <filter>")
+            return CommandResult(
+                command="todo_filter", success=False, text="Format: todos <filter>"
+            )
         filter_text = match.group(1).strip().lower()
 
         # Sonder-Cases
@@ -288,12 +343,15 @@ class TodoCommandHandler(CommandHandler):
             return self._cmd_due_date(date.today(), "heute")
         if filter_text in ("morgen", "tomorrow"):
             return self._cmd_due_date(
-                date.today() + timedelta(days=1), "morgen",
+                date.today() + timedelta(days=1),
+                "morgen",
             )
         if filter_text in ("überfällig", "overdue", "ueberfaellig"):
             return self._cmd_overdue()
         if filter_text in (
-            "woche", "diese woche", "this week",
+            "woche",
+            "diese woche",
+            "this week",
         ):
             return self._cmd_due_week()
 
@@ -304,34 +362,36 @@ class TodoCommandHandler(CommandHandler):
         else:
             # Kategorie-Filter (case-insensitive)
             all_open = self._client.get_open()
-            items = [
-                t for t in all_open
-                if t.category.lower() == filter_text
-            ]
+            items = [t for t in all_open if t.category.lower() == filter_text]
 
         if not items:
-            return CommandResult(command="todo_filter", success=True,
-                                 text=f"📋 Keine Aufgaben für '{filter_text}'.")
+            return CommandResult(
+                command="todo_filter",
+                success=True,
+                text=f"📋 Keine Aufgaben für '{filter_text}'.",
+            )
         text = self._format_items(
-            items, f"📋 {len(items)} Aufgaben ({filter_text}):",
+            items,
+            f"📋 {len(items)} Aufgaben ({filter_text}):",
         )
         return CommandResult(command="todo_filter", success=True, text=text)
 
     def _cmd_due_date(
-        self, target: date, label: str,
+        self,
+        target: date,
+        label: str,
     ) -> CommandResult:
         """Aufgaben mit Fälligkeit an einem bestimmten Datum."""
         items = self._client.get_open_by_due(target)
         if not items:
             return CommandResult(
-                command="todo_filter", success=True,
-                text=f"📋 Keine Aufgaben fällig {label} "
-                     f"({target.strftime('%d.%m.')}).",
+                command="todo_filter",
+                success=True,
+                text=f"📋 Keine Aufgaben fällig {label} ({target.strftime('%d.%m.')}).",
             )
         text = self._format_items(
             items,
-            f"📋 {len(items)} Aufgaben fällig {label} "
-            f"({target.strftime('%d.%m.')}):",
+            f"📋 {len(items)} Aufgaben fällig {label} ({target.strftime('%d.%m.')}):",
         )
         return CommandResult(command="todo_filter", success=True, text=text)
 
@@ -340,11 +400,13 @@ class TodoCommandHandler(CommandHandler):
         items = self._client.get_overdue()
         if not items:
             return CommandResult(
-                command="todo_filter", success=True,
+                command="todo_filter",
+                success=True,
                 text="📋 Keine überfälligen Aufgaben. 👍",
             )
         text = self._format_items(
-            items, f"⚠ {len(items)} überfällige Aufgaben:",
+            items,
+            f"⚠ {len(items)} überfällige Aufgaben:",
         )
         return CommandResult(command="todo_filter", success=True, text=text)
 
@@ -357,9 +419,10 @@ class TodoCommandHandler(CommandHandler):
         items = self._client.get_open_by_due_range(monday, sunday)
         if not items:
             return CommandResult(
-                command="todo_filter", success=True,
+                command="todo_filter",
+                success=True,
                 text=f"📋 Keine Aufgaben fällig diese Woche "
-                     f"({monday.strftime('%d.%m.')}–{sunday.strftime('%d.%m.')}).",
+                f"({monday.strftime('%d.%m.')}–{sunday.strftime('%d.%m.')}).",
             )
         text = self._format_items(
             items,
@@ -371,18 +434,23 @@ class TodoCommandHandler(CommandHandler):
     def _cmd_done(self) -> CommandResult:
         items = self._client.get_done()
         if not items:
-            return CommandResult(command="todos_done", success=True,
-                                 text="📋 Keine erledigten Aufgaben.")
+            return CommandResult(
+                command="todos_done", success=True, text="📋 Keine erledigten Aufgaben."
+            )
         text = self._format_items(
-            items, f"📋 {len(items)} erledigte Aufgaben:",
+            items,
+            f"📋 {len(items)} erledigte Aufgaben:",
         )
         return CommandResult(command="todos_done", success=True, text=text)
 
     def _cmd_cleanup(self) -> CommandResult:
         done_items = self._client.get_done(limit=100)
         if not done_items:
-            return CommandResult(command="todos_cleanup", success=True,
-                                 text="📋 Keine erledigten Aufgaben zum Aufräumen.")
+            return CommandResult(
+                command="todos_cleanup",
+                success=True,
+                text="📋 Keine erledigten Aufgaben zum Aufräumen.",
+            )
         count = len(done_items)
         return CommandResult(
             command="todos_cleanup",
@@ -398,8 +466,11 @@ class TodoCommandHandler(CommandHandler):
     def execute_cleanup(self) -> CommandResult:
         """Führt das Aufräumen nach Bestätigung aus."""
         deleted = self._client.delete_all_done()
-        return CommandResult(command="todos_cleanup", success=True,
-                             text=f"✅ {deleted} erledigte Aufgaben gelöscht.")
+        return CommandResult(
+            command="todos_cleanup",
+            success=True,
+            text=f"✅ {deleted} erledigte Aufgaben gelöscht.",
+        )
 
     # ------------------------------------------------------------------
     # Parsing
@@ -416,8 +487,10 @@ class TodoCommandHandler(CommandHandler):
         if not parts:
             return {}
         result: dict = {
-            "text": parts[0], "priority": "niedrig",
-            "category": "", "due": None,
+            "text": parts[0],
+            "priority": "niedrig",
+            "category": "",
+            "due": None,
         }
         for part in parts[1:]:
             lower = part.lower()
@@ -436,8 +509,13 @@ class TodoCommandHandler(CommandHandler):
 # ── Date-Parsing ─────────────────────────────────────────────────────
 
 _WEEKDAYS_DE = {
-    "montag": 0, "dienstag": 1, "mittwoch": 2, "donnerstag": 3,
-    "freitag": 4, "samstag": 5, "sonntag": 6,
+    "montag": 0,
+    "dienstag": 1,
+    "mittwoch": 2,
+    "donnerstag": 3,
+    "freitag": 4,
+    "samstag": 5,
+    "sonntag": 6,
 }
 
 _DATE_PATTERN = re.compile(

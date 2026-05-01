@@ -3,6 +3,7 @@
 Command: "cloud aufräumen" / "räum cloud auf" / "eingang aufräumen"
 Flow: Eingang listen → pro Datei analysieren → Vorschlag → Bestätigung → MOVE
 """
+
 from __future__ import annotations
 
 import logging
@@ -74,11 +75,16 @@ class FilingCommandHandler(CommandHandler):
     def keywords(self) -> dict[str, list[str]]:
         return {
             "cloud_aufräumen": [
-                "aufräumen", "eingang aufräumen", "räum cloud auf",
-                "cloud aufräumen", "ablegen",
+                "aufräumen",
+                "eingang aufräumen",
+                "räum cloud auf",
+                "cloud aufräumen",
+                "ablegen",
             ],
             "anhang_ablegen": [
-                "anhang ablegen", "leg anhang ab", "anhänge ablegen",
+                "anhang ablegen",
+                "leg anhang ab",
+                "anhänge ablegen",
             ],
         }
 
@@ -95,7 +101,8 @@ class FilingCommandHandler(CommandHandler):
 
         if command != "cloud_aufräumen":
             return CommandResult(
-                command=command, success=False,
+                command=command,
+                success=False,
                 text=f"Unbekannter Filing-Command: {command}",
             )
 
@@ -103,7 +110,8 @@ class FilingCommandHandler(CommandHandler):
             return self.not_configured(command, "Nextcloud", setup_step=4)
         if self._classifier is None:
             return CommandResult(
-                command=command, success=False,
+                command=command,
+                success=False,
                 text="⚠ Dokument-Analyse nicht verfügbar (Ollama fehlt).",
             )
 
@@ -118,7 +126,8 @@ class FilingCommandHandler(CommandHandler):
         except Exception as exc:
             logger.error("Eingang konnte nicht gelesen werden: %s", exc)
             return CommandResult(
-                command="cloud_aufräumen", success=False,
+                command="cloud_aufräumen",
+                success=False,
                 text=f"Eingang konnte nicht gelesen werden: {exc}",
             )
 
@@ -127,29 +136,34 @@ class FilingCommandHandler(CommandHandler):
 
         if not files:
             return CommandResult(
-                command="cloud_aufräumen", success=True,
+                command="cloud_aufräumen",
+                success=True,
                 text="📂 Eingang ist leer – nichts zu tun.",
             )
 
         return self._process_next_file(files, index=0)
 
     def _process_next_file(
-        self, files: list, index: int,
+        self,
+        files: list,
+        index: int,
     ) -> CommandResult:
         """Verarbeitet die nächste Datei im Eingang."""
         current = files[index]
-        remaining_names = [f.name for f in files[index + 1:]]
+        remaining_names = [f.name for f in files[index + 1 :]]
 
         # Download auf Tower (temp)
         try:
             tmp_dir = Path(tempfile.mkdtemp(prefix="filing_"))
             local_path = self._nc.download(
-                f"{INBOX_FOLDER}/{current.name}", tmp_dir,
+                f"{INBOX_FOLDER}/{current.name}",
+                tmp_dir,
             )
         except Exception as exc:
             logger.error("Download fehlgeschlagen für %s: %s", current.name, exc)
             return CommandResult(
-                command="cloud_aufräumen", success=False,
+                command="cloud_aufräumen",
+                success=False,
                 text=f"Download fehlgeschlagen: {current.name} – {exc}",
             )
 
@@ -200,7 +214,8 @@ class FilingCommandHandler(CommandHandler):
             return self.not_configured("anhang_ablegen", "Nextcloud", setup_step=4)
         if self._classifier is None:
             return CommandResult(
-                command="anhang_ablegen", success=False,
+                command="anhang_ablegen",
+                success=False,
                 text="⚠ Dokument-Analyse nicht verfügbar (Ollama fehlt).",
             )
         if self._email is None:
@@ -209,17 +224,18 @@ class FilingCommandHandler(CommandHandler):
         match = FILING_ATTACHMENT_PATTERN.search(raw_text.strip())
         if not match:
             return CommandResult(
-                command="anhang_ablegen", success=False,
+                command="anhang_ablegen",
+                success=False,
                 text="Format: anhang ablegen #<Mail-ID>",
             )
 
         msg_id = (
-            match.group(1) or match.group(2)
-            or match.group(3) or match.group(4) or ""
+            match.group(1) or match.group(2) or match.group(3) or match.group(4) or ""
         ).strip()
         if not msg_id:
             return CommandResult(
-                command="anhang_ablegen", success=False,
+                command="anhang_ablegen",
+                success=False,
                 text="Keine Mail-ID angegeben.",
             )
 
@@ -227,38 +243,46 @@ class FilingCommandHandler(CommandHandler):
         try:
             attachments = self._email.get_attachments(msg_id)
         except Exception as exc:
-            logger.error("Mail-Anhänge abrufen fehlgeschlagen (UID %s): %s", msg_id, exc)
+            logger.error(
+                "Mail-Anhänge abrufen fehlgeschlagen (UID %s): %s", msg_id, exc
+            )
             return CommandResult(
-                command="anhang_ablegen", success=False,
+                command="anhang_ablegen",
+                success=False,
                 text=f"Anhänge abrufen fehlgeschlagen: {exc}",
             )
 
         if not attachments:
             return CommandResult(
-                command="anhang_ablegen", success=True,
+                command="anhang_ablegen",
+                success=True,
                 text=f"Keine Anhänge in Mail #{msg_id}.",
             )
 
         # Nur PDFs filtern
         pdf_attachments = [
-            (name, data) for name, data in attachments
+            (name, data)
+            for name, data in attachments
             if Path(name).suffix.lower() in _ALLOWED_ATTACHMENT_EXTENSIONS
         ]
         rejected = [
-            name for name, _ in attachments
+            name
+            for name, _ in attachments
             if Path(name).suffix.lower() not in _ALLOWED_ATTACHMENT_EXTENSIONS
         ]
 
         if not pdf_attachments:
             rejected_list = ", ".join(rejected)
             return CommandResult(
-                command="anhang_ablegen", success=False,
+                command="anhang_ablegen",
+                success=False,
                 text=f"Keine PDF-Anhänge in Mail #{msg_id}.\n"
-                     f"Abgelehnt (nur PDF erlaubt): {rejected_list}",
+                f"Abgelehnt (nur PDF erlaubt): {rejected_list}",
             )
 
         # PDFs als Temp-Dateien speichern und erste klassifizieren
         import tempfile
+
         temp_files: list[tuple[str, Path]] = []
         for filename, data in pdf_attachments:
             tmp_dir = Path(tempfile.mkdtemp(prefix="filing_mail_"))
@@ -269,17 +293,13 @@ class FilingCommandHandler(CommandHandler):
         # Info über abgelehnte Dateien
         rejected_info = ""
         if rejected:
-            rejected_info = (
-                f"\n⚠️ Übersprungen (nur PDF erlaubt): {', '.join(rejected)}"
-            )
+            rejected_info = f"\n⚠️ Übersprungen (nur PDF erlaubt): {', '.join(rejected)}"
 
         # Erste PDF klassifizieren
         first_name, first_path = temp_files[0]
         suggestion = self._classifier.classify(first_path)
 
-        remaining_temp = [
-            (name, str(path)) for name, path in temp_files[1:]
-        ]
+        remaining_temp = [(name, str(path)) for name, path in temp_files[1:]]
 
         confidence_hint = ""
         if suggestion.confidence != "high":
@@ -333,9 +353,12 @@ class FilingCommandHandler(CommandHandler):
             try:
                 self._nc.upload(local_path, dest)
             except Exception as exc:
-                logger.error("Upload fehlgeschlagen: %s → %s: %s", local_path, dest, exc)
+                logger.error(
+                    "Upload fehlgeschlagen: %s → %s: %s", local_path, dest, exc
+                )
                 return CommandResult(
-                    command="anhang_ablegen", success=False,
+                    command="anhang_ablegen",
+                    success=False,
                     text=f"Upload fehlgeschlagen: {exc}",
                 )
         elif source_type == "nc_attachment":
@@ -346,7 +369,8 @@ class FilingCommandHandler(CommandHandler):
             except Exception as exc:
                 logger.error("MOVE fehlgeschlagen: %s → %s: %s", source, dest, exc)
                 return CommandResult(
-                    command="anhang_ablegen", success=False,
+                    command="anhang_ablegen",
+                    success=False,
                     text=f"Verschieben fehlgeschlagen: {exc}",
                 )
         else:
@@ -357,9 +381,9 @@ class FilingCommandHandler(CommandHandler):
             except Exception as exc:
                 logger.error("MOVE fehlgeschlagen: %s → %s: %s", source, dest, exc)
                 return CommandResult(
-                    command="cloud_aufräumen", success=False,
-                    text=f"Verschieben fehlgeschlagen: {exc}\n"
-                         f"Datei bleibt im Eingang.",
+                    command="cloud_aufräumen",
+                    success=False,
+                    text=f"Verschieben fehlgeschlagen: {exc}\nDatei bleibt im Eingang.",
                 )
 
         # Temp-Datei aufräumen
@@ -380,18 +404,23 @@ class FilingCommandHandler(CommandHandler):
 
         if is_attachment:
             return CommandResult(
-                command=command, success=True,
+                command=command,
+                success=True,
                 text=f"✅ Abgelegt: {filename}",
             )
 
         return CommandResult(
-            command=command, success=True,
+            command=command,
+            success=True,
             text=f"✅ Abgelegt: {filename}\n\n"
-                 f"📂 Eingang ist leer. Alle Dateien abgelegt.",
+            f"📂 Eingang ist leer. Alle Dateien abgelegt.",
         )
 
     def handle_correction(
-        self, action: PendingAction, hint: str, user_id: str,
+        self,
+        action: PendingAction,
+        hint: str,
+        user_id: str,
     ) -> CommandResult:
         """User hat korrigiert → neuen Vorschlag generieren."""
         local_path = Path(action.data["local_temp"])
@@ -435,7 +464,8 @@ class FilingCommandHandler(CommandHandler):
         remaining_attachments = action.data.get("remaining_attachments", [])
         if remaining_attachments:
             return self._process_next_attachment(
-                remaining_attachments, "(übersprungen)",
+                remaining_attachments,
+                "(übersprungen)",
             )
 
         # Nächste Eingangs-Datei?
@@ -446,14 +476,17 @@ class FilingCommandHandler(CommandHandler):
         command = "anhang_ablegen" if is_mail else "cloud_aufräumen"
         done_text = "Alle Anhänge abgearbeitet." if is_mail else "Eingang abgearbeitet."
         return CommandResult(
-            command=command, success=True,
+            command=command,
+            success=True,
             text=f"✅ {done_text}",
         )
 
     # ── Helpers ──────────────────────────────────────────────────────────
 
     def _process_remaining(
-        self, remaining_names: list[str], last_dest: str | None = None,
+        self,
+        remaining_names: list[str],
+        last_dest: str | None = None,
     ) -> CommandResult:
         """Listet den Eingang erneut und verarbeitet die nächste Datei."""
         try:
@@ -461,7 +494,8 @@ class FilingCommandHandler(CommandHandler):
         except Exception as exc:
             logger.error("Eingang erneut lesen fehlgeschlagen: %s", exc)
             return CommandResult(
-                command="cloud_aufräumen", success=False,
+                command="cloud_aufräumen",
+                success=False,
                 text=f"Eingang konnte nicht gelesen werden: {exc}",
             )
 
@@ -469,7 +503,8 @@ class FilingCommandHandler(CommandHandler):
         if not files:
             prefix = f"✅ Abgelegt: {last_dest.split('/')[-1]}\n\n" if last_dest else ""
             return CommandResult(
-                command="cloud_aufräumen", success=True,
+                command="cloud_aufräumen",
+                success=True,
                 text=f"{prefix}📂 Eingang ist leer. Alle Dateien abgelegt.",
             )
 
@@ -488,7 +523,9 @@ class FilingCommandHandler(CommandHandler):
         return result
 
     def _process_next_attachment(
-        self, remaining: list[tuple], last_filename: str,
+        self,
+        remaining: list[tuple],
+        last_filename: str,
     ) -> CommandResult:
         """Klassifiziert den nächsten Mail-Anhang.
 
@@ -508,9 +545,9 @@ class FilingCommandHandler(CommandHandler):
             if rest:
                 return self._process_next_attachment(rest, last_filename)
             return CommandResult(
-                command="anhang_ablegen", success=True,
-                text=f"✅ Abgelegt: {last_filename}\n\n"
-                     f"Alle Anhänge abgearbeitet.",
+                command="anhang_ablegen",
+                success=True,
+                text=f"✅ Abgelegt: {last_filename}\n\nAlle Anhänge abgearbeitet.",
             )
 
         suggestion = self._classifier.classify(local_path)

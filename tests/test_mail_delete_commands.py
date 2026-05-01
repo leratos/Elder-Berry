@@ -1,4 +1,5 @@
 """Tests für mail_delete Commands (Mail löschen via IMAP)."""
+
 from __future__ import annotations
 
 from datetime import datetime, timezone
@@ -16,6 +17,7 @@ from elder_berry.tools.email_client import EmailMessage
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
+
 
 def _make_email(**kwargs) -> EmailMessage:
     defaults = dict(
@@ -48,29 +50,38 @@ def handler_no_email() -> MailCommandHandler:
 # MAIL_DELETE_PATTERN Tests
 # ---------------------------------------------------------------------------
 
-class TestMailDeletePattern:
-    @pytest.mark.parametrize("text", [
-        "lösche mail #123",
-        "lösche mail 123",
-        "lösch die mail #456",
-        "lösche die mail",
-        "entferne mail #789",
-        "entferne die mail",
-        "mail löschen #123",
-        "mail löschen",
-        "lösche die letzte mail",
-    ])
-    def test_matches(self, text: str):
-        assert MAIL_DELETE_PATTERN.match(text.strip()), f"Pattern sollte '{text}' matchen"
 
-    @pytest.mark.parametrize("text", [
-        "lösche termin xyz",
-        "lösche erinnerung 3",
-        "lösche alle termine",
-        "mail suche test",
-        "mails",
-        "mail 123",
-    ])
+class TestMailDeletePattern:
+    @pytest.mark.parametrize(
+        "text",
+        [
+            "lösche mail #123",
+            "lösche mail 123",
+            "lösch die mail #456",
+            "lösche die mail",
+            "entferne mail #789",
+            "entferne die mail",
+            "mail löschen #123",
+            "mail löschen",
+            "lösche die letzte mail",
+        ],
+    )
+    def test_matches(self, text: str):
+        assert MAIL_DELETE_PATTERN.match(text.strip()), (
+            f"Pattern sollte '{text}' matchen"
+        )
+
+    @pytest.mark.parametrize(
+        "text",
+        [
+            "lösche termin xyz",
+            "lösche erinnerung 3",
+            "lösche alle termine",
+            "mail suche test",
+            "mails",
+            "mail 123",
+        ],
+    )
     def test_no_match(self, text: str):
         assert not MAIL_DELETE_PATTERN.match(text.strip()), (
             f"Pattern sollte '{text}' NICHT matchen"
@@ -102,6 +113,7 @@ class TestMailDeletePattern:
 # ---------------------------------------------------------------------------
 # _cmd_mail_delete Tests
 # ---------------------------------------------------------------------------
+
 
 class TestCmdMailDelete:
     def test_delete_by_id(self, handler: MailCommandHandler):
@@ -168,6 +180,7 @@ class TestCmdMailDelete:
 # ---------------------------------------------------------------------------
 # _last_mails State Tracking
 # ---------------------------------------------------------------------------
+
 
 class TestLastMailsTracking:
     def test_mails_sets_last_mails(self, handler: MailCommandHandler):

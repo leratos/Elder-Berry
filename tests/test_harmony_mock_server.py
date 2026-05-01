@@ -1,4 +1,5 @@
 """Tests fuer HarmonyMockServer -- FastAPI TestClient."""
+
 from __future__ import annotations
 
 import json
@@ -59,6 +60,7 @@ def client_no_config(tmp_path: Path) -> TestClient:
 
 
 # -- Tests ----------------------------------------------------------------- #
+
 
 class TestGetConfig:
     def test_get_config_returns_backup(self, client):

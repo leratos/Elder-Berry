@@ -14,6 +14,7 @@ Verwendung:
     python scripts/test_hall.py             # Continuous polling
     python scripts/test_hall.py --pin 25    # Anderer GPIO-Pin
 """
+
 from __future__ import annotations
 
 import argparse
@@ -30,7 +31,9 @@ except ImportError:
 def main() -> None:
     parser = argparse.ArgumentParser(description="A3144 Hall-Sensor Test")
     parser.add_argument(
-        "--pin", type=int, default=24,
+        "--pin",
+        type=int,
+        default=24,
         help="GPIO-Pin (BCM, default: 24)",
     )
     args = parser.parse_args()

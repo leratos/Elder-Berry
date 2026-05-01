@@ -1,4 +1,5 @@
 """Tests für TodoCommandHandler (Phase 56.2/56.3 – Nextcloud Tasks Backend)."""
+
 from __future__ import annotations
 
 from datetime import date, datetime, timedelta, timezone
@@ -7,8 +8,12 @@ from unittest.mock import MagicMock
 import pytest
 
 from elder_berry.comms.commands.todo_commands import (
-    TODO_ADD_PATTERN, TODO_COMPLETE_PATTERN, TODO_DELETE_PATTERN,
-    TODO_FILTER_PATTERN, TODO_PRIORITY_PATTERN, TODO_REOPEN_PATTERN,
+    TODO_ADD_PATTERN,
+    TODO_COMPLETE_PATTERN,
+    TODO_DELETE_PATTERN,
+    TODO_FILTER_PATTERN,
+    TODO_PRIORITY_PATTERN,
+    TODO_REOPEN_PATTERN,
     TodoCommandHandler,
     _parse_date_token,
 )
@@ -16,6 +21,7 @@ from elder_berry.tools.caldav_tasks import TaskItem
 
 
 # ── Helpers ──────────────────────────────────────────────────────────
+
 
 def _make_task(
     uid: str = "uid-1",
@@ -26,8 +32,13 @@ def _make_task(
     due: date | None = None,
 ) -> TaskItem:
     return TaskItem(
-        uid=uid, text=text, priority=priority, category=category,
-        done=done, due=due, description="",
+        uid=uid,
+        text=text,
+        priority=priority,
+        category=category,
+        done=done,
+        due=due,
+        description="",
         created_at=datetime(2026, 4, 1, tzinfo=timezone.utc),
         completed_at=None,
     )
@@ -52,6 +63,7 @@ def handler(client: MagicMock) -> TodoCommandHandler:
 
 
 # ── Pattern Tests ──
+
 
 class TestTodoAddPattern:
     def test_todo_colon_text(self) -> None:
@@ -121,6 +133,7 @@ class TestTodoFilterPattern:
 
 # ── Parsing Tests ──
 
+
 class TestParseTodoFields:
     def test_text_only(self) -> None:
         h = TodoCommandHandler()
@@ -153,6 +166,7 @@ class TestParseTodoFields:
 
 # ── Session-Index Tests ──
 
+
 class TestSessionIndex:
     def test_build_and_resolve(self, handler: TodoCommandHandler) -> None:
         items = [_make_task(uid="aaa"), _make_task(uid="bbb")]
@@ -169,7 +183,8 @@ class TestSessionIndex:
         assert handler._resolve_index(1) == "new"
 
     def test_format_items_includes_numbers(
-        self, handler: TodoCommandHandler,
+        self,
+        handler: TodoCommandHandler,
     ) -> None:
         items = [_make_task(uid="a", text="Erste"), _make_task(uid="b", text="Zweite")]
         text = handler._format_items(items, "Header:")
@@ -181,29 +196,40 @@ class TestSessionIndex:
 
 # ── Command Execution Tests ──
 
+
 class TestCmdTodoAdd:
     def test_add_success(
-        self, handler: TodoCommandHandler, client: MagicMock,
+        self,
+        handler: TodoCommandHandler,
+        client: MagicMock,
     ) -> None:
         client.add.return_value = _make_task(text="Milch kaufen")
         r = handler.execute("todo_add", "todo: Milch kaufen")
         assert r.success
         assert "Milch kaufen" in r.text
         client.add.assert_called_once_with(
-            text="Milch kaufen", priority="niedrig", category="",
+            text="Milch kaufen",
+            priority="niedrig",
+            category="",
             due=None,
         )
 
     def test_add_with_priority(
-        self, handler: TodoCommandHandler, client: MagicMock,
+        self,
+        handler: TodoCommandHandler,
+        client: MagicMock,
     ) -> None:
         client.add.return_value = _make_task(
-            text="Dachdecker", priority="hoch", category="Arbeit",
+            text="Dachdecker",
+            priority="hoch",
+            category="Arbeit",
         )
         r = handler.execute("todo_add", "todo: Dachdecker, hoch, Arbeit")
         assert r.success
         client.add.assert_called_once_with(
-            text="Dachdecker", priority="hoch", category="Arbeit",
+            text="Dachdecker",
+            priority="hoch",
+            category="Arbeit",
             due=None,
         )
 
@@ -215,7 +241,9 @@ class TestCmdTodoAdd:
 
 class TestCmdTodoComplete:
     def test_complete_success(
-        self, handler: TodoCommandHandler, client: MagicMock,
+        self,
+        handler: TodoCommandHandler,
+        client: MagicMock,
     ) -> None:
         # Erst auflisten, damit Index befüllt wird
         task = _make_task(uid="uid-42", text="Erledigt")
@@ -224,7 +252,9 @@ class TestCmdTodoComplete:
 
         # Dann erledigen
         client.complete.return_value = _make_task(
-            uid="uid-42", text="Erledigt", done=True,
+            uid="uid-42",
+            text="Erledigt",
+            done=True,
         )
         r = handler.execute("todo_complete", "todo erledigt #1")
         assert r.success
@@ -237,7 +267,9 @@ class TestCmdTodoComplete:
         assert "nicht im Index" in r.text
 
     def test_complete_not_found(
-        self, handler: TodoCommandHandler, client: MagicMock,
+        self,
+        handler: TodoCommandHandler,
+        client: MagicMock,
     ) -> None:
         client.get_open.return_value = [_make_task(uid="uid-x")]
         handler.execute("todos", "todos")
@@ -249,7 +281,9 @@ class TestCmdTodoComplete:
 
 class TestCmdTodoList:
     def test_list_open(
-        self, handler: TodoCommandHandler, client: MagicMock,
+        self,
+        handler: TodoCommandHandler,
+        client: MagicMock,
     ) -> None:
         client.get_open.return_value = [
             _make_task(uid="a", text="Eins"),
@@ -269,7 +303,9 @@ class TestCmdTodoList:
 
 class TestCmdTodoFilter:
     def test_filter_priority(
-        self, handler: TodoCommandHandler, client: MagicMock,
+        self,
+        handler: TodoCommandHandler,
+        client: MagicMock,
     ) -> None:
         client.get_open.return_value = [
             _make_task(uid="a", text="A", priority="hoch"),
@@ -281,7 +317,9 @@ class TestCmdTodoFilter:
         assert "B" not in r.text
 
     def test_filter_category(
-        self, handler: TodoCommandHandler, client: MagicMock,
+        self,
+        handler: TodoCommandHandler,
+        client: MagicMock,
     ) -> None:
         client.get_open.return_value = [
             _make_task(uid="a", text="A", category="Arbeit"),
@@ -293,7 +331,9 @@ class TestCmdTodoFilter:
         assert "B" not in r.text
 
     def test_filter_erledigt(
-        self, handler: TodoCommandHandler, client: MagicMock,
+        self,
+        handler: TodoCommandHandler,
+        client: MagicMock,
     ) -> None:
         client.get_done.return_value = [
             _make_task(uid="d", text="Fertig", done=True),
@@ -303,7 +343,9 @@ class TestCmdTodoFilter:
         assert "Fertig" in r.text
 
     def test_filter_cleanup_asks_confirmation(
-        self, handler: TodoCommandHandler, client: MagicMock,
+        self,
+        handler: TodoCommandHandler,
+        client: MagicMock,
     ) -> None:
         client.get_done.return_value = [
             _make_task(uid="d", text="Alt", done=True),
@@ -315,7 +357,9 @@ class TestCmdTodoFilter:
         assert r.pending_data["count"] == 1
 
     def test_filter_cleanup_confirmed(
-        self, handler: TodoCommandHandler, client: MagicMock,
+        self,
+        handler: TodoCommandHandler,
+        client: MagicMock,
     ) -> None:
         client.delete_all_done.return_value = 1
         r = handler.execute_cleanup()
@@ -323,7 +367,9 @@ class TestCmdTodoFilter:
         assert "1 erledigte Aufgaben gelöscht" in r.text
 
     def test_filter_no_match(
-        self, handler: TodoCommandHandler, client: MagicMock,
+        self,
+        handler: TodoCommandHandler,
+        client: MagicMock,
     ) -> None:
         client.get_open.return_value = []
         r = handler.execute("todo_filter", "todos hoch")
@@ -333,7 +379,9 @@ class TestCmdTodoFilter:
 
 class TestCmdTodoReopen:
     def test_reopen_success(
-        self, handler: TodoCommandHandler, client: MagicMock,
+        self,
+        handler: TodoCommandHandler,
+        client: MagicMock,
     ) -> None:
         task = _make_task(uid="uid-r", text="Test", done=True)
         client.get_done.return_value = [task]
@@ -352,14 +400,18 @@ class TestCmdTodoReopen:
 
 class TestCmdTodoPriority:
     def test_priority_change(
-        self, handler: TodoCommandHandler, client: MagicMock,
+        self,
+        handler: TodoCommandHandler,
+        client: MagicMock,
     ) -> None:
         task = _make_task(uid="uid-p", text="Test", priority="niedrig")
         client.get_open.return_value = [task]
         handler.execute("todos", "todos")
 
         client.update_priority.return_value = _make_task(
-            uid="uid-p", text="Test", priority="hoch",
+            uid="uid-p",
+            text="Test",
+            priority="hoch",
         )
         r = handler.execute("todo_priority", "todo priorität #1 hoch")
         assert r.success
@@ -373,7 +425,9 @@ class TestCmdTodoPriority:
 
 class TestCmdTodoDelete:
     def test_delete_success(
-        self, handler: TodoCommandHandler, client: MagicMock,
+        self,
+        handler: TodoCommandHandler,
+        client: MagicMock,
     ) -> None:
         client.get_open.return_value = [
             _make_task(uid="uid-del", text="Weg damit"),
@@ -406,6 +460,7 @@ class TestTodoKeywords:
 
 
 # ── Phase 56.3: Date-Parsing Tests ──────────────────────────────────
+
 
 class TestParseDateToken:
     def test_heute(self) -> None:
@@ -448,9 +503,7 @@ class TestParseDateToken:
     def test_date_past_wraps_to_next_year(self) -> None:
         # 01.01. ohne Jahr → wenn in Vergangenheit, nächstes Jahr
         result = _parse_date_token("1.1.")
-        if date.today().month > 1 or (
-            date.today().month == 1 and date.today().day > 1
-        ):
+        if date.today().month > 1 or (date.today().month == 1 and date.today().day > 1):
             assert result.year == date.today().year + 1
         else:
             assert result.year == date.today().year
@@ -496,23 +549,30 @@ class TestParseTodoFieldsWithDate:
 
 class TestCmdAddWithDue:
     def test_add_with_due(
-        self, handler: TodoCommandHandler, client: MagicMock,
+        self,
+        handler: TodoCommandHandler,
+        client: MagicMock,
     ) -> None:
         tomorrow = date.today() + timedelta(days=1)
         client.add.return_value = _make_task(
-            text="Arzt", due=tomorrow,
+            text="Arzt",
+            due=tomorrow,
         )
         r = handler.execute("todo_add", "todo: Arzt, morgen")
         assert r.success
         client.add.assert_called_once_with(
-            text="Arzt", priority="niedrig", category="",
+            text="Arzt",
+            priority="niedrig",
+            category="",
             due=tomorrow,
         )
 
 
 class TestCmdFilterDueDate:
     def test_filter_heute(
-        self, handler: TodoCommandHandler, client: MagicMock,
+        self,
+        handler: TodoCommandHandler,
+        client: MagicMock,
     ) -> None:
         client.get_open_by_due.return_value = [
             _make_task(uid="h1", text="Heute fällig", due=date.today()),
@@ -524,7 +584,9 @@ class TestCmdFilterDueDate:
         client.get_open_by_due.assert_called_once_with(date.today())
 
     def test_filter_morgen(
-        self, handler: TodoCommandHandler, client: MagicMock,
+        self,
+        handler: TodoCommandHandler,
+        client: MagicMock,
     ) -> None:
         tomorrow = date.today() + timedelta(days=1)
         client.get_open_by_due.return_value = [
@@ -536,7 +598,9 @@ class TestCmdFilterDueDate:
         client.get_open_by_due.assert_called_once_with(tomorrow)
 
     def test_filter_heute_empty(
-        self, handler: TodoCommandHandler, client: MagicMock,
+        self,
+        handler: TodoCommandHandler,
+        client: MagicMock,
     ) -> None:
         client.get_open_by_due.return_value = []
         r = handler.execute("todo_filter", "todos heute")
@@ -544,7 +608,9 @@ class TestCmdFilterDueDate:
         assert "Keine Aufgaben fällig" in r.text
 
     def test_filter_ueberfaellig(
-        self, handler: TodoCommandHandler, client: MagicMock,
+        self,
+        handler: TodoCommandHandler,
+        client: MagicMock,
     ) -> None:
         client.get_overdue.return_value = [
             _make_task(uid="o1", text="Alt", due=date(2026, 1, 1)),
@@ -555,7 +621,9 @@ class TestCmdFilterDueDate:
         assert "Alt" in r.text
 
     def test_filter_ueberfaellig_empty(
-        self, handler: TodoCommandHandler, client: MagicMock,
+        self,
+        handler: TodoCommandHandler,
+        client: MagicMock,
     ) -> None:
         client.get_overdue.return_value = []
         r = handler.execute("todo_filter", "todos überfällig")
@@ -563,7 +631,9 @@ class TestCmdFilterDueDate:
         assert "Keine überfälligen" in r.text
 
     def test_filter_woche(
-        self, handler: TodoCommandHandler, client: MagicMock,
+        self,
+        handler: TodoCommandHandler,
+        client: MagicMock,
     ) -> None:
         client.get_open_by_due_range.return_value = [
             _make_task(uid="w1", text="Diese Woche", due=date.today()),
@@ -574,7 +644,9 @@ class TestCmdFilterDueDate:
         assert "diese Woche" in r.text
 
     def test_filter_diese_woche(
-        self, handler: TodoCommandHandler, client: MagicMock,
+        self,
+        handler: TodoCommandHandler,
+        client: MagicMock,
     ) -> None:
         client.get_open_by_due_range.return_value = []
         r = handler.execute("todo_filter", "todos diese woche")

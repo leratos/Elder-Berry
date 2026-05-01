@@ -2,6 +2,7 @@
 
 Testet: File-Output über NC + Share-Link, Inhaltssuche, Fallback auf Matrix.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -29,10 +30,16 @@ def nc_client() -> MagicMock:
     mock.upload.return_value = "Saleria/2026-03/test.pdf"
     mock.share_link.return_value = "https://cloud.example.com/s/abc123"
     mock.search_content.return_value = [
-        {"name": "Mietvertrag.pdf", "path": "Dokumente/Mietvertrag.pdf",
-         "excerpt": "...monatliche Miete beträgt 850 EUR..."},
-        {"name": "Rechnung_2026.pdf", "path": "Rechnungen/Rechnung_2026.pdf",
-         "excerpt": "...Rechnung Nr. 4711..."},
+        {
+            "name": "Mietvertrag.pdf",
+            "path": "Dokumente/Mietvertrag.pdf",
+            "excerpt": "...monatliche Miete beträgt 850 EUR...",
+        },
+        {
+            "name": "Rechnung_2026.pdf",
+            "path": "Rechnungen/Rechnung_2026.pdf",
+            "excerpt": "...Rechnung Nr. 4711...",
+        },
     ]
     return mock
 
@@ -58,16 +65,21 @@ class TestFileHub:
     """Tests für _send_file_via_nc_or_matrix."""
 
     def test_file_uploaded_to_nc_and_shared(
-        self, nc_client: MagicMock, tmp_path: Path,
+        self,
+        nc_client: MagicMock,
+        tmp_path: Path,
     ) -> None:
         """Datei wird auf NC hochgeladen und Share-Link gesendet."""
         handler = _make_handler(nc_client)
         test_file = tmp_path / "report.pdf"
         test_file.write_text("dummy")
 
-        asyncio.run(handler._send_file_via_nc_or_matrix(
-            "!room:test", test_file,
-        ))
+        asyncio.run(
+            handler._send_file_via_nc_or_matrix(
+                "!room:test",
+                test_file,
+            )
+        )
 
         nc_client.upload.assert_called_once()
         nc_client.share_link.assert_called_once()
@@ -77,23 +89,30 @@ class TestFileHub:
         assert "https://cloud.example.com/s/abc123" in text
 
     def test_fallback_to_matrix_when_nc_unavailable(
-        self, tmp_path: Path,
+        self,
+        tmp_path: Path,
     ) -> None:
         """Ohne NC-Client wird die Datei direkt per Matrix gesendet."""
         handler = _make_handler(None)
         test_file = tmp_path / "report.pdf"
         test_file.write_text("dummy")
 
-        asyncio.run(handler._send_file_via_nc_or_matrix(
-            "!room:test", test_file,
-        ))
+        asyncio.run(
+            handler._send_file_via_nc_or_matrix(
+                "!room:test",
+                test_file,
+            )
+        )
 
         handler._channel.send_file.assert_called_once_with(
-            "!room:test", test_file,
+            "!room:test",
+            test_file,
         )
 
     def test_fallback_to_matrix_on_nc_error(
-        self, nc_client: MagicMock, tmp_path: Path,
+        self,
+        nc_client: MagicMock,
+        tmp_path: Path,
     ) -> None:
         """Bei NC-Upload-Fehler → Fallback auf Matrix."""
         nc_client.upload.side_effect = Exception("Connection refused")
@@ -101,14 +120,19 @@ class TestFileHub:
         test_file = tmp_path / "report.pdf"
         test_file.write_text("dummy")
 
-        asyncio.run(handler._send_file_via_nc_or_matrix(
-            "!room:test", test_file,
-        ))
+        asyncio.run(
+            handler._send_file_via_nc_or_matrix(
+                "!room:test",
+                test_file,
+            )
+        )
 
         handler._channel.send_file.assert_called_once()
 
     def test_cleanup_after_nc_upload(
-        self, nc_client: MagicMock, tmp_path: Path,
+        self,
+        nc_client: MagicMock,
+        tmp_path: Path,
     ) -> None:
         """Mit cleanup=True wird die Datei nach NC-Upload gelöscht."""
         handler = _make_handler(nc_client)
@@ -116,9 +140,13 @@ class TestFileHub:
         test_file.write_text("dummy")
         assert test_file.exists()
 
-        asyncio.run(handler._send_file_via_nc_or_matrix(
-            "!room:test", test_file, cleanup=True,
-        ))
+        asyncio.run(
+            handler._send_file_via_nc_or_matrix(
+                "!room:test",
+                test_file,
+                cleanup=True,
+            )
+        )
 
         assert not test_file.exists()
 
@@ -184,7 +212,9 @@ class TestContentSearchExecution:
 
 class TestUploadToNcAndShare:
     def test_upload_path_includes_month(
-        self, nc_client: MagicMock, tmp_path: Path,
+        self,
+        nc_client: MagicMock,
+        tmp_path: Path,
     ) -> None:
         """Upload-Pfad enthält Saleria/YYYY-MM/dateiname."""
         handler = _make_handler(nc_client)
@@ -200,7 +230,9 @@ class TestUploadToNcAndShare:
         assert "doc.pdf" in remote_path
 
     def test_returns_none_on_error(
-        self, nc_client: MagicMock, tmp_path: Path,
+        self,
+        nc_client: MagicMock,
+        tmp_path: Path,
     ) -> None:
         """Bei Fehler → None (Fallback wird vom Caller gehandelt)."""
         nc_client.upload.side_effect = Exception("Disk full")

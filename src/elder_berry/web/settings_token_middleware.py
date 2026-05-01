@@ -98,9 +98,7 @@ class SettingsTokenMiddleware(BaseHTTPMiddleware):
         "/api/monitor",
         "/api/avatar",
     )
-    EXEMPT_PREFIXES: tuple[str, ...] = (
-        "/api/setup",
-    )
+    EXEMPT_PREFIXES: tuple[str, ...] = ("/api/setup",)
     SETUP_COMPLETE_KEY = "setup_wizard_completed"
 
     def __init__(
@@ -171,7 +169,9 @@ class SettingsTokenMiddleware(BaseHTTPMiddleware):
             client_host = request.client.host if request.client else "unbekannt"
             logger.warning(
                 "Settings-Token ungültig oder fehlt: %s %s von %s",
-                request.method, path, client_host,
+                request.method,
+                path,
+                client_host,
             )
             return JSONResponse(
                 {

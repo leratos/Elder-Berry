@@ -1,4 +1,5 @@
 """Tests fuer src/elder_berry/core/url_validator.py (Phase 64, H-3)."""
+
 from __future__ import annotations
 
 import socket
@@ -131,8 +132,10 @@ class TestIPBlocklist:
 
     def test_public_ipv6_allowed(self):
         with _mock_getaddrinfo("2001:4860:4860::8888"):
-            assert ensure_public_url("http://[2001:4860:4860::8888]") == \
-                "http://[2001:4860:4860::8888]"
+            assert (
+                ensure_public_url("http://[2001:4860:4860::8888]")
+                == "http://[2001:4860:4860::8888]"
+            )
 
     def test_any_private_record_blocks_even_if_public_present(self):
         # DNS-Rebinding-Schutz: liefert DNS mehrere A-Records, und einer

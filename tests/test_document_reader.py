@@ -1,4 +1,5 @@
 """Tests: DocumentReader – Text aus PDF/TXT extrahieren."""
+
 from pathlib import Path
 from unittest.mock import patch
 
@@ -16,6 +17,7 @@ from elder_berry.tools.document_reader import (
 # Fixtures
 # ---------------------------------------------------------------------------
 
+
 @pytest.fixture
 def reader():
     """Standard-DocumentReader."""
@@ -32,9 +34,12 @@ def small_reader():
 # DocumentResult DTO
 # ---------------------------------------------------------------------------
 
+
 class TestDocumentResult:
     def test_frozen(self):
-        result = DocumentResult(text="hello", pages=1, truncated=False, source="test.txt")
+        result = DocumentResult(
+            text="hello", pages=1, truncated=False, source="test.txt"
+        )
         with pytest.raises(AttributeError):
             result.text = "changed"
 
@@ -49,6 +54,7 @@ class TestDocumentResult:
 # ---------------------------------------------------------------------------
 # is_supported
 # ---------------------------------------------------------------------------
+
 
 class TestIsSupported:
     def test_pdf_supported(self):
@@ -77,6 +83,7 @@ class TestIsSupported:
 # ---------------------------------------------------------------------------
 # read_txt
 # ---------------------------------------------------------------------------
+
 
 class TestReadTxt:
     def test_utf8_file(self, tmp_path, reader):
@@ -128,6 +135,7 @@ class TestReadTxt:
 # ---------------------------------------------------------------------------
 # read_pdf
 # ---------------------------------------------------------------------------
+
 
 class TestReadPdf:
     def test_simple_pdf(self, tmp_path, reader):
@@ -218,6 +226,7 @@ class TestReadPdf:
 # read_file (Dispatcher)
 # ---------------------------------------------------------------------------
 
+
 class TestReadFile:
     def test_dispatches_txt(self, tmp_path, reader):
         f = tmp_path / "notes.txt"
@@ -258,6 +267,7 @@ class TestReadFile:
 # ---------------------------------------------------------------------------
 # max_chars Konfiguration
 # ---------------------------------------------------------------------------
+
 
 class TestMaxChars:
     def test_default_max_chars(self):

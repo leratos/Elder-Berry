@@ -1,4 +1,5 @@
 """Tests für CardDAVSyncClient – CardDAV-Sync für Nextcloud Contacts."""
+
 from __future__ import annotations
 
 import json
@@ -54,15 +55,25 @@ def _make_contact(
 ) -> Contact:
     now = datetime(2026, 3, 29, 12, 0, 0, tzinfo=timezone.utc)
     return Contact(
-        id=id, user_id=user_id, name=name,
-        emails=emails, phones=phones,
-        role=role, formality=formality, notes=notes,
-        birthday=birthday, address=address,
-        organization=organization, title=title,
-        categories=categories, nickname=nickname,
-        anniversary=anniversary, url=url,
+        id=id,
+        user_id=user_id,
+        name=name,
+        emails=emails,
+        phones=phones,
+        role=role,
+        formality=formality,
+        notes=notes,
+        birthday=birthday,
+        address=address,
+        organization=organization,
+        title=title,
+        categories=categories,
+        nickname=nickname,
+        anniversary=anniversary,
+        url=url,
         vcard_uid=vcard_uid,
-        created_at=now, updated_at=now,
+        created_at=now,
+        updated_at=now,
     )
 
 
@@ -82,10 +93,11 @@ def client_no_creds() -> CardDAVSyncClient:
 
 
 class TestAvailability:
-
     def test_is_available_success(self, client):
         mock_resp = MagicMock(status_code=207)
-        with patch("elder_berry.tools.carddav_sync.httpx.request", return_value=mock_resp):
+        with patch(
+            "elder_berry.tools.carddav_sync.httpx.request", return_value=mock_resp
+        ):
             assert client.is_available() is True
 
     def test_is_available_no_credentials(self, client_no_creds):
@@ -93,6 +105,7 @@ class TestAvailability:
 
     def test_is_available_server_unreachable(self, client):
         import httpx as _httpx
+
         with patch(
             "elder_berry.tools.carddav_sync.httpx.request",
             side_effect=_httpx.ConnectError("refused"),
@@ -104,7 +117,6 @@ class TestAvailability:
 
 
 class TestContactToVCard:
-
     def test_full(self, client):
         contact = _make_contact()
         vcard = client._contact_to_vcard(contact)
@@ -120,7 +132,11 @@ class TestContactToVCard:
 
     def test_minimal(self, client):
         contact = _make_contact(
-            emails="[]", role="", notes="", birthday="", formality="",
+            emails="[]",
+            role="",
+            notes="",
+            birthday="",
+            formality="",
         )
         vcard = client._contact_to_vcard(contact)
         assert "FN:Herr Müller" in vcard
@@ -160,7 +176,6 @@ class TestContactToVCard:
 
 
 class TestVCardToDict:
-
     def _make_vcard(
         self,
         fn: str = "Herr Müller",
@@ -206,7 +221,10 @@ class TestVCardToDict:
 
     def test_minimal(self, client):
         vcard = self._make_vcard(
-            email="", bday="", note="", formality="",
+            email="",
+            bday="",
+            note="",
+            formality="",
         )
         data = client._vcard_to_dict(vcard, "@user:matrix.org")
         assert data is not None
@@ -264,7 +282,6 @@ class TestVCardToDict:
 
 
 class TestPush:
-
     def test_push_success(self, client):
         # Kontakte ohne vcard_uid → _create_new_vcard
         contacts = [
@@ -333,14 +350,21 @@ _VCARD_2 = (
 
 
 class TestPull:
-
     def test_pull_success(self, client):
         propfind_resp = MagicMock(status_code=207, text=_PROPFIND_RESPONSE)
         get_resp_1 = MagicMock(status_code=200, text=_VCARD_1)
         get_resp_2 = MagicMock(status_code=200, text=_VCARD_2)
 
-        with patch("elder_berry.tools.carddav_sync.httpx.request", return_value=propfind_resp), \
-             patch("elder_berry.tools.carddav_sync.httpx.get", side_effect=[get_resp_1, get_resp_2]):
+        with (
+            patch(
+                "elder_berry.tools.carddav_sync.httpx.request",
+                return_value=propfind_resp,
+            ),
+            patch(
+                "elder_berry.tools.carddav_sync.httpx.get",
+                side_effect=[get_resp_1, get_resp_2],
+            ),
+        ):
             contacts = client.pull_contacts("@user:matrix.org")
 
         assert len(contacts) == 2
@@ -358,7 +382,9 @@ class TestPull:
             "</d:multistatus>"
         )
         propfind_resp = MagicMock(status_code=207, text=empty_xml)
-        with patch("elder_berry.tools.carddav_sync.httpx.request", return_value=propfind_resp):
+        with patch(
+            "elder_berry.tools.carddav_sync.httpx.request", return_value=propfind_resp
+        ):
             contacts = client.pull_contacts("@user:matrix.org")
         assert contacts == []
 
@@ -368,8 +394,16 @@ class TestPull:
         get_resp_1 = MagicMock(status_code=200, text=invalid_vcard)
         get_resp_2 = MagicMock(status_code=200, text=_VCARD_2)
 
-        with patch("elder_berry.tools.carddav_sync.httpx.request", return_value=propfind_resp), \
-             patch("elder_berry.tools.carddav_sync.httpx.get", side_effect=[get_resp_1, get_resp_2]):
+        with (
+            patch(
+                "elder_berry.tools.carddav_sync.httpx.request",
+                return_value=propfind_resp,
+            ),
+            patch(
+                "elder_berry.tools.carddav_sync.httpx.get",
+                side_effect=[get_resp_1, get_resp_2],
+            ),
+        ):
             contacts = client.pull_contacts("@user:matrix.org")
 
         assert len(contacts) == 1
@@ -380,19 +414,32 @@ class TestPull:
 
 
 class TestSync:
-
     def test_sync_pulls_new_remote(self, client, tmp_path: Path):
         """NC-Kontakt fehlt lokal → Pull (Add lokal)."""
         store = ContactStore(db_path=tmp_path / "c.db")
         remote_data = [
-            {"name": "Lisa", "emails": "[]", "phones": "[]",
-             "role": "", "formality": "förmlich", "notes": "",
-             "birthday": "", "address": "", "organization": "",
-             "title": "", "categories": "", "nickname": "",
-             "anniversary": "", "url": "", "vcard_uid": "uid-lisa"},
+            {
+                "name": "Lisa",
+                "emails": "[]",
+                "phones": "[]",
+                "role": "",
+                "formality": "förmlich",
+                "notes": "",
+                "birthday": "",
+                "address": "",
+                "organization": "",
+                "title": "",
+                "categories": "",
+                "nickname": "",
+                "anniversary": "",
+                "url": "",
+                "vcard_uid": "uid-lisa",
+            },
         ]
-        with patch.object(client, "pull_contacts", return_value=remote_data), \
-             patch.object(client, "push_contacts", return_value=SyncResult()):
+        with (
+            patch.object(client, "pull_contacts", return_value=remote_data),
+            patch.object(client, "push_contacts", return_value=SyncResult()),
+        ):
             result = client.sync(store, "@user:matrix.org")
         assert result.pulled == 1
         assert store.find_by_name("@user:matrix.org", "Lisa") is not None
@@ -401,18 +448,30 @@ class TestSync:
     def test_sync_updates_existing(self, client, tmp_path: Path):
         """NC-Kontakt existiert lokal → Update NC-Felder."""
         store = ContactStore(db_path=tmp_path / "c.db")
-        store.add("@user:matrix.org", "Lisa", vcard_uid="uid-lisa",
-                  role="Schwester")
+        store.add("@user:matrix.org", "Lisa", vcard_uid="uid-lisa", role="Schwester")
         remote_data = [
-            {"name": "Lisa", "emails": '[{"type":"home","email":"lisa@x.de"}]',
-             "phones": "[]", "role": "", "formality": "förmlich", "notes": "",
-             "birthday": "1990-06-15", "address": "Musterstr. 1",
-             "organization": "", "title": "", "categories": "Familie",
-             "nickname": "", "anniversary": "", "url": "",
-             "vcard_uid": "uid-lisa"},
+            {
+                "name": "Lisa",
+                "emails": '[{"type":"home","email":"lisa@x.de"}]',
+                "phones": "[]",
+                "role": "",
+                "formality": "förmlich",
+                "notes": "",
+                "birthday": "1990-06-15",
+                "address": "Musterstr. 1",
+                "organization": "",
+                "title": "",
+                "categories": "Familie",
+                "nickname": "",
+                "anniversary": "",
+                "url": "",
+                "vcard_uid": "uid-lisa",
+            },
         ]
-        with patch.object(client, "pull_contacts", return_value=remote_data), \
-             patch.object(client, "push_contacts", return_value=SyncResult()):
+        with (
+            patch.object(client, "pull_contacts", return_value=remote_data),
+            patch.object(client, "push_contacts", return_value=SyncResult()),
+        ):
             result = client.sync(store, "@user:matrix.org")
         assert result.updated == 1
         lisa = store.find_by_name("@user:matrix.org", "Lisa")
@@ -427,17 +486,38 @@ class TestSync:
     def test_sync_pushes_eb_fields(self, client, tmp_path: Path):
         """Lokaler Kontakt mit EB-Feldern → Push EB-Felder."""
         store = ContactStore(db_path=tmp_path / "c.db")
-        store.add("@user:matrix.org", "Lisa", vcard_uid="uid-lisa",
-                  role="Schwester", formality="locker")
+        store.add(
+            "@user:matrix.org",
+            "Lisa",
+            vcard_uid="uid-lisa",
+            role="Schwester",
+            formality="locker",
+        )
         remote_data = [
-            {"name": "Lisa", "emails": "[]", "phones": "[]",
-             "role": "", "formality": "förmlich", "notes": "",
-             "birthday": "", "address": "", "organization": "",
-             "title": "", "categories": "", "nickname": "",
-             "anniversary": "", "url": "", "vcard_uid": "uid-lisa"},
+            {
+                "name": "Lisa",
+                "emails": "[]",
+                "phones": "[]",
+                "role": "",
+                "formality": "förmlich",
+                "notes": "",
+                "birthday": "",
+                "address": "",
+                "organization": "",
+                "title": "",
+                "categories": "",
+                "nickname": "",
+                "anniversary": "",
+                "url": "",
+                "vcard_uid": "uid-lisa",
+            },
         ]
-        with patch.object(client, "pull_contacts", return_value=remote_data), \
-             patch.object(client, "push_contacts", return_value=SyncResult(pushed=1)) as mock_push:
+        with (
+            patch.object(client, "pull_contacts", return_value=remote_data),
+            patch.object(
+                client, "push_contacts", return_value=SyncResult(pushed=1)
+            ) as mock_push,
+        ):
             result = client.sync(store, "@user:matrix.org")
         assert result.pushed == 1
         mock_push.assert_called_once()
@@ -449,38 +529,67 @@ class TestSync:
     def test_sync_pull_preserves_local_address(self, client, tmp_path: Path):
         """Pull überschreibt lokale Adresse nicht mit leerem NC-Wert."""
         store = ContactStore(db_path=tmp_path / "c.db")
-        store.add("@user:matrix.org", "Lisa", vcard_uid="uid-lisa",
-                  address="Musterstr. 1, 04299 Leipzig")
+        store.add(
+            "@user:matrix.org",
+            "Lisa",
+            vcard_uid="uid-lisa",
+            address="Musterstr. 1, 04299 Leipzig",
+        )
         remote_data = [
-            {"name": "Lisa", "emails": "[]", "phones": "[]",
-             "role": "", "formality": "förmlich", "notes": "",
-             "birthday": "", "address": "", "organization": "",
-             "title": "", "categories": "", "nickname": "",
-             "anniversary": "", "url": "", "vcard_uid": "uid-lisa"},
+            {
+                "name": "Lisa",
+                "emails": "[]",
+                "phones": "[]",
+                "role": "",
+                "formality": "förmlich",
+                "notes": "",
+                "birthday": "",
+                "address": "",
+                "organization": "",
+                "title": "",
+                "categories": "",
+                "nickname": "",
+                "anniversary": "",
+                "url": "",
+                "vcard_uid": "uid-lisa",
+            },
         ]
-        with patch.object(client, "pull_contacts", return_value=remote_data), \
-             patch.object(client, "push_contacts", return_value=SyncResult()):
+        with (
+            patch.object(client, "pull_contacts", return_value=remote_data),
+            patch.object(client, "push_contacts", return_value=SyncResult()),
+        ):
             client.sync(store, "@user:matrix.org")
         lisa = store.find_by_name("@user:matrix.org", "Lisa")
         assert lisa.address == "Musterstr. 1, 04299 Leipzig"
         store.close()
 
-    def test_sync_pull_overwrites_with_nonempty_nc_value(
-            self, client, tmp_path: Path):
+    def test_sync_pull_overwrites_with_nonempty_nc_value(self, client, tmp_path: Path):
         """Pull überschreibt lokalen Wert wenn NC einen nicht-leeren hat."""
         store = ContactStore(db_path=tmp_path / "c.db")
-        store.add("@user:matrix.org", "Lisa", vcard_uid="uid-lisa",
-                  address="Alt")
+        store.add("@user:matrix.org", "Lisa", vcard_uid="uid-lisa", address="Alt")
         remote_data = [
-            {"name": "Lisa", "emails": "[]", "phones": "[]",
-             "role": "", "formality": "förmlich", "notes": "",
-             "birthday": "", "address": "Neustr. 5, 10115 Berlin",
-             "organization": "", "title": "", "categories": "",
-             "nickname": "", "anniversary": "", "url": "",
-             "vcard_uid": "uid-lisa"},
+            {
+                "name": "Lisa",
+                "emails": "[]",
+                "phones": "[]",
+                "role": "",
+                "formality": "förmlich",
+                "notes": "",
+                "birthday": "",
+                "address": "Neustr. 5, 10115 Berlin",
+                "organization": "",
+                "title": "",
+                "categories": "",
+                "nickname": "",
+                "anniversary": "",
+                "url": "",
+                "vcard_uid": "uid-lisa",
+            },
         ]
-        with patch.object(client, "pull_contacts", return_value=remote_data), \
-             patch.object(client, "push_contacts", return_value=SyncResult()):
+        with (
+            patch.object(client, "pull_contacts", return_value=remote_data),
+            patch.object(client, "push_contacts", return_value=SyncResult()),
+        ):
             client.sync(store, "@user:matrix.org")
         lisa = store.find_by_name("@user:matrix.org", "Lisa")
         assert lisa.address == "Neustr. 5, 10115 Berlin"
@@ -489,18 +598,37 @@ class TestSync:
     def test_sync_pushes_contact_with_address(self, client, tmp_path: Path):
         """Kontakt mit lokaler Adresse wird gepusht."""
         store = ContactStore(db_path=tmp_path / "c.db")
-        store.add("@user:matrix.org", "Lisa", vcard_uid="uid-lisa",
-                  address="Musterstr. 1, 04299 Leipzig")
+        store.add(
+            "@user:matrix.org",
+            "Lisa",
+            vcard_uid="uid-lisa",
+            address="Musterstr. 1, 04299 Leipzig",
+        )
         remote_data = [
-            {"name": "Lisa", "emails": "[]", "phones": "[]",
-             "role": "", "formality": "förmlich", "notes": "",
-             "birthday": "", "address": "", "organization": "",
-             "title": "", "categories": "", "nickname": "",
-             "anniversary": "", "url": "", "vcard_uid": "uid-lisa"},
+            {
+                "name": "Lisa",
+                "emails": "[]",
+                "phones": "[]",
+                "role": "",
+                "formality": "förmlich",
+                "notes": "",
+                "birthday": "",
+                "address": "",
+                "organization": "",
+                "title": "",
+                "categories": "",
+                "nickname": "",
+                "anniversary": "",
+                "url": "",
+                "vcard_uid": "uid-lisa",
+            },
         ]
-        with patch.object(client, "pull_contacts", return_value=remote_data), \
-             patch.object(client, "push_contacts",
-                          return_value=SyncResult(pushed=1)) as mock_push:
+        with (
+            patch.object(client, "pull_contacts", return_value=remote_data),
+            patch.object(
+                client, "push_contacts", return_value=SyncResult(pushed=1)
+            ) as mock_push,
+        ):
             client.sync(store, "@user:matrix.org")
         mock_push.assert_called_once()
         pushed = mock_push.call_args[0][0]
@@ -511,24 +639,38 @@ class TestSync:
     def test_sync_passes_uid_href_map_to_push(self, client, tmp_path: Path):
         """sync() baut uid→href Map beim Pull auf und reicht sie an Push."""
         store = ContactStore(db_path=tmp_path / "c.db")
-        store.add("@user:matrix.org", "Lisa", vcard_uid="uid-lisa",
-                  role="Schwester")
+        store.add("@user:matrix.org", "Lisa", vcard_uid="uid-lisa", role="Schwester")
 
         def fake_pull(user_id, uid_href_map=None):
             """Simuliert Pull und befüllt die Map."""
             if uid_href_map is not None:
                 uid_href_map["uid-lisa"] = "/dav/contacts/ABCD.vcf"
             return [
-                {"name": "Lisa", "emails": "[]", "phones": "[]",
-                 "role": "", "formality": "förmlich", "notes": "",
-                 "birthday": "", "address": "", "organization": "",
-                 "title": "", "categories": "", "nickname": "",
-                 "anniversary": "", "url": "", "vcard_uid": "uid-lisa"},
+                {
+                    "name": "Lisa",
+                    "emails": "[]",
+                    "phones": "[]",
+                    "role": "",
+                    "formality": "förmlich",
+                    "notes": "",
+                    "birthday": "",
+                    "address": "",
+                    "organization": "",
+                    "title": "",
+                    "categories": "",
+                    "nickname": "",
+                    "anniversary": "",
+                    "url": "",
+                    "vcard_uid": "uid-lisa",
+                },
             ]
 
-        with patch.object(client, "pull_contacts", side_effect=fake_pull), \
-             patch.object(client, "push_contacts",
-                          return_value=SyncResult(pushed=1)) as mock_push:
+        with (
+            patch.object(client, "pull_contacts", side_effect=fake_pull),
+            patch.object(
+                client, "push_contacts", return_value=SyncResult(pushed=1)
+            ) as mock_push,
+        ):
             client.sync(store, "@user:matrix.org")
 
         # Prüfe dass uid_href_map an push_contacts übergeben wurde
@@ -542,13 +684,19 @@ class TestSync:
         """Rein lokaler Kontakt (ohne vcard_uid) wird nach NC gepusht."""
         store = ContactStore(db_path=tmp_path / "c.db")
         # Kontakt ohne vcard_uid (rein lokal erstellt)
-        store.add("@user:matrix.org", "Zuhause",
-                  address="Schumannstr 4, 14772 Brandenburg",
-                  categories="home")
+        store.add(
+            "@user:matrix.org",
+            "Zuhause",
+            address="Schumannstr 4, 14772 Brandenburg",
+            categories="home",
+        )
 
-        with patch.object(client, "pull_contacts", return_value=[]), \
-             patch.object(client, "push_contacts",
-                          return_value=SyncResult(pushed=1)) as mock_push:
+        with (
+            patch.object(client, "pull_contacts", return_value=[]),
+            patch.object(
+                client, "push_contacts", return_value=SyncResult(pushed=1)
+            ) as mock_push,
+        ):
             result = client.sync(store, "@user:matrix.org")
 
         mock_push.assert_called_once()
@@ -562,15 +710,15 @@ class TestSync:
     def test_create_new_vcard_sets_uid_locally(self, client, tmp_path: Path):
         """_create_new_vcard setzt vcard_uid im lokalen ContactStore."""
         store = ContactStore(db_path=tmp_path / "c.db")
-        contact = store.add("@user:matrix.org", "Zuhause",
-                            address="Musterstr. 5, 12345 Berlin")
+        contact = store.add(
+            "@user:matrix.org", "Zuhause", address="Musterstr. 5, 12345 Berlin"
+        )
         assert contact.vcard_uid == ""
 
         mock_resp = MagicMock()
         mock_resp.status_code = 201
 
-        with patch("elder_berry.tools.carddav_sync.httpx.put",
-                   return_value=mock_resp):
+        with patch("elder_berry.tools.carddav_sync.httpx.put", return_value=mock_resp):
             ok = client._create_new_vcard(contact, contact_store=store)
 
         assert ok is True
@@ -584,27 +732,33 @@ class TestSync:
 
 
 class TestInjectLocalFields:
-
     def test_inject_address_into_vcard(self, client):
         """Lokale Adresse wird als ADR in vCard geschrieben."""
         from datetime import datetime, timezone
+
         now = datetime.now(tz=timezone.utc)
         contact = Contact(
-            id=1, user_id="@u:m", name="Lisa",
-            emails="[]", phones="[]",
-            role="", formality="", notes="",
-            birthday="", address="Musterstr. 1, 04299 Leipzig",
-            organization="", title="",
-            categories="", nickname="", anniversary="", url="",
-            vcard_uid="", created_at=now, updated_at=now,
+            id=1,
+            user_id="@u:m",
+            name="Lisa",
+            emails="[]",
+            phones="[]",
+            role="",
+            formality="",
+            notes="",
+            birthday="",
+            address="Musterstr. 1, 04299 Leipzig",
+            organization="",
+            title="",
+            categories="",
+            nickname="",
+            anniversary="",
+            url="",
+            vcard_uid="",
+            created_at=now,
+            updated_at=now,
         )
-        vcard = (
-            "BEGIN:VCARD\r\n"
-            "VERSION:3.0\r\n"
-            "FN:Lisa\r\n"
-            "UID:test-123\r\n"
-            "END:VCARD\r\n"
-        )
+        vcard = "BEGIN:VCARD\r\nVERSION:3.0\r\nFN:Lisa\r\nUID:test-123\r\nEND:VCARD\r\n"
         result = client._inject_local_fields(vcard, contact)
         assert "ADR" in result
         assert "Musterstr. 1" in result
@@ -614,15 +768,28 @@ class TestInjectLocalFields:
     def test_inject_address_replaces_existing(self, client):
         """Bestehende ADR wird durch lokale ersetzt."""
         from datetime import datetime, timezone
+
         now = datetime.now(tz=timezone.utc)
         contact = Contact(
-            id=1, user_id="@u:m", name="Lisa",
-            emails="[]", phones="[]",
-            role="", formality="", notes="",
-            birthday="", address="Neustr. 5, 10115 Berlin",
-            organization="", title="",
-            categories="", nickname="", anniversary="", url="",
-            vcard_uid="", created_at=now, updated_at=now,
+            id=1,
+            user_id="@u:m",
+            name="Lisa",
+            emails="[]",
+            phones="[]",
+            role="",
+            formality="",
+            notes="",
+            birthday="",
+            address="Neustr. 5, 10115 Berlin",
+            organization="",
+            title="",
+            categories="",
+            nickname="",
+            anniversary="",
+            url="",
+            vcard_uid="",
+            created_at=now,
+            updated_at=now,
         )
         vcard = (
             "BEGIN:VCARD\r\n"
@@ -642,10 +809,10 @@ class TestInjectLocalFields:
 
 
 class TestParseAddressToVcard:
-
     def test_street_plz_city(self):
         adr = CardDAVSyncClient._parse_address_to_vcard(
-            "Untere Eichstädtstraße 1g, 04299 Leipzig")
+            "Untere Eichstädtstraße 1g, 04299 Leipzig"
+        )
         assert adr.street == "Untere Eichstädtstraße 1g"
         assert adr.code == "04299"
         assert adr.city == "Leipzig"
@@ -653,15 +820,15 @@ class TestParseAddressToVcard:
 
     def test_street_plz_city_country(self):
         adr = CardDAVSyncClient._parse_address_to_vcard(
-            "Musterstr. 1, 10115 Berlin, Deutschland")
+            "Musterstr. 1, 10115 Berlin, Deutschland"
+        )
         assert adr.street == "Musterstr. 1"
         assert adr.code == "10115"
         assert adr.city == "Berlin"
         assert adr.country == "Deutschland"
 
     def test_street_city_without_plz(self):
-        adr = CardDAVSyncClient._parse_address_to_vcard(
-            "Main Street 5, New York")
+        adr = CardDAVSyncClient._parse_address_to_vcard("Main Street 5, New York")
         assert adr.street == "Main Street 5"
         assert adr.code == ""
         assert adr.city == "New York"
@@ -673,15 +840,13 @@ class TestParseAddressToVcard:
         assert adr.city == ""
 
     def test_five_digit_plz(self):
-        adr = CardDAVSyncClient._parse_address_to_vcard(
-            "Hauptstr. 10, 80331 München")
+        adr = CardDAVSyncClient._parse_address_to_vcard("Hauptstr. 10, 80331 München")
         assert adr.code == "80331"
         assert adr.city == "München"
 
     def test_four_digit_plz(self):
         """Schweizer/AT PLZ mit 4 Stellen."""
-        adr = CardDAVSyncClient._parse_address_to_vcard(
-            "Bahnhofstrasse 1, 8001 Zürich")
+        adr = CardDAVSyncClient._parse_address_to_vcard("Bahnhofstrasse 1, 8001 Zürich")
         assert adr.code == "8001"
         assert adr.city == "Zürich"
 
@@ -708,7 +873,6 @@ class TestParseAddressToVcard:
 
 
 class TestSyncResult:
-
     def test_str_no_changes(self):
         assert str(SyncResult()) == "keine Änderungen"
 

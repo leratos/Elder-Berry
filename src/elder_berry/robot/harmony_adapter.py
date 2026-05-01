@@ -16,6 +16,7 @@ Verwendung:
 
 Plattformhinweis: Laeuft auf RPi5 (Linux). aioharmony ist optional.
 """
+
 from __future__ import annotations
 
 import json
@@ -103,8 +104,7 @@ class HarmonyAdapter:
 
         except ImportError:
             logger.error(
-                "aioharmony nicht installiert -- "
-                "pip install aioharmony>=0.5.0"
+                "aioharmony nicht installiert -- pip install aioharmony>=0.5.0"
             )
             return False
         except Exception as e:
@@ -275,7 +275,9 @@ class HarmonyAdapter:
         if cmd_match is None:
             logger.error(
                 "Befehl '%s' fuer '%s' nicht gefunden. Verfuegbar: %s",
-                command, device, ", ".join(available_cmds[:10]),
+                command,
+                device,
+                ", ".join(available_cmds[:10]),
             )
             return False
 
@@ -283,13 +285,17 @@ class HarmonyAdapter:
             from aioharmony.harmonyapi import SendCommandDevice
 
             send_cmd = SendCommandDevice(
-                device=int(device_id), command=cmd_match, delay=0,
+                device=int(device_id),
+                command=cmd_match,
+                delay=0,
             )
             for _ in range(repeat):
                 await self._client.send_commands(send_cmd)
             logger.info(
                 "Befehl gesendet: %s → %s (x%d)",
-                device, cmd_match, repeat,
+                device,
+                cmd_match,
+                repeat,
             )
             return True
         except Exception as e:
@@ -349,15 +355,19 @@ class HarmonyAdapter:
                     if f.get("name")
                 ]
                 if commands:
-                    control_groups.append({
-                        "name": group.get("name", ""),
-                        "commands": commands,
-                    })
-            devices.append({
-                "id": str(dev.get("id", "")),
-                "label": dev.get("label", ""),
-                "control_groups": control_groups,
-            })
+                    control_groups.append(
+                        {
+                            "name": group.get("name", ""),
+                            "commands": commands,
+                        }
+                    )
+            devices.append(
+                {
+                    "id": str(dev.get("id", "")),
+                    "label": dev.get("label", ""),
+                    "control_groups": control_groups,
+                }
+            )
 
         return {"activities": activities, "devices": devices}
 

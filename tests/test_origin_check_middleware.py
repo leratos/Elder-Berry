@@ -1,4 +1,5 @@
 """Tests fuer OriginCheckMiddleware (Phase 64, H-1)."""
+
 from __future__ import annotations
 
 import pytest
@@ -44,6 +45,7 @@ def _build_app(allowed_origins: list[str]) -> FastAPI:
 # Safe methods passieren unabhaengig vom Origin
 # ---------------------------------------------------------------------------
 
+
 class TestSafeMethodsPassThrough:
     def test_get_without_any_header_ok(self):
         client = TestClient(_build_app(["http://localhost:8090"]))
@@ -67,6 +69,7 @@ class TestSafeMethodsPassThrough:
 # ---------------------------------------------------------------------------
 # State-changing Methoden: Origin muss matchen
 # ---------------------------------------------------------------------------
+
 
 class TestOriginHeaderEnforcement:
     def test_post_with_matching_origin_passes(self):
@@ -122,6 +125,7 @@ class TestOriginHeaderEnforcement:
 # Referer-Fallback (wenn Origin fehlt, aber Referer da ist)
 # ---------------------------------------------------------------------------
 
+
 class TestRefererFallback:
     def test_referer_matching_allowed(self):
         client = TestClient(_build_app(["http://localhost:8090"]))
@@ -151,6 +155,7 @@ class TestRefererFallback:
 # ---------------------------------------------------------------------------
 # Multi-Origin-Support
 # ---------------------------------------------------------------------------
+
 
 class TestMultipleOrigins:
     def test_each_allowed_origin_passes(self):
@@ -192,6 +197,7 @@ class TestMultipleOrigins:
 # ---------------------------------------------------------------------------
 # Scheme-Case-Insensitivity (urlparse lowercased Scheme)
 # ---------------------------------------------------------------------------
+
 
 class TestNormalization:
     def test_scheme_uppercase_matches_lowercase_allowed(self):

@@ -1,4 +1,5 @@
 """Tests: Setup-Wizard API – FastAPI-Endpoints."""
+
 from unittest.mock import patch
 
 import pytest
@@ -14,6 +15,7 @@ from elder_berry.web.setup_wizard import (
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
+
 
 class FakeSecretStore:
     """In-Memory SecretStore für Tests."""
@@ -57,15 +59,17 @@ def partial_store():
 @pytest.fixture
 def complete_store():
     """SecretStore mit allen Pflicht-Keys."""
-    return FakeSecretStore({
-        "anthropic_api_key": "sk-test",
-        "matrix_homeserver": "https://matrix.example.com",
-        "matrix_user_id": "@bot:example.com",
-        "matrix_access_token": "syt_valid",
-        "matrix_room_id": "!room:example.com",
-        "matrix_allowed_senders": "@user:example.com",
-        SETUP_COMPLETE_KEY: "true",
-    })
+    return FakeSecretStore(
+        {
+            "anthropic_api_key": "sk-test",
+            "matrix_homeserver": "https://matrix.example.com",
+            "matrix_user_id": "@bot:example.com",
+            "matrix_access_token": "syt_valid",
+            "matrix_room_id": "!room:example.com",
+            "matrix_allowed_senders": "@user:example.com",
+            SETUP_COMPLETE_KEY: "true",
+        }
+    )
 
 
 def _make_client(store: FakeSecretStore) -> TestClient:
@@ -77,6 +81,7 @@ def _make_client(store: FakeSecretStore) -> TestClient:
 # ---------------------------------------------------------------------------
 # Status-Endpoint
 # ---------------------------------------------------------------------------
+
 
 class TestSetupStatus:
     def test_fresh_install(self, fresh_store):
@@ -108,6 +113,7 @@ class TestSetupStatus:
 # Step GET
 # ---------------------------------------------------------------------------
 
+
 class TestStepGet:
     def test_load_step_values(self, partial_store):
         client = _make_client(partial_store)
@@ -127,7 +133,9 @@ class TestStepGet:
         assert "value" not in data["values"]["matrix_access_token"]
         assert data["values"]["matrix_access_token"]["is_set"] is True
         # matrix_homeserver ist nicht sensitiv → Wert zurückgeben
-        assert data["values"]["matrix_homeserver"]["value"] == "https://matrix.example.com"
+        assert (
+            data["values"]["matrix_homeserver"]["value"] == "https://matrix.example.com"
+        )
 
     def test_invalid_step(self, fresh_store):
         client = _make_client(fresh_store)
@@ -146,6 +154,7 @@ class TestStepGet:
 # Step POST (Save)
 # ---------------------------------------------------------------------------
 
+
 class TestStepSave:
     def test_save_required_keys(self, fresh_store):
         """Pflicht-Keys werden gespeichert."""
@@ -154,9 +163,12 @@ class TestStepSave:
             "elder_berry.web.setup_wizard._run_llm_tests",
             return_value={"anthropic": {"success": True, "model": "claude-sonnet-4-6"}},
         ):
-            r = client.post("/api/setup/step/2", json={
-                "anthropic_api_key": "sk-new-key",
-            })
+            r = client.post(
+                "/api/setup/step/2",
+                json={
+                    "anthropic_api_key": "sk-new-key",
+                },
+            )
         assert r.status_code == 200
         data = r.json()
         assert data["success"] is True
@@ -175,20 +187,26 @@ class TestStepSave:
         """Optionale Schritte akzeptieren leere Bodies."""
         client = _make_client(fresh_store)
         # Nextcloud ist optional – keine required_keys
-        r = client.post("/api/setup/step/4", json={
-            "nextcloud_url": "https://cloud.example.com",
-            "nextcloud_user": "admin",
-        })
+        r = client.post(
+            "/api/setup/step/4",
+            json={
+                "nextcloud_url": "https://cloud.example.com",
+                "nextcloud_user": "admin",
+            },
+        )
         assert r.status_code == 200
         assert fresh_store.get("nextcloud_url") == "https://cloud.example.com"
 
     def test_ignores_unknown_keys(self, fresh_store):
         """Unbekannte Keys werden ignoriert."""
         client = _make_client(fresh_store)
-        r = client.post("/api/setup/step/6", json={
-            "weather_city": "Berlin",
-            "unknown_key": "should_be_ignored",
-        })
+        r = client.post(
+            "/api/setup/step/6",
+            json={
+                "weather_city": "Berlin",
+                "unknown_key": "should_be_ignored",
+            },
+        )
         assert r.status_code == 200
         assert fresh_store.has("weather_city")
         assert not fresh_store.has("unknown_key")
@@ -201,13 +219,16 @@ class TestStepSave:
             "elder_berry.web.setup_wizard._run_matrix_tests",
             return_value={"matrix": {"success": True}},
         ):
-            r = client.post("/api/setup/step/3", json={
-                "matrix_homeserver": "https://matrix.example.com",
-                "matrix_user_id": "@bot:example.com",
-                "matrix_access_token": "syt_token",
-                "matrix_room_id": "!room:example.com",
-                "matrix_allowed_senders": "@user:example.com",
-            })
+            r = client.post(
+                "/api/setup/step/3",
+                json={
+                    "matrix_homeserver": "https://matrix.example.com",
+                    "matrix_user_id": "@bot:example.com",
+                    "matrix_access_token": "syt_token",
+                    "matrix_room_id": "!room:example.com",
+                    "matrix_allowed_senders": "@user:example.com",
+                },
+            )
         assert r.status_code == 200
         assert partial_store.get("anthropic_api_key") == "sk-test-key"
 
@@ -220,6 +241,7 @@ class TestStepSave:
 # ---------------------------------------------------------------------------
 # Test-Endpoint
 # ---------------------------------------------------------------------------
+
 
 class TestServiceTest:
     def test_ollama_test(self, fresh_store):
@@ -248,6 +270,7 @@ class TestServiceTest:
 # Complete
 # ---------------------------------------------------------------------------
 
+
 class TestSetupComplete:
     def test_marks_done(self, fresh_store):
         # Phase 58: PW muss vorher gesetzt sein
@@ -275,7 +298,8 @@ class TestSetupComplete:
         """Phase 58: Endpoint prüft Mindestlänge."""
         client = _make_client(fresh_store)
         r1 = client.post(
-            "/api/setup/dashboard-password", json={"password": "short"},
+            "/api/setup/dashboard-password",
+            json={"password": "short"},
         )
         assert r1.status_code == 400
         assert r1.json()["code"] == "weak_password"
@@ -287,6 +311,7 @@ class TestSetupComplete:
     def test_dashboard_password_endpoint_stores_hash(self, fresh_store):
         """Phase 58: Hash wird im SecretStore unter dem richtigen Key abgelegt."""
         from elder_berry.web.dashboard_auth import PASSWORD_HASH_KEY
+
         client = _make_client(fresh_store)
         r = client.post(
             "/api/setup/dashboard-password",
@@ -323,6 +348,7 @@ class TestSetupComplete:
 # Providers
 # ---------------------------------------------------------------------------
 
+
 class TestProviders:
     def test_provider_list(self, fresh_store):
         client = _make_client(fresh_store)
@@ -346,6 +372,7 @@ class TestProviders:
 # ---------------------------------------------------------------------------
 # Prerequisites
 # ---------------------------------------------------------------------------
+
 
 class TestPrerequisites:
     def test_returns_python_version(self, fresh_store):

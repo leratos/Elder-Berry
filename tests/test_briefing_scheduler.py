@@ -1,4 +1,5 @@
 """Tests: BriefingScheduler – Tägliches Morgen-Briefing."""
+
 from datetime import date, datetime, timedelta, timezone
 from unittest.mock import MagicMock, patch
 
@@ -22,25 +23,44 @@ def _make_weather_mock():
 
     mock = MagicMock()
     mock.get_current.return_value = WeatherData(
-        temperature=14.2, apparent_temperature=12.5,
-        humidity=65, wind_speed=12.3,
-        weather_code=2, description="Teilweise bewölkt", city="Berlin",
+        temperature=14.2,
+        apparent_temperature=12.5,
+        humidity=65,
+        wind_speed=12.3,
+        weather_code=2,
+        description="Teilweise bewölkt",
+        city="Berlin",
     )
     mock.get_today.return_value = WeatherForecast(
-        date=date.today(), temp_min=8.0, temp_max=16.5,
-        precipitation_mm=0.0, precipitation_probability=10,
-        weather_code=2, description="Teilweise bewölkt", city="Berlin",
+        date=date.today(),
+        temp_min=8.0,
+        temp_max=16.5,
+        precipitation_mm=0.0,
+        precipitation_probability=10,
+        weather_code=2,
+        description="Teilweise bewölkt",
+        city="Berlin",
     )
     mock.get_days.return_value = [
         WeatherForecast(
-            date=date.today(), temp_min=8.0, temp_max=16.5,
-            precipitation_mm=0.0, precipitation_probability=10,
-            weather_code=2, description="Teilweise bewölkt", city="Berlin",
+            date=date.today(),
+            temp_min=8.0,
+            temp_max=16.5,
+            precipitation_mm=0.0,
+            precipitation_probability=10,
+            weather_code=2,
+            description="Teilweise bewölkt",
+            city="Berlin",
         ),
         WeatherForecast(
-            date=date.today() + timedelta(days=1), temp_min=10.0, temp_max=18.0,
-            precipitation_mm=1.5, precipitation_probability=30,
-            weather_code=1, description="Überwiegend klar", city="Berlin",
+            date=date.today() + timedelta(days=1),
+            temp_min=10.0,
+            temp_max=18.0,
+            precipitation_mm=1.5,
+            precipitation_probability=30,
+            weather_code=1,
+            description="Überwiegend klar",
+            city="Berlin",
         ),
     ]
     mock.format_current.return_value = "⛅ Wetter in Berlin: 14.2°C"
@@ -67,14 +87,23 @@ def _make_reminder_store_mock(reminders=None):
         # due_at fest auf 12:00 UTC heute (immer innerhalb today_end 23:59 UTC)
         now = datetime.now(timezone.utc)
         noon_today = datetime(
-            now.year, now.month, now.day, 12, 0, 0, tzinfo=timezone.utc,
+            now.year,
+            now.month,
+            now.day,
+            12,
+            0,
+            0,
+            tzinfo=timezone.utc,
         )
         reminders = [
             Reminder(
-                id=3, user_id="_timer_user", message="Paket abholen",
+                id=3,
+                user_id="_timer_user",
+                message="Paket abholen",
                 due_at=noon_today,
                 created_at=now,
-                fired=False, cancelled=False,
+                fired=False,
+                cancelled=False,
             ),
         ]
     mock.get_pending.return_value = reminders
@@ -84,6 +113,7 @@ def _make_reminder_store_mock(reminders=None):
 # ---------------------------------------------------------------------------
 # build_briefing()
 # ---------------------------------------------------------------------------
+
 
 class TestBuildBriefing:
     def test_all_services(self):
@@ -159,12 +189,16 @@ class TestBuildBriefing:
     def test_reminders_future_only(self):
         """Nur zukünftige Erinnerungen (morgen) → Abschnitt weggelassen."""
         from elder_berry.tools.reminder_store import Reminder
+
         far_future = [
             Reminder(
-                id=1, user_id="_timer_user", message="Morgen",
+                id=1,
+                user_id="_timer_user",
+                message="Morgen",
                 due_at=datetime.now(timezone.utc) + timedelta(days=2),
                 created_at=datetime.now(timezone.utc),
-                fired=False, cancelled=False,
+                fired=False,
+                cancelled=False,
             ),
         ]
         scheduler = BriefingScheduler(
@@ -178,6 +212,7 @@ class TestBuildBriefing:
 # ---------------------------------------------------------------------------
 # Lifecycle
 # ---------------------------------------------------------------------------
+
 
 class TestLifecycle:
     def test_start_stop(self):
@@ -247,15 +282,30 @@ class TestLifecycle:
 # Geburtstag-Sektion (Phase 34)
 # ---------------------------------------------------------------------------
 
+
 def _make_contact(name: str, birthday: str = "") -> Contact:
     """Erstellt einen Test-Contact."""
     now = datetime.now(timezone.utc)
     return Contact(
-        id=1, user_id="@test:matrix.org", name=name,
-        emails="[]", phones="[]", role="", formality="locker",
-        notes="", birthday=birthday, address="", organization="",
-        title="", categories="", nickname="", anniversary="",
-        url="", vcard_uid="", created_at=now, updated_at=now,
+        id=1,
+        user_id="@test:matrix.org",
+        name=name,
+        emails="[]",
+        phones="[]",
+        role="",
+        formality="locker",
+        notes="",
+        birthday=birthday,
+        address="",
+        organization="",
+        title="",
+        categories="",
+        nickname="",
+        anniversary="",
+        url="",
+        vcard_uid="",
+        created_at=now,
+        updated_at=now,
     )
 
 
@@ -325,6 +375,7 @@ class TestBirthdaySection:
 # E-Mail-Sektion (Phase 34)
 # ---------------------------------------------------------------------------
 
+
 class TestEmailSection:
     def test_unread_emails(self):
         """Ungelesene Mails > 0 → Sektion angezeigt."""
@@ -381,12 +432,17 @@ class TestEmailSection:
 # Vor-einem-Jahr-Sektion (Phase 34)
 # ---------------------------------------------------------------------------
 
+
 def _make_note(content: str, created_at: datetime) -> Note:
     """Erstellt eine Test-Note."""
     return Note(
-        id=1, user_id="@test:matrix.org", key=None,
-        content=content, tags=[],
-        created_at=created_at, updated_at=created_at,
+        id=1,
+        user_id="@test:matrix.org",
+        key=None,
+        content=content,
+        tags=[],
+        created_at=created_at,
+        updated_at=created_at,
     )
 
 
@@ -441,6 +497,7 @@ class TestFlashbackSection:
 # ---------------------------------------------------------------------------
 # Wochenend-Variante (Phase 34)
 # ---------------------------------------------------------------------------
+
 
 class TestWeekendVariant:
     def test_weekend_greeting(self):

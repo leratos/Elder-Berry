@@ -1,4 +1,5 @@
 """Tests für IMAPEmailClient.copy_to_sent_folder + _detect_sent_folder."""
+
 from __future__ import annotations
 
 from unittest.mock import MagicMock, patch
@@ -11,6 +12,7 @@ from elder_berry.tools.email_client import IMAPEmailClient
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
+
 
 @pytest.fixture
 def client() -> IMAPEmailClient:
@@ -35,6 +37,7 @@ SAMPLE_MSG = (
 # copy_to_sent_folder
 # ---------------------------------------------------------------------------
 
+
 class TestCopyToSentFolder:
     @patch.object(IMAPEmailClient, "_connect")
     @patch.object(IMAPEmailClient, "_detect_sent_folder", return_value="Sent")
@@ -48,7 +51,10 @@ class TestCopyToSentFolder:
         assert result is True
         mock_detect.assert_called_once_with(mock_conn)
         mock_conn.append.assert_called_once_with(
-            "Sent", "\\Seen", None, SAMPLE_MSG,
+            "Sent",
+            "\\Seen",
+            None,
+            SAMPLE_MSG,
         )
         mock_conn.logout.assert_called_once()
 
@@ -62,7 +68,10 @@ class TestCopyToSentFolder:
 
         assert result is True
         mock_conn.append.assert_called_once_with(
-            "INBOX.Sent", "\\Seen", None, SAMPLE_MSG,
+            "INBOX.Sent",
+            "\\Seen",
+            None,
+            SAMPLE_MSG,
         )
 
     @patch.object(IMAPEmailClient, "_connect")
@@ -101,14 +110,18 @@ class TestCopyToSentFolder:
 # _detect_sent_folder
 # ---------------------------------------------------------------------------
 
+
 class TestDetectSentFolder:
     def test_finds_sent_via_list_attribute(self):
         mock_conn = MagicMock()
-        mock_conn.list.return_value = ("OK", [
-            b'(\\HasNoChildren) "/" "INBOX"',
-            b'(\\Sent \\HasNoChildren) "/" "Sent"',
-            b'(\\Trash \\HasNoChildren) "/" "Trash"',
-        ])
+        mock_conn.list.return_value = (
+            "OK",
+            [
+                b'(\\HasNoChildren) "/" "INBOX"',
+                b'(\\Sent \\HasNoChildren) "/" "Sent"',
+                b'(\\Trash \\HasNoChildren) "/" "Trash"',
+            ],
+        )
 
         result = IMAPEmailClient._detect_sent_folder(mock_conn)
 
@@ -116,10 +129,13 @@ class TestDetectSentFolder:
 
     def test_finds_gesendet_via_list_attribute(self):
         mock_conn = MagicMock()
-        mock_conn.list.return_value = ("OK", [
-            b'(\\HasNoChildren) "/" "INBOX"',
-            b'(\\Sent \\HasNoChildren) "/" "Gesendet"',
-        ])
+        mock_conn.list.return_value = (
+            "OK",
+            [
+                b'(\\HasNoChildren) "/" "INBOX"',
+                b'(\\Sent \\HasNoChildren) "/" "Gesendet"',
+            ],
+        )
 
         result = IMAPEmailClient._detect_sent_folder(mock_conn)
 
@@ -128,10 +144,14 @@ class TestDetectSentFolder:
     def test_fallback_to_known_names(self):
         mock_conn = MagicMock()
         # LIST liefert kein \Sent-Attribut
-        mock_conn.list.return_value = ("OK", [
-            b'(\\HasNoChildren) "/" "INBOX"',
-            b'(\\HasNoChildren) "/" "Drafts"',
-        ])
+        mock_conn.list.return_value = (
+            "OK",
+            [
+                b'(\\HasNoChildren) "/" "INBOX"',
+                b'(\\HasNoChildren) "/" "Drafts"',
+            ],
+        )
+
         # select("Sent") OK, alle anderen fehlschlagen
         def mock_select(folder, readonly=True):
             if folder == "Sent":
@@ -147,9 +167,12 @@ class TestDetectSentFolder:
 
     def test_fallback_inbox_sent(self):
         mock_conn = MagicMock()
-        mock_conn.list.return_value = ("OK", [
-            b'(\\HasNoChildren) "/" "INBOX"',
-        ])
+        mock_conn.list.return_value = (
+            "OK",
+            [
+                b'(\\HasNoChildren) "/" "INBOX"',
+            ],
+        )
 
         def mock_select(folder, readonly=True):
             if folder == "INBOX.Sent":
@@ -165,9 +188,12 @@ class TestDetectSentFolder:
 
     def test_no_folder_found(self):
         mock_conn = MagicMock()
-        mock_conn.list.return_value = ("OK", [
-            b'(\\HasNoChildren) "/" "INBOX"',
-        ])
+        mock_conn.list.return_value = (
+            "OK",
+            [
+                b'(\\HasNoChildren) "/" "INBOX"',
+            ],
+        )
         mock_conn.select.side_effect = Exception("No such folder")
 
         result = IMAPEmailClient._detect_sent_folder(mock_conn)
@@ -177,6 +203,7 @@ class TestDetectSentFolder:
     def test_list_exception_falls_through(self):
         mock_conn = MagicMock()
         mock_conn.list.side_effect = Exception("LIST failed")
+
         # Fallback: Sent existiert
         def mock_select(folder, readonly=True):
             if folder == "Sent":

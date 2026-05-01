@@ -1,4 +1,5 @@
 """Anthropic-Client – Claude Sonnet 4.6 als primäres LLM-Backend."""
+
 from __future__ import annotations
 
 import os
@@ -19,6 +20,7 @@ COMPUTER_USE_TOOL_VERSION = "computer_20251124"
 # Lazy-Import: anthropic wird erst bei erster Nutzung benötigt
 try:
     import anthropic as _anthropic
+
     _ANTHROPIC_AVAILABLE = True
 except ImportError:
     _anthropic = None  # type: ignore[assignment]

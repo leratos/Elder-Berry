@@ -1,4 +1,5 @@
 """Tests: AlertMonitor – Proaktive Alerts via Matrix."""
+
 import time
 from unittest.mock import MagicMock, patch
 
@@ -9,6 +10,7 @@ from elder_berry.comms.alert_monitor import AlertConfig, AlertMonitor
 # ---------------------------------------------------------------------------
 # AlertConfig DTO
 # ---------------------------------------------------------------------------
+
 
 class TestAlertConfig:
     def test_defaults(self):
@@ -28,6 +30,7 @@ class TestAlertConfig:
 # ---------------------------------------------------------------------------
 # AlertMonitor – Init + Start/Stop
 # ---------------------------------------------------------------------------
+
 
 class TestAlertMonitorLifecycle:
     def test_creation(self):
@@ -62,6 +65,7 @@ class TestAlertMonitorLifecycle:
 # AlertMonitor – Disk-Checks
 # ---------------------------------------------------------------------------
 
+
 class TestDiskAlerts:
     def test_disk_alert_sent_when_over_threshold(self):
         alerts = []
@@ -72,14 +76,16 @@ class TestDiskAlerts:
 
         mock_usage = MagicMock()
         mock_usage.percent = 95
-        mock_usage.total = 500 * 1024 ** 3
-        mock_usage.free = 25 * 1024 ** 3
+        mock_usage.total = 500 * 1024**3
+        mock_usage.free = 25 * 1024**3
 
         mock_part = MagicMock()
         mock_part.mountpoint = "C:\\"
 
-        with patch("psutil.disk_partitions", return_value=[mock_part]), \
-             patch("psutil.disk_usage", return_value=mock_usage):
+        with (
+            patch("psutil.disk_partitions", return_value=[mock_part]),
+            patch("psutil.disk_usage", return_value=mock_usage),
+        ):
             monitor._check_disk()
 
         assert len(alerts) == 1
@@ -95,14 +101,16 @@ class TestDiskAlerts:
 
         mock_usage = MagicMock()
         mock_usage.percent = 50
-        mock_usage.total = 500 * 1024 ** 3
-        mock_usage.free = 250 * 1024 ** 3
+        mock_usage.total = 500 * 1024**3
+        mock_usage.free = 250 * 1024**3
 
         mock_part = MagicMock()
         mock_part.mountpoint = "C:\\"
 
-        with patch("psutil.disk_partitions", return_value=[mock_part]), \
-             patch("psutil.disk_usage", return_value=mock_usage):
+        with (
+            patch("psutil.disk_partitions", return_value=[mock_part]),
+            patch("psutil.disk_usage", return_value=mock_usage),
+        ):
             monitor._check_disk()
 
         assert len(alerts) == 0
@@ -117,14 +125,16 @@ class TestDiskAlerts:
 
         mock_usage = MagicMock()
         mock_usage.percent = 95
-        mock_usage.total = 500 * 1024 ** 3
-        mock_usage.free = 25 * 1024 ** 3
+        mock_usage.total = 500 * 1024**3
+        mock_usage.free = 25 * 1024**3
 
         mock_part = MagicMock()
         mock_part.mountpoint = "C:\\"
 
-        with patch("psutil.disk_partitions", return_value=[mock_part]), \
-             patch("psutil.disk_usage", return_value=mock_usage):
+        with (
+            patch("psutil.disk_partitions", return_value=[mock_part]),
+            patch("psutil.disk_usage", return_value=mock_usage),
+        ):
             monitor._check_disk()
             monitor._check_disk()  # Zweiter Aufruf
             monitor._check_disk()  # Dritter Aufruf
@@ -144,13 +154,13 @@ class TestDiskAlerts:
 
         mock_over = MagicMock()
         mock_over.percent = 95
-        mock_over.total = 500 * 1024 ** 3
-        mock_over.free = 25 * 1024 ** 3
+        mock_over.total = 500 * 1024**3
+        mock_over.free = 25 * 1024**3
 
         mock_under = MagicMock()
         mock_under.percent = 85
-        mock_under.total = 500 * 1024 ** 3
-        mock_under.free = 75 * 1024 ** 3
+        mock_under.total = 500 * 1024**3
+        mock_under.free = 75 * 1024**3
 
         with patch("psutil.disk_partitions", return_value=[mock_part]):
             # Über Schwelle → Alert
@@ -170,6 +180,7 @@ class TestDiskAlerts:
         monitor = AlertMonitor(send_alert=MagicMock())
 
         import builtins
+
         original_import = builtins.__import__
 
         def mock_import(name, *args, **kwargs):
@@ -184,6 +195,7 @@ class TestDiskAlerts:
 # ---------------------------------------------------------------------------
 # AlertMonitor – Prozess-Checks
 # ---------------------------------------------------------------------------
+
 
 class TestProcessAlerts:
     def test_process_crash_alert(self):
@@ -205,6 +217,7 @@ class TestProcessAlerts:
         mock_psutil.AccessDenied = type("AccessDenied", (Exception,), {})
 
         import builtins
+
         original_import = builtins.__import__
 
         def mock_import(name, *args, **kwargs):
@@ -236,6 +249,7 @@ class TestProcessAlerts:
         mock_psutil.AccessDenied = type("AccessDenied", (Exception,), {})
 
         import builtins
+
         original_import = builtins.__import__
 
         def mock_import(name, *args, **kwargs):
@@ -264,6 +278,7 @@ class TestProcessAlerts:
         mock_psutil.AccessDenied = type("AccessDenied", (Exception,), {})
 
         import builtins
+
         original_import = builtins.__import__
 
         def mock_import(name, *args, **kwargs):
@@ -291,6 +306,7 @@ class TestProcessAlerts:
         mock_psutil.AccessDenied = type("AccessDenied", (Exception,), {})
 
         import builtins
+
         original_import = builtins.__import__
 
         def mock_import(name, *args, **kwargs):

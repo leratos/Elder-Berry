@@ -11,13 +11,18 @@ Weitere Commands wurden in eigene Handler ausgelagert:
 - update_commands.py: Self-Update, Rollback, Backup
 - selfcheck_commands.py: Systemgesundheitsprüfung
 """
+
 from __future__ import annotations
 
 import logging
 import re
 import subprocess
 
-from elder_berry.comms.commands.base import CommandHandler, CommandResult, user_friendly_error
+from elder_berry.comms.commands.base import (
+    CommandHandler,
+    CommandResult,
+    user_friendly_error,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -32,8 +37,8 @@ _HARMONY_ACTIVITIES = r"(?:fernsehen|tv|musik|radio|gaming|film|kino)"
 START_PROCESS_PATTERN = re.compile(
     r"^(?:starte?|start|öffne|open)\s+"
     r"(?!" + _HARMONY_ACTIVITIES + r"(?:\s+(?:an|ein))?$"
-    r"|(?:dich\s+)?neu$"       # → restart (SystemCommandHandler)
-    r"|szene\s+"               # → harmony scene
+    r"|(?:dich\s+)?neu$"  # → restart (SystemCommandHandler)
+    r"|szene\s+"  # → harmony scene
     r")"
     r"(.+)$",
     re.IGNORECASE,
@@ -49,9 +54,22 @@ KILL_PROCESS_PATTERN = re.compile(
 # ---------------------------------------------------------------------------
 
 KILL_WHITELIST = {
-    "blender", "chrome", "firefox", "edge", "notepad", "notepad++",
-    "vlc", "spotify", "discord", "steam", "obs", "obs64",
-    "gimp", "audacity", "handbrake", "qbittorrent",
+    "blender",
+    "chrome",
+    "firefox",
+    "edge",
+    "notepad",
+    "notepad++",
+    "vlc",
+    "spotify",
+    "discord",
+    "steam",
+    "obs",
+    "obs64",
+    "gimp",
+    "audacity",
+    "handbrake",
+    "qbittorrent",
 }
 
 START_WHITELIST = {
@@ -116,7 +134,7 @@ class ProcessCommandHandler(CommandHandler):
                 command="start_process",
                 success=False,
                 text=f"'{program}' ist nicht in der Start-Whitelist.\n"
-                     f"Erlaubt: {allowed}",
+                f"Erlaubt: {allowed}",
             )
 
         executable = START_WHITELIST[program]
@@ -165,7 +183,7 @@ class ProcessCommandHandler(CommandHandler):
                 command="kill_process",
                 success=False,
                 text=f"'{process_name}' ist nicht in der Kill-Whitelist.\n"
-                     f"Erlaubt: {allowed}",
+                f"Erlaubt: {allowed}",
             )
 
         try:

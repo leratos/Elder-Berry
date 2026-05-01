@@ -1,4 +1,5 @@
 """ChromaMemoryStore – RAG-Gedächtnis mit ChromaDB + Ollama-Embeddings."""
+
 from __future__ import annotations
 
 import logging
@@ -15,6 +16,7 @@ logger = logging.getLogger(__name__)
 try:
     import chromadb
     from chromadb import Collection
+
     _CHROMA_AVAILABLE = True
 except ImportError:
     chromadb = None  # type: ignore[assignment]
@@ -128,7 +130,8 @@ class ChromaMemoryStore(MemoryStore):
                     )
                 logger.debug(
                     "Embedding-Dimension OK: %dD (Collection: %d Einträge)",
-                    probe_dim, self._collection.count(),
+                    probe_dim,
+                    self._collection.count(),
                 )
         except RuntimeError:
             raise
@@ -145,13 +148,15 @@ class ChromaMemoryStore(MemoryStore):
         col.add(
             ids=[entry.id],
             documents=[entry.content],
-            metadatas=[{
-                "role": entry.role,
-                "session_id": entry.session_id,
-                "timestamp_iso": entry.timestamp.isoformat(),
-                "timestamp_unix": entry.timestamp.timestamp(),
-                **{k: str(v) for k, v in entry.metadata.items()},
-            }],
+            metadatas=[
+                {
+                    "role": entry.role,
+                    "session_id": entry.session_id,
+                    "timestamp_iso": entry.timestamp.isoformat(),
+                    "timestamp_unix": entry.timestamp.timestamp(),
+                    **{k: str(v) for k, v in entry.metadata.items()},
+                }
+            ],
         )
 
     def get_recent(

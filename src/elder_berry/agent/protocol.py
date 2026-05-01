@@ -1,4 +1,5 @@
 """Kommunikationsprotokoll Tower ↔ Laptop – gemeinsame Nachrichtentypen."""
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -9,6 +10,7 @@ from typing import Any
 # Tower → Laptop: Befehle
 # ---------------------------------------------------------------------------
 
+
 @dataclass(frozen=True)
 class ActionRequest:
     """Aktionsbefehl vom Tower an den Laptop.
@@ -18,6 +20,7 @@ class ActionRequest:
     focus_window, minimize_window, maximize_window,
     set_volume, mute, list_windows.
     """
+
     action_type: str
     params: dict[str, Any] = field(default_factory=dict)
 
@@ -26,9 +29,11 @@ class ActionRequest:
 # Laptop → Tower: Status / Antworten
 # ---------------------------------------------------------------------------
 
+
 @dataclass
 class AgentStatus:
     """Gesamtstatus des Laptop-Agents."""
+
     online: bool = True
     hostname: str = ""
     uptime: float = 0.0
@@ -38,6 +43,7 @@ class AgentStatus:
 @dataclass(frozen=True)
 class HealthResponse:
     """Heartbeat-Antwort vom Laptop-Agent."""
+
     status: str = "ok"
     hostname: str = ""
     uptime: float = 0.0
@@ -47,6 +53,7 @@ class HealthResponse:
 @dataclass
 class ApiResponse:
     """Einheitliche API-Antwort."""
+
     success: bool
     message: str = ""
     data: dict[str, Any] | None = None
@@ -55,6 +62,7 @@ class ApiResponse:
 @dataclass
 class ActionResult:
     """Ergebnis einer ausgeführten Aktion."""
+
     success: bool
     action_type: str
     message: str = ""

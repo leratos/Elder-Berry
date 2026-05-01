@@ -10,6 +10,7 @@ Verwendung:
     events = client.get_events(days=7)
     client.create_event("Zahnarzt", datetime(2026, 3, 20, 14, 0), duration_minutes=60)
 """
+
 from __future__ import annotations
 
 import logging
@@ -77,7 +78,8 @@ class CalDAVCalendarClient:
             return operation()
         except self._RETRIABLE_ERRORS as e:
             logger.warning(
-                "CalDAV Connection-Fehler, retry mit neuer Verbindung: %s", e,
+                "CalDAV Connection-Fehler, retry mit neuer Verbindung: %s",
+                e,
             )
             self._calendar = None
             self._client = None
@@ -108,13 +110,17 @@ class CalDAVCalendarClient:
         Returns:
             Liste von CalendarEvent, chronologisch sortiert.
         """
+
         def _op():
             cal = self._get_calendar()
             now = datetime.now(timezone.utc)
             end = now + timedelta(days=days)
 
             results = cal.search(
-                start=now, end=end, event=True, expand=True,
+                start=now,
+                end=end,
+                event=True,
+                expand=True,
             )
 
             events = []
@@ -130,7 +136,10 @@ class CalDAVCalendarClient:
         return self._call_with_retry(_op)
 
     def search_events(
-        self, query: str, days: int = 30, max_results: int = 10,
+        self,
+        query: str,
+        days: int = 30,
+        max_results: int = 10,
     ) -> list[CalendarEvent]:
         """Sucht Termine per Volltextsuche (clientseitig).
 
@@ -142,13 +151,17 @@ class CalDAVCalendarClient:
         Returns:
             Liste passender CalendarEvents.
         """
+
         def _op():
             cal = self._get_calendar()
             now = datetime.now(timezone.utc)
             end = now + timedelta(days=days)
 
             results = cal.search(
-                start=now, end=end, event=True, expand=True,
+                start=now,
+                end=end,
+                event=True,
+                expand=True,
             )
 
             query_lower = query.lower()
@@ -193,10 +206,14 @@ class CalDAVCalendarClient:
         Returns:
             Liste von CalendarEvents im Zeitraum, nach Startzeit sortiert.
         """
+
         def _op():
             cal = self._get_calendar()
             results = cal.search(
-                start=start, end=end, event=True, expand=True,
+                start=start,
+                end=end,
+                event=True,
+                expand=True,
             )
 
             events = []
@@ -213,16 +230,23 @@ class CalDAVCalendarClient:
 
     def get_tomorrow(self) -> list[CalendarEvent]:
         """Termine für morgen."""
+
         def _op():
             cal = self._get_calendar()
             now = datetime.now(timezone.utc)
             tomorrow_start = (now + timedelta(days=1)).replace(
-                hour=0, minute=0, second=0, microsecond=0,
+                hour=0,
+                minute=0,
+                second=0,
+                microsecond=0,
             )
             tomorrow_end = tomorrow_start + timedelta(days=1)
 
             results = cal.search(
-                start=tomorrow_start, end=tomorrow_end, event=True, expand=True,
+                start=tomorrow_start,
+                end=tomorrow_end,
+                event=True,
+                expand=True,
             )
 
             events = []
@@ -261,6 +285,7 @@ class CalDAVCalendarClient:
         Returns:
             Der erstellte CalendarEvent.
         """
+
         def _op():
             cal = self._get_calendar()
             uid = str(uuid.uuid4())
@@ -295,10 +320,12 @@ class CalDAVCalendarClient:
                 for rrule in recurrence:
                     vcal_lines.append(rrule)
 
-            vcal_lines.extend([
-                "END:VEVENT",
-                "END:VCALENDAR",
-            ])
+            vcal_lines.extend(
+                [
+                    "END:VEVENT",
+                    "END:VCALENDAR",
+                ]
+            )
 
             ical_str = "\r\n".join(vcal_lines)
             cal.save_event(ical_str)
@@ -336,6 +363,7 @@ class CalDAVCalendarClient:
         Raises:
             RuntimeError: Wenn der Termin nicht gefunden wurde oder Server-Fehler.
         """
+
         def _op():
             cal = self._get_calendar()
             try:
@@ -345,7 +373,11 @@ class CalDAVCalendarClient:
                 return True
             except Exception as e:
                 error_str = str(e).lower()
-                if "404" in error_str or "not found" in error_str or "gone" in error_str:
+                if (
+                    "404" in error_str
+                    or "not found" in error_str
+                    or "gone" in error_str
+                ):
                     logger.info("Termin bereits gelöscht/nicht gefunden: %s", event_id)
                     return True
                 logger.error("Termin löschen fehlgeschlagen (%s): %s", event_id, e)
@@ -381,7 +413,9 @@ class CalDAVCalendarClient:
                 dtstart = component.get("DTSTART").dt
                 dtend_prop = component.get("DTEND")
 
-                all_day = isinstance(dtstart, date) and not isinstance(dtstart, datetime)
+                all_day = isinstance(dtstart, date) and not isinstance(
+                    dtstart, datetime
+                )
 
                 if all_day:
                     start = datetime(dtstart.year, dtstart.month, dtstart.day)

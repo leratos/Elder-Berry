@@ -55,7 +55,7 @@ def main() -> int:
         "--rotate-secret",
         action="store_true",
         help="Zusätzlich Session-Signing-Secret rotieren (loggt alle "
-             "bestehenden Sessions aus).",
+        "bestehenden Sessions aus).",
     )
     args = parser.parse_args()
 
@@ -69,8 +69,9 @@ def main() -> int:
 
     if args.rotate_secret:
         auth.rotate_session_secret()
-        print("Session-Signing-Secret rotiert – alle bestehenden "
-              "Sessions sind ungültig.")
+        print(
+            "Session-Signing-Secret rotiert – alle bestehenden Sessions sind ungültig."
+        )
 
     return 0
 

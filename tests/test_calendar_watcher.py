@@ -1,4 +1,5 @@
 """Tests: CalendarWatcher – Proaktive Kalender-Erinnerungen (Phase 17)."""
+
 from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
@@ -13,6 +14,7 @@ from elder_berry.tools.google_calendar import CalendarEvent
 # ---------------------------------------------------------------------------
 # Hilfsfunktionen
 # ---------------------------------------------------------------------------
+
 
 def _now() -> datetime:
     return datetime.now(timezone.utc)
@@ -63,6 +65,7 @@ def watcher(mock_calendar, send_alert):
 # Init-Tests
 # ---------------------------------------------------------------------------
 
+
 class TestInit:
     def test_default_reminder_minutes(self, mock_calendar, send_alert):
         w = CalendarWatcher(send_alert=send_alert, calendar=mock_calendar)
@@ -97,6 +100,7 @@ class TestInit:
 # ---------------------------------------------------------------------------
 # _check_upcoming – Erinnerungs-Logik
 # ---------------------------------------------------------------------------
+
 
 class TestCheckUpcoming:
     def test_event_in_10_min_triggers_15min_reminder(
@@ -164,6 +168,7 @@ class TestCheckUpcoming:
 # Deduplizierung
 # ---------------------------------------------------------------------------
 
+
 class TestDeduplication:
     def test_same_reminder_not_sent_twice(self, watcher, mock_calendar, send_alert):
         event = _make_event(minutes_from_now=10)
@@ -194,6 +199,7 @@ class TestDeduplication:
 # ---------------------------------------------------------------------------
 # _send_reminder – Formatierung
 # ---------------------------------------------------------------------------
+
 
 class TestSendReminder:
     def test_format_without_location(self, watcher, send_alert):
@@ -242,6 +248,7 @@ class TestSendReminder:
 # _cleanup_past_events
 # ---------------------------------------------------------------------------
 
+
 class TestCleanupPastEvents:
     def test_current_events_stay(self, watcher):
         watcher._reminded_events = {"event_001": {15}, "event_002": {5}}
@@ -259,6 +266,7 @@ class TestCleanupPastEvents:
 # ---------------------------------------------------------------------------
 # start/stop – Thread-Management
 # ---------------------------------------------------------------------------
+
 
 class TestStartStop:
     def test_start_sets_running(self, watcher):
@@ -285,6 +293,7 @@ class TestStartStop:
 # API-Fehler – Graceful Handling
 # ---------------------------------------------------------------------------
 
+
 class TestErrorHandling:
     def test_calendar_api_error_no_crash(self, watcher, mock_calendar, send_alert):
         mock_calendar.get_events_range.side_effect = Exception("API Error 500")
@@ -294,9 +303,7 @@ class TestErrorHandling:
 
         send_alert.assert_not_called()
 
-    def test_run_loop_continues_after_error(
-        self, watcher, mock_calendar, send_alert
-    ):
+    def test_run_loop_continues_after_error(self, watcher, mock_calendar, send_alert):
         """Fehler beim ersten Poll → nächster Poll funktioniert."""
         event = _make_event(minutes_from_now=5)
         mock_calendar.get_events_range.side_effect = [

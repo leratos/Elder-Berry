@@ -1,4 +1,5 @@
 """Avatar-Renderer – PyGame-basierte Sprite-Darstellung mit Emotionswechsel."""
+
 import logging
 from pathlib import Path
 
@@ -68,7 +69,9 @@ class SpriteRenderer(AvatarRenderer):
 
         logger.info("%d/%d Sprites geladen", len(self._sprites), len(Emotion))
 
-    def initialize(self, width: int = 512, height: int = 512, fullscreen: bool = False) -> None:
+    def initialize(
+        self, width: int = 512, height: int = 512, fullscreen: bool = False
+    ) -> None:
         self._width = width
         self._height = height
 
@@ -90,7 +93,9 @@ class SpriteRenderer(AvatarRenderer):
             scale = min(self._width / sw, self._height / sh)
             new_w = int(sw * scale)
             new_h = int(sh * scale)
-            self._sprites[emotion] = pygame.transform.smoothscale(sprite, (new_w, new_h))
+            self._sprites[emotion] = pygame.transform.smoothscale(
+                sprite, (new_w, new_h)
+            )
 
     def show_emotion(self, emotion: Emotion) -> None:
         if emotion != self._current_emotion:
@@ -123,8 +128,10 @@ class SpriteRenderer(AvatarRenderer):
         if self._is_speaking:
             pos = (self._width - 25, self._height - 25)
             pygame.draw.circle(
-                self._screen, SPEAKING_INDICATOR_COLOR,
-                pos, SPEAKING_INDICATOR_RADIUS,
+                self._screen,
+                SPEAKING_INDICATOR_COLOR,
+                pos,
+                SPEAKING_INDICATOR_RADIUS,
             )
 
         pygame.display.flip()

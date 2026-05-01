@@ -1,4 +1,5 @@
 """Tests für RateLimiter (Phase 59)."""
+
 from __future__ import annotations
 
 import pytest
@@ -9,6 +10,7 @@ from elder_berry.web.rate_limiter import RateLimiter
 # ---------------------------------------------------------------------------
 # Hilfsfunktionen
 # ---------------------------------------------------------------------------
+
 
 def make_limiter(max_attempts=3, window=60, lockout=120):
     return RateLimiter(
@@ -22,6 +24,7 @@ def make_limiter(max_attempts=3, window=60, lockout=120):
 # ---------------------------------------------------------------------------
 # Konstruktor-Validierung
 # ---------------------------------------------------------------------------
+
 
 def test_invalid_max_attempts():
     with pytest.raises(ValueError, match="max_attempts"):
@@ -41,6 +44,7 @@ def test_invalid_lockout():
 # ---------------------------------------------------------------------------
 # Happy Path – Versuche unterhalb des Limits
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.asyncio
 async def test_allowed_below_limit():
@@ -62,6 +66,7 @@ async def test_different_keys_independent():
 # ---------------------------------------------------------------------------
 # Lockout bei Überschreitung
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.asyncio
 async def test_lockout_triggered_at_max():
@@ -100,6 +105,7 @@ async def test_lockout_expires():
 # Sliding-Window – alte Versuche fallen raus
 # ---------------------------------------------------------------------------
 
+
 @pytest.mark.asyncio
 async def test_sliding_window_resets_old_attempts():
     limiter = make_limiter(max_attempts=3, window=60, lockout=300)
@@ -114,6 +120,7 @@ async def test_sliding_window_resets_old_attempts():
 # ---------------------------------------------------------------------------
 # Reset bei erfolgreichem Login
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.asyncio
 async def test_reset_clears_attempts():
@@ -137,6 +144,7 @@ async def test_reset_nonexistent_key_is_noop():
 # is_blocked ohne vorherige Versuche
 # ---------------------------------------------------------------------------
 
+
 @pytest.mark.asyncio
 async def test_is_blocked_fresh_key():
     limiter = make_limiter()
@@ -147,8 +155,11 @@ async def test_is_blocked_fresh_key():
 # Properties
 # ---------------------------------------------------------------------------
 
+
 def test_properties():
-    limiter = RateLimiter(max_attempts=5, window_seconds=120, lockout_seconds=600, name="login")
+    limiter = RateLimiter(
+        max_attempts=5, window_seconds=120, lockout_seconds=600, name="login"
+    )
     assert limiter.max_attempts == 5
     assert limiter.window_seconds == 120
     assert limiter.lockout_seconds == 600
@@ -158,6 +169,7 @@ def test_properties():
 # ---------------------------------------------------------------------------
 # Cleanup – veraltete Einträge werden entfernt
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.asyncio
 async def test_cleanup_removes_stale():

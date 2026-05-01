@@ -1,4 +1,5 @@
 """Elder-Berry Memory – RAG-basiertes Konversations-Gedächtnis."""
+
 from .base import MemoryEntry, MemoryContext, MemoryStore
 from .embedding import EmbeddingClient, OllamaEmbeddingClient
 

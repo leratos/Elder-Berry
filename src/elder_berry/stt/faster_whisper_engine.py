@@ -1,4 +1,5 @@
 """FasterWhisperEngine – lokale STT via faster-whisper (GPU-beschleunigt)."""
+
 from __future__ import annotations
 
 import logging
@@ -13,6 +14,7 @@ logger = logging.getLogger(__name__)
 # Lazy-Import: faster-whisper ist optional
 try:
     from faster_whisper import WhisperModel as _WhisperModel
+
     _FASTER_WHISPER_AVAILABLE = True
 except ImportError:
     _WhisperModel = None  # type: ignore[assignment]
@@ -67,12 +69,14 @@ class FasterWhisperEngine(STTEngine):
             return device
         try:
             import torch
+
             return "cuda" if torch.cuda.is_available() else "cpu"
         except ImportError:
             pass
         # Ohne torch: prüfen ob CUDA-Libraries vorhanden
         try:
             import ctranslate2
+
             if "cuda" in ctranslate2.get_supported_compute_types("cuda"):
                 return "cuda"
         except Exception:
@@ -93,7 +97,9 @@ class FasterWhisperEngine(STTEngine):
         if self._model is None:
             logger.info(
                 "Lade Whisper-Modell '%s' auf %s (%s) ...",
-                self.model_size, self._device, self._compute_type,
+                self.model_size,
+                self._device,
+                self._compute_type,
             )
             self._model = _WhisperModel(
                 self.model_size,
@@ -168,8 +174,8 @@ class FasterWhisperEngine(STTEngine):
     def _write_wav(path: Path, pcm_bytes: bytes, sample_rate: int) -> None:
         """Schreibt PCM-Bytes als WAV-Datei."""
         with wave.open(str(path), "wb") as wf:
-            wf.setnchannels(1)       # Mono
-            wf.setsampwidth(2)       # 16-bit
+            wf.setnchannels(1)  # Mono
+            wf.setsampwidth(2)  # 16-bit
             wf.setframerate(sample_rate)
             wf.writeframes(pcm_bytes)
 
@@ -180,7 +186,7 @@ class FasterWhisperEngine(STTEngine):
         try:
             kwargs: dict = {
                 "beam_size": 5,
-                "vad_filter": True,   # Stille-Filter (reduziert Halluzinationen)
+                "vad_filter": True,  # Stille-Filter (reduziert Halluzinationen)
                 "vad_parameters": {"min_silence_duration_ms": 500},
             }
             if self.language:
@@ -192,11 +198,13 @@ class FasterWhisperEngine(STTEngine):
             total_avg_log_prob = 0.0
 
             for seg in segments_iter:
-                segments.append(TranscriptionSegment(
-                    start=seg.start,
-                    end=seg.end,
-                    text=seg.text.strip(),
-                ))
+                segments.append(
+                    TranscriptionSegment(
+                        start=seg.start,
+                        end=seg.end,
+                        text=seg.text.strip(),
+                    )
+                )
                 texts.append(seg.text.strip())
                 total_avg_log_prob += seg.avg_logprob
 
@@ -207,6 +215,7 @@ class FasterWhisperEngine(STTEngine):
             if segments:
                 avg_log_prob = total_avg_log_prob / len(segments)
                 import math
+
                 confidence = max(0.0, min(1.0, math.exp(avg_log_prob)))
 
             return TranscriptionResult(

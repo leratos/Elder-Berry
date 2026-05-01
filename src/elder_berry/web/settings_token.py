@@ -105,12 +105,15 @@ class SettingsTokenManager:
                 self._path.chmod(stat.S_IRUSR | stat.S_IWUSR)
             except OSError as exc:
                 logger.warning(
-                    "chmod 600 auf %s fehlgeschlagen: %s", self._path, exc,
+                    "chmod 600 auf %s fehlgeschlagen: %s",
+                    self._path,
+                    exc,
                 )
 
         self._token = token
         logger.info(
-            "Settings-Token erzeugt und gespeichert: %s", self._path,
+            "Settings-Token erzeugt und gespeichert: %s",
+            self._path,
         )
         # Sicherheit: Token niemals im Klartext loggen. Nur die ersten 8 Zeichen
         # (Fingerprint) werden ausgegeben – das reicht zur Identifikation im Log

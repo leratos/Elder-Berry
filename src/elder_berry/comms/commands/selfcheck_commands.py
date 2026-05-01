@@ -3,6 +3,7 @@
 Verwaltet:
 - selfcheck / systemcheck / prüf dich / alles ok? → Infra + Fähigkeiten-Check
 """
+
 from __future__ import annotations
 
 import json
@@ -16,7 +17,10 @@ import httpx
 
 from elder_berry.comms.commands.base import CommandHandler, CommandResult
 from elder_berry.comms.commands.cmd_utils import run_cmd
-from elder_berry.comms.commands.update_commands import BACKUP_FILENAME, DEFAULT_BACKUP_DIR
+from elder_berry.comms.commands.update_commands import (
+    BACKUP_FILENAME,
+    DEFAULT_BACKUP_DIR,
+)
 
 if TYPE_CHECKING:
     from elder_berry.core.secret_store import SecretStore
@@ -107,10 +111,18 @@ class SelfcheckCommandHandler(CommandHandler):
     def keywords(self) -> dict[str, list[str]]:
         return {
             "selfcheck": [
-                "systemcheck", "prüf dich", "alles ok", "gesundheitscheck",
-                "funktionierst du", "bist du ok", "status check",
-                "läuft alles", "geht alles", "healthcheck",
-                "fähigkeiten prüfen", "was funktioniert",
+                "systemcheck",
+                "prüf dich",
+                "alles ok",
+                "gesundheitscheck",
+                "funktionierst du",
+                "bist du ok",
+                "status check",
+                "läuft alles",
+                "geht alles",
+                "healthcheck",
+                "fähigkeiten prüfen",
+                "was funktioniert",
             ],
         }
 
@@ -216,16 +228,19 @@ class SelfcheckCommandHandler(CommandHandler):
         cwd = str(self._project_root)
         branch = run_cmd(
             ["git", "rev-parse", "--abbrev-ref", "HEAD"],
-            cwd=cwd, timeout=5,
+            cwd=cwd,
+            timeout=5,
         )
         status = run_cmd(
             ["git", "status", "--porcelain", "-uno"],
-            cwd=cwd, timeout=10,
+            cwd=cwd,
+            timeout=10,
         )
         run_cmd(["git", "fetch", "origin"], cwd=cwd, timeout=15)
         behind = run_cmd(
             ["git", "rev-list", "--count", "HEAD..@{u}"],
-            cwd=cwd, timeout=5,
+            cwd=cwd,
+            timeout=5,
         )
 
         branch_name = branch.output.strip() if branch.success else "?"
@@ -254,17 +269,14 @@ class SelfcheckCommandHandler(CommandHandler):
         """Disk-Belegung prüfen."""
         try:
             import shutil
+
             usage = shutil.disk_usage(self._project_root or Path.home())
             pct = usage.used / usage.total * 100
-            free_gb = usage.free / (1024 ** 3)
+            free_gb = usage.free / (1024**3)
             if pct > 90:
-                checks.append(
-                    f"⚠️ Disk: {pct:.0f}% belegt ({free_gb:.1f} GB frei)"
-                )
+                checks.append(f"⚠️ Disk: {pct:.0f}% belegt ({free_gb:.1f} GB frei)")
                 return 1, 0
-            checks.append(
-                f"✅ Disk: {pct:.0f}% belegt ({free_gb:.1f} GB frei)"
-            )
+            checks.append(f"✅ Disk: {pct:.0f}% belegt ({free_gb:.1f} GB frei)")
             return 0, 0
         except Exception as e:
             checks.append(f"❌ Disk: Prüfung fehlgeschlagen ({e})")
@@ -274,6 +286,7 @@ class SelfcheckCommandHandler(CommandHandler):
         """RAM-Auslastung prüfen."""
         try:
             import psutil
+
             mem = psutil.virtual_memory()
             if mem.percent > 85:
                 checks.append(f"⚠️ RAM: {mem.percent:.0f}% belegt")
@@ -288,6 +301,7 @@ class SelfcheckCommandHandler(CommandHandler):
         """Ollama-Erreichbarkeit prüfen."""
         try:
             import urllib.request
+
             req = urllib.request.Request(
                 "http://localhost:11434/api/tags",
                 method="GET",
@@ -296,13 +310,9 @@ class SelfcheckCommandHandler(CommandHandler):
                 data = json.loads(resp.read().decode())
                 models = [m["name"] for m in data.get("models", [])]
                 if models:
-                    checks.append(
-                        f"✅ Ollama: erreichbar ({', '.join(models[:3])})"
-                    )
+                    checks.append(f"✅ Ollama: erreichbar ({', '.join(models[:3])})")
                 else:
-                    checks.append(
-                        "⚠️ Ollama: erreichbar, aber keine Modelle geladen"
-                    )
+                    checks.append("⚠️ Ollama: erreichbar, aber keine Modelle geladen")
                     return 1, 0
             return 0, 0
         except Exception:
@@ -370,9 +380,7 @@ class SelfcheckCommandHandler(CommandHandler):
         backup_path = DEFAULT_BACKUP_DIR / BACKUP_FILENAME
         if backup_path.exists():
             try:
-                backup_data = json.loads(
-                    backup_path.read_text(encoding="utf-8")
-                )
+                backup_data = json.loads(backup_path.read_text(encoding="utf-8"))
                 if "hash" in backup_data:
                     checks.append(
                         f"💾 Update-Backup: {backup_data['hash'][:8]} "

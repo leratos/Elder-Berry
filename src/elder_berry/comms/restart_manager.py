@@ -6,6 +6,7 @@ Verwaltet:
 - Prozess ersetzen (Windows: Popen + _exit, Linux: execv)
 - Restart-Benachrichtigung nach erfolgreichem Neustart
 """
+
 from __future__ import annotations
 
 import logging

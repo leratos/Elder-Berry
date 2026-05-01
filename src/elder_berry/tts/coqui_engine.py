@@ -1,4 +1,5 @@
 """TTS-Engine – Coqui XTTS v2 mit Voice Cloning und Emotions-Support."""
+
 import logging
 import re
 import tempfile
@@ -38,22 +39,29 @@ XTTS_TOP_K = 40
 XTTS_REPETITION_PENALTY = 10.0
 
 # Regex: Emojis und andere Non-Text-Zeichen entfernen
-# Umfasst Emoji-Blöcke, Dingbats, Symbole, etc.
+# Umfasst Emoji-Bloecke, Dingbats, Symbole, etc.
+#
+# Phase 75b-Folgefix (CodeQL py/overly-large-range): explizite
+# Alternation statt einer character class. Semantisch identisch
+# zur urspruenglichen Form ([A...Z]+ <=> (?:A|...|Z)+), aber
+# CodeQL parst konkatenierte String-Literale in [...] als
+# potenziell ueberbreite Range -- mit Alternation sieht das Tool
+# klar getrennte Ranges und triggert nicht mehr.
 _EMOJI_PATTERN = re.compile(
-    "["
-    "\U0001F600-\U0001F64F"  # Emoticons
-    "\U0001F300-\U0001F5FF"  # Symbole & Piktogramme
-    "\U0001F680-\U0001F6FF"  # Transport & Karten
-    "\U0001F1E0-\U0001F1FF"  # Flaggen
-    "\U0001FA00-\U0001FA6F"  # Erweiterte Symbole
-    "\U0001FA70-\U0001FAFF"  # Erweiterte Symbole
-    "\U00002702-\U000027B0"  # Dingbats
-    "\U0000FE00-\U0000FE0F"  # Variation Selectors
-    "\U0000200D"             # Zero Width Joiner
-    "\U000020E3"             # Combining Enclosing Keycap
-    "\U00002600-\U000026FF"  # Misc Symbols
-    "\U00002300-\U000023FF"  # Misc Technical
-    "]+",
+    "(?:"
+    "[\U0001f600-\U0001f64f]"  # Emoticons
+    "|[\U0001f300-\U0001f5ff]"  # Symbole & Piktogramme
+    "|[\U0001f680-\U0001f6ff]"  # Transport & Karten
+    "|[\U0001f1e0-\U0001f1ff]"  # Flaggen
+    "|[\U0001fa00-\U0001fa6f]"  # Erweiterte Symbole
+    "|[\U0001fa70-\U0001faff]"  # Erweiterte Symbole
+    "|[\U00002702-\U000027b0]"  # Dingbats
+    "|[\U0000fe00-\U0000fe0f]"  # Variation Selectors
+    "|\U0000200d"  # Zero Width Joiner
+    "|\U000020e3"  # Combining Enclosing Keycap
+    "|[\U00002600-\U000026ff]"  # Misc Symbols
+    "|[\U00002300-\U000023ff]"  # Misc Technical
+    ")+",
     flags=re.UNICODE,
 )
 
@@ -166,7 +174,9 @@ class CoquiTTSEngine(TTSEngine):
         logger.info(
             "CoquiTTSEngine konfiguriert: model=%s, language=%s, "
             "voice_map=%d Emotionen",
-            model_name, language, len(self._voice_map),
+            model_name,
+            language,
+            len(self._voice_map),
         )
 
     @property
@@ -221,8 +231,9 @@ class CoquiTTSEngine(TTSEngine):
             if output_path.exists():
                 output_path.unlink()
 
-    def generate_audio(self, text: str, output_path: Path,
-                       emotion: str | None = None) -> Path:
+    def generate_audio(
+        self, text: str, output_path: Path, emotion: str | None = None
+    ) -> Path:
         """
         Generiert eine WAV-Datei via XTTS Voice Cloning.
 
@@ -253,7 +264,9 @@ class CoquiTTSEngine(TTSEngine):
 
         logger.debug(
             "Generiere Audio: %d Zeichen, emotion=%s, speaker=%s",
-            len(clean), emotion, speaker_wav.name,
+            len(clean),
+            emotion,
+            speaker_wav.name,
         )
 
         # Eigenes Satz-Splitting + WAV-Concatenation.
@@ -283,7 +296,10 @@ class CoquiTTSEngine(TTSEngine):
         return output_path
 
     def _generate_and_concat(
-        self, sentences: list[str], speaker_wav: Path, output_path: Path,
+        self,
+        sentences: list[str],
+        speaker_wav: Path,
+        output_path: Path,
     ) -> None:
         """Generiert pro Satz ein WAV und fügt sie zusammen."""
         import wave
@@ -360,7 +376,9 @@ class CoquiTTSEngine(TTSEngine):
         return self._rate
 
     def set_rate(self, rate: int) -> None:
-        logger.info("set_rate: %d (Hinweis: XTTS Geschwindigkeit nicht direkt steuerbar)", rate)
+        logger.info(
+            "set_rate: %d (Hinweis: XTTS Geschwindigkeit nicht direkt steuerbar)", rate
+        )
         self._rate = rate
 
     def get_volume(self) -> float:
@@ -368,9 +386,7 @@ class CoquiTTSEngine(TTSEngine):
 
     def set_volume(self, volume: float) -> None:
         if not 0.0 <= volume <= 1.0:
-            raise ValueError(
-                f"Volume muss zwischen 0.0 und 1.0 liegen, war: {volume}"
-            )
+            raise ValueError(f"Volume muss zwischen 0.0 und 1.0 liegen, war: {volume}")
         logger.info("set_volume: %.2f", volume)
         self._volume = volume
 
@@ -378,11 +394,13 @@ class CoquiTTSEngine(TTSEngine):
         """Gibt verfügbare Voice-Samples als VoiceInfo zurück."""
         voices = []
         for emotion_name, _path in sorted(self._voice_map.items()):
-            voices.append(VoiceInfo(
-                id=emotion_name,
-                name=f"Saleria ({emotion_name})",
-                language=self._language,
-            ))
+            voices.append(
+                VoiceInfo(
+                    id=emotion_name,
+                    name=f"Saleria ({emotion_name})",
+                    language=self._language,
+                )
+            )
         return voices
 
     def set_voice(self, voice_id: str) -> None:

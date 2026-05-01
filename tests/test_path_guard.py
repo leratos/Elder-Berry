@@ -2,6 +2,7 @@
 
 Verhindert Path-Traversal in Matrix-Commands (Phase 69 Security-Fix).
 """
+
 from __future__ import annotations
 
 import os
@@ -17,6 +18,7 @@ from elder_berry.core.path_guard import EB_ALLOWED_PATHS_ENV, PathGuard
 # ---------------------------------------------------------------------------
 # Konstruktion
 # ---------------------------------------------------------------------------
+
 
 class TestConstruction:
     def test_empty_bases_raises(self) -> None:
@@ -40,6 +42,7 @@ class TestConstruction:
 # ---------------------------------------------------------------------------
 # validate() -- happy path
 # ---------------------------------------------------------------------------
+
 
 class TestValidateAllowed:
     def test_inside_base_returns_resolved(self, tmp_path: Path) -> None:
@@ -68,9 +71,11 @@ class TestValidateAllowed:
 # validate() -- rejection
 # ---------------------------------------------------------------------------
 
+
 class TestValidateRejected:
     def test_outside_base_raises_permission_error(
-        self, tmp_path: Path,
+        self,
+        tmp_path: Path,
     ) -> None:
         # tmp_path als einzige Base, aber Datei liegt im *Eltern*-Verzeichnis.
         outside_dir = tmp_path.parent
@@ -128,6 +133,7 @@ class TestValidateRejected:
 # Default-Konstruktion
 # ---------------------------------------------------------------------------
 
+
 class TestDefault:
     def test_default_includes_tempdir(self) -> None:
         # tempdir + CWD sind praktisch immer vorhanden -> Default muss
@@ -152,9 +158,12 @@ class TestDefault:
 # Env-Override
 # ---------------------------------------------------------------------------
 
+
 class TestEnvOverride:
     def test_env_override_replaces_defaults(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         # Nur tmp_path erlaubt -- tempdir + Home werden ignoriert.
         monkeypatch.setenv(EB_ALLOWED_PATHS_ENV, str(tmp_path))
@@ -175,7 +184,8 @@ class TestEnvOverride:
         assert second.resolve() in guard.allowed_bases
 
     def test_env_override_empty_falls_through_to_defaults(
-        self, monkeypatch: pytest.MonkeyPatch,
+        self,
+        monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         # Leerer Env-Wert -> normale Defaults (kein ValueError).
         monkeypatch.setenv(EB_ALLOWED_PATHS_ENV, "")
@@ -187,9 +197,12 @@ class TestEnvOverride:
 # Logging
 # ---------------------------------------------------------------------------
 
+
 class TestSecurityLogging:
     def test_rejection_logs_to_security_logger(
-        self, tmp_path: Path, caplog: pytest.LogCaptureFixture,
+        self,
+        tmp_path: Path,
+        caplog: pytest.LogCaptureFixture,
     ) -> None:
         # Audit-Events sollen an "elder_berry.security" gehen, damit sie
         # in logs/security.log landen (Phase 59-Konvention).
@@ -200,19 +213,17 @@ class TestSecurityLogging:
             with caplog.at_level("WARNING", logger="elder_berry.security"):
                 with pytest.raises(PermissionError):
                     guard.validate(str(outside))
-            assert any(
-                rec.name == "elder_berry.security" for rec in caplog.records
-            )
+            assert any(rec.name == "elder_berry.security" for rec in caplog.records)
         finally:
             outside.unlink(missing_ok=True)
 
     def test_empty_path_logs_to_security_logger(
-        self, tmp_path: Path, caplog: pytest.LogCaptureFixture,
+        self,
+        tmp_path: Path,
+        caplog: pytest.LogCaptureFixture,
     ) -> None:
         guard = PathGuard([tmp_path])
         with caplog.at_level("WARNING", logger="elder_berry.security"):
             with pytest.raises(PermissionError):
                 guard.validate("")
-        assert any(
-            rec.name == "elder_berry.security" for rec in caplog.records
-        )
+        assert any(rec.name == "elder_berry.security" for rec in caplog.records)

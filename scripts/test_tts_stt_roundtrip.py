@@ -7,6 +7,7 @@ Ablauf:
 4. faster-whisper transkribiert die WAVs
 5. Vergleich: Eingangstext vs. erkannter Text
 """
+
 import sys
 from pathlib import Path
 
@@ -59,7 +60,7 @@ def main() -> None:
     for i, (text, emotion) in enumerate(TEST_CASES, 1):
         output_path = OUTPUT_DIR / f"test_{i}_{emotion}.wav"
         print(f"[{i}/{len(TEST_CASES)}] Emotion: {emotion}")
-        print(f"  Input:  \"{text}\"")
+        print(f'  Input:  "{text}"')
         print(f"  Output: {output_path.name}")
         engine.generate_audio(text, output_path, emotion=emotion)
         generated_files.append((text, emotion, output_path))
@@ -85,12 +86,26 @@ def main() -> None:
         print(f"[{i}/{len(generated_files)}] Transkribiere: {audio_path.name}")
         segments, info = whisper.transcribe(str(audio_path), language="de")
         transcribed = " ".join(seg.text.strip() for seg in segments).strip()
-        print(f"  Original:      \"{original_text}\"")
-        print(f"  Transkribiert: \"{transcribed}\"")
+        print(f'  Original:      "{original_text}"')
+        print(f'  Transkribiert: "{transcribed}"')
 
         # Einfacher Vergleich: Wörter-Überlappung
-        orig_words = set(original_text.lower().replace(".", "").replace(",", "").replace("!", "").replace("?", "").split())
-        trans_words = set(transcribed.lower().replace(".", "").replace(",", "").replace("!", "").replace("?", "").split())
+        orig_words = set(
+            original_text.lower()
+            .replace(".", "")
+            .replace(",", "")
+            .replace("!", "")
+            .replace("?", "")
+            .split()
+        )
+        trans_words = set(
+            transcribed.lower()
+            .replace(".", "")
+            .replace(",", "")
+            .replace("!", "")
+            .replace("?", "")
+            .split()
+        )
         if orig_words:
             overlap = len(orig_words & trans_words) / len(orig_words) * 100
         else:
@@ -104,7 +119,9 @@ def main() -> None:
     print("=" * 60)
     for emotion, _original, transcribed, overlap in results:
         status = "PASS" if overlap >= 50 else "FAIL"
-        print(f"  [{status}] {emotion:12s} | Überlappung: {overlap:5.1f}% | \"{transcribed[:50]}\"")
+        print(
+            f'  [{status}] {emotion:12s} | Überlappung: {overlap:5.1f}% | "{transcribed[:50]}"'
+        )
 
     avg_overlap = sum(r[3] for r in results) / len(results)
     print(f"\n  Durchschnitt: {avg_overlap:.1f}%")
@@ -112,6 +129,7 @@ def main() -> None:
 
     del whisper
     import torch
+
     if torch.cuda.is_available():
         torch.cuda.empty_cache()
     print("\nWhisper entladen. VRAM freigegeben.")

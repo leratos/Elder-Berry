@@ -1,4 +1,5 @@
 """EmbeddingClient – Abstraktion für Vektor-Embeddings."""
+
 from __future__ import annotations
 
 from abc import ABC, abstractmethod

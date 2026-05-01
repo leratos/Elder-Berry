@@ -1,4 +1,5 @@
 """Tests: TTSRouter – TTS-Routing mit ElevenLabs + Tower-Fallback."""
+
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import httpx
@@ -12,6 +13,7 @@ from elder_berry.tools.elevenlabs_client import ElevenLabsError
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
+
 
 def _make_elevenlabs(audio: bytes = b"\xff" * 200, fail: bool = False):
     """Mock-ElevenLabsClient."""
@@ -46,18 +48,21 @@ def _stub_run_async(result=None, *, raises=None):
     Schließt die übergebene Coroutine sauber, damit pytest keinen
     "coroutine was never awaited"-Warning wirft.
     """
+
     def runner(coro):
         if hasattr(coro, "close"):
             coro.close()
         if raises is not None:
             raise raises
         return result
+
     return runner
 
 
 # ---------------------------------------------------------------------------
 # synthesize() – Routing-Logik
 # ---------------------------------------------------------------------------
+
 
 class TestSynthesize:
     async def test_elevenlabs_success(self):
@@ -148,6 +153,7 @@ class TestSynthesize:
 # Aufruf aus einem laufenden Event-Loop heraus sonst deadlockt.
 # ---------------------------------------------------------------------------
 
+
 class TestGenerateAudio:
     def test_writes_mp3_file(self, tmp_path):
         """generate_audio() schreibt MP3-Datei."""
@@ -210,7 +216,9 @@ class TestGenerateAudio:
 
         assert result == expected_path
         local_tts.generate_audio.assert_called_once_with(
-            "Test", expected_path, emotion="neutral",
+            "Test",
+            expected_path,
+            emotion="neutral",
         )
 
     def test_no_local_fallback_raises(self, tmp_path):
@@ -235,6 +243,7 @@ class TestGenerateAudio:
 # ---------------------------------------------------------------------------
 # TTSEngine Interface
 # ---------------------------------------------------------------------------
+
 
 class TestTTSEngineInterface:
     def test_speak_no_error(self):
@@ -277,6 +286,7 @@ class TestTTSEngineInterface:
 # TowerAgent
 # ---------------------------------------------------------------------------
 
+
 class TestTowerAgent:
     def _mock_http(self, response=None, error=None):
         mock_http = AsyncMock()
@@ -303,8 +313,9 @@ class TestTowerAgent:
         mock_client.__aenter__.return_value = mock_client
         mock_client.__aexit__.return_value = False
 
-        with patch("elder_berry.core.tower_agent.httpx.AsyncClient",
-                    return_value=mock_client):
+        with patch(
+            "elder_berry.core.tower_agent.httpx.AsyncClient", return_value=mock_client
+        ):
             with patch("elder_berry.core.tower_agent.httpx.Timeout"):
                 result = await agent.heartbeat()
 
@@ -370,12 +381,14 @@ class TestTowerAgent:
 
     def test_initial_state_offline(self):
         from elder_berry.core.tower_agent import TowerAgent
+
         agent = TowerAgent(tower_host="127.0.0.1:12769")
         assert agent.is_online is False
         assert agent.host == "127.0.0.1:12769"
 
     def test_host_strip_trailing_slash(self):
         from elder_berry.core.tower_agent import TowerAgent
+
         agent = TowerAgent(tower_host="127.0.0.1:12769/")
         assert agent.host == "127.0.0.1:12769"
 

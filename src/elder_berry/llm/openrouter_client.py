@@ -1,4 +1,5 @@
 """OpenRouter-Client – Cloud-Fallback wenn Ollama nicht verfügbar."""
+
 import os
 
 import httpx
@@ -45,6 +46,8 @@ class OpenRouterClient(LLMClient):
             resp.raise_for_status()
             return resp.json()["choices"][0]["message"]["content"]
         except httpx.HTTPStatusError as e:
-            raise RuntimeError(f"OpenRouter HTTP-Fehler: {e.response.status_code} – {e.response.text}") from e
+            raise RuntimeError(
+                f"OpenRouter HTTP-Fehler: {e.response.status_code} – {e.response.text}"
+            ) from e
         except (httpx.ConnectError, httpx.TimeoutException) as e:
             raise RuntimeError(f"OpenRouter nicht erreichbar: {e}") from e

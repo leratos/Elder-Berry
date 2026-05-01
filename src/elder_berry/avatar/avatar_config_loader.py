@@ -6,6 +6,7 @@ LayeredSpriteRenderer benötigt (EMOTION_MAP, LIP_SYNC_WEIGHTS, etc.).
 Fallback: Wenn die YAML-Datei fehlt oder invalide ist, werden die
 hardcoded Defaults aus layered_renderer.py verwendet.
 """
+
 from __future__ import annotations
 
 import logging
@@ -24,6 +25,7 @@ DEFAULT_CONFIG_PATH = Path(__file__).parent / "assets" / "avatar_config.yaml"
 @dataclass(frozen=True)
 class EmotionLayers:
     """Definiert welche Komponenten für eine Emotion verwendet werden."""
+
     body: str
     eye_left: str
     eye_right: str
@@ -35,6 +37,7 @@ class EmotionLayers:
 @dataclass(frozen=True)
 class IdleAction:
     """Eine Idle-Animation."""
+
     name: str
     eye_left: str | None
     eye_right: str | None
@@ -45,6 +48,7 @@ class IdleAction:
 @dataclass
 class AvatarConfig:
     """Gesamte Avatar-Konfiguration."""
+
     emotions: dict[Emotion, EmotionLayers]
     lip_sync_weights: dict[str, float]
     lip_sync_interval: float
@@ -124,13 +128,15 @@ def _parse_config(data: dict) -> AvatarConfig:
     # Idle Actions
     idle_actions: list[IdleAction] = []
     for action_data in data.get("idle_actions", []):
-        idle_actions.append(IdleAction(
-            name=action_data["name"],
-            eye_left=action_data.get("eye_left"),
-            eye_right=action_data.get("eye_right"),
-            mouth=action_data.get("mouth"),
-            duration=action_data.get("duration", 2.0),
-        ))
+        idle_actions.append(
+            IdleAction(
+                name=action_data["name"],
+                eye_left=action_data.get("eye_left"),
+                eye_right=action_data.get("eye_right"),
+                mouth=action_data.get("mouth"),
+                duration=action_data.get("duration", 2.0),
+            )
+        )
 
     return AvatarConfig(
         emotions=emotions,

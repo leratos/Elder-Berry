@@ -1,4 +1,5 @@
 """Tests: ContextEnricher – Proaktive Kontext-Verknüpfung (Phase 21)."""
+
 from __future__ import annotations
 
 from datetime import datetime, timezone
@@ -16,6 +17,7 @@ from elder_berry.core.context_enricher import (
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
+
 
 @pytest.fixture
 def mock_note_store():
@@ -52,8 +54,9 @@ def mock_llm():
 
 
 @pytest.fixture
-def enricher(mock_note_store, mock_email_client, mock_weather_client,
-             mock_memory_store, mock_llm):
+def enricher(
+    mock_note_store, mock_email_client, mock_weather_client, mock_memory_store, mock_llm
+):
     return ContextEnricher(
         note_store=mock_note_store,
         email_client=mock_email_client,
@@ -71,8 +74,7 @@ def _make_note(key=None, content="Testnotiz"):
     return note
 
 
-def _make_mail(sender="Max <max@example.com>", subject="Betreff",
-               date=None):
+def _make_mail(sender="Max <max@example.com>", subject="Betreff", date=None):
     mail = MagicMock()
     mail.sender = sender
     mail.subject = subject
@@ -80,8 +82,7 @@ def _make_mail(sender="Max <max@example.com>", subject="Betreff",
     return mail
 
 
-def _make_weather(description="Klar", temperature=18.5,
-                  apparent_temperature=17.0):
+def _make_weather(description="Klar", temperature=18.5, apparent_temperature=17.0):
     w = MagicMock()
     w.description = description
     w.temperature = temperature
@@ -98,6 +99,7 @@ def _make_memory(content="Erinnerung an letzte Besprechung"):
 # ---------------------------------------------------------------------------
 # EnrichmentResult Dataclass
 # ---------------------------------------------------------------------------
+
 
 class TestEnrichmentResult:
     def test_empty_result_has_no_context(self):
@@ -131,6 +133,7 @@ class TestEnrichmentResult:
 # ContextEnricher – Init
 # ---------------------------------------------------------------------------
 
+
 class TestInit:
     def test_all_sources_optional(self):
         e = ContextEnricher()
@@ -146,6 +149,7 @@ class TestInit:
 # ContextEnricher – Einzelne Quellen
 # ---------------------------------------------------------------------------
 
+
 class TestSearchNotes:
     def test_returns_formatted_notes(self, enricher, mock_note_store):
         mock_note_store.search.return_value = [
@@ -156,7 +160,9 @@ class TestSearchNotes:
         assert "Projekt" in result[0]
         assert "Dachsanierung" in result[0]
         mock_note_store.search.assert_called_once_with(
-            "@user:matrix.example.com", "Meeting Max", 3,
+            "@user:matrix.example.com",
+            "Meeting Max",
+            3,
         )
 
     def test_empty_when_no_store(self):
@@ -168,12 +174,15 @@ class TestSearchNotes:
         assert e._search_notes("test") == []
 
     def test_freetext_note_format(self, enricher, mock_note_store):
-        mock_note_store.search.return_value = [_make_note(key=None, content="Freier Text")]
+        mock_note_store.search.return_value = [
+            _make_note(key=None, content="Freier Text")
+        ]
         result = enricher._search_notes("query")
         assert result[0].startswith("\U0001f4dd")  # 📝
 
     def test_timeout_returns_empty(self, enricher, mock_note_store):
         import time
+
         mock_note_store.search.side_effect = lambda *a: time.sleep(10)
         with patch("elder_berry.core.context_enricher.SOURCE_TIMEOUT_SECONDS", 0.1):
             result = enricher._search_notes("test")
@@ -250,11 +259,14 @@ class TestSearchMemories:
 # ContextEnricher – LLM-Formatierung
 # ---------------------------------------------------------------------------
 
+
 class TestFormatWithLLM:
     def test_calls_llm_with_context(self, enricher, mock_llm):
         now = datetime(2026, 3, 19, 14, 0, tzinfo=timezone.utc)
         result = enricher._format_with_llm(
-            "Meeting Max", now, "Büro",
+            "Meeting Max",
+            now,
+            "Büro",
             notes=["📝 Dachprojekt besprechen"],
             mails=["Max: Angebot (19.03. 14:22)"],
             weather="Klar, 18°C",
@@ -270,8 +282,13 @@ class TestFormatWithLLM:
         e = ContextEnricher(llm=None)
         now = datetime(2026, 3, 19, 14, 0, tzinfo=timezone.utc)
         result = e._format_with_llm(
-            "Test", now, None,
-            notes=["Note"], mails=[], weather=None, memories=[],
+            "Test",
+            now,
+            None,
+            notes=["Note"],
+            mails=[],
+            weather=None,
+            memories=[],
         )
         assert "Note" in result
 
@@ -279,8 +296,13 @@ class TestFormatWithLLM:
         mock_llm.generate.side_effect = RuntimeError("LLM down")
         now = datetime(2026, 3, 19, 14, 0, tzinfo=timezone.utc)
         result = enricher._format_with_llm(
-            "Test", now, None,
-            notes=["Note"], mails=["Mail"], weather=None, memories=[],
+            "Test",
+            now,
+            None,
+            notes=["Note"],
+            mails=["Mail"],
+            weather=None,
+            memories=[],
         )
         assert "Note" in result
         assert "Mail" in result
@@ -289,14 +311,20 @@ class TestFormatWithLLM:
 class TestFormatFallback:
     def test_notes_only(self):
         result = ContextEnricher._format_fallback(
-            notes=["Notiz 1"], mails=[], weather=None, memories=[],
+            notes=["Notiz 1"],
+            mails=[],
+            weather=None,
+            memories=[],
         )
         assert "\U0001f4dd" in result  # 📝
         assert "Notiz 1" in result
 
     def test_all_sources(self):
         result = ContextEnricher._format_fallback(
-            notes=["N"], mails=["M"], weather="W", memories=["Mem"],
+            notes=["N"],
+            mails=["M"],
+            weather="W",
+            memories=["Mem"],
         )
         assert "\U0001f4dd" in result
         assert "\U0001f4e7" in result  # 📧
@@ -312,11 +340,20 @@ class TestFormatFallback:
 # ContextEnricher – enrich_event Integration
 # ---------------------------------------------------------------------------
 
+
 class TestEnrichEvent:
-    def test_all_sources_deliver_context(self, enricher, mock_note_store,
-                                          mock_email_client, mock_weather_client,
-                                          mock_memory_store, mock_llm):
-        mock_note_store.search.return_value = [_make_note(key="Info", content="Wichtig")]
+    def test_all_sources_deliver_context(
+        self,
+        enricher,
+        mock_note_store,
+        mock_email_client,
+        mock_weather_client,
+        mock_memory_store,
+        mock_llm,
+    ):
+        mock_note_store.search.return_value = [
+            _make_note(key="Info", content="Wichtig")
+        ]
         mock_email_client.search.return_value = [_make_mail()]
         mock_weather_client.get_current.return_value = _make_weather()
         mock_memory_store.search.return_value = [_make_memory()]
@@ -348,19 +385,23 @@ class TestEnrichEvent:
         assert result.raw_weather is None
         mock_llm.generate.assert_called_once()
 
-    def test_no_weather_without_location(self, enricher, mock_note_store,
-                                          mock_weather_client):
+    def test_no_weather_without_location(
+        self, enricher, mock_note_store, mock_weather_client
+    ):
         mock_note_store.search.return_value = [_make_note(content="X")]
         now = datetime(2026, 3, 19, 14, 0, tzinfo=timezone.utc)
         result = enricher.enrich_event("Test", now, location=None)
         mock_weather_client.get_current.assert_not_called()
         assert result.raw_weather is None
 
-    def test_graceful_degradation_all_sources_fail(self, enricher,
-                                                     mock_note_store,
-                                                     mock_email_client,
-                                                     mock_weather_client,
-                                                     mock_memory_store):
+    def test_graceful_degradation_all_sources_fail(
+        self,
+        enricher,
+        mock_note_store,
+        mock_email_client,
+        mock_weather_client,
+        mock_memory_store,
+    ):
         mock_note_store.search.side_effect = RuntimeError("fail")
         mock_email_client.search.side_effect = RuntimeError("fail")
         mock_weather_client.get_current.side_effect = RuntimeError("fail")
@@ -375,6 +416,7 @@ class TestEnrichEvent:
 # CalendarWatcher – Enricher-Integration
 # ---------------------------------------------------------------------------
 
+
 class TestCalendarWatcherEnrichment:
     """Testet dass CalendarWatcher den ContextEnricher korrekt aufruft."""
 
@@ -387,7 +429,8 @@ class TestCalendarWatcherEnrichment:
         calendar = MagicMock()
         enricher = MagicMock()
         enricher.enrich_event.return_value = EnrichmentResult(
-            raw_notes=["Notiz"], formatted="Kontext vom Enricher",
+            raw_notes=["Notiz"],
+            formatted="Kontext vom Enricher",
         )
 
         watcher = CalendarWatcher(
@@ -399,9 +442,12 @@ class TestCalendarWatcherEnrichment:
 
         now = datetime.now(timezone.utc)
         event = CalendarEvent(
-            summary="Meeting Max", start=now + timedelta(minutes=10),
-            end=now + timedelta(hours=1), all_day=False,
-            location="Büro", event_id="e1",
+            summary="Meeting Max",
+            start=now + timedelta(minutes=10),
+            end=now + timedelta(hours=1),
+            all_day=False,
+            location="Büro",
+            event_id="e1",
         )
 
         watcher._send_reminder(event, 15)  # Erster Reminder → enrichen
@@ -431,9 +477,12 @@ class TestCalendarWatcherEnrichment:
 
         now = datetime.now(timezone.utc)
         event = CalendarEvent(
-            summary="Test", start=now + timedelta(minutes=3),
-            end=now + timedelta(hours=1), all_day=False,
-            location=None, event_id="e2",
+            summary="Test",
+            start=now + timedelta(minutes=3),
+            end=now + timedelta(hours=1),
+            all_day=False,
+            location=None,
+            event_id="e2",
         )
 
         watcher._send_reminder(event, 5)  # Zweiter Reminder → NICHT enrichen
@@ -458,9 +507,12 @@ class TestCalendarWatcherEnrichment:
 
         now = datetime.now(timezone.utc)
         event = CalendarEvent(
-            summary="Test", start=now + timedelta(minutes=10),
-            end=now + timedelta(hours=1), all_day=False,
-            location=None, event_id="e3",
+            summary="Test",
+            start=now + timedelta(minutes=10),
+            end=now + timedelta(hours=1),
+            all_day=False,
+            location=None,
+            event_id="e3",
         )
 
         watcher._send_reminder(event, 15)
@@ -485,9 +537,12 @@ class TestCalendarWatcherEnrichment:
 
         now = datetime.now(timezone.utc)
         event = CalendarEvent(
-            summary="Test", start=now + timedelta(minutes=10),
-            end=now + timedelta(hours=1), all_day=False,
-            location=None, event_id="e4",
+            summary="Test",
+            start=now + timedelta(minutes=10),
+            end=now + timedelta(hours=1),
+            all_day=False,
+            location=None,
+            event_id="e4",
         )
 
         watcher._send_reminder(event, 15)
@@ -512,9 +567,12 @@ class TestCalendarWatcherEnrichment:
 
         now = datetime.now(timezone.utc)
         event = CalendarEvent(
-            summary="Test", start=now + timedelta(minutes=10),
-            end=now + timedelta(hours=1), all_day=False,
-            location=None, event_id="e5",
+            summary="Test",
+            start=now + timedelta(minutes=10),
+            end=now + timedelta(hours=1),
+            all_day=False,
+            location=None,
+            event_id="e5",
         )
 
         watcher._send_reminder(event, 15)

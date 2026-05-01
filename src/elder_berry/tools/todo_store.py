@@ -10,6 +10,7 @@
 Speichert Aufgaben ohne feste Zeitbindung mit optionaler Priorität
 und Kategorie. Neustart-sicher, Multi-User-fähig (Matrix User-IDs).
 """
+
 from __future__ import annotations
 
 import logging
@@ -70,7 +71,8 @@ class TodoStore:
         self._db_path = db_path or _DEFAULT_DB_PATH
         self._db_path.parent.mkdir(parents=True, exist_ok=True)
         self._conn = sqlite3.connect(
-            str(self._db_path), check_same_thread=False,
+            str(self._db_path),
+            check_same_thread=False,
         )
         self._conn.execute("PRAGMA journal_mode=WAL")
         self._create_table()
@@ -94,13 +96,13 @@ class TodoStore:
     # Schreiben
     # ------------------------------------------------------------------
 
-    def add(self, user_id: str, text: str, priority: str = "niedrig",
-            category: str = "") -> Todo:
+    def add(
+        self, user_id: str, text: str, priority: str = "niedrig", category: str = ""
+    ) -> Todo:
         """Aufgabe hinzufügen."""
         if priority not in PRIORITIES:
             raise ValueError(
-                f"Ungültige Priorität: {priority}. "
-                f"Erlaubt: {', '.join(PRIORITIES)}"
+                f"Ungültige Priorität: {priority}. Erlaubt: {', '.join(PRIORITIES)}"
             )
         now = datetime.now(timezone.utc).isoformat()
         cursor = self._conn.execute(
@@ -115,8 +117,7 @@ class TodoStore:
         """Aufgabe als erledigt markieren."""
         now = datetime.now(timezone.utc).isoformat()
         cursor = self._conn.execute(
-            "UPDATE todos SET done=1, completed_at=? "
-            "WHERE id=? AND done=0",
+            "UPDATE todos SET done=1, completed_at=? WHERE id=? AND done=0",
             (now, todo_id),
         )
         self._conn.commit()
@@ -125,8 +126,8 @@ class TodoStore:
     def reopen(self, todo_id: int) -> Todo | None:
         """Erledigtes Todo wieder öffnen."""
         cursor = self._conn.execute(
-            "UPDATE todos SET done=0, completed_at=NULL "
-            "WHERE id=? AND done=1", (todo_id,),
+            "UPDATE todos SET done=0, completed_at=NULL WHERE id=? AND done=1",
+            (todo_id,),
         )
         self._conn.commit()
         return self._get_by_id(todo_id) if cursor.rowcount > 0 else None
@@ -146,8 +147,9 @@ class TodoStore:
     # Lesen
     # ------------------------------------------------------------------
 
-    def get_open(self, user_id: str, priority: str = "",
-                 category: str = "", limit: int = 50) -> list[Todo]:
+    def get_open(
+        self, user_id: str, priority: str = "", category: str = "", limit: int = 50
+    ) -> list[Todo]:
         """Offene Todos eines Users, sortiert: hoch→mittel→niedrig."""
         query = "SELECT * FROM todos WHERE user_id=? AND done=0"
         params: list = [user_id]
@@ -217,7 +219,8 @@ class TodoStore:
     def delete(self, todo_id: int) -> bool:
         """Todo per ID löschen."""
         cursor = self._conn.execute(
-            "DELETE FROM todos WHERE id=?", (todo_id,),
+            "DELETE FROM todos WHERE id=?",
+            (todo_id,),
         )
         self._conn.commit()
         return cursor.rowcount > 0
@@ -225,7 +228,8 @@ class TodoStore:
     def delete_all_done(self, user_id: str) -> int:
         """Alle erledigten Todos eines Users löschen."""
         cursor = self._conn.execute(
-            "DELETE FROM todos WHERE user_id=? AND done=1", (user_id,),
+            "DELETE FROM todos WHERE user_id=? AND done=1",
+            (user_id,),
         )
         self._conn.commit()
         return cursor.rowcount
@@ -240,8 +244,7 @@ class TodoStore:
         self._conn.commit()
         deleted = cursor.rowcount
         if deleted > 0:
-            logger.info("TodoStore cleanup: %d erledigte Todos entfernt",
-                        deleted)
+            logger.info("TodoStore cleanup: %d erledigte Todos entfernt", deleted)
         return deleted
 
     # ------------------------------------------------------------------
@@ -251,7 +254,8 @@ class TodoStore:
     def _get_by_id(self, todo_id: int) -> Todo:
         """Holt ein Todo per ID (nach INSERT/UPDATE)."""
         row = self._conn.execute(
-            "SELECT * FROM todos WHERE id=?", (todo_id,),
+            "SELECT * FROM todos WHERE id=?",
+            (todo_id,),
         ).fetchone()
         return self._row_to_todo(row)
 
@@ -260,11 +264,14 @@ class TodoStore:
         """Konvertiert DB-Row in Todo-DTO."""
         id_, user_id, text, priority, category, done, created, completed = row
         return Todo(
-            id=id_, user_id=user_id, text=text, priority=priority,
-            category=category, done=bool(done),
+            id=id_,
+            user_id=user_id,
+            text=text,
+            priority=priority,
+            category=category,
+            done=bool(done),
             created_at=datetime.fromisoformat(created),
-            completed_at=(datetime.fromisoformat(completed)
-                          if completed else None),
+            completed_at=(datetime.fromisoformat(completed) if completed else None),
         )
 
     def close(self) -> None:

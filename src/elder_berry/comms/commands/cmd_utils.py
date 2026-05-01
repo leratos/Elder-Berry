@@ -3,6 +3,7 @@
 Stellt run_cmd() und CmdResult bereit, die von mehreren Command-Handlern
 genutzt werden (Git, Docker, Update, SelfCheck).
 """
+
 from __future__ import annotations
 
 import subprocess

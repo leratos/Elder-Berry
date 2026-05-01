@@ -1,4 +1,5 @@
 """Tests for NextcloudFilesClient (WebDAV operations, all mocked)."""
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -257,9 +258,7 @@ def test_download_custom_dir(mock_get, client, tmp_path):
 
 @patch("elder_berry.tools.nextcloud_files.httpx.request")
 def test_list_dir_root(mock_req, client):
-    mock_req.return_value = MagicMock(
-        status_code=207, text=SAMPLE_PROPFIND_RESPONSE
-    )
+    mock_req.return_value = MagicMock(status_code=207, text=SAMPLE_PROPFIND_RESPONSE)
 
     entries = client.list_dir("/")
 
@@ -273,9 +272,7 @@ def test_list_dir_root(mock_req, client):
 
 @patch("elder_berry.tools.nextcloud_files.httpx.request")
 def test_list_dir_subfolder(mock_req, client):
-    mock_req.return_value = MagicMock(
-        status_code=207, text=SAMPLE_PROPFIND_RESPONSE
-    )
+    mock_req.return_value = MagicMock(status_code=207, text=SAMPLE_PROPFIND_RESPONSE)
 
     client.list_dir("Dokumente")
 
@@ -285,9 +282,7 @@ def test_list_dir_subfolder(mock_req, client):
 
 @patch("elder_berry.tools.nextcloud_files.httpx.request")
 def test_list_dir_empty(mock_req, client):
-    mock_req.return_value = MagicMock(
-        status_code=207, text=SAMPLE_PROPFIND_EMPTY
-    )
+    mock_req.return_value = MagicMock(status_code=207, text=SAMPLE_PROPFIND_EMPTY)
 
     entries = client.list_dir("empty")
     assert entries == []
@@ -298,9 +293,7 @@ def test_list_dir_empty(mock_req, client):
 
 @patch("elder_berry.tools.nextcloud_files.httpx.request")
 def test_search_found(mock_req, client):
-    mock_req.return_value = MagicMock(
-        status_code=207, text=SAMPLE_PROPFIND_RESPONSE
-    )
+    mock_req.return_value = MagicMock(status_code=207, text=SAMPLE_PROPFIND_RESPONSE)
 
     results = client.search("report")
 
@@ -310,9 +303,7 @@ def test_search_found(mock_req, client):
 
 @patch("elder_berry.tools.nextcloud_files.httpx.request")
 def test_search_case_insensitive(mock_req, client):
-    mock_req.return_value = MagicMock(
-        status_code=207, text=SAMPLE_PROPFIND_RESPONSE
-    )
+    mock_req.return_value = MagicMock(status_code=207, text=SAMPLE_PROPFIND_RESPONSE)
 
     results = client.search("REPORT")
     assert len(results) == 1
@@ -320,9 +311,7 @@ def test_search_case_insensitive(mock_req, client):
 
 @patch("elder_berry.tools.nextcloud_files.httpx.request")
 def test_search_no_results(mock_req, client):
-    mock_req.return_value = MagicMock(
-        status_code=207, text=SAMPLE_PROPFIND_RESPONSE
-    )
+    mock_req.return_value = MagicMock(status_code=207, text=SAMPLE_PROPFIND_RESPONSE)
 
     results = client.search("nonexistent")
     assert results == []
@@ -359,9 +348,7 @@ _PROPFIND_SEPARATOR = """\
 @patch("elder_berry.tools.nextcloud_files.httpx.request")
 def test_search_separator_normalization(mock_req, client):
     """'pv angebot' (space) should match 'PV-Angebot' (hyphen)."""
-    mock_req.return_value = MagicMock(
-        status_code=207, text=_PROPFIND_SEPARATOR
-    )
+    mock_req.return_value = MagicMock(status_code=207, text=_PROPFIND_SEPARATOR)
 
     results = client.search("pv angebot")
     assert len(results) == 1
@@ -371,9 +358,7 @@ def test_search_separator_normalization(mock_req, client):
 @patch("elder_berry.tools.nextcloud_files.httpx.request")
 def test_search_separator_underscore(mock_req, client):
     """'haus pv' should match 'Haus_PV-Angebot' (underscore + hyphen)."""
-    mock_req.return_value = MagicMock(
-        status_code=207, text=_PROPFIND_SEPARATOR
-    )
+    mock_req.return_value = MagicMock(status_code=207, text=_PROPFIND_SEPARATOR)
 
     results = client.search("haus pv")
     assert len(results) == 1
@@ -397,7 +382,8 @@ _FILEID_PROPFIND_RESPONSE = """\
 @patch("elder_berry.tools.nextcloud_files.httpx.request")
 def test_share_link_success(mock_request, client):
     mock_request.return_value = MagicMock(
-        status_code=207, text=_FILEID_PROPFIND_RESPONSE,
+        status_code=207,
+        text=_FILEID_PROPFIND_RESPONSE,
     )
 
     url = client.share_link("report.pdf")
@@ -538,7 +524,9 @@ def test_delete_connection_error(mock_req, client):
 def test_move_success_201(mock_req, client):
     mock_req.return_value = MagicMock(status_code=201)
 
-    result = client.move("Eingang/Scan.pdf", "Dokumente/Haus/2026-04-02_Haus_Angebot.pdf")
+    result = client.move(
+        "Eingang/Scan.pdf", "Dokumente/Haus/2026-04-02_Haus_Angebot.pdf"
+    )
 
     assert result == "Dokumente/Haus/2026-04-02_Haus_Angebot.pdf"
     # Finde den MOVE-Aufruf (nach ggf. MKCOL-Aufrufen für Zielordner)
@@ -546,7 +534,10 @@ def test_move_success_201(mock_req, client):
     assert len(move_calls) == 1
     call_kwargs = move_calls[0]
     assert call_kwargs.kwargs["headers"]["Overwrite"] == "F"
-    assert "Dokumente/Haus/2026-04-02_Haus_Angebot.pdf" in call_kwargs.kwargs["headers"]["Destination"]
+    assert (
+        "Dokumente/Haus/2026-04-02_Haus_Angebot.pdf"
+        in call_kwargs.kwargs["headers"]["Destination"]
+    )
 
 
 @patch("elder_berry.tools.nextcloud_files.httpx.request")

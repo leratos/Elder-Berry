@@ -1,4 +1,5 @@
 """Tests für Robot-Kommunikation: Protocol, Server, Client, Simulator."""
+
 from dataclasses import asdict
 
 import pytest
@@ -30,6 +31,7 @@ from elder_berry.robot.simulator import (  # noqa: E402
 # ---------------------------------------------------------------------------
 # Protocol DTOs
 # ---------------------------------------------------------------------------
+
 
 class TestProtocolDTOs:
     def test_drive_direction_values(self):
@@ -112,6 +114,7 @@ class TestProtocolDTOs:
 # Simulator Mock-Klassen
 # ---------------------------------------------------------------------------
 
+
 class TestSimulatedMotors:
     def test_initial_state_stopped(self):
         m = SimulatedMotors()
@@ -193,6 +196,7 @@ class TestSimulatedSensors:
 # Server + Client Integration (FastAPI TestClient)
 # ---------------------------------------------------------------------------
 
+
 @pytest.fixture
 def server():
     """Erstellt einen RobotServer mit simulierter Hardware."""
@@ -203,6 +207,7 @@ def server():
 def client(server):
     """FastAPI TestClient für den RobotServer."""
     from fastapi.testclient import TestClient
+
     return TestClient(server.app)
 
 

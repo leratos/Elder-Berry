@@ -1,4 +1,5 @@
 """Abstrakte Basisklasse für die CharacterEngine – steuert Persönlichkeit und Emotionen."""
+
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from enum import Enum
@@ -49,7 +50,9 @@ class MoodState:
 
     def __post_init__(self) -> None:
         if not 0.0 <= self.intensity <= 1.0:
-            raise ValueError(f"Intensity muss zwischen 0.0 und 1.0 liegen, war {self.intensity}")
+            raise ValueError(
+                f"Intensity muss zwischen 0.0 und 1.0 liegen, war {self.intensity}"
+            )
 
 
 class CharacterEngine(ABC):
@@ -83,7 +86,9 @@ class CharacterEngine(ABC):
 
     @abstractmethod
     def build_system_prompt(
-        self, available_actions: str = "", memory_context: str = "",
+        self,
+        available_actions: str = "",
+        memory_context: str = "",
         remote_commands: str = "",
     ) -> str:
         """

@@ -1,4 +1,5 @@
 """Tests: ReminderStore – SQLite-basierte Erinnerungen."""
+
 from datetime import datetime, timezone, timedelta
 
 import pytest
@@ -9,6 +10,7 @@ from elder_berry.tools.reminder_store import Reminder, ReminderStore
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
+
 
 @pytest.fixture
 def store(tmp_path):
@@ -32,12 +34,17 @@ def _now_plus(minutes: int = 0) -> datetime:
 # DTO-Tests
 # ---------------------------------------------------------------------------
 
+
 class TestReminderDTO:
     def test_frozen(self):
         r = Reminder(
-            id=1, user_id=USER_A, message="Test",
-            due_at=_now_plus(10), created_at=_now_plus(),
-            fired=False, cancelled=False,
+            id=1,
+            user_id=USER_A,
+            message="Test",
+            due_at=_now_plus(10),
+            created_at=_now_plus(),
+            fired=False,
+            cancelled=False,
         )
         with pytest.raises(AttributeError):
             r.message = "Changed"
@@ -46,9 +53,13 @@ class TestReminderDTO:
         now = _now_plus()
         due = _now_plus(30)
         r = Reminder(
-            id=42, user_id=USER_A, message="Wäsche",
-            due_at=due, created_at=now,
-            fired=False, cancelled=False,
+            id=42,
+            user_id=USER_A,
+            message="Wäsche",
+            due_at=due,
+            created_at=now,
+            fired=False,
+            cancelled=False,
         )
         assert r.id == 42
         assert r.user_id == USER_A
@@ -60,6 +71,7 @@ class TestReminderDTO:
 # ---------------------------------------------------------------------------
 # add()
 # ---------------------------------------------------------------------------
+
 
 class TestAdd:
     def test_add_returns_reminder(self, store):
@@ -85,6 +97,7 @@ class TestAdd:
 # ---------------------------------------------------------------------------
 # get_pending()
 # ---------------------------------------------------------------------------
+
 
 class TestGetPending:
     def test_only_unfired_uncancelled(self, store):
@@ -115,6 +128,7 @@ class TestGetPending:
 # get_due()
 # ---------------------------------------------------------------------------
 
+
 class TestGetDue:
     def test_past_due_returned(self, store):
         store.add(USER_A, "Fällig", _now_plus(-5))  # 5 Min in der Vergangenheit
@@ -137,6 +151,7 @@ class TestGetDue:
 # ---------------------------------------------------------------------------
 # mark_fired() / cancel() / cancel_all()
 # ---------------------------------------------------------------------------
+
 
 class TestMarkFired:
     def test_mark_fired(self, store):
@@ -171,6 +186,7 @@ class TestCancel:
 # format_pending()
 # ---------------------------------------------------------------------------
 
+
 class TestFormatPending:
     def test_empty(self, store):
         text = store.format_pending([])
@@ -187,6 +203,7 @@ class TestFormatPending:
 # ---------------------------------------------------------------------------
 # DB-Persistenz
 # ---------------------------------------------------------------------------
+
 
 class TestPersistence:
     def test_survives_reopen(self, tmp_path):
@@ -205,6 +222,7 @@ class TestPersistence:
 # ---------------------------------------------------------------------------
 # Recurrence (Phase 19)
 # ---------------------------------------------------------------------------
+
 
 class TestRecurrenceField:
     def test_add_with_recurrence(self, store):
@@ -277,6 +295,7 @@ class TestMigration:
         """Bestehende DB ohne recurrence-Spalte wird korrekt migriert."""
         db = tmp_path / "migrate_test.db"
         import sqlite3
+
         conn = sqlite3.connect(str(db))
         conn.execute("""
             CREATE TABLE reminders (

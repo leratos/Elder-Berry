@@ -1,4 +1,5 @@
 """Tests für CameraCommandHandler – Parsing und Ausführung."""
+
 from __future__ import annotations
 
 from unittest.mock import MagicMock
@@ -14,6 +15,7 @@ from elder_berry.comms.remote_commands import RemoteCommandHandler
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
+
 
 @pytest.fixture
 def handler():
@@ -62,6 +64,7 @@ def remote_handler():
 # Parsing: Simple Commands
 # ---------------------------------------------------------------------------
 
+
 class TestCameraCommandParsing:
     def test_parse_foto(self, remote_handler):
         """6. 'foto' wird als Command erkannt."""
@@ -81,20 +84,29 @@ class TestCameraCommandParsing:
 
     def test_parse_was_siehst_du_kontext(self, remote_handler):
         """10. 'was siehst du auf meinem schreibtisch' -> camera_describe."""
-        assert remote_handler.parse_command("was siehst du auf meinem schreibtisch") == "camera_describe"
+        assert (
+            remote_handler.parse_command("was siehst du auf meinem schreibtisch")
+            == "camera_describe"
+        )
 
     def test_parse_schau_mal(self, remote_handler):
         """11. 'schau mal was da liegt' -> camera_describe."""
-        assert remote_handler.parse_command("schau mal was da liegt") == "camera_describe"
+        assert (
+            remote_handler.parse_command("schau mal was da liegt") == "camera_describe"
+        )
 
     def test_parse_guck_mal(self, remote_handler):
         """12. 'guck mal ob jemand da ist' -> camera_describe."""
-        assert remote_handler.parse_command("guck mal ob jemand da ist") == "camera_describe"
+        assert (
+            remote_handler.parse_command("guck mal ob jemand da ist")
+            == "camera_describe"
+        )
 
 
 # ---------------------------------------------------------------------------
 # Parsing: Keywords
 # ---------------------------------------------------------------------------
+
 
 class TestCameraKeywordParsing:
     def test_keyword_mach_ein_foto(self, remote_handler):
@@ -103,12 +115,16 @@ class TestCameraKeywordParsing:
 
     def test_keyword_was_siehst_du(self, remote_handler):
         """14. 'kannst du sehen was da ist' -> camera_describe (Keyword)."""
-        assert remote_handler.parse_command("kannst du sehen was da ist") == "camera_describe"
+        assert (
+            remote_handler.parse_command("kannst du sehen was da ist")
+            == "camera_describe"
+        )
 
 
 # ---------------------------------------------------------------------------
 # Execution: Fehlerszenarien
 # ---------------------------------------------------------------------------
+
 
 class TestCameraCommandExecution:
     def test_foto_no_robot(self, handler):
@@ -175,7 +191,11 @@ class TestCameraCommandExecution:
         assert result.success is True
         # Prüfen dass describe_image mit Kontext-Prompt aufgerufen wurde
         call_kwargs = mock_anthropic.describe_image.call_args
-        prompt = call_kwargs.kwargs.get("prompt") or call_kwargs[1].get("prompt") or call_kwargs[0][1]
+        prompt = (
+            call_kwargs.kwargs.get("prompt")
+            or call_kwargs[1].get("prompt")
+            or call_kwargs[0][1]
+        )
         assert "auf dem tisch" in prompt.lower()
         # Cleanup
         result.image_path.unlink(missing_ok=True)
@@ -193,6 +213,7 @@ class TestCameraCommandExecution:
 # ---------------------------------------------------------------------------
 # Keine Kollision mit Screenshot
 # ---------------------------------------------------------------------------
+
 
 class TestCameraNoCollision:
     def test_no_collision_with_screenshot(self, remote_handler):

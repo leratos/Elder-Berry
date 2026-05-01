@@ -19,6 +19,7 @@ ein Public-Repo problematisch und unter ``gym.example.com`` nicht
 erreichbar. Aufrufer muessen ``base_url`` explizit setzen (in der
 Regel aus ``SecretStore.get_or_none("berry_gym_url")``).
 """
+
 from __future__ import annotations
 
 import logging
@@ -152,7 +153,9 @@ class GymDataClient:
             rpe = satz.get("rpe")
             warmup = " (Aufwärmsatz)" if satz.get("ist_aufwaermsatz") else ""
             rpe_str = f" @RPE {rpe}" if rpe else ""
-            lines.append(f"  Satz {satz.get('satz_nr', '?')}: {gewicht}kg × {wdh}{rpe_str}{warmup}")
+            lines.append(
+                f"  Satz {satz.get('satz_nr', '?')}: {gewicht}kg × {wdh}{rpe_str}{warmup}"
+            )
 
         return "\n".join(lines)
 

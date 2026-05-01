@@ -5,6 +5,7 @@ Fallback: FasterWhisper via TowerAgent (lokal auf Tower)
 
 Implementiert STTEngine, damit AudioPipeline den Router transparent nutzen kann.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -101,9 +102,7 @@ class STTRouter(STTEngine):
             except Exception as e:
                 logger.warning("Tower STT Fallback fehlgeschlagen: %s", e)
 
-        raise STTUnavailableError(
-            "Kein STT verfügbar (Cloud + Tower down)"
-        )
+        raise STTUnavailableError("Kein STT verfügbar (Cloud + Tower down)")
 
     # -- STTEngine Interface --------------------------------------------------
 
@@ -120,9 +119,7 @@ class STTRouter(STTEngine):
         """
         audio_bytes = audio_path.read_bytes()
         filename = audio_path.name
-        return self._run_async(
-            self.transcribe_async(audio_bytes, filename=filename)
-        )
+        return self._run_async(self.transcribe_async(audio_bytes, filename=filename))
 
     def transcribe_bytes(
         self,

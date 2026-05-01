@@ -1,4 +1,5 @@
 """Tests für RouteCommandHandler – Routenplanung Commands."""
+
 from __future__ import annotations
 
 from datetime import datetime, timedelta
@@ -87,26 +88,33 @@ def handler(
 # Pattern-Tests
 # ---------------------------------------------------------------------------
 
+
 class TestPatterns:
-    @pytest.mark.parametrize("text", [
-        "plane meine fahrt zu Lisa",
-        "plane fahrt zu Lisa",
-        "berechne route zu Lisa",
-        "navigation zu Lisa",
-        "wie komme ich zu Lisa",
-        "wie fahre ich zu Lisa",
-        "plane meine reise nach München",
-        "navigiere zu Lisa",
-    ])
+    @pytest.mark.parametrize(
+        "text",
+        [
+            "plane meine fahrt zu Lisa",
+            "plane fahrt zu Lisa",
+            "berechne route zu Lisa",
+            "navigation zu Lisa",
+            "wie komme ich zu Lisa",
+            "wie fahre ich zu Lisa",
+            "plane meine reise nach München",
+            "navigiere zu Lisa",
+        ],
+    )
     def test_route_plan_matches(self, text: str) -> None:
         assert ROUTE_PLAN_PATTERN.search(text.lower()) is not None
 
-    @pytest.mark.parametrize("text", [
-        "fahrt von Mama zu Lisa",
-        "plane fahrt von Mama zu Lisa",
-        "route von Berlin nach Hamburg",
-        "berechne weg von Mama zu Lisa",
-    ])
+    @pytest.mark.parametrize(
+        "text",
+        [
+            "fahrt von Mama zu Lisa",
+            "plane fahrt von Mama zu Lisa",
+            "route von Berlin nach Hamburg",
+            "berechne weg von Mama zu Lisa",
+        ],
+    )
     def test_route_from_to_matches(self, text: str) -> None:
         assert ROUTE_FROM_TO_PATTERN.search(text.lower()) is not None
 
@@ -125,6 +133,7 @@ class TestPatterns:
 # ---------------------------------------------------------------------------
 # parse_arrival_time
 # ---------------------------------------------------------------------------
+
 
 class TestParseArrivalTime:
     def test_morgen_16_uhr(self) -> None:
@@ -174,9 +183,11 @@ class TestParseArrivalTime:
 # Handler execute
 # ---------------------------------------------------------------------------
 
+
 class TestExecute:
     def test_plan_route_to_contact(
-        self, handler: RouteCommandHandler,
+        self,
+        handler: RouteCommandHandler,
     ) -> None:
         """'plane fahrt zu Lisa' → Route von Home zu Lisa."""
         result = handler.execute("route_plan", "plane fahrt zu Lisa")
@@ -185,7 +196,8 @@ class TestExecute:
         assert "1 Stunde 20 Min." in result.text
 
     def test_plan_route_from_to(
-        self, handler: RouteCommandHandler,
+        self,
+        handler: RouteCommandHandler,
         contact_store: MagicMock,
     ) -> None:
         """'fahrt von Mama zu Lisa' → Route Mama→Lisa."""
@@ -195,13 +207,15 @@ class TestExecute:
         contact_store.search.side_effect = [[mama], [lisa]]
 
         result = handler.execute(
-            "route_from_to", "fahrt von mama zu lisa",
+            "route_from_to",
+            "fahrt von mama zu lisa",
         )
         assert result.success
         assert "lisa" in result.text.lower()
 
     def test_plan_route_with_arrival_time(
-        self, handler: RouteCommandHandler,
+        self,
+        handler: RouteCommandHandler,
         route_planner: MagicMock,
     ) -> None:
         """Ankunftszeit angegeben → Abfahrtszeit wird berechnet."""
@@ -214,7 +228,8 @@ class TestExecute:
         route_planner.calculate_departure.assert_called_once()
 
     def test_plan_route_no_time(
-        self, handler: RouteCommandHandler,
+        self,
+        handler: RouteCommandHandler,
         route_planner: MagicMock,
     ) -> None:
         """Ohne Zeitangabe → keine Abfahrtszeit."""
@@ -224,7 +239,8 @@ class TestExecute:
         route_planner.calculate_departure.assert_not_called()
 
     def test_contact_not_found(
-        self, handler: RouteCommandHandler,
+        self,
+        handler: RouteCommandHandler,
         contact_store: MagicMock,
     ) -> None:
         """Unbekannter Kontakt → hilfreiche Fehlermeldung."""
@@ -234,7 +250,8 @@ class TestExecute:
         assert "keine adresse" in result.text.lower()
 
     def test_no_address_on_contact(
-        self, handler: RouteCommandHandler,
+        self,
+        handler: RouteCommandHandler,
         contact_store: MagicMock,
     ) -> None:
         """Kontakt ohne Adresse → Hinweis."""
@@ -246,7 +263,8 @@ class TestExecute:
         assert "keine adresse" in result.text.lower()
 
     def test_no_home_contact(
-        self, handler: RouteCommandHandler,
+        self,
+        handler: RouteCommandHandler,
         contact_store: MagicMock,
     ) -> None:
         """Kein Home-Kontakt → Hinweis 'Gruppe home'."""
@@ -256,7 +274,8 @@ class TestExecute:
         assert "home" in result.text.lower()
 
     def test_api_error(
-        self, handler: RouteCommandHandler,
+        self,
+        handler: RouteCommandHandler,
         route_planner: MagicMock,
     ) -> None:
         """RouteError → Fehlermeldung."""
@@ -266,7 +285,8 @@ class TestExecute:
         assert "❌" in result.text and "Route" in result.text
 
     def test_maps_link_in_response(
-        self, handler: RouteCommandHandler,
+        self,
+        handler: RouteCommandHandler,
     ) -> None:
         """Antwort enthält Google Maps Link."""
         result = handler.execute("route_plan", "plane fahrt zu Lisa")
@@ -274,29 +294,34 @@ class TestExecute:
         assert "google.com/maps" in result.text
 
     def test_plan_route_von_mir(
-        self, handler: RouteCommandHandler,
+        self,
+        handler: RouteCommandHandler,
     ) -> None:
         """'von mir zu Lisa' → 'mir' wird als Home aufgelöst."""
         result = handler.execute(
-            "route_from_to", "plane fahrt von mir zu Lisa",
+            "route_from_to",
+            "plane fahrt von mir zu Lisa",
         )
         assert result.success
         assert "Lisa" in result.text
 
     def test_plan_route_ankunft_time(
-        self, handler: RouteCommandHandler,
+        self,
+        handler: RouteCommandHandler,
         route_planner: MagicMock,
     ) -> None:
         """'ankunft 13 uhr heute' → Abfahrtszeit berechnet."""
         result = handler.execute(
-            "route_plan", "plane fahrt zu Lisa ankunft 13 uhr heute",
+            "route_plan",
+            "plane fahrt zu Lisa ankunft 13 uhr heute",
         )
         assert result.success
         assert "losfahren" in result.text
         route_planner.calculate_departure.assert_called_once()
 
     def test_unknown_command_fallthrough(
-        self, handler: RouteCommandHandler,
+        self,
+        handler: RouteCommandHandler,
     ) -> None:
         result = handler.execute("unknown_cmd", "irgendwas")
         assert not result.success
@@ -307,9 +332,11 @@ class TestExecute:
 # _resolve_address
 # ---------------------------------------------------------------------------
 
+
 class TestResolveAddress:
     def test_home(
-        self, handler: RouteCommandHandler,
+        self,
+        handler: RouteCommandHandler,
         contact_store: MagicMock,
     ) -> None:
         """None → Home-Kontakt Adresse."""
@@ -317,11 +344,20 @@ class TestResolveAddress:
         assert addr == "Musterstr. 5, 12345 Berlin"
         contact_store.find_by_group.assert_called_with(USER_ID, "home")
 
-    @pytest.mark.parametrize("synonym", [
-        "mir", "zuhause", "daheim", "home", "zu hause", "meiner",
-    ])
+    @pytest.mark.parametrize(
+        "synonym",
+        [
+            "mir",
+            "zuhause",
+            "daheim",
+            "home",
+            "zu hause",
+            "meiner",
+        ],
+    )
     def test_home_synonyms(
-        self, handler: RouteCommandHandler,
+        self,
+        handler: RouteCommandHandler,
         contact_store: MagicMock,
         synonym: str,
     ) -> None:
@@ -331,7 +367,8 @@ class TestResolveAddress:
         contact_store.find_by_group.assert_called_with(USER_ID, "home")
 
     def test_by_name(
-        self, handler: RouteCommandHandler,
+        self,
+        handler: RouteCommandHandler,
         contact_store: MagicMock,
     ) -> None:
         """'Lisa' → Fuzzy-Match → Adresse."""
@@ -340,7 +377,8 @@ class TestResolveAddress:
         contact_store.search.assert_called_with(USER_ID, "Lisa")
 
     def test_not_found(
-        self, handler: RouteCommandHandler,
+        self,
+        handler: RouteCommandHandler,
         contact_store: MagicMock,
     ) -> None:
         """Unbekannt → None."""
@@ -348,15 +386,19 @@ class TestResolveAddress:
         addr = handler._resolve_address("Unbekannt")
         assert addr is None
 
-    @pytest.mark.parametrize("raw_address", [
-        "Am Brendegraben 21, 13127 Berlin",
-        "Musterstr. 1, 12345 Berlin",
-        "Hauptstraße 42",
-        "10115 Berlin",
-        '"Am Brendegraben 21 in 13127 Berlin"',
-    ])
+    @pytest.mark.parametrize(
+        "raw_address",
+        [
+            "Am Brendegraben 21, 13127 Berlin",
+            "Musterstr. 1, 12345 Berlin",
+            "Hauptstraße 42",
+            "10115 Berlin",
+            '"Am Brendegraben 21 in 13127 Berlin"',
+        ],
+    )
     def test_direct_address(
-        self, handler: RouteCommandHandler,
+        self,
+        handler: RouteCommandHandler,
         contact_store: MagicMock,
         raw_address: str,
     ) -> None:
@@ -367,7 +409,8 @@ class TestResolveAddress:
         contact_store.search.assert_not_called()
 
     def test_direct_address_strips_quotes(
-        self, handler: RouteCommandHandler,
+        self,
+        handler: RouteCommandHandler,
     ) -> None:
         """Anführungszeichen werden von direkten Adressen entfernt."""
         addr = handler._resolve_address('"Am Brendegraben 21, 13127 Berlin"')
@@ -378,18 +421,22 @@ class TestResolveAddress:
 # _strip_time_suffix
 # ---------------------------------------------------------------------------
 
+
 class TestStripTimeSuffix:
-    @pytest.mark.parametrize("input_text,expected", [
-        ("lisa, morgen um 16 uhr", "lisa"),
-        ("lisa morgen 16 uhr", "lisa"),
-        ("lisa, übermorgen 10 uhr", "lisa"),
-        ("lisa um 14:30", "lisa"),
-        ("lisa heute 15 uhr", "lisa"),
-        ("lisa freitag um 9", "lisa"),
-        ("lisa ankunft 13 uhr heute", "lisa"),
-        ("lisa ankunft 13 uhr", "lisa"),
-        ("lisa", "lisa"),
-    ])
+    @pytest.mark.parametrize(
+        "input_text,expected",
+        [
+            ("lisa, morgen um 16 uhr", "lisa"),
+            ("lisa morgen 16 uhr", "lisa"),
+            ("lisa, übermorgen 10 uhr", "lisa"),
+            ("lisa um 14:30", "lisa"),
+            ("lisa heute 15 uhr", "lisa"),
+            ("lisa freitag um 9", "lisa"),
+            ("lisa ankunft 13 uhr heute", "lisa"),
+            ("lisa ankunft 13 uhr", "lisa"),
+            ("lisa", "lisa"),
+        ],
+    )
     def test_strip(self, input_text: str, expected: str) -> None:
         assert RouteCommandHandler._strip_time_suffix(input_text) == expected
 
@@ -397,6 +444,7 @@ class TestStripTimeSuffix:
 # ---------------------------------------------------------------------------
 # Keywords
 # ---------------------------------------------------------------------------
+
 
 class TestKeywords:
     def test_keywords_defined(self, handler: RouteCommandHandler) -> None:

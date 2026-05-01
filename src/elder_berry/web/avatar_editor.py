@@ -57,8 +57,9 @@ def register_avatar_editor_routes(
         template_path = _TEMPLATE_DIR / "avatar_editor.html"
         if template_path.exists():
             return HTMLResponse(template_path.read_text(encoding="utf-8"))
-        return HTMLResponse("<h1>Avatar-Editor Template nicht gefunden</h1>",
-                            status_code=500)
+        return HTMLResponse(
+            "<h1>Avatar-Editor Template nicht gefunden</h1>", status_code=500
+        )
 
     @app.get("/api/avatar/assets")
     async def list_assets():
@@ -69,9 +70,7 @@ def register_avatar_editor_routes(
             if not subdir.exists():
                 result[category] = []
                 continue
-            result[category] = sorted(
-                p.stem for p in subdir.glob("*.png")
-            )
+            result[category] = sorted(p.stem for p in subdir.glob("*.png"))
         return JSONResponse(result)
 
     @app.get("/api/avatar/assets/{category}/{name}")
@@ -120,11 +119,13 @@ def register_avatar_editor_routes(
                 status_code=500,
             )
 
-        return JSONResponse({
-            "config": data,
-            "emotions": _EMOTION_NAMES,
-            "reload_available": renderer is not None,
-        })
+        return JSONResponse(
+            {
+                "config": data,
+                "emotions": _EMOTION_NAMES,
+                "reload_available": renderer is not None,
+            }
+        )
 
     @app.put("/api/avatar/config")
     async def save_config(body: dict | None = None):
@@ -147,7 +148,9 @@ def register_avatar_editor_routes(
 
         # YAML schreiben
         try:
-            with open(avatar_config_loader.DEFAULT_CONFIG_PATH, "w", encoding="utf-8") as f:
+            with open(
+                avatar_config_loader.DEFAULT_CONFIG_PATH, "w", encoding="utf-8"
+            ) as f:
                 yaml.dump(
                     config_data,
                     f,

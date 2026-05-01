@@ -4,6 +4,7 @@ Ergänzt test_mail_reply_commands.py und test_mail_delete_commands.py
 um Tests für: mails, mail_search, mail_attachment, mail_by_id,
 plus Interface und Pattern-Matching.
 """
+
 from unittest.mock import MagicMock
 
 import pytest
@@ -21,10 +22,18 @@ from elder_berry.comms.commands.mail_commands import (
 # Fixtures
 # ---------------------------------------------------------------------------
 
-def _make_mail(msg_id="99", subject="Test Mail", sender="Max <max@test.de>",
-               body_preview="Hello World", date=None, message_id="<abc@test>",
-               references=""):
+
+def _make_mail(
+    msg_id="99",
+    subject="Test Mail",
+    sender="Max <max@test.de>",
+    body_preview="Hello World",
+    date=None,
+    message_id="<abc@test>",
+    references="",
+):
     from datetime import datetime
+
     mail = MagicMock()
     mail.msg_id = msg_id
     mail.subject = subject
@@ -63,12 +72,16 @@ def handler_no_client():
 # Pattern Tests
 # ---------------------------------------------------------------------------
 
+
 class TestMailsDaysPattern:
-    @pytest.mark.parametrize("text,days", [
-        ("mails 5", "5"),
-        ("mail 3", "3"),
-        ("mails 14", "14"),
-    ])
+    @pytest.mark.parametrize(
+        "text,days",
+        [
+            ("mails 5", "5"),
+            ("mail 3", "3"),
+            ("mails 14", "14"),
+        ],
+    )
     def test_valid(self, text, days):
         m = MAILS_DAYS_PATTERN.match(text)
         assert m is not None
@@ -79,33 +92,42 @@ class TestMailsDaysPattern:
 
 
 class TestMailSearchPattern:
-    @pytest.mark.parametrize("text", [
-        "mail suche Rechnung",
-        "mails suche Alux",
-        "suche die mail mit Rechnung",
-        "suche die mail von Alux",
-    ])
+    @pytest.mark.parametrize(
+        "text",
+        [
+            "mail suche Rechnung",
+            "mails suche Alux",
+            "suche die mail mit Rechnung",
+            "suche die mail von Alux",
+        ],
+    )
     def test_valid(self, text):
         assert MAIL_SEARCH_PATTERN.search(text) is not None
 
 
 class TestMailAttachmentPattern:
-    @pytest.mark.parametrize("text", [
-        "mail anhang 12345",
-        "anhang von mail 12345",
-        "mail 12345 anhang",
-    ])
+    @pytest.mark.parametrize(
+        "text",
+        [
+            "mail anhang 12345",
+            "anhang von mail 12345",
+            "mail 12345 anhang",
+        ],
+    )
     def test_valid(self, text):
         assert MAIL_ATTACHMENT_PATTERN.search(text) is not None
 
 
 class TestMailIdPattern:
-    @pytest.mark.parametrize("text", [
-        "mail 99",
-        "mail #99",
-        "zeig mail 99",
-        "fasse mail #99 zusammen",
-    ])
+    @pytest.mark.parametrize(
+        "text",
+        [
+            "mail 99",
+            "mail #99",
+            "zeig mail 99",
+            "fasse mail #99 zusammen",
+        ],
+    )
     def test_valid(self, text):
         assert MAIL_ID_PATTERN.match(text) is not None
 
@@ -113,6 +135,7 @@ class TestMailIdPattern:
 # ---------------------------------------------------------------------------
 # Interface
 # ---------------------------------------------------------------------------
+
 
 class TestMailInterface:
     def test_simple_commands(self, handler):
@@ -138,6 +161,7 @@ class TestMailInterface:
 # ---------------------------------------------------------------------------
 # Mails Command
 # ---------------------------------------------------------------------------
+
 
 class TestMailsCommand:
     def test_unread(self, handler, email_client):
@@ -184,6 +208,7 @@ class TestMailsCommand:
 # Mail Search
 # ---------------------------------------------------------------------------
 
+
 class TestMailSearch:
     def test_search_success(self, handler, email_client):
         result = handler.execute("mail_search", "mail suche Rechnung")
@@ -215,6 +240,7 @@ class TestMailSearch:
 # Mail Attachment
 # ---------------------------------------------------------------------------
 
+
 class TestMailAttachment:
     def test_attachment_success(self, handler, email_client):
         result = handler.execute("mail_attachment", "mail anhang 99")
@@ -245,6 +271,7 @@ class TestMailAttachment:
 # ---------------------------------------------------------------------------
 # Mail by ID
 # ---------------------------------------------------------------------------
+
 
 class TestMailById:
     def test_by_id_success(self, handler, email_client):
@@ -284,26 +311,33 @@ class TestMailById:
 # Extract Email Address
 # ---------------------------------------------------------------------------
 
+
 class TestExtractEmailAddress:
     def test_with_brackets(self):
-        assert MailCommandHandler._extract_email_address(
-            "Max Mustermann <max@example.com>"
-        ) == "max@example.com"
+        assert (
+            MailCommandHandler._extract_email_address(
+                "Max Mustermann <max@example.com>"
+            )
+            == "max@example.com"
+        )
 
     def test_plain_email(self):
-        assert MailCommandHandler._extract_email_address(
-            "max@example.com"
-        ) == "max@example.com"
+        assert (
+            MailCommandHandler._extract_email_address("max@example.com")
+            == "max@example.com"
+        )
 
     def test_with_spaces(self):
-        assert MailCommandHandler._extract_email_address(
-            "  max@example.com  "
-        ) == "max@example.com"
+        assert (
+            MailCommandHandler._extract_email_address("  max@example.com  ")
+            == "max@example.com"
+        )
 
 
 # ---------------------------------------------------------------------------
 # Unknown Command
 # ---------------------------------------------------------------------------
+
 
 class TestUnknownCommand:
     def test_unknown(self, handler):

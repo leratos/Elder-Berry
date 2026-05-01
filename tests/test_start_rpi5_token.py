@@ -16,6 +16,7 @@ wieder aus dem ``RobotServer(...)``-Aufruf entfernt. Hardware-Imports
 (pygame, lgpio) machen einen echten ``main()``-Aufruf im Test teuer –
 AST liest die Datei statisch und ist unabhängig davon.
 """
+
 from __future__ import annotations
 
 import ast
@@ -100,8 +101,10 @@ class TestRobotServerCallUsesToken:
                 continue
             func = node.func
             callee_name = (
-                func.id if isinstance(func, ast.Name)
-                else func.attr if isinstance(func, ast.Attribute)
+                func.id
+                if isinstance(func, ast.Name)
+                else func.attr
+                if isinstance(func, ast.Attribute)
                 else None
             )
             if callee_name != "RobotServer":
@@ -188,9 +191,7 @@ class TestEnforceRobotTokenPolicy:
     def test_no_token_loopback_warns_but_passes(self, module, caplog):
         with caplog.at_level(logging.WARNING, logger="elder_berry.rpi5"):
             module._enforce_robot_token_policy(None, "127.0.0.1")
-        assert any(
-            "NICHT konfiguriert" in r.message for r in caplog.records
-        )
+        assert any("NICHT konfiguriert" in r.message for r in caplog.records)
 
     def test_no_token_localhost_passes(self, module):
         module._enforce_robot_token_policy(None, "localhost")

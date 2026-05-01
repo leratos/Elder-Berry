@@ -1,4 +1,5 @@
 """Tests: GymDataClient – Berry-Gym API Integration."""
+
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -13,6 +14,7 @@ TEST_BASE_URL = "https://gym.example.com"
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
+
 
 def _make_store(with_token: bool = True):
     store = MagicMock()
@@ -41,12 +43,30 @@ MOCK_LAST_TRAINING = {
         "kommentar": "Gutes Training",
         "ist_deload": False,
         "saetze": [
-            {"uebung": "Bankdrücken", "gewicht_kg": 80.0, "wiederholungen": 8,
-             "rpe": 8.0, "ist_aufwaermsatz": False, "satz_nr": 1},
-            {"uebung": "Bankdrücken", "gewicht_kg": 80.0, "wiederholungen": 7,
-             "rpe": 9.0, "ist_aufwaermsatz": False, "satz_nr": 2},
-            {"uebung": "Rudern", "gewicht_kg": 60.0, "wiederholungen": 10,
-             "rpe": 7.0, "ist_aufwaermsatz": False, "satz_nr": 1},
+            {
+                "uebung": "Bankdrücken",
+                "gewicht_kg": 80.0,
+                "wiederholungen": 8,
+                "rpe": 8.0,
+                "ist_aufwaermsatz": False,
+                "satz_nr": 1,
+            },
+            {
+                "uebung": "Bankdrücken",
+                "gewicht_kg": 80.0,
+                "wiederholungen": 7,
+                "rpe": 9.0,
+                "ist_aufwaermsatz": False,
+                "satz_nr": 2,
+            },
+            {
+                "uebung": "Rudern",
+                "gewicht_kg": 60.0,
+                "wiederholungen": 10,
+                "rpe": 7.0,
+                "ist_aufwaermsatz": False,
+                "satz_nr": 1,
+            },
         ],
     }
 }
@@ -60,10 +80,20 @@ MOCK_WEEK = {
 
 MOCK_PRS = {
     "prs": [
-        {"uebung": "Kreuzheben", "estimated_1rm": 163.3, "gewicht_kg": 140.0,
-         "wiederholungen": 5, "datum": "2026-03-10T00:00:00Z"},
-        {"uebung": "Bankdrücken", "estimated_1rm": 100.0, "gewicht_kg": 85.0,
-         "wiederholungen": 6, "datum": "2026-03-12T00:00:00Z"},
+        {
+            "uebung": "Kreuzheben",
+            "estimated_1rm": 163.3,
+            "gewicht_kg": 140.0,
+            "wiederholungen": 5,
+            "datum": "2026-03-10T00:00:00Z",
+        },
+        {
+            "uebung": "Bankdrücken",
+            "estimated_1rm": 100.0,
+            "gewicht_kg": 85.0,
+            "wiederholungen": 6,
+            "datum": "2026-03-12T00:00:00Z",
+        },
     ]
 }
 
@@ -72,16 +102,19 @@ MOCK_PRS = {
 # Init + is_available
 # ---------------------------------------------------------------------------
 
+
 class TestGymDataInit:
     def test_is_available_with_token(self):
         client = GymDataClient(
-            secret_store=_make_store(True), base_url=TEST_BASE_URL,
+            secret_store=_make_store(True),
+            base_url=TEST_BASE_URL,
         )
         assert client.is_available() is True
 
     def test_is_available_without_token(self):
         client = GymDataClient(
-            secret_store=_make_store(False), base_url=TEST_BASE_URL,
+            secret_store=_make_store(False),
+            base_url=TEST_BASE_URL,
         )
         assert client.is_available() is False
 
@@ -117,6 +150,7 @@ class TestGymDataInit:
 # ---------------------------------------------------------------------------
 # API Calls (mocked httpx)
 # ---------------------------------------------------------------------------
+
 
 class TestGymDataAPICalls:
     @patch("elder_berry.tools.gym_data.GymDataClient._get")
@@ -167,6 +201,7 @@ class TestGymDataAPICalls:
 # Formatting
 # ---------------------------------------------------------------------------
 
+
 class TestGymDataFormat:
     def test_format_summary(self):
         client = GymDataClient(secret_store=_make_store(), base_url=TEST_BASE_URL)
@@ -178,11 +213,13 @@ class TestGymDataFormat:
 
     def test_format_summary_no_training(self):
         client = GymDataClient(secret_store=_make_store(), base_url=TEST_BASE_URL)
-        text = client.format_summary({
-            "letztes_training": None,
-            "trainings_diese_woche": 0,
-            "aktuelles_gewicht": None,
-        })
+        text = client.format_summary(
+            {
+                "letztes_training": None,
+                "trainings_diese_woche": 0,
+                "aktuelles_gewicht": None,
+            }
+        )
         assert "keins" in text.lower()
 
     def test_format_last_training(self):
@@ -228,39 +265,47 @@ class TestGymDataFormat:
 # RemoteCommandHandler Integration
 # ---------------------------------------------------------------------------
 
+
 class TestGymCommands:
     def test_parse_training(self):
         from elder_berry.comms.remote_commands import RemoteCommandHandler
+
         handler = RemoteCommandHandler()
         assert handler.parse_command("training") == "training"
 
     def test_parse_training_details(self):
         from elder_berry.comms.remote_commands import RemoteCommandHandler
+
         handler = RemoteCommandHandler()
         assert handler.parse_command("training details") == "training"
 
     def test_parse_training_woche(self):
         from elder_berry.comms.remote_commands import RemoteCommandHandler
+
         handler = RemoteCommandHandler()
         assert handler.parse_command("training woche") == "training"
 
     def test_parse_prs(self):
         from elder_berry.comms.remote_commands import RemoteCommandHandler
+
         handler = RemoteCommandHandler()
         assert handler.parse_command("prs") == "prs"
 
     def test_parse_keyword_letztes_training(self):
         from elder_berry.comms.remote_commands import RemoteCommandHandler
+
         handler = RemoteCommandHandler()
         assert handler.parse_command("wie war mein letztes training") == "training"
 
     def test_parse_keyword_personal_records(self):
         from elder_berry.comms.remote_commands import RemoteCommandHandler
+
         handler = RemoteCommandHandler()
         assert handler.parse_command("zeig mir meine personal records") == "prs"
 
     def test_execute_training_no_client(self):
         from elder_berry.comms.remote_commands import RemoteCommandHandler
+
         handler = RemoteCommandHandler()
         result = handler.execute("training", "training")
         assert result.success is False
@@ -269,6 +314,7 @@ class TestGymCommands:
     @patch("elder_berry.tools.gym_data.GymDataClient._get")
     def test_execute_training_summary(self, mock_get):
         from elder_berry.comms.remote_commands import RemoteCommandHandler
+
         mock_get.return_value = MOCK_SUMMARY
         client = GymDataClient(secret_store=_make_store(), base_url=TEST_BASE_URL)
         handler = RemoteCommandHandler(gym_client=client)
@@ -279,6 +325,7 @@ class TestGymCommands:
     @patch("elder_berry.tools.gym_data.GymDataClient._get")
     def test_execute_training_details(self, mock_get):
         from elder_berry.comms.remote_commands import RemoteCommandHandler
+
         mock_get.return_value = MOCK_LAST_TRAINING
         client = GymDataClient(secret_store=_make_store(), base_url=TEST_BASE_URL)
         handler = RemoteCommandHandler(gym_client=client)
@@ -289,6 +336,7 @@ class TestGymCommands:
     @patch("elder_berry.tools.gym_data.GymDataClient._get")
     def test_execute_prs(self, mock_get):
         from elder_berry.comms.remote_commands import RemoteCommandHandler
+
         mock_get.return_value = MOCK_PRS
         client = GymDataClient(secret_store=_make_store(), base_url=TEST_BASE_URL)
         handler = RemoteCommandHandler(gym_client=client)

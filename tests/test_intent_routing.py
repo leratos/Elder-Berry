@@ -5,6 +5,7 @@ Tests für:
 2. get_command_summary(): Dynamischer Command-Prompt
 3. Retry-Logik: LLM-Korrektur bei Parse-Fehler
 """
+
 import asyncio
 from unittest.mock import MagicMock, AsyncMock
 
@@ -17,6 +18,7 @@ from elder_berry.comms.remote_commands import RemoteCommandHandler
 # Helper: Minimaler RemoteCommandHandler (nur mit den nötigen Dependencies)
 # ---------------------------------------------------------------------------
 
+
 def _make_handler(**kwargs) -> RemoteCommandHandler:
     """Erstellt einen RemoteCommandHandler mit Minimal-Dependencies."""
     return RemoteCommandHandler(**kwargs)
@@ -25,6 +27,7 @@ def _make_handler(**kwargs) -> RemoteCommandHandler:
 # ===========================================================================
 # Teil 1: Keyword-Audit – Neue Keywords matchen korrekt
 # ===========================================================================
+
 
 class TestKeywordAudit:
     """Prüft dass die neuen Keywords aus dem Audit korrekt geroutet werden."""
@@ -35,122 +38,146 @@ class TestKeywordAudit:
 
     # --- System Commands ---
 
-    @pytest.mark.parametrize("text,expected", [
-        ("mach ein foto vom bildschirm", "screenshot"),
-        ("zeig mir den bildschirm", "screenshot"),
-        ("wie geht es dem pc", "status"),
-        ("cpu auslastung", "status"),
-        ("ram auslastung", "status"),
-        ("musik pausieren", "pause"),
-        ("halt die musik an", "pause"),
-        ("musik weiter", "play"),
-        ("spiel weiter", "play"),
-        ("vorheriger song", "prev"),
-        ("lied zurück", "prev"),
-        ("lautstärke", "volume"),
-        ("leiser", "harmony_volume_down"),
-        ("lauter", "harmony_volume_up"),
-        ("starte dich neu", "restart"),
-        ("zeig mir die befehle", "hilfe"),
-    ])
+    @pytest.mark.parametrize(
+        "text,expected",
+        [
+            ("mach ein foto vom bildschirm", "screenshot"),
+            ("zeig mir den bildschirm", "screenshot"),
+            ("wie geht es dem pc", "status"),
+            ("cpu auslastung", "status"),
+            ("ram auslastung", "status"),
+            ("musik pausieren", "pause"),
+            ("halt die musik an", "pause"),
+            ("musik weiter", "play"),
+            ("spiel weiter", "play"),
+            ("vorheriger song", "prev"),
+            ("lied zurück", "prev"),
+            ("lautstärke", "volume"),
+            ("leiser", "harmony_volume_down"),
+            ("lauter", "harmony_volume_up"),
+            ("starte dich neu", "restart"),
+            ("zeig mir die befehle", "hilfe"),
+        ],
+    )
     def test_system_keywords(self, handler, text, expected):
         assert handler.parse_command(text) == expected
 
     # --- Calendar Commands ---
 
-    @pytest.mark.parametrize("text,expected", [
-        ("zeitplan", "termine"),
-        ("terminplan", "termine"),
-        ("agenda", "termine"),
-        ("was hab ich vor", "termine"),
-        ("hab ich heute was", "termine"),
-        ("bin ich heute frei", "termine"),
-        ("wochenplan", "termine_woche"),
-        ("wochenübersicht", "termine_woche"),
-        ("bin ich morgen frei", "termine_morgen"),
-        ("was hab ich morgen vor", "termine_morgen"),
-    ])
+    @pytest.mark.parametrize(
+        "text,expected",
+        [
+            ("zeitplan", "termine"),
+            ("terminplan", "termine"),
+            ("agenda", "termine"),
+            ("was hab ich vor", "termine"),
+            ("hab ich heute was", "termine"),
+            ("bin ich heute frei", "termine"),
+            ("wochenplan", "termine_woche"),
+            ("wochenübersicht", "termine_woche"),
+            ("bin ich morgen frei", "termine_morgen"),
+            ("was hab ich morgen vor", "termine_morgen"),
+        ],
+    )
     def test_calendar_keywords(self, handler, text, expected):
         assert handler.parse_command(text) == expected
 
     # --- Mail Commands ---
 
-    @pytest.mark.parametrize("text,expected", [
-        ("post", "mails"),
-        ("nachrichten", "mails"),
-        ("eingang", "mails"),
-        ("hab ich mails", "mails"),
-        ("gibt es neue mails", "mails"),
-        ("sind mails da", "mails"),
-        ("mails checken", "mails"),
-        ("mails zusammenfassen", "mail_summary"),
-    ])
+    @pytest.mark.parametrize(
+        "text,expected",
+        [
+            ("post", "mails"),
+            ("nachrichten", "mails"),
+            ("eingang", "mails"),
+            ("hab ich mails", "mails"),
+            ("gibt es neue mails", "mails"),
+            ("sind mails da", "mails"),
+            ("mails checken", "mails"),
+            ("mails zusammenfassen", "mail_summary"),
+        ],
+    )
     def test_mail_keywords(self, handler, text, expected):
         assert handler.parse_command(text) == expected
 
     # --- File Commands ---
 
-    @pytest.mark.parametrize("text,expected", [
-        ("was hab ich kopiert", "clipboard"),
-        ("zeig zwischenablage", "clipboard"),
-        ("was ist kopiert", "clipboard"),
-    ])
+    @pytest.mark.parametrize(
+        "text,expected",
+        [
+            ("was hab ich kopiert", "clipboard"),
+            ("zeig zwischenablage", "clipboard"),
+            ("was ist kopiert", "clipboard"),
+        ],
+    )
     def test_file_keywords(self, handler, text, expected):
         assert handler.parse_command(text) == expected
 
     # --- Process Commands ---
 
-    @pytest.mark.parametrize("text,expected", [
-        ("pc aufwecken", "wol"),
-        ("rechner wecken", "wol"),
-        ("tower wecken", "wol"),
-        ("läuft alles", "selfcheck"),
-        ("geht alles", "selfcheck"),
-    ])
+    @pytest.mark.parametrize(
+        "text,expected",
+        [
+            ("pc aufwecken", "wol"),
+            ("rechner wecken", "wol"),
+            ("tower wecken", "wol"),
+            ("läuft alles", "selfcheck"),
+            ("geht alles", "selfcheck"),
+        ],
+    )
     def test_process_keywords(self, handler, text, expected):
         assert handler.parse_command(text) == expected
 
     # --- Weather Commands ---
 
-    @pytest.mark.parametrize("text,expected", [
-        ("regen", "wetter"),
-        ("sonnig", "wetter"),
-        ("gewitter", "wetter"),
-        ("schnee", "wetter"),
-        ("regenschirm", "wetter"),
-        ("friert es", "wetter"),
-        ("wird es kalt", "wetter"),
-        ("soll ich eine jacke mitnehmen", "wetter"),
-        ("workout", "training"),
-        ("laufende timer", "erinnerungen"),
-        ("tagesbriefing", "briefing"),
-        ("was gibt es neues", "briefing"),
-    ])
+    @pytest.mark.parametrize(
+        "text,expected",
+        [
+            ("regen", "wetter"),
+            ("sonnig", "wetter"),
+            ("gewitter", "wetter"),
+            ("schnee", "wetter"),
+            ("regenschirm", "wetter"),
+            ("friert es", "wetter"),
+            ("wird es kalt", "wetter"),
+            ("soll ich eine jacke mitnehmen", "wetter"),
+            ("workout", "training"),
+            ("laufende timer", "erinnerungen"),
+            ("tagesbriefing", "briefing"),
+            ("was gibt es neues", "briefing"),
+        ],
+    )
     def test_weather_keywords(self, handler, text, expected):
         assert handler.parse_command(text) == expected
 
     # --- Advanced Commands ---
 
-    @pytest.mark.parametrize("text,expected", [
-        ("kannst du das anklicken", "computer_use"),
-        ("nachschauen im internet", "web_search"),
-        ("schau mal im netz", "web_search"),
-        ("im netz suchen", "web_search"),
-        ("datei zusammenfassen", "document_summary"),
-    ])
+    @pytest.mark.parametrize(
+        "text,expected",
+        [
+            ("kannst du das anklicken", "computer_use"),
+            ("nachschauen im internet", "web_search"),
+            ("schau mal im netz", "web_search"),
+            ("im netz suchen", "web_search"),
+            ("datei zusammenfassen", "document_summary"),
+        ],
+    )
     def test_advanced_keywords(self, handler, text, expected):
         assert handler.parse_command(text) == expected
 
     # --- Note Commands ---
 
-    @pytest.mark.parametrize("text,expected", [
-        ("denk dran: Milch kaufen", "note_set_fact"),
-        ("weißt du noch was das WLAN Passwort ist", "note_get_fact"),
-        ("wann ist der Termin", "note_get_fact"),
-        ("wer ist mein Vermieter", "note_get_fact"),
-        ("durchsuche notizen", "note_search"),
-        ("schreib auf: morgen Arzt", "note_add"),
-    ])
+    @pytest.mark.parametrize(
+        "text,expected",
+        [
+            ("denk dran: Milch kaufen", "note_set_fact"),
+            ("weißt du noch was das WLAN Passwort ist", "note_get_fact"),
+            ("wann ist der Termin", "note_get_fact"),
+            ("wer ist mein Vermieter", "note_get_fact"),
+            ("durchsuche notizen", "note_search"),
+            ("schreib auf: morgen Arzt", "note_add"),
+        ],
+    )
     def test_note_keywords(self, handler, text, expected):
         note_store = MagicMock()
         h = _make_handler(note_store=note_store)
@@ -161,6 +188,7 @@ class TestKeywordAudit:
 # Teil 1b: Bestehende Keywords funktionieren weiterhin
 # ===========================================================================
 
+
 class TestExistingKeywordsStillWork:
     """Regression: Bestehende Keywords dürfen nicht kaputt gehen."""
 
@@ -168,35 +196,41 @@ class TestExistingKeywordsStillWork:
     def handler(self):
         return _make_handler()
 
-    @pytest.mark.parametrize("text,expected", [
-        ("screenshot", "screenshot"),
-        ("status", "status"),
-        ("hilfe", "hilfe"),
-        ("mails", "mails"),
-        ("termine", "termine"),
-        ("wetter", "wetter"),
-        ("briefing", "briefing"),
-        ("erinnerungen", "erinnerungen"),
-        ("clipboard", "clipboard"),
-        ("training", "training"),
-        ("prs", "prs"),
-        ("wol", "wol"),
-        ("selfcheck", "selfcheck"),
-        ("audio", "audio"),
-    ])
+    @pytest.mark.parametrize(
+        "text,expected",
+        [
+            ("screenshot", "screenshot"),
+            ("status", "status"),
+            ("hilfe", "hilfe"),
+            ("mails", "mails"),
+            ("termine", "termine"),
+            ("wetter", "wetter"),
+            ("briefing", "briefing"),
+            ("erinnerungen", "erinnerungen"),
+            ("clipboard", "clipboard"),
+            ("training", "training"),
+            ("prs", "prs"),
+            ("wol", "wol"),
+            ("selfcheck", "selfcheck"),
+            ("audio", "audio"),
+        ],
+    )
     def test_simple_commands_still_work(self, handler, text, expected):
         assert handler.parse_command(text) == expected
 
-    @pytest.mark.parametrize("text,expected", [
-        ("wie ist das wetter", "wetter"),
-        ("regnet es", "wetter"),
-        ("brauche ich einen schirm", "wetter"),
-        ("neue mails", "mails"),
-        ("posteingang", "mails"),
-        ("was steht an", "termine"),
-        ("guten morgen", "briefing"),
-        ("zeig dich", "avatar"),
-    ])
+    @pytest.mark.parametrize(
+        "text,expected",
+        [
+            ("wie ist das wetter", "wetter"),
+            ("regnet es", "wetter"),
+            ("brauche ich einen schirm", "wetter"),
+            ("neue mails", "mails"),
+            ("posteingang", "mails"),
+            ("was steht an", "termine"),
+            ("guten morgen", "briefing"),
+            ("zeig dich", "avatar"),
+        ],
+    )
     def test_existing_keywords_still_work(self, handler, text, expected):
         assert handler.parse_command(text) == expected
 
@@ -204,6 +238,7 @@ class TestExistingKeywordsStillWork:
 # ===========================================================================
 # Teil 2: get_command_summary() – Dynamischer Command-Prompt
 # ===========================================================================
+
 
 class TestGetCommandSummary:
     """Prüft dass get_command_summary() korrekt generiert wird."""
@@ -265,6 +300,7 @@ class TestGetCommandSummary:
 # Teil 2b: command_descriptions auf allen Handlern vorhanden
 # ===========================================================================
 
+
 class TestCommandDescriptions:
     """Prüft dass jeder Handler command_descriptions definiert."""
 
@@ -279,7 +315,9 @@ class TestCommandDescriptions:
         handler = _make_handler(note_store=MagicMock())
         for h in handler._handlers:
             for desc in h.command_descriptions:
-                assert isinstance(desc, str), f"Keine String-Description in {h.__class__.__name__}"
+                assert isinstance(desc, str), (
+                    f"Keine String-Description in {h.__class__.__name__}"
+                )
                 assert ":" in desc, f"Fehlender Doppelpunkt in Description: {desc}"
 
 
@@ -287,11 +325,13 @@ class TestCommandDescriptions:
 # Teil 2c: Dynamischer Prompt im Assistant (SYSTEM_PROMPT_TEMPLATE)
 # ===========================================================================
 
+
 class TestDynamicPromptInAssistant:
     """Prüft dass der dynamische Command-Block in den System-Prompt einfließt."""
 
     def test_fallback_template_has_remote_commands_placeholder(self):
         from elder_berry.core.assistant import SYSTEM_PROMPT_TEMPLATE
+
         assert "{remote_commands}" in SYSTEM_PROMPT_TEMPLATE
 
     def test_build_system_prompt_includes_commands(self):
@@ -306,7 +346,9 @@ class TestDynamicPromptInAssistant:
 
         remote = _make_handler()
         assistant = Assistant(
-            llm=llm, actions_db=db, controller=controller,
+            llm=llm,
+            actions_db=db,
+            controller=controller,
             remote_commands=remote,
         )
 
@@ -327,7 +369,9 @@ class TestDynamicPromptInAssistant:
         controller = MagicMock()
 
         assistant = Assistant(
-            llm=llm, actions_db=db, controller=controller,
+            llm=llm,
+            actions_db=db,
+            controller=controller,
         )
 
         prompt = assistant._build_system_prompt()
@@ -338,6 +382,7 @@ class TestDynamicPromptInAssistant:
 # ===========================================================================
 # Teil 3: Retry-Logik bei LLM Parse-Fehler
 # ===========================================================================
+
 
 class TestRetryLogic:
     """Prüft die Retry-Logik in _handle_llm_remote_command."""
@@ -459,6 +504,7 @@ class TestRetryLogic:
 # ===========================================================================
 # Edge-Cases: Keyword-Konflikte und Prioritäten
 # ===========================================================================
+
 
 class TestKeywordPriorities:
     """Prüft dass Keyword-Konflikte korrekt durch Handler-Reihenfolge aufgelöst werden."""

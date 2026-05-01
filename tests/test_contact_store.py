@@ -1,4 +1,5 @@
 """Tests für ContactStore (Phase 29 + Phase 38 Vollintegration)."""
+
 from __future__ import annotations
 
 import json
@@ -63,8 +64,14 @@ class TestAddAndFind:
 
     def test_upsert_keeps_existing_fields(self, store: ContactStore) -> None:
         emails_old = _emails_json(("home", "a@b.de"))
-        store.add(USER, "Lisa", emails=emails_old, role="Schwester",
-                  formality="locker", notes="mag Katzen")
+        store.add(
+            USER,
+            "Lisa",
+            emails=emails_old,
+            role="Schwester",
+            formality="locker",
+            notes="mag Katzen",
+        )
         emails_new = _emails_json(("home", "new@b.de"))
         updated = store.add(USER, "Lisa", emails=emails_new)
         assert updated.email == "new@b.de"
@@ -150,16 +157,18 @@ class TestDefaults:
 class TestFormat:
     def test_format_short(self, store: ContactStore) -> None:
         emails = _emails_json(("work", "x@y.de"))
-        c = store.add(USER, "Herr Müller", role="Vermieter",
-                      emails=emails, formality="förmlich")
+        c = store.add(
+            USER, "Herr Müller", role="Vermieter", emails=emails, formality="förmlich"
+        )
         s = c.format_short()
         assert "Herr Müller" in s
         assert "Vermieter" in s
         assert "x@y.de" in s
 
     def test_format_for_llm(self, store: ContactStore) -> None:
-        c = store.add(USER, "Lisa", role="Schwester",
-                      formality="locker", notes="mag Katzen")
+        c = store.add(
+            USER, "Lisa", role="Schwester", formality="locker", notes="mag Katzen"
+        )
         llm = c.format_for_llm()
         assert "Kontakt: Lisa" in llm
         assert "Beziehung: Schwester" in llm
@@ -183,10 +192,12 @@ class TestPhones:
         assert c.phone == "+49 170 1234567"
 
     def test_multiple_phones(self, store: ContactStore) -> None:
-        phones = json.dumps([
-            {"type": "cell", "number": "+49 170 1234567"},
-            {"type": "home", "number": "+49 30 9876543"},
-        ])
+        phones = json.dumps(
+            [
+                {"type": "cell", "number": "+49 170 1234567"},
+                {"type": "home", "number": "+49 30 9876543"},
+            ]
+        )
         c = store.add(USER, "Lisa", phones=phones)
         assert c.phone == "+49 170 1234567"
         items = c.get_phones_list()
@@ -220,10 +231,12 @@ class TestPhones:
 
 class TestMultipleEmails:
     def test_multiple_emails(self, store: ContactStore) -> None:
-        emails = json.dumps([
-            {"type": "work", "email": "work@x.de"},
-            {"type": "home", "email": "home@x.de"},
-        ])
+        emails = json.dumps(
+            [
+                {"type": "work", "email": "work@x.de"},
+                {"type": "home", "email": "home@x.de"},
+            ]
+        )
         c = store.add(USER, "Max", emails=emails)
         assert c.email == "work@x.de"
         items = c.get_emails_list()
@@ -238,9 +251,15 @@ class TestMultipleEmails:
 class TestFormatDetail:
     def test_format_detail_full(self, store: ContactStore) -> None:
         emails = _emails_json(("home", "lisa@x.de"))
-        c = store.add(USER, "Lisa", emails=emails, role="Freundin",
-                      formality="locker", notes="wichtige Person",
-                      birthday="1990-06-15")
+        c = store.add(
+            USER,
+            "Lisa",
+            emails=emails,
+            role="Freundin",
+            formality="locker",
+            notes="wichtige Person",
+            birthday="1990-06-15",
+        )
         detail = c.format_detail()
         assert "📇 #" in detail
         assert "Lisa" in detail
@@ -266,10 +285,12 @@ class TestFormatDetail:
         assert "0000" not in detail
 
     def test_format_detail_multiple_phones(self, store: ContactStore) -> None:
-        phones = json.dumps([
-            {"type": "cell", "number": "+49 170 111"},
-            {"type": "home", "number": "+49 30 222"},
-        ])
+        phones = json.dumps(
+            [
+                {"type": "cell", "number": "+49 170 111"},
+                {"type": "home", "number": "+49 30 222"},
+            ]
+        )
         c = store.add(USER, "Max", phones=phones)
         detail = c.format_detail()
         assert "Mobil" in detail
@@ -292,7 +313,8 @@ class TestNewFields:
 
     def test_add_with_all_new_fields(self, store: ContactStore) -> None:
         c = store.add(
-            USER, "Max Mustermann",
+            USER,
+            "Max Mustermann",
             address="Musterstr. 42, 10115 Berlin",
             organization="Acme Corp",
             title="CTO",
@@ -333,7 +355,10 @@ class TestNewFields:
 
     def test_add_or_update_by_vcard_uid_new(self, store: ContactStore) -> None:
         c = store.add_or_update_by_vcard_uid(
-            USER, vcard_uid="uid-1", name="Lisa", role="Freundin",
+            USER,
+            vcard_uid="uid-1",
+            name="Lisa",
+            role="Freundin",
         )
         assert c.name == "Lisa"
         assert c.vcard_uid == "uid-1"
@@ -341,17 +366,24 @@ class TestNewFields:
     def test_add_or_update_by_vcard_uid_existing(self, store: ContactStore) -> None:
         store.add(USER, "Lisa", vcard_uid="uid-1")
         updated = store.add_or_update_by_vcard_uid(
-            USER, vcard_uid="uid-1", name="Lisa", role="Schwester",
+            USER,
+            vcard_uid="uid-1",
+            name="Lisa",
+            role="Schwester",
         )
         assert updated.role == "Schwester"
         assert len(store.list_all(USER)) == 1
 
     def test_add_or_update_by_vcard_uid_name_fallback(
-        self, store: ContactStore,
+        self,
+        store: ContactStore,
     ) -> None:
         store.add(USER, "Lisa")
         updated = store.add_or_update_by_vcard_uid(
-            USER, vcard_uid="uid-new", name="Lisa", role="Freundin",
+            USER,
+            vcard_uid="uid-new",
+            name="Lisa",
+            role="Freundin",
         )
         assert updated.role == "Freundin"
         assert updated.vcard_uid == "uid-new"
@@ -368,25 +400,36 @@ class TestNewFields:
         assert "Max" not in names
 
     def test_find_by_category_case_insensitive(
-        self, store: ContactStore,
+        self,
+        store: ContactStore,
     ) -> None:
         store.add(USER, "Lisa", categories="Familie")
         results = store.find_by_category(USER, "familie")
         assert len(results) == 1
 
     def test_format_for_llm_new_fields(self, store: ContactStore) -> None:
-        phones = json.dumps([
-            {"type": "cell", "number": "+49 170 111"},
-            {"type": "home", "number": "+49 30 222"},
-        ])
-        emails = json.dumps([
-            {"type": "work", "email": "max@acme.de"},
-            {"type": "home", "email": "max@privat.de"},
-        ])
+        phones = json.dumps(
+            [
+                {"type": "cell", "number": "+49 170 111"},
+                {"type": "home", "number": "+49 30 222"},
+            ]
+        )
+        emails = json.dumps(
+            [
+                {"type": "work", "email": "max@acme.de"},
+                {"type": "home", "email": "max@privat.de"},
+            ]
+        )
         c = store.add(
-            USER, "Max", phones=phones, emails=emails,
-            address="Musterstr. 42", organization="Acme Corp",
-            title="CTO", categories="Arbeit", nickname="Maxi",
+            USER,
+            "Max",
+            phones=phones,
+            emails=emails,
+            address="Musterstr. 42",
+            organization="Acme Corp",
+            title="CTO",
+            categories="Arbeit",
+            nickname="Maxi",
         )
         llm = c.format_for_llm()
         assert "Firma: Acme Corp" in llm
@@ -412,7 +455,8 @@ class TestUpcomingBirthdays:
         assert len(results) == 1
 
     def test_upcoming_birthdays_outside_range(
-        self, store: ContactStore,
+        self,
+        store: ContactStore,
     ) -> None:
         today = date(2026, 6, 1)
         store.add(USER, "Lisa", birthday="1990-06-15")
@@ -434,7 +478,8 @@ class TestUpcomingAnniversaries:
         assert len(results) == 1
 
     def test_upcoming_anniversary_out_of_range(
-        self, store: ContactStore,
+        self,
+        store: ContactStore,
     ) -> None:
         today = date(2026, 6, 1)
         store.add(USER, "Max", anniversary="2015-06-20")
@@ -470,8 +515,15 @@ class TestV1Migration:
         conn.execute(
             "INSERT INTO contacts (user_id, name, email, phone, role, "
             "created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
-            (USER, "Lisa", "lisa@x.de", "+49 170 111", "Freundin",
-             "2026-01-01T00:00:00+00:00", "2026-01-01T00:00:00+00:00"),
+            (
+                USER,
+                "Lisa",
+                "lisa@x.de",
+                "+49 170 111",
+                "Freundin",
+                "2026-01-01T00:00:00+00:00",
+                "2026-01-01T00:00:00+00:00",
+            ),
         )
         conn.commit()
         conn.close()

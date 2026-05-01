@@ -49,11 +49,13 @@ def fake_store():
 @pytest.fixture
 def fake_store_with_data():
     """FakeSecretStore mit ein paar vorhandenen Keys."""
-    return FakeSecretStore({
-        "anthropic_api_key": "sk-ant-test123",
-        "weather_city": "Berlin",
-        "email_imap_port": "993",
-    })
+    return FakeSecretStore(
+        {
+            "anthropic_api_key": "sk-ant-test123",
+            "weather_city": "Berlin",
+            "email_imap_port": "993",
+        }
+    )
 
 
 @pytest.fixture
@@ -68,7 +70,9 @@ def client(fake_store):
 def client_with_data(fake_store_with_data):
     """TestClient mit vorhandenen Secrets."""
     router = AudioRouter(local_available=False)
-    dashboard = SettingsDashboard(audio_router=router, secret_store=fake_store_with_data)
+    dashboard = SettingsDashboard(
+        audio_router=router, secret_store=fake_store_with_data
+    )
     return TestClient(dashboard.app)
 
 
@@ -83,6 +87,7 @@ def client_no_store():
 # ------------------------------------------------------------------
 # GET /api/secrets/status
 # ------------------------------------------------------------------
+
 
 class TestSecretsStatus:
     """GET /api/secrets/status – Registry-basierter Status."""
@@ -144,11 +149,14 @@ class TestSecretsStatus:
 # POST /api/secrets/set
 # ------------------------------------------------------------------
 
+
 class TestSecretsSet:
     """POST /api/secrets/set – Key setzen."""
 
     def test_set_new_key(self, client, fake_store):
-        r = client.post("/api/secrets/set", json={"key": "brave_api_key", "value": "BSA-test"})
+        r = client.post(
+            "/api/secrets/set", json={"key": "brave_api_key", "value": "BSA-test"}
+        )
         assert r.status_code == 200
         data = r.json()
         assert data["success"] is True
@@ -169,7 +177,9 @@ class TestSecretsSet:
         assert "leer" in r.json()["error"].lower()
 
     def test_set_whitespace_only_rejected(self, client):
-        r = client.post("/api/secrets/set", json={"key": "brave_api_key", "value": "   "})
+        r = client.post(
+            "/api/secrets/set", json={"key": "brave_api_key", "value": "   "}
+        )
         assert r.status_code == 400
 
     def test_set_no_body(self, client):
@@ -178,7 +188,9 @@ class TestSecretsSet:
 
     def test_set_value_too_long(self, client):
         long_value = "x" * 4097
-        r = client.post("/api/secrets/set", json={"key": "brave_api_key", "value": long_value})
+        r = client.post(
+            "/api/secrets/set", json={"key": "brave_api_key", "value": long_value}
+        )
         assert r.status_code == 400
         assert "lang" in r.json()["error"].lower()
 
@@ -215,6 +227,7 @@ class TestSecretsSet:
 # ------------------------------------------------------------------
 # Typ-Validierung
 # ------------------------------------------------------------------
+
 
 class TestSecretsTypeValidation:
     """Typ-spezifische Validierung anhand der Registry."""
@@ -275,6 +288,7 @@ class TestSecretsTypeValidation:
 # ------------------------------------------------------------------
 # POST /api/secrets/delete
 # ------------------------------------------------------------------
+
 
 class TestSecretsDelete:
     """POST /api/secrets/delete – Key löschen."""

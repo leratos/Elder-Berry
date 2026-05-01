@@ -9,6 +9,7 @@ Verwendung:
     due = store.get_due()
     store.mark_fired(r.id)
 """
+
 from __future__ import annotations
 
 import logging
@@ -205,9 +206,7 @@ class ReminderStore:
             ValueError: Wenn new_due_at nicht timezone-aware ist.
         """
         if new_due_at.tzinfo is None:
-            raise ValueError(
-                "new_due_at muss timezone-aware sein"
-            )
+            raise ValueError("new_due_at muss timezone-aware sein")
         due_utc = new_due_at.astimezone(timezone.utc)
         self._conn.execute(
             "UPDATE reminders SET due_at = ?, fired = 0 WHERE id = ?",
@@ -217,7 +216,9 @@ class ReminderStore:
 
     def cleanup_old(self) -> int:
         """Löscht physisch alte fired Reminders (> 30 Tage)."""
-        cutoff = (datetime.now(timezone.utc) - timedelta(days=_CLEANUP_DAYS)).isoformat()
+        cutoff = (
+            datetime.now(timezone.utc) - timedelta(days=_CLEANUP_DAYS)
+        ).isoformat()
         cursor = self._conn.execute(
             "DELETE FROM reminders WHERE fired = 1 AND due_at < ?",
             (cutoff,),

@@ -17,6 +17,7 @@ Handler-Logik ist in separate Module ausgelagert:
 - audio_pipeline.py: AudioPipeline (STT, TTS, Dateien)
 - restart_manager.py: Restart-Logik (Flag, Lock, Prozess-Ersetzung)
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -113,7 +114,8 @@ class MatrixBridge:
         self._restart_cooldown_until: float = 0.0
 
         self._chat_history = ChatHistory(
-            max_messages=10, summarizer=summarizer,
+            max_messages=10,
+            summarizer=summarizer,
         )
         self._pending = pending_store or PendingConfirmationStore()
         self._scheduler_mgr: SchedulerManager | None = None
@@ -208,7 +210,8 @@ class MatrixBridge:
 
         if self._loop and self._loop.is_running():
             asyncio.run_coroutine_threadsafe(
-                self._shutdown(), self._loop,
+                self._shutdown(),
+                self._loop,
             )
 
         if self._thread and self._thread.is_alive():
@@ -252,7 +255,8 @@ class MatrixBridge:
             logger.info(
                 "Restart erkannt: _start_time=%.3f (server_ts=%.3f), "
                 "Cooldown 60s aktiv",
-                self._start_time, restart_server_ts,
+                self._start_time,
+                restart_server_ts,
             )
 
         await send_restart_notification(self._channel)
@@ -281,25 +285,30 @@ class MatrixBridge:
 
         if self._alert_monitor and self._alert_room_id:
             self._scheduler_mgr.register(
-                "AlertMonitor", self._alert_monitor,
-                "_send_alert", prefix="\U0001f514",
+                "AlertMonitor",
+                self._alert_monitor,
+                "_send_alert",
+                prefix="\U0001f514",
             )
 
         if self._reminder_scheduler:
             self._scheduler_mgr.register(
-                "ReminderScheduler", self._reminder_scheduler,
+                "ReminderScheduler",
+                self._reminder_scheduler,
                 "_send_reminder",
             )
 
         if self._briefing_scheduler:
             self._scheduler_mgr.register(
-                "BriefingScheduler", self._briefing_scheduler,
+                "BriefingScheduler",
+                self._briefing_scheduler,
                 "_send_briefing",
             )
 
         if self._calendar_watcher:
             self._scheduler_mgr.register(
-                "CalendarWatcher", self._calendar_watcher,
+                "CalendarWatcher",
+                self._calendar_watcher,
                 "_send_alert",
             )
 
@@ -320,14 +329,18 @@ class MatrixBridge:
         """Callback für eingehende Nachrichten – dispatcht an Handler."""
         logger.info(
             "Nachricht von %s (ts=%.3f): %s",
-            msg.sender, msg.timestamp, msg.body[:100],
+            msg.sender,
+            msg.timestamp,
+            msg.body[:100],
         )
 
         # Alte Nachrichten ignorieren
         if msg.timestamp > 0 and msg.timestamp <= self._start_time:
             logger.info(
                 "Alte Nachricht ignoriert (ts=%.3f <= start=%.3f): %s",
-                msg.timestamp, self._start_time, msg.body[:50],
+                msg.timestamp,
+                self._start_time,
+                msg.body[:50],
             )
             return
 
@@ -359,7 +372,8 @@ class MatrixBridge:
 
         # Pending Confirmation Intercept (Phase 28)
         response_type, action = self._pending.check_response(
-            msg.sender, msg.body,
+            msg.sender,
+            msg.body,
         )
         if response_type == "confirm":
             await self._handler.handle_pending_confirm(msg, action)

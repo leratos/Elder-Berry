@@ -137,7 +137,8 @@ class DashboardAuthManager:
         # ``max_absolute_lifetime_hours=`` weiterhin steuern.
         if max_absolute_lifetime_hours is None:
             effective_cap_hours = max(
-                DEFAULT_MAX_ABSOLUTE_LIFETIME_HOURS, ttl_hours,
+                DEFAULT_MAX_ABSOLUTE_LIFETIME_HOURS,
+                ttl_hours,
             )
         else:
             effective_cap_hours = max_absolute_lifetime_hours
@@ -182,16 +183,13 @@ class DashboardAuthManager:
         # bcrypt limitiert auf 72 Bytes – Hash längerer PWs ist trivial,
         # aber ein Hinweis ist sauberer als stiller Truncate.
         if len(password.encode("utf-8")) > 72:
-            raise ValueError(
-                "Passwort darf maximal 72 Bytes (UTF-8) lang sein"
-            )
+            raise ValueError("Passwort darf maximal 72 Bytes (UTF-8) lang sein")
         hashed = bcrypt.hashpw(
             password.encode("utf-8"),
             bcrypt.gensalt(rounds=BCRYPT_ROUNDS),
         )
         self._store.set(PASSWORD_HASH_KEY, hashed.decode("ascii"))
-        logger.info("Dashboard-Passwort aktualisiert (bcrypt rounds=%d)",
-                    BCRYPT_ROUNDS)
+        logger.info("Dashboard-Passwort aktualisiert (bcrypt rounds=%d)", BCRYPT_ROUNDS)
 
     def verify_password(self, password: str) -> bool:
         """Prüft ein Klartext-Passwort gegen den gespeicherten Hash.
@@ -231,8 +229,9 @@ class DashboardAuthManager:
         """Invalidiert alle bestehenden Sessions durch Secret-Rotation."""
         new_secret = _secrets.token_urlsafe(32)
         self._store.set(SESSION_SECRET_KEY, new_secret)
-        logger.warning("dashboard_session_secret rotiert – alle "
-                       "bestehenden Sessions sind ungültig")
+        logger.warning(
+            "dashboard_session_secret rotiert – alle bestehenden Sessions sind ungültig"
+        )
 
     def issue_session(
         self,
@@ -263,7 +262,9 @@ class DashboardAuthManager:
         return self._sign_payload(payload), exp
 
     def verify_session(
-        self, cookie_value: str | None, now: float | None = None,
+        self,
+        cookie_value: str | None,
+        now: float | None = None,
     ) -> dict[str, int]:
         """Prüft ein Cookie und gibt das Payload zurück.
 
@@ -319,14 +320,17 @@ class DashboardAuthManager:
 
         # Phase 70 (H-1): Revocation-Check
         if self._revocation_list is not None and self._revocation_list.is_revoked(
-            cookie_value, now=ts,
+            cookie_value,
+            now=ts,
         ):
             raise InvalidSessionError("Session wurde server-seitig widerrufen")
 
         return payload
 
     def extend_session(
-        self, cookie_value: str, now: float | None = None,
+        self,
+        cookie_value: str,
+        now: float | None = None,
     ) -> tuple[str, int]:
         """Sliding-Renewal: validiert + gibt frisches Cookie zurück.
 
@@ -342,7 +346,9 @@ class DashboardAuthManager:
         return self.issue_session(now=now, iat_original=iat_original)
 
     def revoke_session(
-        self, cookie_value: str | None, now: float | None = None,
+        self,
+        cookie_value: str | None,
+        now: float | None = None,
     ) -> bool:
         """Setzt einen Cookie auf die Sperrliste (Phase 70 H-1).
 

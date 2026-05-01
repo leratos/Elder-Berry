@@ -3,6 +3,7 @@
 Jeder Handler registriert seine Patterns und Keywords und kann
 Commands parsen und ausführen.
 """
+
 from __future__ import annotations
 
 import logging
@@ -221,18 +222,14 @@ def user_friendly_error(exc: Exception, context: str = "") -> str:
 
     if "403" in exc_str or "Forbidden" in exc_str:
         return (
-            f"❌ {prefix}Zugriff verweigert. "
-            "Prüfe ob die Berechtigungen korrekt sind."
+            f"❌ {prefix}Zugriff verweigert. Prüfe ob die Berechtigungen korrekt sind."
         )
 
     if "404" in exc_str or "Not Found" in exc_str:
         return f"❌ {prefix}Nicht gefunden. Prüfe ob die Adresse/Ressource existiert."
 
     if "429" in exc_str or "RateLimit" in exc_type or "rate" in exc_str.lower():
-        return (
-            f"❌ {prefix}Zu viele Anfragen. "
-            "Warte kurz und versuch es dann nochmal."
-        )
+        return f"❌ {prefix}Zu viele Anfragen. Warte kurz und versuch es dann nochmal."
 
     if "5" == exc_str[:1] and len(exc_str) >= 3 and exc_str[1:3].isdigit():
         return (

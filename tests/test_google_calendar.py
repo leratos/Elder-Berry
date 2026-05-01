@@ -1,4 +1,5 @@
 """Tests: GoogleCalendarClient – Google Calendar API Integration."""
+
 import json
 from datetime import datetime
 from unittest.mock import MagicMock, patch
@@ -11,6 +12,7 @@ from elder_berry.tools.google_calendar import CalendarEvent, GoogleCalendarClien
 # ---------------------------------------------------------------------------
 # CalendarEvent DTO
 # ---------------------------------------------------------------------------
+
 
 class TestCalendarEvent:
     def test_format_short_timed(self):
@@ -94,6 +96,7 @@ class TestCalendarEvent:
 # ---------------------------------------------------------------------------
 # GoogleCalendarClient
 # ---------------------------------------------------------------------------
+
 
 def _make_store_mock(with_tokens: bool = True):
     """Erstellt Mock-SecretStore mit oder ohne Google-Tokens."""
@@ -210,11 +213,13 @@ class TestSearchEvents:
         mock_get_service.return_value = mock_service
 
         mock_service.events.return_value.list.return_value.execute.return_value = {
-            "items": [{
-                "summary": "Zahnarzt",
-                "start": {"dateTime": "2026-04-10T14:00:00+01:00"},
-                "end": {"dateTime": "2026-04-10T15:00:00+01:00"},
-            }],
+            "items": [
+                {
+                    "summary": "Zahnarzt",
+                    "start": {"dateTime": "2026-04-10T14:00:00+01:00"},
+                    "end": {"dateTime": "2026-04-10T15:00:00+01:00"},
+                }
+            ],
         }
 
         store = _make_store_mock()
@@ -377,6 +382,7 @@ class TestCreateEvent:
 # ---------------------------------------------------------------------------
 # Retry-Logik (_call_with_retry)
 # ---------------------------------------------------------------------------
+
 
 class TestCallWithRetry:
     """Tests für _call_with_retry: stale Connection Recovery."""

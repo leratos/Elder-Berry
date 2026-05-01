@@ -1,4 +1,5 @@
 """Tests: DockerCommandHandler – Docker-Befehle via Matrix (Whitelist)."""
+
 from unittest.mock import MagicMock, patch
 import subprocess
 
@@ -14,6 +15,7 @@ from elder_berry.comms.commands.docker_commands import (
 # Fixtures
 # ---------------------------------------------------------------------------
 
+
 @pytest.fixture
 def handler():
     return DockerCommandHandler()
@@ -23,13 +25,17 @@ def handler():
 # Pattern Tests
 # ---------------------------------------------------------------------------
 
+
 class TestDockerPattern:
-    @pytest.mark.parametrize("text,subcmd,container", [
-        ("docker ps", "ps", None),
-        ("docker restart synapse", "restart", "synapse"),
-        ("docker logs synapse", "logs", "synapse"),
-        ("DOCKER PS", "PS", None),
-    ])
+    @pytest.mark.parametrize(
+        "text,subcmd,container",
+        [
+            ("docker ps", "ps", None),
+            ("docker restart synapse", "restart", "synapse"),
+            ("docker logs synapse", "logs", "synapse"),
+            ("DOCKER PS", "PS", None),
+        ],
+    )
     def test_valid_patterns(self, text, subcmd, container):
         m = DOCKER_PATTERN.match(text)
         assert m is not None
@@ -37,12 +43,15 @@ class TestDockerPattern:
         if container:
             assert m.group(2) == container
 
-    @pytest.mark.parametrize("text", [
-        "docker build .",
-        "docker rm container",
-        "docker exec -it bash",
-        "notdocker ps",
-    ])
+    @pytest.mark.parametrize(
+        "text",
+        [
+            "docker build .",
+            "docker rm container",
+            "docker exec -it bash",
+            "notdocker ps",
+        ],
+    )
     def test_invalid_patterns(self, text):
         m = DOCKER_PATTERN.match(text)
         assert m is None
@@ -51,6 +60,7 @@ class TestDockerPattern:
 # ---------------------------------------------------------------------------
 # Interface
 # ---------------------------------------------------------------------------
+
 
 class TestDockerInterface:
     def test_patterns_registered(self, handler):
@@ -65,6 +75,7 @@ class TestDockerInterface:
 # ---------------------------------------------------------------------------
 # Execute
 # ---------------------------------------------------------------------------
+
 
 class TestDockerExecute:
     def test_unknown_command(self, handler):
@@ -85,7 +96,9 @@ class TestDockerExecute:
     @patch("elder_berry.comms.commands.docker_commands.subprocess.run")
     def test_docker_restart(self, mock_run, handler):
         mock_run.return_value = MagicMock(
-            returncode=0, stdout="synapse", stderr="",
+            returncode=0,
+            stdout="synapse",
+            stderr="",
         )
         result = handler.execute("docker", "docker restart synapse")
         assert result.success is True
@@ -93,7 +106,9 @@ class TestDockerExecute:
     @patch("elder_berry.comms.commands.docker_commands.subprocess.run")
     def test_docker_logs_adds_tail(self, mock_run, handler):
         mock_run.return_value = MagicMock(
-            returncode=0, stdout="log line 1", stderr="",
+            returncode=0,
+            stdout="log line 1",
+            stderr="",
         )
         result = handler.execute("docker", "docker logs synapse")
         assert result.success is True
@@ -119,7 +134,9 @@ class TestDockerExecute:
     @patch("elder_berry.comms.commands.docker_commands.subprocess.run")
     def test_output_truncated(self, mock_run, handler):
         mock_run.return_value = MagicMock(
-            returncode=0, stdout="x" * 5000, stderr="",
+            returncode=0,
+            stdout="x" * 5000,
+            stderr="",
         )
         result = handler.execute("docker", "docker ps")
         assert "gekürzt" in result.text
@@ -141,7 +158,9 @@ class TestDockerExecute:
     @patch("elder_berry.comms.commands.docker_commands.subprocess.run")
     def test_nonzero_returncode(self, mock_run, handler):
         mock_run.return_value = MagicMock(
-            returncode=1, stdout="", stderr="error output",
+            returncode=1,
+            stdout="",
+            stderr="error output",
         )
         result = handler.execute("docker", "docker ps")
         assert result.success is False
@@ -151,41 +170,51 @@ class TestDockerExecute:
 # Container-Name-Validierung (Security-Fix: Flag-Injection verhindern)
 # ---------------------------------------------------------------------------
 
+
 class TestDockerContainerNameValidation:
     """Container-Namen mit Flag-artigen Werten werden abgelehnt."""
 
-    @pytest.mark.parametrize("name", [
-        "--all",
-        "--no-trunc",
-        "--follow",
-        "--since=0",
-        "-f",
-        "--format={{.ID}}",
-        "--tail=100",
-    ])
+    @pytest.mark.parametrize(
+        "name",
+        [
+            "--all",
+            "--no-trunc",
+            "--follow",
+            "--since=0",
+            "-f",
+            "--format={{.ID}}",
+            "--tail=100",
+        ],
+    )
     def test_flag_injection_rejected_for_restart(self, handler, name):
         result = handler.execute("docker", f"docker restart {name}")
         assert result.success is False
         assert "Ungültiger Container-Name" in result.text
 
-    @pytest.mark.parametrize("name", [
-        "--all",
-        "--no-trunc",
-        "--follow",
-        "--since=0",
-    ])
+    @pytest.mark.parametrize(
+        "name",
+        [
+            "--all",
+            "--no-trunc",
+            "--follow",
+            "--since=0",
+        ],
+    )
     def test_flag_injection_rejected_for_logs(self, handler, name):
         result = handler.execute("docker", f"docker logs {name}")
         assert result.success is False
         assert "Ungültiger Container-Name" in result.text
 
-    @pytest.mark.parametrize("name", [
-        "synapse",
-        "my-container",
-        "container_1",
-        "nginx.prod",
-        "A1b2C3",
-    ])
+    @pytest.mark.parametrize(
+        "name",
+        [
+            "synapse",
+            "my-container",
+            "container_1",
+            "nginx.prod",
+            "A1b2C3",
+        ],
+    )
     @patch("elder_berry.comms.commands.docker_commands.subprocess.run")
     def test_valid_container_names_accepted(self, mock_run, handler, name):
         mock_run.return_value = MagicMock(returncode=0, stdout="ok", stderr="")

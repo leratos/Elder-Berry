@@ -1,4 +1,5 @@
 """Tests: ElevenLabsClient – ElevenLabs TTS API."""
+
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import httpx
@@ -11,13 +12,16 @@ from elder_berry.tools.elevenlabs_client import ElevenLabsClient, ElevenLabsErro
 # Fixtures
 # ---------------------------------------------------------------------------
 
+
 def _make_client(**kwargs) -> ElevenLabsClient:
     defaults = {"api_key": "test-key", "voice_id": "voice-123"}
     defaults.update(kwargs)
     return ElevenLabsClient(**defaults)
 
 
-def _mock_http_client(post_response=None, get_response=None, post_error=None, get_error=None):
+def _mock_http_client(
+    post_response=None, get_response=None, post_error=None, get_error=None
+):
     """Erstellt einen gepatchten httpx.AsyncClient context manager."""
     mock_http = AsyncMock()
     if post_error:
@@ -33,12 +37,18 @@ def _mock_http_client(post_response=None, get_response=None, post_error=None, ge
     return mock_http
 
 
-def _mock_response(status_code=200, content=b"", json_data=None, raise_for_status_error=None):
+def _mock_response(
+    status_code=200, content=b"", json_data=None, raise_for_status_error=None
+):
     """Erstellt ein Mock-httpx-Response (sync-Methoden als MagicMock)."""
     resp = MagicMock()
     resp.status_code = status_code
     resp.content = content
-    resp.text = content.decode("utf-8", errors="replace") if isinstance(content, bytes) else str(content)
+    resp.text = (
+        content.decode("utf-8", errors="replace")
+        if isinstance(content, bytes)
+        else str(content)
+    )
     if json_data is not None:
         resp.json.return_value = json_data
     if raise_for_status_error:
@@ -49,6 +59,7 @@ def _mock_response(status_code=200, content=b"", json_data=None, raise_for_statu
 # ---------------------------------------------------------------------------
 # Constructor
 # ---------------------------------------------------------------------------
+
 
 class TestConstructor:
     def test_valid_params(self):
@@ -78,6 +89,7 @@ class TestConstructor:
 # ---------------------------------------------------------------------------
 # synthesize()
 # ---------------------------------------------------------------------------
+
 
 class TestSynthesize:
     @pytest.fixture
@@ -129,12 +141,16 @@ class TestSynthesize:
     async def test_http_error(self, client):
         """Sonstige HTTP-Fehler → ElevenLabsError."""
         request = httpx.Request("POST", "http://test")
-        raw_resp = httpx.Response(500, request=request, content=b"Internal Server Error")
+        raw_resp = httpx.Response(
+            500, request=request, content=b"Internal Server Error"
+        )
         resp = _mock_response(
             status_code=500,
             content=b"\x00" * 200,
             raise_for_status_error=httpx.HTTPStatusError(
-                "500", request=request, response=raw_resp,
+                "500",
+                request=request,
+                response=raw_resp,
             ),
         )
         mock_http = _mock_http_client(post_response=resp)
@@ -189,6 +205,7 @@ class TestSynthesize:
 # ---------------------------------------------------------------------------
 # get_usage()
 # ---------------------------------------------------------------------------
+
 
 class TestGetUsage:
     async def test_success(self):

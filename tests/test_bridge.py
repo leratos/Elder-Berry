@@ -14,6 +14,7 @@ Dieser Testfile fokussiert sich auf:
 - _shutdown / _run_loop Fehlerbehandlung
 - Restart-Erkennung in _async_main
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -25,13 +26,17 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 from elder_berry.comms.bridge import MatrixBridge
 from elder_berry.comms.message_channel import IncomingMessage, MessageChannel
-from elder_berry.comms.pending_confirmation import PendingAction, PendingConfirmationStore
+from elder_berry.comms.pending_confirmation import (
+    PendingAction,
+    PendingConfirmationStore,
+)
 from elder_berry.core.assistant import AssistantResult
 
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def run_async(coro):
     """Führt eine Coroutine synchron aus."""
@@ -142,9 +147,11 @@ def _make_bridge(
 # Alte-Nachricht-Filterung
 # ---------------------------------------------------------------------------
 
+
 class TestOldMessageFiltering:
     def test_old_message_ignored(self):
         """Nachrichten mit timestamp <= _start_time werden ignoriert."""
+
         async def _test():
             ch, bridge = _make_bridge()
             bridge._start_time = 1000.0
@@ -160,6 +167,7 @@ class TestOldMessageFiltering:
 
     def test_exact_start_time_ignored(self):
         """Nachricht mit exaktem _start_time wird auch ignoriert (<=)."""
+
         async def _test():
             ch, bridge = _make_bridge()
             bridge._start_time = 1000.0
@@ -173,6 +181,7 @@ class TestOldMessageFiltering:
 
     def test_newer_message_processed(self):
         """Nachrichten nach _start_time werden verarbeitet."""
+
         async def _test():
             ch, bridge = _make_bridge()
             bridge._start_time = 1000.0
@@ -186,6 +195,7 @@ class TestOldMessageFiltering:
 
     def test_zero_timestamp_not_filtered(self):
         """Timestamp 0 wird nicht gefiltert (Sonderfall: timestamp > 0 Prüfung)."""
+
         async def _test():
             ch, bridge = _make_bridge()
             bridge._start_time = 1000.0
@@ -202,6 +212,7 @@ class TestOldMessageFiltering:
 # ---------------------------------------------------------------------------
 # Sender-Whitelist
 # ---------------------------------------------------------------------------
+
 
 class TestSenderWhitelist:
     def test_allowed_sender_processed(self):
@@ -242,6 +253,7 @@ class TestSenderWhitelist:
         dass die Bridge in Produktion gar nicht erst mit None gebaut wird,
         aber Dev-/Test-Pfade erreichen diesen Zustand direkt.
         """
+
         async def _test():
             ch, bridge = _make_bridge(allowed_senders=None)
             bridge._start_time = 0.0
@@ -255,6 +267,7 @@ class TestSenderWhitelist:
 
     def test_empty_whitelist_rejects_all(self):
         """Phase 57.4: leere Menge ist genauso streng wie None."""
+
         async def _test():
             ch, bridge = _make_bridge(allowed_senders=frozenset())
             bridge._start_time = 0.0
@@ -268,6 +281,7 @@ class TestSenderWhitelist:
 
     def test_multiple_allowed_senders(self):
         """Mehrere erlaubte Sender: beide werden akzeptiert."""
+
         async def _test():
             ch, bridge = _make_bridge(
                 allowed_senders=frozenset({"@user:x", "@admin:x"}),
@@ -288,9 +302,11 @@ class TestSenderWhitelist:
 # Audio-Dispatch
 # ---------------------------------------------------------------------------
 
+
 class TestAudioDispatch:
     def test_audio_message_dispatched_to_pipeline(self):
         """Nachrichten mit audio_data gehen an AudioPipeline."""
+
         async def _test():
             ch, bridge = _make_bridge()
             bridge._start_time = 0.0
@@ -305,6 +321,7 @@ class TestAudioDispatch:
 
     def test_audio_message_not_sent_to_assistant(self):
         """Audio-Nachrichten werden NICHT an den Assistant delegiert."""
+
         async def _test():
             assistant = _make_assistant()
             ch, bridge = _make_bridge(assistant=assistant)
@@ -323,9 +340,11 @@ class TestAudioDispatch:
 # File-Dispatch
 # ---------------------------------------------------------------------------
 
+
 class TestFileDispatch:
     def test_file_message_dispatched_to_pipeline(self):
         """Nachrichten mit file_data gehen an AudioPipeline.handle_file_message."""
+
         async def _test():
             ch, bridge = _make_bridge()
             bridge._start_time = 0.0
@@ -340,6 +359,7 @@ class TestFileDispatch:
 
     def test_file_message_not_sent_to_assistant(self):
         """File-Nachrichten werden NICHT an den Assistant delegiert."""
+
         async def _test():
             assistant = _make_assistant()
             ch, bridge = _make_bridge(assistant=assistant)
@@ -358,8 +378,11 @@ class TestFileDispatch:
 # Pending-Confirmation-Intercept
 # ---------------------------------------------------------------------------
 
+
 class TestPendingConfirmation:
-    def _make_pending_store(self, response_type: str, action: PendingAction | None = None):
+    def _make_pending_store(
+        self, response_type: str, action: PendingAction | None = None
+    ):
         store = MagicMock(spec=PendingConfirmationStore)
         store.check_response.return_value = (response_type, action)
         return store
@@ -373,6 +396,7 @@ class TestPendingConfirmation:
 
     def test_confirm_routes_to_handler(self):
         """'ja' bei pending → handle_pending_confirm."""
+
         async def _test():
             action = self._default_action()
             store = self._make_pending_store("confirm", action)
@@ -389,6 +413,7 @@ class TestPendingConfirmation:
 
     def test_cancel_sends_verworfen(self):
         """'nein' bei pending → Verworfen-Text."""
+
         async def _test():
             action = self._default_action()
             store = self._make_pending_store("cancel", action)
@@ -405,6 +430,7 @@ class TestPendingConfirmation:
 
     def test_modify_routes_to_handler(self):
         """'ändern:' bei pending → handle_pending_modify."""
+
         async def _test():
             action = self._default_action()
             store = self._make_pending_store("modify", action)
@@ -421,6 +447,7 @@ class TestPendingConfirmation:
 
     def test_pending_state_sends_hint(self):
         """Andere Nachricht bei pending → Hinweis auf offene Aktion."""
+
         async def _test():
             action = self._default_action()
             store = self._make_pending_store("pending", action)
@@ -439,6 +466,7 @@ class TestPendingConfirmation:
 
     def test_no_pending_passes_through(self):
         """Ohne pending → weiter an Command/LLM."""
+
         async def _test():
             store = self._make_pending_store("none", None)
             ch, bridge = _make_bridge(pending_store=store)
@@ -456,6 +484,7 @@ class TestPendingConfirmation:
 # ---------------------------------------------------------------------------
 # Properties
 # ---------------------------------------------------------------------------
+
 
 class TestBridgeProperties:
     def test_is_running_initially_false(self):
@@ -475,15 +504,24 @@ class TestBridgeProperties:
         """_audio_to_matrix delegiert an AudioPipeline.audio_to_matrix property."""
         _, bridge = _make_bridge()
         # audio_to_matrix ist eine Property → Mock auf Instanz-Level
-        with patch.object(type(bridge._audio), "audio_to_matrix", new_callable=lambda: property(lambda self: True)):
+        with patch.object(
+            type(bridge._audio),
+            "audio_to_matrix",
+            new_callable=lambda: property(lambda self: True),
+        ):
             assert bridge._audio_to_matrix is True
-        with patch.object(type(bridge._audio), "audio_to_matrix", new_callable=lambda: property(lambda self: False)):
+        with patch.object(
+            type(bridge._audio),
+            "audio_to_matrix",
+            new_callable=lambda: property(lambda self: False),
+        ):
             assert bridge._audio_to_matrix is False
 
 
 # ---------------------------------------------------------------------------
 # extract_claude_message (ergänzende Edge Cases zu test_comms.py)
 # ---------------------------------------------------------------------------
+
 
 class TestExtractClaudeMessageEdgeCases:
     def test_claude_mixed_case(self):
@@ -496,7 +534,9 @@ class TestExtractClaudeMessageEdgeCases:
         assert result == "test"
 
     def test_multiple_quotes_takes_first(self):
-        result = MatrixBridge.extract_claude_message('Claude "erster" ignoriert "zweiter"')
+        result = MatrixBridge.extract_claude_message(
+            'Claude "erster" ignoriert "zweiter"'
+        )
         assert result == "erster"
 
     def test_unicode_in_quotes(self):
@@ -507,6 +547,7 @@ class TestExtractClaudeMessageEdgeCases:
 # ---------------------------------------------------------------------------
 # Lifecycle – _run_loop & _shutdown
 # ---------------------------------------------------------------------------
+
 
 class TestBridgeLifecycle:
     def test_start_sets_running(self):
@@ -555,6 +596,7 @@ class TestBridgeLifecycle:
 
     def test_shutdown_disconnect_error_ignored(self):
         """Fehler beim Disconnect werden ignoriert."""
+
         async def _test():
             ch, bridge = _make_bridge()
             ch.disconnect = AsyncMock(side_effect=RuntimeError("disconnect failed"))
@@ -569,22 +611,28 @@ class TestBridgeLifecycle:
 # _async_main – Restart-Erkennung
 # ---------------------------------------------------------------------------
 
+
 class TestAsyncMainRestart:
     def test_normal_start_without_restart_flag(self):
         """Ohne Restart-Flag: _start_time ≈ now, kein Cooldown."""
+
         async def _test():
             ch, bridge = _make_bridge()
             ch._sync_event.set()  # sync_loop sofort beenden
 
-            with patch(
-                "elder_berry.comms.bridge.RESTART_FLAG_FILE",
-                MagicMock(exists=MagicMock(return_value=False)),
-            ), patch(
-                "elder_berry.comms.bridge.read_restart_timestamp",
-                return_value=0.0,
-            ), patch(
-                "elder_berry.comms.bridge.send_restart_notification",
-                new_callable=AsyncMock,
+            with (
+                patch(
+                    "elder_berry.comms.bridge.RESTART_FLAG_FILE",
+                    MagicMock(exists=MagicMock(return_value=False)),
+                ),
+                patch(
+                    "elder_berry.comms.bridge.read_restart_timestamp",
+                    return_value=0.0,
+                ),
+                patch(
+                    "elder_berry.comms.bridge.send_restart_notification",
+                    new_callable=AsyncMock,
+                ),
             ):
                 before = time.time()
                 await bridge._async_main()
@@ -598,19 +646,24 @@ class TestAsyncMainRestart:
 
     def test_restart_with_server_timestamp(self):
         """Mit Restart-Flag + server_ts: _start_time = server_ts, Cooldown aktiv."""
+
         async def _test():
             ch, bridge = _make_bridge()
             ch._sync_event.set()
 
-            with patch(
-                "elder_berry.comms.bridge.RESTART_FLAG_FILE",
-                MagicMock(exists=MagicMock(return_value=True)),
-            ), patch(
-                "elder_berry.comms.bridge.read_restart_timestamp",
-                return_value=1700000.0,
-            ), patch(
-                "elder_berry.comms.bridge.send_restart_notification",
-                new_callable=AsyncMock,
+            with (
+                patch(
+                    "elder_berry.comms.bridge.RESTART_FLAG_FILE",
+                    MagicMock(exists=MagicMock(return_value=True)),
+                ),
+                patch(
+                    "elder_berry.comms.bridge.read_restart_timestamp",
+                    return_value=1700000.0,
+                ),
+                patch(
+                    "elder_berry.comms.bridge.send_restart_notification",
+                    new_callable=AsyncMock,
+                ),
             ):
                 await bridge._async_main()
 
@@ -621,19 +674,24 @@ class TestAsyncMainRestart:
 
     def test_restart_without_server_timestamp(self):
         """Restart-Flag aber kein server_ts: _start_time = now + 10."""
+
         async def _test():
             ch, bridge = _make_bridge()
             ch._sync_event.set()
 
-            with patch(
-                "elder_berry.comms.bridge.RESTART_FLAG_FILE",
-                MagicMock(exists=MagicMock(return_value=True)),
-            ), patch(
-                "elder_berry.comms.bridge.read_restart_timestamp",
-                return_value=0.0,
-            ), patch(
-                "elder_berry.comms.bridge.send_restart_notification",
-                new_callable=AsyncMock,
+            with (
+                patch(
+                    "elder_berry.comms.bridge.RESTART_FLAG_FILE",
+                    MagicMock(exists=MagicMock(return_value=True)),
+                ),
+                patch(
+                    "elder_berry.comms.bridge.read_restart_timestamp",
+                    return_value=0.0,
+                ),
+                patch(
+                    "elder_berry.comms.bridge.send_restart_notification",
+                    new_callable=AsyncMock,
+                ),
             ):
                 before = time.time()
                 await bridge._async_main()
@@ -647,6 +705,7 @@ class TestAsyncMainRestart:
 # ---------------------------------------------------------------------------
 # _setup_error_alerting
 # ---------------------------------------------------------------------------
+
 
 class TestErrorAlerting:
     def test_setup_with_collector_handler(self):
@@ -685,22 +744,28 @@ class TestErrorAlerting:
 # Scheduler-Manager-Integration
 # ---------------------------------------------------------------------------
 
+
 class TestSchedulerManagerIntegration:
     def test_async_main_creates_scheduler_manager(self):
         """_async_main erstellt und startet den SchedulerManager."""
+
         async def _test():
             ch, bridge = _make_bridge()
             ch._sync_event.set()
 
-            with patch(
-                "elder_berry.comms.bridge.RESTART_FLAG_FILE",
-                MagicMock(exists=MagicMock(return_value=False)),
-            ), patch(
-                "elder_berry.comms.bridge.read_restart_timestamp",
-                return_value=0.0,
-            ), patch(
-                "elder_berry.comms.bridge.send_restart_notification",
-                new_callable=AsyncMock,
+            with (
+                patch(
+                    "elder_berry.comms.bridge.RESTART_FLAG_FILE",
+                    MagicMock(exists=MagicMock(return_value=False)),
+                ),
+                patch(
+                    "elder_berry.comms.bridge.read_restart_timestamp",
+                    return_value=0.0,
+                ),
+                patch(
+                    "elder_berry.comms.bridge.send_restart_notification",
+                    new_callable=AsyncMock,
+                ),
             ):
                 await bridge._async_main()
 
@@ -720,6 +785,7 @@ class TestSchedulerManagerIntegration:
 
     def test_scheduler_with_alert_monitor(self):
         """AlertMonitor wird im SchedulerManager registriert."""
+
         async def _test():
             alert_monitor = MagicMock()
             alert_monitor.is_running = False
@@ -730,15 +796,19 @@ class TestSchedulerManagerIntegration:
             )
             ch._sync_event.set()
 
-            with patch(
-                "elder_berry.comms.bridge.RESTART_FLAG_FILE",
-                MagicMock(exists=MagicMock(return_value=False)),
-            ), patch(
-                "elder_berry.comms.bridge.read_restart_timestamp",
-                return_value=0.0,
-            ), patch(
-                "elder_berry.comms.bridge.send_restart_notification",
-                new_callable=AsyncMock,
+            with (
+                patch(
+                    "elder_berry.comms.bridge.RESTART_FLAG_FILE",
+                    MagicMock(exists=MagicMock(return_value=False)),
+                ),
+                patch(
+                    "elder_berry.comms.bridge.read_restart_timestamp",
+                    return_value=0.0,
+                ),
+                patch(
+                    "elder_berry.comms.bridge.send_restart_notification",
+                    new_callable=AsyncMock,
+                ),
             ):
                 await bridge._async_main()
 
@@ -752,6 +822,7 @@ class TestSchedulerManagerIntegration:
 
     def test_scheduler_with_reminder(self):
         """ReminderScheduler wird registriert wenn vorhanden."""
+
         async def _test():
             reminder = MagicMock()
             reminder.is_running = False
@@ -759,15 +830,19 @@ class TestSchedulerManagerIntegration:
             ch, bridge = _make_bridge(reminder_scheduler=reminder)
             ch._sync_event.set()
 
-            with patch(
-                "elder_berry.comms.bridge.RESTART_FLAG_FILE",
-                MagicMock(exists=MagicMock(return_value=False)),
-            ), patch(
-                "elder_berry.comms.bridge.read_restart_timestamp",
-                return_value=0.0,
-            ), patch(
-                "elder_berry.comms.bridge.send_restart_notification",
-                new_callable=AsyncMock,
+            with (
+                patch(
+                    "elder_berry.comms.bridge.RESTART_FLAG_FILE",
+                    MagicMock(exists=MagicMock(return_value=False)),
+                ),
+                patch(
+                    "elder_berry.comms.bridge.read_restart_timestamp",
+                    return_value=0.0,
+                ),
+                patch(
+                    "elder_berry.comms.bridge.send_restart_notification",
+                    new_callable=AsyncMock,
+                ),
             ):
                 await bridge._async_main()
 
@@ -781,9 +856,11 @@ class TestSchedulerManagerIntegration:
 # Dispatch-Priorität (Reihenfolge der Checks)
 # ---------------------------------------------------------------------------
 
+
 class TestDispatchPriority:
     def test_audio_before_pending(self):
         """Audio-Nachrichten werden VOR dem Pending-Check dispatcht."""
+
         async def _test():
             store = MagicMock(spec=PendingConfirmationStore)
             ch, bridge = _make_bridge(pending_store=store)
@@ -800,6 +877,7 @@ class TestDispatchPriority:
 
     def test_file_before_pending(self):
         """File-Nachrichten werden VOR dem Pending-Check dispatcht."""
+
         async def _test():
             store = MagicMock(spec=PendingConfirmationStore)
             ch, bridge = _make_bridge(pending_store=store)
@@ -816,6 +894,7 @@ class TestDispatchPriority:
 
     def test_pending_before_command(self):
         """Pending-Confirm wird VOR dem Command-Router geprüft."""
+
         async def _test():
             action = PendingAction(
                 action_type="mail_reply",
@@ -843,6 +922,7 @@ class TestDispatchPriority:
 
     def test_command_before_claude(self):
         """Commands haben Priorität vor Claude-Agent."""
+
         async def _test():
             remote = MagicMock()
             remote.parse_command.return_value = "status"

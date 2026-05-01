@@ -1,4 +1,5 @@
 """Tests: IMAPEmailClient – E-Mail lesen via IMAP."""
+
 import email as email_mod
 from datetime import datetime
 from unittest.mock import MagicMock, patch
@@ -11,6 +12,7 @@ from elder_berry.tools.email_client import EmailMessage, IMAPEmailClient
 # ---------------------------------------------------------------------------
 # EmailMessage DTO
 # ---------------------------------------------------------------------------
+
 
 class TestEmailMessage:
     def test_format_short_unread(self):
@@ -49,14 +51,20 @@ class TestEmailMessage:
 
     def test_frozen(self):
         msg = EmailMessage(
-            subject="X", sender="Y", date=None, body_preview="",
+            subject="X",
+            sender="Y",
+            date=None,
+            body_preview="",
         )
         with pytest.raises(AttributeError):
             msg.subject = "Z"
 
     def test_no_date(self):
         msg = EmailMessage(
-            subject="X", sender="Y", date=None, body_preview="",
+            subject="X",
+            sender="Y",
+            date=None,
+            body_preview="",
         )
         assert "?" in msg.format_short()
 
@@ -64,6 +72,7 @@ class TestEmailMessage:
 # ---------------------------------------------------------------------------
 # IMAPEmailClient
 # ---------------------------------------------------------------------------
+
 
 class TestIMAPInit:
     def test_from_secret_store(self):
@@ -97,6 +106,7 @@ class TestIMAPInit:
 # Header-Dekodierung
 # ---------------------------------------------------------------------------
 
+
 class TestDecodeHeader:
     def test_plain_ascii(self):
         assert IMAPEmailClient._decode_header("Hello World") == "Hello World"
@@ -122,6 +132,7 @@ class TestDecodeHeader:
 # ---------------------------------------------------------------------------
 # Body-Extraktion
 # ---------------------------------------------------------------------------
+
 
 class TestExtractBody:
     def test_plain_text(self):
@@ -159,6 +170,7 @@ class TestExtractBody:
 # E-Mail Parsing (vollständig)
 # ---------------------------------------------------------------------------
 
+
 class TestParseEmail:
     def _make_raw_email(
         self,
@@ -195,16 +207,23 @@ class TestParseEmail:
 # Format
 # ---------------------------------------------------------------------------
 
+
 class TestMsgId:
     def test_msg_id_default_empty(self):
         msg = EmailMessage(
-            subject="X", sender="Y", date=None, body_preview="",
+            subject="X",
+            sender="Y",
+            date=None,
+            body_preview="",
         )
         assert msg.msg_id == ""
 
     def test_msg_id_set(self):
         msg = EmailMessage(
-            subject="X", sender="Y", date=None, body_preview="",
+            subject="X",
+            sender="Y",
+            date=None,
+            body_preview="",
             msg_id="12345",
         )
         assert msg.msg_id == "12345"
@@ -293,7 +312,9 @@ class TestGetAttachments:
         attachment.set_payload(b"%PDF-1.4 test content")
         encoders.encode_base64(attachment)
         attachment.add_header(
-            "Content-Disposition", "attachment", filename="rechnung.pdf",
+            "Content-Disposition",
+            "attachment",
+            filename="rechnung.pdf",
         )
         msg.attach(attachment)
 
@@ -324,7 +345,9 @@ class TestGetAttachments:
         client = IMAPEmailClient("host", "user", "pass")
 
         with patch.object(
-            client, "_connect", side_effect=ConnectionError("timeout"),
+            client,
+            "_connect",
+            side_effect=ConnectionError("timeout"),
         ):
             with pytest.raises(RuntimeError, match="fehlgeschlagen"):
                 client.get_attachments("12345")
@@ -344,7 +367,10 @@ class TestDelete:
 
         assert result is True
         mock_conn.uid.assert_called_once_with(
-            "store", b"4523", "+FLAGS", "(\\Deleted)",
+            "store",
+            b"4523",
+            "+FLAGS",
+            "(\\Deleted)",
         )
         mock_conn.expunge.assert_called_once()
         mock_conn.logout.assert_called_once()
@@ -366,7 +392,9 @@ class TestDelete:
         client = IMAPEmailClient("host", "user", "pass")
 
         with patch.object(
-            client, "_connect", side_effect=ConnectionError("timeout"),
+            client,
+            "_connect",
+            side_effect=ConnectionError("timeout"),
         ):
             with pytest.raises(RuntimeError, match="fehlgeschlagen"):
                 client.delete("4523")
@@ -407,13 +435,18 @@ class TestFetchMailsCharset:
     def test_umlaut_criteria_falls_back_to_utf8(self):
         client = IMAPEmailClient("host", "user", "pass")
         mock_conn = self._mock_conn()
-        criteria = '(OR OR SUBJECT "Müller" FROM "Müller" BODY "Müller") SINCE 01-Jan-2026'
+        criteria = (
+            '(OR OR SUBJECT "Müller" FROM "Müller" BODY "Müller") SINCE 01-Jan-2026'
+        )
 
         with patch.object(client, "_connect", return_value=mock_conn):
             client._fetch_mails(criteria, max_results=10, is_unread=False)
 
         mock_conn.uid.assert_called_once_with(
-            "search", "CHARSET", "UTF-8", criteria.encode("utf-8"),
+            "search",
+            "CHARSET",
+            "UTF-8",
+            criteria.encode("utf-8"),
         )
 
     def test_search_with_umlaut_does_not_raise(self):
@@ -511,6 +544,7 @@ class TestFormat:
 # ---------------------------------------------------------------------------
 # get_by_uid()
 # ---------------------------------------------------------------------------
+
 
 class TestGetByUid:
     def test_get_by_uid_success(self):

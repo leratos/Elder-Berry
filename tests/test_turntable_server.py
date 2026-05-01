@@ -1,4 +1,5 @@
 """Tests fuer Drehteller Server-Endpoints mit SimulatedTurntable + TestClient."""
+
 import pytest
 
 try:
@@ -10,6 +11,7 @@ try:
         SimulatedTurntable,
     )
     from elder_berry.robot.server import RobotServer
+
     HAS_FASTAPI = True
 except ImportError:
     HAS_FASTAPI = False
@@ -29,7 +31,6 @@ def _create_server(turntable=None, **kwargs):
 
 
 class TestSystemUpdateEndpoint:
-
     def test_update_no_project_root(self):
         server = _create_server()
         client = TestClient(server.app)
@@ -42,6 +43,7 @@ class TestSystemUpdateEndpoint:
 # ---------------------------------------------------------------------------
 # CORS-Defaults: kein Wildcard-Origin
 # ---------------------------------------------------------------------------
+
 
 class TestRobotServerCORS:
     """RobotServer darf standardmäßig keinen Wildcard-CORS zurückgeben."""
@@ -97,7 +99,6 @@ class TestRobotServerCORS:
 
 
 class TestTurntableEndpoints:
-
     def test_status_no_turntable(self):
         server = _create_server(turntable=None)
         client = TestClient(server.app)

@@ -1,4 +1,5 @@
 """TTS-Engine – Windows-Implementierung via pyttsx3 (SAPI5)."""
+
 import logging
 import platform
 
@@ -54,9 +55,7 @@ class WindowsTTSEngine(TTSEngine):
 
     def set_volume(self, volume: float) -> None:
         if not 0.0 <= volume <= 1.0:
-            raise ValueError(
-                f"Volume muss zwischen 0.0 und 1.0 liegen, war: {volume}"
-            )
+            raise ValueError(f"Volume muss zwischen 0.0 und 1.0 liegen, war: {volume}")
         logger.info("set_volume: %.2f", volume)
         self._engine.setProperty("volume", volume)
 

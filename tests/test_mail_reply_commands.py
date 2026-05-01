@@ -1,4 +1,5 @@
 """Tests für mail_reply Commands (Phase 28)."""
+
 from __future__ import annotations
 
 from datetime import datetime, timezone
@@ -17,6 +18,7 @@ from elder_berry.tools.email_client import EmailMessage
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
+
 
 def _make_email(**kwargs) -> EmailMessage:
     defaults = dict(
@@ -47,6 +49,7 @@ def handler() -> MailCommandHandler:
 # ---------------------------------------------------------------------------
 # MAIL_REPLY_PATTERN
 # ---------------------------------------------------------------------------
+
 
 class TestMailReplyPattern:
     def test_antworte_auf_id(self):
@@ -90,6 +93,7 @@ class TestMailReplyPattern:
 # MAIL_REPLY_MODIFY_PATTERN
 # ---------------------------------------------------------------------------
 
+
 class TestMailReplyModifyPattern:
     def test_match(self):
         m = MAIL_REPLY_MODIFY_PATTERN.match("#123 mach es formeller")
@@ -105,6 +109,7 @@ class TestMailReplyModifyPattern:
 # ---------------------------------------------------------------------------
 # _parse_reply_args
 # ---------------------------------------------------------------------------
+
 
 class TestParseReplyArgs:
     def test_parse_id_and_instruction(self, handler):
@@ -123,6 +128,7 @@ class TestParseReplyArgs:
 # ---------------------------------------------------------------------------
 # _extract_email_address
 # ---------------------------------------------------------------------------
+
 
 class TestExtractEmailAddress:
     def test_with_angle_brackets(self):
@@ -151,6 +157,7 @@ class TestExtractEmailAddress:
 # ---------------------------------------------------------------------------
 # _cmd_mail_reply
 # ---------------------------------------------------------------------------
+
 
 class TestCmdMailReply:
     def test_no_email_client(self):
@@ -217,6 +224,7 @@ class TestCmdMailReply:
 # _cmd_mail_reply_modify
 # ---------------------------------------------------------------------------
 
+
 class TestCmdMailReplyModify:
     def test_modify_success(self, handler):
         handler._email_client.get_by_uid.return_value = _make_email()
@@ -235,6 +243,7 @@ class TestCmdMailReplyModify:
 # Keywords + Descriptions
 # ---------------------------------------------------------------------------
 
+
 class TestMailReplyRegistration:
     def test_keywords(self, handler):
         assert "mail_reply" in handler.keywords
@@ -247,11 +256,9 @@ class TestMailReplyRegistration:
         """MAIL_REPLY_PATTERN muss VOR MAIL_ID_PATTERN stehen."""
         patterns = handler.patterns
         reply_idx = next(
-            i for i, (_, cmd, *_) in enumerate(patterns)
-            if cmd == "mail_reply"
+            i for i, (_, cmd, *_) in enumerate(patterns) if cmd == "mail_reply"
         )
         id_idx = next(
-            i for i, (_, cmd, *_) in enumerate(patterns)
-            if cmd == "mail_by_id"
+            i for i, (_, cmd, *_) in enumerate(patterns) if cmd == "mail_by_id"
         )
         assert reply_idx < id_idx

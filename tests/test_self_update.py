@@ -1,4 +1,5 @@
 """Tests: Self-Update, Backup/Rollback, SelfCheck – aufgeteilt in eigene Handler."""
+
 from __future__ import annotations
 
 import json
@@ -27,6 +28,7 @@ from elder_berry.robot.protocol import ApiResponse
 # Fixtures
 # ---------------------------------------------------------------------------
 
+
 @pytest.fixture
 def handler(tmp_path):
     """UpdateCommandHandler mit temporärem project_root."""
@@ -48,6 +50,7 @@ def selfcheck_handler(tmp_path):
 # ---------------------------------------------------------------------------
 # Pattern-Tests
 # ---------------------------------------------------------------------------
+
 
 class TestUpdatePattern:
     def test_update(self):
@@ -80,6 +83,7 @@ class TestUpdatePattern:
 # simple_commands / keywords
 # ---------------------------------------------------------------------------
 
+
 class TestUpdateRegistration:
     def test_update_in_simple_commands(self, handler):
         assert "update" in handler.simple_commands
@@ -100,6 +104,7 @@ class TestUpdateRegistration:
 # execute() – Kein project_root
 # ---------------------------------------------------------------------------
 
+
 class TestUpdateNoRoot:
     def test_no_project_root(self, handler_no_root):
         result = handler_no_root.execute("update", "update dich")
@@ -110,6 +115,7 @@ class TestUpdateNoRoot:
 # ---------------------------------------------------------------------------
 # execute() – Mock-basierte Tests
 # ---------------------------------------------------------------------------
+
 
 def _make_run_result(success: bool, output: str = "") -> MagicMock:
     """Hilfsfunktion: Erzeugt ein subprocess.CompletedProcess Mock."""
@@ -130,9 +136,11 @@ class TestUpdateExecute:
 
     def test_git_fetch_fails(self, handler):
         """git fetch schlägt fehl → Fehler, kein Pull."""
-        with self._patch_run([
-            _make_run_result(False, "fatal: could not read remote"),  # fetch
-        ]):
+        with self._patch_run(
+            [
+                _make_run_result(False, "fatal: could not read remote"),  # fetch
+            ]
+        ):
             result = handler.execute("update", "update")
         assert not result.success
         assert "fetch" in result.text.lower()
@@ -140,10 +148,12 @@ class TestUpdateExecute:
 
     def test_already_up_to_date(self, handler):
         """0 Commits behind → 'Alles aktuell', kein Restart."""
-        with self._patch_run([
-            _make_run_result(True),            # fetch
-            _make_run_result(True, "0\n"),     # rev-list (0 behind)
-        ]):
+        with self._patch_run(
+            [
+                _make_run_result(True),  # fetch
+                _make_run_result(True, "0\n"),  # rev-list (0 behind)
+            ]
+        ):
             result = handler.execute("update", "update")
         assert result.success
         assert "aktuell" in result.text.lower()
@@ -151,11 +161,13 @@ class TestUpdateExecute:
 
     def test_local_changes_abort(self, handler):
         """Lokale Änderungen → Update abgebrochen."""
-        with self._patch_run([
-            _make_run_result(True),               # fetch
-            _make_run_result(True, "2\n"),         # rev-list (2 behind)
-            _make_run_result(True, "M  src/x.py\n"),  # status (dirty)
-        ]):
+        with self._patch_run(
+            [
+                _make_run_result(True),  # fetch
+                _make_run_result(True, "2\n"),  # rev-list (2 behind)
+                _make_run_result(True, "M  src/x.py\n"),  # status (dirty)
+            ]
+        ):
             result = handler.execute("update", "update")
         assert not result.success
         assert "lokale änderungen" in result.text.lower()
@@ -163,15 +175,17 @@ class TestUpdateExecute:
 
     def test_git_pull_fails(self, handler):
         """git pull schlägt fehl → Fehler, kein Restart."""
-        with self._patch_run([
-            _make_run_result(True),           # fetch
-            _make_run_result(True, "1\n"),    # rev-list (1 behind)
-            _make_run_result(True, ""),       # status (clean)
-            _make_run_result(True, "abc123\n"),  # rev-parse old (short)
-            _make_run_result(True, "abc123full\n"),  # rev-parse old (full, backup)
-            _make_run_result(True, "main\n"),  # rev-parse branch (backup)
-            _make_run_result(False, "CONFLICT: merge conflict"),  # pull
-        ]):
+        with self._patch_run(
+            [
+                _make_run_result(True),  # fetch
+                _make_run_result(True, "1\n"),  # rev-list (1 behind)
+                _make_run_result(True, ""),  # status (clean)
+                _make_run_result(True, "abc123\n"),  # rev-parse old (short)
+                _make_run_result(True, "abc123full\n"),  # rev-parse old (full, backup)
+                _make_run_result(True, "main\n"),  # rev-parse branch (backup)
+                _make_run_result(False, "CONFLICT: merge conflict"),  # pull
+            ]
+        ):
             result = handler.execute("update", "update")
         assert not result.success
         assert "pull fehlgeschlagen" in result.text.lower()
@@ -179,18 +193,20 @@ class TestUpdateExecute:
 
     def test_success_no_dep_change(self, handler):
         """Erfolg ohne Dependency-Änderung → restart=True."""
-        with self._patch_run([
-            _make_run_result(True),              # fetch
-            _make_run_result(True, "1\n"),        # rev-list
-            _make_run_result(True, ""),           # status clean
-            _make_run_result(True, "abc123\n"),   # rev-parse old (short)
-            _make_run_result(True, "abc123full\n"),  # rev-parse old (full, backup)
-            _make_run_result(True, "main\n"),     # rev-parse branch (backup)
-            _make_run_result(True, "Fast-forward"),  # pull
-            _make_run_result(True, "def456\n"),   # rev-parse new
-            _make_run_result(True, "feat: add update command\n"),  # git log
-            _make_run_result(True, "src/x.py\n"),  # diff --name-only (no pyproject)
-        ]):
+        with self._patch_run(
+            [
+                _make_run_result(True),  # fetch
+                _make_run_result(True, "1\n"),  # rev-list
+                _make_run_result(True, ""),  # status clean
+                _make_run_result(True, "abc123\n"),  # rev-parse old (short)
+                _make_run_result(True, "abc123full\n"),  # rev-parse old (full, backup)
+                _make_run_result(True, "main\n"),  # rev-parse branch (backup)
+                _make_run_result(True, "Fast-forward"),  # pull
+                _make_run_result(True, "def456\n"),  # rev-parse new
+                _make_run_result(True, "feat: add update command\n"),  # git log
+                _make_run_result(True, "src/x.py\n"),  # diff --name-only (no pyproject)
+            ]
+        ):
             result = handler.execute("update", "update")
         assert result.success
         assert result.restart
@@ -199,19 +215,23 @@ class TestUpdateExecute:
 
     def test_success_with_dep_change(self, handler):
         """Erfolg mit pyproject.toml geändert → pip install läuft, restart=True."""
-        with self._patch_run([
-            _make_run_result(True),               # fetch
-            _make_run_result(True, "1\n"),         # rev-list
-            _make_run_result(True, ""),            # status clean
-            _make_run_result(True, "abc123\n"),    # rev-parse old (short)
-            _make_run_result(True, "abc123full\n"),  # rev-parse old (full, backup)
-            _make_run_result(True, "main\n"),      # rev-parse branch (backup)
-            _make_run_result(True, "Fast-forward"),   # pull
-            _make_run_result(True, "def456\n"),    # rev-parse new
-            _make_run_result(True, "feat: deps\n"),   # git log
-            _make_run_result(True, "pyproject.toml\nsrc/x.py\n"),  # diff (pyproject changed)
-            _make_run_result(True, ""),            # pip install
-        ]):
+        with self._patch_run(
+            [
+                _make_run_result(True),  # fetch
+                _make_run_result(True, "1\n"),  # rev-list
+                _make_run_result(True, ""),  # status clean
+                _make_run_result(True, "abc123\n"),  # rev-parse old (short)
+                _make_run_result(True, "abc123full\n"),  # rev-parse old (full, backup)
+                _make_run_result(True, "main\n"),  # rev-parse branch (backup)
+                _make_run_result(True, "Fast-forward"),  # pull
+                _make_run_result(True, "def456\n"),  # rev-parse new
+                _make_run_result(True, "feat: deps\n"),  # git log
+                _make_run_result(
+                    True, "pyproject.toml\nsrc/x.py\n"
+                ),  # diff (pyproject changed)
+                _make_run_result(True, ""),  # pip install
+            ]
+        ):
             result = handler.execute("update", "update")
         assert result.success
         assert result.restart
@@ -219,19 +239,21 @@ class TestUpdateExecute:
 
     def test_pip_install_fails_not_fatal(self, handler):
         """pip install fehlgeschlagen → Warnung (nicht fatal), restart=True."""
-        with self._patch_run([
-            _make_run_result(True),               # fetch
-            _make_run_result(True, "1\n"),         # rev-list
-            _make_run_result(True, ""),            # status clean
-            _make_run_result(True, "abc123\n"),    # rev-parse old (short)
-            _make_run_result(True, "abc123full\n"),  # rev-parse old (full, backup)
-            _make_run_result(True, "main\n"),      # rev-parse branch (backup)
-            _make_run_result(True, "Fast-forward"),   # pull
-            _make_run_result(True, "def456\n"),    # rev-parse new
-            _make_run_result(True, ""),            # git log
-            _make_run_result(True, "pyproject.toml\n"),  # diff
-            _make_run_result(False, "ERROR: Could not find package"),  # pip fail
-        ]):
+        with self._patch_run(
+            [
+                _make_run_result(True),  # fetch
+                _make_run_result(True, "1\n"),  # rev-list
+                _make_run_result(True, ""),  # status clean
+                _make_run_result(True, "abc123\n"),  # rev-parse old (short)
+                _make_run_result(True, "abc123full\n"),  # rev-parse old (full, backup)
+                _make_run_result(True, "main\n"),  # rev-parse branch (backup)
+                _make_run_result(True, "Fast-forward"),  # pull
+                _make_run_result(True, "def456\n"),  # rev-parse new
+                _make_run_result(True, ""),  # git log
+                _make_run_result(True, "pyproject.toml\n"),  # diff
+                _make_run_result(False, "ERROR: Could not find package"),  # pip fail
+            ]
+        ):
             result = handler.execute("update", "update")
         assert result.success
         assert result.restart
@@ -242,10 +264,12 @@ class TestUpdateExecute:
 # run_cmd() – Helper-Tests
 # ---------------------------------------------------------------------------
 
+
 class TestRunCmd:
     def test_timeout(self, tmp_path):
         """Timeout → success=False."""
         from elder_berry.comms.commands.cmd_utils import run_cmd
+
         with patch(
             "elder_berry.comms.commands.cmd_utils.subprocess.run",
             side_effect=__import__("subprocess").TimeoutExpired(cmd=["x"], timeout=1),
@@ -257,6 +281,7 @@ class TestRunCmd:
     def test_file_not_found(self, tmp_path):
         """FileNotFoundError → success=False."""
         from elder_berry.comms.commands.cmd_utils import run_cmd
+
         with patch(
             "elder_berry.comms.commands.cmd_utils.subprocess.run",
             side_effect=FileNotFoundError,
@@ -268,6 +293,7 @@ class TestRunCmd:
     def test_success(self, tmp_path):
         """Erfolgreicher Befehl → success=True."""
         from elder_berry.comms.commands.cmd_utils import run_cmd
+
         with patch(
             "elder_berry.comms.commands.cmd_utils.subprocess.run",
             return_value=_make_run_result(True, "hello\n"),
@@ -286,6 +312,7 @@ class TestRunCmd:
 # ===========================================================================
 # Rollback-Pattern-Tests
 # ===========================================================================
+
 
 class TestRollbackPattern:
     def test_rollback(self):
@@ -314,6 +341,7 @@ class TestRollbackPattern:
 # ===========================================================================
 # SelfCheck-Pattern-Tests
 # ===========================================================================
+
 
 class TestSelfCheckPattern:
     def test_selfcheck(self):
@@ -352,6 +380,7 @@ class TestSelfCheckPattern:
 # Registration-Tests
 # ===========================================================================
 
+
 class TestNewCommandRegistration:
     def test_rollback_in_simple_commands(self, handler):
         assert "rollback" in handler.simple_commands
@@ -379,6 +408,7 @@ class TestNewCommandRegistration:
 # ===========================================================================
 # Backup – Schreiben und Lesen
 # ===========================================================================
+
 
 class TestBackupIO:
     def test_write_and_read_backup(self, tmp_path):
@@ -432,6 +462,7 @@ class TestBackupIO:
 # Update schreibt Backup
 # ===========================================================================
 
+
 class TestUpdateWritesBackup:
     def _patch_run(self, side_effects):
         return patch(
@@ -442,20 +473,25 @@ class TestUpdateWritesBackup:
     def test_update_creates_backup(self, tmp_path):
         """Erfolgreicher Update erstellt Backup-Datei."""
         handler = UpdateCommandHandler(project_root=tmp_path)
-        with self._patch_run([
-            _make_run_result(True),               # fetch
-            _make_run_result(True, "1\n"),          # rev-list
-            _make_run_result(True, ""),             # status clean
-            _make_run_result(True, "abc123\n"),     # rev-parse short
-            _make_run_result(True, "abc123fullhash\n"),  # rev-parse full
-            _make_run_result(True, "main\n"),       # rev-parse branch
-            _make_run_result(True, "Fast-forward"),    # pull
-            _make_run_result(True, "def456\n"),     # rev-parse new
-            _make_run_result(True, "feat: x\n"),    # git log
-            _make_run_result(True, "src/x.py\n"),   # diff --name-only
-        ]), patch(
-            "elder_berry.comms.commands.update_commands.DEFAULT_BACKUP_DIR",
-            tmp_path,
+        with (
+            self._patch_run(
+                [
+                    _make_run_result(True),  # fetch
+                    _make_run_result(True, "1\n"),  # rev-list
+                    _make_run_result(True, ""),  # status clean
+                    _make_run_result(True, "abc123\n"),  # rev-parse short
+                    _make_run_result(True, "abc123fullhash\n"),  # rev-parse full
+                    _make_run_result(True, "main\n"),  # rev-parse branch
+                    _make_run_result(True, "Fast-forward"),  # pull
+                    _make_run_result(True, "def456\n"),  # rev-parse new
+                    _make_run_result(True, "feat: x\n"),  # git log
+                    _make_run_result(True, "src/x.py\n"),  # diff --name-only
+                ]
+            ),
+            patch(
+                "elder_berry.comms.commands.update_commands.DEFAULT_BACKUP_DIR",
+                tmp_path,
+            ),
         ):
             result = handler.execute("update", "update")
 
@@ -474,6 +510,7 @@ class TestUpdateWritesBackup:
 # ===========================================================================
 # Rollback-Tests
 # ===========================================================================
+
 
 class TestRollbackExecute:
     def _patch_run(self, side_effects):
@@ -508,11 +545,16 @@ class TestRollbackExecute:
             json.dumps({"hash": "deadbeef", "branch": "main", "timestamp": "t"}),
             encoding="utf-8",
         )
-        with self._patch_run([
-            _make_run_result(False, "fatal: not a valid object"),  # cat-file
-        ]), patch(
-            "elder_berry.comms.commands.update_commands.DEFAULT_BACKUP_DIR",
-            tmp_path,
+        with (
+            self._patch_run(
+                [
+                    _make_run_result(False, "fatal: not a valid object"),  # cat-file
+                ]
+            ),
+            patch(
+                "elder_berry.comms.commands.update_commands.DEFAULT_BACKUP_DIR",
+                tmp_path,
+            ),
         ):
             result = handler.execute("rollback", "rollback")
         assert not result.success
@@ -526,12 +568,17 @@ class TestRollbackExecute:
             json.dumps({"hash": "abc123", "branch": "main", "timestamp": "t"}),
             encoding="utf-8",
         )
-        with self._patch_run([
-            _make_run_result(True, "commit"),       # cat-file
-            _make_run_result(False, "error: reset"),  # reset --hard
-        ]), patch(
-            "elder_berry.comms.commands.update_commands.DEFAULT_BACKUP_DIR",
-            tmp_path,
+        with (
+            self._patch_run(
+                [
+                    _make_run_result(True, "commit"),  # cat-file
+                    _make_run_result(False, "error: reset"),  # reset --hard
+                ]
+            ),
+            patch(
+                "elder_berry.comms.commands.update_commands.DEFAULT_BACKUP_DIR",
+                tmp_path,
+            ),
         ):
             result = handler.execute("rollback", "rollback")
         assert not result.success
@@ -545,13 +592,18 @@ class TestRollbackExecute:
             json.dumps({"hash": "abc123full", "branch": "main", "timestamp": "t"}),
             encoding="utf-8",
         )
-        with self._patch_run([
-            _make_run_result(True, "commit"),        # cat-file
-            _make_run_result(True, "HEAD is now at"), # reset --hard
-            _make_run_result(True, ""),               # pip install
-        ]), patch(
-            "elder_berry.comms.commands.update_commands.DEFAULT_BACKUP_DIR",
-            tmp_path,
+        with (
+            self._patch_run(
+                [
+                    _make_run_result(True, "commit"),  # cat-file
+                    _make_run_result(True, "HEAD is now at"),  # reset --hard
+                    _make_run_result(True, ""),  # pip install
+                ]
+            ),
+            patch(
+                "elder_berry.comms.commands.update_commands.DEFAULT_BACKUP_DIR",
+                tmp_path,
+            ),
         ):
             result = handler.execute("rollback", "rollback")
 
@@ -569,13 +621,18 @@ class TestRollbackExecute:
             json.dumps({"hash": "abc123", "branch": "main", "timestamp": "t"}),
             encoding="utf-8",
         )
-        with self._patch_run([
-            _make_run_result(True, "commit"),
-            _make_run_result(True, "HEAD is now at"),
-            _make_run_result(False, "ERROR: pip"),    # pip fail
-        ]), patch(
-            "elder_berry.comms.commands.update_commands.DEFAULT_BACKUP_DIR",
-            tmp_path,
+        with (
+            self._patch_run(
+                [
+                    _make_run_result(True, "commit"),
+                    _make_run_result(True, "HEAD is now at"),
+                    _make_run_result(False, "ERROR: pip"),  # pip fail
+                ]
+            ),
+            patch(
+                "elder_berry.comms.commands.update_commands.DEFAULT_BACKUP_DIR",
+                tmp_path,
+            ),
         ):
             result = handler.execute("rollback", "rollback")
         assert result.success
@@ -586,6 +643,7 @@ class TestRollbackExecute:
 # ===========================================================================
 # SelfCheck-Tests
 # ===========================================================================
+
 
 class TestSelfCheckExecute:
     def _patch_run(self, side_effects):
@@ -606,21 +664,28 @@ class TestSelfCheckExecute:
         mock_store = MagicMock()
         mock_store.list_keys.return_value = ["key1"]
         handler = SelfcheckCommandHandler(
-            project_root=tmp_path, secret_store=mock_store,
+            project_root=tmp_path,
+            secret_store=mock_store,
         )
 
-        with self._patch_run([
-            _make_run_result(True, "main\n"),       # branch
-            _make_run_result(True, ""),              # status clean
-            _make_run_result(True, ""),              # fetch
-            _make_run_result(True, "0\n"),           # rev-list behind
-            _make_run_result(True, ""),              # pip check
-        ]), patch(
-            "elder_berry.comms.commands.selfcheck_commands.DEFAULT_BACKUP_DIR",
-            tmp_path,
-        ), patch(
-            "urllib.request.urlopen",
-        ) as mock_urlopen:
+        with (
+            self._patch_run(
+                [
+                    _make_run_result(True, "main\n"),  # branch
+                    _make_run_result(True, ""),  # status clean
+                    _make_run_result(True, ""),  # fetch
+                    _make_run_result(True, "0\n"),  # rev-list behind
+                    _make_run_result(True, ""),  # pip check
+                ]
+            ),
+            patch(
+                "elder_berry.comms.commands.selfcheck_commands.DEFAULT_BACKUP_DIR",
+                tmp_path,
+            ),
+            patch(
+                "urllib.request.urlopen",
+            ) as mock_urlopen,
+        ):
             # Ollama mock
             mock_resp = MagicMock()
             mock_resp.__enter__ = MagicMock(return_value=mock_resp)
@@ -639,18 +704,24 @@ class TestSelfCheckExecute:
         """Uncommitted changes → Warnung."""
         handler = SelfcheckCommandHandler(project_root=tmp_path)
 
-        with self._patch_run([
-            _make_run_result(True, "main\n"),        # branch
-            _make_run_result(True, "M src/x.py\n"),  # status dirty
-            _make_run_result(True, ""),               # fetch
-            _make_run_result(True, "0\n"),            # rev-list
-            _make_run_result(True, ""),               # pip check
-        ]), patch(
-            "elder_berry.comms.commands.selfcheck_commands.DEFAULT_BACKUP_DIR",
-            tmp_path,
-        ), patch(
-            "urllib.request.urlopen",
-            side_effect=Exception("connection refused"),
+        with (
+            self._patch_run(
+                [
+                    _make_run_result(True, "main\n"),  # branch
+                    _make_run_result(True, "M src/x.py\n"),  # status dirty
+                    _make_run_result(True, ""),  # fetch
+                    _make_run_result(True, "0\n"),  # rev-list
+                    _make_run_result(True, ""),  # pip check
+                ]
+            ),
+            patch(
+                "elder_berry.comms.commands.selfcheck_commands.DEFAULT_BACKUP_DIR",
+                tmp_path,
+            ),
+            patch(
+                "urllib.request.urlopen",
+                side_effect=Exception("connection refused"),
+            ),
         ):
             result = handler.execute("selfcheck", "selfcheck")
 
@@ -660,18 +731,24 @@ class TestSelfCheckExecute:
         """Hinter Remote → Warnung mit Commit-Anzahl."""
         handler = SelfcheckCommandHandler(project_root=tmp_path)
 
-        with self._patch_run([
-            _make_run_result(True, "main\n"),
-            _make_run_result(True, ""),
-            _make_run_result(True, ""),               # fetch
-            _make_run_result(True, "3\n"),             # 3 behind
-            _make_run_result(True, ""),                # pip check
-        ]), patch(
-            "elder_berry.comms.commands.selfcheck_commands.DEFAULT_BACKUP_DIR",
-            tmp_path,
-        ), patch(
-            "urllib.request.urlopen",
-            side_effect=Exception("connection refused"),
+        with (
+            self._patch_run(
+                [
+                    _make_run_result(True, "main\n"),
+                    _make_run_result(True, ""),
+                    _make_run_result(True, ""),  # fetch
+                    _make_run_result(True, "3\n"),  # 3 behind
+                    _make_run_result(True, ""),  # pip check
+                ]
+            ),
+            patch(
+                "elder_berry.comms.commands.selfcheck_commands.DEFAULT_BACKUP_DIR",
+                tmp_path,
+            ),
+            patch(
+                "urllib.request.urlopen",
+                side_effect=Exception("connection refused"),
+            ),
         ):
             result = handler.execute("selfcheck", "selfcheck")
 
@@ -681,18 +758,24 @@ class TestSelfCheckExecute:
         """Ollama nicht erreichbar → Fehler."""
         handler = SelfcheckCommandHandler(project_root=tmp_path)
 
-        with self._patch_run([
-            _make_run_result(True, "main\n"),
-            _make_run_result(True, ""),
-            _make_run_result(True, ""),
-            _make_run_result(True, "0\n"),
-            _make_run_result(True, ""),               # pip check
-        ]), patch(
-            "elder_berry.comms.commands.selfcheck_commands.DEFAULT_BACKUP_DIR",
-            tmp_path,
-        ), patch(
-            "urllib.request.urlopen",
-            side_effect=Exception("connection refused"),
+        with (
+            self._patch_run(
+                [
+                    _make_run_result(True, "main\n"),
+                    _make_run_result(True, ""),
+                    _make_run_result(True, ""),
+                    _make_run_result(True, "0\n"),
+                    _make_run_result(True, ""),  # pip check
+                ]
+            ),
+            patch(
+                "elder_berry.comms.commands.selfcheck_commands.DEFAULT_BACKUP_DIR",
+                tmp_path,
+            ),
+            patch(
+                "urllib.request.urlopen",
+                side_effect=Exception("connection refused"),
+            ),
         ):
             result = handler.execute("selfcheck", "selfcheck")
 
@@ -704,21 +787,28 @@ class TestSelfCheckExecute:
         mock_store = MagicMock()
         mock_store.list_keys.side_effect = Exception("decrypt failed")
         handler = SelfcheckCommandHandler(
-            project_root=tmp_path, secret_store=mock_store,
+            project_root=tmp_path,
+            secret_store=mock_store,
         )
 
-        with self._patch_run([
-            _make_run_result(True, "main\n"),
-            _make_run_result(True, ""),
-            _make_run_result(True, ""),
-            _make_run_result(True, "0\n"),
-            _make_run_result(True, ""),
-        ]), patch(
-            "elder_berry.comms.commands.selfcheck_commands.DEFAULT_BACKUP_DIR",
-            tmp_path,
-        ), patch(
-            "urllib.request.urlopen",
-            side_effect=Exception("refused"),
+        with (
+            self._patch_run(
+                [
+                    _make_run_result(True, "main\n"),
+                    _make_run_result(True, ""),
+                    _make_run_result(True, ""),
+                    _make_run_result(True, "0\n"),
+                    _make_run_result(True, ""),
+                ]
+            ),
+            patch(
+                "elder_berry.comms.commands.selfcheck_commands.DEFAULT_BACKUP_DIR",
+                tmp_path,
+            ),
+            patch(
+                "urllib.request.urlopen",
+                side_effect=Exception("refused"),
+            ),
         ):
             result = handler.execute("selfcheck", "selfcheck")
 
@@ -731,26 +821,34 @@ class TestSelfCheckExecute:
         handler = SelfcheckCommandHandler(project_root=tmp_path)
         backup_file = tmp_path / BACKUP_FILENAME
         backup_file.write_text(
-            json.dumps({
-                "hash": "abc123fullhash",
-                "branch": "main",
-                "timestamp": "2026-03-19T18:30:00",
-            }),
+            json.dumps(
+                {
+                    "hash": "abc123fullhash",
+                    "branch": "main",
+                    "timestamp": "2026-03-19T18:30:00",
+                }
+            ),
             encoding="utf-8",
         )
 
-        with self._patch_run([
-            _make_run_result(True, "main\n"),
-            _make_run_result(True, ""),
-            _make_run_result(True, ""),
-            _make_run_result(True, "0\n"),
-            _make_run_result(True, ""),
-        ]), patch(
-            "elder_berry.comms.commands.selfcheck_commands.DEFAULT_BACKUP_DIR",
-            tmp_path,
-        ), patch(
-            "urllib.request.urlopen",
-            side_effect=Exception("refused"),
+        with (
+            self._patch_run(
+                [
+                    _make_run_result(True, "main\n"),
+                    _make_run_result(True, ""),
+                    _make_run_result(True, ""),
+                    _make_run_result(True, "0\n"),
+                    _make_run_result(True, ""),
+                ]
+            ),
+            patch(
+                "elder_berry.comms.commands.selfcheck_commands.DEFAULT_BACKUP_DIR",
+                tmp_path,
+            ),
+            patch(
+                "urllib.request.urlopen",
+                side_effect=Exception("refused"),
+            ),
         ):
             result = handler.execute("selfcheck", "selfcheck")
 
@@ -761,18 +859,24 @@ class TestSelfCheckExecute:
         """pip check findet Konflikte → Warnung."""
         handler = SelfcheckCommandHandler(project_root=tmp_path)
 
-        with self._patch_run([
-            _make_run_result(True, "main\n"),
-            _make_run_result(True, ""),
-            _make_run_result(True, ""),
-            _make_run_result(True, "0\n"),
-            _make_run_result(False, "package-x 1.0 requires y>=2.0\n"),
-        ]), patch(
-            "elder_berry.comms.commands.selfcheck_commands.DEFAULT_BACKUP_DIR",
-            tmp_path,
-        ), patch(
-            "urllib.request.urlopen",
-            side_effect=Exception("refused"),
+        with (
+            self._patch_run(
+                [
+                    _make_run_result(True, "main\n"),
+                    _make_run_result(True, ""),
+                    _make_run_result(True, ""),
+                    _make_run_result(True, "0\n"),
+                    _make_run_result(False, "package-x 1.0 requires y>=2.0\n"),
+                ]
+            ),
+            patch(
+                "elder_berry.comms.commands.selfcheck_commands.DEFAULT_BACKUP_DIR",
+                tmp_path,
+            ),
+            patch(
+                "urllib.request.urlopen",
+                side_effect=Exception("refused"),
+            ),
         ):
             result = handler.execute("selfcheck", "selfcheck")
 
@@ -783,6 +887,7 @@ class TestSelfCheckExecute:
 # ---------------------------------------------------------------------------
 # RPi-Update Pattern Tests
 # ---------------------------------------------------------------------------
+
 
 class TestUpdateRpiPattern:
     def test_update_rpi(self):
@@ -825,6 +930,7 @@ class TestUpdateAllPattern:
 # RPi-Update Registration Tests
 # ---------------------------------------------------------------------------
 
+
 class TestUpdateRpiRegistration:
     def test_simple_commands(self, handler):
         assert "update rpi" in handler.simple_commands
@@ -850,16 +956,21 @@ class TestUpdateRpiRegistration:
 # RPi-Update Execute Tests
 # ---------------------------------------------------------------------------
 
+
 class TestUpdateRpiExecute:
     def test_no_robot_client(self, handler):
         result = handler.execute("update_rpi", "update rpi")
         assert result.success is False
-        assert "nicht verfügbar" in result.text.lower() or "nicht verbunden" in result.text.lower()
+        assert (
+            "nicht verfügbar" in result.text.lower()
+            or "nicht verbunden" in result.text.lower()
+        )
 
     def test_rpi_update_success(self, tmp_path):
         robot = MagicMock()
         robot.update_rpi.return_value = ApiResponse(
-            success=True, message="2 Commits | Code aktualisiert | Neustart",
+            success=True,
+            message="2 Commits | Code aktualisiert | Neustart",
         )
         h = UpdateCommandHandler(project_root=tmp_path, robot_client=robot)
         result = h.execute("update_rpi", "update rpi")
@@ -870,7 +981,8 @@ class TestUpdateRpiExecute:
     def test_rpi_update_failure(self, tmp_path):
         robot = MagicMock()
         robot.update_rpi.return_value = ApiResponse(
-            success=False, message="Git Pull fehlgeschlagen",
+            success=False,
+            message="Git Pull fehlgeschlagen",
         )
         h = UpdateCommandHandler(project_root=tmp_path, robot_client=robot)
         result = h.execute("update_rpi", "update rpi")
@@ -890,10 +1002,14 @@ class TestUpdateAllExecute:
     def test_update_all_both_succeed(self, mock_tower_update, tmp_path):
         robot = MagicMock()
         robot.update_rpi.return_value = ApiResponse(
-            success=True, message="RPi5 aktualisiert",
+            success=True,
+            message="RPi5 aktualisiert",
         )
         mock_tower_update.return_value = CommandResult(
-            command="update", success=True, text="Tower aktualisiert", restart=True,
+            command="update",
+            success=True,
+            text="Tower aktualisiert",
+            restart=True,
         )
         h = UpdateCommandHandler(project_root=tmp_path, robot_client=robot)
         result = h.execute("update_all", "update alles")
@@ -905,8 +1021,14 @@ class TestUpdateAllExecute:
     @patch.object(UpdateCommandHandler, "_cmd_update")
     def test_update_all_no_robot(self, mock_tower_update, tmp_path):
         mock_tower_update.return_value = CommandResult(
-            command="update", success=True, text="Alles aktuell", restart=False,
+            command="update",
+            success=True,
+            text="Alles aktuell",
+            restart=False,
         )
         h = UpdateCommandHandler(project_root=tmp_path, robot_client=None)
         result = h.execute("update_all", "update alles")
-        assert "uebersprungen" in result.text.lower() or "nicht verbunden" in result.text.lower()
+        assert (
+            "uebersprungen" in result.text.lower()
+            or "nicht verbunden" in result.text.lower()
+        )

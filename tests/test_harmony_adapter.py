@@ -1,4 +1,5 @@
 """Tests fuer HarmonyAdapter -- aioharmony komplett gemockt."""
+
 from __future__ import annotations
 
 import asyncio
@@ -102,6 +103,7 @@ def mock_harmony_api():
 
 # -- Initialisierung ------------------------------------------------------- #
 
+
 class TestInit:
     def test_init_default_path(self):
         a = HarmonyAdapter(hub_ip="1.2.3.4")
@@ -115,6 +117,7 @@ class TestInit:
 
 
 # -- Backup-Config --------------------------------------------------------- #
+
 
 class TestBackupConfig:
     def test_load_backup_success(self, adapter: HarmonyAdapter):
@@ -143,6 +146,7 @@ class TestBackupConfig:
 
 
 # -- Verbindung ------------------------------------------------------------ #
+
 
 class TestConnect:
     def test_connect_success(self, adapter, mock_harmony_api):
@@ -219,6 +223,7 @@ class TestConnect:
 
 
 # -- Aktivitaeten ---------------------------------------------------------- #
+
 
 class TestActivities:
     def test_start_activity_by_name(self, adapter, mock_harmony_api):
@@ -299,7 +304,9 @@ class TestActivities:
         assert result == "Fernsehen"
 
     def test_get_current_activity_none_on_poweroff(
-        self, adapter, mock_harmony_api,
+        self,
+        adapter,
+        mock_harmony_api,
     ):
         adapter._client = mock_harmony_api
         adapter._connected = True
@@ -330,8 +337,8 @@ class TestActivities:
 
 # -- Geraetebefehle -------------------------------------------------------- #
 
-class TestCommands:
 
+class TestCommands:
     @pytest.fixture(autouse=True)
     def _mock_aioharmony(self):
         """Stellt sicher dass aioharmony.harmonyapi importierbar ist."""
@@ -349,9 +356,12 @@ class TestCommands:
         adapter._connected = True
         adapter._config = SAMPLE_CONFIG
 
-        result = _run(adapter.send_command(
-            "Denon AVR-X3500H", "VolumeUp",
-        ))
+        result = _run(
+            adapter.send_command(
+                "Denon AVR-X3500H",
+                "VolumeUp",
+            )
+        )
 
         assert result is True
         mock_harmony_api.send_commands.assert_awaited_once()
@@ -369,9 +379,12 @@ class TestCommands:
         adapter._connected = True
         adapter._config = SAMPLE_CONFIG
 
-        result = _run(adapter.send_command(
-            "Denon AVR-X3500H", "FlyToMoon",
-        ))
+        result = _run(
+            adapter.send_command(
+                "Denon AVR-X3500H",
+                "FlyToMoon",
+            )
+        )
         assert result is False
 
     def test_send_command_repeat(self, adapter, mock_harmony_api):
@@ -379,36 +392,50 @@ class TestCommands:
         adapter._connected = True
         adapter._config = SAMPLE_CONFIG
 
-        result = _run(adapter.send_command(
-            "Denon AVR-X3500H", "VolumeUp", repeat=3,
-        ))
+        result = _run(
+            adapter.send_command(
+                "Denon AVR-X3500H",
+                "VolumeUp",
+                repeat=3,
+            )
+        )
 
         assert result is True
         assert mock_harmony_api.send_commands.await_count == 3
 
     def test_send_command_case_insensitive_device(
-        self, adapter, mock_harmony_api,
+        self,
+        adapter,
+        mock_harmony_api,
     ):
         adapter._client = mock_harmony_api
         adapter._connected = True
         adapter._config = SAMPLE_CONFIG
 
-        result = _run(adapter.send_command(
-            "denon avr-x3500h", "VolumeUp",
-        ))
+        result = _run(
+            adapter.send_command(
+                "denon avr-x3500h",
+                "VolumeUp",
+            )
+        )
 
         assert result is True
 
     def test_send_command_case_insensitive_command(
-        self, adapter, mock_harmony_api,
+        self,
+        adapter,
+        mock_harmony_api,
     ):
         adapter._client = mock_harmony_api
         adapter._connected = True
         adapter._config = SAMPLE_CONFIG
 
-        result = _run(adapter.send_command(
-            "Denon AVR-X3500H", "volumeup",
-        ))
+        result = _run(
+            adapter.send_command(
+                "Denon AVR-X3500H",
+                "volumeup",
+            )
+        )
 
         assert result is True
 
@@ -445,6 +472,7 @@ class TestCommands:
 
 
 # -- Interne Methoden ------------------------------------------------------ #
+
 
 class TestInternal:
     def test_find_activity_id_exact(self, adapter):
@@ -501,6 +529,7 @@ class TestInternal:
 
 # -- Detaillierte Config --------------------------------------------------- #
 
+
 class TestDetailedConfig:
     def test_returns_activities_without_poweroff(self, adapter):
         adapter._config = SAMPLE_CONFIG
@@ -513,27 +542,21 @@ class TestDetailedConfig:
     def test_activity_volume_device_resolved(self, adapter):
         adapter._config = SAMPLE_CONFIG
         result = adapter.get_detailed_config()
-        fernsehen = next(
-            a for a in result["activities"] if a["label"] == "Fernsehen"
-        )
+        fernsehen = next(a for a in result["activities"] if a["label"] == "Fernsehen")
         assert fernsehen["volume_device"] == "Denon AVR-X3500H"
         assert fernsehen["channel_device"] == "Samsung TV"
 
     def test_activity_without_volume_role(self, adapter):
         adapter._config = SAMPLE_CONFIG
         result = adapter.get_detailed_config()
-        musik = next(
-            a for a in result["activities"] if a["label"] == "Musik"
-        )
+        musik = next(a for a in result["activities"] if a["label"] == "Musik")
         assert "volume_device" not in musik
         assert "channel_device" not in musik
 
     def test_devices_have_control_groups(self, adapter):
         adapter._config = SAMPLE_CONFIG
         result = adapter.get_detailed_config()
-        denon = next(
-            d for d in result["devices"] if d["label"] == "Denon AVR-X3500H"
-        )
+        denon = next(d for d in result["devices"] if d["label"] == "Denon AVR-X3500H")
         assert denon["id"] == "74828509"
         group_names = [g["name"] for g in denon["control_groups"]]
         assert "Volume" in group_names
@@ -542,12 +565,8 @@ class TestDetailedConfig:
     def test_control_group_commands(self, adapter):
         adapter._config = SAMPLE_CONFIG
         result = adapter.get_detailed_config()
-        denon = next(
-            d for d in result["devices"] if d["label"] == "Denon AVR-X3500H"
-        )
-        vol_group = next(
-            g for g in denon["control_groups"] if g["name"] == "Volume"
-        )
+        denon = next(d for d in result["devices"] if d["label"] == "Denon AVR-X3500H")
+        vol_group = next(g for g in denon["control_groups"] if g["name"] == "Volume")
         assert "VolumeUp" in vol_group["commands"]
         assert "VolumeDown" in vol_group["commands"]
         assert "Mute" in vol_group["commands"]
@@ -560,14 +579,16 @@ class TestDetailedConfig:
     def test_device_with_empty_control_group(self, adapter):
         adapter._config = {
             "activity": [],
-            "device": [{
-                "id": "123",
-                "label": "TestDevice",
-                "controlGroup": [
-                    {"name": "Empty", "function": []},
-                    {"name": "HasCmds", "function": [{"name": "DoSomething"}]},
-                ],
-            }],
+            "device": [
+                {
+                    "id": "123",
+                    "label": "TestDevice",
+                    "controlGroup": [
+                        {"name": "Empty", "function": []},
+                        {"name": "HasCmds", "function": [{"name": "DoSomething"}]},
+                    ],
+                }
+            ],
         }
         result = adapter.get_detailed_config()
         dev = result["devices"][0]

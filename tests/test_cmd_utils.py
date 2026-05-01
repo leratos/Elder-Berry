@@ -1,4 +1,5 @@
 """Tests: cmd_utils – CmdResult DTO und run_cmd Shell-Helper."""
+
 from unittest.mock import MagicMock, patch
 import subprocess
 
@@ -9,6 +10,7 @@ from elder_berry.comms.commands.cmd_utils import CmdResult, run_cmd
 # ---------------------------------------------------------------------------
 # CmdResult DTO
 # ---------------------------------------------------------------------------
+
 
 class TestCmdResult:
     def test_success_result(self):
@@ -30,24 +32,32 @@ class TestCmdResult:
 # run_cmd
 # ---------------------------------------------------------------------------
 
+
 class TestRunCmd:
     @patch("elder_berry.comms.commands.cmd_utils.subprocess.run")
     def test_success_stdout(self, mock_run):
         mock_run.return_value = MagicMock(
-            returncode=0, stdout="output text", stderr="",
+            returncode=0,
+            stdout="output text",
+            stderr="",
         )
         result = run_cmd(["echo", "hi"], cwd="/tmp")
         assert result.success is True
         assert result.output == "output text"
         mock_run.assert_called_once_with(
             ["echo", "hi"],
-            capture_output=True, text=True, timeout=30, cwd="/tmp",
+            capture_output=True,
+            text=True,
+            timeout=30,
+            cwd="/tmp",
         )
 
     @patch("elder_berry.comms.commands.cmd_utils.subprocess.run")
     def test_success_stderr_fallback(self, mock_run):
         mock_run.return_value = MagicMock(
-            returncode=0, stdout="", stderr="stderr text",
+            returncode=0,
+            stdout="",
+            stderr="stderr text",
         )
         result = run_cmd(["cmd"], cwd="/tmp")
         assert result.success is True
@@ -56,7 +66,9 @@ class TestRunCmd:
     @patch("elder_berry.comms.commands.cmd_utils.subprocess.run")
     def test_empty_output(self, mock_run):
         mock_run.return_value = MagicMock(
-            returncode=0, stdout="", stderr="",
+            returncode=0,
+            stdout="",
+            stderr="",
         )
         result = run_cmd(["cmd"], cwd="/tmp")
         assert result.output == ""
@@ -64,7 +76,9 @@ class TestRunCmd:
     @patch("elder_berry.comms.commands.cmd_utils.subprocess.run")
     def test_nonzero_returncode(self, mock_run):
         mock_run.return_value = MagicMock(
-            returncode=1, stdout="", stderr="fail",
+            returncode=1,
+            stdout="",
+            stderr="fail",
         )
         result = run_cmd(["cmd"], cwd="/tmp")
         assert result.success is False
@@ -96,10 +110,15 @@ class TestRunCmd:
     @patch("elder_berry.comms.commands.cmd_utils.subprocess.run")
     def test_custom_timeout(self, mock_run):
         mock_run.return_value = MagicMock(
-            returncode=0, stdout="ok", stderr="",
+            returncode=0,
+            stdout="ok",
+            stderr="",
         )
         run_cmd(["cmd"], cwd="/tmp", timeout=60)
         mock_run.assert_called_once_with(
             ["cmd"],
-            capture_output=True, text=True, timeout=60, cwd="/tmp",
+            capture_output=True,
+            text=True,
+            timeout=60,
+            cwd="/tmp",
         )

@@ -5,6 +5,7 @@ LayeredSpriteRenderer. Läuft als Background-Thread mit eigenem Render-Loop.
 
 Plattformhinweis: Läuft auf RPi5 (Linux) mit DSI-Display.
 """
+
 from __future__ import annotations
 
 import logging
@@ -75,7 +76,8 @@ class RPi5AvatarDisplay(AvatarDisplay):
         self._thread.start()
         logger.info(
             "RPi5AvatarDisplay gestartet: %dx%d%s",
-            self._width, self._height,
+            self._width,
+            self._height,
             " (fullscreen)" if self._fullscreen else "",
         )
 

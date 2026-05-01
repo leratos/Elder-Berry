@@ -18,6 +18,7 @@ Verwendung:
     ...
     scheduler.stop()
 """
+
 from __future__ import annotations
 
 import logging
@@ -112,7 +113,8 @@ class BriefingScheduler:
         self._thread.start()
         logger.info(
             "BriefingScheduler gestartet (Briefing: %02d:%02d)",
-            self._briefing_hour, self._briefing_minute,
+            self._briefing_hour,
+            self._briefing_minute,
         )
 
     def stop(self) -> None:
@@ -187,8 +189,7 @@ class BriefingScheduler:
             logger.debug("Briefing: Wetter fehlgeschlagen: %s", e)
             return []
 
-    def _build_calendar_section(self, now: datetime,
-                                is_weekend: bool) -> list[str]:
+    def _build_calendar_section(self, now: datetime, is_weekend: bool) -> list[str]:
         if not self._calendar:
             return []
         try:
@@ -205,11 +206,14 @@ class BriefingScheduler:
                 monday = now.date() + timedelta(days=days_to_monday)
                 try:
                     mon_start = datetime(
-                        monday.year, monday.month, monday.day,
+                        monday.year,
+                        monday.month,
+                        monday.day,
                     ).astimezone()
                     mon_end = mon_start + timedelta(days=1)
                     monday_events = self._calendar.get_events_range(
-                        mon_start, mon_end,
+                        mon_start,
+                        mon_end,
                     )
                     if monday_events:
                         lines.append("📅 Vorschau Montag:")
@@ -230,7 +234,9 @@ class BriefingScheduler:
             return []
         try:
             upcoming = self._contact_store.get_upcoming_birthdays(
-                self._default_user_id, days=7, today=now.date(),
+                self._default_user_id,
+                days=7,
+                today=now.date(),
             )
             if not upcoming:
                 return []
@@ -280,7 +286,9 @@ class BriefingScheduler:
             return []
         try:
             upcoming = self._contact_store.get_upcoming_anniversaries(
-                self._default_user_id, days=7, today=now.date(),
+                self._default_user_id,
+                days=7,
+                today=now.date(),
             )
             if not upcoming:
                 return []
@@ -316,11 +324,13 @@ class BriefingScheduler:
             return
         try:
             result = self._carddav_sync.sync(
-                self._contact_store, self._default_user_id,
+                self._contact_store,
+                self._default_user_id,
             )
             if result.pulled or result.updated:
                 logger.info(
-                    "Auto-Sync vor Briefing: %s", result,
+                    "Auto-Sync vor Briefing: %s",
+                    result,
                 )
         except Exception as e:
             logger.debug("Auto-Sync vor Briefing fehlgeschlagen: %s", e)
@@ -377,7 +387,12 @@ class BriefingScheduler:
             pending = self._reminder_store.get_pending()
             utc_now = datetime.now(timezone.utc)
             today_end = datetime(
-                utc_now.year, utc_now.month, utc_now.day, 23, 59, 59,
+                utc_now.year,
+                utc_now.month,
+                utc_now.day,
+                23,
+                59,
+                59,
                 tzinfo=timezone.utc,
             )
             relevant = [r for r in pending if r.due_at <= today_end]
@@ -387,8 +402,7 @@ class BriefingScheduler:
             for r in relevant:
                 local_time = r.due_at.astimezone()
                 lines.append(
-                    f"  #{r.id} – {r.message} "
-                    f"(fällig: {local_time.strftime('%H:%M')})",
+                    f"  #{r.id} – {r.message} (fällig: {local_time.strftime('%H:%M')})",
                 )
             return ["\n".join(lines)]
         except Exception as e:
@@ -424,12 +438,16 @@ class BriefingScheduler:
             return []
         try:
             notes = self._note_store.get_notes_from_date(
-                self._default_user_id, now.month, now.day, limit=3,
+                self._default_user_id,
+                now.month,
+                now.day,
+                limit=3,
             )
             # Nur Notizen die mindestens ~11 Monate alt sind
             cutoff = now - timedelta(days=330)
             old_notes = [
-                n for n in notes
+                n
+                for n in notes
                 if n.created_at.replace(tzinfo=None) < cutoff.replace(tzinfo=None)
             ]
             if not old_notes:
@@ -463,7 +481,10 @@ class BriefingScheduler:
                 now = datetime.now()
 
                 # Mitternacht: Flag zurücksetzen
-                if self._briefing_sent_today and self._briefing_sent_today != now.date():
+                if (
+                    self._briefing_sent_today
+                    and self._briefing_sent_today != now.date()
+                ):
                     self._briefing_sent_today = None
 
                 # Briefing senden wenn Zeit passt und noch nicht gesendet

@@ -1,4 +1,5 @@
 """Tests fuer HarmonyLayoutManager."""
+
 from __future__ import annotations
 
 import json
@@ -65,6 +66,7 @@ def manager(layouts_path: Path) -> HarmonyLayoutManager:
 
 # -- Initialisierung ------------------------------------------------------- #
 
+
 class TestInit:
     def test_empty_when_no_file(self, manager):
         assert manager.get_layouts() == {}
@@ -87,6 +89,7 @@ class TestInit:
 
 
 # -- Save/Load ------------------------------------------------------------- #
+
 
 class TestSaveLoad:
     def test_save_and_reload(self, layouts_path: Path):
@@ -117,6 +120,7 @@ class TestSaveLoad:
 
 # -- ensure_defaults ------------------------------------------------------- #
 
+
 class TestEnsureDefaults:
     def test_creates_fernsehen_layout(self, manager):
         manager.ensure_defaults(SAMPLE_DETAILED_CONFIG)
@@ -140,19 +144,19 @@ class TestEnsureDefaults:
     def test_device_section_buttons(self, manager):
         manager.ensure_defaults(SAMPLE_DETAILED_CONFIG)
         denon = manager.get_layouts()["devices"]["Denon AV-Empfänger"]
-        vol_section = next(
-            s for s in denon["sections"] if s["label"] == "Volume"
-        )
+        vol_section = next(s for s in denon["sections"] if s["label"] == "Volume")
         cmds = [b["cmd"] for b in vol_section["buttons"]]
         assert "VolumeUp" in cmds
         assert "Mute" in cmds
 
     def test_does_not_overwrite_existing(self, manager):
         custom = {"sections": [{"label": "Custom", "type": "grid"}]}
-        manager.save_layouts({
-            "activities": {"Fernsehen": custom},
-            "devices": {"Denon AV-Empfänger": custom},
-        })
+        manager.save_layouts(
+            {
+                "activities": {"Fernsehen": custom},
+                "devices": {"Denon AV-Empfänger": custom},
+            }
+        )
         manager.ensure_defaults(SAMPLE_DETAILED_CONFIG)
         layouts = manager.get_layouts()
         # Fernsehen und Denon bleiben custom
@@ -182,6 +186,7 @@ class TestEnsureDefaults:
 
 
 # -- Auto-Sections -------------------------------------------------------- #
+
 
 class TestAutoSections:
     def test_auto_sections_from_device(self):

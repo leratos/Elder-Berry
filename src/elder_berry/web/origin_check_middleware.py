@@ -20,6 +20,7 @@ GET/HEAD/OPTIONS werden nicht geprueft (nicht state-changing). CORS-
 Preflights (OPTIONS) kommen ohne Auth-Relevanz durch und werden von der
 nachgelagerten CORS-Middleware behandelt.
 """
+
 from __future__ import annotations
 
 import logging
@@ -100,8 +101,11 @@ class OriginCheckMiddleware(BaseHTTPMiddleware):
             client_host = request.client.host if request.client else "unknown"
             logger.warning(
                 "CSRF-Block: %s %s von %s -- Origin=%r (erlaubt: %s)",
-                method, request.url.path, client_host,
-                origin, sorted(self._allowed),
+                method,
+                request.url.path,
+                client_host,
+                origin,
+                sorted(self._allowed),
             )
             return JSONResponse(
                 {

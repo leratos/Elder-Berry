@@ -1,4 +1,5 @@
 """Tests für SmartContextProvider – Phase 33: Smart Context Layer."""
+
 import time
 from datetime import datetime, timezone
 from unittest.mock import MagicMock, patch
@@ -14,6 +15,7 @@ from elder_berry.core.smart_context import (
 
 # --- Fixtures ---
 
+
 @pytest.fixture
 def mock_calendar():
     cal = MagicMock()
@@ -26,9 +28,7 @@ def mock_calendar():
 @pytest.fixture
 def mock_task_client():
     store = MagicMock()
-    store.format_for_briefing.return_value = (
-        "📋 Offene Todos:\n  - Einkaufen [high]"
-    )
+    store.format_for_briefing.return_value = "📋 Offene Todos:\n  - Einkaufen [high]"
     return store
 
 
@@ -83,8 +83,12 @@ def mock_weather():
 
 @pytest.fixture
 def provider_all(
-    mock_calendar, mock_task_client, mock_note_store,
-    mock_contact_store, mock_reminder_store, mock_weather,
+    mock_calendar,
+    mock_task_client,
+    mock_note_store,
+    mock_contact_store,
+    mock_reminder_store,
+    mock_weather,
 ):
     return SmartContextProvider(
         calendar=mock_calendar,
@@ -104,50 +108,39 @@ def provider_empty():
 
 # === _detect_sources Tests ===
 
+
 class TestDetectSources:
     """Keyword-basierte Quellen-Erkennung."""
 
     def test_calendar_keywords(self, provider_all):
         for kw in ["termin", "kalender", "meeting", "heute", "morgen", "montag"]:
             result = provider_all._detect_sources(f"Was ist der {kw}?")
-            assert ContextSource.CALENDAR in result, (
-                f"'{kw}' should trigger CALENDAR"
-            )
+            assert ContextSource.CALENDAR in result, f"'{kw}' should trigger CALENDAR"
 
     def test_todo_keywords(self, provider_all):
         for kw in ["todo", "aufgabe", "erledigen", "machen"]:
             result = provider_all._detect_sources(f"Was soll ich {kw}?")
-            assert ContextSource.TODOS in result, (
-                f"'{kw}' should trigger TODOS"
-            )
+            assert ContextSource.TODOS in result, f"'{kw}' should trigger TODOS"
 
     def test_reminder_keywords(self, provider_all):
         for kw in ["erinnerung", "fällig", "vergessen"]:
             result = provider_all._detect_sources(f"Habe ich eine {kw}?")
-            assert ContextSource.REMINDERS in result, (
-                f"'{kw}' should trigger REMINDERS"
-            )
+            assert ContextSource.REMINDERS in result, f"'{kw}' should trigger REMINDERS"
 
     def test_note_keywords(self, provider_all):
         for kw in ["notiz", "merke", "fakt"]:
             result = provider_all._detect_sources(f"Gibt es eine {kw}?")
-            assert ContextSource.NOTES in result, (
-                f"'{kw}' should trigger NOTES"
-            )
+            assert ContextSource.NOTES in result, f"'{kw}' should trigger NOTES"
 
     def test_contact_keywords(self, provider_all):
         for kw in ["kontakt", "telefon", "email", "nummer"]:
             result = provider_all._detect_sources(f"Was ist die {kw}?")
-            assert ContextSource.CONTACTS in result, (
-                f"'{kw}' should trigger CONTACTS"
-            )
+            assert ContextSource.CONTACTS in result, f"'{kw}' should trigger CONTACTS"
 
     def test_weather_keywords(self, provider_all):
         for kw in ["wetter", "regen", "temperatur", "kalt", "warm"]:
             result = provider_all._detect_sources(f"Wie ist das {kw}?")
-            assert ContextSource.WEATHER in result, (
-                f"'{kw}' should trigger WEATHER"
-            )
+            assert ContextSource.WEATHER in result, f"'{kw}' should trigger WEATHER"
 
     def test_meta_phrase_was_muss_ich(self, provider_all):
         result = provider_all._detect_sources("Was muss ich heute noch machen?")
@@ -195,12 +188,11 @@ class TestDetectSources:
         for phrase, expected_sources in _META_PHRASES:
             result = provider_all._detect_sources(phrase)
             for source in expected_sources:
-                assert source in result, (
-                    f"'{phrase}' should trigger {source.value}"
-                )
+                assert source in result, f"'{phrase}' should trigger {source.value}"
 
 
 # === _filter_available Tests ===
+
 
 class TestFilterAvailable:
     """Filtert auf konfigurierte Stores."""
@@ -224,6 +216,7 @@ class TestFilterAvailable:
 
 
 # === Einzelne Query-Methoden ===
+
 
 class TestQueryCalendar:
     def test_events_formatted(self, provider_all, mock_calendar):
@@ -263,7 +256,13 @@ class TestQueryReminders:
         """Patch datetime.now() in smart_context Modul."""
         mock_dt = MagicMock(wraps=datetime)
         mock_dt.now.return_value = datetime(
-            year, month, day, hour, 0, 0, tzinfo=timezone.utc,
+            year,
+            month,
+            day,
+            hour,
+            0,
+            0,
+            tzinfo=timezone.utc,
         )
         mock_dt.side_effect = datetime
         return patch("elder_berry.core.smart_context.datetime", mock_dt)
@@ -293,7 +292,8 @@ class TestQueryReminders:
     def test_no_user_id_passes_none(self, mock_reminder_store):
         mock_reminder_store.get_pending.return_value = []
         provider = SmartContextProvider(
-            reminder_store=mock_reminder_store, default_user_id="",
+            reminder_store=mock_reminder_store,
+            default_user_id="",
         )
         with self._patch_now():
             provider._query_reminders()
@@ -318,7 +318,8 @@ class TestQueryNotes:
 
     def test_no_user_id_returns_empty(self, mock_note_store):
         provider = SmartContextProvider(
-            note_store=mock_note_store, default_user_id="",
+            note_store=mock_note_store,
+            default_user_id="",
         )
         assert provider._query_notes("test") == ""
 
@@ -356,7 +357,8 @@ class TestQueryContacts:
 
     def test_no_user_id_returns_empty(self, mock_contact_store):
         provider = SmartContextProvider(
-            contact_store=mock_contact_store, default_user_id="",
+            contact_store=mock_contact_store,
+            default_user_id="",
         )
         assert provider._query_contacts("test") == ""
 
@@ -376,6 +378,7 @@ class TestQueryWeather:
 
 # === Integration: get_context ===
 
+
 class TestGetContext:
     """End-to-End Tests für get_context()."""
 
@@ -387,7 +390,13 @@ class TestGetContext:
     def test_happy_path_multi_source(self, provider_all):
         with patch("elder_berry.core.smart_context.datetime") as mock_dt:
             mock_dt.now.return_value = datetime(
-                2026, 3, 28, 12, 0, 0, tzinfo=timezone.utc,
+                2026,
+                3,
+                28,
+                12,
+                0,
+                0,
+                tzinfo=timezone.utc,
             )
             mock_dt.side_effect = datetime
             result = provider_all.get_context("Gib mir ein Briefing")
@@ -427,7 +436,13 @@ class TestGetContext:
     def test_format_order_calendar_before_weather(self, provider_all):
         with patch("elder_berry.core.smart_context.datetime") as mock_dt:
             mock_dt.now.return_value = datetime(
-                2026, 3, 28, 12, 0, 0, tzinfo=timezone.utc,
+                2026,
+                3,
+                28,
+                12,
+                0,
+                0,
+                tzinfo=timezone.utc,
             )
             mock_dt.side_effect = datetime
             result = provider_all.get_context("Briefing bitte")
@@ -441,6 +456,7 @@ class TestGetContext:
 
 
 # === Edge Cases ===
+
 
 class TestEdgeCases:
     def test_partial_stores_only_queries_available(self, mock_calendar):
@@ -472,7 +488,10 @@ class TestEdgeCases:
         assert fn is not None
 
     def test_multiple_stores_one_fails(
-        self, mock_calendar, mock_task_client, mock_weather,
+        self,
+        mock_calendar,
+        mock_task_client,
+        mock_weather,
     ):
         mock_task_client.format_for_briefing.side_effect = RuntimeError("DB locked")
         provider = SmartContextProvider(
