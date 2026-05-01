@@ -11,8 +11,9 @@ from __future__ import annotations
 import asyncio
 import logging
 import tempfile
+from collections.abc import Coroutine
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from elder_berry.stt.base import STTEngine, TranscriptionResult
 
@@ -50,7 +51,7 @@ class STTRouter(STTEngine):
         self._loop = event_loop
         self._loaded = True  # Cloud-STT braucht kein explizites Laden
 
-    def _run_async(self, coro):
+    def _run_async[T](self, coro: Coroutine[Any, Any, T]) -> T:
         """Führt eine Coroutine synchron aus (für STTEngine-Interface).
 
         AudioPipeline ruft transcribe() in einem ThreadPoolExecutor.
