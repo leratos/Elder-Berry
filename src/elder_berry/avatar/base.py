@@ -20,6 +20,7 @@ class AvatarRenderer(ABC):
         width: int = 512,
         height: int = 512,
         fullscreen: bool = False,
+        rotation: int = 0,
     ) -> None:
         """
         Initialisiert das Render-Fenster / die Ausgabe.
@@ -28,6 +29,12 @@ class AvatarRenderer(ABC):
             width: Fensterbreite in Pixeln.
             height: Fensterhöhe in Pixeln.
             fullscreen: Vollbildmodus (ohne Rahmen, Maus versteckt).
+            rotation: Display-Rotation in Grad. Erlaubt: 0 oder 180.
+                90/270 sind nicht implementiert (würden Buffer-Refactor
+                und Tausch von width/height erfordern).
+
+        Raises:
+            ValueError: bei rotation nicht in {0, 180}.
         """
         ...
 

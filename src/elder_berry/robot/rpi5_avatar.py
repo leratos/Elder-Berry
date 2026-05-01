@@ -21,6 +21,10 @@ logger = logging.getLogger(__name__)
 # Default Display-Auflösung (RPi Touch Display 2, Portrait)
 DEFAULT_WIDTH = 720
 DEFAULT_HEIGHT = 1280
+# Default Display-Rotation: Saleria steht im Gehäuse baulich auf dem
+# Kopf (DSI-Kabel-Führung). 180° dreht den Render so, dass die Figur
+# aufrecht erscheint. Override per --rotation in start_rpi5.py.
+DEFAULT_ROTATION = 180
 
 
 class RPi5AvatarDisplay(AvatarDisplay):
@@ -45,11 +49,13 @@ class RPi5AvatarDisplay(AvatarDisplay):
         height: int = DEFAULT_HEIGHT,
         fullscreen: bool = True,
         assets_dir: Path | None = None,
+        rotation: int = DEFAULT_ROTATION,
     ) -> None:
         self._width = width
         self._height = height
         self._fullscreen = fullscreen
         self._assets_dir = assets_dir
+        self._rotation = rotation
 
         self._renderer: LayeredSpriteRenderer | None = None
         self._thread: threading.Thread | None = None
@@ -75,10 +81,11 @@ class RPi5AvatarDisplay(AvatarDisplay):
         )
         self._thread.start()
         logger.info(
-            "RPi5AvatarDisplay gestartet: %dx%d%s",
+            "RPi5AvatarDisplay gestartet: %dx%d%s rotation=%d\u00b0",
             self._width,
             self._height,
             " (fullscreen)" if self._fullscreen else "",
+            self._rotation,
         )
 
     def stop(self) -> None:
@@ -122,6 +129,7 @@ class RPi5AvatarDisplay(AvatarDisplay):
                 width=self._width,
                 height=self._height,
                 fullscreen=self._fullscreen,
+                rotation=self._rotation,
             )
             logger.info("Render-Loop gestartet")
 

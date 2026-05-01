@@ -345,6 +345,145 @@ class TestIdleAnimations:
 
         r.show_speaking(True)
         r._next_idle_time = _time.monotonic() - 1.0
-        # update() prüft is_speaking → kein idle_update
+        # update() prueft is_speaking -> kein idle_update
         r.update()
         assert r._idle_active is False
+
+
+# ---------------------------------------------------------------------------
+# Display-Rotation (Bugfix: RPi5 ignoriert display_lcd_rotate=)
+# ---------------------------------------------------------------------------
+
+
+class TestDisplayRotation:
+    """Tests fuer Display-Rotation in pygame (RPi5 KMS-Workaround)."""
+
+    def test_default_rotation_is_zero_in_renderer(self, mock_pygame, layered_assets):
+        """LayeredSpriteRenderer hat ohne Argument rotation=0 (neutral)."""
+        from elder_berry.avatar.layered_renderer import LayeredSpriteRenderer
+
+        r = LayeredSpriteRenderer(assets_dir=layered_assets)
+        r.initialize(720, 1280)
+        assert r._rotation == 0
+
+    def test_rotation_180_stored(self, mock_pygame, layered_assets):
+        from elder_berry.avatar.layered_renderer import LayeredSpriteRenderer
+
+        r = LayeredSpriteRenderer(assets_dir=layered_assets)
+        r.initialize(720, 1280, rotation=180)
+        assert r._rotation == 180
+
+    def test_rotation_invalid_raises(self, mock_pygame, layered_assets):
+        """90 und 270 sind nicht implementiert -> ValueError."""
+        from elder_berry.avatar.layered_renderer import LayeredSpriteRenderer
+
+        r = LayeredSpriteRenderer(assets_dir=layered_assets)
+        with pytest.raises(ValueError, match="rotation muss 0 oder 180"):
+            r.initialize(720, 1280, rotation=90)
+        with pytest.raises(ValueError, match="rotation muss 0 oder 180"):
+            r.initialize(720, 1280, rotation=270)
+        with pytest.raises(ValueError, match="rotation muss 0 oder 180"):
+            r.initialize(720, 1280, rotation=45)
+
+    def test_update_calls_flip_when_rotation_180(self, mock_pygame, layered_assets):
+        """Bei rotation=180 wird pygame.transform.flip(screen, True, True) aufgerufen."""
+        from elder_berry.avatar.layered_renderer import LayeredSpriteRenderer
+
+        r = LayeredSpriteRenderer(assets_dir=layered_assets)
+        r.initialize(720, 1280, rotation=180)
+        r.update()
+
+        # flip wurde mit (screen, True, True) aufgerufen
+        mock_pygame["pygame"].transform.flip.assert_called_with(
+            mock_pygame["screen"],
+            True,
+            True,
+        )
+
+    def test_update_no_flip_when_rotation_zero(self, mock_pygame, layered_assets):
+        """Bei rotation=0 wird transform.flip NICHT aufgerufen (Render-Performance)."""
+        from elder_berry.avatar.layered_renderer import LayeredSpriteRenderer
+
+        r = LayeredSpriteRenderer(assets_dir=layered_assets)
+        r.initialize(720, 1280, rotation=0)
+        r.update()
+
+        mock_pygame["pygame"].transform.flip.assert_not_called()
+
+    def test_rpi5_default_rotation_is_180(self, mock_pygame, layered_assets):
+        """RPi5AvatarDisplay nutzt 180° als Default (Saleria steht baulich auf Kopf)."""
+        from elder_berry.robot.rpi5_avatar import RPi5AvatarDisplay
+
+        avatar = RPi5AvatarDisplay(assets_dir=layered_assets)
+        assert avatar._rotation == 180
+
+    def test_rpi5_rotation_override(self, mock_pygame, layered_assets):
+        """rotation kann beim Konstruieren ueberschrieben werden."""
+        from elder_berry.robot.rpi5_avatar import RPi5AvatarDisplay
+
+        avatar = RPi5AvatarDisplay(assets_dir=layered_assets, rotation=0)
+        assert avatar._rotation == 0
+
+    def test_rpi5_rotation_passed_to_renderer(self, mock_pygame, layered_assets):
+        """RPi5AvatarDisplay reicht rotation an LayeredSpriteRenderer.initialize()."""
+        from elder_berry.robot.rpi5_avatar import RPi5AvatarDisplay
+
+        # Renderer-Klasse patchen, um initialize-Call abzufangen
+        with patch(
+            "elder_berry.robot.rpi5_avatar.LayeredSpriteRenderer"
+        ) as MockRenderer:
+            mock_inst = MagicMock()
+            mock_inst.is_running.return_value = False  # sofort raus aus Loop
+            MockRenderer.return_value = mock_inst
+
+            avatar = RPi5AvatarDisplay(
+                assets_dir=layered_assets,
+                fullscreen=False,
+                rotation=180,
+            )
+            avatar.start()
+            time.sleep(0.3)
+            avatar.stop()
+
+            # initialize wurde mit rotation=180 aufgerufen
+            mock_inst.initialize.assert_called_once()
+            kwargs = mock_inst.initialize.call_args.kwargs
+            assert kwargs.get("rotation") == 180
+
+    def test_rpi5_rotation_zero_passed_to_renderer(self, mock_pygame, layered_assets):
+        """RPi5AvatarDisplay mit rotation=0 reicht 0 an Renderer durch."""
+        from elder_berry.robot.rpi5_avatar import RPi5AvatarDisplay
+
+        with patch(
+            "elder_berry.robot.rpi5_avatar.LayeredSpriteRenderer"
+        ) as MockRenderer:
+            mock_inst = MagicMock()
+            mock_inst.is_running.return_value = False
+            MockRenderer.return_value = mock_inst
+
+            avatar = RPi5AvatarDisplay(
+                assets_dir=layered_assets,
+                fullscreen=False,
+                rotation=0,
+            )
+            avatar.start()
+            time.sleep(0.3)
+            avatar.stop()
+
+            kwargs = mock_inst.initialize.call_args.kwargs
+            assert kwargs.get("rotation") == 0
+
+    def test_sprite_renderer_rejects_rotation(self, layered_assets):
+        """SpriteRenderer (Legacy) lehnt rotation != 0 ab -- nicht implementiert."""
+        with patch("elder_berry.avatar.sprite_renderer.pygame") as mock_pg:
+            mock_pg.display.set_mode.return_value = MagicMock()
+            mock_pg.time.Clock.return_value = MagicMock()
+            mock_pg.event.get.return_value = []
+
+            from elder_berry.avatar.sprite_renderer import SpriteRenderer
+
+            r = SpriteRenderer(assets_dir=layered_assets)
+            with pytest.raises(
+                ValueError, match="SpriteRenderer unterstuetzt keine Rotation"
+            ):
+                r.initialize(rotation=180)
