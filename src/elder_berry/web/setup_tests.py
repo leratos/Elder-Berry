@@ -19,6 +19,8 @@ from urllib.parse import urlparse
 
 import httpx
 
+from elder_berry.core.log_sanitize import safe_log
+
 logger = logging.getLogger(__name__)
 
 
@@ -181,8 +183,8 @@ class SetupTests:
                     headers={"Depth": "0"},
                 )
                 results["webdav"] = r.status_code in (207, 200)
-            except httpx.HTTPError:
-                pass
+            except httpx.HTTPError as exc:
+                logger.debug("WebDAV-Probe fehlgeschlagen: %s", safe_log(exc))
             # CalDAV -- isoliert: Fehler einer Probe darf die anderen nicht abbrechen.
             try:
                 r = await client.request(
@@ -192,8 +194,8 @@ class SetupTests:
                     headers={"Depth": "0"},
                 )
                 results["caldav"] = r.status_code in (207, 200)
-            except httpx.HTTPError:
-                pass
+            except httpx.HTTPError as exc:
+                logger.debug("CalDAV-Probe fehlgeschlagen: %s", safe_log(exc))
             # CardDAV -- isoliert: Fehler einer Probe darf die anderen nicht abbrechen.
             try:
                 r = await client.request(
@@ -203,8 +205,8 @@ class SetupTests:
                     headers={"Depth": "0"},
                 )
                 results["carddav"] = r.status_code in (207, 200)
-            except httpx.HTTPError:
-                pass
+            except httpx.HTTPError as exc:
+                logger.debug("CardDAV-Probe fehlgeschlagen: %s", safe_log(exc))
         results["success"] = all(results[k] for k in ("webdav", "caldav", "carddav"))
         return results
 
