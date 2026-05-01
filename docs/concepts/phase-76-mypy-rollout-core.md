@@ -1,7 +1,7 @@
 # Phase 76 – mypy-Rollout für `core/` 🔍
 
-**Status:** Konzept (2026-04-29, gepatcht 2026-05-01: pyproject statt mypy.ini,
-keyring-Override, non-blocking-CI explizit)
+**Status:** Abgeschlossen (Etappe 1–4, 2026-05-01). Alle 14 `core/`-Module
+strict getypt, CI-Gate hart, `mypy src/elder_berry` (155 files) -> grün.
 **Branch:** `feature/phase-76-mypy-rollout-core`
 **Aufwand:** Setup + Tier 1 in einer Session, Tier 2–4 nebenläufig
 (insgesamt ~4–6 Sessions verteilt)

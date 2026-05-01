@@ -23,7 +23,7 @@ import hashlib
 import json
 import logging
 from pathlib import Path
-from typing import Any, cast
+from typing import cast
 
 from cryptography.fernet import Fernet, InvalidToken
 
@@ -45,17 +45,16 @@ KEYRING_USERNAME_PREFIX = "master-key"
 # Lazy-safe Import von keyring: wenn die Lib fehlt, operieren wir
 # automatisch im Fallback-Modus (Plaintext-Datei + Warning). Keyring
 # ist seit Phase 65 M-1 Hard-Dependency in pyproject.toml; dieser
-# Fallback ist defensiv fuer Build-Faelle ohne installierte Optionals.
-keyring: Any
-_FailKeyring: Any
+# Fallback ist defensiv fuer Build-Faelle ohne installierte Optionals
+# (z.B. pip install --no-deps).
 try:
-    import keyring  # noqa: F811 -- der Annotation oben gibt mypy den Typ.
-    from keyring.backends.fail import Keyring as _FailKeyring  # noqa: F811
+    import keyring
+    from keyring.backends.fail import Keyring as _FailKeyring
 
     _HAS_KEYRING = True
 except ImportError:  # pragma: no cover -- auf supported Platforms ist keyring dabei
-    keyring = None
-    _FailKeyring = None
+    keyring = None  # type: ignore[assignment]
+    _FailKeyring = None  # type: ignore[assignment,misc]
     _HAS_KEYRING = False
 
 
@@ -196,9 +195,7 @@ class SecretStore:
         """Liest den Fernet-Key aus dem OS-Keyring. None wenn nicht gesetzt."""
         value = keyring.get_password(KEYRING_SERVICE, self._keyring_username())
         if value:
-            # keyring.get_password() ist via ignore_missing_imports Any --
-            # das Encode-Ergebnis ist bytes, aber mypy sieht den Cast.
-            return cast(bytes, value.encode("ascii"))
+            return value.encode("ascii")
         return None
 
     def _save_key_to_keyring(self, key: bytes) -> None:

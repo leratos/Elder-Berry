@@ -10,6 +10,7 @@ Heartbeat prüft periodisch ob der Tower erreichbar ist.
 from __future__ import annotations
 
 import logging
+from typing import Any, cast
 
 import httpx
 
@@ -143,13 +144,17 @@ class TowerAgent:
                     files=files,
                 )
                 r.raise_for_status()
-                text = r.json().get("text", "")
+                text = str(r.json().get("text", ""))
                 logger.debug("Tower STT: %d bytes → '%s'", len(audio_bytes), text[:60])
                 return text
         except httpx.HTTPError as e:
             raise TowerAgentError("Tower STT fehlgeschlagen: %s" % e) from e
 
-    async def execute_action(self, action: str, params: dict | None = None) -> dict:
+    async def execute_action(
+        self,
+        action: str,
+        params: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
         """WindowsActionController / Computer Use auf dem Tower.
 
         Args:
@@ -162,7 +167,7 @@ class TowerAgent:
         Raises:
             TowerAgentError: Bei Verbindungs- oder Verarbeitungsfehlern.
         """
-        payload = {"action": action, "params": params or {}}
+        payload: dict[str, Any] = {"action": action, "params": params or {}}
         try:
             async with httpx.AsyncClient(
                 timeout=_DEFAULT_TIMEOUT, headers=self._auth_headers()
@@ -172,11 +177,11 @@ class TowerAgent:
                     json=payload,
                 )
                 r.raise_for_status()
-                return r.json()
+                return cast(dict[str, Any], r.json())
         except httpx.HTTPError as e:
             raise TowerAgentError("Tower Action fehlgeschlagen: %s" % e) from e
 
-    async def get_monitors(self) -> dict:
+    async def get_monitors(self) -> dict[str, Any]:
         """Verfügbare Monitore vom Tower abfragen.
 
         Returns:
@@ -191,11 +196,11 @@ class TowerAgent:
             ) as client:
                 r = await client.get(f"http://{self._host}/monitors")
                 r.raise_for_status()
-                return r.json()
+                return cast(dict[str, Any], r.json())
         except httpx.HTTPError as e:
             raise TowerAgentError("Tower Monitor-Abfrage fehlgeschlagen: %s" % e) from e
 
-    async def set_monitor(self, index: int) -> dict:
+    async def set_monitor(self, index: int) -> dict[str, Any]:
         """Monitor-Index auf dem Tower setzen.
 
         Args:
@@ -216,11 +221,11 @@ class TowerAgent:
                     json={"index": index},
                 )
                 r.raise_for_status()
-                return r.json()
+                return cast(dict[str, Any], r.json())
         except httpx.HTTPError as e:
             raise TowerAgentError("Tower Monitor-Setzen fehlgeschlagen: %s" % e) from e
 
-    async def update_tower(self) -> dict:
+    async def update_tower(self) -> dict[str, Any]:
         """Tower aktualisieren: git pull + pip install + Neustart.
 
         Returns:
@@ -236,7 +241,7 @@ class TowerAgent:
             ) as client:
                 r = await client.post(f"http://{self._host}/system/update")
                 r.raise_for_status()
-                return r.json()
+                return cast(dict[str, Any], r.json())
         except httpx.HTTPError as e:
             raise TowerAgentError("Tower Update fehlgeschlagen: %s" % e) from e
 

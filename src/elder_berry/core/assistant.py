@@ -8,7 +8,7 @@ import tempfile
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, cast
 
 from elder_berry.actions.base import ActionController
 from elder_berry.actions.db import ActionsDB
@@ -41,7 +41,7 @@ class AssistantResult:
     action_success: bool
     emotion: str | None = None
     audio_path: Path | None = None
-    action_params: dict | None = None
+    action_params: dict[str, Any] | None = None
 
 
 class Assistant:
@@ -252,9 +252,13 @@ class Assistant:
     ) -> Path | None:
         """Generiert TTS-Audio als Datei (ohne Playback).
 
+        Vorbedingung: ``_tts is not None`` -- gefiltert in
+        ``process()`` (``if self._tts and response_text:``).
+
         Returns:
             Pfad zur generierten Datei oder None bei Fehler.
         """
+        assert self._tts is not None
         try:
             actual_path = self._tts.generate_audio(
                 text,
@@ -413,7 +417,7 @@ class Assistant:
             self._session_id = self._memory.new_session()
         logger.info("Neue Session gestartet: %s", self._session_id)
 
-    def _parse_llm_response(self, raw: str) -> dict:
+    def _parse_llm_response(self, raw: str) -> dict[str, Any]:
         """
         Parst JSON aus der LLM-Antwort.
 
@@ -423,7 +427,7 @@ class Assistant:
         """
         # Versuch 1: Gesamter String
         try:
-            return json.loads(raw)
+            return cast(dict[str, Any], json.loads(raw))
         except json.JSONDecodeError:
             pass
 
@@ -432,7 +436,7 @@ class Assistant:
         end = raw.rfind("}")
         if start != -1 and end != -1 and end > start:
             try:
-                return json.loads(raw[start : end + 1])
+                return cast(dict[str, Any], json.loads(raw[start : end + 1]))
             except json.JSONDecodeError:
                 pass
 
@@ -440,7 +444,7 @@ class Assistant:
         logger.warning("LLM-Antwort konnte nicht als JSON geparst werden")
         return {"action": None, "params": {}, "response": raw}
 
-    def _execute_action(self, action_type: str, params: dict) -> bool:
+    def _execute_action(self, action_type: str, params: dict[str, Any]) -> bool:
         """Führt eine Aktion aus. Agent-Route wenn verbunden, sonst lokal."""
         # Robot-Aktionen immer direkt routen
         if action_type in ("robot_drive", "robot_stop"):
@@ -452,8 +456,13 @@ class Assistant:
 
         return self._execute_locally(action_type, params)
 
-    def _execute_via_agent(self, action_type: str, params: dict) -> bool:
-        """Führt eine PC-Aktion über den AgentClient (Laptop) aus."""
+    def _execute_via_agent(self, action_type: str, params: dict[str, Any]) -> bool:
+        """Führt eine PC-Aktion über den AgentClient (Laptop) aus.
+
+        Vorbedingung: ``_agent is not None`` -- gefiltert in
+        ``_execute_action`` (``if self._agent and self._is_agent_online()``).
+        """
+        assert self._agent is not None
         try:
             result = self._agent.execute_action(action_type, params)
             if not result.success:
@@ -467,7 +476,7 @@ class Assistant:
             logger.info("Fallback auf lokale Ausführung für '%s'", action_type)
             return self._execute_locally(action_type, params)
 
-    def _execute_locally(self, action_type: str, params: dict) -> bool:
+    def _execute_locally(self, action_type: str, params: dict[str, Any]) -> bool:
         """Führt eine PC-Aktion über den lokalen ActionController aus."""
         try:
             match action_type:
@@ -500,7 +509,7 @@ class Assistant:
             logger.error("Aktion '%s' fehlgeschlagen: %s", action_type, e)
             return False
 
-    def _execute_robot_action(self, action_type: str, params: dict) -> bool:
+    def _execute_robot_action(self, action_type: str, params: dict[str, Any]) -> bool:
         """Führt Robot-spezifische Aktionen aus."""
         match action_type:
             case "robot_drive":
@@ -593,7 +602,14 @@ class Assistant:
             return False
 
     def _tts_via_agent(self, text: str, emotion: str | None) -> None:
-        """Generiert Audio auf dem Tower und sendet es an den Laptop-Agent."""
+        """Generiert Audio auf dem Tower und sendet es an den Laptop-Agent.
+
+        Vorbedingung: ``_tts is not None`` und ``_agent is not None`` --
+        beide gefiltert in ``process()`` (``if self._tts ...`` und
+        ``if self._agent and self._is_agent_online()``).
+        """
+        assert self._tts is not None
+        assert self._agent is not None
         with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp:
             tmp_path = Path(tmp.name)
         try:
