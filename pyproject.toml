@@ -213,6 +213,7 @@ module = [
     "elder_berry.core.stt_router",
     "elder_berry.core.tts_router",
     "elder_berry.core.context_enricher",
+    "elder_berry.core.task_chain",
 ]
 strict = true
 

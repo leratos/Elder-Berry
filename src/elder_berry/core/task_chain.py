@@ -14,8 +14,9 @@ from __future__ import annotations
 
 import json
 import logging
+from collections.abc import Callable
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, cast
 
 if TYPE_CHECKING:
     from elder_berry.comms.remote_commands import RemoteCommandHandler
@@ -135,7 +136,7 @@ class TaskChainRunner:
         self,
         user_request: str,
         chat_history: str = "",
-        on_step: callable | None = None,
+        on_step: Callable[[StepResult], None] | None = None,
     ) -> ChainResult:
         """Führt eine Multi-Step Chain aus.
 
@@ -278,11 +279,11 @@ class TaskChainRunner:
         parts.append("\nWas ist der nächste Schritt? (oder DONE wenn fertig)")
         return "\n".join(parts)
 
-    def _parse_response(self, raw: str) -> dict:
+    def _parse_response(self, raw: str) -> dict[str, Any]:
         """Parst JSON aus der LLM-Antwort (wie Assistant._parse_llm_response)."""
         # Versuch 1: Gesamter String
         try:
-            return json.loads(raw)
+            return cast(dict[str, Any], json.loads(raw))
         except json.JSONDecodeError:
             pass
 
@@ -291,7 +292,7 @@ class TaskChainRunner:
         end = raw.rfind("}")
         if start != -1 and end != -1 and end > start:
             try:
-                return json.loads(raw[start : end + 1])
+                return cast(dict[str, Any], json.loads(raw[start : end + 1]))
             except json.JSONDecodeError:
                 pass
 
