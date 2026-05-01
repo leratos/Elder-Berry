@@ -212,6 +212,7 @@ module = [
     "elder_berry.core.startup_summary",
     "elder_berry.core.stt_router",
     "elder_berry.core.tts_router",
+    "elder_berry.core.context_enricher",
 ]
 strict = true
 

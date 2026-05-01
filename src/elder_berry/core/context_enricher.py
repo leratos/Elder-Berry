@@ -23,10 +23,11 @@ Verwendung:
 from __future__ import annotations
 
 import logging
+from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeoutError
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from elder_berry.llm.base import LLMClient
@@ -144,7 +145,12 @@ class ContextEnricher:
             formatted=formatted,
         )
 
-    def _run_with_timeout(self, func, *args, source_name: str):
+    def _run_with_timeout[T](
+        self,
+        func: Callable[..., T],
+        *args: Any,
+        source_name: str,
+    ) -> T | None:
         """Führt eine Funktion mit Timeout aus. Bei Fehler → None."""
         try:
             with ThreadPoolExecutor(max_workers=1) as pool:
