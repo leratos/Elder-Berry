@@ -168,13 +168,14 @@ module = [
 ]
 ignore_missing_imports = true
 
-# --- Tier 1: sofort strict ---
+# --- Tier 1+2: strict ---
 [[tool.mypy.overrides]]
 module = [
     "elder_berry.core.log_sanitize",
     "elder_berry.core.prompts",
     "elder_berry.core.path_guard",
     "elder_berry.core.error_collector",
+    "elder_berry.core.audio_router",
 ]
 strict = true
 
