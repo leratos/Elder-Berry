@@ -89,8 +89,13 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Install mypy + Stubs
-        run: pip install "mypy>=1.13" types-PyYAML types-psutil
+      - name: Install project + mypy + Stubs
+        # Project-Deps werden gebraucht, damit mypy httpx/cryptography/
+        # keyring etc. korrekt typisieren kann (sonst werden Returns
+        # zu Any). dev-Gruppe bringt mypy + types-PyYAML + types-psutil.
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
 
       - name: Type-check core/
         run: mypy src/elder_berry/core
