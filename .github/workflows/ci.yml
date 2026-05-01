@@ -75,12 +75,11 @@ jobs:
         run: ruff check src/ tests/ --select E9,W605,F401,B --ignore B008
 
   typecheck:
-    # Phase 76 Tier 1–3: Job darf rot werden, ohne den Pipeline-Status
-    # zu kippen. In Etappe 4 wird `continue-on-error` entfernt.
+    # Phase 76 Etappe 4: hartes Gate. Alle 14 core/-Module sind strict
+    # getypt; ein Type-Fehler scheitert die Pipeline.
     runs-on: ubuntu-latest
     permissions:
       contents: read
-    continue-on-error: true
 
     steps:
       - uses: actions/checkout@v6
@@ -94,10 +93,6 @@ jobs:
         run: pip install "mypy>=1.13" types-PyYAML types-psutil
 
       - name: Type-check core/
-        # Phase 76 Tier 1: Nur die strict-aktivierten Module werden streng
-        # geprüft (siehe [tool.mypy.overrides] in pyproject.toml). Tier 2–4
-        # laufen mit den globalen lockeren Defaults und können noch Any-Lecks
-        # haben -- das wird in den jeweiligen Tier-Etappen aufgeloest.
         run: mypy src/elder_berry/core
 
   security:
