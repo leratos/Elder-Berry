@@ -168,6 +168,38 @@ module = [
 ]
 ignore_missing_imports = true
 
+# --- Out-of-Scope-Pakete: Imports folgen, Funde unterdruecken ---
+# core/-Module importieren Klassen aus tools/, comms/, web/ etc. Mypy
+# folgt diesen Imports (richtig so, sonst waeren Aufrufer-Typen Any),
+# produziert aber Funde in den nicht-strict Paketen.
+#   - follow_imports = silent: greift, wenn die Module via Import gefolgt
+#     werden (z.B. core/-Modul importiert tools/Foo).
+#   - ignore_errors = true:    greift, wenn die Module direkt geprueft
+#     werden (z.B. `mypy src/elder_berry` sieht alle Files direkt).
+# Beide zusammen decken alle Aufrufmuster ab. Wird mit Phase 76b/c
+# entfernt, sobald die Pakete selbst Tier-Sortierung bekommen.
+[[tool.mypy.overrides]]
+module = [
+    "elder_berry.actions.*",
+    "elder_berry.agent.*",
+    "elder_berry.avatar.*",
+    "elder_berry.character.*",
+    "elder_berry.comms.*",
+    "elder_berry.llm.*",
+    "elder_berry.memory.*",
+    "elder_berry.robot.*",
+    "elder_berry.server.*",
+    "elder_berry.stt.*",
+    "elder_berry.system.*",
+    "elder_berry.tools.*",
+    "elder_berry.tts.*",
+    "elder_berry.web.*",
+    "elder_berry.webapp.*",
+    "scripts.*",
+]
+follow_imports = "silent"
+ignore_errors = true
+
 # --- Tier 1+2: strict ---
 [[tool.mypy.overrides]]
 module = [

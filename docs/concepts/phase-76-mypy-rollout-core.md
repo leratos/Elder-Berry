@@ -122,6 +122,37 @@ module = [
 ]
 ignore_missing_imports = true
 
+# --- Out-of-Scope-Pakete: Imports folgen, Funde unterdruecken ---
+# core/-Module importieren tools/, comms/, web/, avatar/ etc. Beides
+# zusammen deckt alle Aufrufmuster ab:
+#   - follow_imports=silent: greift, wenn ein nicht-Scope-Modul via
+#     Import aus core/ gefolgt wird.
+#   - ignore_errors=true: greift, wenn die Module direkt geprueft
+#     werden (z.B. `mypy src/elder_berry`).
+# Wird mit Phase 76b/c entfernt, sobald die Pakete eigene Tier-Sortierung
+# bekommen.
+[[tool.mypy.overrides]]
+module = [
+    "elder_berry.actions.*",
+    "elder_berry.agent.*",
+    "elder_berry.avatar.*",
+    "elder_berry.character.*",
+    "elder_berry.comms.*",
+    "elder_berry.llm.*",
+    "elder_berry.memory.*",
+    "elder_berry.robot.*",
+    "elder_berry.server.*",
+    "elder_berry.stt.*",
+    "elder_berry.system.*",
+    "elder_berry.tools.*",
+    "elder_berry.tts.*",
+    "elder_berry.web.*",
+    "elder_berry.webapp.*",
+    "scripts.*",
+]
+follow_imports = "silent"
+ignore_errors = true
+
 # --- Tier 1: sofort strict ---
 [[tool.mypy.overrides]]
 module = [
@@ -278,7 +309,18 @@ Nach Etappe 4:
 ## 8. Out of Scope
 
 - Type-Checking in `src/elder_berry/comms/`, `src/elder_berry/tools/`,
-  `src/elder_berry/web/`. Folgephasen.
+  `src/elder_berry/web/`, `src/elder_berry/avatar/`,
+  `src/elder_berry/robot/`, `src/elder_berry/agent/`,
+  `src/elder_berry/memory/`. Folgephasen.
+
+  **Mechanisch:** Diese Pakete stehen in `[tool.mypy]` mit
+  `follow_imports = "silent"` und `ignore_errors = true`. Imports
+  werden für Type-Resolution der strict-`core/`-Module weiter gefolgt,
+  aber Funde in den Paketen selbst werden nicht berichtet — egal ob via
+  Import gefolgt oder direkt geprüft. Wird per Phase 76b/c entfernt,
+  sobald das jeweilige Paket eigene Tier-Sortierung bekommt. Ohne dieses
+  Silencing meckert `mypy src` Hunderte vor-bestehender Funde, die nicht
+  zum Phase-76-Scope gehören.
 - Test-Code typprüfen.
 - `mypy --strict` global aktivieren (zu aggressiv für Optional-Deps-Module).
 - Eigenstubs für `pygame`, `pyautogui` etc. — `ignore_missing_imports`
