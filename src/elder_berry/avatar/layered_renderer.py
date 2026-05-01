@@ -47,6 +47,15 @@ IDLE_MIN_INTERVAL = 5.0  # Sekunden zwischen Idle-Aktionen
 IDLE_MAX_INTERVAL = 15.0
 IDLE_ACTION_DURATION = 2.0  # Sekunden die eine Idle-Aktion dauert
 
+# Display-Rotation: erlaubte Werte (0 oder 180).
+# Hintergrund: RPi5 ignoriert die Legacy-Firmware-Rotation
+# (display_lcd_rotate=) im KMS-Modus. Rotation muss daher als
+# Render-Operation geschehen. 180° nutzt pygame.transform.flip
+# (kein Resampling, keine Dimensions-Änderung). 90/270 würden
+# Buffer-Refactor + Width/Height-Tausch erfordern -- nicht
+# implementiert.
+ALLOWED_ROTATIONS = (0, 180)
+
 
 @dataclass(frozen=True)
 class EmotionLayers:
@@ -167,6 +176,8 @@ class LayeredSpriteRenderer(AvatarRenderer):
         self._running = False
         self._width = 512
         self._height = 1024
+        # Display-Rotation in Grad (0 oder 180). Wird in initialize() gesetzt.
+        self._rotation = 0
 
         # YAML-Config laden (Fallback auf hardcoded Defaults)
         self._load_yaml_config()
@@ -261,9 +272,17 @@ class LayeredSpriteRenderer(AvatarRenderer):
         width: int = 512,
         height: int = 1024,
         fullscreen: bool = False,
+        rotation: int = 0,
     ) -> None:
+        if rotation not in ALLOWED_ROTATIONS:
+            raise ValueError(
+                f"rotation muss 0 oder 180 sein (war: {rotation}). "
+                "90/270 sind nicht implementiert."
+            )
+
         self._width = width
         self._height = height
+        self._rotation = rotation
 
         pygame.init()
 
@@ -284,10 +303,11 @@ class LayeredSpriteRenderer(AvatarRenderer):
         self._schedule_next_idle()
 
         logger.info(
-            "LayeredSpriteRenderer initialisiert: %dx%d%s, %d Komponenten",
+            "LayeredSpriteRenderer initialisiert: %dx%d%s rotation=%d\u00b0, %d Komponenten",
             width,
             height,
             " (fullscreen)" if fullscreen else "",
+            rotation,
             len(self._components),
         )
 
@@ -370,6 +390,14 @@ class LayeredSpriteRenderer(AvatarRenderer):
         # Layer 4: Effekt (optional)
         if layers.effect:
             self._blit_centered(layers.effect, y_offset=breath_y)
+
+        # Display-Rotation: vor flip() den Screen-Inhalt um 180° spiegeln.
+        # Hintergrund: RPi5 ignoriert display_lcd_rotate=. Wir machen
+        # die Drehung im Render. flip(True, True) = horizontal+vertikal
+        # = 180°, ohne Resampling.
+        if self._rotation == 180:
+            rotated = pygame.transform.flip(self._screen, True, True)
+            self._screen.blit(rotated, (0, 0))
 
         pygame.display.flip()
         self._clock.tick(FPS)

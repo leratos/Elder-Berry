@@ -70,8 +70,21 @@ class SpriteRenderer(AvatarRenderer):
         logger.info("%d/%d Sprites geladen", len(self._sprites), len(Emotion))
 
     def initialize(
-        self, width: int = 512, height: int = 512, fullscreen: bool = False
+        self,
+        width: int = 512,
+        height: int = 512,
+        fullscreen: bool = False,
+        rotation: int = 0,
     ) -> None:
+        # rotation wird in diesem Renderer nicht verwendet (nur 0 erlaubt).
+        # SpriteRenderer ist die Legacy-Vorschau, fuer DSI-Display wird
+        # LayeredSpriteRenderer genutzt (siehe rpi5_avatar.py).
+        if rotation != 0:
+            raise ValueError(
+                f"SpriteRenderer unterstuetzt keine Rotation (war: {rotation}). "
+                "Nutze LayeredSpriteRenderer fuer DSI-Display."
+            )
+
         self._width = width
         self._height = height
 
