@@ -217,6 +217,7 @@ module = [
     "elder_berry.core.smart_context",
     "elder_berry.core.secret_store",
     "elder_berry.core.tower_agent",
+    "elder_berry.core.assistant",
 ]
 strict = true
 
