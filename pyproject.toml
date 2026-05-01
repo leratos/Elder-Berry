@@ -216,6 +216,7 @@ module = [
     "elder_berry.core.task_chain",
     "elder_berry.core.smart_context",
     "elder_berry.core.secret_store",
+    "elder_berry.core.tower_agent",
 ]
 strict = true
 
