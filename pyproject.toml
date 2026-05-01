@@ -211,6 +211,7 @@ module = [
     "elder_berry.core.url_validator",
     "elder_berry.core.startup_summary",
     "elder_berry.core.stt_router",
+    "elder_berry.core.tts_router",
 ]
 strict = true
 
