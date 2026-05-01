@@ -11,6 +11,9 @@ from __future__ import annotations
 import logging
 import threading
 import time
+from collections.abc import Callable
+
+AlertCallback = Callable[[str], None]
 
 
 class ErrorCollectorHandler(logging.Handler):
@@ -26,12 +29,12 @@ class ErrorCollectorHandler(logging.Handler):
 
     def __init__(
         self,
-        alert_callback: callable | None = None,
+        alert_callback: AlertCallback | None = None,
         cooldown: int = 300,
         max_alerts: int = 5,
     ) -> None:
         super().__init__(level=logging.ERROR)
-        self._alert_callback = alert_callback
+        self._alert_callback: AlertCallback | None = alert_callback
         self._cooldown = cooldown
         self._max_alerts = max_alerts
         self._seen: dict[str, float] = {}
@@ -39,7 +42,7 @@ class ErrorCollectorHandler(logging.Handler):
         self._window_start = 0.0
         self._lock = threading.Lock()
 
-    def set_alert_callback(self, callback: callable) -> None:
+    def set_alert_callback(self, callback: AlertCallback) -> None:
         """Setzt den Alert-Callback (z.B. Matrix-Nachricht senden)."""
         self._alert_callback = callback
 
@@ -53,6 +56,7 @@ class ErrorCollectorHandler(logging.Handler):
         else:
             key = f"{record.name}:{record.getMessage()[:80]}"
 
+        callback: AlertCallback | None = None
         with self._lock:
             # Deduplizierung
             if key in self._seen and (now - self._seen[key]) < self._cooldown:
@@ -66,15 +70,16 @@ class ErrorCollectorHandler(logging.Handler):
 
             if self._alert_callback and self._alert_count < self._max_alerts:
                 self._alert_count += 1
-                should_alert = True
-            else:
-                should_alert = False
+                # Lokal greifen, damit der Aufruf ausserhalb des Locks
+                # narrowed bleibt -- und nicht zwischendurch durch
+                # set_alert_callback() ersetzt werden kann.
+                callback = self._alert_callback
 
-        if should_alert:
+        if callback is not None:
             # Alert außerhalb des Locks senden
             msg = self._format_alert(record)
             try:
-                self._alert_callback(msg)
+                callback(msg)
             except Exception:
                 pass  # Alert-Fehler darf nicht den Logger crashen
 

@@ -1,6 +1,7 @@
 # Phase 76 – mypy-Rollout für `core/` 🔍
 
-**Status:** Konzept (2026-04-29)
+**Status:** Konzept (2026-04-29, gepatcht 2026-05-01: pyproject statt mypy.ini,
+keyring-Override, non-blocking-CI explizit)
 **Branch:** `feature/phase-76-mypy-rollout-core`
 **Aufwand:** Setup + Tier 1 in einer Session, Tier 2–4 nebenläufig
 (insgesamt ~4–6 Sessions verteilt)
@@ -31,7 +32,8 @@ Einstieg, weil:
 ## 2. Ziel
 
 1. `mypy` als Pflicht-Werkzeug etabliert: in `pyproject.toml` `[dev]`-Gruppe,
-   `mypy.ini` im Repo-Root, CI-Job (zunächst non-blocking).
+   `[tool.mypy]`-Sektion in `pyproject.toml` (single source of truth, kein
+   separates `mypy.ini`), CI-Job (zunächst non-blocking).
 2. Vier Module in `core/` strict: `log_sanitize`, `prompts`, `path_guard`,
    `error_collector`.
 3. Pattern dokumentiert für „strict pro Modul aktivieren": klare Anleitung
@@ -64,98 +66,77 @@ Einstieg, weil:
 | **4** | `tower_agent.py` | 237 | I/O-lastig, viele DI-Schnittstellen | 5–10 |
 | **4** | `assistant.py` | 587 | Orchestrator mit 22 Funktionen | 10–20 |
 
-Reihenfolge innerhalb eines Tiers ist frei wählbar — Tier-Grenzen aber strikt
-einhalten, weil Tier-3/4-Module die Tier-1/2-Module importieren und
-Vererbung von Strictness möglich ist.
+Reihenfolge innerhalb eines Tiers ist frei wählbar. Die Tier-Sortierung ist
+**organisatorisch** motiviert (klein/einfach → groß/komplex, damit das Pattern
+am simplen Beispiel etabliert wird), nicht technisch: mypy prüft jedes Modul
+gegen seine eigene Konfiguration, Strictness ist nicht transitiv vererbt.
+Ein Tier-3-Modul kann technisch jederzeit strict gemacht werden, sobald die
+Tier-1/2-Module mit denen es typisch interagiert kein Type-Schweißband mehr
+brauchen.
 
 ## 4. Konkrete `mypy`-Konfiguration
 
-### 4.1 Datei `mypy.ini` im Repo-Root
+### 4.1 `[tool.mypy]`-Sektion in `pyproject.toml`
 
-```ini
-[mypy]
-python_version = 3.12
-mypy_path = src
-namespace_packages = True
-explicit_package_bases = True
+Single source of truth — keine zusätzliche `mypy.ini`. Phase 75 hat
+`pyproject.toml` als zentrale Konfig-Datei etabliert (ruff, pytest, build),
+mypy fügt sich dort ein.
+
+```toml
+[tool.mypy]
+python_version = "3.12"
+mypy_path = "src"
+namespace_packages = true
+explicit_package_bases = true
 
 # Globale Defaults: locker. Strict wird per-Modul aktiviert.
-warn_unused_ignores = True
-warn_redundant_casts = True
-warn_unreachable = True
-no_implicit_optional = True
-show_error_codes = True
-pretty = True
+warn_unused_ignores = true
+warn_redundant_casts = true
+warn_unreachable = true
+no_implicit_optional = true
+show_error_codes = true
+pretty = true
 
 # --- Drittanbieter-Ignores (kein Stub-Paket verfügbar) ---
-[mypy-pyautogui.*]
-ignore_missing_imports = True
-
-[mypy-pygame.*]
-ignore_missing_imports = True
-
-[mypy-coqui_tts.*]
-ignore_missing_imports = True
-
-[mypy-faster_whisper.*]
-ignore_missing_imports = True
-
-[mypy-mss.*]
-ignore_missing_imports = True
-
-[mypy-pyperclip.*]
-ignore_missing_imports = True
-
-[mypy-pycaw.*]
-ignore_missing_imports = True
-
-[mypy-comtypes.*]
-ignore_missing_imports = True
-
-[mypy-PyGetWindow.*]
-ignore_missing_imports = True
-
-[mypy-pyttsx3.*]
-ignore_missing_imports = True
-
-[mypy-aioharmony.*]
-ignore_missing_imports = True
-
-[mypy-vobject.*]
-ignore_missing_imports = True
-
-[mypy-caldav.*]
-ignore_missing_imports = True
-
-[mypy-trafilatura.*]
-ignore_missing_imports = True
-
-[mypy-chromadb.*]
-ignore_missing_imports = True
-
-[mypy-matrix_nio.*]
-ignore_missing_imports = True
-
-[mypy-nio.*]
-ignore_missing_imports = True
+[[tool.mypy.overrides]]
+module = [
+    "pyautogui.*",
+    "pygame.*",
+    "coqui_tts.*",
+    "faster_whisper.*",
+    "mss.*",
+    "pyperclip.*",
+    "pycaw.*",
+    "comtypes.*",
+    "PyGetWindow.*",
+    "pyttsx3.*",
+    "aioharmony.*",
+    "vobject.*",
+    "caldav.*",
+    "trafilatura.*",
+    "chromadb.*",
+    "matrix_nio.*",
+    "nio.*",
+    "keyring.*",      # types-keyring existiert nicht (Stand 2026-04, R5)
+    "sounddevice.*",
+]
+ignore_missing_imports = true
 
 # --- Tier 1: sofort strict ---
-[mypy-elder_berry.core.log_sanitize]
-strict = True
-
-[mypy-elder_berry.core.prompts]
-strict = True
-
-[mypy-elder_berry.core.path_guard]
-strict = True
-
-[mypy-elder_berry.core.error_collector]
-strict = True
+[[tool.mypy.overrides]]
+module = [
+    "elder_berry.core.log_sanitize",
+    "elder_berry.core.prompts",
+    "elder_berry.core.path_guard",
+    "elder_berry.core.error_collector",
+]
+strict = true
 
 # --- Tier 2–4: später aktivieren ---
 # Folgt dem Schema:
-# [mypy-elder_berry.core.<modul>]
-# strict = True
+# [[tool.mypy.overrides]]
+# module = ["elder_berry.core.<modul>"]
+# strict = true
 ```
 
 ### 4.2 Dependency-Eintrag in `pyproject.toml`
@@ -181,6 +162,10 @@ typecheck:
   runs-on: ubuntu-latest
   permissions:
     contents: read
+  # Phase 76 Tier 1–3: Job darf rot werden, ohne den Pipeline-Status
+  # zu kippen. In Etappe 4 entfernen, sobald alle 14 core/-Module
+  # strict sind.
+  continue-on-error: true
 
   steps:
     - uses: actions/checkout@v6
@@ -192,35 +177,41 @@ typecheck:
 
     - name: Install mypy + Stubs
       run: |
-        pip install mypy>=1.13 types-PyYAML types-psutil
+        pip install "mypy>=1.13" types-PyYAML types-psutil
 
     - name: Type-check core/
       # Phase 76 Tier 1: Nur die strict-aktivierten Module werden
-      # blockierend geprüft. Andere Module folgen in Tier 2–4.
+      # streng geprüft. Andere Module laufen mit den globalen
+      # (lockeren) Defaults und können Any-Lecks haben.
       run: mypy src/elder_berry/core
 ```
 
-`fail-fast: false` ist nicht nötig — der Job ist optional Teil des
-Pipeline-Status. Nach Tier 4 wird er blockierend gemacht.
-
 ## 5. Etappen / Vorgehen
+
+**Branch-Strategie:** Alle Tier-Sub-Branches zweigen aus
+`feature/phase-76-mypy-rollout-core` ab und werden dorthin gemerged. Die
+Phase bleibt im CLAUDE.md-Sinne **ein Branch**; die Tier-Branches sind nur
+PR-Verpackung, damit Tier 2–4 ggf. nebenläufig durchlaufen können, ohne
+sich gegenseitig zu blockieren.
 
 ### 5.1 Etappe 1 — Setup + Tier 1 (1 Session)
 
-- `pyproject.toml`: `mypy` + Stubs zu `[dev]` hinzufügen.
-- `mypy.ini` anlegen mit Globaleinstellungen + Tier 1.
+- `pyproject.toml`: `mypy` + Stubs zu `[dev]` hinzufügen, `[tool.mypy]`-
+  Sektion mit Globaleinstellungen + Tier 1 ergänzen.
 - Lokal `mypy src/elder_berry/core` laufen lassen.
 - Funde fixen (Erwartung: 0–4 Issues).
-- CI-Job hinzufügen, non-blocking gemerged.
-- **Branch:** `feature/phase-76-mypy-tier1`
+- CI-Job hinzufügen (non-blocking via `continue-on-error: true`).
+- **Branch:** `feature/phase-76-mypy-rollout-core` (Etappe 1 läuft direkt
+  auf dem Phasen-Branch, weil sie das Setup-Fundament für Tier 2–4 ist).
 - **Akzeptanzkriterium:** `mypy src/elder_berry/core` läuft mit
-  `Success: no issues found`. Fünf Tests in CI grün.
+  `Success: no issues found`, CI-Job `typecheck` grün, Pytest-Suite
+  weiterhin grün.
 
 ### 5.2 Etappe 2 — Tier 2 (1 Session)
 
 - Drei Module einzeln strict machen, jedes als eigener Commit.
 - Stubs für `psutil` und `urllib3` falls nötig nachziehen.
-- **Branch:** `feature/phase-76-mypy-tier2`
+- **Branch:** `feature/phase-76-mypy-tier2` (zweigt aus dem Phasen-Branch ab).
 - **Akzeptanzkriterium:** sieben Module strict, mypy grün.
 
 ### 5.3 Etappe 3 — Tier 3 (2 Sessions)
@@ -229,15 +220,17 @@ Pipeline-Status. Nach Tier 4 wird er blockierend gemacht.
   `context_enricher`, `smart_context`).
 - Genauer Blick auf Generics-Definitionen (`TaskChain[T]`, ggf.
   `Protocol`-Klassen für Service-Schnittstellen).
-- **Branch:** `feature/phase-76-mypy-tier3`
+- **Branch:** `feature/phase-76-mypy-tier3` (zweigt aus dem Phasen-Branch ab).
 - **Akzeptanzkriterium:** dreizehn Module strict, mypy grün.
 
 ### 5.4 Etappe 4 — Tier 4 + Gate hart (1 Session)
 
 - `tower_agent.py` und `assistant.py` strict.
-- CI-Job blockierend setzen (`fail_ci_if_error: true`).
+- CI-Job blockierend machen: `continue-on-error: true` aus dem
+  `typecheck`-Job entfernen.
 - README-Badge hinzufügen (`mypy: passing`, optional).
-- **Branch:** `feature/phase-76-mypy-tier4-gate`
+- **Branch:** `feature/phase-76-mypy-tier4-gate` (zweigt aus dem
+  Phasen-Branch ab).
 - **Akzeptanzkriterium:** alle 14 `core/`-Module strict, CI failt bei
   Type-Fehler.
 
@@ -273,14 +266,14 @@ Pipeline-Status. Nach Tier 4 wird er blockierend gemacht.
 
 Pro Etappe:
 - `mypy src/elder_berry/core` läuft mit Exit-Code 0.
-- Bestehende Pytest-Suite weiterhin grün (4916 passed, 29 skipped) — keine
+- Bestehende Pytest-Suite weiterhin grün, kein neuer Skip — keine
   Verhaltensänderungen erlaubt.
 - CI-Job `typecheck` grün.
 
 Nach Etappe 4:
 - `mypy src/elder_berry/core --strict` läuft sauber durch.
-- CI-Job blockierend (`continue-on-error: false`).
-- Alle 14 Module in `mypy.ini` als `strict = True` markiert.
+- CI-Job blockierend (`continue-on-error` aus dem Job entfernt).
+- Alle 14 Module in `[tool.mypy]`-Overrides als `strict = true` markiert.
 
 ## 8. Out of Scope
 

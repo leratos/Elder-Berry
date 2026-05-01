@@ -116,6 +116,9 @@ dev = [
     "pytest-timeout>=2.4.0",
     "pytest-cov>=5.0",  # Phase 74: Coverage-Messung fuer Codecov-Upload
     "pip-tools>=7.0",  # Phase 65 (M-3): Lockfile-Generierung via pip-compile
+    "mypy>=1.13",      # Phase 76: Type-Checking core/
+    "types-PyYAML",    # Stubs fuer YAML-Konfiguration
+    "types-psutil",    # Stubs fuer system/info.py + startup_summary.py
 ]
 
 [tool.setuptools.packages.find]
@@ -125,6 +128,60 @@ where = ["src"]
 # B008: FastAPI nutzt File(...)/Form(...)/Body(...) als Argument-Default –
 # das ist das offizielle FastAPI-Pattern, kein echter Bug.
 ignore = ["B008"]
+
+[tool.mypy]
+# Phase 76: Type-Checking fuer core/. Globale Defaults sind locker -- Strict
+# wird per-Modul ueber [[tool.mypy.overrides]] aktiviert (Tier-Rollout).
+python_version = "3.12"
+mypy_path = "src"
+namespace_packages = true
+explicit_package_bases = true
+warn_unused_ignores = true
+warn_redundant_casts = true
+warn_unreachable = true
+no_implicit_optional = true
+show_error_codes = true
+pretty = true
+
+# --- Drittanbieter-Ignores (kein Stub-Paket verfuegbar oder unnoetig) ---
+[[tool.mypy.overrides]]
+module = [
+    "pyautogui.*",
+    "pygame.*",
+    "coqui_tts.*",
+    "faster_whisper.*",
+    "mss.*",
+    "pyperclip.*",
+    "pycaw.*",
+    "comtypes.*",
+    "PyGetWindow.*",
+    "pyttsx3.*",
+    "aioharmony.*",
+    "vobject.*",
+    "caldav.*",
+    "trafilatura.*",
+    "chromadb.*",
+    "matrix_nio.*",
+    "nio.*",
+    "keyring.*",        # types-keyring existiert nicht (Stand 2026-04, R5)
+    "sounddevice.*",
+]
+ignore_missing_imports = true
+
+# --- Tier 1: sofort strict ---
+[[tool.mypy.overrides]]
+module = [
+    "elder_berry.core.log_sanitize",
+    "elder_berry.core.prompts",
+    "elder_berry.core.path_guard",
+    "elder_berry.core.error_collector",
+]
+strict = true
+
+# --- Tier 2-4: per Sub-Branch nachziehen, gleiche Schema:
+# [[tool.mypy.overrides]]
+# module = ["elder_berry.core.<modul>"]
+# strict = true
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
