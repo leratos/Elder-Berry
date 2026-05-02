@@ -526,6 +526,36 @@ Nach Etappe 5:
     Wird in Tier 2 für `rate_limiter`, `settings_token_middleware`,
     `dashboard_auth_middleware` kopiert.
 
+11. **Lazy-Init-Client-Pattern** (etabliert in Etappe 2 mit
+    `brave_search_client` und `gym_data`, kommt voraussichtlich in
+    Tier 3/4 für caldav/google-Clients wieder). Hintergrund: viele
+    Clients initialisieren `self._client = None` und erstellen erst
+    beim ersten Aufruf einen `httpx.Client`. Mypy infert ohne
+    Annotation den Typ `None`, womit die spätere Zuweisung scheitert
+    und der Early-Return als unreachable markiert wird:
+
+    ```python
+    from typing import TYPE_CHECKING
+
+    if TYPE_CHECKING:
+        import httpx  # nur fuer Annotation -- runtime-import bleibt lazy
+
+    class XClient:
+        def __init__(self, ...) -> None:
+            self._client: httpx.Client | None = None
+
+        def _get_client(self) -> httpx.Client:
+            if self._client is not None:
+                return self._client
+            import httpx  # lazy fuer Tower-Startup-Geschwindigkeit
+            self._client = httpx.Client(...)
+            return self._client
+    ```
+
+    Der `import httpx` bleibt absichtlich lazy in der Methode (Tower-
+    Startup-Geschwindigkeit, optional-Dep), die Annotation kommt
+    separat über `TYPE_CHECKING`.
+
 ---
 
 **Akzeptanz dieses Konzepts durch User → Etappe 0 startet.**
