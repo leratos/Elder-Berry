@@ -18,6 +18,7 @@ import sqlite3
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -111,6 +112,8 @@ class TodoStore:
             (user_id, text, priority, category, now),
         )
         self._conn.commit()
+        # Nach erfolgreichem INSERT setzt sqlite3 lastrowid garantiert.
+        assert cursor.lastrowid is not None
         return self._get_by_id(cursor.lastrowid)
 
     def complete(self, todo_id: int) -> Todo | None:
@@ -152,7 +155,7 @@ class TodoStore:
     ) -> list[Todo]:
         """Offene Todos eines Users, sortiert: hoch→mittel→niedrig."""
         query = "SELECT * FROM todos WHERE user_id=? AND done=0"
-        params: list = [user_id]
+        params: list[Any] = [user_id]
         if priority:
             query += " AND priority=?"
             params.append(priority)
@@ -260,7 +263,7 @@ class TodoStore:
         return self._row_to_todo(row)
 
     @staticmethod
-    def _row_to_todo(row: tuple) -> Todo:
+    def _row_to_todo(row: tuple[Any, ...]) -> Todo:
         """Konvertiert DB-Row in Todo-DTO."""
         id_, user_id, text, priority, category, done, created, completed = row
         return Todo(
