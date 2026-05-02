@@ -90,20 +90,31 @@ def register_avatar_editor_routes(
                 status_code=400,
             )
 
-        # Allowlist-Check: nur ASCII-Bezeichner. Behebt CodeQL
-        # py/path-injection (#304) -- der frueher genutzte
-        # Path(name).name-Sanitizer war zwar wirksam, aber CodeQL
-        # erkennt ihn nicht als Sanitizer.
+        # Layer 1 -- Allowlist-Check: nur ASCII-Bezeichner. Wirft Punkte,
+        # Slashes, Sonderzeichen direkt mit 400 raus.
         if not _VALID_ASSET_NAME_RE.match(name):
             return JSONResponse(
                 {"error": f"Ungültiger Asset-Name: {name}"},
                 status_code=400,
             )
 
-        # Defense-in-Depth: Path(name).name als zweite Verteidigungslinie
-        # bleibt erhalten -- falls die Allowlist je gelockert wird.
-        safe_name = Path(name).name
-        file_path = _ASSETS_DIR / category / f"{safe_name}.png"
+        # Layer 2 -- Resolve + is_relative_to(): finaler Pfad muss unter
+        # _ASSETS_DIR liegen, nachdem Symlinks aufgeloest wurden. Behebt
+        # CodeQL py/path-injection (#304); Layer 1 alleine wurde von der
+        # Query nicht als Sanitizer erkannt.
+        assets_root = _ASSETS_DIR.resolve()
+        candidate = (_ASSETS_DIR / category / f"{name}.png").resolve()
+        if not candidate.is_relative_to(assets_root):
+            logger.warning(
+                "Path-Traversal-Versuch geblockt: category=%s name=%s",
+                category,
+                name,
+            )
+            return JSONResponse(
+                {"error": f"Ungültiger Asset-Name: {name}"},
+                status_code=400,
+            )
+        file_path = candidate
 
         if not file_path.exists() or not file_path.is_file():
             return JSONResponse(
