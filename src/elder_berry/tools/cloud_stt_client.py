@@ -95,7 +95,7 @@ class CloudSTTClient:
                 response.raise_for_status()
 
                 result = response.json()
-                text = result.get("text", "").strip()
+                text = str(result.get("text", "")).strip()
                 logger.debug(
                     "Cloud-STT: %d bytes → '%s' (%s)",
                     len(audio_bytes),

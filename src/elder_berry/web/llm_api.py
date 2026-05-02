@@ -34,7 +34,7 @@ def register_llm_routes(app: FastAPI, dashboard: _DashboardLike) -> None:
     """Registriert die LLM-Status- und Mode-Endpoints auf der FastAPI-App."""
 
     @app.get("/api/llm/status")
-    async def llm_status():
+    async def llm_status() -> JSONResponse:
         if not dashboard._llm_router:
             return JSONResponse(
                 {
@@ -62,7 +62,9 @@ def register_llm_routes(app: FastAPI, dashboard: _DashboardLike) -> None:
         )
 
     @app.post("/api/llm/mode")
-    async def llm_mode(request: Request, body: dict = Body(...)):
+    async def llm_mode(
+        request: Request, body: dict[str, Any] = Body(...)
+    ) -> JSONResponse:
         if not dashboard._llm_router:
             return JSONResponse(
                 {"error": "LLMRouter nicht verfügbar."},
