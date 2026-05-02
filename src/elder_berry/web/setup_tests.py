@@ -235,6 +235,7 @@ class SetupTests:
         # SMTP
         try:
             ctx = ssl.create_default_context()
+            srv: smtplib.SMTP_SSL | smtplib.SMTP
             if smtp_port == 465:
                 srv = smtplib.SMTP_SSL(smtp_host, smtp_port, context=ctx)
             else:

@@ -12,12 +12,14 @@ Stellt Endpoints bereit für:
 from __future__ import annotations
 
 import logging
+import re
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import yaml
 from fastapi import FastAPI
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
+from starlette.responses import Response
 
 if TYPE_CHECKING:
     from elder_berry.avatar.layered_renderer import LayeredSpriteRenderer
@@ -27,11 +29,30 @@ from elder_berry.character.base import Emotion
 
 logger = logging.getLogger(__name__)
 
+
+def _sanitize_for_log(value: str) -> str:
+    """Entfernt Zeilenumbrüche aus benutzerkontrollierten Log-Feldern."""
+    return value.replace("\r", "").replace("\n", "")
+
+
 _TEMPLATE_DIR = Path(__file__).parent / "templates"
 _ASSETS_DIR = Path(__file__).parent.parent / "avatar" / "assets"
 
 # Erlaubte Asset-Kategorien → Unterordner
 _CATEGORIES = {"body", "eye", "mouth", "effect"}
+# Trusted Allowlist (category -> subdir-name). Nur Strings, kein Path --
+# damit der finale Path-Build _ASSETS_DIR / subdir zur Aufrufzeit gegen
+# den aktuellen Wert resolved (wichtig fuer Tests, die _ASSETS_DIR zur
+# Laufzeit patchen). CodeQL akzeptiert den dict-lookup als Sanitizer-
+# aequivalent: der Lookup-Wert ist eine konstante aus _CATEGORIES, nicht
+# direkter user-input.
+_CATEGORY_DIRS: dict[str, str] = {c: c for c in _CATEGORIES}
+
+# Erlaubte Asset-Namen: ASCII-Bezeichner ohne Punkte/Slashes/Sonderzeichen.
+# Strikter Allowlist-Check vor dem Path-Build -- Defense-in-Depth zusaetzlich
+# zu Path(name).name in get_asset(). Behebt CodeQL py/path-injection durch
+# Allowlist statt Sanitizer.
+_VALID_ASSET_NAME_RE = re.compile(r"^[A-Za-z0-9_-]+$")
 
 # Alle Emotion-Namen
 _EMOTION_NAMES = [e.value for e in Emotion]
@@ -53,7 +74,7 @@ def register_avatar_editor_routes(
     """
 
     @app.get("/avatar/editor", response_class=HTMLResponse)
-    async def avatar_editor():
+    async def avatar_editor() -> HTMLResponse:
         template_path = _TEMPLATE_DIR / "avatar_editor.html"
         if template_path.exists():
             return HTMLResponse(template_path.read_text(encoding="utf-8"))
@@ -62,7 +83,7 @@ def register_avatar_editor_routes(
         )
 
     @app.get("/api/avatar/assets")
-    async def list_assets():
+    async def list_assets() -> JSONResponse:
         """Gibt alle verfügbaren Sprites pro Kategorie zurück."""
         result: dict[str, list[str]] = {}
         for category in sorted(_CATEGORIES):
@@ -74,7 +95,7 @@ def register_avatar_editor_routes(
         return JSONResponse(result)
 
     @app.get("/api/avatar/assets/{category}/{name}")
-    async def get_asset(category: str, name: str):
+    async def get_asset(category: str, name: str) -> Response:
         """Serviert eine Sprite-PNG-Datei."""
         if category not in _CATEGORIES:
             return JSONResponse(
@@ -82,14 +103,46 @@ def register_avatar_editor_routes(
                 status_code=400,
             )
 
-        # Pfad-Traversal verhindern
-        safe_name = Path(name).name
-        file_path = _ASSETS_DIR / category / f"{safe_name}.png"
+        # Layer 1 -- Allowlist-Check: nur ASCII-Bezeichner. Wirft Punkte,
+        # Slashes, Sonderzeichen direkt mit 400 raus.
+        if not _VALID_ASSET_NAME_RE.match(name):
+            return JSONResponse(
+                {"error": f"Ungültiger Asset-Name: {name}"},
+                status_code=400,
+            )
 
-        if not file_path.exists() or not file_path.is_file():
+        # Layer 2 -- Filesystem-Allowlist: liste real existierende PNGs
+        # im category-dir, matche name als trusted Schluessel. User-Input
+        # fliesst nicht in den Path-Build, sondern wird gegen die echte
+        # Disk-Liste validiert. CodeQL akzeptiert dieses Pattern als
+        # Sanitizer (vorherige resolve()+is_relative_to()-Variante wurde
+        # von der py/path-injection-Query nicht akzeptiert).
+        assets_root = _ASSETS_DIR.resolve()
+        category_subdir = _CATEGORY_DIRS[category]
+        category_dir = (_ASSETS_DIR / category_subdir).resolve()
+        allowed_assets: dict[str, Path] = {
+            p.stem: p.resolve() for p in category_dir.glob("*.png") if p.is_file()
+        }
+        file_path = allowed_assets.get(name)
+        if file_path is None:
             return JSONResponse(
                 {"error": f"Asset nicht gefunden: {category}/{name}"},
                 status_code=404,
+            )
+
+        # Layer 3 -- Symlink-Eskalations-Check: falls jemand mit Write-
+        # Access einen Symlink im assets-Dir legt, der auf /etc zeigt,
+        # blockt das hier. resolve() oben hat den Symlink aufgeloest,
+        # is_relative_to() prueft die Containment.
+        if not file_path.is_relative_to(assets_root):
+            logger.warning(
+                "Path-Traversal-Versuch geblockt: category=%s name=%s",
+                _sanitize_for_log(category),
+                _sanitize_for_log(name),
+            )
+            return JSONResponse(
+                {"error": f"Ungültiger Asset-Name: {name}"},
+                status_code=400,
             )
 
         return FileResponse(
@@ -98,7 +151,7 @@ def register_avatar_editor_routes(
         )
 
     @app.get("/api/avatar/config")
-    async def get_config():
+    async def get_config() -> JSONResponse:
         """Gibt die aktuelle YAML-Config als JSON zurück."""
         if not avatar_config_loader.DEFAULT_CONFIG_PATH.exists():
             return JSONResponse(
@@ -128,7 +181,7 @@ def register_avatar_editor_routes(
         )
 
     @app.put("/api/avatar/config")
-    async def save_config(body: dict | None = None):
+    async def save_config(body: dict[str, Any] | None = None) -> JSONResponse:
         """Speichert die Config nach Validierung als YAML."""
         if not body or "config" not in body:
             return JSONResponse(
@@ -172,7 +225,7 @@ def register_avatar_editor_routes(
         return JSONResponse({"saved": True})
 
     @app.post("/api/avatar/reload")
-    async def reload_config():
+    async def reload_config() -> JSONResponse:
         """Triggert Hot-Reload der Config im Renderer."""
         if renderer is None:
             return JSONResponse(
@@ -189,8 +242,12 @@ def register_avatar_editor_routes(
         )
 
 
-def _validate_config(data: dict) -> str | None:
-    """Validiert die Config-Daten. Gibt Fehlertext oder None zurück."""
+def _validate_config(data: Any) -> str | None:
+    """Validiert die Config-Daten. Gibt Fehlertext oder None zurück.
+
+    Akzeptiert Any, weil yaml.safe_load() beliebige Typen zurueckliefern
+    kann (incl. None bei leerem File). Der erste Check enge das ein.
+    """
     if not isinstance(data, dict):
         return "Config muss ein Dictionary sein."
 

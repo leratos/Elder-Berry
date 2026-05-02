@@ -39,7 +39,7 @@ import json
 import logging
 import secrets as _secrets
 import time
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import bcrypt
 
@@ -379,7 +379,7 @@ class DashboardAuthManager:
 
     # -- Interne Helpers --------------------------------------------- #
 
-    def _sign_payload(self, payload: dict) -> str:
+    def _sign_payload(self, payload: dict[str, Any]) -> str:
         secret = self._get_session_secret()
         payload_bytes = json.dumps(
             payload, sort_keys=True, separators=(",", ":")
