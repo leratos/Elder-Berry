@@ -27,7 +27,8 @@ import weakref
 from typing import TYPE_CHECKING
 
 from fastapi.responses import JSONResponse
-from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
+from starlette.responses import Response
 
 from elder_berry.web.dashboard_auth import (
     COOKIE_NAME,
@@ -36,6 +37,7 @@ from elder_berry.web.dashboard_auth import (
 
 if TYPE_CHECKING:
     from starlette.requests import Request
+    from starlette.types import ASGIApp
 
     from elder_berry.core.secret_store import SecretStore
     from elder_berry.web.dashboard_auth import DashboardAuthManager
@@ -86,7 +88,7 @@ class DashboardAuthMiddleware(BaseHTTPMiddleware):
 
     def __init__(
         self,
-        app,
+        app: ASGIApp,
         auth_manager: DashboardAuthManager,
         secret_store: "SecretStore | None" = None,
     ) -> None:
@@ -118,7 +120,9 @@ class DashboardAuthMiddleware(BaseHTTPMiddleware):
             return True
         return any(path.startswith(p) for p in self.PROTECTED_PREFIXES)
 
-    async def dispatch(self, request: Request, call_next):
+    async def dispatch(
+        self, request: Request, call_next: RequestResponseEndpoint
+    ) -> Response:
         path = request.url.path
         if not self._is_protected(path):
             return await call_next(request)
@@ -159,6 +163,9 @@ class DashboardAuthMiddleware(BaseHTTPMiddleware):
 
         remaining = int(payload["exp"]) - int(time.time())
         if remaining < self._auth.ttl_seconds // 2:
+            # verify_session() oben hat erfolgreich validiert -- cookie
+            # ist garantiert nicht None (None loest InvalidSessionError aus).
+            assert cookie is not None
             try:
                 new_cookie, _new_exp = self._auth.extend_session(cookie)
             except InvalidSessionError as exc:
