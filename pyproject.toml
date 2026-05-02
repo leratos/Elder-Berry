@@ -218,7 +218,6 @@ module = [
     "elder_berry.tools.contact_store",
     "elder_berry.tools.document_classifier",
     "elder_berry.tools.document_reader",
-    "elder_berry.tools.elevenlabs_client",
     "elder_berry.tools.email_client",
     "elder_berry.tools.email_sender",
     "elder_berry.tools.google_calendar",
@@ -284,6 +283,7 @@ strict = true
 [[tool.mypy.overrides]]
 module = [
     "elder_berry.tools.cloud_stt_client",
+    "elder_berry.tools.elevenlabs_client",
     "elder_berry.tools.route_planner",
     "elder_berry.web.settings_token",
 ]
