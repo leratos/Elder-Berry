@@ -10,7 +10,8 @@ from typing import TYPE_CHECKING
 
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
-from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
+from starlette.responses import Response
 
 from elder_berry.web.origin_check_middleware import OriginCheckMiddleware
 
@@ -25,7 +26,9 @@ logger = logging.getLogger(__name__)
 class SecurityHeadersMiddleware(BaseHTTPMiddleware):
     """Fügt Sicherheits-Header zu jeder Response hinzu."""
 
-    async def dispatch(self, request: Request, call_next):
+    async def dispatch(
+        self, request: Request, call_next: RequestResponseEndpoint
+    ) -> Response:
         response = await call_next(request)
         response.headers["X-Content-Type-Options"] = "nosniff"
         response.headers["X-Frame-Options"] = "DENY"
@@ -90,7 +93,9 @@ def setup_security(
 
     # --- Globaler Exception-Handler ---
     @app.exception_handler(Exception)
-    async def _global_exception_handler(request: Request, exc: Exception):
+    async def _global_exception_handler(
+        request: Request, exc: Exception
+    ) -> JSONResponse:
         logger.exception("Unbehandelte Ausnahme in %s", request.url.path)
         return JSONResponse(
             {"error": "Interner Fehler – Details im Log."},
