@@ -34,6 +34,8 @@ _ASSETS_DIR = Path(__file__).parent.parent / "avatar" / "assets"
 
 # Erlaubte Asset-Kategorien → Unterordner
 _CATEGORIES = {"body", "eye", "mouth", "effect"}
+# Trusted map: verhindert direkte Verwendung von User-Input im Path-Build.
+_CATEGORY_DIRS: dict[str, Path] = {c: _ASSETS_DIR / c for c in _CATEGORIES}
 
 # Erlaubte Asset-Namen: ASCII-Bezeichner ohne Punkte/Slashes/Sonderzeichen.
 # Strikter Allowlist-Check vor dem Path-Build -- Defense-in-Depth zusaetzlich
@@ -103,7 +105,8 @@ def register_avatar_editor_routes(
         # CodeQL py/path-injection (#304); Layer 1 alleine wurde von der
         # Query nicht als Sanitizer erkannt.
         assets_root = _ASSETS_DIR.resolve()
-        candidate = (_ASSETS_DIR / category / f"{name}.png").resolve()
+        category_dir = _CATEGORY_DIRS[category]
+        candidate = (category_dir / f"{name}.png").resolve()
         if not candidate.is_relative_to(assets_root):
             logger.warning(
                 "Path-Traversal-Versuch geblockt: category=%s name=%s",
