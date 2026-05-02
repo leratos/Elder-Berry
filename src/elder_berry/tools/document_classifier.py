@@ -237,6 +237,8 @@ class DocumentClassifier:
         """OCR über Stirling-PDF, dann erneut Text extrahieren."""
         import tempfile
 
+        # Aufrufer (extract_text) filtert self._stirling is None bereits raus.
+        assert self._stirling is not None
         try:
             with tempfile.TemporaryDirectory() as tmp_dir:
                 ocr_path = Path(tmp_dir) / f"ocr_{file_path.name}"
