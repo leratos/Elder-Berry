@@ -212,7 +212,6 @@ ignore_errors = true
 [[tool.mypy.overrides]]
 module = [
     "elder_berry.tools",                    # __init__.py
-    "elder_berry.tools.brave_search_client",
     "elder_berry.tools.caldav_calendar",
     "elder_berry.tools.caldav_tasks",
     "elder_berry.tools.carddav_sync",
@@ -275,6 +274,7 @@ strict = true
 # --- Phase 76c strict: tools/ + web/ (waechst pro Tier-Commit) ---
 [[tool.mypy.overrides]]
 module = [
+    "elder_berry.tools.brave_search_client",
     "elder_berry.tools.cloud_stt_client",
     "elder_berry.tools.document_reader",
     "elder_berry.tools.elevenlabs_client",

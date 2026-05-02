@@ -18,6 +18,8 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
+    import httpx
+
     from elder_berry.core.secret_store import SecretStore
 
 logger = logging.getLogger(__name__)
@@ -56,9 +58,9 @@ class BraveSearchClient:
 
     def __init__(self, secret_store: SecretStore) -> None:
         self._store = secret_store
-        self._client = None
+        self._client: httpx.Client | None = None
 
-    def _get_client(self):
+    def _get_client(self) -> httpx.Client:
         """Lazy-Init: httpx.Client mit Timeout."""
         if self._client is not None:
             return self._client
