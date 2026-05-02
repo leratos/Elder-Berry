@@ -235,7 +235,6 @@ module = [
     "elder_berry.web.avatar_editor",
     "elder_berry.web.secrets_registry",
     "elder_berry.web.settings_dashboard",
-    "elder_berry.web.setup_tests",
     "elder_berry.web.setup_wizard",
 ]
 follow_imports = "silent"
@@ -287,6 +286,7 @@ module = [
     "elder_berry.web.session_revocation_list",
     "elder_berry.web.settings_token",
     "elder_berry.web.settings_token_middleware",
+    "elder_berry.web.setup_tests",
 ]
 strict = true
 
