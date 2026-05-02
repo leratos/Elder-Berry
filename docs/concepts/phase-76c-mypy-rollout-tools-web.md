@@ -556,6 +556,36 @@ Nach Etappe 5:
     Startup-Geschwindigkeit, optional-Dep), die Annotation kommt
     separat über `TYPE_CHECKING`.
 
+12. **SQLite-Store-Pattern** (etabliert in Etappe 3 mit
+    `reminder_store` und `todo_store`, kommt voraussichtlich in Tier
+    4/5 für `note_store`, `contact_store`, `caldav_tasks` wieder).
+    Drei wiederkehrende Mini-Funde pro Store:
+
+    ```python
+    from typing import Any
+
+    # 1. cursor.lastrowid ist int | None, dataclass.id erwartet int.
+    cursor = self._conn.execute("INSERT ...", (...))
+    self._conn.commit()
+    # Nach erfolgreichem INSERT setzt sqlite3 lastrowid garantiert.
+    assert cursor.lastrowid is not None
+    return Item(id=cursor.lastrowid, ...)
+
+    # 2. Heterogene Query-Parameter:
+    params: list[Any] = [user_id]
+    if priority:
+        params.append(priority)
+
+    # 3. DB-Rows sind heterogene tuples:
+    @staticmethod
+    def _row_to_item(row: tuple[Any, ...]) -> Item: ...
+    ```
+
+    Die `assert lastrowid is not None`-Stelle ist nicht Defense-in-
+    Depth; sie ist die einzige Stelle, an der mypy unterscheidet
+    zwischen "INSERT war erfolgreich" und "lastrowid könnte None sein
+    (z.B. nach einem SELECT)".
+
 ---
 
 **Akzeptanz dieses Konzepts durch User → Etappe 0 startet.**
