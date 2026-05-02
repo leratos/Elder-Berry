@@ -215,7 +215,6 @@ module = [
     "elder_berry.tools.caldav_calendar",
     "elder_berry.tools.caldav_tasks",
     "elder_berry.tools.carddav_sync",
-    "elder_berry.tools.cloud_stt_client",
     "elder_berry.tools.contact_store",
     "elder_berry.tools.document_classifier",
     "elder_berry.tools.document_reader",
@@ -285,6 +284,7 @@ strict = true
 # --- Phase 76c strict: tools/ + web/ (waechst pro Tier-Commit) ---
 [[tool.mypy.overrides]]
 module = [
+    "elder_berry.tools.cloud_stt_client",
     "elder_berry.web.settings_token",
 ]
 strict = true
