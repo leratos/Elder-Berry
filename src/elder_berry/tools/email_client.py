@@ -24,12 +24,30 @@ import logging
 import re
 from dataclasses import dataclass
 from datetime import datetime, timedelta
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, cast
 
 if TYPE_CHECKING:
     from elder_berry.core.secret_store import SecretStore
 
 logger = logging.getLogger(__name__)
+
+
+def _uid(
+    conn: imaplib.IMAP4,
+    command: str,
+    *args: object,
+) -> tuple[str, list[Any]]:
+    """imaplib.IMAP4.uid()-Wrapper (Pattern §10.8 aus Phase-76c-Konzept).
+
+    stdlib-Stub deklariert *args: AnyStr (TypeVar-Constraint, alle Args
+    muessen einheitlich str ODER einheitlich bytes sein). CPythons
+    echte Implementation in Lib/imaplib.py akzeptiert mixed
+    str/bytes/None und encoded selbst (RFC 3501 §6.4.4 erlaubt
+    SEARCH None criteria fuer "kein CHARSET"). Kein Bug-Fix noetig --
+    runtime-Semantik ist seit Python 2 stabil.
+    """
+    return conn.uid(command, *args)  # type: ignore[arg-type]
+
 
 # Maximale Textlänge pro Mail für Zusammenfassung
 MAX_BODY_CHARS = 2000
@@ -253,7 +271,7 @@ class IMAPEmailClient:
             conn.select(self._mailbox, readonly=True)
 
             uid_bytes = msg_id.encode() if isinstance(msg_id, str) else msg_id
-            _, msg_data = conn.uid("fetch", uid_bytes, "(RFC822)")
+            _, msg_data = _uid(conn, "fetch", uid_bytes, "(RFC822)")
 
             if not msg_data or not msg_data[0]:
                 conn.logout()
@@ -276,7 +294,7 @@ class IMAPEmailClient:
                 else:
                     filename = f"attachment_{len(attachments) + 1}"
 
-                payload = part.get_payload(decode=True)
+                payload = cast("bytes | None", part.get_payload(decode=True))
                 if payload:
                     attachments.append((filename, payload))
 
@@ -302,7 +320,7 @@ class IMAPEmailClient:
             conn.select(self._mailbox, readonly=True)
 
             uid_bytes = msg_id.encode() if isinstance(msg_id, str) else msg_id
-            _, msg_data = conn.uid("fetch", uid_bytes, "(RFC822)")
+            _, msg_data = _uid(conn, "fetch", uid_bytes, "(RFC822)")
 
             if not msg_data or not msg_data[0]:
                 conn.logout()
@@ -336,7 +354,7 @@ class IMAPEmailClient:
             conn.select(self._mailbox, readonly=False)
 
             uid_bytes = msg_id.encode() if isinstance(msg_id, str) else msg_id
-            result, _ = conn.uid("store", uid_bytes, "+FLAGS", "(\\Deleted)")
+            result, _ = _uid(conn, "store", uid_bytes, "+FLAGS", "(\\Deleted)")
 
             if result != "OK":
                 conn.logout()
@@ -474,6 +492,7 @@ class IMAPEmailClient:
 
     def _connect(self) -> imaplib.IMAP4_SSL | imaplib.IMAP4:
         """Erstellt IMAP-Verbindung und loggt ein."""
+        conn: imaplib.IMAP4_SSL | imaplib.IMAP4
         if self._use_ssl:
             conn = imaplib.IMAP4_SSL(self._host, self._port)
         else:
@@ -507,9 +526,10 @@ class IMAPEmailClient:
             # verwendet werden, sonst UnicodeEncodeError in imaplib.
             try:
                 search_criteria.encode("ascii")
-                _, data = conn.uid("search", None, search_criteria)
+                _, data = _uid(conn, "search", None, search_criteria)
             except UnicodeEncodeError:
-                _, data = conn.uid(
+                _, data = _uid(
+                    conn,
                     "search",
                     "CHARSET",
                     "UTF-8",
@@ -524,7 +544,7 @@ class IMAPEmailClient:
             mails = []
             for uid in uids:
                 try:
-                    _, msg_data = conn.uid("fetch", uid, "(RFC822)")
+                    _, msg_data = _uid(conn, "fetch", uid, "(RFC822)")
                     if not msg_data or not msg_data[0]:
                         continue
                     raw = msg_data[0][1]
@@ -630,7 +650,11 @@ class IMAPEmailClient:
     @staticmethod
     def _decode_payload(part: email.message.Message) -> str:
         """Dekodiert den Payload eines MIME-Parts."""
-        payload = part.get_payload(decode=True)
+        # get_payload(decode=True) returnt bytes laut docs (oder None
+        # bei multipart). Stub deklariert Message[str,str] | Any | bytes
+        # weil get_payload() ueberladen ist; mit decode=True ist nur
+        # bytes/None moeglich.
+        payload = cast("bytes | None", part.get_payload(decode=True))
         if not payload:
             return ""
 

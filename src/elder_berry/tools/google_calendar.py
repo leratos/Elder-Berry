@@ -15,9 +15,10 @@ from __future__ import annotations
 import json
 import logging
 import ssl
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from elder_berry.core.secret_store import SecretStore
@@ -79,9 +80,11 @@ class GoogleCalendarClient:
 
     def __init__(self, secret_store: SecretStore) -> None:
         self._store = secret_store
-        self._service = None
+        # googleapiclient.discovery.Resource hat keine PEP-561-Stubs --
+        # Lazy-Init-Pattern §10.11 mit Any als Service-Typ.
+        self._service: Any = None
 
-    def _get_service(self):
+    def _get_service(self) -> Any:
         """Lazy-Init: Erstellt Google Calendar API Service."""
         if self._service is not None:
             return self._service
@@ -93,7 +96,11 @@ class GoogleCalendarClient:
         token_json = self._store.get("google_oauth_tokens")
         token_data = json.loads(token_json)
 
-        credentials = Credentials(
+        # Credentials.__init__ ist im google.oauth2.credentials Stub als
+        # untyped markiert (akzeptiert **kwargs ohne strikte Typen). Wenn
+        # google-auth-oauthlib die Annotations verbessert, faellt der
+        # ignore via warn_unused_ignores=True auf.
+        credentials = Credentials(  # type: ignore[no-untyped-call]
             token=token_data.get("token"),
             refresh_token=token_data.get("refresh_token"),
             token_uri=token_data.get("token_uri"),
@@ -116,12 +123,14 @@ class GoogleCalendarClient:
     # Fehlertypen die auf eine tote Connection hindeuten
     _RETRIABLE_ERRORS = (ssl.SSLError, ConnectionError, OSError)
 
-    def _call_with_retry(self, operation):
+    def _call_with_retry[T](self, operation: Callable[[], T]) -> T:
         """Führt operation() aus, mit 1x Retry bei stale Connection.
 
         Bei SSL-EOF oder Connection-Fehlern wird der gecachte Service
         invalidiert. Der zweite Aufruf von operation() holt sich via
         _get_service() eine frische Connection.
+
+        PEP-695-Generic [T] (Pattern aus Phase 76 stt_router/_run_async).
 
         Args:
             operation: Callable ohne Argumente, das _get_service() nutzt
@@ -159,7 +168,7 @@ class GoogleCalendarClient:
             Liste von CalendarEvent, chronologisch sortiert.
         """
 
-        def _op():
+        def _op() -> list[CalendarEvent]:
             service = self._get_service()
             now = datetime.now(timezone.utc)
             time_min = now.isoformat()
@@ -199,7 +208,7 @@ class GoogleCalendarClient:
             Liste passender CalendarEvents.
         """
 
-        def _op():
+        def _op() -> list[CalendarEvent]:
             service = self._get_service()
             now = datetime.now(timezone.utc)
             time_min = now.isoformat()
@@ -244,7 +253,7 @@ class GoogleCalendarClient:
             Liste von CalendarEvents im Zeitraum, nach Startzeit sortiert.
         """
 
-        def _op():
+        def _op() -> list[CalendarEvent]:
             service = self._get_service()
             result = (
                 service.events()
@@ -265,7 +274,7 @@ class GoogleCalendarClient:
     def get_tomorrow(self) -> list[CalendarEvent]:
         """Termine für morgen."""
 
-        def _op():
+        def _op() -> list[CalendarEvent]:
             service = self._get_service()
             now = datetime.now(timezone.utc)
             tomorrow_start = (now + timedelta(days=1)).replace(
@@ -322,7 +331,7 @@ class GoogleCalendarClient:
         if all_day:
             start_date = start.strftime("%Y-%m-%d")
             end_date = (start + timedelta(days=1)).strftime("%Y-%m-%d")
-            body: dict = {
+            body: dict[str, Any] = {
                 "summary": summary,
                 "start": {"date": start_date},
                 "end": {"date": end_date},
@@ -348,7 +357,7 @@ class GoogleCalendarClient:
         if recurrence:
             body["recurrence"] = recurrence
 
-        def _op():
+        def _op() -> CalendarEvent:
             service = self._get_service()
             created = (
                 service.events()
@@ -376,7 +385,7 @@ class GoogleCalendarClient:
             RuntimeError: Wenn der Termin nicht gefunden wurde oder API-Fehler.
         """
 
-        def _op():
+        def _op() -> bool:
             service = self._get_service()
             try:
                 service.events().delete(
@@ -413,7 +422,7 @@ class GoogleCalendarClient:
         return "\n".join(lines).strip()
 
     @staticmethod
-    def _parse_event(item: dict) -> CalendarEvent:
+    def _parse_event(item: dict[str, Any]) -> CalendarEvent:
         """Parst ein Google Calendar API Event-Objekt."""
         start_data = item.get("start", {})
         end_data = item.get("end", {})
@@ -445,8 +454,10 @@ class GoogleCalendarClient:
             # Windows: tzname gibt z.B. ('Mitteleuropäische Zeit', 'Mitteleuropäische Sommerzeit')
             # Wir brauchen den IANA-Namen
             local_tz = datetime.now().astimezone().tzinfo
-            if hasattr(local_tz, "key"):
-                return local_tz.key
+            if local_tz is not None and hasattr(local_tz, "key"):
+                # ZoneInfo.key ist str, anderen tzinfo-Subklassen koennten was
+                # anderes haben -- str() um sicher zu gehen.
+                return str(local_tz.key)
         except Exception:
             pass
         return "Europe/Berlin"

@@ -15,8 +15,9 @@ from __future__ import annotations
 
 import logging
 import uuid
+from collections.abc import Callable
 from datetime import date, datetime, timedelta, timezone
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from elder_berry.tools.google_calendar import CalendarEvent
 
@@ -38,10 +39,11 @@ class CalDAVCalendarClient:
 
     def __init__(self, secret_store: SecretStore) -> None:
         self._store = secret_store
-        self._client = None
-        self._calendar = None
+        # caldav.* hat keine PEP-561-Stubs -- Lazy-Init §10.11 mit Any.
+        self._client: Any = None
+        self._calendar: Any = None
 
-    def _get_calendar(self):
+    def _get_calendar(self) -> Any:
         """Lazy-Init: Verbindet mit Nextcloud CalDAV und holt den primären Kalender."""
         if self._calendar is not None:
             return self._calendar
@@ -52,7 +54,9 @@ class CalDAVCalendarClient:
         user = self._store.get("nextcloud_user")
         pw = self._store.get("nextcloud_app_password")
 
-        self._client = caldav.DAVClient(
+        # caldav-Stub markiert DAVClient als object (statt class) --
+        # vermutlich __init__.py-Re-Export-Issue. Runtime-Aufruf ist OK.
+        self._client = caldav.DAVClient(  # type: ignore[operator]
             url=f"{url}/remote.php/dav",
             username=user,
             password=pw,
@@ -72,8 +76,11 @@ class CalDAVCalendarClient:
         self._calendar = calendars[0]
         return self._calendar
 
-    def _call_with_retry(self, operation):
-        """Führt operation() aus, mit 1x Retry bei stale Connection."""
+    def _call_with_retry[T](self, operation: Callable[[], T]) -> T:
+        """Führt operation() aus, mit 1x Retry bei stale Connection.
+
+        PEP-695-Generic [T] (Pattern aus Phase 76 stt_router/_run_async).
+        """
         try:
             return operation()
         except self._RETRIABLE_ERRORS as e:
@@ -111,7 +118,7 @@ class CalDAVCalendarClient:
             Liste von CalendarEvent, chronologisch sortiert.
         """
 
-        def _op():
+        def _op() -> list[CalendarEvent]:
             cal = self._get_calendar()
             now = datetime.now(timezone.utc)
             end = now + timedelta(days=days)
@@ -152,7 +159,7 @@ class CalDAVCalendarClient:
             Liste passender CalendarEvents.
         """
 
-        def _op():
+        def _op() -> list[CalendarEvent]:
             cal = self._get_calendar()
             now = datetime.now(timezone.utc)
             end = now + timedelta(days=days)
@@ -207,7 +214,7 @@ class CalDAVCalendarClient:
             Liste von CalendarEvents im Zeitraum, nach Startzeit sortiert.
         """
 
-        def _op():
+        def _op() -> list[CalendarEvent]:
             cal = self._get_calendar()
             results = cal.search(
                 start=start,
@@ -231,7 +238,7 @@ class CalDAVCalendarClient:
     def get_tomorrow(self) -> list[CalendarEvent]:
         """Termine für morgen."""
 
-        def _op():
+        def _op() -> list[CalendarEvent]:
             cal = self._get_calendar()
             now = datetime.now(timezone.utc)
             tomorrow_start = (now + timedelta(days=1)).replace(
@@ -286,7 +293,7 @@ class CalDAVCalendarClient:
             Der erstellte CalendarEvent.
         """
 
-        def _op():
+        def _op() -> CalendarEvent:
             cal = self._get_calendar()
             uid = str(uuid.uuid4())
             tz_name = self._get_local_timezone()
@@ -364,7 +371,7 @@ class CalDAVCalendarClient:
             RuntimeError: Wenn der Termin nicht gefunden wurde oder Server-Fehler.
         """
 
-        def _op():
+        def _op() -> bool:
             cal = self._get_calendar()
             try:
                 event = cal.event_by_uid(event_id)
@@ -402,12 +409,17 @@ class CalDAVCalendarClient:
         return "\n".join(lines).strip()
 
     @staticmethod
-    def _parse_event(event) -> CalendarEvent:
+    def _parse_event(event: Any) -> CalendarEvent:
         """Parst ein caldav.Event in ein CalendarEvent."""
         import icalendar
 
         cal = icalendar.Calendar.from_ical(event.data)
-        for component in cal.walk():
+        for raw_component in cal.walk():
+            # icalendar hat eigene py.typed-Stubs, markiert .get() aber
+            # als untyped (component-Klasse ist sehr dynamisch). Cast
+            # auf Any vermeidet 5x # type: ignore[no-untyped-call] auf
+            # den .get()-Aufrufen unten.
+            component: Any = raw_component
             if component.name == "VEVENT":
                 summary = str(component.get("SUMMARY", "(Kein Titel)"))
                 dtstart = component.get("DTSTART").dt
@@ -455,8 +467,8 @@ class CalDAVCalendarClient:
         """Ermittelt den lokalen Timezone-Namen."""
         try:
             local_tz = datetime.now().astimezone().tzinfo
-            if hasattr(local_tz, "key"):
-                return local_tz.key
+            if local_tz is not None and hasattr(local_tz, "key"):
+                return str(local_tz.key)
         except Exception:
             pass
         return "Europe/Berlin"

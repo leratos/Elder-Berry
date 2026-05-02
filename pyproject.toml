@@ -212,15 +212,9 @@ ignore_errors = true
 [[tool.mypy.overrides]]
 module = [
     "elder_berry.tools",                    # __init__.py
-    "elder_berry.tools.caldav_calendar",
-    "elder_berry.tools.caldav_tasks",
     "elder_berry.tools.carddav_sync",
     "elder_berry.tools.contact_store",
-    "elder_berry.tools.email_client",
-    "elder_berry.tools.google_calendar",
     "elder_berry.tools.nextcloud_files",
-    "elder_berry.tools.note_store",
-    "elder_berry.tools.stirling_pdf",
 ]
 follow_imports = "silent"
 ignore_errors = true
@@ -229,7 +223,6 @@ ignore_errors = true
 [[tool.mypy.overrides]]
 module = [
     "elder_berry.web",                      # __init__.py
-    "elder_berry.web.secrets_registry",
     "elder_berry.web.settings_dashboard",
     "elder_berry.web.setup_wizard",
 ]
@@ -261,14 +254,20 @@ strict = true
 [[tool.mypy.overrides]]
 module = [
     "elder_berry.tools.brave_search_client",
+    "elder_berry.tools.caldav_calendar",
+    "elder_berry.tools.caldav_tasks",
     "elder_berry.tools.cloud_stt_client",
     "elder_berry.tools.document_classifier",
     "elder_berry.tools.document_reader",
     "elder_berry.tools.elevenlabs_client",
+    "elder_berry.tools.email_client",
     "elder_berry.tools.email_sender",
+    "elder_berry.tools.google_calendar",
+    "elder_berry.tools.note_store",
     "elder_berry.tools.gym_data",
     "elder_berry.tools.recurrence",
     "elder_berry.tools.reminder_store",
+    "elder_berry.tools.stirling_pdf",
     "elder_berry.tools.route_planner",
     "elder_berry.tools.todo_store",
     "elder_berry.tools.weather_client",
@@ -282,6 +281,7 @@ module = [
     "elder_berry.web.rate_limiter",
     "elder_berry.web.robot_proxy",
     "elder_berry.web.secrets_api",
+    "elder_berry.web.secrets_registry",
     "elder_berry.web.security_middleware",
     "elder_berry.web.session_revocation_list",
     "elder_berry.web.settings_token",
