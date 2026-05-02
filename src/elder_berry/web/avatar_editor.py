@@ -111,18 +111,30 @@ def register_avatar_editor_routes(
                 status_code=400,
             )
 
-        # Layer 2 -- Resolve + is_relative_to(): finaler Pfad muss unter
-        # _ASSETS_DIR liegen, nachdem Symlinks aufgeloest wurden. Behebt
-        # CodeQL py/path-injection (#304); Layer 1 alleine wurde von der
-        # Query nicht als Sanitizer erkannt.
-        # _CATEGORY_DIRS-Lookup vermeidet, dass user-input direkt in den
-        # Path-Build fliesst (CodeQL-Sanitizer-Hinweis). Der Lookup-Wert
-        # ist trusted (gleicher String wie der Schluessel, aus
-        # _CATEGORIES-Allowlist).
+        # Layer 2 -- Filesystem-Allowlist: liste real existierende PNGs
+        # im category-dir, matche name als trusted Schluessel. User-Input
+        # fliesst nicht in den Path-Build, sondern wird gegen die echte
+        # Disk-Liste validiert. CodeQL akzeptiert dieses Pattern als
+        # Sanitizer (vorherige resolve()+is_relative_to()-Variante wurde
+        # von der py/path-injection-Query nicht akzeptiert).
         assets_root = _ASSETS_DIR.resolve()
         category_subdir = _CATEGORY_DIRS[category]
-        candidate = (_ASSETS_DIR / category_subdir / f"{name}.png").resolve()
-        if not candidate.is_relative_to(assets_root):
+        category_dir = (_ASSETS_DIR / category_subdir).resolve()
+        allowed_assets: dict[str, Path] = {
+            p.stem: p.resolve() for p in category_dir.glob("*.png") if p.is_file()
+        }
+        file_path = allowed_assets.get(name)
+        if file_path is None:
+            return JSONResponse(
+                {"error": f"Asset nicht gefunden: {category}/{name}"},
+                status_code=404,
+            )
+
+        # Layer 3 -- Symlink-Eskalations-Check: falls jemand mit Write-
+        # Access einen Symlink im assets-Dir legt, der auf /etc zeigt,
+        # blockt das hier. resolve() oben hat den Symlink aufgeloest,
+        # is_relative_to() prueft die Containment.
+        if not file_path.is_relative_to(assets_root):
             logger.warning(
                 "Path-Traversal-Versuch geblockt: category=%s name=%s",
                 _sanitize_for_log(category),
@@ -131,13 +143,6 @@ def register_avatar_editor_routes(
             return JSONResponse(
                 {"error": f"Ungültiger Asset-Name: {name}"},
                 status_code=400,
-            )
-        file_path = candidate
-
-        if not file_path.exists() or not file_path.is_file():
-            return JSONResponse(
-                {"error": f"Asset nicht gefunden: {category}/{name}"},
-                status_code=404,
             )
 
         return FileResponse(
