@@ -23,9 +23,11 @@ Regel aus ``SecretStore.get_or_none("berry_gym_url")``).
 from __future__ import annotations
 
 import logging
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, cast
 
 if TYPE_CHECKING:
+    import httpx
+
     from elder_berry.core.secret_store import SecretStore
 
 logger = logging.getLogger(__name__)
@@ -55,9 +57,9 @@ class GymDataClient:
             )
         self._store = secret_store
         self._base_url = base_url.strip().rstrip("/")
-        self._client = None
+        self._client: httpx.Client | None = None
 
-    def _get_client(self):
+    def _get_client(self) -> httpx.Client:
         """Lazy-Init: httpx.Client mit Bearer-Token + base_url."""
         if self._client is not None:
             return self._client
@@ -80,32 +82,33 @@ class GymDataClient:
         except Exception:
             return False
 
-    def get_summary(self) -> dict | None:
+    def get_summary(self) -> dict[str, Any] | None:
         """Trainings-Zusammenfassung: letztes Training, Woche, Gewicht."""
         return self._get("/api/saleria/summary/")
 
-    def get_last_training(self) -> dict | None:
+    def get_last_training(self) -> dict[str, Any] | None:
         """Letztes Training mit allen Sätzen."""
         data = self._get("/api/saleria/last-training/")
         if data:
-            return data.get("training")
+            training = data.get("training")
+            return cast("dict[str, Any] | None", training)
         return None
 
-    def get_week(self) -> list[dict]:
+    def get_week(self) -> list[dict[str, Any]]:
         """Trainings der letzten 7 Tage."""
         data = self._get("/api/saleria/week/")
         if data:
-            return data.get("trainings", [])
+            return cast("list[dict[str, Any]]", data.get("trainings", []))
         return []
 
-    def get_prs(self) -> list[dict]:
+    def get_prs(self) -> list[dict[str, Any]]:
         """Personal Records (Top 1RM pro Übung, letzte 30 Tage)."""
         data = self._get("/api/saleria/prs/")
         if data:
-            return data.get("prs", [])
+            return cast("list[dict[str, Any]]", data.get("prs", []))
         return []
 
-    def format_summary(self, summary: dict) -> str:
+    def format_summary(self, summary: dict[str, Any]) -> str:
         """Formatiert die Zusammenfassung als lesbaren Text."""
         lines = []
 
@@ -129,7 +132,7 @@ class GymDataClient:
 
         return "\n".join(lines)
 
-    def format_last_training(self, training: dict) -> str:
+    def format_last_training(self, training: dict[str, Any]) -> str:
         """Formatiert das letzte Training mit Sätzen."""
         datum = training.get("datum", "?")[:10]
         dauer = training.get("dauer_minuten", "?")
@@ -159,7 +162,7 @@ class GymDataClient:
 
         return "\n".join(lines)
 
-    def format_week(self, trainings: list[dict]) -> str:
+    def format_week(self, trainings: list[dict[str, Any]]) -> str:
         """Formatiert die Wochenübersicht."""
         if not trainings:
             return "Diese Woche: keine Trainings."
@@ -173,7 +176,7 @@ class GymDataClient:
 
         return "\n".join(lines)
 
-    def format_prs(self, prs: list[dict]) -> str:
+    def format_prs(self, prs: list[dict[str, Any]]) -> str:
         """Formatiert Personal Records."""
         if not prs:
             return "Keine Personal Records in den letzten 30 Tagen."
@@ -193,13 +196,13 @@ class GymDataClient:
     # Intern
     # ------------------------------------------------------------------
 
-    def _get(self, path: str) -> dict | None:
+    def _get(self, path: str) -> dict[str, Any] | None:
         """GET-Request mit Fehlerbehandlung."""
         try:
             client = self._get_client()
             resp = client.get(path)
             resp.raise_for_status()
-            return resp.json()
+            return cast(dict[str, Any], resp.json())
         except Exception as e:
             logger.error("Berry-Gym API Fehler (%s): %s", path, e)
             return None
