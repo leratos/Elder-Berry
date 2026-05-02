@@ -247,7 +247,6 @@ module = [
     "elder_berry.web.robot_proxy",
     "elder_berry.web.secrets_api",
     "elder_berry.web.secrets_registry",
-    "elder_berry.web.security_middleware",
     "elder_berry.web.session_revocation_list",
     "elder_berry.web.settings_dashboard",
     "elder_berry.web.settings_token_middleware",
@@ -285,6 +284,7 @@ module = [
     "elder_berry.tools.elevenlabs_client",
     "elder_berry.tools.route_planner",
     "elder_berry.web.llm_api",
+    "elder_berry.web.security_middleware",
     "elder_berry.web.settings_token",
 ]
 strict = true
