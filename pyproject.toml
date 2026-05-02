@@ -219,7 +219,6 @@ module = [
     "elder_berry.tools.email_client",
     "elder_berry.tools.google_calendar",
     "elder_berry.tools.nextcloud_files",
-    "elder_berry.tools.note_store",
     "elder_berry.tools.stirling_pdf",
 ]
 follow_imports = "silent"
@@ -266,6 +265,7 @@ module = [
     "elder_berry.tools.document_reader",
     "elder_berry.tools.elevenlabs_client",
     "elder_berry.tools.email_sender",
+    "elder_berry.tools.note_store",
     "elder_berry.tools.gym_data",
     "elder_berry.tools.recurrence",
     "elder_berry.tools.reminder_store",

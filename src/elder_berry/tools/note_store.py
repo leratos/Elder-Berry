@@ -20,6 +20,7 @@ import sqlite3
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -376,7 +377,7 @@ class NoteStore:
         return re.sub(r"\s+", " ", key.strip().lower())
 
     @staticmethod
-    def _row_to_note(row: tuple) -> Note:
+    def _row_to_note(row: tuple[Any, ...]) -> Note:
         """Konvertiert einen DB-Row-Tuple in ein Note-DTO."""
         note_id, user_id, key, content, tags_str, created_at, updated_at = row
         tags = [t.strip() for t in tags_str.split(",")] if tags_str else []
