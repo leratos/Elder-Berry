@@ -27,7 +27,7 @@ _DEFAULT_CLEANUP_INTERVAL = 300  # 5 min zwischen Bereinigungsläufen
 
 
 class _State(NamedTuple):
-    attempts: list  # list[float] – Zeitstempel fehlgeschlagener Versuche
+    attempts: list[float]  # Zeitstempel fehlgeschlagener Versuche
     lockout_until: float  # Unix-Timestamp; 0.0 = kein Lockout
 
 
