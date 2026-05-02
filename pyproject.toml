@@ -234,7 +234,6 @@ ignore_errors = true
 module = [
     "elder_berry.web",                      # __init__.py
     "elder_berry.web.avatar_editor",
-    "elder_berry.web.dashboard_auth",
     "elder_berry.web.robot_proxy",
     "elder_berry.web.secrets_registry",
     "elder_berry.web.settings_dashboard",
@@ -277,6 +276,7 @@ module = [
     "elder_berry.tools.recurrence",
     "elder_berry.tools.route_planner",
     "elder_berry.tools.web_fetcher",
+    "elder_berry.web.dashboard_auth",
     "elder_berry.web.dashboard_auth_middleware",
     "elder_berry.web.dashboard_auth_routes",
     "elder_berry.web.llm_api",
