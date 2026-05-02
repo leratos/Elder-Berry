@@ -17,6 +17,7 @@ import sqlite3
 from dataclasses import dataclass
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -119,6 +120,8 @@ class ReminderStore:
         )
         self._conn.commit()
 
+        # Nach erfolgreichem INSERT setzt sqlite3 lastrowid garantiert.
+        assert cursor.lastrowid is not None
         return Reminder(
             id=cursor.lastrowid,
             user_id=user_id,
@@ -249,7 +252,7 @@ class ReminderStore:
         self._conn.close()
 
     @staticmethod
-    def _row_to_reminder(row: tuple) -> Reminder:
+    def _row_to_reminder(row: tuple[Any, ...]) -> Reminder:
         """Konvertiert eine DB-Zeile in ein Reminder-Objekt."""
         return Reminder(
             id=row[0],
