@@ -15,6 +15,7 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass
 from datetime import datetime, timedelta
+from typing import Any
 from urllib.parse import urlencode
 
 import httpx
@@ -129,7 +130,7 @@ class RoutePlanner:
         )
         return f"{_MAPS_LINK_BASE}?{params}"
 
-    def _parse_response(self, data: dict) -> RouteResult:
+    def _parse_response(self, data: dict[str, Any]) -> RouteResult:
         """Parst die Directions API Response."""
         status = data.get("status", "UNKNOWN")
         if status != "OK":

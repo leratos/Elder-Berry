@@ -11,6 +11,7 @@ Benötigt:
 from __future__ import annotations
 
 import logging
+from typing import Any, cast
 
 import httpx
 
@@ -120,7 +121,7 @@ class ElevenLabsClient:
         except httpx.HTTPError as e:
             raise ElevenLabsError("ElevenLabs Netzwerkfehler: %s" % e) from e
 
-    async def get_usage(self) -> dict:
+    async def get_usage(self) -> dict[str, Any]:
         """Fragt verbleibende Credits / Zeichenkontingent ab.
 
         Returns:
@@ -136,7 +137,7 @@ class ElevenLabsClient:
             async with httpx.AsyncClient(timeout=_DEFAULT_TIMEOUT) as client:
                 response = await client.get(url, headers=headers)
                 response.raise_for_status()
-                data = response.json()
+                data = cast(dict[str, Any], response.json())
                 logger.debug(
                     "ElevenLabs Usage: %s/%s Zeichen",
                     data.get("character_count", "?"),
