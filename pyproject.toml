@@ -227,7 +227,6 @@ ignore_errors = true
 [[tool.mypy.overrides]]
 module = [
     "elder_berry.web",                      # __init__.py
-    "elder_berry.web.secrets_registry",
     "elder_berry.web.settings_dashboard",
     "elder_berry.web.setup_wizard",
 ]
@@ -282,6 +281,7 @@ module = [
     "elder_berry.web.rate_limiter",
     "elder_berry.web.robot_proxy",
     "elder_berry.web.secrets_api",
+    "elder_berry.web.secrets_registry",
     "elder_berry.web.security_middleware",
     "elder_berry.web.session_revocation_list",
     "elder_berry.web.settings_token",
