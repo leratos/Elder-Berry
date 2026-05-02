@@ -229,7 +229,6 @@ ignore_errors = true
 [[tool.mypy.overrides]]
 module = [
     "elder_berry.web",                      # __init__.py
-    "elder_berry.web.avatar_editor",
     "elder_berry.web.secrets_registry",
     "elder_berry.web.settings_dashboard",
     "elder_berry.web.setup_wizard",
@@ -274,6 +273,7 @@ module = [
     "elder_berry.tools.todo_store",
     "elder_berry.tools.weather_client",
     "elder_berry.tools.web_fetcher",
+    "elder_berry.web.avatar_editor",
     "elder_berry.web.dashboard_auth",
     "elder_berry.web.dashboard_auth_middleware",
     "elder_berry.web.dashboard_auth_routes",

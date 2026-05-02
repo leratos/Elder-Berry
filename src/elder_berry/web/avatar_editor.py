@@ -13,11 +13,12 @@ from __future__ import annotations
 
 import logging
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import yaml
 from fastapi import FastAPI
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
+from starlette.responses import Response
 
 if TYPE_CHECKING:
     from elder_berry.avatar.layered_renderer import LayeredSpriteRenderer
@@ -53,7 +54,7 @@ def register_avatar_editor_routes(
     """
 
     @app.get("/avatar/editor", response_class=HTMLResponse)
-    async def avatar_editor():
+    async def avatar_editor() -> HTMLResponse:
         template_path = _TEMPLATE_DIR / "avatar_editor.html"
         if template_path.exists():
             return HTMLResponse(template_path.read_text(encoding="utf-8"))
@@ -62,7 +63,7 @@ def register_avatar_editor_routes(
         )
 
     @app.get("/api/avatar/assets")
-    async def list_assets():
+    async def list_assets() -> JSONResponse:
         """Gibt alle verfügbaren Sprites pro Kategorie zurück."""
         result: dict[str, list[str]] = {}
         for category in sorted(_CATEGORIES):
@@ -74,7 +75,7 @@ def register_avatar_editor_routes(
         return JSONResponse(result)
 
     @app.get("/api/avatar/assets/{category}/{name}")
-    async def get_asset(category: str, name: str):
+    async def get_asset(category: str, name: str) -> Response:
         """Serviert eine Sprite-PNG-Datei."""
         if category not in _CATEGORIES:
             return JSONResponse(
@@ -98,7 +99,7 @@ def register_avatar_editor_routes(
         )
 
     @app.get("/api/avatar/config")
-    async def get_config():
+    async def get_config() -> JSONResponse:
         """Gibt die aktuelle YAML-Config als JSON zurück."""
         if not avatar_config_loader.DEFAULT_CONFIG_PATH.exists():
             return JSONResponse(
@@ -128,7 +129,7 @@ def register_avatar_editor_routes(
         )
 
     @app.put("/api/avatar/config")
-    async def save_config(body: dict | None = None):
+    async def save_config(body: dict[str, Any] | None = None) -> JSONResponse:
         """Speichert die Config nach Validierung als YAML."""
         if not body or "config" not in body:
             return JSONResponse(
@@ -172,7 +173,7 @@ def register_avatar_editor_routes(
         return JSONResponse({"saved": True})
 
     @app.post("/api/avatar/reload")
-    async def reload_config():
+    async def reload_config() -> JSONResponse:
         """Triggert Hot-Reload der Config im Renderer."""
         if renderer is None:
             return JSONResponse(
@@ -189,8 +190,12 @@ def register_avatar_editor_routes(
         )
 
 
-def _validate_config(data: dict) -> str | None:
-    """Validiert die Config-Daten. Gibt Fehlertext oder None zurück."""
+def _validate_config(data: Any) -> str | None:
+    """Validiert die Config-Daten. Gibt Fehlertext oder None zurück.
+
+    Akzeptiert Any, weil yaml.safe_load() beliebige Typen zurueckliefern
+    kann (incl. None bei leerem File). Der erste Check enge das ein.
+    """
     if not isinstance(data, dict):
         return "Config muss ein Dictionary sein."
 
