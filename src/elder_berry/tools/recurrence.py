@@ -220,6 +220,8 @@ def calculate_next_due(
     local_due = current_due.astimezone(tz)
 
     m = _RECURRENCE_RE.match(recurrence)
+    # validate_recurrence() oben hat bereits gematcht und True zurueckgegeben.
+    assert m is not None
     rtype = m.group(1)
     param = int(m.group(2)) if m.group(2) else None
 
@@ -248,6 +250,8 @@ def calculate_next_due(
 
         # Tage im Zielmonat prüfen (z.B. 31. → 28. im Februar)
         max_day = calendar.monthrange(year, month)[1]
+        # validate_recurrence() erlaubt monthly nur mit param 1..31.
+        assert param is not None
         day = min(param, max_day)
 
         next_local = local_due.replace(year=year, month=month, day=day)

@@ -22,7 +22,8 @@ import weakref
 from typing import TYPE_CHECKING
 
 from fastapi.responses import JSONResponse
-from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
+from starlette.responses import Response
 
 from elder_berry.web.dashboard_auth import (
     COOKIE_NAME as DASHBOARD_COOKIE_NAME,
@@ -31,6 +32,7 @@ from elder_berry.web.dashboard_auth import (
 
 if TYPE_CHECKING:
     from starlette.requests import Request
+    from starlette.types import ASGIApp
 
     from elder_berry.core.secret_store import SecretStore
     from elder_berry.web.dashboard_auth import DashboardAuthManager
@@ -103,7 +105,7 @@ class SettingsTokenMiddleware(BaseHTTPMiddleware):
 
     def __init__(
         self,
-        app,
+        app: ASGIApp,
         token_manager: SettingsTokenManager,
         secret_store: "SecretStore | None" = None,
         auth_manager: "DashboardAuthManager | None" = None,
@@ -135,7 +137,9 @@ class SettingsTokenMiddleware(BaseHTTPMiddleware):
         """Zwingt den nächsten Request dazu, den Marker neu zu laden."""
         self._setup_done = None
 
-    async def dispatch(self, request: Request, call_next):
+    async def dispatch(
+        self, request: Request, call_next: RequestResponseEndpoint
+    ) -> Response:
         if request.method.upper() not in self.PROTECTED_METHODS:
             return await call_next(request)
 

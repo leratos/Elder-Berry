@@ -144,6 +144,7 @@ class EmailSender:
 
     def _connect(self) -> smtplib.SMTP_SSL | smtplib.SMTP:
         """Erstellt SMTP-Verbindung und loggt ein."""
+        conn: smtplib.SMTP_SSL | smtplib.SMTP
         if self._use_ssl:
             conn = smtplib.SMTP_SSL(self._host, self._port, timeout=30)
         else:
