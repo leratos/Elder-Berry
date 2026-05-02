@@ -29,6 +29,12 @@ from elder_berry.character.base import Emotion
 
 logger = logging.getLogger(__name__)
 
+
+def _sanitize_for_log(value: str) -> str:
+    """Entfernt Zeilenumbrüche aus benutzerkontrollierten Log-Feldern."""
+    return value.replace("\r", "").replace("\n", "")
+
+
 _TEMPLATE_DIR = Path(__file__).parent / "templates"
 _ASSETS_DIR = Path(__file__).parent.parent / "avatar" / "assets"
 
@@ -110,8 +116,8 @@ def register_avatar_editor_routes(
         if not candidate.is_relative_to(assets_root):
             logger.warning(
                 "Path-Traversal-Versuch geblockt: category=%s name=%s",
-                category,
-                name,
+                _sanitize_for_log(category),
+                _sanitize_for_log(name),
             )
             return JSONResponse(
                 {"error": f"Ungültiger Asset-Name: {name}"},
