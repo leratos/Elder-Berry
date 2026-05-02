@@ -28,12 +28,14 @@ from typing import TYPE_CHECKING
 from urllib.parse import urlparse
 
 from fastapi.responses import JSONResponse
-from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
+from starlette.responses import Response
 
 if TYPE_CHECKING:
     from collections.abc import Iterable
 
     from starlette.requests import Request
+    from starlette.types import ASGIApp
 
 logger = logging.getLogger(__name__)
 
@@ -43,7 +45,7 @@ _STATE_CHANGING_METHODS = frozenset({"POST", "PUT", "DELETE", "PATCH"})
 class OriginCheckMiddleware(BaseHTTPMiddleware):
     """Blockiert state-changing Requests mit fremdem Origin/Referer."""
 
-    def __init__(self, app, allowed_origins: Iterable[str]) -> None:
+    def __init__(self, app: ASGIApp, allowed_origins: Iterable[str]) -> None:
         super().__init__(app)
         # Normalisierung: wir vergleichen nur scheme://host[:port],
         # nicht den Pfad. Das deckt sich mit dem Browser-Verhalten beim
@@ -83,7 +85,9 @@ class OriginCheckMiddleware(BaseHTTPMiddleware):
 
         return stripped.rstrip("/")
 
-    async def dispatch(self, request: Request, call_next):
+    async def dispatch(
+        self, request: Request, call_next: RequestResponseEndpoint
+    ) -> Response:
         method = request.method.upper()
         if method not in _STATE_CHANGING_METHODS:
             return await call_next(request)

@@ -242,7 +242,6 @@ module = [
     "elder_berry.web.dashboard_auth",
     "elder_berry.web.dashboard_auth_middleware",
     "elder_berry.web.dashboard_auth_routes",
-    "elder_berry.web.origin_check_middleware",
     "elder_berry.web.rate_limiter",
     "elder_berry.web.robot_proxy",
     "elder_berry.web.secrets_api",
@@ -284,6 +283,7 @@ module = [
     "elder_berry.tools.elevenlabs_client",
     "elder_berry.tools.route_planner",
     "elder_berry.web.llm_api",
+    "elder_berry.web.origin_check_middleware",
     "elder_berry.web.security_middleware",
     "elder_berry.web.settings_token",
 ]
