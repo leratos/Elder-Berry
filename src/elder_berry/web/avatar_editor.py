@@ -12,6 +12,7 @@ Stellt Endpoints bereit für:
 from __future__ import annotations
 
 import logging
+import re
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -33,6 +34,12 @@ _ASSETS_DIR = Path(__file__).parent.parent / "avatar" / "assets"
 
 # Erlaubte Asset-Kategorien → Unterordner
 _CATEGORIES = {"body", "eye", "mouth", "effect"}
+
+# Erlaubte Asset-Namen: ASCII-Bezeichner ohne Punkte/Slashes/Sonderzeichen.
+# Strikter Allowlist-Check vor dem Path-Build -- Defense-in-Depth zusaetzlich
+# zu Path(name).name in get_asset(). Behebt CodeQL py/path-injection durch
+# Allowlist statt Sanitizer.
+_VALID_ASSET_NAME_RE = re.compile(r"^[A-Za-z0-9_-]+$")
 
 # Alle Emotion-Namen
 _EMOTION_NAMES = [e.value for e in Emotion]
@@ -83,7 +90,18 @@ def register_avatar_editor_routes(
                 status_code=400,
             )
 
-        # Pfad-Traversal verhindern
+        # Allowlist-Check: nur ASCII-Bezeichner. Behebt CodeQL
+        # py/path-injection (#304) -- der frueher genutzte
+        # Path(name).name-Sanitizer war zwar wirksam, aber CodeQL
+        # erkennt ihn nicht als Sanitizer.
+        if not _VALID_ASSET_NAME_RE.match(name):
+            return JSONResponse(
+                {"error": f"Ungültiger Asset-Name: {name}"},
+                status_code=400,
+            )
+
+        # Defense-in-Depth: Path(name).name als zweite Verteidigungslinie
+        # bleibt erhalten -- falls die Allowlist je gelockert wird.
         safe_name = Path(name).name
         file_path = _ASSETS_DIR / category / f"{safe_name}.png"
 

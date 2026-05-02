@@ -207,8 +207,27 @@ class TestGetAsset:
         r = client.get("/api/avatar/assets/body/nonexistent")
         assert r.status_code == 404
 
-    def test_path_traversal_blocked(self, client):
+    def test_path_traversal_url_encoded_blocked(self, client):
+        # URL-encoded "../../etc/passwd" -- TestClient/Starlette
+        # normalisiert das auf URL-Ebene und gibt 404 (Route matcht
+        # nicht mehr). Frueher Allowlist-Bypass-Versuch wird dadurch
+        # auf zwei Ebenen geblockt: Routing UND Endpoint-Allowlist.
         r = client.get("/api/avatar/assets/body/..%2F..%2Fetc%2Fpasswd")
+        assert r.status_code == 404
+
+    def test_special_chars_blocked(self, client):
+        # Punkte, Spaces, Sonderzeichen, ".." als Substring -- der
+        # Allowlist-Regex r"^[A-Za-z0-9_-]+$" lehnt all das mit 400 ab
+        # (CodeQL py/path-injection #304).
+        for name in ("foo.bar", "foo bar", "foo$", "foo;rm", "*", "..foo", "foo.."):
+            r = client.get(f"/api/avatar/assets/body/{name}")
+            assert r.status_code == 400, f"name={name!r} sollte 400 geben"
+
+    def test_empty_name_blocked(self, client):
+        # Leerer Name (z.B. via trailing slash) -- FastAPI matcht
+        # die Route gar nicht mehr -> 404. Leere Namen kommen also
+        # nicht in get_asset() rein.
+        r = client.get("/api/avatar/assets/body/")
         assert r.status_code == 404
 
 
