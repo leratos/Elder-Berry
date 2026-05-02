@@ -233,7 +233,6 @@ ignore_errors = true
 module = [
     "elder_berry.web",                      # __init__.py
     "elder_berry.web.avatar_editor",
-    "elder_berry.web.robot_proxy",
     "elder_berry.web.secrets_registry",
     "elder_berry.web.settings_dashboard",
     "elder_berry.web.setup_tests",
@@ -282,6 +281,7 @@ module = [
     "elder_berry.web.llm_api",
     "elder_berry.web.origin_check_middleware",
     "elder_berry.web.rate_limiter",
+    "elder_berry.web.robot_proxy",
     "elder_berry.web.secrets_api",
     "elder_berry.web.security_middleware",
     "elder_berry.web.session_revocation_list",

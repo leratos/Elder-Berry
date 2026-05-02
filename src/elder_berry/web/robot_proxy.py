@@ -166,7 +166,7 @@ def _filter_request_headers(
     return out
 
 
-def _filter_response_headers(headers) -> dict[str, str]:
+def _filter_response_headers(headers: httpx.Headers) -> dict[str, str]:
     """Baut die Header-Map fuer die Antwort an den Browser."""
     return {
         k: v for k, v in headers.items() if k.lower() not in _BLOCKED_RESPONSE_HEADERS
