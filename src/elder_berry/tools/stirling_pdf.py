@@ -12,7 +12,7 @@ import tempfile
 import zipfile
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import httpx
 
@@ -86,8 +86,8 @@ class StirlingPDFClient:
     def _call_api(
         self,
         endpoint: str,
-        files: list[tuple],
-        data: dict | None = None,
+        files: list[tuple[str, Any]],
+        data: dict[str, Any] | None = None,
         output_path: Path | None = None,
     ) -> bytes:
         """Sendet Request an Stirling-PDF API, gibt Response-Bytes zurück.

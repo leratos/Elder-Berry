@@ -219,7 +219,6 @@ module = [
     "elder_berry.tools.email_client",
     "elder_berry.tools.google_calendar",
     "elder_berry.tools.nextcloud_files",
-    "elder_berry.tools.stirling_pdf",
 ]
 follow_imports = "silent"
 ignore_errors = true
@@ -269,6 +268,7 @@ module = [
     "elder_berry.tools.gym_data",
     "elder_berry.tools.recurrence",
     "elder_berry.tools.reminder_store",
+    "elder_berry.tools.stirling_pdf",
     "elder_berry.tools.route_planner",
     "elder_berry.tools.todo_store",
     "elder_berry.tools.weather_client",
