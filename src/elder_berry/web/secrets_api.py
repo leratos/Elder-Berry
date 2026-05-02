@@ -68,7 +68,7 @@ def register_secrets_routes(app: FastAPI, dashboard: _DashboardLike) -> None:
     """Registriert die Secrets-API-Endpoints auf der FastAPI-App."""
 
     @app.get("/api/secrets/status")
-    async def secrets_status():
+    async def secrets_status() -> JSONResponse:
         if not dashboard._secret_store:
             return JSONResponse({"available": False, "categories": []})
         categories: dict[str, list[dict[str, Any]]] = {}
@@ -94,7 +94,9 @@ def register_secrets_routes(app: FastAPI, dashboard: _DashboardLike) -> None:
         return JSONResponse({"available": True, "categories": result})
 
     @app.post("/api/secrets/set")
-    async def secrets_set(request: Request, body: dict = Body(...)):
+    async def secrets_set(
+        request: Request, body: dict[str, Any] = Body(...)
+    ) -> JSONResponse:
         if not dashboard._secret_store:
             return JSONResponse(
                 {"error": "SecretStore nicht verfügbar."},
@@ -139,7 +141,9 @@ def register_secrets_routes(app: FastAPI, dashboard: _DashboardLike) -> None:
         )
 
     @app.post("/api/secrets/delete")
-    async def secrets_delete(request: Request, body: dict = Body(...)):
+    async def secrets_delete(
+        request: Request, body: dict[str, Any] = Body(...)
+    ) -> JSONResponse:
         if not dashboard._secret_store:
             return JSONResponse(
                 {"error": "SecretStore nicht verfügbar."},
@@ -167,7 +171,7 @@ def register_secrets_routes(app: FastAPI, dashboard: _DashboardLike) -> None:
         return JSONResponse({"success": True, "key": key})
 
     @app.get("/api/settings/export")
-    async def settings_export():
+    async def settings_export() -> JSONResponse:
         """Exportiert alle nicht-sensitiven Werte + Namen gesetzter sensitiver Keys."""
         from datetime import datetime, timezone
 
