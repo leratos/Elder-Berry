@@ -212,11 +212,8 @@ ignore_errors = true
 [[tool.mypy.overrides]]
 module = [
     "elder_berry.tools",                    # __init__.py
-    "elder_berry.tools.caldav_calendar",
-    "elder_berry.tools.caldav_tasks",
     "elder_berry.tools.carddav_sync",
     "elder_berry.tools.contact_store",
-    "elder_berry.tools.google_calendar",
     "elder_berry.tools.nextcloud_files",
 ]
 follow_imports = "silent"
@@ -257,12 +254,15 @@ strict = true
 [[tool.mypy.overrides]]
 module = [
     "elder_berry.tools.brave_search_client",
+    "elder_berry.tools.caldav_calendar",
+    "elder_berry.tools.caldav_tasks",
     "elder_berry.tools.cloud_stt_client",
     "elder_berry.tools.document_classifier",
     "elder_berry.tools.document_reader",
     "elder_berry.tools.elevenlabs_client",
     "elder_berry.tools.email_client",
     "elder_berry.tools.email_sender",
+    "elder_berry.tools.google_calendar",
     "elder_berry.tools.note_store",
     "elder_berry.tools.gym_data",
     "elder_berry.tools.recurrence",
