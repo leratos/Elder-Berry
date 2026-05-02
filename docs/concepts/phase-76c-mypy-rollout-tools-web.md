@@ -502,6 +502,30 @@ Nach Etappe 5:
    stricten macht. Aktuell nicht erwartet (siehe R8), aber Pattern
    reserviert.
 
+10. **Starlette-Middleware dispatch-Annotation** (etabliert in Etappe
+    1 mit `security_middleware` und `origin_check_middleware`,
+    wiederholt sich in Tier 2/3 für alle weiteren BaseHTTPMiddleware-
+    Subklassen):
+
+    ```python
+    from starlette.middleware.base import (
+        BaseHTTPMiddleware,
+        RequestResponseEndpoint,
+    )
+    from starlette.responses import Response
+    from starlette.types import ASGIApp
+
+    class XMiddleware(BaseHTTPMiddleware):
+        def __init__(self, app: ASGIApp, ...) -> None: ...
+
+        async def dispatch(
+            self, request: Request, call_next: RequestResponseEndpoint
+        ) -> Response: ...
+    ```
+
+    Wird in Tier 2 für `rate_limiter`, `settings_token_middleware`,
+    `dashboard_auth_middleware` kopiert.
+
 ---
 
 **Akzeptanz dieses Konzepts durch User → Etappe 0 startet.**
