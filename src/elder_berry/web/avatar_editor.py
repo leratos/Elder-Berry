@@ -40,8 +40,13 @@ _ASSETS_DIR = Path(__file__).parent.parent / "avatar" / "assets"
 
 # Erlaubte Asset-Kategorien → Unterordner
 _CATEGORIES = {"body", "eye", "mouth", "effect"}
-# Trusted map: verhindert direkte Verwendung von User-Input im Path-Build.
-_CATEGORY_DIRS: dict[str, Path] = {c: _ASSETS_DIR / c for c in _CATEGORIES}
+# Trusted Allowlist (category -> subdir-name). Nur Strings, kein Path --
+# damit der finale Path-Build _ASSETS_DIR / subdir zur Aufrufzeit gegen
+# den aktuellen Wert resolved (wichtig fuer Tests, die _ASSETS_DIR zur
+# Laufzeit patchen). CodeQL akzeptiert den dict-lookup als Sanitizer-
+# aequivalent: der Lookup-Wert ist eine konstante aus _CATEGORIES, nicht
+# direkter user-input.
+_CATEGORY_DIRS: dict[str, str] = {c: c for c in _CATEGORIES}
 
 # Erlaubte Asset-Namen: ASCII-Bezeichner ohne Punkte/Slashes/Sonderzeichen.
 # Strikter Allowlist-Check vor dem Path-Build -- Defense-in-Depth zusaetzlich
@@ -110,9 +115,13 @@ def register_avatar_editor_routes(
         # _ASSETS_DIR liegen, nachdem Symlinks aufgeloest wurden. Behebt
         # CodeQL py/path-injection (#304); Layer 1 alleine wurde von der
         # Query nicht als Sanitizer erkannt.
+        # _CATEGORY_DIRS-Lookup vermeidet, dass user-input direkt in den
+        # Path-Build fliesst (CodeQL-Sanitizer-Hinweis). Der Lookup-Wert
+        # ist trusted (gleicher String wie der Schluessel, aus
+        # _CATEGORIES-Allowlist).
         assets_root = _ASSETS_DIR.resolve()
-        category_dir = _CATEGORY_DIRS[category]
-        candidate = (category_dir / f"{name}.png").resolve()
+        category_subdir = _CATEGORY_DIRS[category]
+        candidate = (_ASSETS_DIR / category_subdir / f"{name}.png").resolve()
         if not candidate.is_relative_to(assets_root):
             logger.warning(
                 "Path-Traversal-Versuch geblockt: category=%s name=%s",
