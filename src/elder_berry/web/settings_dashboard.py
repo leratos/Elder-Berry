@@ -25,10 +25,11 @@ import logging
 import os
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Literal
+from typing import TYPE_CHECKING, Any, Literal, cast
 
 from fastapi import Body, FastAPI
 from fastapi.responses import HTMLResponse, JSONResponse
+from starlette.responses import Response
 from fastapi.staticfiles import StaticFiles
 
 # Registry-Daten kommen aus dem Leaf-Modul secrets_registry, nicht mehr
@@ -56,6 +57,8 @@ __all__ = [
 ]
 
 if TYPE_CHECKING:
+    import threading
+
     from elder_berry.actions.computer_use import ComputerUseController
     from elder_berry.avatar.layered_renderer import LayeredSpriteRenderer
     from elder_berry.comms.audio_pipeline import AudioPipeline
@@ -270,7 +273,8 @@ class SettingsDashboard:
         self._write_lock = asyncio.Lock()
         self._change_callbacks: dict[str, list[Any]] = {}
         self._secrets_meta: dict[str, dict[str, str]] = {}
-        self._thread = None
+        # Lazy-Init §10.11: Thread wird erst in start() erzeugt.
+        self._thread: threading.Thread | None = None
 
         # Routen registrieren
         self._register_routes()
@@ -359,8 +363,11 @@ class SettingsDashboard:
             options = tuple(entry.get("select_options", []))
 
         risk_raw = entry.get("risk_level", "low")
-        risk_level: Literal["low", "medium", "high"] = (
-            risk_raw if risk_raw in ("low", "medium", "high") else "low"
+        # Narrow auf Literal: ternary returnt str (aus dict.get()) | "low"-
+        # Literal -- das letzte else "low" macht das Whole zu str. Fix: cast.
+        risk_level: Literal["low", "medium", "high"] = cast(
+            'Literal["low", "medium", "high"]',
+            risk_raw if risk_raw in ("low", "medium", "high") else "low",
         )
 
         min_value = entry.get("min")
@@ -517,7 +524,7 @@ class SettingsDashboard:
         """Routen registrieren (Core-Endpoints)."""
 
         @self._app.get("/", response_class=HTMLResponse)
-        async def dashboard():
+        async def dashboard() -> Response:
             # Redirect zum Setup-Wizard wenn Setup nicht abgeschlossen
             if self._secret_store and not self._secret_store.has(
                 "setup_wizard_completed"
@@ -531,7 +538,7 @@ class SettingsDashboard:
             return HTMLResponse("<h1>Template nicht gefunden</h1>", status_code=500)
 
         @self._app.get("/settings", response_class=HTMLResponse)
-        async def settings_panel():
+        async def settings_panel() -> HTMLResponse:
             """Phase 52.1b: Unified Settings-Panel."""
             template_path = _TEMPLATE_DIR / "settings_panel.html"
             if template_path.exists():
@@ -541,7 +548,7 @@ class SettingsDashboard:
             )
 
         @self._app.get("/api/audio")
-        async def get_audio_mode():
+        async def get_audio_mode() -> JSONResponse:
             return JSONResponse(
                 {
                     "mode": self._router.mode.value,
@@ -551,7 +558,7 @@ class SettingsDashboard:
             )
 
         @self._app.post("/api/audio")
-        async def set_audio_mode(body: dict | None = None):
+        async def set_audio_mode(body: dict[str, Any] | None = None) -> JSONResponse:
             if body and "mode" in body:
                 from elder_berry.core.audio_router import AudioOutputMode
 
@@ -578,7 +585,7 @@ class SettingsDashboard:
         # --- Monitor-Auswahl (Computer Use) ---
 
         @self._app.get("/api/monitors")
-        async def get_monitors():
+        async def get_monitors() -> JSONResponse:
             if self._tower_agent:
                 try:
                     data = await self._tower_agent.get_monitors()
@@ -611,7 +618,7 @@ class SettingsDashboard:
             )
 
         @self._app.post("/api/monitor")
-        async def set_monitor(body: dict | None = None):
+        async def set_monitor(body: dict[str, Any] | None = None) -> JSONResponse:
             if not body or "index" not in body:
                 return JSONResponse(
                     {"error": "Parameter 'index' fehlt."},
@@ -666,7 +673,7 @@ class SettingsDashboard:
         # --- Allowed Senders (Matrix-Sicherheit) ---
 
         @self._app.get("/api/allowed-senders")
-        async def get_allowed_senders():
+        async def get_allowed_senders() -> JSONResponse:
             if not self._secret_store:
                 return JSONResponse(
                     {
@@ -694,7 +701,9 @@ class SettingsDashboard:
             )
 
         @self._app.post("/api/allowed-senders")
-        async def set_allowed_senders(body: dict | None = None):
+        async def set_allowed_senders(
+            body: dict[str, Any] | None = None,
+        ) -> JSONResponse:
             if not self._secret_store:
                 return JSONResponse(
                     {"error": "SecretStore nicht verfügbar."},
@@ -753,7 +762,7 @@ class SettingsDashboard:
         # --- Timezone ---
 
         @self._app.get("/api/timezone")
-        async def get_timezone():
+        async def get_timezone() -> JSONResponse:
             tz = self.get_timezone()
             return JSONResponse(
                 {
@@ -763,7 +772,7 @@ class SettingsDashboard:
             )
 
         @self._app.post("/api/timezone")
-        async def set_timezone(body: dict | None = None):
+        async def set_timezone(body: dict[str, Any] | None = None) -> JSONResponse:
             if not self._secret_store:
                 return JSONResponse(
                     {"error": "SecretStore nicht verfügbar."},
@@ -798,7 +807,7 @@ class SettingsDashboard:
         # --- STT-Timeout ---
 
         @self._app.get("/api/stt-timeout")
-        async def get_stt_timeout():
+        async def get_stt_timeout() -> JSONResponse:
             timeout = self._get_stt_timeout()
             return JSONResponse(
                 {
@@ -808,7 +817,7 @@ class SettingsDashboard:
             )
 
         @self._app.post("/api/stt-timeout")
-        async def set_stt_timeout(body: dict | None = None):
+        async def set_stt_timeout(body: dict[str, Any] | None = None) -> JSONResponse:
             if not body or "timeout" not in body:
                 return JSONResponse(
                     {"error": "Parameter 'timeout' fehlt."},
@@ -844,7 +853,7 @@ class SettingsDashboard:
         # --- Settings-API (Schema, Values, Status, Update) ---
 
         @self._app.get("/api/settings/schema")
-        async def settings_schema():
+        async def settings_schema() -> JSONResponse:
             definitions = [
                 self._serialize_setting_definition(definition)
                 for definition in self._setting_definitions()
@@ -852,7 +861,7 @@ class SettingsDashboard:
             return JSONResponse({"settings": definitions})
 
         @self._app.get("/api/settings/values")
-        async def settings_values():
+        async def settings_values() -> JSONResponse:
             values = {
                 definition.key: self._get_setting_value(definition.key)
                 for definition in self._setting_definitions()
@@ -860,7 +869,7 @@ class SettingsDashboard:
             return JSONResponse({"values": values})
 
         @self._app.get("/api/settings/status")
-        async def settings_status():
+        async def settings_status() -> JSONResponse:
             settings = self._setting_definitions()
             categories: dict[str, int] = {}
             configured = 0
@@ -892,7 +901,12 @@ class SettingsDashboard:
             )
 
         @self._app.post("/api/settings/update")
-        async def settings_update(body: dict = Body(...)):
+        async def settings_update(body: Any = Body(...)) -> JSONResponse:
+            # body als Any (statt dict[str, Any]), damit der isinstance-
+            # Check unten als Defense-in-Depth gegen non-dict-Bodies
+            # erhalten bleibt (FastAPI-Body parst zwar dict, aber der
+            # Schutz ist beabsichtigt -- gleicher Trick wie avatar_editor
+            # _validate_config gegen yaml.safe_load).
             if not self._secret_store:
                 return JSONResponse(
                     {"error": "SecretStore nicht verfügbar"}, status_code=503
@@ -935,7 +949,7 @@ class SettingsDashboard:
         # --- Health ---
 
         @self._app.get("/health")
-        async def health():
+        async def health() -> JSONResponse:
             import platform
 
             return JSONResponse(
@@ -1036,7 +1050,7 @@ class SettingsDashboard:
             )
             return
 
-        def _run():
+        def _run() -> None:
             import socket as _sock
 
             sock = _sock.socket(_sock.AF_INET, _sock.SOCK_STREAM)

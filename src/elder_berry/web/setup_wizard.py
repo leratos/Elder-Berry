@@ -13,6 +13,7 @@ from typing import TYPE_CHECKING, Any
 import httpx
 from fastapi import Body
 from fastapi.responses import HTMLResponse, JSONResponse
+from starlette.responses import Response
 
 from elder_berry.web.setup_tests import EMAIL_PROVIDERS, SetupTests
 
@@ -195,7 +196,7 @@ def register_setup_wizard_routes(app: FastAPI, secret_store: SecretStore) -> Non
     """Registriert die Setup-Wizard-Endpoints auf der FastAPI-App."""
 
     @app.get("/setup")
-    async def setup_page(force: int = 0):
+    async def setup_page(force: int = 0) -> Response:
         """Liefert die Setup-Wizard HTML-Seite.
 
         Phase 52.3: Wenn das Setup bereits abgeschlossen ist, wird auf
@@ -229,12 +230,12 @@ def register_setup_wizard_routes(app: FastAPI, secret_store: SecretStore) -> Non
         return HTMLResponse(html)
 
     @app.get("/api/setup/status")
-    async def setup_status():
+    async def setup_status() -> JSONResponse:
         """Liefert den aktuellen Setup-Status."""
         return JSONResponse(_get_setup_status(secret_store))
 
     @app.get("/api/setup/step/{step_num}")
-    async def setup_step_get(step_num: int):
+    async def setup_step_get(step_num: int) -> JSONResponse:
         """Liefert gespeicherte Werte für einen Schritt (ohne Passwörter)."""
         if step_num < 1 or step_num > len(WIZARD_STEPS):
             return JSONResponse(
@@ -259,7 +260,9 @@ def register_setup_wizard_routes(app: FastAPI, secret_store: SecretStore) -> Non
         )
 
     @app.post("/api/setup/step/{step_num}")
-    async def setup_step_save(step_num: int, body: dict = Body(...)):
+    async def setup_step_save(
+        step_num: int, body: dict[str, Any] = Body(...)
+    ) -> JSONResponse:
         """Speichert Werte für einen Schritt und führt Verbindungstests aus."""
         if step_num < 1 or step_num > len(WIZARD_STEPS):
             return JSONResponse(
@@ -309,12 +312,14 @@ def register_setup_wizard_routes(app: FastAPI, secret_store: SecretStore) -> Non
         )
 
     @app.get("/api/setup/prerequisites")
-    async def setup_prerequisites():
+    async def setup_prerequisites() -> JSONResponse:
         """Prüft Systemvoraussetzungen."""
         return JSONResponse(SetupTests.check_prerequisites())
 
     @app.post("/api/setup/test/{service}")
-    async def setup_test_service(service: str, body: dict = Body(...)):
+    async def setup_test_service(
+        service: str, body: dict[str, Any] = Body(...)
+    ) -> JSONResponse:
         """Testet einen einzelnen Dienst mit übergebenen Credentials."""
         try:
             result = await _run_single_test(service, body)
@@ -333,7 +338,9 @@ def register_setup_wizard_routes(app: FastAPI, secret_store: SecretStore) -> Non
             )
 
     @app.post("/api/setup/dashboard-password")
-    async def setup_dashboard_password(body: dict = Body(...)):
+    async def setup_dashboard_password(
+        body: dict[str, Any] = Body(...),
+    ) -> JSONResponse:
         """Setzt das Dashboard-Passwort während des Setup-Wizards (Phase 58).
 
         Pflicht-Schritt: Ohne gesetztes Passwort verweigert
@@ -358,7 +365,7 @@ def register_setup_wizard_routes(app: FastAPI, secret_store: SecretStore) -> Non
         return JSONResponse({"success": True})
 
     @app.post("/api/setup/complete")
-    async def setup_complete():
+    async def setup_complete() -> JSONResponse:
         """Markiert das Setup als abgeschlossen.
 
         Phase 58: Verlangt vorher ein gesetztes Dashboard-Passwort,
@@ -415,7 +422,7 @@ def register_setup_wizard_routes(app: FastAPI, secret_store: SecretStore) -> Non
         if getattr(app.state, "standalone", False):
             import asyncio
 
-            async def _shutdown():
+            async def _shutdown() -> None:
                 await asyncio.sleep(1.0)
                 logger.info("Standalone-Wizard wird beendet")
                 import os
@@ -434,7 +441,7 @@ def register_setup_wizard_routes(app: FastAPI, secret_store: SecretStore) -> Non
         )
 
     @app.get("/api/setup/providers")
-    async def setup_providers():
+    async def setup_providers() -> JSONResponse:
         """Liefert die Liste der bekannten E-Mail-Provider."""
         result = {}
         for name, (
@@ -452,7 +459,7 @@ def register_setup_wizard_routes(app: FastAPI, secret_store: SecretStore) -> Non
         return JSONResponse(result)
 
     @app.get("/api/setup/geocode")
-    async def setup_geocode(q: str = ""):
+    async def setup_geocode(q: str = "") -> JSONResponse:
         """Phase 63: Server-seitiger Nominatim-Proxy.
 
         Der Setup-Wizard hatte frueher direkt im Browser Nominatim angefragt.
@@ -541,12 +548,16 @@ async def _run_matrix_tests(secret_store: SecretStore) -> dict[str, Any]:
     room_id = secret_store.get_or_none("matrix_room_id")
     if not all([homeserver, user_id, token]):
         return {"matrix": {"success": False, "error": "Fehlende Angaben"}}
+    # all()-Filter oben hat None ausgeschlossen, mypy versteht das aber nicht.
+    assert homeserver is not None
+    assert user_id is not None
+    assert token is not None
     return {
         "matrix": await SetupTests.test_matrix(
             homeserver,
             user_id,
             token,
-            room_id,  # type: ignore[arg-type]
+            room_id,
         )
     }
 
@@ -558,11 +569,15 @@ async def _run_nextcloud_tests(secret_store: SecretStore) -> dict[str, Any]:
     pw = secret_store.get_or_none("nextcloud_app_password")
     if not all([url, user, pw]):
         return {"nextcloud": {"success": False, "error": "Fehlende Angaben"}}
+    # all()-Filter oben hat None ausgeschlossen, mypy versteht das aber nicht.
+    assert url is not None
+    assert user is not None
+    assert pw is not None
     return {
         "nextcloud": await SetupTests.test_nextcloud(
             url,
             user,
-            pw,  # type: ignore[arg-type]
+            pw,
         )
     }
 
@@ -650,7 +665,7 @@ def build_standalone_wizard_app(
     port: int = 8090,
     compat_mode: bool = False,
     migration_marker: Path | None = None,
-):
+) -> FastAPI:
     """Baut die FastAPI-App fuer den Standalone-Setup-Wizard (ohne uvicorn).
 
     Phase 63: Der Standalone-Wizard muss dieselben Static-Assets liefern

@@ -20,7 +20,7 @@ import json
 import logging
 import xml.etree.ElementTree as ET
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, cast
 
 import re
 
@@ -298,7 +298,7 @@ class CardDAVSyncClient:
             adr = card.add("adr")
             adr.value = self._parse_address_to_vcard(contact.address)
 
-        return card.serialize()
+        return cast(str, card.serialize())
 
     # ── Pull ───────────────────────────────────────────────────────────
 
@@ -306,7 +306,7 @@ class CardDAVSyncClient:
         self,
         user_id: str,
         uid_href_map: dict[str, str] | None = None,
-    ) -> list[dict]:
+    ) -> list[dict[str, Any]]:
         """Nextcloud → lokale Contact-Daten (PROPFIND + GET + Parse).
 
         Args:
@@ -523,7 +523,7 @@ class CardDAVSyncClient:
         if contact.formality:
             card.add("x-elderberry-formality").value = contact.formality
 
-        return card.serialize()
+        return cast(str, card.serialize())
 
     @staticmethod
     def _parse_address_to_vcard(address: str) -> "vobject.vcard.Address":
@@ -565,7 +565,7 @@ class CardDAVSyncClient:
         )
 
     @staticmethod
-    def _vcard_to_dict(vcard_str: str, user_id: str) -> dict | None:
+    def _vcard_to_dict(vcard_str: str, user_id: str) -> dict[str, Any] | None:
         """Parst vCard-String → Dict mit allen Contact-Feldern."""
         import vobject
 

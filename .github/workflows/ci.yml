@@ -75,8 +75,8 @@ jobs:
         run: ruff check src/ tests/ --select E9,W605,F401,B --ignore B008
 
   typecheck:
-    # Phase 76 Etappe 4: hartes Gate. Alle 14 core/-Module sind strict
-    # getypt; ein Type-Fehler scheitert die Pipeline.
+    # Phase 76 + 76c: hartes Gate. Alle core/-, tools/- und web/-Module
+    # sind strict getypt; ein Type-Fehler scheitert die Pipeline.
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -91,14 +91,15 @@ jobs:
 
       - name: Install project + mypy + Stubs
         # Project-Deps werden gebraucht, damit mypy httpx/cryptography/
-        # keyring etc. korrekt typisieren kann (sonst werden Returns
-        # zu Any). dev-Gruppe bringt mypy + types-PyYAML + types-psutil.
+        # keyring/caldav/google-* etc. korrekt typisieren kann (sonst
+        # werden Returns zu Any). dev + alle tools/-Gruppen, damit
+        # 76c-strict-Module die echten Stubs sehen.
         run: |
           python -m pip install --upgrade pip
-          pip install -e ".[dev]"
+          pip install -e ".[dev,tools,nextcloud,web,documents]"
 
-      - name: Type-check core/
-        run: mypy src/elder_berry/core
+      - name: Type-check core/+tools/+web/
+        run: mypy src/elder_berry/core src/elder_berry/tools src/elder_berry/web
 
   security:
     runs-on: ubuntu-latest

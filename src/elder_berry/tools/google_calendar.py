@@ -111,7 +111,13 @@ class GoogleCalendarClient:
 
         # Token refreshen wenn abgelaufen
         if credentials.expired and credentials.refresh_token:
-            credentials.refresh(Request())
+            # Stub-Versions-Drift: aeltere google-auth markiert refresh()
+            # als typed, neuere als untyped (Stub fuer Credentials._refresh
+            # wurde ueberarbeitet). unused-ignore verhindert, dass die
+            # Variante wo ignore obsolet ist lokal die Pipeline kippt.
+            credentials.refresh(  # type: ignore[no-untyped-call,unused-ignore]
+                Request()
+            )
             # Aktualisierte Tokens speichern
             token_data["token"] = credentials.token
             self._store.set("google_oauth_tokens", json.dumps(token_data))
