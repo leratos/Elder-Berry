@@ -15,7 +15,12 @@ from typing import TYPE_CHECKING, Any
 
 import httpx
 
-from elder_berry.comms.commands.base import CommandHandler, CommandResult
+from elder_berry.comms.commands.base import (
+    CommandHandler,
+    CommandPlugin,
+    CommandResult,
+    HandlerContext,
+)
 from elder_berry.comms.commands.cmd_utils import run_cmd
 from elder_berry.comms.commands.update_commands import (
     BACKUP_FILENAME,
@@ -587,3 +592,52 @@ def _get_service_detail(key: str, svc: Any) -> str:
         return svc._base_url
 
     return ""
+
+
+# ---------------------------------------------------------------------------
+# Phase 77: Plugin-Manifest
+# ---------------------------------------------------------------------------
+
+HELP_SECTION_SELFCHECK = """Systemcheck:
+  selfcheck / systemcheck / pruef dich -- Infrastruktur + Faehigkeiten
+  alles ok? -- Kurzform fuer Systemcheck
+  Prueft: Git, Python, Disk, RAM, Ollama, SecretStore, Imports, Dependencies
+  + Faehigkeiten: LLM, Kalender, Mail, Nextcloud, Wetter, TTS, STT, Memory, ..."""
+
+
+def _factory(ctx: HandlerContext) -> CommandHandler | None:
+    services: dict[str, object] = {
+        "anthropic_client": ctx.anthropic_client,
+        "calendar": ctx.calendar,
+        "email_client": ctx.email_client,
+        "nextcloud_files": ctx.nextcloud_files,
+        "stirling_pdf": ctx.stirling_pdf,
+        "carddav_sync": ctx.carddav_sync,
+        "weather": ctx.weather,
+        "search_client": ctx.search_client,
+        "robot_client": ctx.robot_client,
+        "note_store": ctx.note_store,
+        "contact_store": ctx.contact_store,
+        "task_client": ctx.task_client,
+        "reminder_store": ctx.reminder_store,
+        "gym_client": ctx.gym_client,
+        "computer_use": ctx.computer_use,
+        "document_reader": ctx.document_reader,
+        "web_fetcher": ctx.web_fetcher,
+        "audio_router": ctx.audio_router,
+        "tower_agent": ctx.tower_agent,
+    }
+    return SelfcheckCommandHandler(
+        project_root=ctx.project_root,
+        secret_store=ctx.secret_store,
+        services=services,
+    )
+
+
+PLUGIN = CommandPlugin(
+    name="selfcheck",
+    priority=58,
+    category="system",
+    help_section=HELP_SECTION_SELFCHECK,
+    factory=_factory,
+)

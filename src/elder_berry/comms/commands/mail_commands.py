@@ -18,7 +18,9 @@ from typing import TYPE_CHECKING
 
 from elder_berry.comms.commands.base import (
     CommandHandler,
+    CommandPlugin,
     CommandResult,
+    HandlerContext,
     user_friendly_error,
 )
 
@@ -745,3 +747,36 @@ class MailCommandHandler(CommandHandler):
         if match:
             return match.group(1)
         return sender.strip()
+
+
+# ---------------------------------------------------------------------------
+# Phase 77: Plugin-Manifest
+# ---------------------------------------------------------------------------
+
+HELP_SECTION_MAIL = """E-Mail:
+  mails / mails 5 -- Ungelesene E-Mails (mit Tage-Filter)
+  mail suche <Begriff> -- Mails durchsuchen
+  mail <ID> / mail #<ID> -- Mail anzeigen
+  mail anhang <ID> -- Anhaenge senden
+  mail zusammenfassung -- LLM-Zusammenfassung
+  antworte auf #<ID> <Anweisung> -- Email-Antwort generieren
+  loesche mail #<ID> / loesche die mail"""
+
+
+def _factory(ctx: HandlerContext) -> CommandHandler | None:
+    return MailCommandHandler(
+        email_client=ctx.email_client,
+        anthropic_client=ctx.anthropic_client,
+        contact_store=ctx.contact_store,
+        default_user_id=ctx.default_user_id,
+    )
+
+
+PLUGIN = CommandPlugin(
+    name="mail",
+    priority=20,
+    category="mail",
+    help_section=HELP_SECTION_MAIL,
+    factory=_factory,
+    conflicts=("calendar",),
+)

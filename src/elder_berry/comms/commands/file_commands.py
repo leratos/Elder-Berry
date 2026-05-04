@@ -13,7 +13,9 @@ from urllib.parse import urlparse
 
 from elder_berry.comms.commands.base import (
     CommandHandler,
+    CommandPlugin,
     CommandResult,
+    HandlerContext,
     user_friendly_error,
 )
 
@@ -436,3 +438,30 @@ class FileCommandHandler(CommandHandler):
                 success=False,
                 text=user_friendly_error(e, "Download"),
             )
+
+
+# ---------------------------------------------------------------------------
+# Phase 77: Plugin-Manifest
+# ---------------------------------------------------------------------------
+
+HELP_SECTION_FILE = """Dateien:
+  clipboard -- Zwischenablage lesen
+  clip: <text> -- Text in Zwischenablage schreiben
+  schick mir <pfad> -- Datei senden
+  download <url> -- Datei herunterladen"""
+
+
+def _factory(ctx: HandlerContext) -> CommandHandler | None:
+    return FileCommandHandler(
+        download_dir=ctx.download_dir,
+        send_file_allowed_roots=ctx.send_file_allowed_roots,
+    )
+
+
+PLUGIN = CommandPlugin(
+    name="file",
+    priority=30,
+    category="dateien",
+    help_section=HELP_SECTION_FILE,
+    factory=_factory,
+)

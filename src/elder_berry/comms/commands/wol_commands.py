@@ -12,7 +12,9 @@ from typing import TYPE_CHECKING
 
 from elder_berry.comms.commands.base import (
     CommandHandler,
+    CommandPlugin,
     CommandResult,
+    HandlerContext,
     user_friendly_error,
 )
 
@@ -120,3 +122,24 @@ class WolCommandHandler(CommandHandler):
                 success=False,
                 text=user_friendly_error(e, "Wake-on-LAN"),
             )
+
+
+# ---------------------------------------------------------------------------
+# Phase 77: Plugin-Manifest
+# ---------------------------------------------------------------------------
+
+HELP_SECTION_WOL = """System:
+  wol -- Wake-on-LAN (Tower aufwecken)"""
+
+
+def _factory(ctx: HandlerContext) -> CommandHandler | None:
+    return WolCommandHandler(secret_store=ctx.secret_store)
+
+
+PLUGIN = CommandPlugin(
+    name="wol",
+    priority=54,
+    category="system",
+    help_section=HELP_SECTION_WOL,
+    factory=_factory,
+)

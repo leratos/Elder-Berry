@@ -8,7 +8,9 @@ from typing import TYPE_CHECKING
 
 from elder_berry.comms.commands.base import (
     CommandHandler,
+    CommandPlugin,
     CommandResult,
+    HandlerContext,
     user_friendly_error,
 )
 
@@ -275,3 +277,29 @@ class TurntableCommandHandler(CommandHandler):
                 success=False,
                 text=user_friendly_error(e, "Drehteller"),
             )
+
+
+# ---------------------------------------------------------------------------
+# Phase 77: Plugin-Manifest
+# ---------------------------------------------------------------------------
+
+HELP_SECTION_TURNTABLE = """Drehteller:
+  drehteller home / drehteller status / drehteller stopp
+  dreh dich um <grad> [nach links/rechts]
+  dreh dich nach links/rechts (= 90 Grad)
+  dreh dich auf <grad> -- absolute Position
+  schau nach links/rechts"""
+
+
+def _factory(ctx: HandlerContext) -> CommandHandler | None:
+    return TurntableCommandHandler(robot_client=ctx.robot_client)
+
+
+PLUGIN = CommandPlugin(
+    name="turntable",
+    priority=60,
+    category="smart-home",
+    help_section=HELP_SECTION_TURNTABLE,
+    factory=_factory,
+    conflicts=("camera",),
+)

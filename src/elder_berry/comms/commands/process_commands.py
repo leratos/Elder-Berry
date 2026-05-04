@@ -20,7 +20,9 @@ import subprocess
 
 from elder_berry.comms.commands.base import (
     CommandHandler,
+    CommandPlugin,
     CommandResult,
+    HandlerContext,
     user_friendly_error,
 )
 
@@ -225,3 +227,25 @@ class ProcessCommandHandler(CommandHandler):
                 success=False,
                 text=user_friendly_error(e, "Prozess beenden"),
             )
+
+
+# ---------------------------------------------------------------------------
+# Phase 77: Plugin-Manifest
+# ---------------------------------------------------------------------------
+
+HELP_SECTION_PROCESS = """Prozesse:
+  starte <programm> -- Programm starten (Whitelist)
+  kill <prozess> -- Prozess beenden (Whitelist)"""
+
+
+def _factory(ctx: HandlerContext) -> CommandHandler | None:
+    return ProcessCommandHandler()
+
+
+PLUGIN = CommandPlugin(
+    name="process",
+    priority=48,
+    category="system",
+    help_section=HELP_SECTION_PROCESS,
+    factory=_factory,
+)

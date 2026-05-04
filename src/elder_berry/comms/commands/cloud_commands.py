@@ -18,7 +18,9 @@ from typing import TYPE_CHECKING
 
 from elder_berry.comms.commands.base import (
     CommandHandler,
+    CommandPlugin,
     CommandResult,
+    HandlerContext,
     user_friendly_error,
 )
 
@@ -483,3 +485,29 @@ class CloudCommandHandler(CommandHandler):
                 "to_create": list(_NC_TARGET_DIRS),
             },
         )
+
+
+# ---------------------------------------------------------------------------
+# Phase 77: Plugin-Manifest
+# ---------------------------------------------------------------------------
+
+HELP_SECTION_CLOUD = """Cloud (Nextcloud):
+  cloud upload <pfad> [ziel]
+  cloud download <pfad>
+  cloud dateien [ordner]
+  cloud suche <query> / cloud inhalt <query>
+  cloud link <pfad>
+  richte nextcloud ein"""
+
+
+def _factory(ctx: HandlerContext) -> CommandHandler | None:
+    return CloudCommandHandler(nextcloud_files=ctx.nextcloud_files)
+
+
+PLUGIN = CommandPlugin(
+    name="cloud",
+    priority=35,
+    category="cloud",
+    help_section=HELP_SECTION_CLOUD,
+    factory=_factory,
+)
