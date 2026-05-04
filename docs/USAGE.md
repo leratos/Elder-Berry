@@ -380,3 +380,78 @@ Unter `http://localhost:8090` läuft ein Web-Interface (FastAPI) mit:
 - **LLM-Konfiguration** (Primär-Modell, Ollama-Host)
 - **Setup-Wizard** (Ersteinrichtung, `/setup`)
 - **Dashboard-Login** (Passwort-Schutz, `scripts/set_dashboard_password.py`)
+
+## Eigene Plugins schreiben
+
+Saleria's Command-System ist Plugin-basiert (Phase 77). Jeder Befehl
+gehört zu einem Plugin – Builtin im Repo oder eigene Erweiterung im
+Home-Verzeichnis. Eine neue Capability = eine neue Datei.
+
+### Plugin-Quellen
+
+Die Registry lädt beim Start aus drei Quellen, in dieser Priorität:
+
+1. **Builtin** – `src/elder_berry/comms/commands/<name>_commands.py`
+   im Repo. Standard-Set (23 Plugins).
+2. **User-Verzeichnis** – `~/.elder-berry/plugins/<name>.py`. Eigene
+   Plugins, die nur lokal benötigt werden. Werden automatisch geladen,
+   sobald Saleria neu startet.
+3. **Entry-Points** – `pip install`-Pakete mit Group
+   `elder_berry.commands`. Für distributable Drittanbieter-Plugins.
+
+Bei Namens-Kollision gewinnt das User-Plugin vor Entry-Point vor Builtin.
+Heißt: ein User-Plugin `name="weather"` ersetzt das Builtin komplett.
+
+### Wizard
+
+Schnellster Weg zum Skelett:
+
+```
+python scripts/generate_plugin.py
+```
+
+Der Wizard fragt Plugin-Name (snake_case), Kurzbeschreibung, Kategorie
+und Priority und erzeugt die Datei in `~/.elder-berry/plugins/`. Mit
+`--builtin` schreibt er stattdessen ins Repo (für PRs). Mit
+`--name <name>` lässt sich der erste Prompt überspringen.
+
+### Manifest-Format
+
+Jedes Plugin-Modul exportiert genau ein `PLUGIN`-Objekt vom Typ
+`CommandPlugin` (siehe [base.py](../src/elder_berry/comms/commands/base.py)).
+Pflichtfelder: `name`, `priority`, `category`, `help_section`, `factory`.
+
+Empfohlene Priority-Bereiche:
+
+| Bereich | Zweck |
+|---|---|
+| 0–9 | Kritische Pre-Filter (selten) |
+| 10–49 | Domänen-Commands mit Pattern-Konflikten |
+| 50–89 | Normale Commands |
+| 90–99 | Catch-All / LLM-Fallback |
+
+### Pattern-Konflikte
+
+Wenn dein Plugin-Pattern denselben Text trifft wie ein anderes Plugin,
+gewinnt das mit der niedrigeren Priority. Damit das in Code-Review nicht
+übersehen wird, gibt es `tests/test_plugin_pattern_conflicts.py` als
+CI-Gate. Bei einer Kollision musst du entweder:
+
+- die Priority anpassen (sodass dein Plugin sicher davor läuft),
+- das Pattern enger fassen, oder
+- den anderen Plugin-Namen in `conflicts=("anderer_name",)` deklarieren –
+  dann ist die Kollision dokumentiert und der Test akzeptiert sie.
+
+### Sicherheits-Hinweis
+
+Plugins laufen mit den vollen Rechten von Saleria – kein Sandboxing.
+Entry-Point-Plugins (per `pip install`) sind eine Vertrauensfrage:
+fremder Code wird ausgeführt. Lokale User-Plugins sind sicherer, weil
+sie nur dein eigener Code sind.
+
+### Konzept-Doku
+
+Die vollständige Architektur steht in
+[docs/concepts/phase-77-commands-plugin-registry.md](concepts/phase-77-commands-plugin-registry.md)
+– inklusive Backwards-Compat-Strategie und Folge-Phasen (Hot-Reload,
+Marketplace).

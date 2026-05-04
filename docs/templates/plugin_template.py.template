@@ -1,0 +1,95 @@
+"""${HANDLER_NAME}CommandHandler -- ${SUMMARY}.
+
+Plugin-Template fuer Phase 77 Plugin-Registry.
+
+Kopieren nach:
+  - ``src/elder_berry/comms/commands/${PLUGIN_NAME}_commands.py`` (Builtin)
+  - ``~/.elder-berry/plugins/${PLUGIN_NAME}.py`` (User-Plugin)
+
+Generiert per ``python scripts/generate_plugin.py`` (Wizard).
+"""
+
+from __future__ import annotations
+
+import re
+
+from elder_berry.comms.commands.base import (
+    CommandHandler,
+    CommandPlugin,
+    CommandResult,
+    HandlerContext,
+)
+
+# --- Patterns ---------------------------------------------------------------
+
+${PLUGIN_NAME_UPPER}_PATTERN = re.compile(r"^${PLUGIN_NAME}\s+(.+)$$", re.IGNORECASE)
+
+
+# --- Handler ----------------------------------------------------------------
+
+
+class ${HANDLER_NAME}CommandHandler(CommandHandler):
+    """${SUMMARY}."""
+
+    @property
+    def simple_commands(self) -> set[str]:
+        return {"${PLUGIN_NAME}"}
+
+    @property
+    def patterns(self) -> list[tuple[re.Pattern[str], str, bool, bool]]:
+        return [(${PLUGIN_NAME_UPPER}_PATTERN, "${PLUGIN_NAME}_with_arg", False, False)]
+
+    @property
+    def keywords(self) -> dict[str, list[str]]:
+        # Natuerlichsprachige Synonyme -- "frag mich was" wird so zum command.
+        return {"${PLUGIN_NAME}": []}
+
+    @property
+    def command_descriptions(self) -> list[str]:
+        return [
+            "${PLUGIN_NAME}: Beispiel-Befehl ohne Argument",
+            "${PLUGIN_NAME} <text>: Beispiel-Befehl mit Argument",
+        ]
+
+    def execute(self, command: str, raw_text: str) -> CommandResult:
+        if command == "${PLUGIN_NAME}":
+            return CommandResult(
+                command=command, success=True, text="${SUMMARY} -- ohne Argument."
+            )
+        if command == "${PLUGIN_NAME}_with_arg":
+            match = ${PLUGIN_NAME_UPPER}_PATTERN.match(raw_text.strip())
+            arg = match.group(1) if match else ""
+            return CommandResult(
+                command=command, success=True, text=f"${SUMMARY}: {arg}"
+            )
+        return CommandResult(
+            command=command, success=False, text="Unbekannter Sub-Command."
+        )
+
+
+# --- Plugin-Manifest --------------------------------------------------------
+
+HELP_SECTION_${PLUGIN_NAME_UPPER} = """${HANDLER_NAME}:
+  ${PLUGIN_NAME} -- Beispiel-Befehl ohne Argument
+  ${PLUGIN_NAME} <text> -- Beispiel-Befehl mit Argument"""
+
+
+def _factory(ctx: HandlerContext) -> CommandHandler | None:
+    """Konstruiert den Handler aus dem HandlerContext.
+
+    Bei Service-Abhaengigkeiten hier pruefen und ``None`` zurueckgeben,
+    wenn der noetige Service in ``ctx`` nicht gesetzt ist. Beispiel:
+
+        if ctx.weather is None:
+            return None
+    """
+    return ${HANDLER_NAME}CommandHandler()
+
+
+PLUGIN = CommandPlugin(
+    name="${PLUGIN_NAME}",
+    priority=${PRIORITY},  # 10-49 = Pattern-Konflikte, 50-89 = normal
+    category="${CATEGORY}",  # muss in CATEGORY_LABELS existieren
+    help_section=HELP_SECTION_${PLUGIN_NAME_UPPER},
+    factory=_factory,
+)
