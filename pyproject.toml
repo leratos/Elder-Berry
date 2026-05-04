@@ -28,7 +28,7 @@ dependencies = [
 windows = [
     "pyautogui>=0.9",
     "PyGetWindow>=0.0.9",
-    "pycaw>=20230407",
+    "pycaw>=20251023",
     "comtypes>=1.2",
     "pyttsx3>=2.99",
 ]
@@ -95,7 +95,7 @@ tower = [
     "faster-whisper>=1.2.1",
     "pyautogui>=0.9",
     "PyGetWindow>=0.0.9",
-    "pycaw>=20230407",
+    "pycaw>=20251023",
     "comtypes>=1.2",
     "mss>=10.2.0",
 ]
