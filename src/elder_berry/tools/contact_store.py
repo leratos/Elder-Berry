@@ -21,6 +21,7 @@ import sqlite3
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -92,7 +93,7 @@ class Contact:
         try:
             items = json.loads(self.emails) if self.emails else []
             if items and isinstance(items, list):
-                return items[0].get("email", "")
+                return str(items[0].get("email", ""))
         except (json.JSONDecodeError, AttributeError, IndexError):
             pass
         return ""
@@ -103,7 +104,7 @@ class Contact:
         try:
             items = json.loads(self.phones) if self.phones else []
             if items and isinstance(items, list):
-                return items[0].get("number", "")
+                return str(items[0].get("number", ""))
         except (json.JSONDecodeError, AttributeError, IndexError):
             pass
         return ""
@@ -542,6 +543,8 @@ class ContactStore:
             vals,
         )
         self._conn.commit()
+        # Nach erfolgreichem INSERT setzt sqlite3 lastrowid garantiert.
+        assert cursor.lastrowid is not None
         return self._get_by_rowid(cursor.lastrowid)
 
     def _upsert_existing(self, existing: Contact, **kwargs: str) -> Contact:
@@ -808,7 +811,7 @@ class ContactStore:
         return self._row_to_contact(row)
 
     @staticmethod
-    def _row_to_contact(row: tuple) -> Contact:
+    def _row_to_contact(row: tuple[Any, ...]) -> Contact:
         """Konvertiert DB-Row in Contact-DTO."""
         (
             id_,
