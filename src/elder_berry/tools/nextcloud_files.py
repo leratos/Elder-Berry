@@ -14,7 +14,7 @@ import re
 import xml.etree.ElementTree as ET
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 from urllib.parse import unquote
 
 import httpx
@@ -594,7 +594,7 @@ class NextcloudFilesClient:
             f"File-ID nicht gefunden für: {remote_path}",
         )
 
-    def search_content(self, query: str, limit: int = 10) -> list[dict]:
+    def search_content(self, query: str, limit: int = 10) -> list[dict[str, Any]]:
         """Volltextsuche in Dateiinhalten via Nextcloud Unified Search API.
 
         Nutzt das Full text search - Files Plugin (serverseitig).
@@ -638,7 +638,7 @@ class NextcloudFilesClient:
             )
 
         # OCS JSON response parsen
-        results: list[dict] = []
+        results: list[dict[str, Any]] = []
         try:
             data = resp.json()
             entries = data.get("ocs", {}).get("data", {}).get("entries", [])
