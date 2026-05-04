@@ -17,7 +17,12 @@ import logging
 import re
 from pathlib import Path
 
-from elder_berry.comms.commands.base import CommandHandler, CommandResult
+from elder_berry.comms.commands.base import (
+    CommandHandler,
+    CommandPlugin,
+    CommandResult,
+    HandlerContext,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -223,3 +228,28 @@ def _line_matches_level(line: str, levels: set[str]) -> bool:
         if f"[{level}]" in line:
             return True
     return False
+
+
+# ---------------------------------------------------------------------------
+# Phase 77: Plugin-Manifest
+# ---------------------------------------------------------------------------
+
+HELP_SECTION_LOG = """Log-Zugriff (Remote-Debugging):
+  log [n] -- Letzte N Eintraege aus elder_berry.log (default 10, max 50)
+  log errors [n] -- Nur ERROR/CRITICAL-Eintraege
+  log warnings [n] -- Nur WARNING und hoeher
+  log security [n] -- Aus security.log"""
+
+
+def _factory(ctx: HandlerContext) -> CommandHandler | None:
+    log_dir = (ctx.project_root / "logs") if ctx.project_root else None
+    return LogCommandHandler(log_dir=log_dir)
+
+
+PLUGIN = CommandPlugin(
+    name="log",
+    priority=66,
+    category="diagnose",
+    help_section=HELP_SECTION_LOG,
+    factory=_factory,
+)

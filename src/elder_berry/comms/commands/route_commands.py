@@ -19,7 +19,9 @@ from typing import TYPE_CHECKING
 
 from elder_berry.comms.commands.base import (
     CommandHandler,
+    CommandPlugin,
     CommandResult,
+    HandlerContext,
     user_friendly_error,
 )
 
@@ -362,3 +364,33 @@ class RouteCommandHandler(CommandHandler):
                 name = name[:idx].strip()
                 break
         return name
+
+
+# ---------------------------------------------------------------------------
+# Phase 77: Plugin-Manifest
+# ---------------------------------------------------------------------------
+
+HELP_SECTION_ROUTE = """Routenplanung:
+  plane fahrt zu <Name> -- Route von Zuhause zu Kontakt
+  fahrt von <Name> zu <Name> -- Route zwischen zwei Kontakten
+  wie komme ich zu <Name> -- Route von Zuhause
+  Optional: "morgen um 16 uhr", "uebermorgen 10 uhr" -> Abfahrtszeit"""
+
+
+def _factory(ctx: HandlerContext) -> CommandHandler | None:
+    if ctx.route_planner is None or ctx.contact_store is None:
+        return None
+    return RouteCommandHandler(
+        route_planner=ctx.route_planner,
+        contact_store=ctx.contact_store,
+        default_user_id=ctx.default_user_id,
+    )
+
+
+PLUGIN = CommandPlugin(
+    name="route",
+    priority=76,
+    category="web",
+    help_section=HELP_SECTION_ROUTE,
+    factory=_factory,
+)

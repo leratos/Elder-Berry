@@ -23,7 +23,12 @@ import re
 from datetime import date, timedelta
 from typing import TYPE_CHECKING
 
-from elder_berry.comms.commands.base import CommandHandler, CommandResult
+from elder_berry.comms.commands.base import (
+    CommandHandler,
+    CommandPlugin,
+    CommandResult,
+    HandlerContext,
+)
 from elder_berry.tools.caldav_tasks import PRIORITIES
 
 if TYPE_CHECKING:
@@ -565,3 +570,31 @@ def _parse_date_token(token: str) -> date | None:
             return None
 
     return None
+
+
+# ---------------------------------------------------------------------------
+# Phase 77: Plugin-Manifest
+# ---------------------------------------------------------------------------
+
+HELP_SECTION_TODO = """Aufgaben (To-Do):
+  todo: <text> -- Aufgabe anlegen (optional: , hoch/mittel, Kategorie)
+  todos / aufgaben -- Offene Aufgaben anzeigen
+  todos hoch / todos Arbeit -- Gefiltert
+  todo erledigt #<ID> -- Aufgabe abhaken
+  todo wieder oeffnen #<ID> / todo prioritaet #<ID> hoch
+  todo loeschen #<ID> / todos erledigt / todos aufraeumen"""
+
+
+def _factory(ctx: HandlerContext) -> CommandHandler | None:
+    if ctx.task_client is None:
+        return None
+    return TodoCommandHandler(task_client=ctx.task_client)
+
+
+PLUGIN = CommandPlugin(
+    name="todo",
+    priority=74,
+    category="todos",
+    help_section=HELP_SECTION_TODO,
+    factory=_factory,
+)

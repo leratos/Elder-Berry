@@ -12,7 +12,12 @@ import tempfile
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from elder_berry.comms.commands.base import CommandHandler, CommandResult
+from elder_berry.comms.commands.base import (
+    CommandHandler,
+    CommandPlugin,
+    CommandResult,
+    HandlerContext,
+)
 from elder_berry.comms.pending_confirmation import PendingAction
 
 if TYPE_CHECKING:
@@ -603,3 +608,30 @@ class FilingCommandHandler(CommandHandler):
                     p.parent.rmdir()
             except OSError as exc:
                 logger.debug("Temp-Cleanup fehlgeschlagen: %s", exc)
+
+
+# ---------------------------------------------------------------------------
+# Phase 77: Plugin-Manifest
+# ---------------------------------------------------------------------------
+
+HELP_SECTION_FILING = """Dokument-Ablage:
+  cloud aufraeumen -- Dateien im Eingang klassifizieren und ablegen
+  anhang ablegen #<ID> -- PDF-Anhaenge aus Mail klassifizieren"""
+
+
+def _factory(ctx: HandlerContext) -> CommandHandler | None:
+    return FilingCommandHandler(
+        nextcloud_files=ctx.nextcloud_files,
+        document_classifier=ctx.document_classifier,
+        pending_store=ctx.pending_store,
+        email_client=ctx.email_client,
+    )
+
+
+PLUGIN = CommandPlugin(
+    name="filing",
+    priority=45,
+    category="cloud",
+    help_section=HELP_SECTION_FILING,
+    factory=_factory,
+)

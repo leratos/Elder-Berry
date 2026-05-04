@@ -13,7 +13,9 @@ from typing import TYPE_CHECKING
 
 from elder_berry.comms.commands.base import (
     CommandHandler,
+    CommandPlugin,
     CommandResult,
+    HandlerContext,
     user_friendly_error,
 )
 
@@ -786,3 +788,42 @@ class SystemCommandHandler(CommandHandler):
             pending_confirmation=True,
             pending_data={"action_type": "restart"},
         )
+
+
+# ---------------------------------------------------------------------------
+# Phase 77: Plugin-Manifest
+# ---------------------------------------------------------------------------
+
+HELP_SECTION_SYSTEM = """Basis:
+  status / systemstatus -- CPU, RAM, GPU, Disk, Top-Prozesse
+  screenshot / screen -- Screenshot als Bild
+  hilfe / help -- Kategorien-Uebersicht
+
+Medien:
+  pause / play / skip / next / prev / volume <0-100>
+  audio / audio lokal an / audio lokal aus
+
+Avatar:
+  selfie / avatar -- Bild von Saleria senden
+  selfie <emotion> -- Mit Emotion (angry, cheerful, sad, ...)
+
+System:
+  restart / neustart -- Bot neu starten"""
+
+
+def _factory(ctx: HandlerContext) -> CommandHandler | None:
+    return SystemCommandHandler(
+        system_monitor=ctx.system_monitor,
+        controller=ctx.controller,
+        avatar_renderer=ctx.avatar_renderer,
+        tower_agent=ctx.tower_agent,
+    )
+
+
+PLUGIN = CommandPlugin(
+    name="system",
+    priority=10,
+    category="basis",
+    help_section=HELP_SECTION_SYSTEM,
+    factory=_factory,
+)

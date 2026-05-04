@@ -1,11 +1,14 @@
-"""Phase 77 Etappe 1: Tests fuer Plugin-Registry und Pilot-Plugins.
+"""Phase 77: Tests fuer Plugin-Registry und alle Plugin-Manifeste.
 
 Prueft:
-- ``load_plugins()`` findet die drei Pilot-Manifeste (weather, note, git)
+- ``load_plugins()`` findet alle 23 Builtin-Plugins
 - Sortierung nach Priority ist stabil
-- Factory-Verhalten: weather/note brauchen Service, git nicht
+- Factory-Verhalten: Conditional-Plugins (note/contact/todo/route) liefern
+  None ohne Service, Graceful-Degradation-Plugins (weather/git) liefern
+  immer Handler
 - Manifest-Integritaet (Name eindeutig, Help-Section nicht leer, Kategorie
   in CATEGORY_LABELS bekannt)
+- RemoteCommandHandler-Konstruktor: Plugin-Pfad und Legacy-Kwargs.
 
 Test ist NICHT strict-mypy-geprueft (Phase 76d Aufgabe).
 """
@@ -20,18 +23,49 @@ from elder_berry.comms.commands.help_sections import CATEGORY_LABELS
 from elder_berry.comms.commands.registry import load_plugins
 
 
+# Etappe 2: alle 23 Builtin-Plugins muessen geladen werden.
+EXPECTED_PLUGIN_NAMES = {
+    "system",
+    "weather",
+    "mail",
+    "calendar",
+    "file",
+    "cloud",
+    "pdf",
+    "filing",
+    "process",
+    "git",
+    "docker",
+    "wol",
+    "update",
+    "selfcheck",
+    "turntable",
+    "harmony",
+    "camera",
+    "log",
+    "note",
+    "contact",
+    "todo",
+    "route",
+    "advanced",
+}
+
+
 # --- Discovery & Sortierung ----------------------------------------------
 
 
-def test_load_plugins_finds_three_pilots() -> None:
-    """Etappe 1 hat 3 Pilot-Plugins. Wenn weniger gefunden werden, ist
-    eine PLUGIN-Konstante kaputt; wenn mehr, ist Etappe 2 schon
-    voraus geeilt -- dann bitte den Test anpassen."""
+def test_load_plugins_finds_all_handlers() -> None:
+    """Phase 77 Etappe 2: alle 23 *_commands.py haben Plugin-Manifest.
+
+    Wenn ein Plugin fehlt: PLUGIN-Konstante in der jeweiligen Datei
+    pruefen oder Tippfehler im Manifest-Append.
+    """
     plugins = load_plugins()
     names = {p.name for p in plugins}
-    assert {"weather", "note", "git"} <= names, (
-        f"Pilot-Plugins unvollstaendig: {sorted(names)}"
-    )
+    missing = EXPECTED_PLUGIN_NAMES - names
+    extra = names - EXPECTED_PLUGIN_NAMES
+    assert not missing, f"Fehlende Plugins: {sorted(missing)}"
+    assert not extra, f"Unerwartete Plugins: {sorted(extra)}"
 
 
 def test_load_plugins_returns_sorted_by_priority() -> None:
@@ -48,6 +82,28 @@ def test_pilot_plugin_priorities_match_concept() -> None:
     assert by_name["weather"].priority == 15
     assert by_name["git"].priority == 50
     assert by_name["note"].priority == 70
+
+
+def test_pattern_critical_priority_constraints() -> None:
+    """Kritische Pattern-Reihenfolge-Constraints aus den WICHTIG-Kommentaren
+    der alten remote_commands.py Handler-Liste:
+    - weather VOR calendar (REMINDER_DELETE vs TERMIN_DELETE)
+    - mail VOR calendar (MAIL_DELETE vs TERMIN_DELETE)
+    - turntable VOR camera ('schau nach' Pattern-Konflikt)
+    - advanced als Letztes (Catch-All / LLM-Fallback)
+    """
+    by_name = {p.name: p for p in load_plugins()}
+    assert by_name["weather"].priority < by_name["calendar"].priority
+    assert by_name["mail"].priority < by_name["calendar"].priority
+    assert by_name["turntable"].priority < by_name["camera"].priority
+    advanced_prio = by_name["advanced"].priority
+    for name, plugin in by_name.items():
+        if name == "advanced":
+            continue
+        assert plugin.priority < advanced_prio, (
+            f"Plugin '{name}' (prio={plugin.priority}) nach advanced "
+            f"(prio={advanced_prio}) -- advanced muss Catch-All sein"
+        )
 
 
 # --- Manifest-Integritaet ------------------------------------------------
@@ -140,26 +196,87 @@ def test_command_plugin_is_frozen() -> None:
 
 def test_remote_command_handler_constructs_with_legacy_kwargs() -> None:
     """Backwards-Compat: Bestehende Aufrufer mit Kwargs muessen weiter
-    funktionieren. Plugin-Pfad wird intern aktiviert (weather/git/note
-    aus Plugin-Registry, Rest legacy)."""
+    funktionieren. Etappe 2: Kwargs werden intern in HandlerContext
+    konvertiert, alle Handler kommen aus der Plugin-Registry."""
     from elder_berry.comms.remote_commands import RemoteCommandHandler
 
     handler = RemoteCommandHandler()  # alle Defaults None
     handler_types = {type(h).__name__ for h in handler._handlers}
-    # weather + git haben keine harte Service-Bedingung, sind immer da
+    # Handler ohne harte Service-Bedingung -- immer da
     assert "WeatherCommandHandler" in handler_types
     assert "GitCommandHandler" in handler_types
-    # note braucht NoteStore, ohne fehlt der Handler
+    assert "SystemCommandHandler" in handler_types
+    assert "AdvancedCommandHandler" in handler_types
+    # Conditional-Handler ohne Service -- fehlen
     assert "NoteCommandHandler" not in handler_types
+    assert "ContactCommandHandler" not in handler_types
+    assert "TodoCommandHandler" not in handler_types
+    assert "RouteCommandHandler" not in handler_types
 
 
 def test_remote_command_handler_constructs_with_explicit_ctx() -> None:
-    """Neuer Pfad: HandlerContext direkt uebergeben."""
+    """Neuer Pfad: HandlerContext direkt uebergeben mit allen Conditionals."""
     from elder_berry.comms.remote_commands import RemoteCommandHandler
 
-    ctx = HandlerContext(weather=MagicMock(), note_store=MagicMock())
+    ctx = HandlerContext(
+        weather=MagicMock(),
+        note_store=MagicMock(),
+        contact_store=MagicMock(),
+        task_client=MagicMock(),
+        route_planner=MagicMock(),
+    )
     handler = RemoteCommandHandler(ctx=ctx)
     handler_types = {type(h).__name__ for h in handler._handlers}
+    # Alle 23 Handler-Klassen muessen drin sein
     assert "WeatherCommandHandler" in handler_types
     assert "NoteCommandHandler" in handler_types
     assert "GitCommandHandler" in handler_types
+    assert "ContactCommandHandler" in handler_types
+    assert "TodoCommandHandler" in handler_types
+    assert "RouteCommandHandler" in handler_types
+    assert len(handler._handlers) == 23
+
+
+def test_handler_order_matches_pre_plugin_layout() -> None:
+    """Sicherheitsnetz: Reihenfolge muss exakt der alten Pre-Plugin-Liste
+    entsprechen (siehe Phase 77 Etappe 1 Smoketest). Wenn das hier
+    bricht, hat sich eine Plugin-Priority verschoben oder die Conditional-
+    Logik ist umgesattelt -- sehr genau pruefen, ob das gewollt ist.
+    """
+    from elder_berry.comms.remote_commands import RemoteCommandHandler
+
+    ctx = HandlerContext(
+        weather=MagicMock(),
+        note_store=MagicMock(),
+        contact_store=MagicMock(),
+        task_client=MagicMock(),
+        route_planner=MagicMock(),
+    )
+    handler = RemoteCommandHandler(ctx=ctx)
+    expected = [
+        "SystemCommandHandler",
+        "WeatherCommandHandler",
+        "MailCommandHandler",
+        "CalendarCommandHandler",
+        "FileCommandHandler",
+        "CloudCommandHandler",
+        "PDFCommandHandler",
+        "FilingCommandHandler",
+        "ProcessCommandHandler",
+        "GitCommandHandler",
+        "DockerCommandHandler",
+        "WolCommandHandler",
+        "UpdateCommandHandler",
+        "SelfcheckCommandHandler",
+        "TurntableCommandHandler",
+        "HarmonyCommandHandler",
+        "CameraCommandHandler",
+        "LogCommandHandler",
+        "NoteCommandHandler",
+        "ContactCommandHandler",
+        "TodoCommandHandler",
+        "RouteCommandHandler",
+        "AdvancedCommandHandler",
+    ]
+    actual = [type(h).__name__ for h in handler._handlers]
+    assert actual == expected

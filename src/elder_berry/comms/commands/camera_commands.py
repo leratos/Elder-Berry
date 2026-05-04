@@ -11,7 +11,9 @@ from typing import TYPE_CHECKING
 
 from elder_berry.comms.commands.base import (
     CommandHandler,
+    CommandPlugin,
     CommandResult,
+    HandlerContext,
     user_friendly_error,
 )
 
@@ -209,3 +211,28 @@ class CameraCommandHandler(CommandHandler):
             text=description,
             image_path=tmp_path,
         )
+
+
+# ---------------------------------------------------------------------------
+# Phase 77: Plugin-Manifest
+# ---------------------------------------------------------------------------
+
+HELP_SECTION_CAMERA = """Kamera:
+  foto / kamera -- Foto aufnehmen und senden
+  was siehst du [kontext] -- Kamerabild + KI-Beschreibung"""
+
+
+def _factory(ctx: HandlerContext) -> CommandHandler | None:
+    return CameraCommandHandler(
+        robot_client=ctx.robot_client,
+        anthropic_client=ctx.anthropic_client,
+    )
+
+
+PLUGIN = CommandPlugin(
+    name="camera",
+    priority=64,
+    category="avatar",
+    help_section=HELP_SECTION_CAMERA,
+    factory=_factory,
+)

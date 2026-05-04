@@ -20,7 +20,9 @@ from typing import TYPE_CHECKING
 
 from elder_berry.comms.commands.base import (
     CommandHandler,
+    CommandPlugin,
     CommandResult,
+    HandlerContext,
     user_friendly_error,
 )
 
@@ -455,3 +457,29 @@ class HarmonyCommandHandler(CommandHandler):
                 success=False,
                 text=user_friendly_error(e, "Harmony"),
             )
+
+
+# ---------------------------------------------------------------------------
+# Phase 77: Plugin-Manifest
+# ---------------------------------------------------------------------------
+
+HELP_SECTION_HARMONY = """Harmony Hub (Smart Home):
+  <aktivitaet> an / alles aus / harmony aus
+  lauter / leiser / stummschalten
+  was laeuft / harmony status
+  harmony aktivitaeten / harmony geraete
+  harmony befehle <geraet>
+  starte szene <name> / szenen liste"""
+
+
+def _factory(ctx: HandlerContext) -> CommandHandler | None:
+    return HarmonyCommandHandler(robot_client=ctx.robot_client)
+
+
+PLUGIN = CommandPlugin(
+    name="harmony",
+    priority=62,
+    category="smart-home",
+    help_section=HELP_SECTION_HARMONY,
+    factory=_factory,
+)

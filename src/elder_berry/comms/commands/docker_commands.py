@@ -14,7 +14,9 @@ import subprocess
 
 from elder_berry.comms.commands.base import (
     CommandHandler,
+    CommandPlugin,
     CommandResult,
+    HandlerContext,
     user_friendly_error,
 )
 
@@ -139,3 +141,24 @@ class DockerCommandHandler(CommandHandler):
                 success=False,
                 text=user_friendly_error(e, "Docker"),
             )
+
+
+# ---------------------------------------------------------------------------
+# Phase 77: Plugin-Manifest
+# ---------------------------------------------------------------------------
+
+HELP_SECTION_DOCKER = """Docker:
+  docker ps / docker restart <name> / docker logs <name>"""
+
+
+def _factory(ctx: HandlerContext) -> CommandHandler | None:
+    return DockerCommandHandler()
+
+
+PLUGIN = CommandPlugin(
+    name="docker",
+    priority=52,
+    category="system",
+    help_section=HELP_SECTION_DOCKER,
+    factory=_factory,
+)

@@ -21,7 +21,9 @@ from typing import TYPE_CHECKING
 
 from elder_berry.comms.commands.base import (
     CommandHandler,
+    CommandPlugin,
     CommandResult,
+    HandlerContext,
     user_friendly_error,
 )
 from elder_berry.core.path_guard import PathGuard
@@ -663,3 +665,32 @@ class PDFCommandHandler(CommandHandler):
         finally:
             if self._nc:
                 shutil.rmtree(temp_dir, ignore_errors=True)
+
+
+# ---------------------------------------------------------------------------
+# Phase 77: Plugin-Manifest
+# ---------------------------------------------------------------------------
+
+HELP_SECTION_PDF = """PDF-Verarbeitung (Stirling-PDF):
+  pdf zusammenfuegen <a.pdf> <b.pdf>
+  pdf aufteilen <datei> seiten 1-3
+  pdf komprimieren <datei> [stufe 1-9]
+  pdf ocr <datei>
+  pdf zu word <datei> / zu pdf <datei>
+  pdf bilder <datei>"""
+
+
+def _factory(ctx: HandlerContext) -> CommandHandler | None:
+    return PDFCommandHandler(
+        stirling_pdf=ctx.stirling_pdf,
+        nextcloud_files=ctx.nextcloud_files,
+    )
+
+
+PLUGIN = CommandPlugin(
+    name="pdf",
+    priority=40,
+    category="cloud",
+    help_section=HELP_SECTION_PDF,
+    factory=_factory,
+)

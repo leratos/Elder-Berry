@@ -12,7 +12,9 @@ from typing import TYPE_CHECKING
 
 from elder_berry.comms.commands.base import (
     CommandHandler,
+    CommandPlugin,
     CommandResult,
+    HandlerContext,
     user_friendly_error,
 )
 from elder_berry.core.path_guard import PathGuard
@@ -576,3 +578,41 @@ class AdvancedCommandHandler(CommandHandler):
             text=text,
             history_text=history,
         )
+
+
+# ---------------------------------------------------------------------------
+# Phase 77: Plugin-Manifest
+# ---------------------------------------------------------------------------
+
+HELP_SECTION_ADVANCED = """Web-Suche & Computer Use:
+  suche <Begriff> / google <Begriff>
+  fasse <URL> zusammen / zusammenfassung von <URL>
+  zusammenfassung <Pfad> -- PDF/TXT zusammenfassen
+  klick auf <Element> / tippe <Text> / scroll runter|hoch
+  drueck <Taste> -- Tastenkombination
+
+Audio:
+  audio / audio lokal an / audio lokal aus
+
+Claude-Agent:
+  claude "<Auftrag>" -- Komplexe Anfrage an Claude API"""
+
+
+def _factory(ctx: HandlerContext) -> CommandHandler | None:
+    return AdvancedCommandHandler(
+        computer_use=ctx.computer_use,
+        search_client=ctx.search_client,
+        document_reader=ctx.document_reader,
+        audio_router=ctx.audio_router,
+        web_fetcher=ctx.web_fetcher,
+        nextcloud_files=ctx.nextcloud_files,
+    )
+
+
+PLUGIN = CommandPlugin(
+    name="advanced",
+    priority=99,
+    category="web",
+    help_section=HELP_SECTION_ADVANCED,
+    factory=_factory,
+)

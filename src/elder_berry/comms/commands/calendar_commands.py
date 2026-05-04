@@ -18,7 +18,9 @@ from typing import TYPE_CHECKING
 
 from elder_berry.comms.commands.base import (
     CommandHandler,
+    CommandPlugin,
     CommandResult,
+    HandlerContext,
     user_friendly_error,
 )
 
@@ -704,3 +706,27 @@ class CalendarCommandHandler(CommandHandler):
             "fünfte": 5,
         }
         return ordinals.get(clean)
+
+
+# ---------------------------------------------------------------------------
+# Phase 77: Plugin-Manifest
+# ---------------------------------------------------------------------------
+
+HELP_SECTION_CALENDAR = """Kalender:
+  termine / termine morgen / termine woche / termine monat
+  termin suche <Begriff> -- Termin suchen (naechste 90 Tage)
+  termin: Titel morgen 14:00 -- Termin erstellen
+  loesche termin <Titel/ID> / loesche alle termine"""
+
+
+def _factory(ctx: HandlerContext) -> CommandHandler | None:
+    return CalendarCommandHandler(calendar=ctx.calendar)
+
+
+PLUGIN = CommandPlugin(
+    name="calendar",
+    priority=25,
+    category="kalender",
+    help_section=HELP_SECTION_CALENDAR,
+    factory=_factory,
+)

@@ -23,7 +23,12 @@ import re
 from datetime import date
 from typing import TYPE_CHECKING
 
-from elder_berry.comms.commands.base import CommandHandler, CommandResult
+from elder_berry.comms.commands.base import (
+    CommandHandler,
+    CommandPlugin,
+    CommandResult,
+    HandlerContext,
+)
 
 if TYPE_CHECKING:
     from elder_berry.tools.carddav_sync import CardDAVSyncClient
@@ -910,3 +915,35 @@ class ContactCommandHandler(CommandHandler):
         result.update(assignments)
 
         return result
+
+
+# ---------------------------------------------------------------------------
+# Phase 77: Plugin-Manifest
+# ---------------------------------------------------------------------------
+
+HELP_SECTION_CONTACT = """Kontakte:
+  kontakt: Name, Rolle, Email, Anrede -- Kontakt anlegen
+  wer ist <Name>? -- Kontakt abrufen
+  kontakte / kontakte suche <Begriff>
+  kontakt loeschen #<ID>
+  kontakte sync [push|pull|reset]
+  wann hat <Name> geburtstag? / was ist die adresse von <Name>?"""
+
+
+def _factory(ctx: HandlerContext) -> CommandHandler | None:
+    if ctx.contact_store is None:
+        return None
+    return ContactCommandHandler(
+        contact_store=ctx.contact_store,
+        default_user_id=ctx.default_user_id,
+        carddav_sync=ctx.carddav_sync,
+    )
+
+
+PLUGIN = CommandPlugin(
+    name="contact",
+    priority=72,
+    category="kontakte",
+    help_section=HELP_SECTION_CONTACT,
+    factory=_factory,
+)

@@ -20,7 +20,9 @@ from typing import TYPE_CHECKING
 
 from elder_berry.comms.commands.base import (
     CommandHandler,
+    CommandPlugin,
     CommandResult,
+    HandlerContext,
     user_friendly_error,
 )
 from elder_berry.comms.commands.cmd_utils import CmdResult, run_cmd
@@ -566,3 +568,32 @@ class UpdateCommandHandler(CommandHandler):
             text="\n".join(steps),
             restart=True,
         )
+
+
+# ---------------------------------------------------------------------------
+# Phase 77: Plugin-Manifest
+# ---------------------------------------------------------------------------
+
+HELP_SECTION_UPDATE = """Self-Update:
+  update / update dich -- Git Pull + Dependencies + Neustart
+  update tower -- Tower-PC aktualisieren
+  update rpi -- RPi5 aktualisieren
+  update alles -- Server + Tower + RPi5 nacheinander
+  rollback / update zuruecksetzen -- Auf Stand vor letztem Update"""
+
+
+def _factory(ctx: HandlerContext) -> CommandHandler | None:
+    return UpdateCommandHandler(
+        project_root=ctx.project_root,
+        robot_client=ctx.robot_client,
+        tower_agent=ctx.tower_agent,
+    )
+
+
+PLUGIN = CommandPlugin(
+    name="update",
+    priority=56,
+    category="system",
+    help_section=HELP_SECTION_UPDATE,
+    factory=_factory,
+)
