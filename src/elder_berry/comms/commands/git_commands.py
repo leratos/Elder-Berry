@@ -25,7 +25,9 @@ from pathlib import Path
 
 from elder_berry.comms.commands.base import (
     CommandHandler,
+    CommandPlugin,
     CommandResult,
+    HandlerContext,
     user_friendly_error,
 )
 
@@ -247,3 +249,29 @@ class GitCommandHandler(CommandHandler):
                 success=False,
                 text=user_friendly_error(e, "Git"),
             )
+
+
+# ---------------------------------------------------------------------------
+# Phase 77: Plugin-Manifest
+# ---------------------------------------------------------------------------
+
+HELP_SECTION_GIT = """Git:
+  git status / git pull / git log / git diff"""
+
+
+def _factory(ctx: HandlerContext) -> CommandHandler | None:
+    """Konstruiert GitCommandHandler aus dem HandlerContext.
+
+    Hat keine harte Service-Abhaengigkeit -- ``project_root`` ist optional,
+    fehlt es, faellt der Handler auf das aktuelle Arbeitsverzeichnis zurueck.
+    """
+    return GitCommandHandler(project_root=ctx.project_root)
+
+
+PLUGIN = CommandPlugin(
+    name="git",
+    priority=50,
+    category="system",
+    help_section=HELP_SECTION_GIT,
+    factory=_factory,
+)

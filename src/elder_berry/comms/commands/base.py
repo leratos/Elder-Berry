@@ -2,6 +2,10 @@
 
 Jeder Handler registriert seine Patterns und Keywords und kann
 Commands parsen und ausführen.
+
+Phase 77: Plugin-Registry-Format (CommandPlugin) und Service-Container
+(HandlerContext) leben hier, damit jeder Handler sie ohne Zirkular-Import
+nutzen kann.
 """
 
 from __future__ import annotations
@@ -9,9 +13,39 @@ from __future__ import annotations
 import logging
 import re
 from abc import ABC, abstractmethod
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from elder_berry.actions.base import ActionController
+    from elder_berry.actions.computer_use import ComputerUseController
+    from elder_berry.avatar.base import AvatarRenderer
+    from elder_berry.comms.briefing_scheduler import BriefingScheduler
+    from elder_berry.comms.pending_confirmation import PendingConfirmationStore
+    from elder_berry.core.audio_router import AudioRouter
+    from elder_berry.core.secret_store import SecretStore
+    from elder_berry.core.tower_agent import TowerAgent
+    from elder_berry.llm.anthropic_client import AnthropicClient
+    from elder_berry.robot.client import RobotClient
+    from elder_berry.system.info import SystemMonitor
+    from elder_berry.tools.brave_search_client import BraveSearchClient
+    from elder_berry.tools.caldav_tasks import CalDAVTaskClient
+    from elder_berry.tools.carddav_sync import CardDAVSyncClient
+    from elder_berry.tools.contact_store import ContactStore
+    from elder_berry.tools.document_classifier import DocumentClassifier
+    from elder_berry.tools.document_reader import DocumentReader
+    from elder_berry.tools.email_client import IMAPEmailClient
+    from elder_berry.tools.google_calendar import GoogleCalendarClient
+    from elder_berry.tools.gym_data import GymDataClient
+    from elder_berry.tools.nextcloud_files import NextcloudFilesClient
+    from elder_berry.tools.note_store import NoteStore
+    from elder_berry.tools.reminder_store import ReminderStore
+    from elder_berry.tools.route_planner import RoutePlanner
+    from elder_berry.tools.stirling_pdf import StirlingPDFClient
+    from elder_berry.tools.weather_client import WeatherClient
+    from elder_berry.tools.web_fetcher import WebFetcher
 
 logger = logging.getLogger(__name__)
 
@@ -86,7 +120,7 @@ class CommandHandler(ABC):
         return set()
 
     @property
-    def patterns(self) -> list[tuple[re.Pattern, str, bool, bool]]:
+    def patterns(self) -> list[tuple[re.Pattern[str], str, bool, bool]]:
         """Regex-Patterns für parametrierte Commands.
 
         Returns:
@@ -255,3 +289,101 @@ def user_friendly_error(exc: Exception, context: str = "") -> str:
     short = exc_str if len(exc_str) <= 120 else exc_str[:117] + "..."
     logger.debug("user_friendly_error fallback für %s: %s", exc_type, exc_str)
     return f"❌ {prefix}Fehler: {short}"
+
+
+# ---------------------------------------------------------------------------
+# Phase 77: Plugin-Registry
+# ---------------------------------------------------------------------------
+
+
+@dataclass
+class HandlerContext:
+    """Service-Container für Plugin-Factories (Phase 77).
+
+    Ersetzt die alte Kwargs-Liste in ``RemoteCommandHandler.__init__``.
+    Jede Factory liest, was sie braucht; optionale Felder sind ``None``,
+    wenn der Service nicht konfiguriert ist. Field-Namen und -Typen
+    spiegeln die bisherigen Konstruktor-Parameter 1:1, damit Migration
+    in Etappe 2 mechanisch bleibt.
+    """
+
+    # --- Pflicht-/Quasi-Pflicht-Felder (in der Praxis fast immer gesetzt) ---
+    project_root: Path | None = None
+    secret_store: SecretStore | None = None
+    default_user_id: str = ""
+
+    # --- Aktionen / System ---
+    system_monitor: SystemMonitor | None = None
+    controller: ActionController | None = None
+    download_dir: Path | None = None
+    avatar_renderer: AvatarRenderer | None = None
+    send_file_allowed_roots: tuple[Path, ...] | None = None
+    audio_router: AudioRouter | None = None
+    computer_use: ComputerUseController | None = None
+    robot_client: RobotClient | None = None
+    tower_agent: TowerAgent | None = None
+    anthropic_client: AnthropicClient | None = None
+
+    # --- Tools ---
+    weather: WeatherClient | None = None
+    reminder_store: ReminderStore | None = None
+    briefing_scheduler: BriefingScheduler | None = None
+    email_client: IMAPEmailClient | None = None
+    calendar: GoogleCalendarClient | None = None
+    note_store: NoteStore | None = None
+    contact_store: ContactStore | None = None
+    task_client: CalDAVTaskClient | None = None
+    pending_store: PendingConfirmationStore | None = None
+    nextcloud_files: NextcloudFilesClient | None = None
+    document_classifier: DocumentClassifier | None = None
+    stirling_pdf: StirlingPDFClient | None = None
+    route_planner: RoutePlanner | None = None
+    web_fetcher: WebFetcher | None = None
+    search_client: BraveSearchClient | None = None
+    document_reader: DocumentReader | None = None
+    gym_client: GymDataClient | None = None
+    carddav_sync: CardDAVSyncClient | None = None
+
+
+@dataclass(frozen=True)
+class CommandPlugin:
+    """Selbstbeschreibung eines Command-Handlers (Phase 77).
+
+    Jedes Plugin-Modul exportiert genau ein PLUGIN-Objekt auf Modul-Ebene.
+    Die Registry erkennt das automatisch (siehe registry.py).
+    """
+
+    name: str
+    """Eindeutiger, snake_case Name. Wird als Key für Lookup, Help-Sektion
+    und Logging genutzt."""
+
+    priority: int
+    """Niedrigere Zahl = früher geprüft. Empfohlene Werte:
+    0–9     – kritische Pre-Filter (selten)
+    10–49   – domänenspezifische Commands mit Pattern-Konflikten
+    50–89   – normale Commands
+    90–99   – Catch-All (z.B. AdvancedCommands für LLM-Fallback)"""
+
+    category: str
+    """Hilfe-Kategorie (siehe help_sections.CATEGORY_LABELS).
+    Neue Kategorien müssen dort registriert werden."""
+
+    help_section: str
+    """Help-Text dieser Domäne. Wird in build_full_help() aggregiert
+    (Etappe 2: aktuell parallel zur statischen HELP_SECTIONS-Map)."""
+
+    factory: Callable[[HandlerContext], "CommandHandler | None"]
+    """Konstruktor-Funktion. Liest aus HandlerContext, was sie braucht.
+    Darf None zurückgeben, wenn benötigte Services fehlen
+    (z.B. NoteStore=None → kein NoteHandler)."""
+
+    requires: tuple[str, ...] = field(default_factory=tuple)
+    """Plugin-Namen, deren Handler vor diesem laufen müssen.
+    Liefert Konflikt-Constraint für die Sortierung (Etappe 3)."""
+
+    conflicts: tuple[str, ...] = field(default_factory=tuple)
+    """Plugin-Namen, mit denen Patterns kollidieren könnten.
+    Triggert Pattern-Konflikt-Test in CI (Etappe 3)."""
+
+    version: str = "1.0.0"
+    """Plugin-Version. Macht später Migrations möglich."""

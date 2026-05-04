@@ -16,7 +16,12 @@ import logging
 import re
 from typing import TYPE_CHECKING
 
-from elder_berry.comms.commands.base import CommandHandler, CommandResult
+from elder_berry.comms.commands.base import (
+    CommandHandler,
+    CommandPlugin,
+    CommandResult,
+    HandlerContext,
+)
 
 if TYPE_CHECKING:
     from elder_berry.tools.note_store import NoteStore
@@ -370,3 +375,40 @@ class NoteCommandHandler(CommandHandler):
             success=False,
             text=f"Kein Fakt '{key}' gefunden.",
         )
+
+
+# ---------------------------------------------------------------------------
+# Phase 77: Plugin-Manifest
+# ---------------------------------------------------------------------------
+
+HELP_SECTION_NOTE = """Notizen & Wissen:
+  merk dir: <schluessel> ist <wert>  -- Fakt speichern
+  notiz: <text>                       -- Freitext-Notiz speichern
+  was ist <schluessel>?               -- Fakt abrufen
+  notizen suche <Begriff>             -- Notizen durchsuchen
+  notizen                             -- Alle Notizen anzeigen (max 20)
+  notiz loeschen #<id>                -- Notiz per ID loeschen
+  vergiss <schluessel>                -- KV-Fakt vergessen"""
+
+
+def _factory(ctx: HandlerContext) -> CommandHandler | None:
+    """Konstruiert NoteCommandHandler aus dem HandlerContext.
+
+    Bedingung: ``ctx.note_store`` muss gesetzt sein -- ohne SQLite-Store
+    keine Notizen.
+    """
+    if ctx.note_store is None:
+        return None
+    return NoteCommandHandler(
+        note_store=ctx.note_store,
+        default_user_id=ctx.default_user_id,
+    )
+
+
+PLUGIN = CommandPlugin(
+    name="note",
+    priority=70,
+    category="notizen",
+    help_section=HELP_SECTION_NOTE,
+    factory=_factory,
+)

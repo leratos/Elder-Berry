@@ -39,28 +39,33 @@ import re
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from elder_berry.comms.commands.base import CommandHandler, CommandResult
+from elder_berry.comms.commands.base import (
+    CommandHandler,
+    CommandResult,
+    HandlerContext,
+)
 from elder_berry.comms.commands.help_sections import (
     CATEGORY_LABELS,
     build_full_help,
     build_overview,
     get_section,
 )
+from elder_berry.comms.commands.registry import load_plugins
 from elder_berry.comms.commands.system_commands import SystemCommandHandler
 from elder_berry.comms.commands.calendar_commands import CalendarCommandHandler
 from elder_berry.comms.commands.mail_commands import MailCommandHandler
 from elder_berry.comms.commands.file_commands import FileCommandHandler
 from elder_berry.comms.commands.process_commands import ProcessCommandHandler
-from elder_berry.comms.commands.git_commands import GitCommandHandler
+
+# Phase 77: GitCommandHandler / WeatherCommandHandler / NoteCommandHandler werden
+# nicht mehr direkt importiert -- die Plugin-Registry laedt sie ueber importlib.
 from elder_berry.comms.commands.docker_commands import DockerCommandHandler
 from elder_berry.comms.commands.wol_commands import WolCommandHandler
 from elder_berry.comms.commands.update_commands import UpdateCommandHandler
 from elder_berry.comms.commands.selfcheck_commands import SelfcheckCommandHandler
-from elder_berry.comms.commands.weather_commands import WeatherCommandHandler
 from elder_berry.comms.commands.advanced_commands import AdvancedCommandHandler
 from elder_berry.comms.commands.camera_commands import CameraCommandHandler
 from elder_berry.comms.commands.turntable_commands import TurntableCommandHandler
-from elder_berry.comms.commands.note_commands import NoteCommandHandler
 from elder_berry.comms.commands.contact_commands import ContactCommandHandler
 from elder_berry.comms.commands.todo_commands import TodoCommandHandler
 from elder_berry.comms.commands.cloud_commands import CloudCommandHandler
@@ -209,6 +214,8 @@ class RemoteCommandHandler:
 
     def __init__(
         self,
+        ctx: HandlerContext | None = None,
+        *,
         system_monitor: SystemMonitor | None = None,
         controller: ActionController | None = None,
         secret_store: SecretStore | None = None,
@@ -241,6 +248,55 @@ class RemoteCommandHandler:
         default_user_id: str = "",
         tower_agent: TowerAgent | None = None,
     ) -> None:
+        # Phase 77: HandlerContext aus Kwargs aufbauen, falls nicht
+        # explizit uebergeben. Etappe 1 nutzt den Plugin-Pfad fuer
+        # weather/note/git -- restliche Handler bleiben in Etappe 2.
+        if ctx is None:
+            ctx = HandlerContext(
+                project_root=project_root,
+                secret_store=secret_store,
+                default_user_id=default_user_id,
+                system_monitor=system_monitor,
+                controller=controller,
+                download_dir=download_dir,
+                avatar_renderer=avatar_renderer,
+                send_file_allowed_roots=send_file_allowed_roots,
+                audio_router=audio_router,
+                computer_use=computer_use,
+                robot_client=robot_client,
+                tower_agent=tower_agent,
+                anthropic_client=anthropic_client,
+                weather=weather,
+                reminder_store=reminder_store,
+                briefing_scheduler=briefing_scheduler,
+                email_client=email_client,
+                calendar=calendar,
+                note_store=note_store,
+                contact_store=contact_store,
+                task_client=task_client,
+                pending_store=pending_store,
+                nextcloud_files=nextcloud_files,
+                document_classifier=document_classifier,
+                stirling_pdf=stirling_pdf,
+                route_planner=route_planner,
+                web_fetcher=web_fetcher,
+                search_client=search_client,
+                document_reader=document_reader,
+                gym_client=gym_client,
+                carddav_sync=carddav_sync,
+            )
+        self._ctx = ctx
+
+        # Plugin-Discovery (Etappe 1: weather, note, git haben Manifest).
+        # Plugin-Handler ersetzen den jeweiligen Legacy-Konstruktor an seiner
+        # alten Position in der Handler-Liste, damit die Pattern-Reihenfolge
+        # erhalten bleibt (siehe WICHTIG-Kommentare unten).
+        plugin_by_name: dict[str, CommandHandler] = {}
+        for plugin in load_plugins():
+            handler = plugin.factory(ctx)
+            if handler is not None:
+                plugin_by_name[plugin.name] = handler
+
         # Domain-Handler erstellen
         self._system = SystemCommandHandler(
             system_monitor=system_monitor,
@@ -260,7 +316,7 @@ class RemoteCommandHandler:
             send_file_allowed_roots=send_file_allowed_roots,
         )
         self._process = ProcessCommandHandler()
-        self._git = GitCommandHandler(project_root=project_root)
+        # Phase 77: GitCommandHandler kommt aus Plugin-Registry (siehe oben)
         self._docker = DockerCommandHandler()
         self._wol = WolCommandHandler(secret_store=secret_store)
         self._update = UpdateCommandHandler(
@@ -293,12 +349,7 @@ class RemoteCommandHandler:
                 "tower_agent": tower_agent,
             },
         )
-        self._weather = WeatherCommandHandler(
-            weather=weather,
-            reminder_store=reminder_store,
-            briefing_scheduler=briefing_scheduler,
-            gym_client=gym_client,
-        )
+        # Phase 77: WeatherCommandHandler kommt aus Plugin-Registry (siehe oben)
         self._turntable = TurntableCommandHandler(
             robot_client=robot_client,
         )
@@ -333,13 +384,7 @@ class RemoteCommandHandler:
             web_fetcher=web_fetcher,
             nextcloud_files=nextcloud_files,
         )
-        # NoteCommandHandler: nur wenn NoteStore vorhanden
-        self._notes: NoteCommandHandler | None = None
-        if note_store is not None:
-            self._notes = NoteCommandHandler(
-                note_store=note_store,
-                default_user_id=default_user_id,
-            )
+        # Phase 77: NoteCommandHandler kommt aus Plugin-Registry (siehe oben)
 
         # ContactCommandHandler: nur wenn ContactStore vorhanden
         self._contacts: ContactCommandHandler | None = None
@@ -367,33 +412,47 @@ class RemoteCommandHandler:
             )
 
         # Handler-Liste (Reihenfolge bestimmt Priorität bei Pattern/Keyword-Match)
-        # WICHTIG: _weather VOR _calendar, weil REMINDER_DELETE vor TERMIN_DELETE
+        # WICHTIG: weather VOR _calendar, weil REMINDER_DELETE vor TERMIN_DELETE
         # matchen muss ("lösche erinnerung" vs "lösche termin")
         # WICHTIG: _mail VOR _calendar, weil MAIL_DELETE vor TERMIN_DELETE
         # matchen muss ("lösche die mail" vs "lösche termin")
         # WICHTIG: _turntable VOR _camera wegen "schau nach" Pattern-Prioritaet
-        self._handlers: list[CommandHandler] = [
-            self._system,
-            self._weather,
-            self._mail,
-            self._calendar,
-            self._file,
-            self._cloud,
-            self._pdf,
-            self._filing,
-            self._process,
-            self._git,
-            self._docker,
-            self._wol,
-            self._update,
-            self._selfcheck,
-            self._turntable,
-            self._harmony,
-            self._camera,
-            self._log,
-        ]
-        if self._notes is not None:
-            self._handlers.append(self._notes)
+        # Phase 77: weather, git, note kommen aus plugin_by_name -- werden an
+        # ihrer alten Listen-Position eingefuegt, damit die Pattern-Reihenfolge
+        # gegenueber dem Pre-Plugin-Stand identisch bleibt.
+        self._handlers: list[CommandHandler] = [self._system]
+        weather_plugin = plugin_by_name.get("weather")
+        if weather_plugin is not None:
+            self._handlers.append(weather_plugin)
+        self._handlers.extend(
+            [
+                self._mail,
+                self._calendar,
+                self._file,
+                self._cloud,
+                self._pdf,
+                self._filing,
+                self._process,
+            ]
+        )
+        git_plugin = plugin_by_name.get("git")
+        if git_plugin is not None:
+            self._handlers.append(git_plugin)
+        self._handlers.extend(
+            [
+                self._docker,
+                self._wol,
+                self._update,
+                self._selfcheck,
+                self._turntable,
+                self._harmony,
+                self._camera,
+                self._log,
+            ]
+        )
+        note_plugin = plugin_by_name.get("note")
+        if note_plugin is not None:
+            self._handlers.append(note_plugin)
         if self._contacts is not None:
             self._handlers.append(self._contacts)
         if self._todos is not None:
