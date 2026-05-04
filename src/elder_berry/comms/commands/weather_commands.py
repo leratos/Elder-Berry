@@ -12,7 +12,9 @@ from typing import TYPE_CHECKING, Callable
 
 from elder_berry.comms.commands.base import (
     CommandHandler,
+    CommandPlugin,
     CommandResult,
+    HandlerContext,
     user_friendly_error,
 )
 
@@ -878,3 +880,62 @@ class WeatherCommandHandler(CommandHandler):
                 success=False,
                 text=user_friendly_error(e, "Berry-Gym"),
             )
+
+
+# ---------------------------------------------------------------------------
+# Phase 77: Plugin-Manifest
+# ---------------------------------------------------------------------------
+
+HELP_SECTION_WEATHER = """Wetter:
+  wetter / wetter morgen / wetter woche / wetter <N>
+  wetter in <Ort> [morgen|woche]
+
+Timer & Erinnerungen:
+  timer 20 min / timer 1 stunde
+  erinnere mich um 18:00: Waesche
+  erinnere mich in 2 stunden: Kuchen
+  erinnerungen / loesche erinnerung 3 / loesche alle erinnerungen
+
+Wiederkehrende Erinnerungen:
+  erinnere mich jeden montag um 9:00: Wochenbericht
+  erinnere mich taeglich um 8:00: Standup
+  erinnere mich werktags um 7:30: Aufstehen
+
+Briefing:
+  briefing -- Tagesuebersicht (Wetter + Termine + Erinnerungen)
+
+Fitness (Berry-Gym):
+  training / training details / training woche
+  prs -- Personal Records (letzte 30 Tage)"""
+
+
+def _factory(ctx: HandlerContext) -> CommandHandler | None:
+    """Konstruiert WeatherCommandHandler aus dem HandlerContext.
+
+    Anders als z.B. NoteCommandHandler hat dieser Handler KEINE harte
+    Service-Abhaengigkeit -- alle Services (weather, reminder_store,
+    briefing_scheduler, gym_client) sind optional. Der Handler selbst
+    macht graceful degradation: parse_command erkennt "wetter" auch
+    ohne Client, execute liefert dann "nicht konfiguriert"-Meldung.
+
+    Faktisch heisst das: Plugin liefert IMMER einen Handler. Nur
+    Konzept-§3.4 hat das ueber-strikt formuliert (None bei fehlendem
+    Service); fuer API-Clients ohne Konstruktor-Pflichtargument ist
+    graceful degradation das richtige Pattern.
+    """
+    return WeatherCommandHandler(
+        weather=ctx.weather,
+        reminder_store=ctx.reminder_store,
+        briefing_scheduler=ctx.briefing_scheduler,
+        gym_client=ctx.gym_client,
+    )
+
+
+PLUGIN = CommandPlugin(
+    name="weather",
+    priority=15,
+    category="wetter",
+    help_section=HELP_SECTION_WEATHER,
+    factory=_factory,
+    conflicts=("calendar",),
+)
