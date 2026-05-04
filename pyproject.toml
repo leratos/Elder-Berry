@@ -71,7 +71,7 @@ documents = [
     "pymupdf>=1.23",
 ]
 computer-use = [
-    "Pillow>=10.0",
+    "Pillow>=12.2.0",
     "mss>=10.2.0",
 ]
 web = [
