@@ -221,7 +221,6 @@ ignore_errors = true
 module = [
     "elder_berry.web",                      # __init__.py
     "elder_berry.web.settings_dashboard",
-    "elder_berry.web.setup_wizard",
 ]
 follow_imports = "silent"
 ignore_errors = true
@@ -287,6 +286,7 @@ module = [
     "elder_berry.web.settings_token",
     "elder_berry.web.settings_token_middleware",
     "elder_berry.web.setup_tests",
+    "elder_berry.web.setup_wizard",
 ]
 strict = true
 
