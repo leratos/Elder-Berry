@@ -205,25 +205,6 @@ module = [
 follow_imports = "silent"
 ignore_errors = true
 
-# --- Phase 76c WIP: noch nicht-strict tools/-Module ---
-# Variante A (Konzept §4.1): enumerierte Liste statt Wildcard, schrumpft
-# mit jedem Tier-Commit. Am Ende von 76c leer; dann wird der Block
-# geloescht.
-[[tool.mypy.overrides]]
-module = [
-    "elder_berry.tools",                    # __init__.py
-]
-follow_imports = "silent"
-ignore_errors = true
-
-# --- Phase 76c WIP: noch nicht-strict web/-Module ---
-[[tool.mypy.overrides]]
-module = [
-    "elder_berry.web",                      # __init__.py
-]
-follow_imports = "silent"
-ignore_errors = true
-
 # --- Phase 76 strict: alle core/-Module ---
 [[tool.mypy.overrides]]
 module = [
@@ -245,9 +226,11 @@ module = [
 ]
 strict = true
 
-# --- Phase 76c strict: tools/ + web/ (waechst pro Tier-Commit) ---
+# --- Phase 76c strict: alle tools/- und web/-Module ---
 [[tool.mypy.overrides]]
 module = [
+    "elder_berry.tools",                    # __init__.py
+    "elder_berry.web",                      # __init__.py
     "elder_berry.tools.brave_search_client",
     "elder_berry.tools.caldav_calendar",
     "elder_berry.tools.carddav_sync",

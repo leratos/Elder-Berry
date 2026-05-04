@@ -1,6 +1,9 @@
 # Phase 76c – mypy-Rollout für `tools/` + `web/` 🔍
 
-**Status:** Draft (2026-05-02)
+**Status:** Abgeschlossen (Etappe 0–5, 2026-05-04). Alle 39 `tools/`- und
+`web/`-Module strict getypt, CI-Gate hart auf
+`src/elder_berry/core src/elder_berry/tools src/elder_berry/web`,
+WIP-Blöcke aus `pyproject.toml` entfernt.
 **Branch:** `feature/phase-76c-mypy-rollout-tools-web` (Phasen-Branch),
 Etappen-Sub-Branches `feature/phase-76c-mypy-tier{0..5}` zweigen davon ab
 **Aufwand:** 9–11 Sessions verteilt
