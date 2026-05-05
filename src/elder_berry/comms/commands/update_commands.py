@@ -16,7 +16,7 @@ import re
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, cast
 
 from elder_berry.comms.commands.base import (
     CommandHandler,
@@ -106,7 +106,7 @@ class UpdateCommandHandler(CommandHandler):
         return {"update", "rollback", "update rpi", "update tower", "update alles"}
 
     @property
-    def patterns(self) -> list[tuple[re.Pattern, str, bool, bool]]:
+    def patterns(self) -> list[tuple[re.Pattern[str], str, bool, bool]]:
         return [
             (UPDATE_PATTERN, "update", False, False),
             (UPDATE_RPI_PATTERN, "update_rpi", False, False),
@@ -465,13 +465,16 @@ class UpdateCommandHandler(CommandHandler):
         )
         logger.info("Update-Backup geschrieben: %s → %s", commit_hash[:8], backup_path)
 
-    def _read_backup(self) -> dict | None:
+    def _read_backup(self) -> dict[str, Any] | None:
         """Liest Backup-Daten. None wenn nicht vorhanden."""
         backup_path = self._get_backup_path()
         if not backup_path.exists():
             return None
         try:
-            data = json.loads(backup_path.read_text(encoding="utf-8"))
+            data = cast(
+                dict[str, Any],
+                json.loads(backup_path.read_text(encoding="utf-8")),
+            )
             if "hash" in data:
                 return data
             return None
