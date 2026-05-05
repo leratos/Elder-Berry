@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import logging
 import re
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, tzinfo
 from typing import TYPE_CHECKING, Callable
 
 from elder_berry.comms.commands.base import (
@@ -153,7 +153,7 @@ class WeatherCommandHandler(CommandHandler):
         return {"wetter", "erinnerungen", "briefing", "training", "prs"}
 
     @property
-    def patterns(self) -> list[tuple[re.Pattern, str, bool, bool]]:
+    def patterns(self) -> list[tuple[re.Pattern[str], str, bool, bool]]:
         return [
             (REMINDER_DELETE_PATTERN, "reminder_delete", False, False),
             (RECURRING_WEEKLY_PATTERN, "recurring_reminder", False, False),
@@ -398,6 +398,8 @@ class WeatherCommandHandler(CommandHandler):
         if not city_name:
             return None
 
+        # Caller (_cmd_weather) filtert "if not self._weather: return".
+        assert self._weather is not None
         location = self._weather.geocode(city_name)
         if not location:
             logger.warning("Ort '%s' nicht gefunden, nutze Default", city_name)
@@ -588,6 +590,8 @@ class WeatherCommandHandler(CommandHandler):
 
     def execute_delete_all_reminders(self) -> CommandResult:
         """Führt das Löschen aller Erinnerungen nach Bestätigung aus."""
+        if self._reminder_store is None:
+            return self.not_configured("reminder_delete", "Reminder")
         count = self._reminder_store.cancel_all("_timer_user")
         return CommandResult(
             command="reminder_delete",
@@ -624,6 +628,10 @@ class WeatherCommandHandler(CommandHandler):
                 time_str = m.group(2)
                 message = (m.group(3) or "Erinnerung").strip()
                 recurrence = parse_recurrence(f"jeden {day_name}")
+                # parse_recurrence kann None liefern; wenn der Regex matcht
+                # ist die Eingabe normalisiert und parse_recurrence garantiert
+                # einen Treffer.
+                assert recurrence is not None
                 due = self._next_weekday_at(day_name, time_str, local_tz)
                 return self._create_recurring(message, due, recurrence)
 
@@ -674,6 +682,8 @@ class WeatherCommandHandler(CommandHandler):
         """Erstellt eine wiederkehrende Erinnerung im Store."""
         from elder_berry.tools.recurrence import format_recurrence
 
+        # Caller (_cmd_recurring_reminder) filtert "if not self._reminder_store".
+        assert self._reminder_store is not None
         self._reminder_store.add(
             "_timer_user",
             message,
@@ -696,7 +706,7 @@ class WeatherCommandHandler(CommandHandler):
     def _next_weekday_at(
         day_name: str,
         time_str: str,
-        tz,
+        tz: tzinfo,
     ) -> datetime:
         """Berechnet den nächsten Wochentag mit Uhrzeit."""
         from elder_berry.tools.recurrence import _WEEKDAY_MAP
@@ -729,7 +739,7 @@ class WeatherCommandHandler(CommandHandler):
         )
 
     @staticmethod
-    def _today_or_tomorrow_at(time_str: str, tz) -> datetime:
+    def _today_or_tomorrow_at(time_str: str, tz: tzinfo) -> datetime:
         """Heute zur Uhrzeit, oder morgen wenn schon vorbei."""
         hour, minute = map(int, time_str.split(":"))
         now = datetime.now(tz)
@@ -739,7 +749,7 @@ class WeatherCommandHandler(CommandHandler):
         return candidate
 
     @staticmethod
-    def _next_weekday_at_time(time_str: str, tz) -> datetime:
+    def _next_weekday_at_time(time_str: str, tz: tzinfo) -> datetime:
         """Nächster Werktag (Mo-Fr) zur angegebenen Uhrzeit."""
         hour, minute = map(int, time_str.split(":"))
         now = datetime.now(tz)
@@ -752,7 +762,7 @@ class WeatherCommandHandler(CommandHandler):
         return candidate
 
     @staticmethod
-    def _next_monthly_at(day: int, time_str: str, tz) -> datetime:
+    def _next_monthly_at(day: int, time_str: str, tz: tzinfo) -> datetime:
         """Nächster Monatstag zur angegebenen Uhrzeit."""
         import calendar
 
