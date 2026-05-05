@@ -70,6 +70,9 @@ class MockActionController(ActionController):
     ) -> None:
         self._record("click", x=x, y=y, button=button)
 
+    def scroll(self, amount: int) -> None:
+        self._record("scroll", amount)
+
     def list_windows(self) -> list[WindowInfo]:
         self._record("list_windows")
         return [WindowInfo(title="Test Window", handle=12345)]
