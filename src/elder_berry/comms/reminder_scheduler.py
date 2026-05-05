@@ -24,7 +24,7 @@ import time
 from typing import TYPE_CHECKING, Callable
 
 if TYPE_CHECKING:
-    from elder_berry.tools.reminder_store import ReminderStore
+    from elder_berry.tools.reminder_store import Reminder, ReminderStore
 
 logger = logging.getLogger(__name__)
 
@@ -101,8 +101,10 @@ class ReminderScheduler:
 
             # Schlafen in kleinen Schritten (für schnellen Shutdown)
             for _ in range(self._poll_interval):
+                # mypy narrowt self._running im while-Body auf Literal[True];
+                # in der Praxis setzt stop() das Flag aus einem anderen Thread.
                 if not self._running:
-                    break
+                    break  # type: ignore[unreachable]
                 time.sleep(1)
 
     def _check_due(self) -> None:
@@ -131,8 +133,10 @@ class ReminderScheduler:
                     e,
                 )
 
-    def _reschedule(self, reminder) -> None:
+    def _reschedule(self, reminder: Reminder) -> None:
         """Berechnet den nächsten Termin und rescheduled den Reminder."""
+        # Caller (_check_due) filtert reminder.recurrence is None.
+        assert reminder.recurrence is not None
         from elder_berry.tools.recurrence import calculate_next_due
 
         try:
