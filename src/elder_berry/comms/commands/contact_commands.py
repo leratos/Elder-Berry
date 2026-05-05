@@ -196,7 +196,7 @@ class ContactCommandHandler(CommandHandler):
         return {"kontakte"}
 
     @property
-    def patterns(self) -> list[tuple[re.Pattern, str, bool, bool]]:
+    def patterns(self) -> list[tuple[re.Pattern[str], str, bool, bool]]:
         return [
             (CONTACT_SYNC_PATTERN, "contact_sync", False, False),
             (CONTACT_UPDATE_PATTERN, "contact_update", False, True),
@@ -295,6 +295,8 @@ class ContactCommandHandler(CommandHandler):
     # ------------------------------------------------------------------
 
     def _cmd_add(self, raw_text: str) -> CommandResult:
+        # Caller (execute) filtert "if not self._store: return".
+        assert self._store is not None
         match = CONTACT_ADD_PATTERN.match(raw_text.strip())
         if not match:
             return CommandResult(
@@ -322,6 +324,7 @@ class ContactCommandHandler(CommandHandler):
         )
 
     def _cmd_add_natural(self, raw_text: str) -> CommandResult:
+        assert self._store is not None  # caller filtered
         match = CONTACT_ADD_NATURAL_PATTERN.match(raw_text.strip())
         if not match:
             return CommandResult(
@@ -350,6 +353,7 @@ class ContactCommandHandler(CommandHandler):
         )
 
     def _cmd_update(self, raw_text: str) -> CommandResult:
+        assert self._store is not None  # caller filtered
         match = CONTACT_UPDATE_PATTERN.search(raw_text.strip())
         if not match:
             return CommandResult(
@@ -451,6 +455,7 @@ class ContactCommandHandler(CommandHandler):
 
     def _find_contact_fuzzy(self, name: str, command: str) -> CommandResult:
         """Sucht Kontakt: exakt → 1 Treffer direkt, mehrere → Rückfrage."""
+        assert self._store is not None  # caller filtered (always via _cmd_*)
         user_id = self._default_user_id
         exact = self._store.find_by_name(user_id, name)
         if exact:
@@ -473,6 +478,7 @@ class ContactCommandHandler(CommandHandler):
 
     def _find_contact_for_query(self, name: str) -> Contact | None:
         """Sucht Kontakt für Feld-Abfragen: exakt → direkt, FTS → 1 Treffer."""
+        assert self._store is not None  # caller filtered (always via _cmd_*)
         user_id = self._default_user_id
         exact = self._store.find_by_name(user_id, name)
         if exact:
@@ -483,6 +489,7 @@ class ContactCommandHandler(CommandHandler):
         return None
 
     def _cmd_who(self, raw_text: str) -> CommandResult:
+        assert self._store is not None  # caller filtered
         match = CONTACT_WHO_PATTERN.match(raw_text.strip())
         if not match:
             return CommandResult(
@@ -491,6 +498,7 @@ class ContactCommandHandler(CommandHandler):
         return self._find_contact_fuzzy(match.group(1).strip(), "contact_who")
 
     def _cmd_lookup(self, raw_text: str) -> CommandResult:
+        assert self._store is not None  # caller filtered
         match = CONTACT_LOOKUP_PATTERN.match(raw_text.strip())
         if not match:
             return CommandResult(
@@ -515,6 +523,7 @@ class ContactCommandHandler(CommandHandler):
 
     def _cmd_field_query(self, raw_text: str) -> CommandResult:
         """Beantwortet gezielte Feld-Abfragen wie 'wann hat Lisa Geburtstag?'."""
+        assert self._store is not None  # caller filtered
         match = CONTACT_FIELD_QUERY_PATTERN.match(raw_text.strip())
         if not match:
             return CommandResult(
@@ -669,6 +678,7 @@ class ContactCommandHandler(CommandHandler):
 
     def _cmd_group(self, raw_text: str) -> CommandResult:
         """Listet alle Kontakte einer Gruppe/Kategorie."""
+        assert self._store is not None  # caller filtered
         match = CONTACT_GROUP_PATTERN.match(raw_text.strip())
         if not match:
             return CommandResult(
@@ -703,6 +713,7 @@ class ContactCommandHandler(CommandHandler):
         )
 
     def _cmd_search(self, raw_text: str) -> CommandResult:
+        assert self._store is not None  # caller filtered
         match = CONTACT_SEARCH_PATTERN.match(raw_text.strip())
         if not match:
             return CommandResult(
@@ -724,6 +735,7 @@ class ContactCommandHandler(CommandHandler):
         )
 
     def _cmd_list(self, _raw_text: str) -> CommandResult:
+        assert self._store is not None  # caller filtered
         contacts = self._store.list_all(self._default_user_id, limit=200)
         if not contacts:
             return CommandResult(
@@ -735,6 +747,7 @@ class ContactCommandHandler(CommandHandler):
         return CommandResult(command="kontakte", success=True, text="\n".join(lines))
 
     def _cmd_delete(self, raw_text: str) -> CommandResult:
+        assert self._store is not None  # caller filtered
         match = CONTACT_DELETE_PATTERN.match(raw_text.strip())
         if not match:
             return CommandResult(
@@ -763,6 +776,7 @@ class ContactCommandHandler(CommandHandler):
         )
 
     def _cmd_sync(self, raw_text: str) -> CommandResult:
+        assert self._store is not None  # caller filtered (execute)
         if not self._carddav_sync:
             return self.not_configured(
                 "contact_sync",
