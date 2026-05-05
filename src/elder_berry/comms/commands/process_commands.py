@@ -94,7 +94,7 @@ class ProcessCommandHandler(CommandHandler):
     """Handler für Prozess-Start/Kill (Whitelist-geschützt)."""
 
     @property
-    def patterns(self) -> list[tuple[re.Pattern, str, bool, bool]]:
+    def patterns(self) -> list[tuple[re.Pattern[str], str, bool, bool]]:
         return [
             (START_PROCESS_PATTERN, "start_process", False, False),
             (KILL_PROCESS_PATTERN, "kill_process", False, False),

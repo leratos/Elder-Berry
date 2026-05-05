@@ -95,7 +95,7 @@ class SystemCommandHandler(CommandHandler):
         } | set(MEDIA_KEYS)
 
     @property
-    def patterns(self) -> list[tuple[re.Pattern, str, bool, bool]]:
+    def patterns(self) -> list[tuple[re.Pattern[str], str, bool, bool]]:
         return [
             (VOLUME_PATTERN, "volume", False, False),
             (AVATAR_EMOTION_PATTERN, "avatar", False, False),

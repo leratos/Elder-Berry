@@ -226,19 +226,12 @@ module = [
     "elder_berry.comms.commands.camera_commands",
     "elder_berry.comms.commands.cloud_commands",
     "elder_berry.comms.commands.contact_commands",
-    "elder_berry.comms.commands.docker_commands",
-    "elder_berry.comms.commands.file_commands",
     "elder_berry.comms.commands.filing_commands",
-    "elder_berry.comms.commands.git_commands",
     "elder_berry.comms.commands.harmony_commands",
     "elder_berry.comms.commands.log_commands",
     "elder_berry.comms.commands.mail_commands",
-    "elder_berry.comms.commands.note_commands",
     "elder_berry.comms.commands.pdf_commands",
-    "elder_berry.comms.commands.process_commands",
-    "elder_berry.comms.commands.route_commands",
     "elder_berry.comms.commands.selfcheck_commands",
-    "elder_berry.comms.commands.system_commands",
     "elder_berry.comms.commands.todo_commands",
     "elder_berry.comms.commands.turntable_commands",
     "elder_berry.comms.commands.update_commands",
@@ -281,7 +274,7 @@ module = [
 ]
 strict = true
 
-# --- Phase 76b strict: comms/-Module (Tier 1) ---
+# --- Phase 76b strict: comms/-Module (Tier 1+2) ---
 [[tool.mypy.overrides]]
 module = [
     "elder_berry.comms",                                  # __init__.py
@@ -294,7 +287,14 @@ module = [
     "elder_berry.comms.remote_commands",
     "elder_berry.comms.restart_manager",
     "elder_berry.comms.commands.cmd_utils",
+    "elder_berry.comms.commands.docker_commands",
+    "elder_berry.comms.commands.file_commands",
+    "elder_berry.comms.commands.git_commands",
     "elder_berry.comms.commands.help_sections",
+    "elder_berry.comms.commands.note_commands",
+    "elder_berry.comms.commands.process_commands",
+    "elder_berry.comms.commands.route_commands",
+    "elder_berry.comms.commands.system_commands",
     "elder_berry.comms.commands.wol_commands",
 ]
 strict = true

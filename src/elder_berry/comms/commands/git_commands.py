@@ -136,7 +136,7 @@ class GitCommandHandler(CommandHandler):
         self._project_root = project_root
 
     @property
-    def patterns(self) -> list[tuple[re.Pattern, str, bool, bool]]:
+    def patterns(self) -> list[tuple[re.Pattern[str], str, bool, bool]]:
         return [
             (GIT_PATTERN, "git", False, False),
         ]

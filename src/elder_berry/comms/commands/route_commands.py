@@ -139,7 +139,7 @@ class RouteCommandHandler(CommandHandler):
         self._default_user_id = default_user_id
 
     @property
-    def patterns(self) -> list[tuple[re.Pattern, str, bool, bool]]:
+    def patterns(self) -> list[tuple[re.Pattern[str], str, bool, bool]]:
         return [
             # "von X zu Y" muss vor "zu Y" stehen (spezifischer)
             (ROUTE_FROM_TO_PATTERN, "route_from_to", False, True),

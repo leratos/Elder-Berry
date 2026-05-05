@@ -42,7 +42,7 @@ class DockerCommandHandler(CommandHandler):
     """Handler für Docker-Befehle (nur Whitelist)."""
 
     @property
-    def patterns(self) -> list[tuple[re.Pattern, str, bool, bool]]:
+    def patterns(self) -> list[tuple[re.Pattern[str], str, bool, bool]]:
         return [
             (DOCKER_PATTERN, "docker", False, False),
         ]

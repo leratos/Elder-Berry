@@ -105,7 +105,7 @@ class NoteCommandHandler(CommandHandler):
         return {"notizen"}
 
     @property
-    def patterns(self) -> list[tuple[re.Pattern, str, bool, bool]]:
+    def patterns(self) -> list[tuple[re.Pattern[str], str, bool, bool]]:
         return [
             (NOTE_SET_FACT_PATTERN, "note_set_fact", False, False),
             (NOTE_ADD_PATTERN, "note_add", False, False),
