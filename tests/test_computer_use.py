@@ -827,9 +827,14 @@ class TestGetAvailableMonitorsRemote:
         mock_sct.__enter__ = MagicMock(return_value=mock_sct)
         mock_sct.__exit__ = MagicMock(return_value=False)
 
+        # mss-Modul als Ganzes ersetzen – funktioniert auch in CI, wo der
+        # echte mss-Import zu None aufgelöst wurde (kein optionales Paket).
+        fake_mss = MagicMock()
+        fake_mss.mss.return_value = mock_sct
+
         with (
             patch("elder_berry.actions.computer_use._MSS_AVAILABLE", True),
-            patch("elder_berry.actions.computer_use.mss.mss", return_value=mock_sct),
+            patch("elder_berry.actions.computer_use.mss", fake_mss),
         ):
             mons = ctrl.get_available_monitors()
         assert len(mons) == 2  # Index 0 ist gefiltert
