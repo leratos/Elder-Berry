@@ -17,6 +17,8 @@ const moduleMap = {
     system:   () => import("./system.js"),
     settings: () => import("./settings.js"),
     avatar:   () => import("./avatar.js"),
+    // Phase 77.5: Plugin-Inspector (read-only).
+    plugins:  () => import("./plugins.js"),
 };
 
 const loadedModules = {};   // name → { mod, section }
