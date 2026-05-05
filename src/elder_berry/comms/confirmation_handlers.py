@@ -21,6 +21,9 @@ from typing import TYPE_CHECKING
 from elder_berry.comms.pending_confirmation import PendingAction
 
 if TYPE_CHECKING:
+    from elder_berry.comms.commands.filing_commands import (
+        FilingCommandHandler,
+    )
     from elder_berry.comms.message_channel import IncomingMessage
     from elder_berry.comms.message_handlers import BridgeMessageHandler
 
@@ -96,6 +99,10 @@ class ConfirmationHandler:
             )
             return
 
+        # mail_reply/mail_reply_modify werden nur erzeugt wenn
+        # _remote_commands existiert -- _create_pending_mail_reply baut
+        # die PendingAction. Hier ist self._p._remote_commands also nicht None.
+        assert self._p._remote_commands is not None
         try:
             loop = asyncio.get_running_loop()
             new_result = await asyncio.wait_for(
@@ -116,7 +123,7 @@ class ConfirmationHandler:
                 self._p._pending.set(msg.sender, new_action)
                 await self._p._channel.send_text(
                     msg.room_id,
-                    new_result.text,
+                    new_result.text or "",
                 )
                 self._p._chat_history.add(msg.sender, "user", msg.body)
                 self._p._chat_history.add(
@@ -224,12 +231,14 @@ class ConfirmationHandler:
             self._p._pending.clear(msg.sender)
             return
 
+        # Lokal binden -- mypy verliert Narrowing ueber Lambda-Boundary.
+        email_sender = self._p._email_sender
         try:
             loop = asyncio.get_running_loop()
             result = await asyncio.wait_for(
                 loop.run_in_executor(
                     None,
-                    lambda: self._p._email_sender.send_reply(
+                    lambda: email_sender.send_reply(
                         to=action.data["to"],
                         subject=action.data["subject"],
                         body=action.data["draft_text"],
@@ -392,11 +401,12 @@ class ConfirmationHandler:
             )
             self._p._pending.clear(msg.sender)
 
-    def _get_filing_handler(self):
+    def _get_filing_handler(self) -> FilingCommandHandler | None:
         """Holt den FilingCommandHandler über den RemoteCommandHandler."""
         rc = self._p._remote_commands
         if rc and hasattr(rc, "_filing"):
-            return rc._filing
+            handler: FilingCommandHandler | None = rc._filing
+            return handler
         return None
 
     async def _execute_restart_confirm(

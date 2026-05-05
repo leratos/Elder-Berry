@@ -375,7 +375,11 @@ class MatrixBridge:
             msg.sender,
             msg.body,
         )
+        # check_response-Kontrakt: response_type != "none" => action is not None.
+        # Mypy sieht das aus dem tuple[str, PendingAction | None]-Typ nicht --
+        # asserts machen das pro Branch explizit.
         if response_type == "confirm":
+            assert action is not None
             await self._handler.handle_pending_confirm(msg, action)
             return
         if response_type == "cancel":
@@ -384,9 +388,11 @@ class MatrixBridge:
             self._chat_history.add(msg.sender, "assistant", "Verworfen.")
             return
         if response_type == "modify":
+            assert action is not None
             await self._handler.handle_pending_modify(msg, action)
             return
         if response_type == "pending":
+            assert action is not None
             # Filing: jeder Text ist entweder Skip oder Korrektur-Hint
             if action.action_type == "filing":
                 await self._handler.handle_filing_response(msg, action)
@@ -448,7 +454,9 @@ class MatrixBridge:
             return
 
         def alert(msg: str) -> None:
-            if loop and loop.is_running():
+            # Kein room_id konfiguriert -> Silent-No-Op (analog
+            # SchedulerManager._make_send_callback).
+            if loop and loop.is_running() and room_id:
                 asyncio.run_coroutine_threadsafe(
                     channel.send_text(room_id, msg),
                     loop,

@@ -20,7 +20,7 @@ from __future__ import annotations
 import asyncio
 import logging
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import aiofiles
 from nio import (
@@ -366,8 +366,11 @@ class MatrixChannel(MessageChannel):
                 logger.debug("Sync-Loop abgebrochen (CancelledError)")
                 break
             except Exception as e:
+                # mypy narrowt self._should_sync im while-Body auf
+                # Literal[True]; in der Praxis kann disconnect() das Flag
+                # gleichzeitig setzen.
                 if not self._should_sync:
-                    break
+                    break  # type: ignore[unreachable]
                 logger.warning(
                     "Sync-Fehler: %s – Retry in %ds",
                     e,
@@ -429,7 +432,7 @@ class MatrixChannel(MessageChannel):
             self._seen_event_ids -= set(to_remove)
         return False
 
-    async def _on_room_message(self, room, event: RoomMessageText) -> None:
+    async def _on_room_message(self, room: Any, event: RoomMessageText) -> None:
         """nio-Callback: wird für jede m.room.message (m.text) aufgerufen."""
         # Eigene Nachrichten ignorieren
         if event.sender == self._user_id:
@@ -467,7 +470,7 @@ class MatrixChannel(MessageChannel):
                     e,
                 )
 
-    async def _on_room_audio(self, room, event: RoomMessageAudio) -> None:
+    async def _on_room_audio(self, room: Any, event: RoomMessageAudio) -> None:
         """nio-Callback: wird für jede m.room.message (m.audio) aufgerufen.
 
         Lädt die Audio-Datei vom Matrix-Server herunter und leitet sie
@@ -536,7 +539,7 @@ class MatrixChannel(MessageChannel):
                     e,
                 )
 
-    async def _on_room_file(self, room, event: RoomMessageFile) -> None:
+    async def _on_room_file(self, room: Any, event: RoomMessageFile) -> None:
         """nio-Callback: wird für jede m.room.message (m.file) aufgerufen.
 
         Lädt die Datei vom Matrix-Server herunter und leitet sie
@@ -658,7 +661,8 @@ class MatrixChannel(MessageChannel):
             )
             return None
 
-        return download_resp.body
+        # nio-Stub liefert Any; nach DownloadError-Check ist body bytes.
+        return cast(bytes, download_resp.body)
 
     @staticmethod
     def _guess_mime_type(path: Path) -> str:

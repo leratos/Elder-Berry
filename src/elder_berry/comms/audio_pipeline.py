@@ -12,6 +12,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import tempfile
+from collections.abc import Awaitable, Callable
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -19,10 +20,12 @@ if TYPE_CHECKING:
     from elder_berry.comms.audio_converter import AudioConverter
     from elder_berry.comms.chat_history import ChatHistory
     from elder_berry.comms.message_channel import IncomingMessage, MessageChannel
-    from elder_berry.core.assistant import Assistant
+    from elder_berry.core.assistant import Assistant, AssistantResult
     from elder_berry.core.audio_router import AudioRouter
     from elder_berry.stt.base import STTEngine
     from elder_berry.tools.document_reader import DocumentReader
+
+MessageCallback = Callable[["IncomingMessage"], Awaitable[None]]
 
 logger = logging.getLogger(__name__)
 
@@ -54,7 +57,7 @@ class AudioPipeline:
         self._document_reader = document_reader
         self._stt_timeout = stt_timeout
         # Callback für Re-Dispatch nach STT (wird von Bridge gesetzt)
-        self._on_message_callback = None
+        self._on_message_callback: MessageCallback | None = None
 
     @property
     def stt_timeout(self) -> float:
@@ -72,7 +75,7 @@ class AudioPipeline:
             self._audio_converter is not None and self._audio_converter.ffmpeg_available
         )
 
-    def set_message_callback(self, callback) -> None:
+    def set_message_callback(self, callback: MessageCallback) -> None:
         """Setzt den Callback für Re-Dispatch nach STT-Transkription."""
         self._on_message_callback = callback
 
@@ -93,6 +96,11 @@ class AudioPipeline:
                 pass
             return
 
+        # Bridge routet nur dann hierher, wenn das Event m.audio ist und
+        # audio_data dadurch gesetzt wurde. Mypy sieht IncomingMessage.audio_data
+        # als bytes | None (das Datenmodell erlaubt auch text/file-Events ohne
+        # Audio).
+        assert msg.audio_data is not None
         tmp_path: Path | None = None
         try:
             loop = asyncio.get_running_loop()
@@ -204,6 +212,9 @@ class AudioPipeline:
                 pass
             return
 
+        # Bridge routet nur dann hierher, wenn das Event m.file ist und
+        # file_data gesetzt wurde -- analog handle_audio_message.
+        assert msg.file_data is not None
         try:
             suffix = Path(file_name).suffix or ".tmp"
             # Phase 70 (H-2): NamedTemporaryFile ist TOCTOU-frei -- ein
@@ -297,7 +308,7 @@ class AudioPipeline:
     async def send_audio_if_available(
         self,
         room_id: str,
-        result,
+        result: AssistantResult,
         tmp_wav: Path | None,
     ) -> None:
         """Konvertiert WAV→OGG und sendet Audio an Matrix (wenn vorhanden)."""

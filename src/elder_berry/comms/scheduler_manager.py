@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from collections.abc import Callable
 from typing import TYPE_CHECKING, Protocol
 
 if TYPE_CHECKING:
@@ -18,12 +19,15 @@ logger = logging.getLogger(__name__)
 
 
 class Schedulable(Protocol):
-    """Protocol für Objekte die als Background-Scheduler gestartet werden können."""
+    """Protocol für Objekte die als Background-Scheduler gestartet werden können.
+
+    Callback-Attribut wird ueber ``setattr`` (siehe ``register``) gesetzt --
+    nicht ueber eine ``set_callback``-Methode. Das Protocol bildet ab, was
+    ``start_all``/``stop_all`` tatsaechlich braucht.
+    """
 
     @property
     def is_running(self) -> bool: ...
-
-    def set_callback(self, callback) -> None: ...
 
     def start(self) -> None: ...
 
@@ -46,7 +50,7 @@ class SchedulerManager:
         self._channel = channel
         self._room_id = room_id
         self._loop = loop
-        self._schedulers: list[tuple[str, object]] = []  # (name, scheduler)
+        self._schedulers: list[tuple[str, Schedulable]] = []  # (name, scheduler)
 
     @property
     def loop(self) -> asyncio.AbstractEventLoop | None:
@@ -56,7 +60,7 @@ class SchedulerManager:
     def loop(self, value: asyncio.AbstractEventLoop | None) -> None:
         self._loop = value
 
-    def _make_send_callback(self, prefix: str = "") -> callable:
+    def _make_send_callback(self, prefix: str = "") -> Callable[..., None]:
         """Erstellt einen thread-safe Callback der Text an Matrix sendet."""
         loop = self._loop
         room_id = self._room_id
@@ -67,7 +71,9 @@ class SchedulerManager:
             actual_text = text if text is not None else text_or_user_id
             if prefix:
                 actual_text = f"{prefix} {actual_text}"
-            if loop and loop.is_running():
+            # Kein room_id konfiguriert -> Silent-No-Op (Optional-Typ ist
+            # Absicht: Bridge ohne Matrix-Anbindung).
+            if loop and loop.is_running() and room_id:
                 asyncio.run_coroutine_threadsafe(
                     channel.send_text(room_id, actual_text),
                     loop,
@@ -76,7 +82,11 @@ class SchedulerManager:
         return send
 
     def register(
-        self, name: str, scheduler, callback_attr: str, prefix: str = ""
+        self,
+        name: str,
+        scheduler: Schedulable,
+        callback_attr: str,
+        prefix: str = "",
     ) -> None:
         """Registriert einen Scheduler mit thread-safe Callback.
 

@@ -163,6 +163,9 @@ module = [
     "chromadb.*",
     "matrix_nio.*",
     "nio.*",
+    "aiofiles.*",           # types-aiofiles existiert, aber wir konsumieren
+                            # aiofiles ueber nio-aehnliche async-Generatoren
+                            # -- Stub-Wert gering, Stub-Pflege hoch.
     "keyring.*",            # types-keyring existiert nicht (Stand 2026-04, R5)
     "sounddevice.*",
     # Phase 76c: tools/-Clients ohne PEP-561-Stubs.
@@ -210,12 +213,7 @@ ignore_errors = true
 # sie sind durch Phase 77 bereits strict.
 [[tool.mypy.overrides]]
 module = [
-    "elder_berry.comms.audio_pipeline",
-    "elder_berry.comms.bridge",
-    "elder_berry.comms.confirmation_handlers",
-    "elder_berry.comms.matrix_channel",
     "elder_berry.comms.message_handlers",
-    "elder_berry.comms.scheduler_manager",
     "elder_berry.comms.commands.contact_commands",
     "elder_berry.comms.commands.todo_commands",
 ]
@@ -264,15 +262,20 @@ module = [
     "elder_berry.comms.alert_monitor",
     "elder_berry.comms.allowed_senders",
     "elder_berry.comms.audio_converter",
+    "elder_berry.comms.audio_pipeline",
+    "elder_berry.comms.bridge",
     "elder_berry.comms.briefing_scheduler",
     "elder_berry.comms.calendar_watcher",
     "elder_berry.comms.chat_history",
     "elder_berry.comms.claude_agent",
+    "elder_berry.comms.confirmation_handlers",
+    "elder_berry.comms.matrix_channel",
     "elder_berry.comms.message_channel",
     "elder_berry.comms.pending_confirmation",
     "elder_berry.comms.reminder_scheduler",
     "elder_berry.comms.remote_commands",
     "elder_berry.comms.restart_manager",
+    "elder_berry.comms.scheduler_manager",
     "elder_berry.comms.commands.advanced_commands",
     "elder_berry.comms.commands.calendar_commands",
     "elder_berry.comms.commands.camera_commands",
