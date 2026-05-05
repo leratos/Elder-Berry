@@ -118,7 +118,7 @@ class CloudCommandHandler(CommandHandler):
     # ── CommandHandler interface ────────────────────────────────────────
 
     @property
-    def patterns(self) -> list[tuple[re.Pattern, str, bool, bool]]:
+    def patterns(self) -> list[tuple[re.Pattern[str], str, bool, bool]]:
         return [
             (NEXTCLOUD_SETUP_PATTERN, "nextcloud_setup", False, True),
             (CLOUD_UPLOAD_PATTERN, "cloud_upload", True, False),
@@ -189,6 +189,8 @@ class CloudCommandHandler(CommandHandler):
     # ── Upload ──────────────────────────────────────────────────────────
 
     def _cmd_upload(self, raw_text: str) -> CommandResult:
+        # Caller (execute) filtert "if self._nc is None: return".
+        assert self._nc is not None
         match = CLOUD_UPLOAD_PATTERN.match(raw_text.strip())
         if not match:
             return CommandResult(
@@ -247,6 +249,7 @@ class CloudCommandHandler(CommandHandler):
     # ── Download ────────────────────────────────────────────────────────
 
     def _cmd_download(self, raw_text: str) -> CommandResult:
+        assert self._nc is not None  # caller filtered
         match = CLOUD_DOWNLOAD_PATTERN.match(raw_text.strip().lower())
         if not match:
             return CommandResult(
@@ -275,6 +278,7 @@ class CloudCommandHandler(CommandHandler):
     # ── List ────────────────────────────────────────────────────────────
 
     def _cmd_list(self, raw_text: str) -> CommandResult:
+        assert self._nc is not None  # caller filtered
         match = CLOUD_LIST_PATTERN.match(raw_text.strip().lower())
         folder = match.group(1).strip() if match and match.group(1) else "/"
 
@@ -315,6 +319,7 @@ class CloudCommandHandler(CommandHandler):
     # ── Search ──────────────────────────────────────────────────────────
 
     def _cmd_search(self, raw_text: str) -> CommandResult:
+        assert self._nc is not None  # caller filtered
         match = CLOUD_SEARCH_PATTERN.match(raw_text.strip().lower())
         if not match:
             return CommandResult(
@@ -368,6 +373,7 @@ class CloudCommandHandler(CommandHandler):
     # ── Content Search ─────────────────────────────────────────────────
 
     def _cmd_content_search(self, raw_text: str) -> CommandResult:
+        assert self._nc is not None  # caller filtered
         match = CLOUD_CONTENT_SEARCH_PATTERN.match(raw_text.strip())
         if not match:
             return CommandResult(
@@ -420,6 +426,7 @@ class CloudCommandHandler(CommandHandler):
     # ── Share Link ──────────────────────────────────────────────────────
 
     def _cmd_link(self, raw_text: str) -> CommandResult:
+        assert self._nc is not None  # caller filtered
         match = CLOUD_LINK_PATTERN.match(raw_text.strip().lower())
         if not match:
             return CommandResult(
@@ -448,6 +455,7 @@ class CloudCommandHandler(CommandHandler):
 
     def _cmd_nextcloud_setup(self) -> CommandResult:
         """Phase 1: Root scannen, Vorschau zeigen, Bestätigung anfordern."""
+        assert self._nc is not None  # caller filtered
         try:
             root_entries = self._nc.list_dir("/")
         except Exception as e:
