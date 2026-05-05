@@ -11,7 +11,7 @@ Verwendung:
     text = reader.read_file(Path("C:/Users/docs/report.pdf"))
     if text:
         # An LLM zur Zusammenfassung übergeben
-        ...
+        pass
 """
 
 from __future__ import annotations

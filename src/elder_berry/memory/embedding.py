@@ -13,12 +13,12 @@ class EmbeddingClient(ABC):
     @abstractmethod
     def embed(self, text: str) -> list[float]:
         """Gibt einen Embedding-Vektor für den Text zurück."""
-        ...
+        pass
 
     @abstractmethod
     def is_available(self) -> bool:
         """Prüft ob der Embedding-Dienst erreichbar ist."""
-        ...
+        pass
 
 
 class OllamaEmbeddingClient(EmbeddingClient):

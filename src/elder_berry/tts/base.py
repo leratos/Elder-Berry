@@ -34,7 +34,7 @@ class TTSEngine(ABC):
                      wählen damit das passende Voice-Sample.
                      Engines ohne Emotions-Support ignorieren den Parameter.
         """
-        ...
+        pass
 
     def load(self) -> None:  # noqa: B027
         """Lädt das TTS-Modell in den Speicher (GPU/RAM).
@@ -74,7 +74,7 @@ class TTSEngine(ABC):
     @abstractmethod
     def get_rate(self) -> int:
         """Gibt die aktuelle Sprechgeschwindigkeit zurück (Wörter/Min)."""
-        ...
+        pass
 
     @abstractmethod
     def set_rate(self, rate: int) -> None:
@@ -84,12 +84,12 @@ class TTSEngine(ABC):
         Args:
             rate: Wörter pro Minute (typisch: 100–300, Standard ~200).
         """
-        ...
+        pass
 
     @abstractmethod
     def get_volume(self) -> float:
         """Gibt die TTS-Lautstärke zurück (0.0–1.0)."""
-        ...
+        pass
 
     @abstractmethod
     def set_volume(self, volume: float) -> None:
@@ -102,12 +102,12 @@ class TTSEngine(ABC):
         Raises:
             ValueError: Wenn volume nicht im Bereich 0.0–1.0 liegt.
         """
-        ...
+        pass
 
     @abstractmethod
     def get_voices(self) -> list[VoiceInfo]:
         """Gibt alle verfügbaren Stimmen zurück."""
-        ...
+        pass
 
     @abstractmethod
     def set_voice(self, voice_id: str) -> None:
@@ -120,4 +120,4 @@ class TTSEngine(ABC):
         Raises:
             ValueError: Wenn voice_id nicht gefunden wird.
         """
-        ...
+        pass

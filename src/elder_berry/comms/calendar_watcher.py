@@ -16,7 +16,7 @@ Verwendung:
         poll_interval=300,
     )
     watcher.start()
-    ...
+    pass
     watcher.stop()
 """
 

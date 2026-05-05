@@ -15,7 +15,7 @@ class CameraController(ABC):
     @abstractmethod
     def is_available(self) -> bool:
         """Prüft ob die Kamera verfügbar und bereit ist."""
-        ...
+        pass
 
     @abstractmethod
     def capture_jpeg(self, quality: int = 85) -> bytes:
@@ -30,12 +30,12 @@ class CameraController(ABC):
         Raises:
             RuntimeError: Wenn Kamera nicht verfügbar oder Capture fehlschlägt.
         """
-        ...
+        pass
 
     @abstractmethod
     def get_resolution(self) -> tuple[int, int]:
         """Gibt die aktuelle Auflösung zurück (width, height)."""
-        ...
+        pass
 
 
 class RPi5Camera(CameraController):

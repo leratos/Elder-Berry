@@ -59,7 +59,7 @@ class STTEngine(ABC):
         Raises:
             RuntimeError: Wenn Transkription fehlschlägt.
         """
-        ...
+        pass
 
     @abstractmethod
     def transcribe_bytes(
@@ -77,19 +77,19 @@ class STTEngine(ABC):
         Returns:
             TranscriptionResult mit erkanntem Text.
         """
-        ...
+        pass
 
     @abstractmethod
     def is_available(self) -> bool:
         """Prüft ob die STT-Engine verfügbar ist (Paket installiert, Modell geladen)."""
-        ...
+        pass
 
     @abstractmethod
     def load(self) -> None:
         """Lädt das Modell in den Speicher (explizit, sonst Lazy-Load bei erster Nutzung)."""
-        ...
+        pass
 
     @abstractmethod
     def unload(self) -> None:
         """Entlädt das Modell aus dem Speicher (VRAM freigeben)."""
-        ...
+        pass

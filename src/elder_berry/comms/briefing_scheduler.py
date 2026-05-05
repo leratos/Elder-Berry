@@ -15,7 +15,7 @@ Verwendung:
         reminder_store=reminder_store,
     )
     scheduler.start()
-    ...
+    pass
     scheduler.stop()
 """
 

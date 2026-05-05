@@ -9,7 +9,7 @@ class LLMClient(ABC):
     @abstractmethod
     def is_available(self) -> bool:
         """Prüft ob der Client erreichbar ist."""
-        ...
+        pass
 
     @abstractmethod
     def generate(self, prompt: str, system: str = "") -> str:
@@ -26,4 +26,4 @@ class LLMClient(ABC):
         Raises:
             RuntimeError: Wenn der Client nicht verfügbar oder die Anfrage fehlschlägt.
         """
-        ...
+        pass

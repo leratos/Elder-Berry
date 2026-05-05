@@ -12,7 +12,7 @@ Verwendung:
         send_reminder=lambda user_id, text: ...,
     )
     scheduler.start()
-    ...
+    pass
     scheduler.stop()
 """
 

@@ -27,17 +27,17 @@ class ActionController(ABC):
     @abstractmethod
     def press_key(self, key: str) -> None:
         """Drückt eine einzelne Taste (z.B. 'enter', 'space', 'a')."""
-        ...
+        pass
 
     @abstractmethod
     def type_text(self, text: str, interval: float = 0.02) -> None:
         """Tippt einen Text zeichenweise."""
-        ...
+        pass
 
     @abstractmethod
     def hotkey(self, *keys: str) -> None:
         """Drückt eine Tastenkombination (z.B. hotkey('ctrl', 'c'))."""
-        ...
+        pass
 
     # ------------------------------------------------------------------
     # Maus
@@ -46,19 +46,19 @@ class ActionController(ABC):
     @abstractmethod
     def move_mouse(self, x: int, y: int, duration: float = 0.25) -> None:
         """Bewegt die Maus zu einer absoluten Position."""
-        ...
+        pass
 
     @abstractmethod
     def click(
         self, x: int | None = None, y: int | None = None, button: str = "left"
     ) -> None:
         """Klickt an der angegebenen Position (oder aktuelle Position)."""
-        ...
+        pass
 
     @abstractmethod
     def scroll(self, amount: int) -> None:
         """Scrollt das Mausrad. Positiv = hoch, negativ = runter."""
-        ...
+        pass
 
     # ------------------------------------------------------------------
     # Fenster
@@ -67,7 +67,7 @@ class ActionController(ABC):
     @abstractmethod
     def list_windows(self) -> list[WindowInfo]:
         """Gibt alle sichtbaren Fenster zurück."""
-        ...
+        pass
 
     @abstractmethod
     def focus_window(self, title: str) -> bool:
@@ -80,17 +80,17 @@ class ActionController(ABC):
         Returns:
             True wenn ein Fenster gefunden und fokussiert wurde.
         """
-        ...
+        pass
 
     @abstractmethod
     def minimize_window(self, title: str) -> bool:
         """Minimiert ein Fenster. Gibt True zurück bei Erfolg."""
-        ...
+        pass
 
     @abstractmethod
     def maximize_window(self, title: str) -> bool:
         """Maximiert ein Fenster. Gibt True zurück bei Erfolg."""
-        ...
+        pass
 
     # ------------------------------------------------------------------
     # Lautstärke
@@ -99,7 +99,7 @@ class ActionController(ABC):
     @abstractmethod
     def get_volume(self) -> float:
         """Gibt die aktuelle System-Lautstärke zurück (0.0 – 1.0)."""
-        ...
+        pass
 
     @abstractmethod
     def set_volume(self, level: float) -> None:
@@ -112,9 +112,9 @@ class ActionController(ABC):
         Raises:
             ValueError: Wenn level nicht im Bereich 0.0–1.0 liegt.
         """
-        ...
+        pass
 
     @abstractmethod
     def mute(self, state: bool = True) -> None:
         """Schaltet Stummschaltung ein (True) oder aus (False)."""
-        ...
+        pass
