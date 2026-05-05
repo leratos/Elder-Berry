@@ -348,6 +348,130 @@ class TestHandlePendingConfirm:
 
         run_async(_test())
 
+    # --- Hotfix: Tower-Restart + Sammelfall ----------------------------
+
+    def test_restart_tower_dispatches_http_post(
+        self, handler, channel, pending, remote_commands
+    ):
+        """action_type=restart_tower -> HTTP-POST /system/update?force=true."""
+
+        async def _test():
+            tower = MagicMock()
+            tower.host = "tower:8090"
+            tower._auth_headers = MagicMock(return_value={"X-Tok": "abc"})
+            # Pfad: BridgeMessageHandler._remote_commands._update._tower
+            remote_commands._update = MagicMock()
+            remote_commands._update._tower = tower
+
+            action = PendingAction(
+                action_type="restart_tower",
+                description="Tower aktuell",
+                data={"action": "restart_tower"},
+            )
+            msg = _make_msg("ja")
+            with patch("httpx.post") as mock_post:
+                mock_post.return_value = MagicMock(raise_for_status=MagicMock())
+                await handler.handle_pending_confirm(msg, action)
+
+            mock_post.assert_called_once()
+            url = mock_post.call_args[0][0]
+            assert "tower:8090" in url
+            assert "force=true" in url
+            assert mock_post.call_args.kwargs.get("headers") == {"X-Tok": "abc"}
+            pending.clear.assert_called_once()
+
+        run_async(_test())
+
+    def test_restart_tower_no_tower_connected(
+        self, handler, channel, pending, remote_commands
+    ):
+        """restart_tower ohne TowerAgent -> Fehlermeldung, kein HTTP-Call."""
+
+        async def _test():
+            # Kein _tower auf _update -> _get_tower_agent gibt None zurueck
+            remote_commands._update = MagicMock()
+            remote_commands._update._tower = None
+
+            action = PendingAction(
+                action_type="restart_tower",
+                description="Tower aktuell",
+                data={"action": "restart_tower"},
+            )
+            msg = _make_msg("ja")
+            with patch("httpx.post") as mock_post:
+                await handler.handle_pending_confirm(msg, action)
+            mock_post.assert_not_called()
+            calls = [c[0][1] for c in channel.send_text.call_args_list]
+            assert any("Tower" in c and "nicht" in c.lower() for c in calls)
+
+        run_async(_test())
+
+    def test_restart_all_iterates_actions(
+        self, handler, channel, pending, remote_commands
+    ):
+        """restart_all -> erst Tower-HTTP, dann Server-perform_restart."""
+
+        async def _test():
+            tower = MagicMock()
+            tower.host = "tower:8090"
+            tower._auth_headers = MagicMock(return_value={})
+            remote_commands._update = MagicMock()
+            remote_commands._update._tower = tower
+
+            action = PendingAction(
+                action_type="restart_all",
+                description="Sammel-Restart",
+                data={
+                    "action": "restart_all",
+                    "actions": ["restart_tower", "restart"],
+                },
+            )
+            msg = _make_msg("ja")
+            with (
+                patch("httpx.post") as mock_post,
+                patch(
+                    "elder_berry.comms.restart_manager.perform_restart",
+                    new_callable=AsyncMock,
+                ) as mock_restart,
+            ):
+                mock_post.return_value = MagicMock(raise_for_status=MagicMock())
+                await handler.handle_pending_confirm(msg, action)
+
+            mock_post.assert_called_once()
+            mock_restart.assert_called_once()
+            pending.clear.assert_called_once()
+
+        run_async(_test())
+
+    def test_restart_all_skips_unknown_subaction(
+        self, handler, channel, pending, remote_commands
+    ):
+        """Unbekannte sub_action faellt auf Server-Restart zurueck."""
+
+        async def _test():
+            action = PendingAction(
+                action_type="restart_all",
+                description="Sammel-Restart",
+                data={"action": "restart_all", "actions": ["restart_rpi"]},
+            )
+            msg = _make_msg("ja")
+            with (
+                patch(
+                    "elder_berry.comms.restart_manager.perform_restart",
+                    new_callable=AsyncMock,
+                ) as mock_restart,
+                patch("httpx.post") as mock_post,
+            ):
+                await handler.handle_pending_confirm(msg, action)
+            # restart_rpi geht durch _dispatch_restart -> Hinweis-Text, kein
+            # perform_restart, kein HTTP-Call
+            mock_restart.assert_not_called()
+            mock_post.assert_not_called()
+            calls = [c[0][1] for c in channel.send_text.call_args_list]
+            assert any("RPi" in c for c in calls)
+
+        run_async(_test())
+
     def test_mail_send_no_smtp(self, handler, channel, pending):
         async def _test():
             handler._email_sender = None

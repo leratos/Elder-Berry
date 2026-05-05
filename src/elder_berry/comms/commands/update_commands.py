@@ -379,7 +379,13 @@ class UpdateCommandHandler(CommandHandler):
     # ------------------------------------------------------------------
 
     def _cmd_update_tower(self) -> CommandResult:
-        """Tower-PC aktualisieren: git pull + pip install + Neustart."""
+        """Tower-PC aktualisieren: git pull + pip install + Self-Respawn.
+
+        Wenn der Tower bereits aktuell ist (HTTP-Antwort ``up_to_date=True``),
+        wird *nicht* automatisch neu gestartet -- stattdessen liefern wir ein
+        ``pending_confirmation`` mit ``action="restart_tower"`` zurueck, damit
+        der User sich entscheiden kann (analog zum Server-Pfad).
+        """
         if not self._tower:
             return CommandResult(
                 command="update_tower",
@@ -401,6 +407,23 @@ class UpdateCommandHandler(CommandHandler):
             data = r.json()
             success = data.get("success", False)
             message = data.get("message", "Keine Rückmeldung")
+            up_to_date = bool(data.get("up_to_date", False))
+
+            if success and up_to_date:
+                return CommandResult(
+                    command="update_tower",
+                    success=True,
+                    text=(
+                        f"🖥️ Tower: {message}\n"
+                        "Soll ich den Tower trotzdem neustarten? (ja/nein, 5 Min Timeout)"
+                    ),
+                    pending_confirmation=True,
+                    pending_data={
+                        "action_type": "restart_tower",
+                        "action": "restart_tower",
+                    },
+                )
+
             return CommandResult(
                 command="update_tower",
                 success=success,
@@ -415,8 +438,18 @@ class UpdateCommandHandler(CommandHandler):
             )
 
     def _cmd_update_all(self) -> CommandResult:
-        """Server + Tower + RPi5 nacheinander aktualisieren."""
+        """Server + Tower + RPi5 nacheinander aktualisieren.
+
+        Sammelfrage-Logik: Wenn Server frische Commits hat (``restart=True``),
+        gewinnt der Server-Restart -- die Sammelfrage entfaellt, weil der
+        Server-Bot beim Restart die Matrix-Connection killt.
+        Sonst werden alle ``pending_confirmation``-Aktionen aus den drei
+        Komponenten gesammelt und in einer ``restart_all``-PendingAction
+        zusammengefasst (Reihenfolge: rpi -> tower -> server).
+        """
         steps: list[str] = []
+        rpi_result: CommandResult | None = None
+        tower_result: CommandResult | None = None
 
         if self._robot:
             rpi_result = self._cmd_update_rpi()
@@ -433,13 +466,61 @@ class UpdateCommandHandler(CommandHandler):
         server_result = self._cmd_update()
         steps.append(f"Server: {server_result.text}")
 
+        # Server-Restart hat Vorrang -- Sammelfrage entfaellt, weil der
+        # Server beim Restart eh die Matrix-Connection killt.
+        if server_result.restart:
+            return CommandResult(
+                command="update_all",
+                success=server_result.success,
+                text="\n\n".join(steps),
+                restart=True,
+            )
+
+        # Pendings sammeln (Reihenfolge: rpi -> tower -> server).
+        pending_subs: list[CommandResult] = [
+            sub
+            for sub in (rpi_result, tower_result, server_result)
+            if sub is not None and sub.pending_confirmation and sub.pending_data
+        ]
+
+        # Genau ein Pending -> direkt durchreichen (kein Sammel-Wrap).
+        # Damit bleiben die Bestand-Pfade ("update alles" wenn nur Server
+        # gepended ist, weil RPi+Tower nicht verbunden) unveraendert.
+        if len(pending_subs) == 1:
+            sub = pending_subs[0]
+            return CommandResult(
+                command="update_all",
+                success=server_result.success,
+                text="\n\n".join(steps),
+                pending_confirmation=True,
+                pending_data=sub.pending_data,
+            )
+
+        # Mehrere Pendings -> Sammelfrage mit restart_all-Action.
+        if len(pending_subs) > 1:
+            actions: list[str] = []
+            for sub in pending_subs:
+                pd = sub.pending_data or {}
+                act = pd.get("action")
+                if isinstance(act, str) and act:
+                    actions.append(act)
+            return CommandResult(
+                command="update_all",
+                success=server_result.success,
+                text="\n\n".join(steps)
+                + "\n\nSoll ich die übersprungenen neu starten? (ja/nein, 5 Min Timeout)",
+                pending_confirmation=True,
+                pending_data={
+                    "action_type": "restart_all",
+                    "action": "restart_all",
+                    "actions": actions,
+                },
+            )
+
         return CommandResult(
             command="update_all",
             success=server_result.success,
             text="\n\n".join(steps),
-            restart=server_result.restart,
-            pending_confirmation=server_result.pending_confirmation,
-            pending_data=server_result.pending_data,
         )
 
     # ------------------------------------------------------------------

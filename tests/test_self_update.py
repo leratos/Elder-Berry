@@ -1032,3 +1032,169 @@ class TestUpdateAllExecute:
             "uebersprungen" in result.text.lower()
             or "nicht verbunden" in result.text.lower()
         )
+
+
+# ---------------------------------------------------------------------------
+# Hotfix: Tower up_to_date + Sammelfrage
+# ---------------------------------------------------------------------------
+
+
+class TestUpdateTowerUpToDate:
+    """Tower meldet up_to_date=true -> CommandResult muss Sammelfrage ausloesen."""
+
+    def _make_handler(self, tmp_path, response_json: dict):
+        """Hilfsmethode: handler mit gemocktem TowerAgent, der gegebene JSON liefert."""
+        from elder_berry.comms.commands.update_commands import (
+            UpdateCommandHandler,
+        )
+
+        tower = MagicMock()
+        tower.host = "localhost:8090"
+        tower._auth_headers = MagicMock(return_value={})
+
+        h = UpdateCommandHandler(project_root=tmp_path, tower_agent=tower)
+        return h, response_json
+
+    def test_up_to_date_returns_pending_confirmation(self, tmp_path):
+        h, _ = self._make_handler(
+            tmp_path, {"success": True, "up_to_date": True, "message": "aktuell"}
+        )
+        with patch("httpx.post") as mock_post:
+            mock_post.return_value = MagicMock(
+                json=lambda: {
+                    "success": True,
+                    "up_to_date": True,
+                    "message": "Alles aktuell -- kein Update noetig.",
+                },
+                raise_for_status=MagicMock(),
+            )
+            result = h._cmd_update_tower()
+
+        assert result.success is True
+        assert result.pending_confirmation is True
+        assert result.pending_data is not None
+        assert result.pending_data.get("action_type") == "restart_tower"
+        assert result.pending_data.get("action") == "restart_tower"
+        assert "trotzdem neustarten" in result.text.lower()
+
+    def test_up_to_date_false_returns_normal_result(self, tmp_path):
+        """Tower hat Updates installiert -> kein Pending, nur Status-Text."""
+        h, _ = self._make_handler(tmp_path, {})
+        with patch("httpx.post") as mock_post:
+            mock_post.return_value = MagicMock(
+                json=lambda: {
+                    "success": True,
+                    "up_to_date": False,
+                    "message": "2 neue Commits | Code aktualisiert | Neustart...",
+                },
+                raise_for_status=MagicMock(),
+            )
+            result = h._cmd_update_tower()
+
+        assert result.success is True
+        assert result.pending_confirmation is False
+        assert result.pending_data is None or not result.pending_data
+
+    def test_missing_up_to_date_field_treated_as_false(self, tmp_path):
+        """Alte Tower-Antwort (vor Hotfix) ohne up_to_date-Feld -> kein Pending."""
+        h, _ = self._make_handler(tmp_path, {})
+        with patch("httpx.post") as mock_post:
+            mock_post.return_value = MagicMock(
+                json=lambda: {"success": True, "message": "alter Antworttyp"},
+                raise_for_status=MagicMock(),
+            )
+            result = h._cmd_update_tower()
+
+        assert result.success is True
+        assert result.pending_confirmation is False
+
+
+class TestUpdateAllSammelfrage:
+    """update_all aggregiert pending_confirmations zu restart_all."""
+
+    @patch.object(UpdateCommandHandler, "_cmd_update")
+    @patch.object(UpdateCommandHandler, "_cmd_update_tower")
+    def test_server_restart_wins_over_pending(self, mock_tower, mock_server, tmp_path):
+        """Server hat neue Commits -> restart=True, Sammelfrage entfaellt."""
+        mock_tower.return_value = CommandResult(
+            command="update_tower",
+            success=True,
+            text="Tower aktuell",
+            pending_confirmation=True,
+            pending_data={"action_type": "restart_tower", "action": "restart_tower"},
+        )
+        mock_server.return_value = CommandResult(
+            command="update",
+            success=True,
+            text="Server aktualisiert",
+            restart=True,
+        )
+        tower = MagicMock()
+        tower.host = "localhost:8090"
+        h = UpdateCommandHandler(project_root=tmp_path, tower_agent=tower)
+        result = h._cmd_update_all()
+
+        assert result.restart is True
+        assert result.pending_confirmation is False, (
+            "Sammelfrage muss entfallen, weil Server-Restart die "
+            "Matrix-Connection killt."
+        )
+
+    @patch.object(UpdateCommandHandler, "_cmd_update")
+    @patch.object(UpdateCommandHandler, "_cmd_update_tower")
+    def test_aggregates_tower_pending_when_server_idle(
+        self, mock_tower, mock_server, tmp_path
+    ):
+        """Server aktuell, Tower aktuell -> Sammelfrage mit beiden actions."""
+        mock_tower.return_value = CommandResult(
+            command="update_tower",
+            success=True,
+            text="Tower aktuell",
+            pending_confirmation=True,
+            pending_data={"action_type": "restart_tower", "action": "restart_tower"},
+        )
+        mock_server.return_value = CommandResult(
+            command="update",
+            success=True,
+            text="Server aktuell",
+            pending_confirmation=True,
+            pending_data={"action": "restart"},
+        )
+        tower = MagicMock()
+        tower.host = "localhost:8090"
+        h = UpdateCommandHandler(project_root=tmp_path, tower_agent=tower)
+        result = h._cmd_update_all()
+
+        assert result.restart is False
+        assert result.pending_confirmation is True
+        assert result.pending_data is not None
+        assert result.pending_data.get("action_type") == "restart_all"
+        # Reihenfolge: rpi -> tower -> server, RPi nicht verbunden
+        assert result.pending_data.get("actions") == ["restart_tower", "restart"]
+        assert "übersprungenen" in result.text.lower() or (
+            "uebersprungenen" in result.text.lower()
+        )
+
+    @patch.object(UpdateCommandHandler, "_cmd_update")
+    @patch.object(UpdateCommandHandler, "_cmd_update_tower")
+    def test_no_pending_no_restart_no_sammelfrage(
+        self, mock_tower, mock_server, tmp_path
+    ):
+        """Beide normal durchgelaufen ohne pending -> keine Sammelfrage."""
+        mock_tower.return_value = CommandResult(
+            command="update_tower",
+            success=True,
+            text="Tower aktualisiert",
+        )
+        mock_server.return_value = CommandResult(
+            command="update",
+            success=True,
+            text="Server aktualisiert",
+        )
+        tower = MagicMock()
+        tower.host = "localhost:8090"
+        h = UpdateCommandHandler(project_root=tmp_path, tower_agent=tower)
+        result = h._cmd_update_all()
+
+        assert result.restart is False
+        assert result.pending_confirmation is False
