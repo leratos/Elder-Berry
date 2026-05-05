@@ -213,10 +213,6 @@ module = [
     "elder_berry.comms.alert_monitor",
     "elder_berry.comms.audio_pipeline",
     "elder_berry.comms.bridge",
-    "elder_berry.comms.briefing_scheduler",
-    "elder_berry.comms.calendar_watcher",
-    "elder_berry.comms.chat_history",
-    "elder_berry.comms.claude_agent",
     "elder_berry.comms.confirmation_handlers",
     "elder_berry.comms.matrix_channel",
     "elder_berry.comms.message_handlers",
@@ -226,22 +222,13 @@ module = [
     "elder_berry.comms.commands.camera_commands",
     "elder_berry.comms.commands.cloud_commands",
     "elder_berry.comms.commands.contact_commands",
-    "elder_berry.comms.commands.docker_commands",
-    "elder_berry.comms.commands.file_commands",
     "elder_berry.comms.commands.filing_commands",
-    "elder_berry.comms.commands.git_commands",
     "elder_berry.comms.commands.harmony_commands",
-    "elder_berry.comms.commands.log_commands",
     "elder_berry.comms.commands.mail_commands",
-    "elder_berry.comms.commands.note_commands",
     "elder_berry.comms.commands.pdf_commands",
-    "elder_berry.comms.commands.process_commands",
-    "elder_berry.comms.commands.route_commands",
     "elder_berry.comms.commands.selfcheck_commands",
-    "elder_berry.comms.commands.system_commands",
     "elder_berry.comms.commands.todo_commands",
     "elder_berry.comms.commands.turntable_commands",
-    "elder_berry.comms.commands.update_commands",
     "elder_berry.comms.commands.weather_commands",
 ]
 follow_imports = "silent"
@@ -281,20 +268,33 @@ module = [
 ]
 strict = true
 
-# --- Phase 76b strict: comms/-Module (Tier 1) ---
+# --- Phase 76b strict: comms/-Module (Tier 1+2) ---
 [[tool.mypy.overrides]]
 module = [
     "elder_berry.comms",                                  # __init__.py
     "elder_berry.comms.commands",                         # __init__.py
     "elder_berry.comms.allowed_senders",
     "elder_berry.comms.audio_converter",
+    "elder_berry.comms.briefing_scheduler",
+    "elder_berry.comms.calendar_watcher",
+    "elder_berry.comms.chat_history",
+    "elder_berry.comms.claude_agent",
     "elder_berry.comms.message_channel",
     "elder_berry.comms.pending_confirmation",
     "elder_berry.comms.reminder_scheduler",
     "elder_berry.comms.remote_commands",
     "elder_berry.comms.restart_manager",
     "elder_berry.comms.commands.cmd_utils",
+    "elder_berry.comms.commands.docker_commands",
+    "elder_berry.comms.commands.file_commands",
+    "elder_berry.comms.commands.git_commands",
     "elder_berry.comms.commands.help_sections",
+    "elder_berry.comms.commands.log_commands",
+    "elder_berry.comms.commands.note_commands",
+    "elder_berry.comms.commands.process_commands",
+    "elder_berry.comms.commands.route_commands",
+    "elder_berry.comms.commands.system_commands",
+    "elder_berry.comms.commands.update_commands",
     "elder_berry.comms.commands.wol_commands",
 ]
 strict = true

@@ -507,6 +507,8 @@ class BriefingScheduler:
 
             # 30 Sekunden schlafen (in kleinen Schritten für Shutdown)
             for _ in range(30):
+                # mypy narrowt self._running im while-Body auf Literal[True];
+                # in der Praxis setzt stop() das Flag aus einem anderen Thread.
                 if not self._running:
-                    break
+                    break  # type: ignore[unreachable]
                 time.sleep(1)

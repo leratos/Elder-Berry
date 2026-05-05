@@ -126,7 +126,7 @@ class FileCommandHandler(CommandHandler):
         return {"clipboard"}
 
     @property
-    def patterns(self) -> list[tuple[re.Pattern, str, bool, bool]]:
+    def patterns(self) -> list[tuple[re.Pattern[str], str, bool, bool]]:
         return [
             (CLIP_WRITE_PATTERN, "clip_write", False, False),
             (SEND_FILE_PATTERN, "send_file", True, True),

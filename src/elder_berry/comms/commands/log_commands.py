@@ -16,6 +16,7 @@ from __future__ import annotations
 import logging
 import re
 from pathlib import Path
+from typing import TextIO
 
 from elder_berry.comms.commands.base import (
     CommandHandler,
@@ -58,7 +59,7 @@ class LogCommandHandler(CommandHandler):
         return {"log"}
 
     @property
-    def patterns(self) -> list:
+    def patterns(self) -> list[tuple[re.Pattern[str], str, bool, bool]]:
         return [
             (LOG_PATTERN, "log", False, False),
         ]
@@ -207,7 +208,7 @@ class LogCommandHandler(CommandHandler):
         return lines[-count:]
 
 
-def _tail_lines(file_obj, max_lines: int) -> list[str]:
+def _tail_lines(file_obj: TextIO, max_lines: int) -> list[str]:
     """Liest die letzten max_lines Zeilen aus einer Datei.
 
     Für kleine Logs (<5000 Zeilen) einfach komplett lesen.

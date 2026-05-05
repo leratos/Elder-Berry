@@ -127,6 +127,8 @@ class ChatHistory:
         self, sender: str, old_summary: str, evicted: list[ChatMessage]
     ) -> None:
         """Führt den Summarizer aus und speichert das Ergebnis."""
+        # Caller (add) filtert "if evicted and self._summarizer".
+        assert self._summarizer is not None
         try:
             new_summary = self._summarizer(old_summary, evicted)
             if new_summary and new_summary.strip():

@@ -27,7 +27,7 @@ import logging
 import subprocess
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 logger = logging.getLogger(__name__)
 
@@ -221,7 +221,7 @@ class ClaudeAgent:
 
         # Versuch 1: Direktes Parsing
         try:
-            return json.loads(text)
+            return cast(dict[str, Any], json.loads(text))
         except json.JSONDecodeError:
             pass
 
@@ -231,7 +231,7 @@ class ClaudeAgent:
         json_match = re.search(r"```(?:json)?\s*\n?(.*?)\n?\s*```", text, re.DOTALL)
         if json_match:
             try:
-                return json.loads(json_match.group(1).strip())
+                return cast(dict[str, Any], json.loads(json_match.group(1).strip()))
             except json.JSONDecodeError:
                 pass
 
@@ -240,7 +240,9 @@ class ClaudeAgent:
         brace_end = text.rfind("}")
         if brace_start != -1 and brace_end > brace_start:
             try:
-                return json.loads(text[brace_start : brace_end + 1])
+                return cast(
+                    dict[str, Any], json.loads(text[brace_start : brace_end + 1])
+                )
             except json.JSONDecodeError:
                 pass
 
