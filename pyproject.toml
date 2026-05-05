@@ -215,7 +215,6 @@ module = [
     "elder_berry.comms.confirmation_handlers",
     "elder_berry.comms.matrix_channel",
     "elder_berry.comms.message_handlers",
-    "elder_berry.comms.scheduler_manager",
     "elder_berry.comms.commands.contact_commands",
     "elder_berry.comms.commands.todo_commands",
 ]
@@ -273,6 +272,7 @@ module = [
     "elder_berry.comms.reminder_scheduler",
     "elder_berry.comms.remote_commands",
     "elder_berry.comms.restart_manager",
+    "elder_berry.comms.scheduler_manager",
     "elder_berry.comms.commands.advanced_commands",
     "elder_berry.comms.commands.calendar_commands",
     "elder_berry.comms.commands.camera_commands",
