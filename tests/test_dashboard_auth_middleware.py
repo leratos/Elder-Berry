@@ -92,6 +92,11 @@ def _build_app(
     async def robot_proxy_command():
         return {"ok": True}
 
+    # Phase 77.5: Plugin-Inspector
+    @app.get("/api/plugins")
+    async def plugins_list():
+        return {"plugins": []}
+
     @app.get("/static/style.css")
     async def static_css():
         return {"ok": True}
@@ -121,6 +126,9 @@ class TestProtectedWithoutCookie:
             # ueber die Saleria-Bruecke steuern.
             ("get", "/api/robot/harmony/status"),
             ("post", "/api/robot/harmony/command"),
+            # Phase 77.5: Plugin-Inspector hinter Login (R5 leakt
+            # Capability-Konfiguration).
+            ("get", "/api/plugins"),
         ],
     )
     def test_blocks_without_cookie(self, method: str, path: str) -> None:

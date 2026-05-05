@@ -24,7 +24,7 @@ CATEGORY_LABELS: dict[str, str] = {
     "smart-home": "Harmony Hub, Drehteller",
     "web": "Web-Suche, Dokumente, Computer Use, Routen",
     "system": "Prozesse, Git, Docker, Update, Selfcheck",
-    "diagnose": "Log-Zugriff für Remote-Debugging",
+    "diagnose": "Log-Zugriff, Plugin-Inspector",
 }
 
 HELP_SECTIONS: dict[str, str] = {
@@ -241,7 +241,12 @@ System:
     log – Letzte 10 Zeilen
     log 30 – Letzte 30 Zeilen
     log errors – Letzte 10 Fehler
-    log errors 20 – Letzte 20 Fehler""",
+    log errors 20 – Letzte 20 Fehler
+
+🔍 Plugin-Inspector:
+  plugins – Geladene Plugins (Name, Source, Priority)
+  plugins detail <name> – Manifest + Hilfe-Text eines Plugins
+  plugins konflikte – Plugins mit conflicts-Eintrag""",
 }
 
 

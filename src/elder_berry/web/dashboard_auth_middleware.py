@@ -72,6 +72,9 @@ class DashboardAuthMiddleware(BaseHTTPMiddleware):
         # Phase 66: Robot-Proxy zum RPi5 -- nur eingeloggte User duerfen
         # ueber den Server-Tunnel auf den RPi5 zugreifen.
         "/api/robot",
+        # Phase 77.5: Plugin-Inspector leakt Capability-Konfiguration
+        # (z.B. dass cloud/email aktiv sind), darum hinter Login.
+        "/api/plugins",
     )
     # Endpoints, die innerhalb der geschützten Präfixe trotzdem offen
     # bleiben müssen (Login-Endpoints selbst).

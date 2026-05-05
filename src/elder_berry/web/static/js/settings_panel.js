@@ -8,11 +8,17 @@ const TEST_SERVICES = new Set([
     "brave_api_key", "google_maps_api_key",
 ]);
 
+// Phase 77.5: Pseudo-Tab fuer den Plugin-Inspector. Liegt nicht in
+// secretsByCategory/behaviorSchema, sondern wird gesondert gerendert.
+const PLUGINS_TAB = "Plugins";
+
 let token = localStorage.getItem(TOKEN_KEY) || "";
 let secretsByCategory = {};
 let behaviorSchema = {};
 let behaviorValues = {};
 let activeCategory = null;
+let pluginsCache = null;
+let pluginsSourceFilter = "all";
 
 function authHeaders() {
     return token ? { [TOKEN_HEADER]: token } : {};
@@ -90,6 +96,8 @@ function renderTabs() {
     for (const c of behaviorCats) {
         if (!cats.includes(c)) cats.push(c);
     }
+    // Phase 77.5: Plugin-Inspector als letzter Tab.
+    cats.push(PLUGINS_TAB);
     const tabList = document.getElementById("tabList");
     tabList.innerHTML = "";
     for (const cat of cats) {
@@ -111,7 +119,11 @@ function selectTab(cat) {
     for (const btn of document.querySelectorAll(".tab-button")) {
         btn.classList.toggle("active", btn.textContent === cat);
     }
-    renderFields();
+    if (cat === PLUGINS_TAB) {
+        renderPluginsTab();
+    } else {
+        renderFields();
+    }
     window.location.hash = encodeURIComponent(cat);
 }
 
@@ -295,6 +307,150 @@ function renderBehaviorField(def) {
     });
     return wrap;
 }
+
+// Phase 77.5: Plugin-Inspector ----------------------------------------
+
+async function renderPluginsTab() {
+    const container = document.getElementById("fieldContainer");
+    container.replaceChildren();
+    const loading = document.createElement("div");
+    loading.className = "empty-tab";
+    loading.textContent = "Lade Plugins …";
+    container.appendChild(loading);
+
+    if (pluginsCache === null) {
+        try {
+            const r = await fetch("/api/plugins");
+            if (r.status === 401) {
+                container.replaceChildren();
+                const div = document.createElement("div");
+                div.className = "empty-tab";
+                div.textContent = "Login abgelaufen.";
+                container.appendChild(div);
+                return;
+            }
+            pluginsCache = await r.json();
+        } catch (e) {
+            container.replaceChildren();
+            const div = document.createElement("div");
+            div.className = "empty-tab";
+            div.textContent = "Fehler beim Laden: " + e;
+            container.appendChild(div);
+            return;
+        }
+    }
+
+    container.replaceChildren();
+
+    // Toolbar: Source-Filter + Summary
+    const toolbar = document.createElement("div");
+    toolbar.className = "plugins-toolbar";
+
+    const filterLabel = document.createElement("label");
+    filterLabel.textContent = "Quelle:";
+    toolbar.appendChild(filterLabel);
+
+    const filterSelect = document.createElement("select");
+    for (const opt of [
+        { value: "all", label: "alle" },
+        { value: "builtin", label: "Builtin" },
+        { value: "user_dir", label: "User-Dir" },
+        { value: "entry_point", label: "Entry-Point" },
+    ]) {
+        const o = document.createElement("option");
+        o.value = opt.value;
+        o.textContent = opt.label;
+        if (opt.value === pluginsSourceFilter) o.selected = true;
+        filterSelect.appendChild(o);
+    }
+    filterSelect.addEventListener("change", () => {
+        pluginsSourceFilter = filterSelect.value;
+        renderPluginsTab();
+    });
+    toolbar.appendChild(filterSelect);
+
+    const summary = document.createElement("span");
+    summary.className = "plugins-summary";
+    const s = pluginsCache.summary || {};
+    const bs = s.by_source || {};
+    summary.textContent =
+        `Gesamt: ${s.total ?? 0} ` +
+        `(builtin: ${bs.builtin ?? 0}, ` +
+        `user_dir: ${bs.user_dir ?? 0}, ` +
+        `entry_point: ${bs.entry_point ?? 0})`;
+    toolbar.appendChild(summary);
+
+    container.appendChild(toolbar);
+
+    // Tabelle
+    const visible = (pluginsCache.plugins || []).filter(p =>
+        pluginsSourceFilter === "all" ? true : p.source === pluginsSourceFilter
+    );
+
+    if (visible.length === 0) {
+        const empty = document.createElement("div");
+        empty.className = "empty-tab";
+        empty.textContent = "Keine Plugins für diesen Filter.";
+        container.appendChild(empty);
+        return;
+    }
+
+    const table = document.createElement("table");
+    table.className = "plugins-table";
+    const thead = document.createElement("thead");
+    const headerRow = document.createElement("tr");
+    for (const h of [
+        "Name", "Source", "Priority", "Category", "Version", "Conflicts", "Active",
+    ]) {
+        const th = document.createElement("th");
+        th.textContent = h;
+        headerRow.appendChild(th);
+    }
+    thead.appendChild(headerRow);
+    table.appendChild(thead);
+
+    const tbody = document.createElement("tbody");
+    for (const p of visible) {
+        const tr = document.createElement("tr");
+        tr.title = p.help_section_excerpt || "";
+
+        const tdName = document.createElement("td");
+        tdName.textContent = p.name;
+        tr.appendChild(tdName);
+
+        const tdSrc = document.createElement("td");
+        const srcSpan = document.createElement("span");
+        srcSpan.className = "plugins-source " + p.source;
+        srcSpan.textContent = p.source;
+        tdSrc.appendChild(srcSpan);
+        tr.appendChild(tdSrc);
+
+        const tdPrio = document.createElement("td");
+        tdPrio.textContent = p.priority;
+        tr.appendChild(tdPrio);
+
+        const tdCat = document.createElement("td");
+        tdCat.textContent = p.category;
+        tr.appendChild(tdCat);
+
+        const tdVer = document.createElement("td");
+        tdVer.textContent = p.version;
+        tr.appendChild(tdVer);
+
+        const tdConf = document.createElement("td");
+        tdConf.textContent = (p.conflicts || []).join(", ") || "–";
+        tr.appendChild(tdConf);
+
+        const tdAct = document.createElement("td");
+        tdAct.textContent = p.active ? "ja" : "nein";
+        tr.appendChild(tdAct);
+
+        tbody.appendChild(tr);
+    }
+    table.appendChild(tbody);
+    container.appendChild(table);
+}
+
 
 async function saveSecret(key, value, msg, input) {
     if (!token) { showTokenModal(); return; }

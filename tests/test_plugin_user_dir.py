@@ -107,8 +107,8 @@ def test_user_dir_plugin_is_loaded(tmp_path, monkeypatch):
     plugins_dir = _setup_user_dir(tmp_path, monkeypatch)
     (plugins_dir / "demo.py").write_text(_MINIMAL_PLUGIN, encoding="utf-8")
 
-    plugins = list(_load_user_directory())
-    names = [p.name for p in plugins]
+    loaded = list(_load_user_directory())
+    names = [entry.plugin.name for entry in loaded]
     assert "demo_user" in names, f"Plugin nicht geladen, gefunden: {names}"
 
 
@@ -118,8 +118,8 @@ def test_user_dir_skips_underscore_prefixed_files(tmp_path, monkeypatch):
     (plugins_dir / "_private.py").write_text(_MINIMAL_PLUGIN, encoding="utf-8")
     (plugins_dir / "__init__.py").write_text("", encoding="utf-8")
 
-    plugins = list(_load_user_directory())
-    assert plugins == []
+    loaded = list(_load_user_directory())
+    assert loaded == []
 
 
 def test_user_dir_missing_directory_returns_empty(tmp_path, monkeypatch):
@@ -128,8 +128,8 @@ def test_user_dir_missing_directory_returns_empty(tmp_path, monkeypatch):
     fake_home.mkdir()
     monkeypatch.setattr(Path, "home", classmethod(lambda cls: fake_home))
 
-    plugins = list(_load_user_directory())
-    assert plugins == []
+    loaded = list(_load_user_directory())
+    assert loaded == []
 
 
 def test_user_dir_broken_plugin_does_not_kill_loader(tmp_path, monkeypatch, caplog):
@@ -139,9 +139,9 @@ def test_user_dir_broken_plugin_does_not_kill_loader(tmp_path, monkeypatch, capl
     (plugins_dir / "ok.py").write_text(_MINIMAL_PLUGIN, encoding="utf-8")
 
     with caplog.at_level("WARNING"):
-        plugins = list(_load_user_directory())
+        loaded = list(_load_user_directory())
 
-    names = [p.name for p in plugins]
+    names = [entry.plugin.name for entry in loaded]
     assert "demo_user" in names, "OK-Plugin wurde uebersprungen wegen kaputtem Nachbarn"
     assert any("broken.py" in r.message for r in caplog.records), (
         "Kaputtes Plugin wurde nicht im Log markiert"
@@ -174,5 +174,5 @@ def test_user_plugin_without_PLUGIN_is_skipped(tmp_path, monkeypatch):
     plugins_dir = _setup_user_dir(tmp_path, monkeypatch)
     (plugins_dir / "no_manifest.py").write_text("x = 42\n", encoding="utf-8")
 
-    plugins = list(_load_user_directory())
-    assert plugins == []
+    loaded = list(_load_user_directory())
+    assert loaded == []

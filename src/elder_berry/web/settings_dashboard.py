@@ -41,6 +41,7 @@ from fastapi.staticfiles import StaticFiles
 from elder_berry.core.log_sanitize import safe_log
 from elder_berry.core.secret_store import SecretNotFoundError
 from elder_berry.web.llm_api import register_llm_routes
+from elder_berry.web.plugins_api import register_plugins_routes
 from elder_berry.web.secrets_api import register_secrets_routes
 from elder_berry.web.secrets_registry import (
     SecretRegistryEntry,
@@ -280,6 +281,9 @@ class SettingsDashboard:
         self._register_routes()
         register_secrets_routes(self._app, self)
         register_llm_routes(self._app, self)
+        # Phase 77.5: Plugin-Inspector liegt hinter der gleichen
+        # Auth-Middleware wie alle /api/-Routen mit Settings-Bezug.
+        register_plugins_routes(self._app)
 
         # Avatar-Editor-Routen
         from elder_berry.web.avatar_editor import register_avatar_editor_routes

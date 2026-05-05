@@ -214,3 +214,55 @@ body {
     cursor: pointer;
     width: 100%;
 }
+
+/* Phase 77.5: Plugin-Inspector */
+.plugins-toolbar {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    margin-bottom: 1rem;
+    flex-wrap: wrap;
+}
+.plugins-toolbar label {
+    color: #a8d5a2;
+    font-size: 0.85rem;
+}
+.plugins-toolbar select {
+    background: #0f1626;
+    border: 1px solid #2a3550;
+    color: #fff;
+    padding: 0.4rem 0.7rem;
+    border-radius: 6px;
+}
+.plugins-summary {
+    color: #888;
+    font-size: 0.85rem;
+}
+.plugins-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.88rem;
+}
+.plugins-table th {
+    text-align: left;
+    color: #a8d5a2;
+    border-bottom: 1px solid #2a3550;
+    padding: 0.5rem 0.6rem;
+    font-weight: 600;
+}
+.plugins-table td {
+    border-bottom: 1px solid #1a233a;
+    padding: 0.5rem 0.6rem;
+    color: #ddd;
+    vertical-align: top;
+}
+.plugins-source {
+    display: inline-block;
+    padding: 0.1rem 0.5rem;
+    border-radius: 4px;
+    font-size: 0.75rem;
+    background: #16213e;
+    color: #a8d5a2;
+}
+.plugins-source.user_dir { background: #533483; color: #fff; }
+.plugins-source.entry_point { background: #2a4a6a; color: #fff; }

@@ -34,7 +34,7 @@ import pytest
 from starlette.testclient import TestClient
 
 from elder_berry.comms.commands import registry as plugin_registry
-from elder_berry.comms.commands.base import CommandPlugin
+from elder_berry.comms.commands.registry import LoadedPlugin
 
 # Der Default-Port des SettingsDashboard ist 8090; setup_security setzt
 # allowed_origins=["http://localhost:8090", "http://127.0.0.1:8090"].
@@ -75,7 +75,7 @@ def _default_origin_for_testclient(request, monkeypatch):
     monkeypatch.setattr(TestClient, "request", patched_request)
 
 
-def _empty_plugin_iter() -> Iterator[CommandPlugin]:
+def _empty_plugin_iter() -> Iterator[LoadedPlugin]:
     return iter(())
 
 

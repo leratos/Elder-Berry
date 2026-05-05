@@ -20,10 +20,16 @@ from unittest.mock import MagicMock
 
 from elder_berry.comms.commands.base import HandlerContext
 from elder_berry.comms.commands.help_sections import CATEGORY_LABELS
-from elder_berry.comms.commands.registry import load_plugins
+from elder_berry.comms.commands.registry import (
+    LoadedPlugin,
+    PluginSource,
+    load_plugins,
+    load_plugins_with_sources,
+)
 
 
-# Etappe 2: alle 23 Builtin-Plugins muessen geladen werden.
+# Etappe 2: alle Builtin-Plugins muessen geladen werden.
+# Phase 77.5: PluginsCommandHandler dazu -> 24 Plugins.
 EXPECTED_PLUGIN_NAMES = {
     "system",
     "weather",
@@ -47,6 +53,7 @@ EXPECTED_PLUGIN_NAMES = {
     "contact",
     "todo",
     "route",
+    "plugins",
     "advanced",
 }
 
@@ -227,14 +234,15 @@ def test_remote_command_handler_constructs_with_explicit_ctx() -> None:
     )
     handler = RemoteCommandHandler(ctx=ctx)
     handler_types = {type(h).__name__ for h in handler._handlers}
-    # Alle 23 Handler-Klassen muessen drin sein
+    # Phase 77.5: 24 Handler (PluginsCommandHandler dazu).
     assert "WeatherCommandHandler" in handler_types
     assert "NoteCommandHandler" in handler_types
     assert "GitCommandHandler" in handler_types
     assert "ContactCommandHandler" in handler_types
     assert "TodoCommandHandler" in handler_types
     assert "RouteCommandHandler" in handler_types
-    assert len(handler._handlers) == 23
+    assert "PluginsCommandHandler" in handler_types
+    assert len(handler._handlers) == 24
 
 
 def test_handler_order_matches_pre_plugin_layout() -> None:
@@ -276,7 +284,72 @@ def test_handler_order_matches_pre_plugin_layout() -> None:
         "ContactCommandHandler",
         "TodoCommandHandler",
         "RouteCommandHandler",
+        # Phase 77.5: PluginsCommandHandler bei priority=80, nach
+        # RouteCommandHandler (76) und vor AdvancedCommandHandler (99).
+        "PluginsCommandHandler",
         "AdvancedCommandHandler",
     ]
     actual = [type(h).__name__ for h in handler._handlers]
     assert actual == expected
+
+
+# --- Phase 77.5: Source-Tracking ----------------------------------------
+
+
+def test_load_plugins_with_sources_returns_loaded_plugins() -> None:
+    """load_plugins_with_sources() liefert LoadedPlugin-Wrapper."""
+    loaded = load_plugins_with_sources()
+    assert loaded, "Keine Plugins geladen"
+    assert all(isinstance(entry, LoadedPlugin) for entry in loaded)
+
+
+def test_load_plugins_with_sources_all_builtin_in_test_sandbox() -> None:
+    """In der Test-Sandbox (conftest stubbed user_dir + entry_points)
+    muessen alle Plugins source=BUILTIN haben."""
+    loaded = load_plugins_with_sources()
+    sources = {entry.source for entry in loaded}
+    assert sources == {PluginSource.BUILTIN}, (
+        f"Erwartet nur BUILTIN, gefunden: {sources}"
+    )
+
+
+def test_load_plugins_with_sources_source_path_for_builtin() -> None:
+    """Builtin-Plugins haben den Modul-Dateinamen als source_path."""
+    loaded = load_plugins_with_sources()
+    by_name = {entry.plugin.name: entry for entry in loaded}
+    weather = by_name["weather"]
+    assert weather.source_path == "weather_commands.py"
+
+
+def test_load_plugins_with_sources_priority_sort() -> None:
+    """Sortierung nach plugin.priority bleibt stabil (analog
+    test_load_plugins_returns_sorted_by_priority)."""
+    loaded = load_plugins_with_sources()
+    priorities = [entry.plugin.priority for entry in loaded]
+    assert priorities == sorted(priorities)
+
+
+def test_load_plugins_returns_unwrapped_command_plugins() -> None:
+    """Backwards-Compat: load_plugins() liefert weiterhin CommandPlugin
+    (nicht LoadedPlugin) -- alle bestehenden Aufrufer dürfen sich auf
+    die alte Signatur verlassen."""
+    plugins = load_plugins()
+    # Smoke: kein Plugin ist ein LoadedPlugin-Wrapper
+    assert not any(isinstance(p, LoadedPlugin) for p in plugins)
+    # alle haben eine .name-Property (CommandPlugin-Manifest)
+    assert all(hasattr(p, "name") and hasattr(p, "priority") for p in plugins)
+
+
+def test_loaded_plugin_is_frozen() -> None:
+    """LoadedPlugin ist frozen -- Loader-Outputs duerfen nicht mutiert
+    werden."""
+    loaded = load_plugins_with_sources()
+    entry = loaded[0]
+    try:
+        entry.source = PluginSource.USER_DIR  # type: ignore[misc]
+    except Exception as exc:
+        assert (
+            "frozen" in str(exc).lower() or "FrozenInstanceError" in type(exc).__name__
+        )
+    else:
+        raise AssertionError("LoadedPlugin sollte frozen sein, war es aber nicht")
