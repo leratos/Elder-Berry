@@ -48,7 +48,7 @@ class CameraCommandHandler(CommandHandler):
         return {"foto", "kamera", "kamerabild"}
 
     @property
-    def patterns(self) -> list[tuple[re.Pattern, str, bool, bool]]:
+    def patterns(self) -> list[tuple[re.Pattern[str], str, bool, bool]]:
         return [
             (CAMERA_DESCRIBE_PATTERN, "camera_describe", False, False),
         ]
@@ -132,6 +132,8 @@ class CameraCommandHandler(CommandHandler):
         jpeg_bytes, error = self._capture_image()
         if error:
             return CommandResult(command="foto", success=False, text=error)
+        # _capture_image garantiert: error is None => jpeg_bytes is bytes.
+        assert jpeg_bytes is not None
 
         tmp_path = self._save_temp_jpeg(jpeg_bytes)
 
@@ -154,6 +156,8 @@ class CameraCommandHandler(CommandHandler):
                 success=False,
                 text=error,
             )
+        # _capture_image garantiert: error is None => jpeg_bytes is bytes.
+        assert jpeg_bytes is not None
 
         tmp_path = self._save_temp_jpeg(jpeg_bytes)
 
