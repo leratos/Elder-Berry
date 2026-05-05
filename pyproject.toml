@@ -222,7 +222,6 @@ module = [
     "elder_berry.comms.commands.harmony_commands",
     "elder_berry.comms.commands.mail_commands",
     "elder_berry.comms.commands.pdf_commands",
-    "elder_berry.comms.commands.selfcheck_commands",
     "elder_berry.comms.commands.todo_commands",
     "elder_berry.comms.commands.weather_commands",
 ]
@@ -292,6 +291,7 @@ module = [
     "elder_berry.comms.commands.note_commands",
     "elder_berry.comms.commands.process_commands",
     "elder_berry.comms.commands.route_commands",
+    "elder_berry.comms.commands.selfcheck_commands",
     "elder_berry.comms.commands.system_commands",
     "elder_berry.comms.commands.turntable_commands",
     "elder_berry.comms.commands.update_commands",
