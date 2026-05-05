@@ -304,6 +304,9 @@ class Assistant:
         if self._remote_commands:
             remote_commands = self._remote_commands.get_command_summary()
 
+        # Phase 77.5: Plugin-Inventar-Block fuer Phase-78-Dedupe-Check.
+        plugin_inventory = self._build_plugin_inventory_block()
+
         if self._character:
             prompt = self._character.build_system_prompt(
                 available_actions=action_list,
@@ -318,6 +321,8 @@ class Assistant:
                 prompt += f"\n\n{robot_status}"
             if smart_context:
                 prompt += f"\n\n{smart_context}"
+            if plugin_inventory:
+                prompt += f"\n\n{plugin_inventory}"
             if chat_history:
                 prompt += f"\n\n{chat_history}"
             return prompt
@@ -330,9 +335,68 @@ class Assistant:
             remote_commands=remote_commands,
             smart_context=smart_context,
         )
+        if plugin_inventory:
+            full_prompt += f"\n\n{plugin_inventory}"
         if chat_history:
             full_prompt += f"\n\n{chat_history}"
         return full_prompt
+
+    # Phase 77.5: Maximalzahl Zeilen im Plugin-Inventar-Block. Bei mehr
+    # Plugins wird auf "...(N weitere)" getrimmt -- 30 Zeilen entsprechen
+    # heute 24 Plugins + 6 Reserve fuer User-Plugins ohne Promptlaengen-
+    # Explosion (Konzept §3.4 / Risiko R2).
+    _PLUGIN_INVENTORY_MAX_LINES: int = 30
+
+    def _build_plugin_inventory_block(self) -> str:
+        """Baut den "Bereits geladene Plugins"-Block fuer den System-Prompt.
+
+        Phase-78-Voraussetzung: Saleria soll im Dedupe-Check (Self-
+        Suggestion) sehen, welche Capabilities bereits implementiert
+        sind, damit sie keine Vorschlaege fuer Builtins erzeugt.
+
+        Format:
+
+            [Bereits geladene Plugins (kein Vorschlag wenn Match):
+            - <name>: <category>
+            ...
+            - <name>: <category>]
+
+        Trim: bei mehr als ``_PLUGIN_INVENTORY_MAX_LINES - 1`` Plugin-
+        Zeilen wird auf den Header + Top-N + ``... (M weitere)`` gekuerzt
+        (Sortierung kommt aus ``load_plugins_with_sources`` -> Priority).
+        """
+        try:
+            from elder_berry.comms.commands.registry import (
+                load_plugins_with_sources,
+            )
+
+            loaded = load_plugins_with_sources()
+        except Exception as exc:
+            # Plugin-Registry darf den System-Prompt-Build nicht killen.
+            logger.warning("Plugin-Inventar-Block uebersprungen: %s", exc)
+            return ""
+
+        if not loaded:
+            return ""
+
+        header = "[Bereits geladene Plugins (kein Vorschlag wenn Match):"
+        # Header zaehlt mit -- darum -1 fuer die Plugin-Zeilen.
+        max_plugin_lines = self._PLUGIN_INVENTORY_MAX_LINES - 1
+
+        plugin_lines = [
+            f"- {entry.plugin.name}: {entry.plugin.category}" for entry in loaded
+        ]
+        if len(plugin_lines) > max_plugin_lines:
+            kept = plugin_lines[: max_plugin_lines - 1]
+            remaining = len(plugin_lines) - len(kept)
+            kept.append(f"- … ({remaining} weitere)")
+            plugin_lines = kept
+
+        # Schluss-Klammer ueber die letzte Zeile -- Block bleibt einzeilig
+        # parsebar fuer kuenftige Phase-78-Heuristik.
+        if plugin_lines:
+            plugin_lines[-1] = plugin_lines[-1] + "]"
+        return header + "\n" + "\n".join(plugin_lines)
 
     def _get_memory_context(self, user_input: str) -> str:
         """Ruft relevante Erinnerungen aus dem Memory ab und formatiert sie."""
