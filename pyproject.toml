@@ -214,7 +214,6 @@ ignore_errors = true
 [[tool.mypy.overrides]]
 module = [
     "elder_berry.comms.audio_pipeline",
-    "elder_berry.comms.bridge",
     "elder_berry.comms.message_handlers",
     "elder_berry.comms.commands.contact_commands",
     "elder_berry.comms.commands.todo_commands",
@@ -264,6 +263,7 @@ module = [
     "elder_berry.comms.alert_monitor",
     "elder_berry.comms.allowed_senders",
     "elder_berry.comms.audio_converter",
+    "elder_berry.comms.bridge",
     "elder_berry.comms.briefing_scheduler",
     "elder_berry.comms.calendar_watcher",
     "elder_berry.comms.chat_history",

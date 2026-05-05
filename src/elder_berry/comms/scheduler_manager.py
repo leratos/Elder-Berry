@@ -19,12 +19,15 @@ logger = logging.getLogger(__name__)
 
 
 class Schedulable(Protocol):
-    """Protocol für Objekte die als Background-Scheduler gestartet werden können."""
+    """Protocol für Objekte die als Background-Scheduler gestartet werden können.
+
+    Callback-Attribut wird ueber ``setattr`` (siehe ``register``) gesetzt --
+    nicht ueber eine ``set_callback``-Methode. Das Protocol bildet ab, was
+    ``start_all``/``stop_all`` tatsaechlich braucht.
+    """
 
     @property
     def is_running(self) -> bool: ...
-
-    def set_callback(self, callback: Callable[..., None]) -> None: ...
 
     def start(self) -> None: ...
 
