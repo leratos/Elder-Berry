@@ -210,11 +210,7 @@ ignore_errors = true
 # sie sind durch Phase 77 bereits strict.
 [[tool.mypy.overrides]]
 module = [
-    "elder_berry.comms",                                  # __init__.py
-    "elder_berry.comms.commands",                         # __init__.py
     "elder_berry.comms.alert_monitor",
-    "elder_berry.comms.allowed_senders",
-    "elder_berry.comms.audio_converter",
     "elder_berry.comms.audio_pipeline",
     "elder_berry.comms.bridge",
     "elder_berry.comms.briefing_scheduler",
@@ -223,25 +219,19 @@ module = [
     "elder_berry.comms.claude_agent",
     "elder_berry.comms.confirmation_handlers",
     "elder_berry.comms.matrix_channel",
-    "elder_berry.comms.message_channel",
     "elder_berry.comms.message_handlers",
-    "elder_berry.comms.pending_confirmation",
     "elder_berry.comms.reminder_scheduler",
-    "elder_berry.comms.remote_commands",
-    "elder_berry.comms.restart_manager",
     "elder_berry.comms.scheduler_manager",
     "elder_berry.comms.commands.advanced_commands",
     "elder_berry.comms.commands.calendar_commands",
     "elder_berry.comms.commands.camera_commands",
     "elder_berry.comms.commands.cloud_commands",
-    "elder_berry.comms.commands.cmd_utils",
     "elder_berry.comms.commands.contact_commands",
     "elder_berry.comms.commands.docker_commands",
     "elder_berry.comms.commands.file_commands",
     "elder_berry.comms.commands.filing_commands",
     "elder_berry.comms.commands.git_commands",
     "elder_berry.comms.commands.harmony_commands",
-    "elder_berry.comms.commands.help_sections",
     "elder_berry.comms.commands.log_commands",
     "elder_berry.comms.commands.mail_commands",
     "elder_berry.comms.commands.note_commands",
@@ -254,7 +244,6 @@ module = [
     "elder_berry.comms.commands.turntable_commands",
     "elder_berry.comms.commands.update_commands",
     "elder_berry.comms.commands.weather_commands",
-    "elder_berry.comms.commands.wol_commands",
 ]
 follow_imports = "silent"
 ignore_errors = true
@@ -290,6 +279,23 @@ strict = true
 module = [
     "elder_berry.comms.commands.base",
     "elder_berry.comms.commands.registry",
+]
+strict = true
+
+# --- Phase 76b strict: comms/-Module (Tier 1) ---
+[[tool.mypy.overrides]]
+module = [
+    "elder_berry.comms",                                  # __init__.py
+    "elder_berry.comms.commands",                         # __init__.py
+    "elder_berry.comms.allowed_senders",
+    "elder_berry.comms.audio_converter",
+    "elder_berry.comms.message_channel",
+    "elder_berry.comms.pending_confirmation",
+    "elder_berry.comms.remote_commands",
+    "elder_berry.comms.restart_manager",
+    "elder_berry.comms.commands.cmd_utils",
+    "elder_berry.comms.commands.help_sections",
+    "elder_berry.comms.commands.wol_commands",
 ]
 strict = true
 
