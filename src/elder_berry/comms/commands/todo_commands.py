@@ -21,7 +21,7 @@ from __future__ import annotations
 import logging
 import re
 from datetime import date, timedelta
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from elder_berry.comms.commands.base import (
     CommandHandler,
@@ -32,7 +32,7 @@ from elder_berry.comms.commands.base import (
 from elder_berry.tools.caldav_tasks import PRIORITIES
 
 if TYPE_CHECKING:
-    from elder_berry.tools.caldav_tasks import CalDAVTaskClient
+    from elder_berry.tools.caldav_tasks import CalDAVTaskClient, TaskItem
 
 logger = logging.getLogger(__name__)
 
@@ -86,7 +86,7 @@ class TodoCommandHandler(CommandHandler):
         return {"todos", "aufgaben", "todo"}
 
     @property
-    def patterns(self) -> list[tuple[re.Pattern, str, bool, bool]]:
+    def patterns(self) -> list[tuple[re.Pattern[str], str, bool, bool]]:
         return [
             (TODO_COMPLETE_PATTERN, "todo_complete", False, True),
             (TODO_REOPEN_PATTERN, "todo_reopen", False, True),
@@ -155,7 +155,7 @@ class TodoCommandHandler(CommandHandler):
     # Session-Index
     # ------------------------------------------------------------------
 
-    def _build_index(self, items) -> None:
+    def _build_index(self, items: list[TaskItem]) -> None:
         """Baut den Session-Index auf: #1 → uid, #2 → uid, ..."""
         self._index_map = {i + 1: item.uid for i, item in enumerate(items)}
 
@@ -163,7 +163,7 @@ class TodoCommandHandler(CommandHandler):
         """Löst einen Session-Index (#N) auf die CalDAV-UID auf."""
         return self._index_map.get(index)
 
-    def _format_items(self, items, header: str) -> str:
+    def _format_items(self, items: list[TaskItem], header: str) -> str:
         """Formatiert Items mit Session-Index-Nummern."""
         self._build_index(items)
         lines = [header]
@@ -176,6 +176,8 @@ class TodoCommandHandler(CommandHandler):
     # ------------------------------------------------------------------
 
     def _cmd_add(self, raw_text: str) -> CommandResult:
+        # Caller (execute) filtert "if not self._client: return".
+        assert self._client is not None
         match = TODO_ADD_PATTERN.match(raw_text.strip())
         if not match:
             return CommandResult(
@@ -201,6 +203,7 @@ class TodoCommandHandler(CommandHandler):
         )
 
     def _cmd_complete(self, raw_text: str) -> CommandResult:
+        assert self._client is not None  # caller filtered
         match = TODO_COMPLETE_PATTERN.search(raw_text.strip())
         if not match:
             return CommandResult(
@@ -229,6 +232,7 @@ class TodoCommandHandler(CommandHandler):
         )
 
     def _cmd_reopen(self, raw_text: str) -> CommandResult:
+        assert self._client is not None  # caller filtered
         match = TODO_REOPEN_PATTERN.search(raw_text.strip())
         if not match:
             return CommandResult(
@@ -259,6 +263,7 @@ class TodoCommandHandler(CommandHandler):
         )
 
     def _cmd_priority(self, raw_text: str) -> CommandResult:
+        assert self._client is not None  # caller filtered
         match = TODO_PRIORITY_PATTERN.search(raw_text.strip())
         if not match:
             return CommandResult(
@@ -293,6 +298,7 @@ class TodoCommandHandler(CommandHandler):
         )
 
     def _cmd_delete(self, raw_text: str) -> CommandResult:
+        assert self._client is not None  # caller filtered
         match = TODO_DELETE_PATTERN.match(raw_text.strip())
         if not match:
             return CommandResult(
@@ -318,6 +324,7 @@ class TodoCommandHandler(CommandHandler):
         )
 
     def _cmd_list(self, _raw_text: str) -> CommandResult:
+        assert self._client is not None  # caller filtered
         items = self._client.get_open()
         if not items:
             return CommandResult(
@@ -330,6 +337,7 @@ class TodoCommandHandler(CommandHandler):
         return CommandResult(command="todos", success=True, text=text)
 
     def _cmd_filter(self, raw_text: str) -> CommandResult:
+        assert self._client is not None  # caller filtered
         match = TODO_FILTER_PATTERN.match(raw_text.strip())
         if not match:
             return CommandResult(
@@ -387,6 +395,7 @@ class TodoCommandHandler(CommandHandler):
         label: str,
     ) -> CommandResult:
         """Aufgaben mit Fälligkeit an einem bestimmten Datum."""
+        assert self._client is not None  # caller filtered
         items = self._client.get_open_by_due(target)
         if not items:
             return CommandResult(
@@ -402,6 +411,7 @@ class TodoCommandHandler(CommandHandler):
 
     def _cmd_overdue(self) -> CommandResult:
         """Überfällige Aufgaben."""
+        assert self._client is not None  # caller filtered
         items = self._client.get_overdue()
         if not items:
             return CommandResult(
@@ -417,6 +427,7 @@ class TodoCommandHandler(CommandHandler):
 
     def _cmd_due_week(self) -> CommandResult:
         """Aufgaben fällig diese Woche (Mo–So)."""
+        assert self._client is not None  # caller filtered
         today = date.today()
         # Montag dieser Woche
         monday = today - timedelta(days=today.weekday())
@@ -437,6 +448,7 @@ class TodoCommandHandler(CommandHandler):
         return CommandResult(command="todo_filter", success=True, text=text)
 
     def _cmd_done(self) -> CommandResult:
+        assert self._client is not None  # caller filtered
         items = self._client.get_done()
         if not items:
             return CommandResult(
@@ -449,6 +461,7 @@ class TodoCommandHandler(CommandHandler):
         return CommandResult(command="todos_done", success=True, text=text)
 
     def _cmd_cleanup(self) -> CommandResult:
+        assert self._client is not None  # caller filtered
         done_items = self._client.get_done(limit=100)
         if not done_items:
             return CommandResult(
@@ -470,6 +483,8 @@ class TodoCommandHandler(CommandHandler):
 
     def execute_cleanup(self) -> CommandResult:
         """Führt das Aufräumen nach Bestätigung aus."""
+        if self._client is None:
+            return self.not_configured("todos_cleanup", "CalDAV-Tasks", setup_step=4)
         deleted = self._client.delete_all_done()
         return CommandResult(
             command="todos_cleanup",
@@ -482,7 +497,7 @@ class TodoCommandHandler(CommandHandler):
     # ------------------------------------------------------------------
 
     @staticmethod
-    def _parse_todo_fields(raw: str) -> dict:
+    def _parse_todo_fields(raw: str) -> dict[str, Any]:
         """Parst komma-separierte Todo-Felder inkl. Fälligkeitsdatum.
 
         Format: text[, priorität][, kategorie][, datum]
@@ -491,7 +506,7 @@ class TodoCommandHandler(CommandHandler):
         parts = [p.strip() for p in raw.split(",") if p.strip()]
         if not parts:
             return {}
-        result: dict = {
+        result: dict[str, Any] = {
             "text": parts[0],
             "priority": "niedrig",
             "category": "",

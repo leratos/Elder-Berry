@@ -215,7 +215,6 @@ ignore_errors = true
 module = [
     "elder_berry.comms.message_handlers",
     "elder_berry.comms.commands.contact_commands",
-    "elder_berry.comms.commands.todo_commands",
 ]
 follow_imports = "silent"
 ignore_errors = true
@@ -295,6 +294,7 @@ module = [
     "elder_berry.comms.commands.route_commands",
     "elder_berry.comms.commands.selfcheck_commands",
     "elder_berry.comms.commands.system_commands",
+    "elder_berry.comms.commands.todo_commands",
     "elder_berry.comms.commands.turntable_commands",
     "elder_berry.comms.commands.update_commands",
     "elder_berry.comms.commands.weather_commands",
