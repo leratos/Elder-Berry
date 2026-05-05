@@ -24,7 +24,10 @@ if TYPE_CHECKING:
     from elder_berry.comms.pending_confirmation import PendingConfirmationStore
     from elder_berry.tools.document_classifier import DocumentClassifier
     from elder_berry.tools.email_client import IMAPEmailClient
-    from elder_berry.tools.nextcloud_files import NextcloudFilesClient
+    from elder_berry.tools.nextcloud_files import (
+        NextcloudFile,
+        NextcloudFilesClient,
+    )
 
 logger = logging.getLogger(__name__)
 
@@ -70,7 +73,7 @@ class FilingCommandHandler(CommandHandler):
     # ── CommandHandler Interface ──────────────────────────────────────────
 
     @property
-    def patterns(self) -> list[tuple[re.Pattern, str, bool, bool]]:
+    def patterns(self) -> list[tuple[re.Pattern[str], str, bool, bool]]:
         return [
             (FILING_PATTERN, "cloud_aufräumen", False, False),
             (FILING_ATTACHMENT_PATTERN, "anhang_ablegen", False, True),
@@ -126,6 +129,7 @@ class FilingCommandHandler(CommandHandler):
 
     def _cmd_aufräumen(self) -> CommandResult:
         """Listet den Eingang und startet den Aufräum-Flow."""
+        assert self._nc is not None  # caller filtered
         try:
             entries = self._nc.list_dir(INBOX_FOLDER)
         except Exception as exc:
@@ -150,10 +154,13 @@ class FilingCommandHandler(CommandHandler):
 
     def _process_next_file(
         self,
-        files: list,
+        files: list[NextcloudFile],
         index: int,
     ) -> CommandResult:
         """Verarbeitet die nächste Datei im Eingang."""
+        # Caller (_cmd_aufräumen) filtert NC + Classifier in execute().
+        assert self._nc is not None
+        assert self._classifier is not None
         current = files[index]
         remaining_names = [f.name for f in files[index + 1 :]]
 
@@ -347,6 +354,9 @@ class FilingCommandHandler(CommandHandler):
 
     def handle_confirm(self, action: PendingAction, user_id: str) -> CommandResult:
         """User hat 'ja' gesagt → Datei verschieben/hochladen."""
+        # PendingAction wurde von _cmd_anhang_ablegen / _cmd_aufräumen
+        # erzeugt -- beide haben self._nc bereits gefiltert.
+        assert self._nc is not None
         target = action.data["suggestion"]["target_folder"]
         filename = action.data["suggestion"]["filename"]
         dest = f"{target}/{filename}"
@@ -428,6 +438,8 @@ class FilingCommandHandler(CommandHandler):
         user_id: str,
     ) -> CommandResult:
         """User hat korrigiert → neuen Vorschlag generieren."""
+        # PendingAction wurde von einem Filter-geschuetzten _cmd_*-Pfad erzeugt.
+        assert self._classifier is not None
         local_path = Path(action.data["local_temp"])
 
         suggestion = self._classifier.classify_with_hint(local_path, hint)
@@ -494,6 +506,7 @@ class FilingCommandHandler(CommandHandler):
         last_dest: str | None = None,
     ) -> CommandResult:
         """Listet den Eingang erneut und verarbeitet die nächste Datei."""
+        assert self._nc is not None  # caller filtered (handle_confirm/skip)
         try:
             entries = self._nc.list_dir(INBOX_FOLDER)
         except Exception as exc:
@@ -529,7 +542,7 @@ class FilingCommandHandler(CommandHandler):
 
     def _process_next_attachment(
         self,
-        remaining: list[tuple],
+        remaining: list[tuple[str, ...]],
         last_filename: str,
     ) -> CommandResult:
         """Klassifiziert den nächsten Mail-Anhang.
@@ -538,6 +551,7 @@ class FilingCommandHandler(CommandHandler):
         - (name, local_path_str) – aus _cmd_anhang_ablegen (source_type=mail_attachment)
         - (name, local_path_str, nc_path) – aus Attachment-Menü (source_type=nc_attachment)
         """
+        assert self._classifier is not None  # caller filtered
         entry = remaining[0]
         name = entry[0]
         path_str = entry[1]
