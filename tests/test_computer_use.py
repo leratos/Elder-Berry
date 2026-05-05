@@ -607,3 +607,332 @@ class TestExecuteInstructionRemote:
         post.assert_called_once_with(
             "click", {"x": 960, "y": 540, "button": "left"}
         )
+
+
+# ---------------------------------------------------------------------------
+# Remote-Pfad: HTTP-Helfer + Monitor-Geometrie (direkter Coverage)
+# ---------------------------------------------------------------------------
+
+
+def _mock_response(content: bytes = b"", json_data: dict | None = None) -> MagicMock:
+    """Erstellt eine httpx-Response-Mock mit content/json + raise_for_status."""
+    resp = MagicMock()
+    resp.content = content
+    if json_data is not None:
+        resp.json.return_value = json_data
+    resp.raise_for_status = MagicMock()
+    return resp
+
+
+class TestTowerGet:
+    def test_no_tower_raises(self):
+        ctrl = ComputerUseController(_make_anthropic_client(), _make_controller())
+        with pytest.raises(RuntimeError, match="TowerAgent nicht konfiguriert"):
+            ctrl._tower_get("/screenshot")
+
+    def test_tower_get_calls_httpx_with_auth(self):
+        tower = _make_tower_agent("tower.local:9999")
+        ctrl = ComputerUseController(
+            _make_anthropic_client(), _make_controller(), tower_agent=tower
+        )
+        resp = _mock_response(content=b"PNGDATA")
+        with patch("httpx.get", return_value=resp) as mock_get:
+            payload = ctrl._tower_get("/screenshot", timeout=7.5)
+
+        assert payload == b"PNGDATA"
+        mock_get.assert_called_once_with(
+            "http://tower.local:9999/screenshot",
+            timeout=7.5,
+            headers={"X-Saleria-Tower-Token": "tok"},
+        )
+        resp.raise_for_status.assert_called_once()
+
+
+class TestTowerPostAction:
+    def test_no_tower_raises(self):
+        ctrl = ComputerUseController(_make_anthropic_client(), _make_controller())
+        with pytest.raises(RuntimeError, match="TowerAgent nicht konfiguriert"):
+            ctrl._tower_post_action("click", {"x": 1, "y": 2})
+
+    def test_post_action_payload_and_url(self):
+        tower = _make_tower_agent("tower.local:9999")
+        ctrl = ComputerUseController(
+            _make_anthropic_client(), _make_controller(), tower_agent=tower
+        )
+        resp = _mock_response()
+        with patch("httpx.post", return_value=resp) as mock_post:
+            ctrl._tower_post_action("click", {"x": 100, "y": 200, "button": "left"})
+
+        mock_post.assert_called_once_with(
+            "http://tower.local:9999/action",
+            json={
+                "action": "click",
+                "params": {"x": 100, "y": 200, "button": "left"},
+            },
+            timeout=10.0,
+            headers={"X-Saleria-Tower-Token": "tok"},
+        )
+        resp.raise_for_status.assert_called_once()
+
+    def test_post_action_default_empty_params(self):
+        tower = _make_tower_agent()
+        ctrl = ComputerUseController(
+            _make_anthropic_client(), _make_controller(), tower_agent=tower
+        )
+        with patch("httpx.post", return_value=_mock_response()) as mock_post:
+            ctrl._tower_post_action("list_windows")
+        # params None → leeres Dict
+        sent = mock_post.call_args.kwargs["json"]
+        assert sent == {"action": "list_windows", "params": {}}
+
+
+class TestGetMonitorGeometryRemote:
+    def test_no_tower_raises(self):
+        ctrl = ComputerUseController(_make_anthropic_client(), _make_controller())
+        with pytest.raises(RuntimeError, match="TowerAgent nicht konfiguriert"):
+            ctrl._get_monitor_geometry_remote()
+
+    def test_picks_selected_monitor(self):
+        tower = _make_tower_agent()
+        ctrl = ComputerUseController(
+            _make_anthropic_client(), _make_controller(), tower_agent=tower
+        )
+        resp = _mock_response(
+            json_data={
+                "selected": 2,
+                "monitors": [
+                    {"index": 1, "width": 1920, "height": 1080, "left": 0, "top": 0},
+                    {
+                        "index": 2,
+                        "width": 2560,
+                        "height": 1440,
+                        "left": 1920,
+                        "top": 0,
+                    },
+                ],
+            }
+        )
+        with patch("httpx.get", return_value=resp):
+            geom = ctrl._get_monitor_geometry_remote()
+        assert geom == (2560, 1440, 1920, 0)
+
+    def test_fallback_to_first_when_selected_missing(self):
+        tower = _make_tower_agent()
+        ctrl = ComputerUseController(
+            _make_anthropic_client(), _make_controller(), tower_agent=tower
+        )
+        resp = _mock_response(
+            json_data={
+                "selected": 99,
+                "monitors": [
+                    {"index": 1, "width": 1920, "height": 1080, "left": 0, "top": 0},
+                ],
+            }
+        )
+        with patch("httpx.get", return_value=resp):
+            geom = ctrl._get_monitor_geometry_remote()
+        assert geom == (1920, 1080, 0, 0)
+
+    def test_raises_when_no_monitors(self):
+        tower = _make_tower_agent()
+        ctrl = ComputerUseController(
+            _make_anthropic_client(), _make_controller(), tower_agent=tower
+        )
+        resp = _mock_response(json_data={"selected": 1, "monitors": []})
+        with patch("httpx.get", return_value=resp):
+            with pytest.raises(RuntimeError, match="keine Monitore"):
+                ctrl._get_monitor_geometry_remote()
+
+
+class TestGetAvailableMonitorsRemote:
+    """get_available_monitors() Remote-Pfad (mss fehlt → Tower-HTTP-Call)."""
+
+    def test_returns_monitors_via_tower(self):
+        tower = _make_tower_agent()
+        ctrl = ComputerUseController(
+            _make_anthropic_client(), _make_controller(), tower_agent=tower
+        )
+        resp = _mock_response(
+            json_data={
+                "monitors": [
+                    {"index": 1, "width": 1920, "height": 1080, "left": 0, "top": 0},
+                    {
+                        "index": 2,
+                        "width": 2560,
+                        "height": 1440,
+                        "left": 1920,
+                        "top": 0,
+                    },
+                ],
+                "selected": 1,
+            }
+        )
+        with (
+            patch("elder_berry.actions.computer_use._MSS_AVAILABLE", False),
+            patch("httpx.get", return_value=resp),
+        ):
+            mons = ctrl.get_available_monitors()
+        assert len(mons) == 2
+        assert mons[0]["index"] == 1
+        assert mons[1]["width"] == 2560
+
+    def test_filters_non_dict_entries(self):
+        tower = _make_tower_agent()
+        ctrl = ComputerUseController(
+            _make_anthropic_client(), _make_controller(), tower_agent=tower
+        )
+        resp = _mock_response(
+            json_data={
+                "monitors": [
+                    {"index": 1, "width": 1920, "height": 1080},
+                    "kaputt",
+                    None,
+                ]
+            }
+        )
+        with (
+            patch("elder_berry.actions.computer_use._MSS_AVAILABLE", False),
+            patch("httpx.get", return_value=resp),
+        ):
+            mons = ctrl.get_available_monitors()
+        assert mons == [{"index": 1, "width": 1920, "height": 1080}]
+
+    def test_returns_empty_on_http_error(self):
+        tower = _make_tower_agent()
+        ctrl = ComputerUseController(
+            _make_anthropic_client(), _make_controller(), tower_agent=tower
+        )
+        with (
+            patch("elder_berry.actions.computer_use._MSS_AVAILABLE", False),
+            patch("httpx.get", side_effect=RuntimeError("connect refused")),
+        ):
+            mons = ctrl.get_available_monitors()
+        assert mons == []
+
+    def test_no_mss_no_tower_returns_empty(self):
+        ctrl = ComputerUseController(_make_anthropic_client(), _make_controller())
+        with patch("elder_berry.actions.computer_use._MSS_AVAILABLE", False):
+            assert ctrl.get_available_monitors() == []
+
+    def test_local_mss_path(self):
+        """Lokaler mss-Pfad: filtert virtuellen Monitor (Index 0) heraus."""
+        ctrl = ComputerUseController(_make_anthropic_client(), _make_controller())
+
+        mock_sct = MagicMock()
+        mock_sct.monitors = [
+            {"left": 0, "top": 0, "width": 3840, "height": 2160},  # 0: virtual
+            {"left": 0, "top": 0, "width": 1920, "height": 1080},
+            {"left": 1920, "top": 0, "width": 2560, "height": 1440},
+        ]
+        mock_sct.__enter__ = MagicMock(return_value=mock_sct)
+        mock_sct.__exit__ = MagicMock(return_value=False)
+
+        with (
+            patch("elder_berry.actions.computer_use._MSS_AVAILABLE", True),
+            patch("elder_berry.actions.computer_use.mss.mss", return_value=mock_sct),
+        ):
+            mons = ctrl.get_available_monitors()
+        assert len(mons) == 2  # Index 0 ist gefiltert
+        assert mons[0]["index"] == 1
+        assert mons[0]["width"] == 1920
+        assert mons[1]["index"] == 2
+        assert mons[1]["left"] == 1920
+
+
+class TestCaptureScreenshotRemoteEdgeCases:
+    @requires_pil
+    def test_small_image_not_resized(self):
+        """Bild ≤ MAX_SCREENSHOT_WIDTH bleibt unverändert."""
+        from PIL import Image as _PILImage
+
+        img = _PILImage.new("RGB", (800, 600), color=(0, 0, 0))
+        buf = io.BytesIO()
+        img.save(buf, format="PNG")
+        png_bytes = buf.getvalue()
+
+        ctrl = ComputerUseController(
+            _make_anthropic_client(),
+            _make_controller(),
+            tower_agent=_make_tower_agent(),
+        )
+        with patch.object(ctrl, "_tower_get", return_value=png_bytes):
+            _, w, h = ctrl._capture_screenshot_remote()
+
+        assert w == 800
+        assert h == 600
+
+    def test_no_pil_uses_monitor_geometry(self):
+        """Ohne Pillow werden die Display-Dims über /monitors bezogen."""
+        tower = _make_tower_agent()
+        ctrl = ComputerUseController(
+            _make_anthropic_client(), _make_controller(), tower_agent=tower
+        )
+        with (
+            patch("elder_berry.actions.computer_use._PIL_AVAILABLE", False),
+            patch.object(ctrl, "_tower_get", return_value=b"PNGDATA"),
+            patch.object(
+                ctrl, "_get_monitor_geometry_remote", return_value=(1920, 1080, 0, 0)
+            ),
+        ):
+            b64, w, h = ctrl._capture_screenshot_remote()
+
+        assert w == 1920
+        assert h == 1080
+        # base64 dekodierbar zu unseren Originalbytes
+        import base64
+
+        assert base64.b64decode(b64) == b"PNGDATA"
+
+
+class TestVerificationScreenshotRemote:
+    def test_writes_png_to_tempfile(self, tmp_path):
+        """Verification-Screenshot landet als .png im Temp-Verzeichnis."""
+        tower = _make_tower_agent()
+        ctrl = ComputerUseController(
+            _make_anthropic_client(), _make_controller(), tower_agent=tower
+        )
+        with patch.object(ctrl, "_tower_get", return_value=b"PNGCONTENT"):
+            path = ctrl._take_verification_screenshot_remote()
+        assert path is not None
+        assert path.exists()
+        assert path.suffix == ".png"
+        assert path.read_bytes() == b"PNGCONTENT"
+        path.unlink()
+
+    def test_returns_none_on_error(self):
+        tower = _make_tower_agent()
+        ctrl = ComputerUseController(
+            _make_anthropic_client(), _make_controller(), tower_agent=tower
+        )
+        with patch.object(ctrl, "_tower_get", side_effect=RuntimeError("down")):
+            assert ctrl._take_verification_screenshot_remote() is None
+
+
+class TestRemoteExecutionFailure:
+    """Aktion wirft im Remote-Pfad → execute_instruction muss execution_failed liefern."""
+
+    def test_remote_action_failure_returns_execution_failed(self):
+        click_action = ComputerUseAction(
+            action="left_click", coordinate=(640, 360), tool_use_id="t1"
+        )
+        anthropic = _make_anthropic_client(click_action)
+        ctrl = ComputerUseController(
+            anthropic, _make_controller(), tower_agent=_make_tower_agent()
+        )
+
+        with (
+            patch("elder_berry.actions.computer_use._MSS_AVAILABLE", False),
+            patch.object(
+                ctrl, "_capture_screenshot_remote", return_value=("b64", 1280, 720)
+            ),
+            patch.object(
+                ctrl,
+                "_execute_action_remote",
+                side_effect=RuntimeError("Tower offline"),
+            ),
+        ):
+            result = ctrl.execute_instruction("klick auf den Button")
+
+        assert result.success is False
+        assert result.error == "execution_failed"
+        assert "Tower offline" in result.message

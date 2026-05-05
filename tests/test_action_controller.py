@@ -102,6 +102,16 @@ class TestMouse:
         controller.click(button="right")
         mock_pyauto.click.assert_called_once_with(x=None, y=None, button="right")
 
+    @patch("elder_berry.actions.windows_controller.pyautogui")
+    def test_scroll_positive(self, mock_pyauto, controller):
+        controller.scroll(5)
+        mock_pyauto.scroll.assert_called_once_with(5)
+
+    @patch("elder_berry.actions.windows_controller.pyautogui")
+    def test_scroll_negative(self, mock_pyauto, controller):
+        controller.scroll(-3)
+        mock_pyauto.scroll.assert_called_once_with(-3)
+
 
 # ---------------------------------------------------------------------------
 # Fenster
