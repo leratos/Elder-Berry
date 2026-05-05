@@ -494,18 +494,14 @@ class ConfirmationHandler:
         """Holt den TowerAgent ueber den UpdateCommandHandler in remote_commands.
 
         Pfad: BridgeMessageHandler._remote_commands -> _update -> _tower.
-        Fallback: direkte Attribute am Parent (Tests / Sonderkonstellationen).
         """
         rc = getattr(self._p, "_remote_commands", None)
-        if rc is not None and hasattr(rc, "_update"):
-            tower = getattr(rc._update, "_tower", None)
-            if tower is not None:
-                return tower  # type: ignore[no-any-return]
-        # Fallback: Test-Fakes setzen evtl. direkt am Parent
-        fallback = getattr(self._p, "_tower", None) or getattr(
-            self._p, "_tower_agent", None
-        )
-        return fallback  # type: ignore[no-any-return]
+        if rc is None or not hasattr(rc, "_update"):
+            return None
+        tower = getattr(rc._update, "_tower", None)
+        if tower is None:
+            return None
+        return tower  # type: ignore[no-any-return]
 
     async def _restart_tower_via_http(self, msg: IncomingMessage) -> None:
         """POST /system/update?force=true an den Tower (fire-and-forget).
