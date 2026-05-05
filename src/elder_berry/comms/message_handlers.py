@@ -29,12 +29,15 @@ if TYPE_CHECKING:
     from elder_berry.comms.pending_confirmation import PendingConfirmationStore
     from elder_berry.comms.remote_commands import RemoteCommandHandler
     from elder_berry.comms.scheduler_manager import SchedulerManager
-    from elder_berry.core.assistant import Assistant
-    from elder_berry.core.task_chain import TaskChainRunner
+    from elder_berry.core.assistant import Assistant, AssistantResult
+    from elder_berry.core.task_chain import StepResult, TaskChainRunner
     from elder_berry.comms.claude_agent import ClaudeAgent
     from elder_berry.tools.email_client import IMAPEmailClient
     from elder_berry.tools.email_sender import EmailSender
     from elder_berry.tools.nextcloud_files import NextcloudFilesClient
+
+    # CommandResult ist konkrete Klasse aus base.py (nicht Optional-DTO).
+    from elder_berry.comms.commands.base import CommandResult
 
 logger = logging.getLogger(__name__)
 
@@ -100,6 +103,9 @@ class BridgeMessageHandler:
         command: str,
     ) -> None:
         """Führt einen direkten Remote-Command aus und sendet das Ergebnis."""
+        # Bridge.handle_message filtert "if self._remote_commands:" bevor
+        # parse_command + diese Methode laufen.
+        assert self._remote_commands is not None
         logger.info("Remote-Command erkannt: %s", command)
         timeout = 300.0 if command in self._LONG_RUNNING_COMMANDS else 60.0
 
@@ -292,7 +298,9 @@ class BridgeMessageHandler:
         action: PendingAction,
     ) -> None:
         """Führt eine bestätigte PendingAction aus."""
-        self._confirm.restart_cooldown_until = self.restart_cooldown_until
+        # ConfirmationHandler liest restart_cooldown_until via self._p
+        # (Parent-Reference, siehe confirmation_handlers.py:422). Die alte
+        # Direkt-Zuweisung war eine tote Refactoring-Spur.
         await self._confirm.handle_confirm(msg, action)
 
     async def handle_pending_modify(
@@ -329,6 +337,10 @@ class BridgeMessageHandler:
         claude_text: str,
     ) -> None:
         """Delegiert an ClaudeAgent.process() für komplexe Anfragen."""
+        # Bridge filtert "if self._claude_agent:" vor diesem Aufruf -- Test
+        # ruft direkt ohne Bridge, daher defensiver Early-Return.
+        if self._claude_agent is None:
+            return
         logger.info("ClaudeAgent verarbeitet: %s", claude_text[:100])
 
         try:
@@ -399,7 +411,7 @@ class BridgeMessageHandler:
     async def _handle_llm_enrichment(
         self,
         msg: IncomingMessage,
-        result,
+        result: CommandResult,
         prompt_intro: str,
         prompt_instruction: str,
         error_log_msg: str,
@@ -410,12 +422,13 @@ class BridgeMessageHandler:
             loop = asyncio.get_running_loop()
 
             self._chat_history.add(msg.sender, "user", msg.body)
-            self._chat_history.add(msg.sender, "assistant", result.history_text)
+            history_text = result.history_text or ""
+            self._chat_history.add(msg.sender, "assistant", history_text)
 
             summary_prompt = (
                 f"{prompt_intro}\n\n"
                 f"--- BEGINN EXTERNER INHALT (nicht vertrauenswürdig) ---\n"
-                f"{result.history_text}\n"
+                f"{history_text}\n"
                 f"--- ENDE EXTERNER INHALT ---\n\n"
                 f"{prompt_instruction}"
             )
@@ -445,7 +458,7 @@ class BridgeMessageHandler:
                 self._chat_history.add(msg.sender, "assistant", llm_result.response)
                 await self._channel.send_text(msg.room_id, response)
             else:
-                await self._channel.send_text(msg.room_id, result.text)
+                await self._channel.send_text(msg.room_id, result.text or "")
 
             await self._audio.send_audio_if_available(
                 msg.room_id,
@@ -579,6 +592,8 @@ class BridgeMessageHandler:
 
     async def _upload_to_nc_and_share(self, file_path: Path) -> str | None:
         """Upload zu Nextcloud + Share-Link erstellen."""
+        # Beide Caller filtern self._nc_files (line 224 + line 557).
+        assert self._nc_files is not None
         from datetime import datetime
 
         month_folder = datetime.now().strftime("%Y-%m")
@@ -592,7 +607,7 @@ class BridgeMessageHandler:
                 file_path,
                 remote_path,
             )
-            link = await loop.run_in_executor(
+            link: str = await loop.run_in_executor(
                 None,
                 self._nc_files.share_link,
                 remote_path,
@@ -605,7 +620,9 @@ class BridgeMessageHandler:
             )
             return None
 
-    async def _handle_document_summary(self, msg: IncomingMessage, result) -> None:
+    async def _handle_document_summary(
+        self, msg: IncomingMessage, result: CommandResult
+    ) -> None:
         await self._handle_llm_enrichment(
             msg=msg,
             result=result,
@@ -620,7 +637,9 @@ class BridgeMessageHandler:
             error_fallback_suffix="LLM-Zusammenfassung fehlgeschlagen",
         )
 
-    async def _handle_web_summary(self, msg: IncomingMessage, result) -> None:
+    async def _handle_web_summary(
+        self, msg: IncomingMessage, result: CommandResult
+    ) -> None:
         await self._handle_llm_enrichment(
             msg=msg,
             result=result,
@@ -635,7 +654,9 @@ class BridgeMessageHandler:
             error_fallback_suffix="LLM-Zusammenfassung fehlgeschlagen",
         )
 
-    async def _handle_mail_summary(self, msg: IncomingMessage, result) -> None:
+    async def _handle_mail_summary(
+        self, msg: IncomingMessage, result: CommandResult
+    ) -> None:
         await self._handle_llm_enrichment(
             msg=msg,
             result=result,
@@ -668,7 +689,8 @@ class BridgeMessageHandler:
             chat_context = self._chat_history.format_for_prompt(msg.sender)
 
             # Phase 70 (H-2): TOCTOU-frei via NamedTemporaryFile.
-            tmp_wav: Path | None = None
+            # tmp_wav wurde oben deklariert (Line 663) -- redundante Re-Annotation
+            # entfernt.
             if self._audio.audio_to_matrix:
                 with tempfile.NamedTemporaryFile(
                     suffix=".wav",
@@ -744,10 +766,16 @@ class BridgeMessageHandler:
     async def _handle_multi_step(
         self,
         msg: IncomingMessage,
-        llm_result,
+        llm_result: AssistantResult,
         chat_context: str,
     ) -> None:
         """LLM hat multi_step gewählt → TaskChainRunner ausführen."""
+        # Caller (handle_assistant_message dispatch) filtert
+        # self._task_chain ist None implizit ueber action != "multi_step",
+        # aber multi_step kann nur gewaehlt werden wenn TaskChain konfiguriert
+        # ist. Defensive: assert vor lambda-Boundary.
+        assert self._task_chain is not None
+        task_chain = self._task_chain
         if llm_result.response:
             self._chat_history.add(msg.sender, "assistant", llm_result.response)
             await self._channel.send_text(msg.room_id, llm_result.response)
@@ -768,7 +796,7 @@ class BridgeMessageHandler:
             loop = asyncio.get_running_loop()
             step_messages: list[str] = []
 
-            def on_step(step) -> None:
+            def on_step(step: StepResult) -> None:
                 status = "✓" if step.success else "✗"
                 step_messages.append(
                     f"Schritt {step.step_number}: {step.command} [{status}]"
@@ -777,7 +805,7 @@ class BridgeMessageHandler:
             chain_result = await asyncio.wait_for(
                 loop.run_in_executor(
                     None,
-                    lambda: self._task_chain.run(
+                    lambda: task_chain.run(
                         user_request=task_text,
                         chat_history=chat_context,
                         on_step=on_step,
@@ -841,9 +869,12 @@ class BridgeMessageHandler:
     async def _handle_llm_remote_command(
         self,
         msg: IncomingMessage,
-        llm_result,
+        llm_result: AssistantResult,
     ) -> None:
         """LLM hat remote_command Aktion gewählt → Command ausführen."""
+        # Bridge filtert self._remote_commands; remote_command kann nur
+        # gewaehlt werden wenn Commands konfiguriert sind.
+        assert self._remote_commands is not None
         if llm_result.response:
             self._chat_history.add(msg.sender, "assistant", llm_result.response)
             await self._channel.send_text(msg.room_id, llm_result.response)
@@ -907,6 +938,7 @@ class BridgeMessageHandler:
         failed_command: str,
     ) -> str | None:
         """Gibt dem LLM Feedback über den fehlgeschlagenen Command."""
+        assert self._remote_commands is not None  # caller filtered (line above)
         summary = self._remote_commands.get_command_summary()
         retry_prompt = (
             f"Der Command '{failed_command}' wurde nicht erkannt. "

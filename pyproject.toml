@@ -207,17 +207,6 @@ module = [
 follow_imports = "silent"
 ignore_errors = true
 
-# --- Phase 76b WIP: noch nicht-strict comms/-Module ---
-# Liste schrumpft mit jedem Tier-Commit. Am Ende von 76b leer und
-# der Block wird geloescht. base.py + registry.py stehen NICHT hier --
-# sie sind durch Phase 77 bereits strict.
-[[tool.mypy.overrides]]
-module = [
-    "elder_berry.comms.message_handlers",
-]
-follow_imports = "silent"
-ignore_errors = true
-
 # --- Phase 76 strict: alle core/-Module ---
 [[tool.mypy.overrides]]
 module = [
@@ -269,6 +258,7 @@ module = [
     "elder_berry.comms.confirmation_handlers",
     "elder_berry.comms.matrix_channel",
     "elder_berry.comms.message_channel",
+    "elder_berry.comms.message_handlers",
     "elder_berry.comms.pending_confirmation",
     "elder_berry.comms.reminder_scheduler",
     "elder_berry.comms.remote_commands",
