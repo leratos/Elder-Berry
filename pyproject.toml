@@ -166,6 +166,9 @@ module = [
     "aiofiles.*",           # types-aiofiles existiert, aber wir konsumieren
                             # aiofiles ueber nio-aehnliche async-Generatoren
                             # -- Stub-Wert gering, Stub-Pflege hoch.
+    "aiohttp.*",            # transitive ueber matrix-nio; auf CI nicht
+                            # installiert (kein matrix-Gruppen-Install im
+                            # typecheck-Job). Stubs uebersteuert per cast.
     "keyring.*",            # types-keyring existiert nicht (Stand 2026-04, R5)
     "sounddevice.*",
     # Phase 76c: tools/-Clients ohne PEP-561-Stubs.

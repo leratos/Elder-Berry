@@ -368,7 +368,10 @@ class SystemCommandHandler(CommandHandler):
 
         if sys.platform != "win32":
             return False
-        try:
+        # mypy auf Linux-CI sieht den try-Body als unreachable (sys.platform
+        # ist dort Literal["linux"]). Auf Tower (win32) ist er erreichbar.
+        # Dual-Ignore deckt beide Plattformen ab (Phase 76c b8ecbc0).
+        try:  # type: ignore[unreachable,unused-ignore]
             import ctypes
 
             DESKTOP_READOBJECTS = 0x0001
@@ -404,7 +407,8 @@ class SystemCommandHandler(CommandHandler):
 
         if sys.platform != "win32":
             return
-        try:
+        # mypy auf Linux-CI: try-Body ist unreachable (siehe _is_session_locked).
+        try:  # type: ignore[unreachable,unused-ignore]
             import ctypes
             import ctypes.wintypes
             import time
