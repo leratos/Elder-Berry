@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import importlib
+import io
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -385,3 +386,224 @@ class TestCaptureScreenshot:
         assert w == MAX_SCREENSHOT_WIDTH
         assert h == int(1080 * (MAX_SCREENSHOT_WIDTH / 1920))
         assert isinstance(b64, str)
+
+
+# ---------------------------------------------------------------------------
+# Remote-Pfad: Computer Use via TowerAgent (kein lokales mss)
+# ---------------------------------------------------------------------------
+
+
+def _make_tower_agent(host: str = "tower.local:12769") -> MagicMock:
+    """Erstellt einen Mock-TowerAgent (sync-Attribute reichen für unsere
+    HTTP-Calls; die ComputerUseController nutzt host + _auth_headers())."""
+    from elder_berry.core.tower_agent import TowerAgent
+
+    mock = MagicMock(spec=TowerAgent)
+    mock.host = host
+    mock._auth_headers.return_value = {"X-Saleria-Tower-Token": "tok"}
+    return mock
+
+
+class TestRemoteGuard:
+    def test_no_tower_no_mss_fails_with_mss_missing(self):
+        ctrl = ComputerUseController(_make_anthropic_client(), _make_controller())
+        with patch("elder_berry.actions.computer_use._MSS_AVAILABLE", False):
+            result = ctrl.execute_instruction("klick auf OK")
+        assert result.success is False
+        assert result.error == "mss_missing"
+        assert "TowerAgent" in result.message
+
+    def test_use_remote_property(self):
+        """`_use_remote` ist genau dann True, wenn mss fehlt UND tower_agent da ist."""
+        ctrl_with = ComputerUseController(
+            _make_anthropic_client(),
+            _make_controller(),
+            tower_agent=_make_tower_agent(),
+        )
+        with patch("elder_berry.actions.computer_use._MSS_AVAILABLE", False):
+            assert ctrl_with._use_remote is True
+        with patch("elder_berry.actions.computer_use._MSS_AVAILABLE", True):
+            assert ctrl_with._use_remote is False
+
+        ctrl_without = ComputerUseController(
+            _make_anthropic_client(), _make_controller()
+        )
+        with patch("elder_berry.actions.computer_use._MSS_AVAILABLE", False):
+            assert ctrl_without._use_remote is False
+
+
+class TestRemoteCaptureScreenshot:
+    @requires_pil
+    def test_capture_screenshot_remote_resizes(self):
+        """Resize bei breiten Tower-Screenshots (>MAX_SCREENSHOT_WIDTH)."""
+        # 1920x1080 PNG erzeugen
+        from PIL import Image
+
+        img = Image.new("RGB", (1920, 1080), color=(0, 0, 0))
+        buf = io.BytesIO()
+        img.save(buf, format="PNG")
+        png_bytes = buf.getvalue()
+
+        ctrl = ComputerUseController(
+            _make_anthropic_client(),
+            _make_controller(),
+            tower_agent=_make_tower_agent(),
+        )
+        with patch.object(ctrl, "_tower_get", return_value=png_bytes):
+            b64, w, h = ctrl._capture_screenshot_remote()
+
+        assert w == MAX_SCREENSHOT_WIDTH
+        assert h == int(1080 * (MAX_SCREENSHOT_WIDTH / 1920))
+        assert isinstance(b64, str)
+        # Base64 dekodierbar
+        import base64
+
+        base64.b64decode(b64)
+
+
+class TestExecuteActionRemote:
+    """Spiegelt die TestExecuteAction-Suite, aber gegen den Remote-Pfad."""
+
+    def _make_ctrl(self) -> ComputerUseController:
+        ctrl = ComputerUseController(
+            _make_anthropic_client(),
+            _make_controller(),
+            monitor_index=1,
+            tower_agent=_make_tower_agent(),
+        )
+        return ctrl
+
+    def _run(self, ctrl, action, display_w=1280, display_h=720):
+        with patch.object(
+            ctrl, "_get_monitor_geometry_remote", return_value=(1920, 1080, 0, 0)
+        ):
+            ctrl._execute_action_remote(action, display_w, display_h)
+
+    def test_left_click(self):
+        ctrl = self._make_ctrl()
+        action = ComputerUseAction(action="left_click", coordinate=(100, 200))
+        with patch.object(ctrl, "_tower_post_action") as post:
+            self._run(ctrl, action)
+        # 100*(1920/1280)=150, 200*(1080/720)=300
+        post.assert_called_once_with("click", {"x": 150, "y": 300, "button": "left"})
+
+    def test_right_click(self):
+        ctrl = self._make_ctrl()
+        action = ComputerUseAction(action="right_click", coordinate=(100, 200))
+        with patch.object(ctrl, "_tower_post_action") as post:
+            self._run(ctrl, action)
+        post.assert_called_once_with("click", {"x": 150, "y": 300, "button": "right"})
+
+    def test_double_click_calls_click_twice(self):
+        ctrl = self._make_ctrl()
+        action = ComputerUseAction(action="double_click", coordinate=(100, 200))
+        with patch.object(ctrl, "_tower_post_action") as post:
+            with patch("elder_berry.actions.computer_use.time"):
+                self._run(ctrl, action)
+        assert post.call_count == 2
+        for call in post.call_args_list:
+            assert call.args[0] == "click"
+
+    def test_type(self):
+        ctrl = self._make_ctrl()
+        action = ComputerUseAction(action="type", text="hi")
+        with patch.object(ctrl, "_tower_post_action") as post:
+            self._run(ctrl, action)
+        post.assert_called_once_with("type_text", {"text": "hi"})
+
+    def test_key_single(self):
+        ctrl = self._make_ctrl()
+        action = ComputerUseAction(action="key", text="enter")
+        with patch.object(ctrl, "_tower_post_action") as post:
+            self._run(ctrl, action)
+        post.assert_called_once_with("press_key", {"key": "enter"})
+
+    def test_key_combo(self):
+        ctrl = self._make_ctrl()
+        action = ComputerUseAction(action="key", text="ctrl+s")
+        with patch.object(ctrl, "_tower_post_action") as post:
+            self._run(ctrl, action)
+        post.assert_called_once_with("hotkey", {"keys": ["ctrl", "s"]})
+
+    def test_scroll_down_moves_then_scrolls(self):
+        ctrl = self._make_ctrl()
+        action = ComputerUseAction(
+            action="scroll",
+            coordinate=(640, 360),
+            scroll_direction="down",
+            scroll_amount=3,
+        )
+        with patch.object(ctrl, "_tower_post_action") as post:
+            self._run(ctrl, action)
+        assert post.call_count == 2
+        # Erst move_mouse, dann scroll mit negativem amount
+        assert post.call_args_list[0].args[0] == "move_mouse"
+        assert post.call_args_list[1] == (("scroll", {"amount": -3}),)
+
+    def test_scroll_up_positive_amount(self):
+        ctrl = self._make_ctrl()
+        action = ComputerUseAction(
+            action="scroll",
+            coordinate=(640, 360),
+            scroll_direction="up",
+            scroll_amount=5,
+        )
+        with patch.object(ctrl, "_tower_post_action") as post:
+            self._run(ctrl, action)
+        assert post.call_args_list[1] == (("scroll", {"amount": 5}),)
+
+    def test_mouse_move(self):
+        ctrl = self._make_ctrl()
+        action = ComputerUseAction(action="mouse_move", coordinate=(640, 360))
+        with patch.object(ctrl, "_tower_post_action") as post:
+            self._run(ctrl, action)
+        post.assert_called_once_with("move_mouse", {"x": 960, "y": 540})
+
+    def test_screenshot_action_noop(self):
+        ctrl = self._make_ctrl()
+        action = ComputerUseAction(action="screenshot")
+        with patch.object(ctrl, "_tower_post_action") as post:
+            self._run(ctrl, action)
+        post.assert_not_called()
+
+
+class TestExecuteInstructionRemote:
+    """End-to-End-Test des Remote-Pfads (Screenshot → API → Aktion)."""
+
+    def test_full_flow_via_tower(self):
+        click_action = ComputerUseAction(
+            action="left_click", coordinate=(640, 360), tool_use_id="t1"
+        )
+        anthropic = _make_anthropic_client(click_action)
+        ctrl = ComputerUseController(
+            anthropic,
+            _make_controller(),
+            tower_agent=_make_tower_agent(),
+        )
+
+        with (
+            patch("elder_berry.actions.computer_use._MSS_AVAILABLE", False),
+            patch.object(
+                ctrl, "_capture_screenshot_remote", return_value=("b64", 1280, 720)
+            ),
+            patch.object(
+                ctrl,
+                "_get_monitor_geometry_remote",
+                return_value=(1920, 1080, 0, 0),
+            ),
+            patch.object(ctrl, "_tower_post_action") as post,
+            patch.object(
+                ctrl, "_take_verification_screenshot_remote", return_value=None
+            ),
+            patch("elder_berry.actions.computer_use.time"),
+        ):
+            result = ctrl.execute_instruction("klick auf den Button")
+
+        assert result.success is True
+        assert result.action.action == "left_click"
+        # Lokaler Controller darf NICHT aufgerufen worden sein
+        ctrl._controller.click.assert_not_called()
+        # Tower wurde aufgerufen
+        post.assert_called_once_with(
+            "click", {"x": 960, "y": 540, "button": "left"}
+        )
