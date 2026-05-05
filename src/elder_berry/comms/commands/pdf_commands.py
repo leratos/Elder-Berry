@@ -120,7 +120,7 @@ class PDFCommandHandler(CommandHandler):
     # ── CommandHandler interface ────────────────────────────────────────
 
     @property
-    def patterns(self) -> list[tuple[re.Pattern, str, bool, bool]]:
+    def patterns(self) -> list[tuple[re.Pattern[str], str, bool, bool]]:
         return [
             (PDF_MERGE_PATTERN, "pdf_merge", True, False),
             (PDF_SPLIT_PATTERN, "pdf_split", True, False),
@@ -293,6 +293,8 @@ class PDFCommandHandler(CommandHandler):
     # ── Commands ───────────────────────────────────────────────────────
 
     def _cmd_merge(self, raw_text: str) -> CommandResult:
+        # Caller (execute) filtert "if self._spdf is None: return".
+        assert self._spdf is not None
         match = PDF_MERGE_PATTERN.match(raw_text.strip())
         if not match:
             return CommandResult(
@@ -357,6 +359,7 @@ class PDFCommandHandler(CommandHandler):
                 shutil.rmtree(temp_dir, ignore_errors=True)
 
     def _cmd_split(self, raw_text: str) -> CommandResult:
+        assert self._spdf is not None  # caller filtered
         match = PDF_SPLIT_PATTERN.match(raw_text.strip())
         if not match:
             return CommandResult(
@@ -412,6 +415,7 @@ class PDFCommandHandler(CommandHandler):
                 shutil.rmtree(temp_dir, ignore_errors=True)
 
     def _cmd_compress(self, raw_text: str) -> CommandResult:
+        assert self._spdf is not None  # caller filtered
         match = PDF_COMPRESS_PATTERN.match(raw_text.strip())
         if not match:
             return CommandResult(
@@ -464,6 +468,7 @@ class PDFCommandHandler(CommandHandler):
                 shutil.rmtree(temp_dir, ignore_errors=True)
 
     def _cmd_ocr(self, raw_text: str) -> CommandResult:
+        assert self._spdf is not None  # caller filtered
         match = PDF_OCR_PATTERN.match(raw_text.strip())
         if not match:
             return CommandResult(
@@ -514,6 +519,7 @@ class PDFCommandHandler(CommandHandler):
                 shutil.rmtree(temp_dir, ignore_errors=True)
 
     def _cmd_to_word(self, raw_text: str) -> CommandResult:
+        assert self._spdf is not None  # caller filtered
         match = PDF_TO_WORD_PATTERN.match(raw_text.strip())
         if not match:
             return CommandResult(
@@ -564,6 +570,7 @@ class PDFCommandHandler(CommandHandler):
                 shutil.rmtree(temp_dir, ignore_errors=True)
 
     def _cmd_from_file(self, raw_text: str) -> CommandResult:
+        assert self._spdf is not None  # caller filtered
         match = PDF_FROM_FILE_PATTERN.match(raw_text.strip())
         if not match:
             return CommandResult(
@@ -614,6 +621,7 @@ class PDFCommandHandler(CommandHandler):
                 shutil.rmtree(temp_dir, ignore_errors=True)
 
     def _cmd_extract_images(self, raw_text: str) -> CommandResult:
+        assert self._spdf is not None  # caller filtered
         match = PDF_EXTRACT_IMAGES_PATTERN.match(raw_text.strip())
         if not match:
             return CommandResult(

@@ -25,9 +25,9 @@ from elder_berry.comms.commands.base import (
 )
 
 if TYPE_CHECKING:
-    from elder_berry.core.anthropic_client import AnthropicClient
+    from elder_berry.llm.anthropic_client import AnthropicClient
     from elder_berry.tools.contact_store import ContactStore
-    from elder_berry.tools.email_client import IMAPEmailClient
+    from elder_berry.tools.email_client import EmailMessage, IMAPEmailClient
 
 logger = logging.getLogger(__name__)
 
@@ -130,7 +130,7 @@ class MailCommandHandler(CommandHandler):
         self._anthropic = anthropic_client
         self._contacts = contact_store
         self._default_user_id = default_user_id
-        self._last_mails: list = []
+        self._last_mails: list[EmailMessage] = []
 
     # -- CommandHandler interface ------------------------------------------
 
@@ -139,7 +139,7 @@ class MailCommandHandler(CommandHandler):
         return {"mails"}
 
     @property
-    def patterns(self) -> list[tuple[re.Pattern, str, bool, bool]]:
+    def patterns(self) -> list[tuple[re.Pattern[str], str, bool, bool]]:
         # MAIL_REPLY_PATTERN vor MAIL_ID_PATTERN (sonst matcht "antworte auf mail #123"
         # als "mail #123" via MAIL_ID_PATTERN)
         return [
@@ -499,6 +499,8 @@ class MailCommandHandler(CommandHandler):
                 text="Keine Mail-ID angegeben.",
             )
 
+        # Narrowing aus Line 460 ueber das lange Method-Body wieder herstellen.
+        assert self._email_client is not None
         try:
             self._email_client.delete(msg_id)
         except Exception as e:
@@ -680,7 +682,7 @@ class MailCommandHandler(CommandHandler):
             },
         )
 
-    def _generate_draft(self, original, instruction: str) -> str:
+    def _generate_draft(self, original: EmailMessage, instruction: str) -> str:
         """Generiert einen Email-Draft via Claude Sonnet 4.6.
 
         Args:
@@ -704,6 +706,8 @@ class MailCommandHandler(CommandHandler):
             f"Anweisung des Nutzers: {instruction}\n\n"
             f"Schreibe jetzt die Antwort-Mail (nur den Body, keine Header)."
         )
+        # Caller (_cmd_mail_reply) filtert "if not self._anthropic: return".
+        assert self._anthropic is not None
         # Kontakt-Lookup per Absender-Email (Phase 29)
         system = EMAIL_SYSTEM_PROMPT
         if self._contacts and self._default_user_id:

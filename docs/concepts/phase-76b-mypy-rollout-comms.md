@@ -345,18 +345,40 @@ selbst).
 - **Branch:** `feature/phase-76b-mypy-tier3`.
 - **Akzeptanzkriterium:** 29/47 Module strict, mypy grün, pytest grün.
 
-### 5.5 Etappe 4 — Tier 4 (2–3 Sessions, 11 Module)
+### 5.5 Etappe 4 — Tier 4 (2 PRs, 11 Module)
 
-- 11 Module mit 7–12 Funden. Größtes Etappen-Tier.
-- Drei Module fokussieren stark auf `HandlerContext`-Optional-Filter:
-  `cloud_commands` (NextcloudFilesClient), `mail_commands`
-  (IMAPEmailClient + EmailSender), `harmony_commands` (HarmonyClient).
-  Plugin-Factory-Pattern aus §10.2 anwenden.
-- `bridge.py` und `confirmation_handlers.py` sind Orchestrator-nah —
-  Pytest für `tests/test_bridge*.py` und `tests/test_confirmation*.py`
-  nach jedem Commit.
-- **Branch:** `feature/phase-76b-mypy-tier4`.
-- **Akzeptanzkriterium:** 40/47 Module strict, mypy grün, pytest grün.
+Während der Umsetzung wurde Tier 4 in **4a + 4b** gesplittet — 11
+Module mit 93 Funden waren als ein PR review-technisch zu groß.
+Aufteilung nach Risiko:
+
+**Etappe 4a — 6 Command-Handler (mechanisch, niedriges Risiko)**
+- `cloud_commands` (9), `filing_commands` (12), `harmony_commands`
+  (10), `mail_commands` (7+1 Bug-Fix), `pdf_commands` (8),
+  `weather_commands` (9).
+- ~56 Funde, alle ähnliche Patterns (re.Pattern[str] +
+  Optional-Stores).
+- **Branch:** `feature/phase-76b-mypy-tier4a`.
+- **Akzeptanzkriterium:** 37/47 Module strict, mypy grün, pytest grün.
+
+**Etappe 4b — 5 Infrastruktur-Module (Orchestrator-nah, höheres Risiko)**
+- `audio_pipeline` (7), `scheduler_manager` (7), `bridge` (8),
+  `matrix_channel` (8), `confirmation_handlers` (7).
+- ~37 Funde, mehr Optional-Verkettung quer durch Bridge/Matrix-Layer.
+- Pytest-Pause nach jedem Commit (per R-Pflicht).
+- `audio_pipeline.py` (R7) potenziell echte bytes|None-Bugs — falls
+  einer drin ist, kommt der als separater Bug-Fix-Commit + Test
+  vor dem strict-Commit (Pattern §10.1.9).
+- **Branch:** `feature/phase-76b-mypy-tier4b`.
+- **Akzeptanzkriterium:** 42/47 Module strict, mypy grün, pytest grün.
+
+**Pattern-Wahl-Notiz aus 4a (Sec. 10.2 vs. Sec. 10.1):** §10.2
+(Plugin-Factory-Optional-Filter) wäre für `cloud_commands` und
+`pdf_commands` theoretisch passend, würde aber die "X nicht
+konfiguriert"-User-Message verlieren (Handler würde gar nicht
+existieren → Silent-Fallthrough zur LLM). Entscheidung: §10.1
+(Optional-Stores + assert) bleibt der Default für 76b — konsistent
+mit Etappen 1–3, behält UX. §10.2 ist erst sinnvoll, wenn die
+Bridge-Migration die Backwards-Compat-Kwargs entfernt.
 
 ### 5.6 Etappe 5 — Tier 5 + CI-Gate (2 Sessions, 3 Module + CI)
 
