@@ -59,7 +59,7 @@ class TurntableController(ABC):
             RuntimeError: Wenn Homing fehlschlaegt (Sensor defekt, Magnet fehlt).
             RuntimeError: Wenn bereits eine Rotation laeuft.
         """
-        ...
+        pass
 
     @abstractmethod
     def rotate_to(self, degrees: float) -> None:
@@ -72,7 +72,7 @@ class TurntableController(ABC):
             RuntimeError: Wenn nicht gehomed.
             RuntimeError: Wenn bereits eine Rotation laeuft.
         """
-        ...
+        pass
 
     @abstractmethod
     def rotate_by(self, degrees: float) -> None:
@@ -86,34 +86,34 @@ class TurntableController(ABC):
             RuntimeError: Wenn nicht gehomed.
             RuntimeError: Wenn bereits eine Rotation laeuft.
         """
-        ...
+        pass
 
     @abstractmethod
     def stop(self) -> None:
         """Bricht die aktuelle Rotation ab. No-op wenn keine Rotation laeuft."""
-        ...
+        pass
 
     @abstractmethod
     def get_position(self) -> float:
         """Gibt aktuelle Position in Grad zurueck. NaN wenn nicht gehomed."""
-        ...
+        pass
 
     @property
     @abstractmethod
     def is_homed(self) -> bool:
         """True wenn Homing erfolgreich durchgefuehrt wurde."""
-        ...
+        pass
 
     @property
     @abstractmethod
     def is_moving(self) -> bool:
         """True wenn eine Rotation laeuft."""
-        ...
+        pass
 
     @abstractmethod
     def close(self) -> None:
         """Ressourcen freigeben (GPIO, Threads)."""
-        ...
+        pass
 
 
 class RPi5TurntableController(TurntableController):

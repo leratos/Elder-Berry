@@ -54,22 +54,22 @@ class MessageChannel(ABC):
     @abstractmethod
     async def connect(self) -> None:
         """Verbindung zum Kanal herstellen (Login, initialer Sync, etc.)."""
-        ...
+        pass
 
     @abstractmethod
     async def disconnect(self) -> None:
         """Verbindung sauber trennen."""
-        ...
+        pass
 
     @abstractmethod
     async def send_text(self, room_id: str, text: str) -> None:
         """Sendet eine Textnachricht in den angegebenen Raum."""
-        ...
+        pass
 
     @abstractmethod
     async def send_audio(self, room_id: str, audio_path: Path) -> None:
         """Sendet eine Audiodatei (z.B. OGG/Opus Sprachnachricht) in den Raum."""
-        ...
+        pass
 
     async def send_image(self, room_id: str, image_path: Path) -> None:
         """Sendet ein Bild (z.B. Screenshot) in den Raum.
@@ -94,7 +94,7 @@ class MessageChannel(ABC):
         Der Callback wird für jede empfangene Textnachricht aufgerufen.
         Mehrere Callbacks sind möglich (additive Registrierung).
         """
-        ...
+        pass
 
     @abstractmethod
     async def sync_loop(self) -> None:
@@ -102,10 +102,10 @@ class MessageChannel(ABC):
 
         Läuft bis disconnect() aufgerufen wird oder ein fataler Fehler auftritt.
         """
-        ...
+        pass
 
     @property
     @abstractmethod
     def is_connected(self) -> bool:
         """True wenn der Kanal verbunden und bereit ist."""
-        ...
+        pass

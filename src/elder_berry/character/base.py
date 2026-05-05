@@ -66,12 +66,12 @@ class CharacterEngine(ABC):
     @abstractmethod
     def get_personality(self) -> Personality:
         """Gibt die Persönlichkeitsdefinition zurück."""
-        ...
+        pass
 
     @abstractmethod
     def get_mood(self) -> MoodState:
         """Gibt den aktuellen emotionalen Zustand zurück."""
-        ...
+        pass
 
     @abstractmethod
     def set_mood(self, emotion: Emotion, intensity: float = 0.5) -> None:
@@ -82,7 +82,7 @@ class CharacterEngine(ABC):
             emotion: Neue Emotion.
             intensity: Stärke der Emotion (0.0–1.0).
         """
-        ...
+        pass
 
     @abstractmethod
     def build_system_prompt(
@@ -102,7 +102,7 @@ class CharacterEngine(ABC):
         Returns:
             Vollständiger System-Prompt als String.
         """
-        ...
+        pass
 
     @abstractmethod
     def extract_emotion(self, llm_response: str) -> Emotion:
@@ -117,7 +117,7 @@ class CharacterEngine(ABC):
         Returns:
             Erkannte Emotion, oder NEUTRAL als Fallback.
         """
-        ...
+        pass
 
     @abstractmethod
     def clean_response(self, llm_response: str) -> str:
@@ -130,7 +130,7 @@ class CharacterEngine(ABC):
         Returns:
             Bereinigter Text ohne Tags.
         """
-        ...
+        pass
 
     def get_mood_context(self) -> str | None:
         """
@@ -155,7 +155,7 @@ class CharacterEngine(ABC):
         Returns:
             Pfad zum WAV-File, oder None wenn kein Sample vorhanden.
         """
-        ...
+        pass
 
     @abstractmethod
     def get_sprite_asset(self, emotion: Emotion) -> Path | None:
@@ -168,4 +168,4 @@ class CharacterEngine(ABC):
         Returns:
             Pfad zum Bild, oder None wenn kein Asset vorhanden.
         """
-        ...
+        pass

@@ -106,7 +106,7 @@ class MemoryStore(ABC):
     @abstractmethod
     def add(self, entry: MemoryEntry) -> None:
         """Speichert einen neuen Memory-Eintrag."""
-        ...
+        pass
 
     @abstractmethod
     def get_recent(
@@ -121,7 +121,7 @@ class MemoryStore(ABC):
             n:          Maximale Anzahl Einträge.
             session_id: Wenn gesetzt, nur Einträge dieser Session.
         """
-        ...
+        pass
 
     @abstractmethod
     def search(
@@ -138,7 +138,7 @@ class MemoryStore(ABC):
             k:               Maximale Anzahl Treffer.
             exclude_session: Session-ID die ausgeschlossen werden soll (z.B. aktuelle).
         """
-        ...
+        pass
 
     def get_context(
         self,
@@ -167,9 +167,9 @@ class MemoryStore(ABC):
     @abstractmethod
     def new_session(self) -> str:
         """Erstellt eine neue Session-ID und gibt sie zurück."""
-        ...
+        pass
 
     @abstractmethod
     def clear(self) -> None:
         """Löscht alle gespeicherten Einträge (für Tests / Reset)."""
-        ...
+        pass

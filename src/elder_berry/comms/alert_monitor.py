@@ -13,7 +13,7 @@ Verwendung:
         poll_interval=60,
     )
     monitor.start()
-    ...
+    pass
     monitor.stop()
 """
 

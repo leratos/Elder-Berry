@@ -138,17 +138,17 @@ class MotorController(ABC):
     @abstractmethod
     def drive(self, direction: str, speed: float) -> None:
         """Fährt in die angegebene Richtung."""
-        ...
+        pass
 
     @abstractmethod
     def stop(self) -> None:
         """Stoppt alle Motoren."""
-        ...
+        pass
 
     @abstractmethod
     def get_state(self) -> dict:
         """Gibt aktuellen Motor-Zustand zurück."""
-        ...
+        pass
 
 
 class AvatarDisplay(ABC):
@@ -157,17 +157,17 @@ class AvatarDisplay(ABC):
     @abstractmethod
     def set_emotion(self, emotion: str) -> None:
         """Setzt die angezeigte Emotion."""
-        ...
+        pass
 
     @abstractmethod
     def set_speaking(self, is_speaking: bool) -> None:
         """Aktiviert/deaktiviert Lip-Sync."""
-        ...
+        pass
 
     @abstractmethod
     def get_state(self) -> dict:
         """Gibt aktuellen Avatar-Zustand zurück."""
-        ...
+        pass
 
 
 class SensorManager(ABC):
@@ -176,12 +176,12 @@ class SensorManager(ABC):
     @abstractmethod
     def get_battery(self) -> BatteryStatus:
         """Liest Akku-Status."""
-        ...
+        pass
 
     @abstractmethod
     def get_all(self) -> dict:
         """Liest alle Sensoren."""
-        ...
+        pass
 
 
 # ---------------------------------------------------------------------------
