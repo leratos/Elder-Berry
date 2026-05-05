@@ -228,24 +228,15 @@ module = [
 ]
 strict = true
 
-# --- Phase 77 strict: Plugin-Registry (base.py + registry.py) ---
-# Override-Praezedenz: spezifischer Modulname schlaegt den
-# elder_berry.comms.* Wildcard im Out-of-Scope-Block oben. Die anderen
-# *_commands.py-Module bleiben in Etappe 1 silenced (Option A) -- Manifeste
-# am Datei-Ende werden nicht strict geprueft. Wenn das zu schweigenden
-# Manifest-Bugs fuehrt, switchen wir auf Option B (separate <name>_plugin.py).
-[[tool.mypy.overrides]]
-module = [
-    "elder_berry.comms.commands.base",
-    "elder_berry.comms.commands.registry",
-]
-strict = true
-
-# --- Phase 76b strict: comms/-Module (Tier 1+2) ---
+# --- Phase 76b strict: alle comms/-Module ---
+# base.py + registry.py wurden bereits in Phase 77 (Plugin-Registry)
+# strict gestellt; in 76b folgten die uebrigen 47 Module.
 [[tool.mypy.overrides]]
 module = [
     "elder_berry.comms",                                  # __init__.py
     "elder_berry.comms.commands",                         # __init__.py
+    "elder_berry.comms.commands.base",
+    "elder_berry.comms.commands.registry",
     "elder_berry.comms.alert_monitor",
     "elder_berry.comms.allowed_senders",
     "elder_berry.comms.audio_converter",
