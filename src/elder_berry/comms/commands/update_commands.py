@@ -477,14 +477,33 @@ class UpdateCommandHandler(CommandHandler):
             )
 
         # Pendings sammeln (Reihenfolge: rpi -> tower -> server).
-        actions: list[str] = []
-        for sub in (rpi_result, tower_result, server_result):
-            if sub and sub.pending_confirmation and sub.pending_data:
-                act = sub.pending_data.get("action")
+        pending_subs: list[CommandResult] = [
+            sub
+            for sub in (rpi_result, tower_result, server_result)
+            if sub is not None and sub.pending_confirmation and sub.pending_data
+        ]
+
+        # Genau ein Pending -> direkt durchreichen (kein Sammel-Wrap).
+        # Damit bleiben die Bestand-Pfade ("update alles" wenn nur Server
+        # gepended ist, weil RPi+Tower nicht verbunden) unveraendert.
+        if len(pending_subs) == 1:
+            sub = pending_subs[0]
+            return CommandResult(
+                command="update_all",
+                success=server_result.success,
+                text="\n\n".join(steps),
+                pending_confirmation=True,
+                pending_data=sub.pending_data,
+            )
+
+        # Mehrere Pendings -> Sammelfrage mit restart_all-Action.
+        if len(pending_subs) > 1:
+            actions: list[str] = []
+            for sub in pending_subs:
+                pd = sub.pending_data or {}
+                act = pd.get("action")
                 if isinstance(act, str) and act:
                     actions.append(act)
-
-        if actions:
             return CommandResult(
                 command="update_all",
                 success=server_result.success,

@@ -26,6 +26,7 @@ if TYPE_CHECKING:
     )
     from elder_berry.comms.message_channel import IncomingMessage
     from elder_berry.comms.message_handlers import BridgeMessageHandler
+    from elder_berry.core.tower_agent import TowerAgent
 
 logger = logging.getLogger(__name__)
 
@@ -489,7 +490,7 @@ class ConfirmationHandler:
             msg_server_ts=msg.timestamp,
         )
 
-    def _get_tower_agent(self):
+    def _get_tower_agent(self) -> TowerAgent | None:
         """Holt den TowerAgent ueber den UpdateCommandHandler in remote_commands.
 
         Pfad: BridgeMessageHandler._remote_commands -> _update -> _tower.
@@ -499,11 +500,12 @@ class ConfirmationHandler:
         if rc is not None and hasattr(rc, "_update"):
             tower = getattr(rc._update, "_tower", None)
             if tower is not None:
-                return tower
+                return tower  # type: ignore[no-any-return]
         # Fallback: Test-Fakes setzen evtl. direkt am Parent
-        return getattr(self._p, "_tower", None) or getattr(
+        fallback = getattr(self._p, "_tower", None) or getattr(
             self._p, "_tower_agent", None
         )
+        return fallback  # type: ignore[no-any-return]
 
     async def _restart_tower_via_http(self, msg: IncomingMessage) -> None:
         """POST /system/update?force=true an den Tower (fire-and-forget).
