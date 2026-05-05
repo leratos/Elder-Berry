@@ -119,8 +119,10 @@ class CalendarWatcher:
 
             # poll_interval in 1s-Schritten für sauberes Shutdown
             for _ in range(self._poll_interval):
+                # mypy narrowt self._running im while-Body auf Literal[True];
+                # in der Praxis setzt stop() das Flag aus einem anderen Thread.
                 if not self._running:
-                    break
+                    break  # type: ignore[unreachable]
                 time.sleep(1)
 
     def _check_upcoming(self) -> None:
