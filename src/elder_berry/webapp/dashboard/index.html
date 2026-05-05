@@ -80,7 +80,9 @@
             tower_url: _isServer ? "" : "http://192.168.50.100:8090",
             views: {
                 remote:   ["harmony"],
-                settings: ["system", "settings"],
+                // Phase 77.5: Plugin-Inspector ist diagnose-Funktion,
+                // sitzt deshalb in der Einstellungen-View.
+                settings: ["system", "settings", "plugins"],
                 avatar:   ["avatar"]
             },
             defaultView: "remote"
