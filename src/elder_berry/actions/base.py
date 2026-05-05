@@ -55,6 +55,11 @@ class ActionController(ABC):
         """Klickt an der angegebenen Position (oder aktuelle Position)."""
         ...
 
+    @abstractmethod
+    def scroll(self, amount: int) -> None:
+        """Scrollt das Mausrad. Positiv = hoch, negativ = runter."""
+        ...
+
     # ------------------------------------------------------------------
     # Fenster
     # ------------------------------------------------------------------
