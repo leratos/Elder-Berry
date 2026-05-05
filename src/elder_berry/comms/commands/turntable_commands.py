@@ -58,7 +58,7 @@ class TurntableCommandHandler(CommandHandler):
         return {"drehteller home", "drehteller stopp", "drehteller status"}
 
     @property
-    def patterns(self) -> list[tuple[re.Pattern, str, bool, bool]]:
+    def patterns(self) -> list[tuple[re.Pattern[str], str, bool, bool]]:
         return [
             (ROTATE_BY_PATTERN, "turntable_rotate_by", False, False),
             (ROTATE_TO_PATTERN, "turntable_rotate_to", False, False),
@@ -135,6 +135,8 @@ class TurntableCommandHandler(CommandHandler):
         )
 
     def _cmd_home(self) -> CommandResult:
+        # Caller (execute) filtert "if not self._robot: return".
+        assert self._robot is not None
         try:
             resp = self._robot.home_turntable()
             return CommandResult(
@@ -150,6 +152,7 @@ class TurntableCommandHandler(CommandHandler):
             )
 
     def _cmd_stop(self) -> CommandResult:
+        assert self._robot is not None  # caller filtered
         try:
             resp = self._robot.stop_turntable()
             return CommandResult(
@@ -165,6 +168,7 @@ class TurntableCommandHandler(CommandHandler):
             )
 
     def _cmd_status(self) -> CommandResult:
+        assert self._robot is not None  # caller filtered
         try:
             status = self._robot.turntable_status()
             if not status.get("available"):
@@ -249,6 +253,7 @@ class TurntableCommandHandler(CommandHandler):
         )
 
     def _execute_rotate_by(self, degrees: float) -> CommandResult:
+        assert self._robot is not None  # caller filtered
         try:
             resp = self._robot.rotate_turntable(relative_degrees=degrees)
             return CommandResult(
@@ -264,6 +269,7 @@ class TurntableCommandHandler(CommandHandler):
             )
 
     def _execute_rotate_to(self, degrees: float) -> CommandResult:
+        assert self._robot is not None  # caller filtered
         try:
             resp = self._robot.rotate_turntable(target_degrees=degrees)
             return CommandResult(
