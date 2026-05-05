@@ -210,7 +210,6 @@ ignore_errors = true
 # sie sind durch Phase 77 bereits strict.
 [[tool.mypy.overrides]]
 module = [
-    "elder_berry.comms.alert_monitor",
     "elder_berry.comms.audio_pipeline",
     "elder_berry.comms.bridge",
     "elder_berry.comms.confirmation_handlers",
@@ -273,6 +272,7 @@ strict = true
 module = [
     "elder_berry.comms",                                  # __init__.py
     "elder_berry.comms.commands",                         # __init__.py
+    "elder_berry.comms.alert_monitor",
     "elder_berry.comms.allowed_senders",
     "elder_berry.comms.audio_converter",
     "elder_berry.comms.briefing_scheduler",
