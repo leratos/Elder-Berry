@@ -86,6 +86,10 @@ class WindowsActionController(ActionController):
         logger.debug("click: (%s, %s) button=%s", x, y, button)
         pyautogui.click(x=x, y=y, button=button)
 
+    def scroll(self, amount: int) -> None:
+        logger.debug("scroll: %d", amount)
+        pyautogui.scroll(amount)
+
     # ------------------------------------------------------------------
     # Fenster
     # ------------------------------------------------------------------

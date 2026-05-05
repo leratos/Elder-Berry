@@ -225,6 +225,7 @@ _ACTION_MAP: dict[str, tuple[str, list[str]]] = {
     "hotkey": ("hotkey", ["keys"]),
     "move_mouse": ("move_mouse", ["x", "y"]),
     "click": ("click", []),
+    "scroll": ("scroll", ["amount"]),
     "list_windows": ("list_windows", []),
     "focus_window": ("focus_window", ["title"]),
     "minimize_window": ("minimize_window", ["title"]),

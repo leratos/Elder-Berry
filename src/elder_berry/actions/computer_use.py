@@ -5,12 +5,17 @@ from __future__ import annotations
 import base64
 import io
 import logging
+import tempfile
 import time
 from dataclasses import dataclass
 from pathlib import Path
+from typing import TYPE_CHECKING, Any
 
 from .base import ActionController
 from ..llm.anthropic_client import AnthropicClient, ComputerUseAction
+
+if TYPE_CHECKING:
+    from ..core.tower_agent import TowerAgent
 
 logger = logging.getLogger(__name__)
 
@@ -56,18 +61,22 @@ class ComputerUseController:
     Orchestriert Vision-gesteuerte PC-Bedienung.
 
     Flow:
-    1. Screenshot aufnehmen (mss)
+    1. Screenshot aufnehmen (mss lokal oder via TowerAgent)
     2. Optional resizen (Pillow)
     3. An Anthropic Computer Use API senden
     4. Strukturierte Aktion empfangen
     5. DPI-kompensierte Koordinaten berechnen
-    6. Aktion via ActionController ausführen
+    6. Aktion via ActionController (lokal) oder TowerAgent (remote) ausführen
     7. Verification-Screenshot aufnehmen
 
     Args:
         anthropic_client: AnthropicClient mit Computer-Use-Fähigkeit.
         controller: ActionController für die Aktionsausführung.
         monitor_index: Index des Monitors (1=primär, 2=zweiter, ...).
+        tower_agent: Optionaler TowerAgent als Remote-Fallback. Wird genutzt
+            wenn lokales mss fehlt (z.B. Saleria läuft auf Linux-Server, der
+            Tower auf Windows). Screenshot + Aktion gehen dann via HTTP an
+            den Tower.
     """
 
     def __init__(
@@ -75,10 +84,17 @@ class ComputerUseController:
         anthropic_client: AnthropicClient,
         controller: ActionController,
         monitor_index: int = 1,
+        tower_agent: TowerAgent | None = None,
     ) -> None:
         self._anthropic = anthropic_client
         self._controller = controller
         self._monitor_index = monitor_index
+        self._tower_agent = tower_agent
+
+    @property
+    def _use_remote(self) -> bool:
+        """True wenn der Flow über den Tower laufen muss (kein lokales mss)."""
+        return not _MSS_AVAILABLE and self._tower_agent is not None
 
     @property
     def monitor_index(self) -> int:
@@ -89,24 +105,45 @@ class ComputerUseController:
         self._monitor_index = value
 
     def get_available_monitors(self) -> list[dict]:
-        """Gibt eine Liste verfügbarer Monitore zurück."""
-        if not _MSS_AVAILABLE:
-            return []
-        with mss.mss() as sct:
-            monitors = []
-            for i, mon in enumerate(sct.monitors):
-                if i == 0:
-                    continue  # Index 0 = virtueller Gesamtbildschirm
-                monitors.append(
-                    {
-                        "index": i,
-                        "width": mon["width"],
-                        "height": mon["height"],
-                        "left": mon["left"],
-                        "top": mon["top"],
-                    }
+        """Gibt eine Liste verfügbarer Monitore zurück.
+
+        Priorität: lokales mss → TowerAgent (HTTP /monitors) → leere Liste.
+        """
+        if _MSS_AVAILABLE:
+            with mss.mss() as sct:
+                monitors = []
+                for i, mon in enumerate(sct.monitors):
+                    if i == 0:
+                        continue  # Index 0 = virtueller Gesamtbildschirm
+                    monitors.append(
+                        {
+                            "index": i,
+                            "width": mon["width"],
+                            "height": mon["height"],
+                            "left": mon["left"],
+                            "top": mon["top"],
+                        }
+                    )
+                return monitors
+
+        if self._tower_agent is not None:
+            try:
+                import httpx
+
+                r = httpx.get(
+                    f"http://{self._tower_agent.host}/monitors",
+                    timeout=5.0,
+                    headers=self._tower_agent._auth_headers(),
                 )
-            return monitors
+                r.raise_for_status()
+                data = r.json()
+                monitors = data.get("monitors", []) or []
+                return [m for m in monitors if isinstance(m, dict)]
+            except Exception as e:
+                logger.warning("Monitor-Abfrage via Tower fehlgeschlagen: %s", e)
+                return []
+
+        return []
 
     def execute_instruction(self, instruction: str) -> ComputerUseResult:
         """
@@ -118,17 +155,25 @@ class ComputerUseController:
         Returns:
             ComputerUseResult mit Aktion, Erfolg und optionalem Verification-Screenshot.
         """
-        if not _MSS_AVAILABLE:
+        if not _MSS_AVAILABLE and self._tower_agent is None:
             return ComputerUseResult(
                 action=ComputerUseAction(action="none"),
                 success=False,
-                message="mss nicht installiert (pip install mss).",
+                message=(
+                    "Computer Use nicht möglich: weder lokales mss noch "
+                    "TowerAgent verfügbar."
+                ),
                 error="mss_missing",
             )
 
+        remote = self._use_remote
+
         # 1. Screenshot aufnehmen
         try:
-            screenshot_b64, display_w, display_h = self._capture_screenshot()
+            if remote:
+                screenshot_b64, display_w, display_h = self._capture_screenshot_remote()
+            else:
+                screenshot_b64, display_w, display_h = self._capture_screenshot()
         except Exception as e:
             logger.error("Screenshot fehlgeschlagen: %s", e)
             return ComputerUseResult(
@@ -158,7 +203,10 @@ class ComputerUseController:
 
         # 3. Aktion ausführen
         try:
-            self._execute_action(cu_action, display_w, display_h)
+            if remote:
+                self._execute_action_remote(cu_action, display_w, display_h)
+            else:
+                self._execute_action(cu_action, display_w, display_h)
         except Exception as e:
             logger.error("Aktionsausführung fehlgeschlagen: %s", e)
             return ComputerUseResult(
@@ -170,7 +218,10 @@ class ComputerUseController:
 
         # 4. Verification-Screenshot
         time.sleep(VERIFICATION_DELAY)
-        verification_path = self._take_verification_screenshot()
+        if remote:
+            verification_path = self._take_verification_screenshot_remote()
+        else:
+            verification_path = self._take_verification_screenshot()
 
         action_desc = self._describe_action(cu_action)
         return ComputerUseResult(
@@ -314,8 +365,6 @@ class ComputerUseController:
     def _take_verification_screenshot(self) -> Path | None:
         """Nimmt einen Verification-Screenshot auf und gibt den Pfad zurück."""
         try:
-            import tempfile
-
             with mss.mss() as sct:
                 monitors = sct.monitors
                 if self._monitor_index >= len(monitors):
@@ -333,6 +382,200 @@ class ComputerUseController:
                 return tmp_path
         except Exception as e:
             logger.error("Verification-Screenshot fehlgeschlagen: %s", e)
+            return None
+
+    # ------------------------------------------------------------------
+    # Remote-Pfad: Screenshot + Aktion via TowerAgent (sync HTTP)
+    # ------------------------------------------------------------------
+
+    def _tower_get(self, path: str, timeout: float = 10.0) -> bytes:
+        """GET an den Tower-Server. Gibt die Response-Bytes zurück.
+
+        Raises:
+            RuntimeError: Wenn TowerAgent fehlt oder HTTP-Fehler auftritt.
+        """
+        if self._tower_agent is None:
+            raise RuntimeError("TowerAgent nicht konfiguriert.")
+        import httpx
+
+        r = httpx.get(
+            f"http://{self._tower_agent.host}{path}",
+            timeout=timeout,
+            headers=self._tower_agent._auth_headers(),
+        )
+        r.raise_for_status()
+        return r.content
+
+    def _tower_post_action(
+        self,
+        action: str,
+        params: dict[str, Any] | None = None,
+        timeout: float = 10.0,
+    ) -> None:
+        """POST /action am Tower. Wirft bei HTTP-Fehlern."""
+        if self._tower_agent is None:
+            raise RuntimeError("TowerAgent nicht konfiguriert.")
+        import httpx
+
+        payload = {"action": action, "params": params or {}}
+        r = httpx.post(
+            f"http://{self._tower_agent.host}/action",
+            json=payload,
+            timeout=timeout,
+            headers=self._tower_agent._auth_headers(),
+        )
+        r.raise_for_status()
+
+    def _capture_screenshot_remote(self) -> tuple[str, int, int]:
+        """Holt einen Screenshot vom Tower und gibt (b64, display_w, display_h) zurück."""
+        png_bytes = self._tower_get("/screenshot")
+
+        if not _PIL_AVAILABLE:
+            # Ohne Pillow können wir nicht resizen / Originalgröße auslesen.
+            # Anthropic akzeptiert das Bild trotzdem; display-Dims müssen wir
+            # über /monitors holen.
+            phys_w, phys_h, _, _ = self._get_monitor_geometry_remote()
+            b64 = base64.b64encode(png_bytes).decode("ascii")
+            return b64, phys_w, phys_h
+
+        img = Image.open(io.BytesIO(png_bytes))
+        raw_w, raw_h = img.size
+        if raw_w > MAX_SCREENSHOT_WIDTH:
+            scale = MAX_SCREENSHOT_WIDTH / raw_w
+            new_h = int(raw_h * scale)
+            img = img.resize((MAX_SCREENSHOT_WIDTH, new_h), Image.LANCZOS)
+            buf = io.BytesIO()
+            img.save(buf, format="PNG")
+            png_bytes = buf.getvalue()
+            display_w = MAX_SCREENSHOT_WIDTH
+            display_h = new_h
+        else:
+            display_w = raw_w
+            display_h = raw_h
+
+        b64 = base64.b64encode(png_bytes).decode("ascii")
+        return b64, display_w, display_h
+
+    def _get_monitor_geometry_remote(self) -> tuple[int, int, int, int]:
+        """Holt (width, height, left, top) des aktiven Monitors vom Tower."""
+        if self._tower_agent is None:
+            raise RuntimeError("TowerAgent nicht konfiguriert.")
+        import httpx
+
+        r = httpx.get(
+            f"http://{self._tower_agent.host}/monitors",
+            timeout=5.0,
+            headers=self._tower_agent._auth_headers(),
+        )
+        r.raise_for_status()
+        data = r.json()
+        monitors = data.get("monitors", []) or []
+        selected = data.get("selected", self._monitor_index)
+        for mon in monitors:
+            if mon.get("index") == selected:
+                return (
+                    int(mon["width"]),
+                    int(mon["height"]),
+                    int(mon["left"]),
+                    int(mon["top"]),
+                )
+        # Fallback: erster Monitor
+        if monitors:
+            mon = monitors[0]
+            return (
+                int(mon["width"]),
+                int(mon["height"]),
+                int(mon.get("left", 0)),
+                int(mon.get("top", 0)),
+            )
+        raise RuntimeError("Tower meldet keine Monitore.")
+
+    def _execute_action_remote(
+        self,
+        action: ComputerUseAction,
+        display_w: int,
+        display_h: int,
+    ) -> None:
+        """Führt die Aktion remote via TowerAgent aus.
+
+        Spiegelt _execute_action(), nutzt aber statt des lokalen Controllers
+        HTTP-Calls an /action des Tower-Servers.
+        """
+        phys_w, phys_h, offset_x, offset_y = self._get_monitor_geometry_remote()
+
+        def _map_coord(coord: tuple[int, int]) -> tuple[int, int]:
+            api_x, api_y = coord
+            scale_x = phys_w / display_w
+            scale_y = phys_h / display_h
+            return int(api_x * scale_x) + offset_x, int(api_y * scale_y) + offset_y
+
+        name = action.action
+
+        if name == "screenshot":
+            return
+
+        if name in ("left_click", "right_click", "middle_click", "double_click"):
+            if action.coordinate is None:
+                raise ValueError(f"Aktion '{name}' benötigt Koordinaten.")
+            px, py = _map_coord(action.coordinate)
+            button = "left"
+            if name == "right_click":
+                button = "right"
+            elif name == "middle_click":
+                button = "middle"
+            params = {"x": px, "y": py, "button": button}
+            self._tower_post_action("click", params)
+            if name == "double_click":
+                time.sleep(0.05)
+                self._tower_post_action("click", params)
+
+        elif name == "type":
+            if not action.text:
+                raise ValueError("Aktion 'type' benötigt Text.")
+            self._tower_post_action("type_text", {"text": action.text})
+
+        elif name == "key":
+            if not action.text:
+                raise ValueError("Aktion 'key' benötigt einen Tasten-String.")
+            keys = [k.strip() for k in action.text.split("+")]
+            if len(keys) > 1:
+                self._tower_post_action("hotkey", {"keys": keys})
+            else:
+                self._tower_post_action("press_key", {"key": keys[0]})
+
+        elif name == "scroll":
+            if action.coordinate is None:
+                raise ValueError("Aktion 'scroll' benötigt Koordinaten.")
+            px, py = _map_coord(action.coordinate)
+            self._tower_post_action("move_mouse", {"x": px, "y": py})
+            amount = action.scroll_amount or 3
+            if action.scroll_direction in ("down", "right"):
+                amount = -amount
+            self._tower_post_action("scroll", {"amount": amount})
+
+        elif name == "mouse_move":
+            if action.coordinate is None:
+                raise ValueError("Aktion 'mouse_move' benötigt Koordinaten.")
+            px, py = _map_coord(action.coordinate)
+            self._tower_post_action("move_mouse", {"x": px, "y": py})
+
+        else:
+            logger.warning("Unbekannte Computer-Use-Aktion (remote): %s", name)
+
+    def _take_verification_screenshot_remote(self) -> Path | None:
+        """Holt einen Verification-Screenshot vom Tower und speichert ihn als PNG."""
+        try:
+            png_bytes = self._tower_get("/screenshot")
+            with tempfile.NamedTemporaryFile(
+                suffix=".png",
+                prefix="cu_verify_tower_",
+                delete=False,
+            ) as tmp:
+                tmp_path = Path(tmp.name)
+                tmp.write(png_bytes)
+            return tmp_path
+        except Exception as e:
+            logger.error("Verification-Screenshot via Tower fehlgeschlagen: %s", e)
             return None
 
     @staticmethod

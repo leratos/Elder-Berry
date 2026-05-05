@@ -982,8 +982,14 @@ def _init_productivity_services(secrets, default_user_id):
     return svc
 
 
-def _init_context_and_tools(secrets, assistant, svc):
-    """Initialisiert ContextEnricher, CalendarWatcher und Werkzeuge."""
+def _init_context_and_tools(secrets, assistant, svc, tower_agent=None):
+    """Initialisiert ContextEnricher, CalendarWatcher und Werkzeuge.
+
+    Args:
+        tower_agent: Optionaler TowerAgent. Wird in den ComputerUseController
+            gereicht, damit Computer Use auch vom Linux-Server aus über den
+            Tower laufen kann (Screenshot + Aktion via HTTP).
+    """
     default_user_id = (
         (secrets.get_or_none("matrix_allowed_senders") or "").split(",")[0].strip()
     )
@@ -1110,10 +1116,13 @@ def _init_context_and_tools(secrets, assistant, svc):
                 tools["computer_use"] = ComputerUseController(
                     anthropic_client=cu_client,
                     controller=assistant._controller,
+                    tower_agent=tower_agent,
                 )
+                mode = "Tower-Remote" if tower_agent is not None else "lokal"
                 logger.info(
-                    "ComputerUseController: aktiv (Monitor %d)",
+                    "ComputerUseController: aktiv (Monitor %d, %s)",
                     tools["computer_use"].monitor_index,
+                    mode,
                 )
             else:
                 logger.info("ComputerUseController: inaktiv (ANTHROPIC_API_KEY fehlt)")
@@ -1178,11 +1187,13 @@ def run_matrix(assistant, stt=None, avatar=None, audio_converter=None, robot=Non
     # --- 2. Produktivitäts-Services ---
     svc = _init_productivity_services(secrets, default_user_id)
 
-    # --- 3. Kontext & Werkzeuge ---
-    tools = _init_context_and_tools(secrets, assistant, svc)
-
     # --- Tower-Agent (SSH-Tunnel zum Tower) ---
+    # Vorgezogen: ComputerUseController in _init_context_and_tools bekommt ihn
+    # als Remote-Fallback (Screenshot + Aktion via HTTP an den Tower).
     tower_agent = _init_tower_agent(secrets)
+
+    # --- 3. Kontext & Werkzeuge ---
+    tools = _init_context_and_tools(secrets, assistant, svc, tower_agent=tower_agent)
 
     # --- 4. RemoteCommandHandler ---
     remote = RemoteCommandHandler(
