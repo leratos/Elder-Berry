@@ -639,7 +639,13 @@ class MatrixChannel(MessageChannel):
             async with aiohttp.ClientSession() as session:
                 async with session.get(url, headers=headers) as resp:
                     if resp.status == 200:
-                        return await resp.read()
+                        # CI hat aiohttp nicht installiert (kein matrix-Install)
+                        # -> resp.read() ist Any. Tower hat aiohttp installiert
+                        # mit py.typed -> resp.read() ist bytes, der Cast wird
+                        # redundant. Dual-Ignore deckt beide Plattformen ab
+                        # (Pattern aus Phase 76c b8ecbc0).
+                        data = await resp.read()
+                        return cast(bytes, data)  # type: ignore[redundant-cast,unused-ignore]
                     logger.debug(
                         "Authentifizierter Download HTTP %d, Fallback auf nio",
                         resp.status,

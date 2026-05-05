@@ -98,8 +98,8 @@ jobs:
           python -m pip install --upgrade pip
           pip install -e ".[dev,tools,nextcloud,web,documents]"
 
-      - name: Type-check core/+tools/+web/
-        run: mypy src/elder_berry/core src/elder_berry/tools src/elder_berry/web
+      - name: Type-check core/+tools/+web/+comms/
+        run: mypy src/elder_berry/core src/elder_berry/tools src/elder_berry/web src/elder_berry/comms
 
   security:
     runs-on: ubuntu-latest

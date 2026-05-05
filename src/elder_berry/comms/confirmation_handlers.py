@@ -728,10 +728,13 @@ class ConfirmationHandler:
 
             combined_text = "\n\n".join(all_texts)
 
-            # SimpleNamespace als Fake-Result für _handle_llm_enrichment
-            from types import SimpleNamespace
+            # Echtes CommandResult statt SimpleNamespace -- 76b strict-Migration
+            # toleriert keine struktur-Duck-Typing-Fakes mehr.
+            from elder_berry.comms.commands.base import CommandResult
 
-            fake_result = SimpleNamespace(
+            fake_result = CommandResult(
+                command="attachment_summary",
+                success=True,
                 text="📄 PDF-Zusammenfassung:",
                 history_text=combined_text,
             )

@@ -166,6 +166,9 @@ module = [
     "aiofiles.*",           # types-aiofiles existiert, aber wir konsumieren
                             # aiofiles ueber nio-aehnliche async-Generatoren
                             # -- Stub-Wert gering, Stub-Pflege hoch.
+    "aiohttp.*",            # transitive ueber matrix-nio; auf CI nicht
+                            # installiert (kein matrix-Gruppen-Install im
+                            # typecheck-Job). Stubs uebersteuert per cast.
     "keyring.*",            # types-keyring existiert nicht (Stand 2026-04, R5)
     "sounddevice.*",
     # Phase 76c: tools/-Clients ohne PEP-561-Stubs.
@@ -207,19 +210,6 @@ module = [
 follow_imports = "silent"
 ignore_errors = true
 
-# --- Phase 76b WIP: noch nicht-strict comms/-Module ---
-# Liste schrumpft mit jedem Tier-Commit. Am Ende von 76b leer und
-# der Block wird geloescht. base.py + registry.py stehen NICHT hier --
-# sie sind durch Phase 77 bereits strict.
-[[tool.mypy.overrides]]
-module = [
-    "elder_berry.comms.message_handlers",
-    "elder_berry.comms.commands.contact_commands",
-    "elder_berry.comms.commands.todo_commands",
-]
-follow_imports = "silent"
-ignore_errors = true
-
 # --- Phase 76 strict: alle core/-Module ---
 [[tool.mypy.overrides]]
 module = [
@@ -241,24 +231,15 @@ module = [
 ]
 strict = true
 
-# --- Phase 77 strict: Plugin-Registry (base.py + registry.py) ---
-# Override-Praezedenz: spezifischer Modulname schlaegt den
-# elder_berry.comms.* Wildcard im Out-of-Scope-Block oben. Die anderen
-# *_commands.py-Module bleiben in Etappe 1 silenced (Option A) -- Manifeste
-# am Datei-Ende werden nicht strict geprueft. Wenn das zu schweigenden
-# Manifest-Bugs fuehrt, switchen wir auf Option B (separate <name>_plugin.py).
-[[tool.mypy.overrides]]
-module = [
-    "elder_berry.comms.commands.base",
-    "elder_berry.comms.commands.registry",
-]
-strict = true
-
-# --- Phase 76b strict: comms/-Module (Tier 1+2) ---
+# --- Phase 76b strict: alle comms/-Module ---
+# base.py + registry.py wurden bereits in Phase 77 (Plugin-Registry)
+# strict gestellt; in 76b folgten die uebrigen 47 Module.
 [[tool.mypy.overrides]]
 module = [
     "elder_berry.comms",                                  # __init__.py
     "elder_berry.comms.commands",                         # __init__.py
+    "elder_berry.comms.commands.base",
+    "elder_berry.comms.commands.registry",
     "elder_berry.comms.alert_monitor",
     "elder_berry.comms.allowed_senders",
     "elder_berry.comms.audio_converter",
@@ -271,6 +252,7 @@ module = [
     "elder_berry.comms.confirmation_handlers",
     "elder_berry.comms.matrix_channel",
     "elder_berry.comms.message_channel",
+    "elder_berry.comms.message_handlers",
     "elder_berry.comms.pending_confirmation",
     "elder_berry.comms.reminder_scheduler",
     "elder_berry.comms.remote_commands",
@@ -281,6 +263,7 @@ module = [
     "elder_berry.comms.commands.camera_commands",
     "elder_berry.comms.commands.cloud_commands",
     "elder_berry.comms.commands.cmd_utils",
+    "elder_berry.comms.commands.contact_commands",
     "elder_berry.comms.commands.docker_commands",
     "elder_berry.comms.commands.file_commands",
     "elder_berry.comms.commands.filing_commands",
@@ -295,6 +278,7 @@ module = [
     "elder_berry.comms.commands.route_commands",
     "elder_berry.comms.commands.selfcheck_commands",
     "elder_berry.comms.commands.system_commands",
+    "elder_berry.comms.commands.todo_commands",
     "elder_berry.comms.commands.turntable_commands",
     "elder_berry.comms.commands.update_commands",
     "elder_berry.comms.commands.weather_commands",
