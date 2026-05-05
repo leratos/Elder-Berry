@@ -215,7 +215,6 @@ ignore_errors = true
 module = [
     "elder_berry.comms.audio_pipeline",
     "elder_berry.comms.bridge",
-    "elder_berry.comms.confirmation_handlers",
     "elder_berry.comms.message_handlers",
     "elder_berry.comms.commands.contact_commands",
     "elder_berry.comms.commands.todo_commands",
@@ -269,6 +268,7 @@ module = [
     "elder_berry.comms.calendar_watcher",
     "elder_berry.comms.chat_history",
     "elder_berry.comms.claude_agent",
+    "elder_berry.comms.confirmation_handlers",
     "elder_berry.comms.matrix_channel",
     "elder_berry.comms.message_channel",
     "elder_berry.comms.pending_confirmation",
