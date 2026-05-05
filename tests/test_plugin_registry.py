@@ -28,7 +28,8 @@ from elder_berry.comms.commands.registry import (
 )
 
 
-# Etappe 2: alle 23 Builtin-Plugins muessen geladen werden.
+# Etappe 2: alle Builtin-Plugins muessen geladen werden.
+# Phase 77.5: PluginsCommandHandler dazu -> 24 Plugins.
 EXPECTED_PLUGIN_NAMES = {
     "system",
     "weather",
@@ -52,6 +53,7 @@ EXPECTED_PLUGIN_NAMES = {
     "contact",
     "todo",
     "route",
+    "plugins",
     "advanced",
 }
 
@@ -232,14 +234,15 @@ def test_remote_command_handler_constructs_with_explicit_ctx() -> None:
     )
     handler = RemoteCommandHandler(ctx=ctx)
     handler_types = {type(h).__name__ for h in handler._handlers}
-    # Alle 23 Handler-Klassen muessen drin sein
+    # Phase 77.5: 24 Handler (PluginsCommandHandler dazu).
     assert "WeatherCommandHandler" in handler_types
     assert "NoteCommandHandler" in handler_types
     assert "GitCommandHandler" in handler_types
     assert "ContactCommandHandler" in handler_types
     assert "TodoCommandHandler" in handler_types
     assert "RouteCommandHandler" in handler_types
-    assert len(handler._handlers) == 23
+    assert "PluginsCommandHandler" in handler_types
+    assert len(handler._handlers) == 24
 
 
 def test_handler_order_matches_pre_plugin_layout() -> None:
@@ -281,6 +284,9 @@ def test_handler_order_matches_pre_plugin_layout() -> None:
         "ContactCommandHandler",
         "TodoCommandHandler",
         "RouteCommandHandler",
+        # Phase 77.5: PluginsCommandHandler bei priority=80, nach
+        # RouteCommandHandler (76) und vor AdvancedCommandHandler (99).
+        "PluginsCommandHandler",
         "AdvancedCommandHandler",
     ]
     actual = [type(h).__name__ for h in handler._handlers]
