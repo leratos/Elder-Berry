@@ -89,7 +89,7 @@ class HarmonyCommandHandler(CommandHandler):
         return set()
 
     @property
-    def patterns(self) -> list[tuple[re.Pattern, str, bool, bool]]:
+    def patterns(self) -> list[tuple[re.Pattern[str], str, bool, bool]]:
         return [
             (ACTIVITY_ON_PATTERN, "harmony_activity_on", False, False),
             (ALL_OFF_PATTERN, "harmony_all_off", False, False),
@@ -195,6 +195,8 @@ class HarmonyCommandHandler(CommandHandler):
     # -- Commands ---------------------------------------------------------- #
 
     def _cmd_activity_on(self, raw_text: str) -> CommandResult:
+        # Caller (execute) filtert "if not self._robot: return".
+        assert self._robot is not None
         normalized = raw_text.strip().lower()
         match = ACTIVITY_ON_PATTERN.match(normalized)
         if not match:
@@ -242,6 +244,7 @@ class HarmonyCommandHandler(CommandHandler):
             )
 
     def _cmd_all_off(self) -> CommandResult:
+        assert self._robot is not None  # caller filtered
         try:
             success = self._robot.harmony_power_off()
             if success:
@@ -263,6 +266,7 @@ class HarmonyCommandHandler(CommandHandler):
             )
 
     def _cmd_volume(self, command: str, label: str) -> CommandResult:
+        assert self._robot is not None  # caller filtered
         try:
             success = self._robot.harmony_send_command(
                 _VOLUME_DEVICE,
@@ -287,6 +291,7 @@ class HarmonyCommandHandler(CommandHandler):
             )
 
     def _cmd_current(self) -> CommandResult:
+        assert self._robot is not None  # caller filtered
         try:
             status = self._robot.harmony_status()
             activity = status.get("current_activity")
@@ -316,6 +321,7 @@ class HarmonyCommandHandler(CommandHandler):
             )
 
     def _cmd_list_activities(self) -> CommandResult:
+        assert self._robot is not None  # caller filtered
         try:
             config = self._robot.harmony_config()
             activities = config.get("activities", [])
@@ -339,6 +345,7 @@ class HarmonyCommandHandler(CommandHandler):
             )
 
     def _cmd_list_devices(self) -> CommandResult:
+        assert self._robot is not None  # caller filtered
         try:
             config = self._robot.harmony_config()
             devices = config.get("devices", [])
@@ -362,6 +369,7 @@ class HarmonyCommandHandler(CommandHandler):
             )
 
     def _cmd_list_commands(self, raw_text: str) -> CommandResult:
+        assert self._robot is not None  # caller filtered
         normalized = raw_text.strip().lower()
         match = LIST_COMMANDS_PATTERN.match(normalized)
         if not match:
@@ -401,6 +409,7 @@ class HarmonyCommandHandler(CommandHandler):
         )
 
     def _cmd_scene_start(self, raw_text: str) -> CommandResult:
+        assert self._robot is not None  # caller filtered
         # Originaltext fuer Szenennamen (case-sensitiv), Pattern auf lowercase
         match = SCENE_START_PATTERN.match(raw_text.strip())
         if not match:
@@ -436,6 +445,7 @@ class HarmonyCommandHandler(CommandHandler):
             )
 
     def _cmd_scene_list(self) -> CommandResult:
+        assert self._robot is not None  # caller filtered
         try:
             scenes = self._robot.harmony_scenes()
             if not scenes:
