@@ -585,6 +585,39 @@ def _init_stt_router(event_loop=None):
 # ---------------------------------------------------------------------------
 
 
+def _wait_for_port_free(host: str, port: int, timeout: float = 15.0) -> None:
+    """Wartet, bis ``host:port`` nicht mehr von einem anderen Prozess belegt ist.
+
+    Hintergrund: Beim Self-Respawn nach `update tower` startet der neue
+    Prozess, waehrend der alte uvicorn noch ~1-2 s laeuft und Port 8090
+    haelt. Ohne Wait knallt uvicorn beim Bind. Beim *normalen* Erststart
+    (kein Vorgaenger) returnt der ``connect`` sofort mit
+    ConnectionRefused -- der Wait ist dann unmerklich (~1 ms).
+
+    Loggt eine Warnung, wenn der Port nach ``timeout`` Sekunden noch
+    belegt ist; uvicorn versucht den Bind dann trotzdem.
+    """
+    import socket as _socket
+    import time as _time
+
+    deadline = _time.monotonic() + timeout
+    while _time.monotonic() < deadline:
+        with _socket.socket(_socket.AF_INET, _socket.SOCK_STREAM) as s:
+            s.settimeout(0.5)
+            try:
+                s.connect((host, port))
+            except (OSError, ConnectionRefusedError):
+                # Port ist frei -- frueh raus
+                return
+        _time.sleep(0.5)
+    logger.warning(
+        "Port %d:%s nach %.0fs noch belegt -- versuche Bind trotzdem.",
+        port,
+        host,
+        timeout,
+    )
+
+
 def run_agent(port: int = 8090):
     """Agent-Modus: Startet nur den TowerServer (FastAPI) ohne Bot/LLM.
 
@@ -649,6 +682,12 @@ def run_agent(port: int = 8090):
             tower_bind,
             port,
         )
+
+    # Self-Respawn-Race: nach Tower-Update startet der neue Prozess,
+    # waehrend der alte uvicorn noch Port 8090 haelt. Wir warten kurz.
+    _probe_host = "127.0.0.1" if tower_bind in ("0.0.0.0", "::") else tower_bind
+    _wait_for_port_free(_probe_host, port)
+
     uvicorn.run(
         "tower.tower_server:app",
         host=tower_bind,

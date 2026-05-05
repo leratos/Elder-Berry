@@ -616,69 +616,44 @@ async def screenshot():
 _PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
 
-@app.post("/system/update")
-async def system_update():
-    """Git pull + pip install.  Beendet den Prozess danach mit exit(1),
-    damit der Task-Scheduler ihn mit neuem Code neu startet."""
+def _spawn_respawn_child() -> None:
+    """Spawnt einen detached Child-Prozess mit gleicher Python-Invokation.
+
+    Hintergrund: Aufgabenplaner-„Restart on failure" greift nur bei
+    Start-Fehlern, nicht bei non-zero Exit eines erfolgreich gestarteten
+    Prozesses. Wir koennen uns also nicht darauf verlassen -- der
+    aktuelle Prozess startet seinen Nachfolger selbst, bevor er sich
+    beendet. Child laeuft DETACHED, ueberlebt den Parent-Exit.
+
+    Der Child-Prozess wartet in ``run_agent`` aktiv darauf, dass Port 8090
+    frei wird (siehe ``scripts/start_saleria.py``), bevor uvicorn bindet.
+    """
     import subprocess
-    import sys
-    import threading
 
-    cwd = str(_PROJECT_ROOT)
-    steps: list[str] = []
+    creationflags = 0
+    if sys.platform == "win32":
+        DETACHED_PROCESS = 0x00000008
+        CREATE_NEW_PROCESS_GROUP = 0x00000200
+        creationflags = DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP
 
-    # 1. git fetch
-    try:
-        r = subprocess.run(
-            ["git", "fetch", "origin"],
-            capture_output=True,
-            text=True,
-            timeout=30,
-            cwd=cwd,
-        )
-        if r.returncode != 0:
-            logger.warning("Git Fetch fehlgeschlagen: stderr=%s", r.stderr)
-            return {"success": False, "message": "Git Fetch fehlgeschlagen."}
-    except Exception:
-        logger.exception("Git Fetch fehlgeschlagen")
-        return {"success": False, "message": "Git Fetch fehlgeschlagen."}
+    logger.info(
+        "Tower respawn: spawne Child %s %s (cwd=%s)",
+        sys.executable,
+        sys.argv,
+        os.getcwd(),
+    )
+    subprocess.Popen(
+        [sys.executable, *sys.argv],
+        cwd=os.getcwd(),
+        creationflags=creationflags,
+        close_fds=True,
+    )
 
-    # 2. Commits behind?
-    try:
-        r = subprocess.run(
-            ["git", "rev-list", "--count", "HEAD..@{u}"],
-            capture_output=True,
-            text=True,
-            timeout=10,
-            cwd=cwd,
-        )
-        behind = int(r.stdout.strip()) if r.returncode == 0 else 0
-    except Exception:
-        behind = 0
 
-    if behind == 0:
-        return {"success": True, "message": "Alles aktuell -- kein Update noetig."}
+def _run_pip_install(cwd: str) -> tuple[bool, str]:
+    """pip install -e .[windows,...] -- Rueckgabe: (ok, kurzer-Status)."""
+    import subprocess
 
-    steps.append(f"{behind} neue(r) Commit(s)")
-
-    # 3. git pull --ff-only
-    try:
-        r = subprocess.run(
-            ["git", "pull", "--ff-only"],
-            capture_output=True,
-            text=True,
-            timeout=60,
-            cwd=cwd,
-        )
-        if r.returncode != 0:
-            logger.warning("Git Pull fehlgeschlagen: stderr=%s", r.stderr)
-            return {"success": False, "message": "Git Pull fehlgeschlagen."}
-        steps.append("Code aktualisiert")
-    except Exception:
-        logger.exception("Git Pull fehlgeschlagen")
-        return {"success": False, "message": "Git Pull fehlgeschlagen."}
-
-    # 4. pip install (Windows Tower extras)
     try:
         r = subprocess.run(
             [
@@ -696,27 +671,122 @@ async def system_update():
             cwd=cwd,
         )
         if r.returncode == 0:
-            steps.append("Dependencies installiert")
-        else:
-            logger.warning("pip install Warnung: stderr=%s", r.stderr[:500])
-            steps.append("pip-Installation mit Warnung beendet")
+            return True, "Dependencies installiert"
+        logger.warning("pip install Warnung: stderr=%s", r.stderr[:500])
+        return False, "pip-Installation mit Warnung beendet"
     except Exception:
         logger.exception("pip install fehlgeschlagen")
-        steps.append("pip-Installation fehlgeschlagen")
+        return False, "pip-Installation fehlgeschlagen"
 
-    # 5. Verzögerter Exit – Response geht noch raus, dann beendet sich
-    #    der Prozess. Task-Scheduler startet ihn automatisch neu.
-    def _delayed_exit():
+
+@app.post("/system/update")
+async def system_update(force: bool = False):
+    """Git pull + pip install + Self-Respawn.
+
+    Self-Respawn (statt Aufgabenplaner-Restart) -- der aktuelle Prozess
+    spawnt seinen Nachfolger und beendet sich danach mit Exit-Code 0.
+    Der Aufgabenplaner sieht „Task completed", muss aber gar nichts tun.
+
+    Query-Param ``force=true``: Restart-Pfad auch bei ``behind == 0``
+    durchlaufen (ueberspringt git pull + pip, geht direkt zum Respawn).
+    Wird vom Server-Bot benutzt, wenn der User auf die „trotzdem
+    neustarten?"-Sammelfrage mit „ja" antwortet.
+    """
+    import subprocess
+    import threading
+
+    cwd = str(_PROJECT_ROOT)
+    steps: list[str] = []
+
+    # --- 1. git fetch ---
+    try:
+        r = subprocess.run(
+            ["git", "fetch", "origin"],
+            capture_output=True,
+            text=True,
+            timeout=30,
+            cwd=cwd,
+        )
+        if r.returncode != 0:
+            logger.warning("Git Fetch fehlgeschlagen: stderr=%s", r.stderr)
+            return {"success": False, "message": "Git Fetch fehlgeschlagen."}
+    except Exception:
+        logger.exception("Git Fetch fehlgeschlagen")
+        return {"success": False, "message": "Git Fetch fehlgeschlagen."}
+
+    # --- 2. Commits behind? ---
+    try:
+        r = subprocess.run(
+            ["git", "rev-list", "--count", "HEAD..@{u}"],
+            capture_output=True,
+            text=True,
+            timeout=10,
+            cwd=cwd,
+        )
+        behind = int(r.stdout.strip()) if r.returncode == 0 else 0
+    except Exception:
+        behind = 0
+
+    # --- 3a. Lokal aktuell + nicht erzwungen -> Frage ueber up_to_date-Flag ---
+    if behind == 0 and not force:
+        return {
+            "success": True,
+            "up_to_date": True,
+            "message": "Alles aktuell -- kein Update noetig.",
+        }
+
+    # --- 3b. Pull + pip nur, wenn neue Commits vorliegen ---
+    if behind > 0:
+        steps.append(f"{behind} neue(r) Commit(s)")
+        try:
+            r = subprocess.run(
+                ["git", "pull", "--ff-only"],
+                capture_output=True,
+                text=True,
+                timeout=60,
+                cwd=cwd,
+            )
+            if r.returncode != 0:
+                logger.warning("Git Pull fehlgeschlagen: stderr=%s", r.stderr)
+                return {"success": False, "message": "Git Pull fehlgeschlagen."}
+            steps.append("Code aktualisiert")
+        except Exception:
+            logger.exception("Git Pull fehlgeschlagen")
+            return {"success": False, "message": "Git Pull fehlgeschlagen."}
+
+        ok, status = _run_pip_install(cwd)
+        steps.append(status)
+    else:
+        # force=true ohne neue Commits: nur Restart, kein git/pip
+        steps.append("Force-Restart (kein neuer Code)")
+
+    # --- 4. Respawn vor Exit ---
+    def _delayed_respawn() -> None:
         import time
 
-        time.sleep(2)
-        logger.info("Tower-Update abgeschlossen – beende Prozess fuer Neustart")
-        os._exit(1)
+        time.sleep(2)  # HTTP-Response flushen
+        try:
+            _spawn_respawn_child()
+        except Exception:
+            logger.exception(
+                "Respawn-Child konnte nicht gestartet werden -- "
+                "Prozess beendet sich trotzdem (Aufgabenplaner-Trigger noetig)."
+            )
+            os._exit(1)
+            return
+        time.sleep(1)  # Child kurz Zeit zum Starten / Port-Polling
+        logger.info("Tower-Update abgeschlossen -- beende aktuellen Prozess (0).")
+        os._exit(0)
 
-    threading.Thread(target=_delayed_exit, daemon=True).start()
-    steps.append("Neustart in 2 Sekunden...")
+    threading.Thread(target=_delayed_respawn, daemon=True).start()
+    steps.append("Neustart in ~3 Sekunden (Self-Respawn)...")
 
-    return {"success": True, "message": " | ".join(steps)}
+    return {
+        "success": True,
+        "up_to_date": False,
+        "forced": force and behind == 0,
+        "message": " | ".join(steps),
+    }
 
 
 # ---------------------------------------------------------------------------
