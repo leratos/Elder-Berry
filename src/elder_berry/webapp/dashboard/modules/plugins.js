@@ -83,9 +83,17 @@ export default class PluginsModule extends DashboardModule {
     }
 
     _renderError() {
+        // Codex P2 review: in-memory State + Detail-Pane leeren, sonst
+        // koennen Filter-Klicks nach einem fehlgeschlagenen Refresh die
+        // Tabelle aus veralteten Daten wiederbeleben, waehrend das Badge
+        // "offline" sagt -- bei Incident/Debug-Sessions irrefuehrend.
+        this._data = null;
+        this._selectedPlugin = null;
+
         const summary = document.getElementById("plugins-summary");
         const alert = document.getElementById("plugins-alert");
         const wrap = document.getElementById("plugins-table-wrap");
+        const detail = document.getElementById("plugins-detail");
         const badge = document.getElementById("plugins-summary-badge");
         if (summary) summary.textContent = "Plugin-Inspector aktuell nicht erreichbar.";
         if (alert) {
@@ -94,6 +102,7 @@ export default class PluginsModule extends DashboardModule {
             alert.className = "settings-alert warn";
         }
         if (wrap) wrap.innerHTML = "";
+        if (detail) detail.innerHTML = "";
         if (badge) {
             badge.textContent = "offline";
             badge.className = "badge badge-error";
