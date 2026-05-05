@@ -11,7 +11,7 @@ import logging
 import re
 import sys
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
 import httpx
 
@@ -101,7 +101,7 @@ class SelfcheckCommandHandler(CommandHandler):
         return {"selfcheck"}
 
     @property
-    def patterns(self) -> list[tuple[re.Pattern, str, bool, bool]]:
+    def patterns(self) -> list[tuple[re.Pattern[str], str, bool, bool]]:
         return [
             (SELFCHECK_PATTERN, "selfcheck", False, False),
         ]
@@ -558,19 +558,19 @@ def _get_service_detail(key: str, svc: Any) -> str:
 
     # Email: Host anzeigen
     if key == "email_client" and hasattr(svc, "_host"):
-        return svc._host
+        return cast(str, svc._host)
 
     # Nextcloud: URL
     if key == "nextcloud_files" and hasattr(svc, "_base_url"):
-        return svc._base_url
+        return cast(str, svc._base_url)
 
     # Stirling-PDF: URL
     if key == "stirling_pdf" and hasattr(svc, "_base_url"):
-        return svc._base_url
+        return cast(str, svc._base_url)
 
     # Robot: URL
     if key == "robot_client" and hasattr(svc, "_base_url"):
-        return svc._base_url
+        return cast(str, svc._base_url)
 
     # TTS: Engine-Typ
     if key == "tts":
@@ -589,7 +589,7 @@ def _get_service_detail(key: str, svc: Any) -> str:
 
     # Gym: URL
     if key == "gym_client" and hasattr(svc, "_base_url"):
-        return svc._base_url
+        return cast(str, svc._base_url)
 
     return ""
 

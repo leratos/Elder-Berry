@@ -99,7 +99,7 @@ class AdvancedCommandHandler(CommandHandler):
         return {"audio"}
 
     @property
-    def patterns(self) -> list[tuple[re.Pattern, str, bool, bool]]:
+    def patterns(self) -> list[tuple[re.Pattern[str], str, bool, bool]]:
         return [
             (AUDIO_LOCAL_PATTERN, "audio_toggle", False, False),
             (WEB_SUMMARY_PATTERN, "web_summary", True, True),
@@ -310,6 +310,8 @@ class AdvancedCommandHandler(CommandHandler):
         import shutil
         import tempfile
 
+        # Caller filtert "if self._nc_files and not path_validated:".
+        assert self._nc_files is not None
         nc_path = path_str.lstrip("/")
         if not nc_path:
             return None

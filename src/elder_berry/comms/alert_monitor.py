@@ -22,6 +22,7 @@ from __future__ import annotations
 import logging
 import threading
 import time
+from collections.abc import Callable
 from dataclasses import dataclass, field
 
 logger = logging.getLogger(__name__)
@@ -50,7 +51,7 @@ class AlertMonitor:
 
     def __init__(
         self,
-        send_alert: callable,
+        send_alert: Callable[[str], None],
         poll_interval: int = 60,
         config: AlertConfig | None = None,
     ) -> None:
@@ -126,8 +127,10 @@ class AlertMonitor:
 
             # Warte poll_interval, aber prüfe _running alle 1s
             for _ in range(self._poll_interval):
+                # mypy narrowt self._running im while-Body auf Literal[True];
+                # in der Praxis setzt stop() das Flag aus einem anderen Thread.
                 if not self._running:
-                    break
+                    break  # type: ignore[unreachable]
                 time.sleep(1)
 
         logger.debug("AlertMonitor Loop beendet")

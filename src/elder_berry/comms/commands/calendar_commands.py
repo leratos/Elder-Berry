@@ -25,7 +25,10 @@ from elder_berry.comms.commands.base import (
 )
 
 if TYPE_CHECKING:
-    from elder_berry.tools.google_calendar import GoogleCalendarClient
+    from elder_berry.tools.google_calendar import (
+        CalendarEvent,
+        GoogleCalendarClient,
+    )
 
 logger = logging.getLogger(__name__)
 
@@ -166,7 +169,7 @@ class CalendarCommandHandler(CommandHandler):
         calendar: GoogleCalendarClient | None = None,
     ) -> None:
         self._calendar = calendar
-        self._last_events: list = []
+        self._last_events: list[CalendarEvent] = []
 
     # -- CommandHandler interface ------------------------------------
 
@@ -175,7 +178,7 @@ class CalendarCommandHandler(CommandHandler):
         return {"termine", "kalender"}
 
     @property
-    def patterns(self) -> list[tuple[re.Pattern, str, bool, bool]]:
+    def patterns(self) -> list[tuple[re.Pattern[str], str, bool, bool]]:
         # NOTE: TERMIN_CREATE_PATTERN must come BEFORE TERMINE_PATTERN
         # (order matters for matching priority)
         return [
@@ -550,6 +553,8 @@ class CalendarCommandHandler(CommandHandler):
 
     def execute_delete_all_events(self, event_ids: list[str]) -> CommandResult:
         """Führt das Löschen nach Bestätigung aus (von ConfirmationHandler aufgerufen)."""
+        if not self._calendar:
+            return self.not_configured("termin_delete", "Kalender", setup_step=4)
         deleted = 0
         errors = []
         for eid in event_ids:
@@ -577,6 +582,8 @@ class CalendarCommandHandler(CommandHandler):
 
     def _delete_event_by_index(self, index: int) -> CommandResult:
         """Löscht einen Termin per Index (1-basiert) aus dem letzten Ergebnis."""
+        # Caller (_cmd_termin_delete) filtert "if not self._calendar: return".
+        assert self._calendar is not None
         if not self._last_events:
             return CommandResult(
                 command="termin_delete",
@@ -616,6 +623,7 @@ class CalendarCommandHandler(CommandHandler):
 
     def _delete_event_by_id(self, event_id: str) -> CommandResult:
         """Löscht einen Termin direkt per Google Event-ID."""
+        assert self._calendar is not None  # caller filtered
         try:
             self._calendar.delete_event(event_id)
             # Aus Cache entfernen
@@ -634,6 +642,7 @@ class CalendarCommandHandler(CommandHandler):
 
     def _delete_event_by_title(self, title: str) -> CommandResult:
         """Löscht einen Termin per Titel-Suche in den letzten Ergebnissen."""
+        assert self._calendar is not None  # caller filtered
         if not self._last_events:
             return CommandResult(
                 command="termin_delete",
