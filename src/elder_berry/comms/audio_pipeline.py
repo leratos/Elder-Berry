@@ -93,7 +93,7 @@ class AudioPipeline:
                     "(STT nicht konfiguriert).",
                 )
             except Exception:
-                pass
+                logger.error("Konnte STT-nicht-verfügbar-Meldung nicht senden")
             return
 
         # Bridge routet nur dann hierher, wenn das Event m.audio ist und
@@ -209,7 +209,7 @@ class AudioPipeline:
                     f"Ich kann PDF und TXT verarbeiten.",
                 )
             except Exception:
-                pass
+                logger.error("Konnte 'Dateiformat nicht unterstützt'-Meldung nicht senden")
             return
 
         # Bridge routet nur dann hierher, wenn das Event m.file ist und
