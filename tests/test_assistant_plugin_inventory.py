@@ -16,7 +16,7 @@ from unittest.mock import MagicMock
 from elder_berry.actions.base import ActionController
 from elder_berry.actions.db import ActionsDB
 from elder_berry.character.saleria import SaleriaEngine
-from elder_berry.comms.commands.registry import LoadedPlugin, PluginSource
+from elder_berry.comms.commands import registry
 from elder_berry.core import assistant as assistant_module
 from elder_berry.core.assistant import Assistant
 from elder_berry.llm.base import LLMClient
@@ -80,15 +80,15 @@ def test_inventory_block_one_line_per_plugin_today(tmp_path):
 # --- Trim-Verhalten ----------------------------------------------------
 
 
-def _make_loaded_plugin(name: str, priority: int) -> LoadedPlugin:
+def _make_loaded_plugin(name: str, priority: int) -> registry.LoadedPlugin:
     """Konstruiert einen LoadedPlugin mit minimal-aufgeloestem CommandPlugin."""
     plugin_obj = MagicMock()
     plugin_obj.name = name
     plugin_obj.priority = priority
     plugin_obj.category = "test"
-    return LoadedPlugin(
+    return registry.LoadedPlugin(
         plugin=plugin_obj,
-        source=PluginSource.BUILTIN,
+        source=registry.PluginSource.BUILTIN,
         source_path=f"{name}.py",
     )
 
@@ -105,9 +105,7 @@ def test_inventory_block_trim_kicks_in_above_30_lines(tmp_path, monkeypatch):
     )
     # Da der Block die Funktion lokal importiert, muss der Monkey-Patch
     # auf das Quellmodul gehen.
-    import elder_berry.comms.commands.registry as reg
-
-    monkeypatch.setattr(reg, "load_plugins_with_sources", lambda: fake)
+    monkeypatch.setattr(registry, "load_plugins_with_sources", lambda: fake)
 
     a = _make_assistant(tmp_path)
     block = a._build_plugin_inventory_block()
@@ -122,9 +120,7 @@ def test_inventory_block_trim_kicks_in_above_30_lines(tmp_path, monkeypatch):
 def test_inventory_block_no_trim_at_exact_limit(tmp_path, monkeypatch):
     """Genau 29 Plugins (= 30-1 fuer den Header) -> kein Trim, alle drin."""
     fake = [_make_loaded_plugin(f"fake{i:02d}", priority=10 + i) for i in range(29)]
-    import elder_berry.comms.commands.registry as reg
-
-    monkeypatch.setattr(reg, "load_plugins_with_sources", lambda: fake)
+    monkeypatch.setattr(registry, "load_plugins_with_sources", lambda: fake)
 
     a = _make_assistant(tmp_path)
     block = a._build_plugin_inventory_block()
@@ -138,12 +134,11 @@ def test_inventory_block_no_trim_at_exact_limit(tmp_path, monkeypatch):
 
 def test_inventory_block_handles_registry_failure(tmp_path, monkeypatch):
     """Wenn die Registry crasht, soll der Build nicht kippen."""
-    import elder_berry.comms.commands.registry as reg
 
-    def boom() -> list[LoadedPlugin]:
+    def boom() -> list[registry.LoadedPlugin]:
         raise RuntimeError("registry kaputt")
 
-    monkeypatch.setattr(reg, "load_plugins_with_sources", boom)
+    monkeypatch.setattr(registry, "load_plugins_with_sources", boom)
 
     a = _make_assistant(tmp_path)
     block = a._build_plugin_inventory_block()
