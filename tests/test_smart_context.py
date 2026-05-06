@@ -481,11 +481,14 @@ class TestEdgeCases:
         provider = SmartContextProvider()
         assert provider.get_context("Briefing") == ""
 
-    def test_get_query_fn_returns_none_for_unknown(self, provider_all):
-        # ContextSource hat nur definierte Werte, aber _get_query_fn soll
-        # None zurückgeben für nicht gemappte Quellen (Defensive)
+    def test_get_query_fn_returns_callable_for_known_source(self, provider_all):
         fn = provider_all._get_query_fn(ContextSource.CALENDAR, "test")
         assert fn is not None
+
+    def test_get_query_fn_raises_on_unknown_source(self, provider_all):
+        """Schutz gegen neuen Enum-Wert ohne match-Case (siehe assert_never)."""
+        with pytest.raises(AssertionError):
+            provider_all._get_query_fn("not_a_source", "test")  # type: ignore[arg-type]
 
     def test_multiple_stores_one_fails(
         self,
