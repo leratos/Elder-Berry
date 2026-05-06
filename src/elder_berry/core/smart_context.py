@@ -31,7 +31,7 @@ from concurrent.futures import Future, ThreadPoolExecutor, as_completed
 from concurrent.futures import TimeoutError as FuturesTimeoutError
 from datetime import datetime, timezone
 from enum import Enum
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, assert_never
 
 if TYPE_CHECKING:
     from elder_berry.tools.contact_store import ContactStore
@@ -392,8 +392,11 @@ class SmartContextProvider:
     ) -> Callable[[], str]:
         """Gibt die passende Query-Funktion für eine Quelle zurück.
 
-        Das match ist exhaustive über alle ContextSource-Werte; mypy
-        erkennt das und braucht keinen Catch-All.
+        Das match deckt heute alle ContextSource-Werte ab. Der explizite
+        ``case _`` mit ``assert_never`` schuetzt dagegen, dass ein
+        spaeter ergaenzter Enum-Wert lautlos ``None`` zurueckgibt --
+        Caller in ``_query_sources`` wuerde sonst ``pool.submit(None)``
+        machen und im Worker-Thread mit obskurem Stacktrace crashen.
         """
         match source:
             case ContextSource.CALENDAR:
@@ -408,6 +411,8 @@ class SmartContextProvider:
                 return lambda: self._query_contacts(user_input)
             case ContextSource.WEATHER:
                 return self._query_weather
+            case _:
+                assert_never(source)
 
     # --- Einzelne Query-Methoden ---
 
