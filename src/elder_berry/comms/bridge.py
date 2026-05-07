@@ -55,6 +55,7 @@ if TYPE_CHECKING:
     from elder_berry.tools.document_reader import DocumentReader
     from elder_berry.tools.email_client import IMAPEmailClient
     from elder_berry.tools.email_sender import EmailSender
+    from elder_berry.tools.intent_aggregator import ProposalIntentAggregator
     from elder_berry.tools.nextcloud_files import NextcloudFilesClient
 
 logger = logging.getLogger(__name__)
@@ -94,6 +95,7 @@ class MatrixBridge:
         email_client: IMAPEmailClient | None = None,
         pending_store: PendingConfirmationStore | None = None,
         nextcloud_files: NextcloudFilesClient | None = None,
+        proposal_aggregator: ProposalIntentAggregator | None = None,
     ) -> None:
         self._channel = channel
         self._assistant = assistant
@@ -145,6 +147,7 @@ class MatrixBridge:
             email_sender=email_sender,
             email_client=email_client,
             nextcloud_files=nextcloud_files,
+            proposal_aggregator=proposal_aggregator,
         )
 
     @staticmethod
