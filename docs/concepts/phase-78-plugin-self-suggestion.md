@@ -139,32 +139,35 @@ CREATE TABLE plugin_proposals (
 
 -- Trigger-History (für Audit + Heuristik)
 CREATE TABLE plugin_proposal_triggers (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
     proposal_id TEXT NOT NULL REFERENCES plugin_proposals(id) ON DELETE CASCADE,
     triggered_at TEXT NOT NULL,
     sample_message TEXT NOT NULL,
         -- Anonymisierte Original-Anfrage (siehe §6 R5)
     sender_hash TEXT,
         -- SHA256(matrix_user_id + salt) — Privacy-by-Design
-    confidence REAL,
+    confidence REAL
         -- Vom LLM gelieferter Wert dieses einzelnen Triggers (0..1).
         -- Erlaubt spätere Korrelation Confidence ↔ Akzeptanzquote.
-    PRIMARY KEY (proposal_id, triggered_at)
 );
 
--- Index für 7-Tage-Window-Query (siehe §3.5)
+-- Index für 7-Tage-Window-Query (siehe §3.5) und Standard-Listings.
 CREATE INDEX idx_triggers_proposal_time
     ON plugin_proposal_triggers(proposal_id, triggered_at);
 
 -- Status-Wechsel-Audit
 CREATE TABLE plugin_proposal_history (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
     proposal_id TEXT NOT NULL REFERENCES plugin_proposals(id) ON DELETE CASCADE,
     timestamp TEXT NOT NULL,
     old_status TEXT,
-    new_status TEXT,
+    new_status TEXT NOT NULL,
     changed_by TEXT NOT NULL CHECK (changed_by IN ('saleria', 'lera')),
-    note TEXT,
-    PRIMARY KEY (proposal_id, timestamp)
+    note TEXT
 );
+
+CREATE INDEX idx_history_proposal_time
+    ON plugin_proposal_history(proposal_id, timestamp);
 
 -- Volltextsuche für Dedupe-Check
 CREATE VIRTUAL TABLE plugin_proposals_fts USING fts5(
