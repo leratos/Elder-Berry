@@ -46,13 +46,19 @@ class ProposalNotifier:
         self._room_id = room_id
         self._dashboard_base_url = dashboard_base_url.rstrip("/")
 
-    async def notify(self, proposal: Proposal, recent_count: int, days: int) -> None:
+    async def notify(self, proposal: Proposal, recent_count: int, days: int) -> bool:
         """Sendet die Threshold-Notification fuer den Proposal.
 
         Args:
             proposal: Der Vorschlag, der die Schwelle gerissen hat.
             recent_count: Anzahl Trigger im aktuellen Fenster (typ. 3).
             days: Fensterlaenge in Tagen (typ. 7).
+
+        Returns:
+            True wenn die Nachricht erfolgreich an den Channel
+            uebergeben wurde. False bei Send-Fehler -- der Aggregator
+            soll dann ``mark_notified`` NICHT setzen, damit beim
+            naechsten Trigger ein Retry stattfindet.
 
         Format laut Konzept §3.7. Fehler beim Versand werden geloggt,
         aber nicht weitergeworfen -- eine fehlgeschlagene Notification
@@ -61,12 +67,14 @@ class ProposalNotifier:
         body = self._format(proposal, recent_count, days)
         try:
             await self._channel.send_text(self._room_id, body)
+            return True
         except Exception as exc:  # noqa: BLE001
             logger.error(
                 "ProposalNotifier: Versand fehlgeschlagen fuer %s: %s",
                 proposal.id,
                 exc,
             )
+            return False
 
     def _format(self, proposal: Proposal, recent_count: int, days: int) -> str:
         url = f"{self._dashboard_base_url}/proposals/{proposal.id}"

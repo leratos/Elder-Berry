@@ -180,9 +180,20 @@ class ProposalIntentAggregator:
         current = self._store.get_by_id(existing.id)
         if current is None:
             return
-        await self._notifier.notify(
+        sent = await self._notifier.notify(
             current, recent_count=recent, days=self.THRESHOLD_DAYS
         )
+        if not sent:
+            # Send fehlgeschlagen -- mark_notified wird NICHT gesetzt,
+            # damit der naechste Trigger einen Retry ausloest. Sonst
+            # wuerde die Nachricht permanent verloren gehen (GitHub-
+            # Review P2 vom 2026-05-07).
+            logger.warning(
+                "Aggregator: Notify fuer %s fehlgeschlagen -- "
+                "naechster Trigger versucht erneut zu benachrichtigen.",
+                existing.id,
+            )
+            return
         self._store.mark_notified(existing.id)
         logger.info(
             "Aggregator: Threshold erreicht fuer %s (%dx/%dT) -- benachrichtigt",

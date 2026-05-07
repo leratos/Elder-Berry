@@ -27,7 +27,8 @@ def store(tmp_path: Path) -> ProposalStore:
 @pytest.fixture
 def notifier() -> AsyncMock:
     n = AsyncMock()
-    n.notify = AsyncMock()
+    # Default: Send erfolgreich. Tests fuer Send-Fail-Pfad ueberschreiben das.
+    n.notify = AsyncMock(return_value=True)
     return n
 
 
@@ -548,3 +549,68 @@ class TestThresholdNotification:
         kwargs = notifier.notify.await_args.kwargs
         assert kwargs["recent_count"] == 3
         assert kwargs["days"] == 7
+
+    @pytest.mark.asyncio
+    async def test_notify_failure_does_not_mark_notified(
+        self,
+        aggregator: ProposalIntentAggregator,
+        store: ProposalStore,
+        notifier: AsyncMock,
+    ) -> None:
+        """GitHub-Review P2: Wenn der Notifier-Send fehlschlaegt
+        (returnt False), darf notified_at NICHT gesetzt werden -- sonst
+        wuerde die Nachricht permanent verloren gehen, weil die
+        nachfolgenden Trigger durch den notified_at-Check gefiltert
+        werden."""
+        notifier.notify = AsyncMock(return_value=False)
+        for i in range(3):
+            await aggregator.record(
+                intent="x",
+                title="X",
+                description="d",
+                sample=f"s{i}",
+                sender="@a:x",
+                confidence=0.9,
+            )
+        # Send wurde versucht (3x reichen fuer Threshold)
+        assert notifier.notify.await_count == 1
+        # Aber notified_at bleibt None -- Retry beim naechsten Trigger
+        proposal = store.get_by_id("x")
+        assert proposal is not None
+        assert proposal.notified_at is None
+
+    @pytest.mark.asyncio
+    async def test_notify_retry_on_next_trigger_when_send_failed(
+        self,
+        aggregator: ProposalIntentAggregator,
+        store: ProposalStore,
+        notifier: AsyncMock,
+    ) -> None:
+        """Nach Send-Fail beim ersten Threshold-Erreichen muss der
+        naechste Trigger einen erneuten notify-Versuch ausloesen."""
+        # 3 Trigger bei Send-Fehler
+        notifier.notify = AsyncMock(return_value=False)
+        for i in range(3):
+            await aggregator.record(
+                intent="x",
+                title="X",
+                description="d",
+                sample=f"s{i}",
+                sender="@a:x",
+                confidence=0.9,
+            )
+        assert notifier.notify.await_count == 1
+        # Send heilt sich -- naechster Trigger soll erneut versuchen
+        notifier.notify = AsyncMock(return_value=True)
+        await aggregator.record(
+            intent="x",
+            title="X",
+            description="d",
+            sample="s4",
+            sender="@a:x",
+            confidence=0.9,
+        )
+        assert notifier.notify.await_count == 1
+        proposal = store.get_by_id("x")
+        assert proposal is not None
+        assert proposal.notified_at is not None

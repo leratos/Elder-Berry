@@ -42,7 +42,8 @@ class TestNotifyFormat:
         notifier = ProposalNotifier(
             channel=channel, room_id="!proposal_room:matrix.org"
         )
-        await notifier.notify(_make_proposal(), recent_count=3, days=7)
+        result = await notifier.notify(_make_proposal(), recent_count=3, days=7)
+        assert result is True
         channel.send_text.assert_awaited_once()
         sent_room, sent_text = channel.send_text.await_args.args
         assert sent_room == "!proposal_room:matrix.org"
@@ -86,7 +87,9 @@ class TestErrorHandling:
         channel.send_text.side_effect = RuntimeError("matrix down")
         notifier = ProposalNotifier(channel=channel, room_id="!r:x")
         # Darf NICHT werfen
-        await notifier.notify(_make_proposal(), 3, 7)
+        result = await notifier.notify(_make_proposal(), 3, 7)
+        # Aber: Erfolg-Flag ist False (Aggregator setzt notified_at NICHT)
+        assert result is False
 
     @pytest.mark.asyncio
     async def test_send_failure_logged(self, caplog: pytest.LogCaptureFixture) -> None:
