@@ -633,3 +633,146 @@ class TestRetryLlmRemoteCommand:
             assert result is None
 
         run_async(_test())
+
+
+# ---------------------------------------------------------------------------
+# Phase 78: Plugin-Candidate -> ProposalIntentAggregator
+# ---------------------------------------------------------------------------
+
+
+def _make_handler_with_aggregator(
+    channel,
+    assistant,
+    audio_pipeline,
+    chat_history,
+    pending,
+):
+    """Hilfs-Builder: Handler mit ProposalIntentAggregator-Mock."""
+    aggregator = AsyncMock()
+    aggregator.record = AsyncMock()
+    h = BridgeMessageHandler(
+        channel=channel,
+        assistant=assistant,
+        audio_pipeline=audio_pipeline,
+        chat_history=chat_history,
+        pending=pending,
+        proposal_aggregator=aggregator,
+    )
+    return h, aggregator
+
+
+class TestProposalAggregatorIntegration:
+    def test_no_aggregator_no_crash(self, handler, channel, assistant, chat_history):
+        """handler-Fixture ohne proposal_aggregator -- candidate wird einfach
+        nicht weitergereicht, kein Crash."""
+
+        async def _test():
+            llm_result = MagicMock()
+            llm_result.response = "Antwort"
+            llm_result.action_executed = None
+            llm_result.action_success = False
+            llm_result.audio_path = None
+            llm_result.plugin_candidate = {
+                "intent": "x",
+                "title": "X",
+                "confidence": 0.9,
+            }
+            assistant.process.return_value = llm_result
+
+            msg = _make_msg("hallo")
+            await handler.handle_assistant_message(msg)
+            channel.send_text.assert_called_once()
+
+        run_async(_test())
+
+    def test_no_candidate_aggregator_not_called(
+        self, channel, assistant, audio_pipeline, chat_history, pending
+    ):
+        h, aggregator = _make_handler_with_aggregator(
+            channel, assistant, audio_pipeline, chat_history, pending
+        )
+
+        async def _test():
+            llm_result = MagicMock()
+            llm_result.response = "Antwort"
+            llm_result.action_executed = None
+            llm_result.action_success = False
+            llm_result.audio_path = None
+            llm_result.plugin_candidate = None
+            assistant.process.return_value = llm_result
+
+            msg = _make_msg("hallo")
+            await h.handle_assistant_message(msg)
+            aggregator.record.assert_not_called()
+
+        run_async(_test())
+
+    def test_candidate_passed_to_aggregator(
+        self, channel, assistant, audio_pipeline, chat_history, pending
+    ):
+        h, aggregator = _make_handler_with_aggregator(
+            channel, assistant, audio_pipeline, chat_history, pending
+        )
+
+        async def _test():
+            llm_result = MagicMock()
+            llm_result.response = "Klar."
+            llm_result.action_executed = None
+            llm_result.action_success = False
+            llm_result.audio_path = None
+            llm_result.plugin_candidate = {
+                "intent": "spotify_play_song",
+                "title": "Spotify-Steuerung",
+                "description": "Spielt Tracks.",
+                "category": "medien",
+                "confidence": 0.85,
+            }
+            assistant.process.return_value = llm_result
+
+            msg = _make_msg("spiel was von Hans Zimmer")
+            await h.handle_assistant_message(msg)
+
+            aggregator.record.assert_awaited_once()
+            kwargs = aggregator.record.await_args.kwargs
+            assert kwargs["intent"] == "spotify_play_song"
+            assert kwargs["title"] == "Spotify-Steuerung"
+            assert kwargs["description"] == "Spielt Tracks."
+            assert kwargs["category"] == "medien"
+            assert kwargs["confidence"] == 0.85
+            assert kwargs["sample"] == "spiel was von Hans Zimmer"
+            assert kwargs["sender"] == "@user:matrix.org"
+
+        run_async(_test())
+
+    def test_aggregator_failure_does_not_crash_handler(
+        self, channel, assistant, audio_pipeline, chat_history, pending, caplog
+    ):
+        """Aggregator-Fehler darf den User-facing-Flow nicht beeintraechtigen."""
+        h, aggregator = _make_handler_with_aggregator(
+            channel, assistant, audio_pipeline, chat_history, pending
+        )
+        aggregator.record.side_effect = RuntimeError("db down")
+
+        async def _test():
+            llm_result = MagicMock()
+            llm_result.response = "Klar."
+            llm_result.action_executed = None
+            llm_result.action_success = False
+            llm_result.audio_path = None
+            llm_result.plugin_candidate = {
+                "intent": "x",
+                "title": "X",
+                "confidence": 0.9,
+            }
+            assistant.process.return_value = llm_result
+
+            msg = _make_msg("hi")
+            with caplog.at_level("ERROR"):
+                await h.handle_assistant_message(msg)
+
+            # User hat seine Antwort bekommen
+            channel.send_text.assert_called_once()
+            # Fehler wurde geloggt
+            assert any("ProposalAggregator" in rec.message for rec in caplog.records)
+
+        run_async(_test())

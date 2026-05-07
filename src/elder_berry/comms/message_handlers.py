@@ -17,7 +17,7 @@ import logging
 import tempfile
 import time
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from elder_berry.comms.confirmation_handlers import ConfirmationHandler
 from elder_berry.comms.pending_confirmation import PendingAction
@@ -34,6 +34,7 @@ if TYPE_CHECKING:
     from elder_berry.comms.claude_agent import ClaudeAgent
     from elder_berry.tools.email_client import IMAPEmailClient
     from elder_berry.tools.email_sender import EmailSender
+    from elder_berry.tools.intent_aggregator import ProposalIntentAggregator
     from elder_berry.tools.nextcloud_files import NextcloudFilesClient
 
     # CommandResult ist konkrete Klasse aus base.py (nicht Optional-DTO).
@@ -65,6 +66,7 @@ class BridgeMessageHandler:
         email_sender: EmailSender | None = None,
         email_client: IMAPEmailClient | None = None,
         nextcloud_files: NextcloudFilesClient | None = None,
+        proposal_aggregator: ProposalIntentAggregator | None = None,
     ) -> None:
         self._channel = channel
         self._assistant = assistant
@@ -77,6 +79,7 @@ class BridgeMessageHandler:
         self._email_sender = email_sender
         self._email_client = email_client
         self._nc_files = nextcloud_files
+        self._proposal_aggregator = proposal_aggregator
         # Mutable State (gesetzt von Bridge)
         self.restart_cooldown_until: float = 0.0
         self._scheduler_mgr: SchedulerManager | None = None
@@ -732,6 +735,13 @@ class BridgeMessageHandler:
 
             await self._audio.send_audio_if_available(msg.room_id, result, tmp_wav)
 
+            # Phase 78: Plugin-Kandidat aus dem LLM-Output an den
+            # Aggregator weiterreichen. Nur im echten LLM-Fallback (keine
+            # action_executed) -- bei multi_step / remote_command sind
+            # wir oben schon mit return abgewichen.
+            if self._proposal_aggregator and result.plugin_candidate:
+                await self._invoke_proposal_aggregator(msg, result.plugin_candidate)
+
         except asyncio.TimeoutError:
             logger.error("Timeout bei LLM-Verarbeitung (120s)")
             try:
@@ -758,6 +768,34 @@ class BridgeMessageHandler:
         finally:
             if tmp_wav and tmp_wav.exists():
                 tmp_wav.unlink(missing_ok=True)
+
+    async def _invoke_proposal_aggregator(
+        self,
+        msg: IncomingMessage,
+        candidate: dict[str, Any],
+    ) -> None:
+        """Reicht einen <plugin-candidate>-Block an den Aggregator weiter.
+
+        Defensiv: Fehler im Aggregator-Pfad duerfen den Hauptflow nicht
+        crashen (Konzept §3.5 -- Vorschlaegse sind ein Nebenprodukt).
+        """
+        assert self._proposal_aggregator is not None  # caller-side checked
+        try:
+            await self._proposal_aggregator.record(
+                intent=str(candidate.get("intent", "")),
+                title=str(candidate.get("title", "")),
+                description=str(candidate.get("description", "")),
+                sample=msg.body,
+                sender=msg.sender,
+                confidence=float(candidate.get("confidence", 0.0)),
+                category=candidate.get("category"),
+            )
+        except Exception as exc:  # noqa: BLE001
+            logger.error(
+                "ProposalAggregator: record() fehlgeschlagen fuer %r: %s",
+                candidate.get("intent"),
+                exc,
+            )
 
     # ------------------------------------------------------------------
     # Multi-Step (TaskChainRunner)

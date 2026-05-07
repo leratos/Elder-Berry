@@ -1298,6 +1298,27 @@ def run_matrix(assistant, stt=None, avatar=None, audio_converter=None, robot=Non
         config=AlertConfig(disk_threshold_percent=90.0),
     )
 
+    # --- 6b. Phase 78: Plugin-Self-Suggestion ---
+    from elder_berry.comms.proposal_notifier import ProposalNotifier
+    from elder_berry.tools.intent_aggregator import ProposalIntentAggregator
+    from elder_berry.tools.proposal_store import ProposalStore
+
+    proposal_store = ProposalStore()
+    proposal_room_id = secrets.get_or_none("matrix_proposal_room_id") or room_id
+    if not secrets.get_or_none("matrix_proposal_room_id"):
+        logger.info(
+            "Phase 78: matrix_proposal_room_id nicht gesetzt -- "
+            "Plugin-Vorschlaege gehen in den Hauptraum (Fallback)."
+        )
+    proposal_notifier = ProposalNotifier(channel=channel, room_id=proposal_room_id)
+    proposal_aggregator = ProposalIntentAggregator(
+        store=proposal_store,
+        notifier=proposal_notifier,
+        secret_store=secrets,
+    )
+    assistant._proposal_store = proposal_store
+    logger.info("Phase 78: ProposalStore + Aggregator aktiv")
+
     if stt:
         logger.info("Matrix-STT: Sprachnachrichten werden transkribiert")
 
@@ -1355,6 +1376,7 @@ def run_matrix(assistant, stt=None, avatar=None, audio_converter=None, robot=Non
         email_sender=svc.get("email_sender"),
         email_client=svc.get("email_client"),
         nextcloud_files=svc.get("nextcloud_files"),
+        proposal_aggregator=proposal_aggregator,
     )
 
     # --- 8. Dashboard + Start ---
