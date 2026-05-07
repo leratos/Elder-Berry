@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 import tempfile
 from dataclasses import dataclass
 from datetime import datetime
@@ -25,6 +26,7 @@ if TYPE_CHECKING:
     from elder_berry.memory.base import MemoryStore
     from elder_berry.robot.client import RobotClient
     from elder_berry.system.info import SystemMonitor
+    from elder_berry.tools.proposal_store import ProposalStore
 
 logger = logging.getLogger(__name__)
 
@@ -42,6 +44,13 @@ class AssistantResult:
     emotion: str | None = None
     audio_path: Path | None = None
     action_params: dict[str, Any] | None = None
+    plugin_candidate: dict[str, Any] | None = None
+    """Phase 78: <plugin-candidate>-Block, wenn der LLM einen geliefert hat.
+
+    Wird von der Bridge an den ProposalIntentAggregator weitergereicht.
+    None wenn kein Block gefunden / Block kaputt war / keine Capability-
+    Luecke erkannt wurde.
+    """
 
 
 class Assistant:
@@ -67,6 +76,7 @@ class Assistant:
         memory: MemoryStore | None = None,
         remote_commands: RemoteCommandHandler | None = None,
         smart_context: SmartContextProvider | None = None,
+        proposal_store: ProposalStore | None = None,
     ) -> None:
         self._llm = llm
         self._actions_db = actions_db
@@ -80,6 +90,7 @@ class Assistant:
         self._memory = memory
         self._remote_commands = remote_commands
         self._smart_context = smart_context
+        self._proposal_store = proposal_store
         self._session_id: str = memory.new_session() if memory else ""
         self._agent_online_cache: bool | None = None
 
@@ -128,6 +139,11 @@ class Assistant:
         action_type = parsed.get("action")
         params = parsed.get("params", {})
         response_text = parsed.get("response", raw_response)
+
+        # Phase 78: <plugin-candidate>-Block aus dem Response-Text extrahieren
+        # BEVOR die CharacterEngine ihn ggf. wegputzt. Bereinigter Text
+        # geht weiter durch die Pipeline.
+        response_text, plugin_candidate = self._extract_plugin_candidate(response_text)
 
         # Emotion extrahieren und Text bereinigen (falls CharacterEngine vorhanden)
         emotion_str = None
@@ -201,6 +217,7 @@ class Assistant:
             action_success=action_success,
             emotion=emotion_str,
             audio_path=generated_audio,
+            plugin_candidate=plugin_candidate,
         )
 
     def _get_system_status(self) -> str | None:
@@ -307,6 +324,11 @@ class Assistant:
         # Phase 77.5: Plugin-Inventar-Block fuer Phase-78-Dedupe-Check.
         plugin_inventory = self._build_plugin_inventory_block()
 
+        # Phase 78: aktive Plugin-Vorschlaege + Anweisung fuer den
+        # <plugin-candidate>-Block am Antwortende.
+        active_proposals = self._build_active_proposals_block()
+        candidate_hint = self._build_plugin_candidate_hint()
+
         if self._character:
             prompt = self._character.build_system_prompt(
                 available_actions=action_list,
@@ -323,6 +345,10 @@ class Assistant:
                 prompt += f"\n\n{smart_context}"
             if plugin_inventory:
                 prompt += f"\n\n{plugin_inventory}"
+            if active_proposals:
+                prompt += f"\n\n{active_proposals}"
+            if candidate_hint:
+                prompt += f"\n\n{candidate_hint}"
             if chat_history:
                 prompt += f"\n\n{chat_history}"
             return prompt
@@ -337,6 +363,10 @@ class Assistant:
         )
         if plugin_inventory:
             full_prompt += f"\n\n{plugin_inventory}"
+        if active_proposals:
+            full_prompt += f"\n\n{active_proposals}"
+        if candidate_hint:
+            full_prompt += f"\n\n{candidate_hint}"
         if chat_history:
             full_prompt += f"\n\n{chat_history}"
         return full_prompt
@@ -397,6 +427,121 @@ class Assistant:
         if plugin_lines:
             plugin_lines[-1] = plugin_lines[-1] + "]"
         return header + "\n" + "\n".join(plugin_lines)
+
+    # Phase 78: Cap auf 10-15 aktive Vorschlaege im System-Prompt.
+    # Bei mehr aktiven Vorschlaegen ist die Heuristik selbst das Problem
+    # (Threshold zu lasch, Halluzinationen) -- dann nachjustieren statt
+    # Cap erhoehen. Siehe Konzept §3.6.
+    _ACTIVE_PROPOSALS_MAX_LINES: int = 15
+
+    def _build_active_proposals_block(self) -> str:
+        """Baut den "Aktive Plugin-Vorschlaege"-Block fuer den System-Prompt.
+
+        Saleria nutzt diese Liste vor der Erstellung eines neuen
+        <plugin-candidate>-Blocks: Wenn die Anfrage zu einem bereits
+        offenen Vorschlag passt, soll sie KEINEN neuen Block emittieren
+        (Konzept §3.6).
+
+        Format:
+
+            [Aktive Plugin-Vorschlaege (kein neuer Vorschlag wenn Match):
+            - <intent>: <title> (<status>)
+            ...
+            - <intent>: <title> (<status>)]
+
+        Liefert "" wenn kein ProposalStore gesetzt ist oder keine
+        aktiven Vorschlaege existieren.
+        """
+        if self._proposal_store is None:
+            return ""
+        try:
+            active = self._proposal_store.list_active(
+                limit=self._ACTIVE_PROPOSALS_MAX_LINES
+            )
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("Active-Proposals-Block uebersprungen: %s", exc)
+            return ""
+
+        if not active:
+            return ""
+
+        header = "[Aktive Plugin-Vorschlaege (kein neuer Vorschlag wenn Match):"
+        lines = [f"- {p.id}: {p.title} ({p.status})" for p in active]
+        if lines:
+            lines[-1] = lines[-1] + "]"
+        return header + "\n" + "\n".join(lines)
+
+    @staticmethod
+    def _build_plugin_candidate_hint() -> str:
+        """Anweisung an den LLM zum Erkennen von Plugin-Kandidaten (Konzept §3.4).
+
+        Wird unkonditional in den System-Prompt eingefuegt. Saleria
+        entscheidet pro Anfrage, ob der Block sinnvoll ist; der
+        Aggregator filtert per Confidence- und Smalltalk-Negativliste
+        erneut nach.
+        """
+        return (
+            "Pruefe am Ende deiner Antwort, ob die Anfrage eine wiederkehrende, "
+            "automatisierbare Aufgabe sein koennte, die als Plugin sinnvoll waere. "
+            "Wenn ja, haenge GENAU EINEN solchen Block ans Antwortende:\n"
+            '<plugin-candidate>{"intent":"snake_case_id","title":"Kurzer Titel",'
+            '"description":"2-3 Saetze, was die Capability tun wuerde.",'
+            '"category":"medien|system|productivity|...","confidence":0.0-1.0}'
+            "</plugin-candidate>\n"
+            "Wenn nein, lass den Block weg. Smalltalk, Witze, Komplimente, "
+            "Wetter-Plauderei sind KEINE Plugin-Kandidaten. Pruefe vorher die "
+            "Listen 'Bereits geladene Plugins' und 'Aktive Plugin-Vorschlaege' "
+            "-- bei Match keinen neuen Block emittieren."
+        )
+
+    # Phase 78: Regex zum Extrahieren des <plugin-candidate>-JSON-Blocks.
+    # Greedy-Stop am ersten </plugin-candidate>; ein Block pro Antwort.
+    _PLUGIN_CANDIDATE_RE = re.compile(
+        r"<plugin-candidate>\s*(\{.*?\})\s*</plugin-candidate>",
+        re.DOTALL,
+    )
+
+    @classmethod
+    def _extract_plugin_candidate(cls, text: str) -> tuple[str, dict[str, Any] | None]:
+        """Schneidet einen <plugin-candidate>-Block aus dem LLM-Output.
+
+        Returns:
+            (bereinigter_text, candidate_dict_oder_None).
+            candidate_dict enthaelt mindestens "intent", "title",
+            "confidence" und (sofern vom LLM geliefert) "description"
+            sowie "category". None wenn kein Block gefunden, JSON kaputt
+            oder Pflichtfelder fehlen.
+        """
+        match = cls._PLUGIN_CANDIDATE_RE.search(text)
+        if match is None:
+            return text, None
+
+        cleaned = (text[: match.start()] + text[match.end() :]).rstrip()
+        raw_json = match.group(1)
+        try:
+            data = json.loads(raw_json)
+        except json.JSONDecodeError as exc:
+            logger.warning("plugin-candidate JSON kaputt: %s -- %r", exc, raw_json)
+            return cleaned, None
+
+        if not isinstance(data, dict):
+            logger.warning("plugin-candidate kein dict: %r", data)
+            return cleaned, None
+
+        intent = data.get("intent")
+        title = data.get("title")
+        confidence = data.get("confidence")
+        if not isinstance(intent, str) or not intent.strip():
+            logger.debug("plugin-candidate ohne intent verworfen")
+            return cleaned, None
+        if not isinstance(title, str) or not title.strip():
+            logger.debug("plugin-candidate ohne title verworfen")
+            return cleaned, None
+        if not isinstance(confidence, (int, float)):
+            logger.debug("plugin-candidate ohne numerische confidence verworfen")
+            return cleaned, None
+
+        return cleaned, data
 
     def _get_memory_context(self, user_input: str) -> str:
         """Ruft relevante Erinnerungen aus dem Memory ab und formatiert sie."""
