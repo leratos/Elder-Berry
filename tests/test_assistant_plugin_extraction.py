@@ -267,3 +267,72 @@ class TestAssistantResultField:
         )
         assert result.plugin_candidate is not None
         assert result.plugin_candidate["intent"] == "x"
+
+
+# ---------------------------------------------------------------------------
+# Regression: Plugin-Block muss VOR _parse_llm_response extrahiert werden,
+# sonst zerstoert der JSON-Envelope-Parser-Fallback das Action-Routing.
+# (GitHub-Review P1 vom 2026-05-07)
+# ---------------------------------------------------------------------------
+
+
+class TestExtractionOrderVsJsonEnvelope:
+    """Saleria kann sowohl ein Action-JSON-Envelope als auch einen
+    <plugin-candidate>-Block emittieren. Der Parser-Fallback in
+    _parse_llm_response greift via raw.find('{')/rfind('}') ueber den
+    gesamten Bereich -- also auch ueber den Candidate-JSON. Wenn wir
+    den Candidate erst NACH _parse_llm_response strippen, geht der
+    Action-Type verloren und der User sieht Roh-JSON inkl. Block.
+    """
+
+    def test_action_envelope_with_candidate_extracts_both(self) -> None:
+        llm = MagicMock()
+        # Action-JSON + Plugin-Candidate als kombinierter LLM-Output
+        llm.generate.return_value = (
+            '{"action":"system_status","params":{},'
+            '"response":"Hier dein Status."}\n\n'
+            '<plugin-candidate>{"intent":"spotify_play_song",'
+            '"title":"Spotify-Steuerung","confidence":0.85}'
+            "</plugin-candidate>"
+        )
+        actions_db = MagicMock()
+        actions_db.list_all.return_value = []
+        actions_db.get.return_value = None
+        controller = MagicMock()
+        # Kein system_monitor -> system_status liefert None -> action_success
+        # bleibt False, response_text wird NICHT mit Status-Text gemerged.
+        # Action-Type bleibt aber 'system_status' im Auswertungsergebnis.
+        assistant = Assistant(llm=llm, actions_db=actions_db, controller=controller)
+
+        result = assistant.process("status?")
+
+        # Action-Routing intakt
+        assert result.action_executed == "system_status"
+        # Antwort-Text bereinigt -- KEIN Block, KEIN Roh-JSON
+        assert "<plugin-candidate>" not in result.response
+        assert "Hier dein Status." in result.response
+        # Plugin-Candidate sauber extrahiert
+        assert result.plugin_candidate is not None
+        assert result.plugin_candidate["intent"] == "spotify_play_song"
+        assert result.plugin_candidate["confidence"] == 0.85
+
+    def test_plain_text_with_candidate_no_envelope(self) -> None:
+        """Saleria liefert nur Plaintext + Candidate (kein Action-JSON)."""
+        llm = MagicMock()
+        llm.generate.return_value = (
+            "Klar, mache ich gleich.\n\n"
+            '<plugin-candidate>{"intent":"x","title":"X","confidence":0.9}'
+            "</plugin-candidate>"
+        )
+        actions_db = MagicMock()
+        actions_db.list_all.return_value = []
+        controller = MagicMock()
+        assistant = Assistant(llm=llm, actions_db=actions_db, controller=controller)
+
+        result = assistant.process("hi")
+
+        assert result.action_executed is None
+        assert "<plugin-candidate>" not in result.response
+        assert "Klar, mache ich gleich." in result.response
+        assert result.plugin_candidate is not None
+        assert result.plugin_candidate["intent"] == "x"

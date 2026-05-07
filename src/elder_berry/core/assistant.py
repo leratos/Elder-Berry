@@ -134,16 +134,17 @@ class Assistant:
         raw_response = self._llm.generate(user_input, system=system_prompt)
         logger.debug("LLM-Antwort: %s", raw_response[:200])
 
+        # Phase 78: Plugin-Candidate VOR _parse_llm_response extrahieren.
+        # Sonst greift der Parser-Fallback (rfind '}') ueber Action-JSON-
+        # Envelope UND Candidate-JSON, was das Action-Routing zerstoert
+        # (action_type wird None, response wird Roh-JSON inkl. Block).
+        raw_response, plugin_candidate = self._extract_plugin_candidate(raw_response)
+
         parsed = self._parse_llm_response(raw_response)
 
         action_type = parsed.get("action")
         params = parsed.get("params", {})
         response_text = parsed.get("response", raw_response)
-
-        # Phase 78: <plugin-candidate>-Block aus dem Response-Text extrahieren
-        # BEVOR die CharacterEngine ihn ggf. wegputzt. Bereinigter Text
-        # geht weiter durch die Pipeline.
-        response_text, plugin_candidate = self._extract_plugin_candidate(response_text)
 
         # Emotion extrahieren und Text bereinigen (falls CharacterEngine vorhanden)
         emotion_str = None
