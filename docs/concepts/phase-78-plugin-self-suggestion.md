@@ -55,13 +55,20 @@ scharf. Der Workflow ist ein Vorschlagswesen, kein Auto-Coder.
 
 ### 3.1 Topologie
 
+Die produktive Saleria läuft auf dem Rootserver (`fern.last-strawberry.com`)
+und ist 24/7 erreichbar. Tower ist Fallback-Backend: nur wenn Claude-API
+nicht erreichbar ist, schaltet die Server-Saleria auf das lokale LLM auf
+dem Tower um (analog zu ElevenLabs → lokales TTS). Tower selbst hält
+keinen `ProposalStore` und schreibt nichts direkt in die DB — der gesamte
+Trigger-Pfad inkl. Persistenz läuft auf dem Server.
+
 ```
 ┌────────────────────┐         ┌──────────────────────────────┐
-│  Tower (zeitweise) │         │  Rootserver (24/7)           │
-│                    │         │  fern.last-strawberry.com    │
-│  Saleria-Hauptbrain│  ───►   │                              │
-│  (Tunnel zu Server)│         │  ┌────────────────────────┐  │
-└────────────────────┘         │  │ Saleria-Server-Instanz │  │
+│  Tower (Fallback)  │         │  Rootserver (24/7)           │
+│  Lokales LLM       │         │  fern.last-strawberry.com    │
+│  (nur wenn Claude- │  ◄───   │                              │
+│  API offline)      │  LLM-   │  ┌────────────────────────┐  │
+└────────────────────┘  Call   │  │ Saleria-Server-Instanz │  │
                                │  │ (Matrix, Briefing, etc)│  │
                                │  └────────┬───────────────┘  │
                                │           │                  │
@@ -107,9 +114,18 @@ CREATE TABLE plugin_proposals (
     suggested_priority INTEGER,
         -- Vorschlag für CommandPlugin.priority
     created_at TEXT NOT NULL,
+        -- Anlagezeitpunkt; wird auch als Beginn des 7-Tage-Fensters
+        -- benutzt (kein separates first_seen_at).
     updated_at TEXT NOT NULL,
     trigger_count INTEGER NOT NULL DEFAULT 1,
+        -- Lifetime-Counter, NICHT für Threshold (siehe §3.5).
     last_triggered_at TEXT NOT NULL,
+    notified_at TEXT,
+        -- NULL solange Threshold-Notification noch nicht versendet
+        -- wurde. Einmaliges Setzen, kein Re-Notify.
+    last_confidence REAL,
+        -- Letzter vom LLM gelieferter Confidence-Wert (0..1).
+        -- Aggregiert pro Proposal für Tuning des Schwellwerts (R7).
     -- Status-Felder
     rejected_reason TEXT,
         -- Optional: Begründung bei Ablehnung
@@ -129,8 +145,15 @@ CREATE TABLE plugin_proposal_triggers (
         -- Anonymisierte Original-Anfrage (siehe §6 R5)
     sender_hash TEXT,
         -- SHA256(matrix_user_id + salt) — Privacy-by-Design
+    confidence REAL,
+        -- Vom LLM gelieferter Wert dieses einzelnen Triggers (0..1).
+        -- Erlaubt spätere Korrelation Confidence ↔ Akzeptanzquote.
     PRIMARY KEY (proposal_id, triggered_at)
 );
+
+-- Index für 7-Tage-Window-Query (siehe §3.5)
+CREATE INDEX idx_triggers_proposal_time
+    ON plugin_proposal_triggers(proposal_id, triggered_at);
 
 -- Status-Wechsel-Audit
 CREATE TABLE plugin_proposal_history (
@@ -176,10 +199,12 @@ src/elder_berry/comms/
 src/elder_berry/web/
 ├── proposals_api.py             (FastAPI-Routen, hinter Login)
 └── templates/proposals.html     (Dashboard-Tab)
-
-scripts/
-└── migrate_proposals.py         (Initial-Migration der DB)
 ```
+
+DB-Anlage erfolgt im `ProposalStore.__init__()` (Pattern wie `NoteStore`,
+`ContactStore`, `TodoStore`) — kein separates Migrations-Skript für Phase 78.
+Falls in einer Folgephase echte Schema-Änderungen anfallen, wird dann ein
+versioniertes Migrations-System (z. B. via `PRAGMA user_version`) angelegt.
 
 ### 3.4 Trigger-Pfad (reaktiv)
 
@@ -202,6 +227,7 @@ async def handle_message(self, text: str, sender: str) -> None:
             intent=response.normalized_intent,
             sample=text,
             sender=sender,
+            confidence=response.candidate_confidence,
         )
 ```
 
@@ -224,35 +250,61 @@ class ProposalIntentAggregator:
     THRESHOLD_COUNT = 3
     THRESHOLD_DAYS = 7
 
-    async def record(self, intent: str, sample: str, sender: str) -> None:
+    async def record(
+        self,
+        intent: str,
+        sample: str,
+        sender: str,
+        confidence: float,
+    ) -> None:
         existing = self._store.get_by_id(intent)
         if existing is None:
-            # Neuer Intent — Counter starten, NICHT sofort Vorschlag erstellen
-            self._store.create_pending(intent=intent, sample=sample, sender=sender)
+            # Neuer Intent — create_pending() legt Proposal UND ersten
+            # Trigger transaktional an (siehe ProposalStore-Vertrag).
+            # Keine Notification beim ersten Mal.
+            self._store.create_pending(
+                intent=intent,
+                sample=sample,
+                sender=sender,
+                confidence=confidence,
+            )
             return
 
         if existing.status in ("abgelehnt", "fertiggestellt"):
             # Bereits entschieden — kein neuer Vorschlag, aber Trigger zählen
-            self._store.add_trigger(existing.id, sample, sender)
+            self._store.add_trigger(existing.id, sample, sender, confidence)
             return
 
         if existing.status == "in_pruefung":
-            self._store.add_trigger(existing.id, sample, sender)
-            # Schwelle für Notification erreicht?
-            if (existing.trigger_count >= self.THRESHOLD_COUNT and
-                self._within_days(existing.first_seen, self.THRESHOLD_DAYS) and
-                not existing.notified):
+            self._store.add_trigger(existing.id, sample, sender, confidence)
+            # Threshold-Check über 7-Tage-Fenster (NICHT lifetime counter).
+            recent = self._store.count_triggers_since(
+                existing.id, days=self.THRESHOLD_DAYS,
+            )
+            if recent >= self.THRESHOLD_COUNT and existing.notified_at is None:
                 await self._notifier.notify(existing)
                 self._store.mark_notified(existing.id)
             return
 
         # in_bearbeitung — Trigger zählen, keine Aktion
-        self._store.add_trigger(existing.id, sample, sender)
+        self._store.add_trigger(existing.id, sample, sender, confidence)
 ```
 
 Wichtig:
-- Ein **neuer Intent** wird sofort als `in_pruefung` angelegt, aber *ohne
-  Notification*. Erst wenn der Threshold erreicht ist, meldet Saleria.
+
+- **Threshold-Semantik:** „3× in 7 Tagen" wird über
+  `count_triggers_since(proposal_id, days=7)` geprüft, das auf
+  `plugin_proposal_triggers.triggered_at >= now() - 7 days` filtert.
+  `trigger_count` ist Lifetime-Anzeige für Dashboard und nicht
+  schwell-relevant — sonst würde ein Intent über 30 Tage 4× ungewollt
+  feuern.
+- **Erster Trigger:** `create_pending()` legt den Proposal-Eintrag und
+  den ersten `plugin_proposal_triggers`-Row in derselben Transaktion an.
+  Nach Rückkehr existiert der Proposal mit `trigger_count = 1` und
+  genau einem Trigger-Row. Kein separater `add_trigger()`-Call nötig.
+- **Notification:** Wird beim erstmaligen Erreichen der Schwelle
+  versendet. `notified_at` wird auf den Sendezeitpunkt gesetzt und
+  bleibt gesetzt — kein Re-Notify.
 - `abgelehnt` → kein neuer Vorschlag, aber Trigger werden weiterhin gezählt
   (für Statistik, falls Lera später umentscheidet).
 - `fertiggestellt` → wenn das Plugin trotzdem nicht greift, kann Saleria
@@ -273,8 +325,12 @@ System-Prompt eine Liste:
 ```
 
 Diese Liste wird beim System-Prompt-Build aus `proposal_store.list_active()`
-generiert (nur `in_pruefung`/`in_bearbeitung`). Begrenzt auf z. B. die letzten
-50 — wenn die Liste größer wird, ist die Heuristik selbst das Problem.
+generiert (nur `in_pruefung`/`in_bearbeitung`, sortiert nach
+`last_triggered_at DESC`). Cap bei **10–15 Einträgen**, nur `id`, `title`
+und `status` — kein `description_md`. Wenn die aktive Liste regelmäßig
+größer wird, ist die Heuristik selbst das Problem (Threshold zu lasch
+oder Saleria halluziniert) — dann wird in einer Folgephase nachjustiert,
+nicht der Cap erhöht.
 
 ### 3.7 Notification-Format
 
@@ -309,8 +365,11 @@ Routen:
 UI:
 - Tabelle mit Spalten: Title, Status, Trigger-Count, First Seen, Actions.
 - Filter nach Status (Default: nur `in_pruefung`).
-- Detail-View: Markdown wird gerendert (mit `markdown-it`, **kein**
-  `<script>`-Whitelist — siehe §6 R3).
+- Detail-View: Markdown wird **server-side** gerendert
+  (`markdown-it-py` oder `mistune`) und mit `bleach.clean()` gegen eine
+  enge Allowlist gesäubert (`p, ul, ol, li, code, pre, h1-h4, strong,
+  em, blockquote, a[href]`). Kein `<script>`, `<style>`, `<iframe>` —
+  siehe §6 R3. DOMPurify im Browser ist nur Defense-in-Depth.
 - Status-Buttons: „In Bearbeitung", „Ablehnen" (öffnet Modal für
   Begründung), „Fertiggestellt" (öffnet Modal für `implemented_in`-Pfad).
 
@@ -365,19 +424,31 @@ Plugins, Sicherheits-Aspekten, Implementierungs-Reihenfolge>
 ```
 
 **Wichtig:** Das ist eine *Spezifikation*, nicht ladbarer Code. Saleria
-darf keine `.py.draft`-Anhänge erstellen; das wäre ein Folgeschritt
-(Phase 79+) und ist explizit Out-of-Scope für Phase 78.
+darf keine `.py.draft`-Anhänge erstellen — auch in Folgephasen nicht
+(siehe §9, R1-Guard bleibt). Spec bleibt Markdown, immer.
 
 ## 5. Etappen / Vorgehen
 
-### 5.1 Etappe 1 — DB-Schema + Store + Migration (1 Session)
+Jede Etappe bekommt einen eigenen Branch und einen eigenen PR — auch
+wenn mehrere Etappen in derselben Session entstehen. PR-Reihenfolge ist
+linear: Etappe 2 baut auf Etappe 1 (Store-Import), Etappe 3 auf Etappe 2
+(Aggregator wird im Dashboard nicht direkt referenziert, aber Schema-
+Migration muss vorher gelaufen sein). Etappe N+1 erst beginnen, wenn
+Etappe N gemerged ist.
 
-- `proposal_store.py` mit Schema (siehe §3.2).
-- `migrate_proposals.py` Skript für initiale DB-Anlage.
-- Tests in `tests/test_proposal_store.py` (CRUD, FTS-Suche, Status-Wechsel).
+### 5.1 Etappe 1 — DB-Schema + Store (1 Session)
+
+- `proposal_store.py` mit Schema (siehe §3.2). DB-Anlage im Konstruktor
+  via `_create_tables()` (Pattern wie `NoteStore`).
+- Default-Pfad: `Path.home() / ".elder-berry" / "proposals.db"`.
+  Override für Server-Deploy via `SecretStore.get("proposal_db_path")`
+  in der Composition-Wurzel.
+- Tests in `tests/test_proposal_store.py` (CRUD, FTS-Suche, Status-Wechsel,
+  7-Tage-Window-Query, Transaktion `create_pending`).
 - **Branch:** `feature/phase-78-proposal-store`
 - **Akzeptanzkriterium:** DB lokal angelegt, alle CRUD-Operationen
-  funktionieren, FTS-Dedupe-Suche findet ähnliche Intents.
+  funktionieren, FTS-Dedupe-Suche findet ähnliche Intents,
+  `count_triggers_since()` filtert korrekt nach Zeitfenster.
 
 ### 5.2 Etappe 2 — Trigger-Pipeline + System-Prompt (1 Session)
 
@@ -432,21 +503,36 @@ darf keine `.py.draft`-Anhänge erstellen; das wäre ein Folgeschritt
   - Saleria's Generator-Prompt ist **strikt strukturiert** (siehe §4):
     keine ausführbaren Codeblöcke länger als 10 Zeilen, immer als
     Pseudo-Code markiert.
-  - Dashboard rendert Markdown als HTML mit `markdown-it`,
-    **`<script>`-Tags werden gestripped** (CSP aus Phase 70 + DOMPurify).
+  - Dashboard rendert Markdown **server-side** mit `markdown-it-py`
+    bzw. `mistune`, dann durchläuft das HTML `bleach.clean()` mit
+    enger Allowlist (`p, ul, ol, li, code, pre, h1-h4, strong, em,
+    blockquote, a[href]`). `<script>`/`<style>`/`<iframe>` werden
+    gestripped, *bevor* das HTML den Browser erreicht. CSP aus
+    Phase 70 (`script-src 'self'`) und DOMPurify sind zusätzliche
+    Schichten, nicht der primäre Schutz.
+  - Neue Dependency: `bleach` — gehört in optionale Gruppe `[remote]`
+    in `pyproject.toml`.
   - Beim manuellen Review prüft Lera den Inhalt — *insbesondere*
     Codeblöcke werden nicht 1:1 kopiert, sondern als Inspiration
     verwendet.
 
-- **R4 – Storage-Verfügbarkeit.** Rootserver muss laufen, sonst
-  funktioniert weder Trigger noch Dashboard. Mitigation: SQLite ist
-  robust, regelmäßiges Backup über bestehende Backup-Pipeline. Bei
-  Server-Down: Aggregator schreibt in lokalen Buffer (Tower) und
-  flushed bei nächster Verbindung.
+- **R4 – Storage-Verfügbarkeit.** Rootserver hostet sowohl Saleria-
+  Server-Instanz als auch `proposals.db` — fällt der Server aus, fällt
+  beides gleichzeitig aus. Das ist akzeptabel: ohne Server gibt es
+  ohnehin keine Matrix-Bridge, also auch keine Trigger zum Verlieren.
+  Mitigation: SQLite ist robust, regelmäßiges Backup über bestehende
+  Backup-Pipeline. Tower hält **keinen** lokalen Proposal-Buffer; er
+  ist nur LLM-Fallback-Backend, nicht Trigger-Quelle (siehe §3.1).
 
 - **R5 – Privacy: Trigger-Samples enthalten User-Anfragen.** Original-
   Anfragen aus Matrix landen in der DB. Mitigation:
-  - `sender_hash` (SHA256 + Salt) statt Klartext-User-ID.
+  - `sender_hash` (SHA256 + Salt) statt Klartext-User-ID. **Hinweis:**
+    Bei Single-User-Deployment (nur Lera + Saleria im Raum) ist der
+    Hash trivial reversibel und schützt vor allem gegen Drittbeobachter
+    bei DB-Leak — nicht gegen den Operator selbst. Der Mechanismus
+    bleibt trotzdem drin, weil dieses Repo Public/OSS ist und auch
+    Multi-User-Setups (mehrere Personen im Matrix-Raum mit derselben
+    Saleria-Instanz) abdecken muss; dort ist der Schutz substantiell.
   - DB liegt auf Rootserver hinter Login.
   - Sample-Trim auf 200 Zeichen.
   - Optional: Sample mit LLM-Pass anonymisieren („Eigennamen entfernen")
@@ -483,9 +569,11 @@ darf keine `.py.draft`-Anhänge erstellen; das wäre ein Folgeschritt
 
 ## 8. Out of Scope
 
-- Auto-Load (siehe R1, dauerhaft Out-of-Scope).
-- Code-Generierung (Saleria erstellt Plugin-Skelett als `.py.draft`).
-  Mögliche Folgephase, aber mit zusätzlicher Sicherheits-Bewertung.
+- Auto-Load (siehe R1, dauerhaft Out-of-Scope — auch in Folgephasen).
+- Ausführbare Code-Dateien als Anhang (`.py.draft` o. ä.). In Phase 78
+  und 79 ausgeschlossen; alles bleibt im Markdown-Body. Spätere
+  Phasen, die das Modell ändern wollen, brauchen eine eigene
+  Sicherheits-Bewertung und stehen aktuell nicht auf der Roadmap.
 - Proaktive Vorschläge ohne Trigger („mir ist aufgefallen…"). Folgephase.
 - Inter-Saleria-Sharing: Vorschläge aus mehreren Saleria-Instanzen
   zusammenziehen. Aktuell nur eine Instanz pro Lera.
@@ -495,10 +583,14 @@ darf keine `.py.draft`-Anhänge erstellen; das wäre ein Folgeschritt
 
 ## 9. Folge-Phasen
 
-- **Phase 79 (offen) – Plugin-Code-Skelett-Generator:** Erweiterung,
-  bei der Saleria zusätzlich zur Spec ein `.py.draft`-Skelett anhängt.
-  Erfordert separate Sicherheits-Bewertung (Code-Review-Workflow,
-  Sandbox-Linting, etc.).
+- **Phase 79 (offen, unter Vorbehalt R1) – reichere Pseudocode-
+  Anhänge:** Erweiterung, bei der Saleria im Markdown-Body zusätzliche
+  Pseudocode-Snippets liefert (z. B. konkretere `execute()`-Skizzen,
+  Beispiel-Tests). **Niemals als ladbare `.py`-Datei** — der R1-Guard
+  bleibt auch in 79 in Kraft. Alles was über reicheren Markdown-
+  Inhalt hinausgeht (Filesystem-Drops, ausführbare Skelette,
+  Sandbox-Lint-Pipelines), erfordert eine separate Sicherheits-
+  Bewertung und ist in dieser Roadmap-Linie nicht vorgesehen.
 - **Phase 80 (offen) – Proaktive Vorschläge:** Saleria reflektiert
   über Tagebuch-/Briefing-Daten und schlägt Plugins ohne konkreten
   Fail-Trigger vor.
