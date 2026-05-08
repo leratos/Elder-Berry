@@ -202,6 +202,19 @@ class ProposalIntentAggregator:
             self.THRESHOLD_DAYS,
         )
 
+    def is_rejected(self, intent: str) -> bool:
+        """True wenn ein Proposal mit diesem Intent existiert und abgelehnt ist.
+
+        Phase 81b: Aufrufer (BridgeMessageHandler im Punkt-7-Fallback)
+        nutzt das, um still zu bleiben statt dem User noch eine "Notiz
+        hinterlassen"-Bestaetigung zu schicken -- Marcus hat schon
+        entschieden, dass dieses Feature nicht kommt.
+        """
+        if not intent:
+            return False
+        existing = self._store.get_by_id(intent)
+        return existing is not None and existing.status == "abgelehnt"
+
     def _trim_sample(self, sample: str) -> str:
         if len(sample) <= self.SAMPLE_MAX_CHARS:
             return sample
