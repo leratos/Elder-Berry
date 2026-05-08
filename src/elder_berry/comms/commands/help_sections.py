@@ -120,6 +120,10 @@ Timer & Erinnerungen:
   timer 1 stunde – Timer auf 1 Stunde
   erinnere mich um 18:00: Wäsche – Erinnerung zu bestimmter Uhrzeit
   erinnere mich in 2 stunden: Kuchen – Erinnerung nach Zeitspanne
+  erinnere mich am Montag um 09:00: Bad Belzig anrufen – Einmalig an Wochentag
+  erinnere mich nächsten Montag um 09:00: Test – Auch mit "nächsten/kommenden"
+  erinnere mich am 12.05. um 09:00: Mietvertrag – Einmalig an Datum
+  erinnere mich morgen um 08:30: Brötchen – Morgen / übermorgen
   erinnerungen – Offene Erinnerungen anzeigen
   lösche erinnerung 3 – Erinnerung #3 löschen
   lösche alle erinnerungen – Alle löschen

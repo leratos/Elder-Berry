@@ -76,6 +76,32 @@ REMINDER_DELETE_PATTERN = re.compile(
 
 _WEEKDAY_NAMES = r"montag|dienstag|mittwoch|donnerstag|freitag|samstag|sonntag"
 
+# Einmalige Erinnerung mit konkretem Wochentag/Datum/Relativtag.
+# Beispiele:
+#   "erinnere mich am Montag um 09:00: Bad Belzig anrufen"
+#   "erinnere mich nächsten Montag um 9:00: Test"
+#   "erinnere mich Montag um 9:00: Test"          (kurz, ohne "am")
+#   "erinnere mich am 12.05. um 9:00: Mietvertrag"
+#   "erinnere mich am 12.05.2026 um 9:00: ..."
+#   "erinnere mich morgen um 8:30: Brötchen"
+#   "erinnere mich übermorgen um 14:00: Anruf"
+_REMINDER_DATE_DDMM = r"\d{1,2}\.\d{1,2}(?:\.(?:\d{2,4})?)?"
+_REMINDER_REL_DAY = r"morgen|übermorgen|uebermorgen"
+# Group 1: Praefix (am | naechsten | kommenden | None) -- explizites
+# "naechsten/kommenden" erzwingt +7 Tage auch wenn Wochentag = heute mit
+# noch zukuenftiger Uhrzeit (Codex-Review P2: explicit-next must honor).
+REMINDER_DATE_PATTERN = re.compile(
+    r"^(?:erinner[e]?\s+mich|erinnerung)\s+"
+    r"(?:"
+    r"(?:(am|nächsten|naechsten|kommenden)\s+)?(" + _WEEKDAY_NAMES + r")"
+    r"|am\s+(" + _REMINDER_DATE_DDMM + r")"
+    r"|(" + _REMINDER_REL_DAY + r")"
+    r")"
+    r"\s+um\s+(\d{1,2}:\d{2})"
+    r"(?:\s*[:\s]\s*(.+))?$",
+    re.IGNORECASE,
+)
+
 # "erinnere mich jeden montag um 9:00: Wochenbericht"
 RECURRING_WEEKLY_PATTERN = re.compile(
     r"^(?:erinner[e]?\s+mich|erinnerung)\s+"
@@ -160,6 +186,7 @@ class WeatherCommandHandler(CommandHandler):
             (RECURRING_DAILY_PATTERN, "recurring_reminder", False, False),
             (RECURRING_WEEKDAY_PATTERN, "recurring_reminder", False, False),
             (RECURRING_MONTHLY_PATTERN, "recurring_reminder", False, False),
+            (REMINDER_DATE_PATTERN, "reminder_date", False, False),
             (WEATHER_PATTERN, "wetter", False, False),
             (WEATHER_LOCATION_PATTERN, "wetter", False, True),
             (TIMER_PATTERN, "timer", False, False),
@@ -173,6 +200,8 @@ class WeatherCommandHandler(CommandHandler):
             "wetter [heute|morgen|woche|<N>]: Wetterabfrage und Vorhersage",
             "timer <dauer>: Timer setzen (z.B. timer 20 min, timer 1 stunde)",
             "erinnere mich um/in <zeit>: <nachricht>: Erinnerung setzen",
+            "erinnere mich am <tag>/<datum> um <zeit>: <nachricht>: "
+            "Einmalige Erinnerung (z.B. am Montag, am 12.05., morgen)",
             "erinnere mich jeden <tag> um <zeit>: <nachricht>: Wiederkehrende Erinnerung",
             "erinnerungen: Offene Erinnerungen und Timer anzeigen",
             "lösche erinnerung <ID> / lösche alle erinnerungen: Erinnerung löschen",
@@ -259,6 +288,9 @@ class WeatherCommandHandler(CommandHandler):
 
         if command == "reminder":
             return self._cmd_reminder(raw_text)
+
+        if command == "reminder_date":
+            return self._cmd_reminder_date(raw_text)
 
         if command == "recurring_reminder":
             return self._cmd_recurring_reminder(raw_text)
@@ -423,6 +455,7 @@ class WeatherCommandHandler(CommandHandler):
 
         try:
             from datetime import timezone
+            from zoneinfo import ZoneInfo
 
             match = TIMER_PATTERN.match(raw_text.strip().lower())
             if not match:
@@ -440,7 +473,8 @@ class WeatherCommandHandler(CommandHandler):
             # User-ID ist hier nicht bekannt -> default User
             self._reminder_store.add("_timer_user", f"Timer ({amount} {unit})", due)
 
-            local_time = due.astimezone()
+            local_tz = ZoneInfo(self._get_timezone())
+            local_time = due.astimezone(local_tz)
             return CommandResult(
                 command="timer",
                 success=True,
@@ -465,6 +499,7 @@ class WeatherCommandHandler(CommandHandler):
 
         try:
             from datetime import timedelta, timezone, date as date_cls
+            from zoneinfo import ZoneInfo
 
             match = REMINDER_PATTERN.match(raw_text.strip().lower())
             if not match:
@@ -480,13 +515,12 @@ class WeatherCommandHandler(CommandHandler):
             unit = match.group(3)  # "stunden" oder None
             message = match.group(4) or "Erinnerung"
 
+            local_tz = ZoneInfo(self._get_timezone())
+
             if time_str:
                 # Absolute Uhrzeit
                 hour, minute = map(int, time_str.split(":"))
                 today = date_cls.today()
-                from zoneinfo import ZoneInfo
-
-                local_tz = ZoneInfo(self._get_timezone())
                 due = datetime(
                     today.year, today.month, today.day, hour, minute, tzinfo=local_tz
                 )
@@ -500,7 +534,7 @@ class WeatherCommandHandler(CommandHandler):
                 due = datetime.now(timezone.utc) + delta
 
             self._reminder_store.add("_timer_user", message.strip(), due)
-            local_time = due.astimezone()
+            local_time = due.astimezone(local_tz)
 
             return CommandResult(
                 command="reminder",
@@ -514,6 +548,172 @@ class WeatherCommandHandler(CommandHandler):
                 success=False,
                 text=user_friendly_error(e, "Erinnerung"),
             )
+
+    def _cmd_reminder_date(self, raw_text: str) -> CommandResult:
+        """Einmalige Erinnerung an Wochentag/Datum/morgen/übermorgen + Uhrzeit."""
+        if not self._reminder_store:
+            return CommandResult(
+                command="reminder_date",
+                success=False,
+                text="Erinnerungen nicht verfügbar.",
+            )
+
+        try:
+            from zoneinfo import ZoneInfo
+
+            match = REMINDER_DATE_PATTERN.match(raw_text.strip())
+            if not match:
+                return CommandResult(
+                    command="reminder_date",
+                    success=False,
+                    text=(
+                        "Format nicht erkannt. Beispiele:\n"
+                        "  erinnere mich am Montag um 09:00: Bad Belzig anrufen\n"
+                        "  erinnere mich am 12.05. um 09:00: Mietvertrag\n"
+                        "  erinnere mich morgen um 08:30: Brötchen"
+                    ),
+                )
+
+            prefix = match.group(1)
+            weekday = match.group(2)
+            date_str = match.group(3)
+            rel_day = match.group(4)
+            time_str = match.group(5)
+            message = (match.group(6) or "Erinnerung").strip()
+
+            # "naechsten/kommenden" -> immer in den naechsten 7-Tage-Zyklus,
+            # auch wenn der Wochentag heute ist und die Uhrzeit noch zukuenftig.
+            # "am" oder kein Praefix -> heute zulaessig (wenn Uhrzeit zukuenftig).
+            force_next_week = bool(
+                prefix
+                and prefix.lower().rstrip(" ") in ("nächsten", "naechsten", "kommenden")
+            )
+
+            local_tz = ZoneInfo(self._get_timezone())
+            due = self._resolve_one_off_target(
+                weekday=weekday,
+                date_str=date_str,
+                rel_day=rel_day,
+                time_str=time_str,
+                tz=local_tz,
+                force_next_week=force_next_week,
+            )
+
+            self._reminder_store.add("_timer_user", message, due)
+            local_time = due.astimezone(local_tz)
+            return CommandResult(
+                command="reminder_date",
+                success=True,
+                text=(
+                    f"⏰ Erinnerung gesetzt: {message} "
+                    f"(fällig: {local_time.strftime('%d.%m. %H:%M')})"
+                ),
+            )
+
+        except ValueError as e:
+            return CommandResult(
+                command="reminder_date",
+                success=False,
+                text=str(e),
+            )
+        except Exception as e:
+            logger.error("reminder_date fehlgeschlagen: %s", e)
+            return CommandResult(
+                command="reminder_date",
+                success=False,
+                text=user_friendly_error(e, "Erinnerung"),
+            )
+
+    @staticmethod
+    def _resolve_one_off_target(
+        weekday: str | None,
+        date_str: str | None,
+        rel_day: str | None,
+        time_str: str,
+        tz: tzinfo,
+        now: datetime | None = None,
+        force_next_week: bool = False,
+    ) -> datetime:
+        """Berechnet einen einmaligen, in der Zukunft liegenden Reminder-Zeitpunkt.
+
+        Genau einer von weekday / date_str / rel_day muss gesetzt sein.
+        ``rel_day`` darf "morgen", "übermorgen" oder "uebermorgen" sein.
+        Liegt das resultierende Datum bereits in der Vergangenheit, wird
+        ein ValueError mit erklärendem Text geworfen – der Aufrufer sendet
+        diesen direkt an den User.
+
+        ``now`` ist optional und nur für Tests gedacht (deterministische
+        Wochentag-/Datumsberechnung). Default = ``datetime.now(tz)``.
+
+        ``force_next_week`` nur für den weekday-Pfad relevant: wenn True,
+        wird auch bei "Wochentag = heute mit zukünftiger Uhrzeit" auf
+        +7 Tage gesprungen. Aufrufer setzt das, wenn der User explizit
+        "nächsten/kommenden" geschrieben hat.
+        """
+        from datetime import date as date_cls
+
+        from elder_berry.tools.recurrence import _WEEKDAY_MAP
+
+        hour, minute = map(int, time_str.split(":"))
+        if now is None:
+            now = datetime.now(tz)
+
+        if rel_day:
+            normalized = rel_day.lower()
+            is_ueber = normalized.startswith("über") or normalized.startswith("ueber")
+            offset_days = 2 if is_ueber else 1
+            target_date = (now + timedelta(days=offset_days)).date()
+
+        elif weekday:
+            target_iso = _WEEKDAY_MAP[weekday.lower()]
+            today_iso = now.isoweekday()  # Mo=1 .. So=7
+            days_ahead = target_iso - today_iso
+            if days_ahead < 0:
+                days_ahead += 7
+            elif days_ahead == 0:
+                if force_next_week:
+                    # Explizit "naechsten/kommenden Montag" am Montag
+                    # -> immer in 7 Tagen, nicht heute.
+                    days_ahead = 7
+                else:
+                    # heute -- nur wenn Uhrzeit noch in der Zukunft liegt
+                    candidate = now.replace(
+                        hour=hour, minute=minute, second=0, microsecond=0
+                    )
+                    if candidate <= now:
+                        days_ahead = 7
+            target_date = (now + timedelta(days=days_ahead)).date()
+
+        elif date_str:
+            parts = date_str.split(".")
+            day = int(parts[0])
+            month = int(parts[1])
+            if len(parts) >= 3 and parts[2]:
+                year_part = int(parts[2])
+                year = year_part + 2000 if year_part < 100 else year_part
+            else:
+                # Jahr bestimmen: dieses Jahr wenn noch zukünftig, sonst nächstes
+                this_year = date_cls(now.year, month, day)
+                year = now.year if this_year >= now.date() else now.year + 1
+            target_date = date_cls(year, month, day)
+
+        else:
+            raise ValueError("Kein Zieldatum angegeben")
+
+        candidate = datetime(
+            target_date.year,
+            target_date.month,
+            target_date.day,
+            hour,
+            minute,
+            tzinfo=tz,
+        )
+        if candidate <= now:
+            raise ValueError(
+                f"Zeitpunkt liegt bereits in der Vergangenheit: "
+                f"{candidate.strftime('%d.%m.%Y %H:%M')}"
+            )
+        return candidate
 
     def _cmd_erinnerungen(self, raw_text: str) -> CommandResult:
         """Offene Erinnerungen anzeigen."""
@@ -680,6 +880,8 @@ class WeatherCommandHandler(CommandHandler):
         recurrence: str,
     ) -> CommandResult:
         """Erstellt eine wiederkehrende Erinnerung im Store."""
+        from zoneinfo import ZoneInfo
+
         from elder_berry.tools.recurrence import format_recurrence
 
         # Caller (_cmd_recurring_reminder) filtert "if not self._reminder_store".
@@ -690,7 +892,7 @@ class WeatherCommandHandler(CommandHandler):
             due,
             recurrence=recurrence,
         )
-        local_time = due.astimezone()
+        local_time = due.astimezone(ZoneInfo(self._get_timezone()))
         rec_text = format_recurrence(recurrence)
         return CommandResult(
             command="recurring_reminder",
@@ -904,6 +1106,9 @@ Timer & Erinnerungen:
   timer 20 min / timer 1 stunde
   erinnere mich um 18:00: Waesche
   erinnere mich in 2 stunden: Kuchen
+  erinnere mich am Montag um 09:00: Bad Belzig anrufen
+  erinnere mich am 12.05. um 09:00: Mietvertrag
+  erinnere mich morgen um 08:30: Broetchen
   erinnerungen / loesche erinnerung 3 / loesche alle erinnerungen
 
 Wiederkehrende Erinnerungen:

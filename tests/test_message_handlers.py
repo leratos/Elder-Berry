@@ -635,6 +635,304 @@ class TestRetryLlmRemoteCommand:
         run_async(_test())
 
 
+class TestHandleLlmRemoteCommandFallback:
+    """Phase 81 Punkt 7: User-Feedback wenn Retry endgültig scheitert."""
+
+    def test_user_gets_message_when_retry_fails(
+        self,
+        handler,
+        channel,
+        assistant,
+        remote_commands,
+        chat_history,
+        audio_pipeline,
+    ):
+        async def _test():
+            # Erstes parse_command schlaegt fehl, Retry liefert auch keinen
+            # parsbaren Command -> Fallback-Pfad.
+            remote_commands.parse_command.return_value = None
+            remote_commands.get_command_summary.return_value = "termine: Termine"
+            assistant.generate_raw.return_value = "auch nicht"
+            chat_history.format_for_prompt.return_value = ""
+
+            llm_result = MagicMock()
+            llm_result.response = None
+            llm_result.action_params = {
+                "command": "erinnere mich am Montag um 09:00: Bad Belzig anrufen",
+            }
+
+            msg = _make_msg("stell für Montag eine Erinnerung")
+            await handler._handle_llm_remote_command(msg, llm_result)
+
+            # Channel muss die Fallback-Erklaerung an den User geschickt haben
+            sent_texts = [
+                call.args[1] if len(call.args) >= 2 else call.kwargs.get("text", "")
+                for call in channel.send_text.await_args_list
+            ]
+            assert any(
+                "konnte ihn aber keinem meiner Commands zuordnen" in t
+                and "hilfe" in t.lower()
+                for t in sent_texts
+            ), f"Kein Fallback-Hinweis an User gesendet. Gesendet: {sent_texts}"
+
+        run_async(_test())
+
+
+# ---------------------------------------------------------------------------
+# Phase 81b: Plugin-Vorschlag bei nicht-erkanntem remote_command
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture
+def proposal_aggregator():
+    agg = MagicMock()
+    agg.is_rejected = MagicMock(return_value=False)
+    agg.record = AsyncMock()
+    return agg
+
+
+@pytest.fixture
+def handler_with_aggregator(
+    channel,
+    assistant,
+    audio_pipeline,
+    chat_history,
+    pending,
+    remote_commands,
+    email_sender,
+    proposal_aggregator,
+):
+    return BridgeMessageHandler(
+        channel=channel,
+        assistant=assistant,
+        audio_pipeline=audio_pipeline,
+        chat_history=chat_history,
+        pending=pending,
+        remote_commands=remote_commands,
+        email_sender=email_sender,
+        proposal_aggregator=proposal_aggregator,
+    )
+
+
+_VALID_PLUGIN_BLOCK = (
+    '<plugin-candidate>\n'
+    '{"intent":"reminder_one_off_weekday",'
+    '"title":"Einmalige Erinnerung an Wochentag",'
+    '"description":"Erinnerung an konkretem Wochentag setzen",'
+    '"category":"productivity",'
+    '"confidence":0.85}\n'
+    '</plugin-candidate>'
+)
+
+
+class TestProposePluginForFailedCommand:
+    """Phase 81b: Aggregator-Trigger bei nicht-erkanntem Command."""
+
+    def test_no_aggregator_returns_false(
+        self,
+        handler,  # ohne aggregator
+        assistant,
+    ):
+        async def _test():
+            msg = _make_msg("test")
+            ok = await handler._propose_plugin_for_failed_command(msg, "x")
+            assert ok is False
+            # Keine LLM-Anfrage wenn kein Aggregator
+            assistant.generate_raw.assert_not_called()
+
+        run_async(_test())
+
+    def test_llm_returns_empty_no_record(
+        self,
+        handler_with_aggregator,
+        assistant,
+        proposal_aggregator,
+    ):
+        async def _test():
+            assistant.generate_raw.return_value = ""
+            msg = _make_msg("test")
+            ok = await handler_with_aggregator._propose_plugin_for_failed_command(
+                msg, "x"
+            )
+            assert ok is False
+            proposal_aggregator.record.assert_not_called()
+
+        run_async(_test())
+
+    def test_llm_returns_no_plugin_block_no_record(
+        self,
+        handler_with_aggregator,
+        assistant,
+        proposal_aggregator,
+    ):
+        async def _test():
+            assistant.generate_raw.return_value = "Ich bin mir nicht sicher."
+            msg = _make_msg("test")
+            ok = await handler_with_aggregator._propose_plugin_for_failed_command(
+                msg, "x"
+            )
+            assert ok is False
+            proposal_aggregator.record.assert_not_called()
+
+        run_async(_test())
+
+    def test_happy_path_records_proposal(
+        self,
+        handler_with_aggregator,
+        assistant,
+        proposal_aggregator,
+    ):
+        async def _test():
+            assistant.generate_raw.return_value = _VALID_PLUGIN_BLOCK
+            msg = _make_msg("erinnere mich am Montag")
+            ok = await handler_with_aggregator._propose_plugin_for_failed_command(
+                msg, "erinnere mich am Montag um 9:00"
+            )
+            assert ok is True
+            proposal_aggregator.record.assert_awaited_once()
+            kwargs = proposal_aggregator.record.await_args.kwargs
+            assert kwargs["intent"] == "reminder_one_off_weekday"
+            assert kwargs["title"] == "Einmalige Erinnerung an Wochentag"
+            assert kwargs["confidence"] == 0.85
+            assert kwargs["category"] == "productivity"
+            # sample = command_text, NICHT msg.body
+            assert kwargs["sample"] == "erinnere mich am Montag um 9:00"
+
+        run_async(_test())
+
+    def test_rejected_intent_skipped(
+        self,
+        handler_with_aggregator,
+        assistant,
+        proposal_aggregator,
+    ):
+        async def _test():
+            assistant.generate_raw.return_value = _VALID_PLUGIN_BLOCK
+            proposal_aggregator.is_rejected.return_value = True
+
+            msg = _make_msg("test")
+            ok = await handler_with_aggregator._propose_plugin_for_failed_command(
+                msg, "x"
+            )
+            assert ok is False
+            proposal_aggregator.is_rejected.assert_called_once_with(
+                "reminder_one_off_weekday"
+            )
+            proposal_aggregator.record.assert_not_called()
+
+        run_async(_test())
+
+    def test_llm_exception_does_not_crash(
+        self,
+        handler_with_aggregator,
+        assistant,
+        proposal_aggregator,
+    ):
+        async def _test():
+            assistant.generate_raw.side_effect = RuntimeError("LLM down")
+            msg = _make_msg("test")
+            ok = await handler_with_aggregator._propose_plugin_for_failed_command(
+                msg, "x"
+            )
+            assert ok is False
+            proposal_aggregator.record.assert_not_called()
+
+        run_async(_test())
+
+    def test_record_exception_does_not_crash(
+        self,
+        handler_with_aggregator,
+        assistant,
+        proposal_aggregator,
+    ):
+        async def _test():
+            assistant.generate_raw.return_value = _VALID_PLUGIN_BLOCK
+            proposal_aggregator.record.side_effect = RuntimeError("DB down")
+
+            msg = _make_msg("test")
+            ok = await handler_with_aggregator._propose_plugin_for_failed_command(
+                msg, "x"
+            )
+            assert ok is False  # Kein Notiz-Hinweis bei Fehler
+
+        run_async(_test())
+
+
+class TestFallbackUserMessage:
+    """Phase 81b: User bekommt 'Notiz hinterlassen'-Hinweis nur bei Erfolg."""
+
+    def test_message_with_note_when_proposal_recorded(
+        self,
+        handler_with_aggregator,
+        channel,
+        assistant,
+        remote_commands,
+        chat_history,
+        proposal_aggregator,
+    ):
+        async def _test():
+            remote_commands.parse_command.return_value = None
+            remote_commands.get_command_summary.return_value = "termine: Termine"
+            chat_history.format_for_prompt.return_value = ""
+
+            # Retry-LLM (1. Call) liefert nichts Parsbares
+            # Vorschlag-LLM (2. Call) liefert den Block
+            assistant.generate_raw.side_effect = [
+                "auch nicht",  # Retry
+                _VALID_PLUGIN_BLOCK,  # Vorschlag
+            ]
+
+            llm_result = MagicMock()
+            llm_result.response = None
+            llm_result.action_params = {"command": "erinnere mich am Montag um 09:00"}
+
+            msg = _make_msg("test")
+            await handler_with_aggregator._handle_llm_remote_command(msg, llm_result)
+
+            sent = [c.args[1] for c in channel.send_text.await_args_list]
+            note_msgs = [t for t in sent if "Notiz hinterlassen" in t]
+            assert len(note_msgs) == 1, f"Erwarte 1 Notiz-Message, gesendet: {sent}"
+            assert "konnte ihn aber keinem meiner Commands zuordnen" in note_msgs[0]
+            proposal_aggregator.record.assert_awaited_once()
+
+        run_async(_test())
+
+    def test_message_without_note_when_no_proposal(
+        self,
+        handler_with_aggregator,
+        channel,
+        assistant,
+        remote_commands,
+        chat_history,
+        proposal_aggregator,
+    ):
+        async def _test():
+            remote_commands.parse_command.return_value = None
+            remote_commands.get_command_summary.return_value = "termine: Termine"
+            chat_history.format_for_prompt.return_value = ""
+
+            # Beide LLM-Calls liefern Müll → kein Vorschlag
+            assistant.generate_raw.side_effect = ["auch nicht", "auch nicht"]
+
+            llm_result = MagicMock()
+            llm_result.response = None
+            llm_result.action_params = {"command": "test xyz"}
+
+            msg = _make_msg("test")
+            await handler_with_aggregator._handle_llm_remote_command(msg, llm_result)
+
+            sent = [c.args[1] for c in channel.send_text.await_args_list]
+            assert any(
+                "konnte ihn aber keinem meiner Commands zuordnen" in t
+                and "Notiz hinterlassen" not in t
+                for t in sent
+            ), f"Erwarte Standard-Hinweis OHNE Notiz. Gesendet: {sent}"
+
+        run_async(_test())
+
+        run_async(_test())
+
+
 # ---------------------------------------------------------------------------
 # Phase 78: Plugin-Candidate -> ProposalIntentAggregator
 # ---------------------------------------------------------------------------
