@@ -16,11 +16,24 @@
 # Nutzung (alle 4 Variablen sind PFLICHT, fail-closed wenn nicht gesetzt
 # oder noch auf "example.com"):
 #
+# Bash / Linux / macOS / Git-Bash:
+#
 #   ELDER_BERRY_DEPLOY_USER=lera \
 #   ELDER_BERRY_DEPLOY_HOST=last-strawberry.com \
 #   ELDER_BERRY_DEPLOY_PATH=/var/www/vhosts/last-strawberry.com/fern \
 #   ELDER_BERRY_DASHBOARD_HOST=fern.last-strawberry.com \
 #       bash scripts/deploy_dashboard.sh
+#
+# PowerShell (Windows / Tower):
+#
+#   $env:ELDER_BERRY_DEPLOY_USER     = "lera"
+#   $env:ELDER_BERRY_DEPLOY_HOST     = "last-strawberry.com"
+#   $env:ELDER_BERRY_DEPLOY_PATH     = "/var/www/vhosts/last-strawberry.com/fern"
+#   $env:ELDER_BERRY_DASHBOARD_HOST  = "fern.last-strawberry.com"
+#   bash scripts/deploy_dashboard.sh
+#
+# In PowerShell bleiben die Vars fuer die Session gesetzt -- nur einmal
+# setzen, dann beliebig oft 'bash scripts/deploy_dashboard.sh' rufen.
 #
 # Hinweis:
 # - DEPLOY_HOST ist das SSH-Ziel (was rsync ansprechen kann).
