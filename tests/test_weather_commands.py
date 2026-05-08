@@ -124,81 +124,94 @@ BERLIN = ZoneInfo("Europe/Berlin")
 
 
 class TestReminderDatePattern:
+    """Group-Indizes (Phase 81 + Codex-Fix):
+    1 = Praefix (am/naechsten/kommenden/None)
+    2 = Wochentag
+    3 = Datum DD.MM.[YY[YY]]
+    4 = Relativtag (morgen/uebermorgen)
+    5 = Uhrzeit HH:MM
+    6 = Nachricht
+    """
+
     def test_am_montag(self):
         m = REMINDER_DATE_PATTERN.match(
             "erinnere mich am Montag um 09:00: Bad Belzig anrufen"
         )
         assert m is not None
-        assert m.group(1).lower() == "montag"
-        assert m.group(2) is None
+        assert m.group(1).lower() == "am"
+        assert m.group(2).lower() == "montag"
         assert m.group(3) is None
-        assert m.group(4) == "09:00"
-        assert m.group(5) == "Bad Belzig anrufen"
+        assert m.group(4) is None
+        assert m.group(5) == "09:00"
+        assert m.group(6) == "Bad Belzig anrufen"
 
     def test_naechsten_montag(self):
         m = REMINDER_DATE_PATTERN.match(
             "erinnere mich nächsten Montag um 9:00: Test"
         )
         assert m is not None
-        assert m.group(1).lower() == "montag"
+        assert m.group(1).lower() == "nächsten"
+        assert m.group(2).lower() == "montag"
 
     def test_kommenden_freitag(self):
         m = REMINDER_DATE_PATTERN.match(
             "erinnere mich kommenden Freitag um 17:30: Feierabend"
         )
         assert m is not None
-        assert m.group(1).lower() == "freitag"
+        assert m.group(1).lower() == "kommenden"
+        assert m.group(2).lower() == "freitag"
 
     def test_weekday_ohne_praefix(self):
         m = REMINDER_DATE_PATTERN.match(
             "erinnere mich Montag um 9:00: Test"
         )
         assert m is not None
-        assert m.group(1).lower() == "montag"
+        assert m.group(1) is None
+        assert m.group(2).lower() == "montag"
 
     def test_am_datum_kurz(self):
         m = REMINDER_DATE_PATTERN.match(
             "erinnere mich am 12.05. um 09:00: Mietvertrag"
         )
         assert m is not None
-        assert m.group(2) == "12.05."
-        assert m.group(4) == "09:00"
+        assert m.group(3) == "12.05."
+        assert m.group(5) == "09:00"
 
     def test_am_datum_mit_jahr(self):
         m = REMINDER_DATE_PATTERN.match(
             "erinnere mich am 12.05.2026 um 09:00: Lang"
         )
         assert m is not None
-        assert m.group(2) == "12.05.2026"
+        assert m.group(3) == "12.05.2026"
 
     def test_morgen(self):
         m = REMINDER_DATE_PATTERN.match(
             "erinnere mich morgen um 08:30: Brötchen"
         )
         assert m is not None
-        assert m.group(3).lower() == "morgen"
-        assert m.group(4) == "08:30"
+        assert m.group(4).lower() == "morgen"
+        assert m.group(5) == "08:30"
 
     def test_uebermorgen(self):
         m = REMINDER_DATE_PATTERN.match(
             "erinnere mich übermorgen um 14:00: Anruf"
         )
         assert m is not None
-        assert m.group(3).lower() == "übermorgen"
+        assert m.group(4).lower() == "übermorgen"
 
     def test_uebermorgen_ascii(self):
         m = REMINDER_DATE_PATTERN.match(
             "erinnere mich uebermorgen um 14:00: Anruf"
         )
         assert m is not None
-        assert m.group(3).lower() == "uebermorgen"
+        assert m.group(4).lower() == "uebermorgen"
 
     def test_ohne_nachricht(self):
         m = REMINDER_DATE_PATTERN.match(
             "erinnere mich am Montag um 9:00"
         )
         assert m is not None
-        assert m.group(5) is None
+        assert m.group(6) is None
 
     def test_recurring_jeden_matcht_NICHT(self):
         """'jeden Montag' ist wiederkehrend und gehört NICHT in dieses Pattern."""
@@ -268,6 +281,36 @@ class TestResolveOneOffTarget:
             now=now,
         )
         assert due.date() == (now + timedelta(days=7)).date()
+
+    def test_force_next_week_jumps_even_with_future_time(self, now):
+        """Codex-Fix: 'naechsten Freitag um 18:00' am Freitag muss +7 sein,
+        nicht heute, auch wenn 18:00 heute noch in der Zukunft liegt."""
+        due = WeatherCommandHandler._resolve_one_off_target(
+            weekday="Freitag",
+            date_str=None,
+            rel_day=None,
+            time_str="18:00",
+            tz=BERLIN,
+            now=now,
+            force_next_week=True,
+        )
+        assert due.date() == (now + timedelta(days=7)).date()
+        assert due.hour == 18
+
+    def test_force_next_week_does_not_affect_other_weekday(self, now):
+        """'naechsten Mittwoch' am Freitag = naechster Mittwoch (in 5 Tagen),
+        force_next_week aendert nichts am Verhalten fuer andere Tage."""
+        due = WeatherCommandHandler._resolve_one_off_target(
+            weekday="Mittwoch",
+            date_str=None,
+            rel_day=None,
+            time_str="09:00",
+            tz=BERLIN,
+            now=now,
+            force_next_week=True,
+        )
+        # Freitag (5) -> Mittwoch (3): days_ahead = -2 -> +7 = 5 -> 2026-05-13
+        assert due.date() == datetime(2026, 5, 13).date()
 
     def test_morgen(self, now):
         due = WeatherCommandHandler._resolve_one_off_target(
@@ -394,6 +437,97 @@ class TestReminderDateExecution:
             i for i, p in enumerate(handler.patterns) if p[1] == "reminder"
         )
         assert date_idx < reminder_idx
+
+    def test_naechsten_weekday_does_not_pick_today(self, handler, store):
+        """Codex-Fix P2: 'naechsten <heute>' darf nicht heute landen,
+        auch wenn die Uhrzeit noch in der Zukunft liegt."""
+        from datetime import datetime as _dt
+        from zoneinfo import ZoneInfo as _ZI
+
+        # Heutigen Wochentag in Berlin ermitteln und mit "naechsten" + 23:59
+        # absetzen. Das forciert: ohne Fix landet die Erinnerung heute,
+        # mit Fix landet sie in 7 Tagen.
+        local_tz = _ZI("Europe/Berlin")
+        today_name = {
+            1: "Montag",
+            2: "Dienstag",
+            3: "Mittwoch",
+            4: "Donnerstag",
+            5: "Freitag",
+            6: "Samstag",
+            7: "Sonntag",
+        }[_dt.now(local_tz).isoweekday()]
+
+        result = handler.execute(
+            "reminder_date",
+            f"erinnere mich nächsten {today_name} um 23:59: Test",
+        )
+        assert result.success is True
+        pending = store.get_pending()
+        assert len(pending) == 1
+        # Erinnerung muss mind. 7 Tage in der Zukunft liegen, nicht heute
+        delta = pending[0].due_at - _dt.now(local_tz)
+        assert delta.days >= 6, (
+            f"'naechsten {today_name}' wurde nicht in die Folgewoche "
+            f"verschoben: due={pending[0].due_at}, delta={delta}"
+        )
+
+
+# ---------------------------------------------------------------------------
+# Codex-Fix P2: astimezone(local_tz) statt astimezone() ohne Argument
+# ---------------------------------------------------------------------------
+
+
+class TestTimezoneAwareDisplay:
+    """Sicherstellen, dass keine astimezone()-Aufrufe ohne tz-Argument
+    zurueckkommen. Auf Windows-Hosts (Tower mit Berlin-TZ) faellt der
+    Bug nicht auf, auf Containern in UTC schon -- ein Source-Check ist
+    der robusteste Weg, ohne System-TZ zu manipulieren.
+    """
+
+    def test_no_naked_astimezone_in_weather_commands(self):
+        from pathlib import Path
+
+        src = (
+            Path(__file__).resolve().parent.parent
+            / "src"
+            / "elder_berry"
+            / "comms"
+            / "commands"
+            / "weather_commands.py"
+        ).read_text(encoding="utf-8")
+        # Keine nackten astimezone()-Aufrufe (kein '(' direkt gefolgt von ')')
+        assert "astimezone()" not in src, (
+            "Mindestens ein astimezone()-Aufruf ohne tz-Argument gefunden. "
+            "Das nutzt die Host-TZ statt der konfigurierten -- siehe Codex-"
+            "Review P2."
+        )
+        # Mindestens vier astimezone(...)-Aufrufe (timer, reminder,
+        # reminder_date, recurring) -- Sicherheitsnetz, falls jemand
+        # eine Stelle entfernt.
+        assert src.count("astimezone(") >= 4
+
+    def test_reminder_date_due_is_in_configured_tz(self, store):
+        """Sanity: der gespeicherte due_at-Roundtrip ergibt nach Konvertierung
+        in die konfigurierte TZ die eingegebene Stunde."""
+        from zoneinfo import ZoneInfo
+
+        handler = WeatherCommandHandler(
+            reminder_store=store,
+            get_timezone=lambda: "Europe/Berlin",
+        )
+        result = handler.execute(
+            "reminder_date",
+            "erinnere mich morgen um 09:00: Test",
+        )
+        assert result.success is True
+        pending = store.get_pending()
+        assert len(pending) == 1
+        # due_at ist UTC-aware -- in Berlin zurueckkonvertiert muss 09:00
+        # rauskommen, unabhaengig vom Host.
+        berlin_due = pending[0].due_at.astimezone(ZoneInfo("Europe/Berlin"))
+        assert berlin_due.hour == 9
+        assert berlin_due.minute == 0
 
 
 # ---------------------------------------------------------------------------
