@@ -39,6 +39,19 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
+def _sanitize_for_log(value: object) -> str:
+    """Neutralisiert CR/LF in User-Input fuer Log-Calls.
+
+    CodeQL py/log-injection: Werte aus URL-Query/Path/Body-Parametern
+    koennen Newlines enthalten und damit fake Log-Zeilen einschleusen
+    ("log forging"). ``%r`` escaped die meisten Sonderzeichen, aber
+    CodeQL erkennt das nicht zuverlaessig -- daher zusaetzlich strippen.
+    """
+    if value is None:
+        return "<none>"
+    return str(value).replace("\r", "").replace("\n", "")
+
+
 def _serialize_proposal(proposal: Proposal) -> dict[str, Any]:
     return {
         "id": proposal.id,
@@ -102,8 +115,13 @@ def register_proposals_routes(
         except InvalidStatusError:
             # Exception-Message NICHT an den Client weiterreichen --
             # CodeQL py/stack-trace-exposure. Volle Info im Server-Log,
-            # generischer Fehler an den Browser.
-            logger.warning("Invalid status filter in list_proposals: %r", status)
+            # generischer Fehler an den Browser. User-Input wird via
+            # _sanitize_for_log gegen CR/LF-Injection abgesichert
+            # (CodeQL py/log-injection).
+            logger.warning(
+                "Invalid status filter in list_proposals: %r",
+                _sanitize_for_log(status),
+            )
             return JSONResponse({"error": "invalid status value"}, status_code=422)
         return JSONResponse({"proposals": [_serialize_proposal(p) for p in proposals]})
 
@@ -150,11 +168,13 @@ def register_proposals_routes(
             )
         except InvalidStatusError:
             # Siehe list_proposals(): keine Exception-Message an den
-            # Client. Volle Info nur im Server-Log.
+            # Client. Volle Info nur im Server-Log -- proposal_id und
+            # requested-status kommen aus der Request, also sanitized
+            # via _sanitize_for_log (CodeQL py/log-injection).
             logger.warning(
                 "Invalid status update for proposal %r: requested=%r",
-                proposal_id,
-                body.get("new_status"),
+                _sanitize_for_log(proposal_id),
+                _sanitize_for_log(body.get("new_status")),
             )
             return JSONResponse({"error": "invalid status transition"}, status_code=422)
         proposal = store.get_by_id(proposal_id)

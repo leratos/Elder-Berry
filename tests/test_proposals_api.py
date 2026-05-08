@@ -280,6 +280,34 @@ class TestRoutesUnregisteredWithoutStore:
 # ---------------------------------------------------------------------------
 
 
+class TestSanitizeForLog:
+    """Helper gegen CodeQL py/log-injection -- CR/LF-Strip in User-Input."""
+
+    def test_strips_cr_and_lf(self) -> None:
+        from elder_berry.web.proposals_api import _sanitize_for_log
+
+        assert _sanitize_for_log("foo\nbar") == "foobar"
+        assert _sanitize_for_log("foo\r\nbar") == "foobar"
+        assert _sanitize_for_log("a\rb\nc") == "abc"
+
+    def test_none_returns_marker(self) -> None:
+        from elder_berry.web.proposals_api import _sanitize_for_log
+
+        assert _sanitize_for_log(None) == "<none>"
+
+    def test_non_string_coerced(self) -> None:
+        from elder_berry.web.proposals_api import _sanitize_for_log
+
+        # body.get(...) kann beliebigen JSON-Typ zurueckgeben
+        assert _sanitize_for_log(42) == "42"
+        assert _sanitize_for_log([1, 2]) == "[1, 2]"
+
+    def test_normal_string_untouched(self) -> None:
+        from elder_berry.web.proposals_api import _sanitize_for_log
+
+        assert _sanitize_for_log("in_pruefung") == "in_pruefung"
+
+
 class TestAuthLayer:
     def test_requires_login_when_enabled(
         self, store: ProposalStore, tmp_path: Path
