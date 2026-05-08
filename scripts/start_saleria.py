@@ -1403,6 +1403,7 @@ def run_matrix(assistant, stt=None, avatar=None, audio_converter=None, robot=Non
             require_settings_token=True,
             require_dashboard_login=True,
             dashboard_session_hours=session_hours,
+            proposal_store=proposal_store,
         )
         # Gespeicherten STT-Timeout laden und auf Pipeline anwenden
         saved_timeout = dashboard._get_stt_timeout()

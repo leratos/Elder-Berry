@@ -75,6 +75,9 @@ class DashboardAuthMiddleware(BaseHTTPMiddleware):
         # Phase 77.5: Plugin-Inspector leakt Capability-Konfiguration
         # (z.B. dass cloud/email aktiv sind), darum hinter Login.
         "/api/plugins",
+        # Phase 78: Plugin-Vorschlaege enthalten Original-Anfragen (Trigger-
+        # Samples) und sind read+write. Auf jeden Fall hinter Login.
+        "/api/proposals",
     )
     # Endpoints, die innerhalb der geschützten Präfixe trotzdem offen
     # bleiben müssen (Login-Endpoints selbst).
