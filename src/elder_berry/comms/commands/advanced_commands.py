@@ -8,7 +8,7 @@ from __future__ import annotations
 import logging
 import re
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from elder_berry.comms.commands.base import (
     CommandHandler,
@@ -574,11 +574,22 @@ class AdvancedCommandHandler(CommandHandler):
         text = self._search_client.format_results(results)
         history = self._search_client.format_results_detailed(results)
 
+        # Phase 80: Strukturierte Items fuer den ConversationListStore.
+        # Bridge registriert sie mit msg.sender als user_id (siehe
+        # message_handlers._maybe_register_command_list). Reihenfolge
+        # entspricht 1:1 der User-sichtbaren Nummerierung in `text`,
+        # damit "Treffer 2" eindeutig auf items[1] zeigt.
+        list_items: list[dict[str, Any]] = [
+            {"title": r.title, "url": r.url, "snippet": r.description} for r in results
+        ]
+
         return CommandResult(
             command="web_search",
             success=True,
             text=text,
             history_text=history,
+            list_items=list_items if list_items else None,
+            list_type="search" if list_items else None,
         )
 
 

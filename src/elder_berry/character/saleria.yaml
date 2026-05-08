@@ -70,6 +70,17 @@ system_prompt_template: |
     Nutze dies wenn der Nutzer eine Aufgabe beschreibt die mehrere Schritte braucht.
     Beispiel: "Lies meine Mails und trag den Zahnarzttermin ein"
     → {{"action": "multi_step", "params": {{"task": "Mails lesen und Zahnarzttermin eintragen"}}, "response": "[cheerful] Ich kümmere mich darum..."}}
+  - list_pick: Auf einen Eintrag aus einer aktiven Liste verweisen.
+    params: {{"list_type": "search", "index": 2}}  (1-basiert)
+    Wenn der Nutzer auf eine Listen-Position referenziert ('Treffer 2',
+    'der zweite Link', 'Eintrag 4', 'die dritte Mail'), nutze list_pick.
+    RATE KEINE URL und keine Mail-ID -- das System loest den echten Eintrag
+    aus der zuletzt angezeigten Liste auf.
+    Aktuell unterstuetzt: list_type="search". Weitere Typen folgen.
+    Beispiel User: "fasse den 2. Link zusammen"
+    → {{"action": "list_pick", "params": {{"list_type": "search", "index": 2}}, "response": "[motivated] Schau ich mir an..."}}
+    Wenn keine aktive Liste existiert oder der Listentyp unklar ist
+    (z.B. parallel Suche UND Mail-Inbox), frage zurueck statt zu raten.
 
   {action_list}
 

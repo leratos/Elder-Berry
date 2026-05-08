@@ -1225,3 +1225,328 @@ class TestMultiLineLLMRemoteCommand:
             assert "DB down" in sent_text
 
         run_async(_test())
+
+
+# ---------------------------------------------------------------------------
+# Phase 80 Etappe 2: ConversationListStore-Integration
+#
+# - register-on-web_search: Bridge schreibt list_items in den Store
+# - handle_list_pick: LLM schickt {"action":"list_pick","params":{...}},
+#   Bridge loest auf und dispatcht web_summary
+# - Fehlerpfade: keine Liste, out-of-range, kein Store, falscher list_type
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture
+def conversation_lists():
+    """Echte ConversationListStore-Instanz (kein Mock) -- wir wollen
+    register/get_active/get_item Verhalten end-to-end testen."""
+    from elder_berry.tools.conversation_list_store import ConversationListStore
+
+    return ConversationListStore()
+
+
+@pytest.fixture
+def handler_with_lists(
+    channel,
+    assistant,
+    audio_pipeline,
+    chat_history,
+    pending,
+    remote_commands,
+    email_sender,
+    conversation_lists,
+):
+    return BridgeMessageHandler(
+        channel=channel,
+        assistant=assistant,
+        audio_pipeline=audio_pipeline,
+        chat_history=chat_history,
+        pending=pending,
+        remote_commands=remote_commands,
+        email_sender=email_sender,
+        conversation_lists=conversation_lists,
+    )
+
+
+class TestRegisterCommandList:
+    """``handle_remote_command`` registriert ``result.list_items`` im Store."""
+
+    def test_web_search_registers_in_store(
+        self, handler_with_lists, channel, remote_commands, conversation_lists
+    ):
+        async def _test():
+            from elder_berry.comms.commands.base import CommandResult
+
+            remote_commands.execute.return_value = CommandResult(
+                command="web_search",
+                success=True,
+                text="1. Result A\n2. Result B",
+                history_text="...",
+                list_items=[
+                    {"title": "A", "url": "https://a.example", "snippet": "..."},
+                    {"title": "B", "url": "https://b.example", "snippet": "..."},
+                ],
+                list_type="search",
+            )
+            msg = _make_msg("suche drohnenbau", sender="@marcus:matrix.org")
+            await handler_with_lists.handle_remote_command(msg, "web_search")
+
+            active = conversation_lists.get_active("@marcus:matrix.org", "search")
+            assert active is not None
+            list_ref, items = active
+            assert list_ref.startswith("search_")
+            assert len(items) == 2
+            assert items[0]["url"] == "https://a.example"
+            assert items[1]["url"] == "https://b.example"
+
+        run_async(_test())
+
+    def test_command_failure_does_not_register(
+        self, handler_with_lists, remote_commands, conversation_lists
+    ):
+        async def _test():
+            from elder_berry.comms.commands.base import CommandResult
+
+            # Brave-API down: success=False, list_items leer
+            remote_commands.execute.return_value = CommandResult(
+                command="web_search",
+                success=False,
+                text="API-Fehler",
+                list_items=None,
+                list_type=None,
+            )
+            msg = _make_msg("suche xyz", sender="@marcus:matrix.org")
+            await handler_with_lists.handle_remote_command(msg, "web_search")
+
+            assert conversation_lists.get_active("@marcus:matrix.org", "search") is None
+
+        run_async(_test())
+
+    def test_no_store_wired_does_not_crash(self, handler, remote_commands):
+        """Phase 80 inaktiv (handler-Fixture ohne conversation_lists):
+        Command-Flow muss trotzdem laufen, nur ohne Register."""
+
+        async def _test():
+            from elder_berry.comms.commands.base import CommandResult
+
+            remote_commands.execute.return_value = CommandResult(
+                command="web_search",
+                success=True,
+                text="1. Result A",
+                list_items=[{"title": "A", "url": "https://a.example", "snippet": ""}],
+                list_type="search",
+            )
+            msg = _make_msg("suche drohnenbau")
+            # darf nicht crashen
+            await handler.handle_remote_command(msg, "web_search")
+
+        run_async(_test())
+
+    def test_register_failure_does_not_crash_user_flow(
+        self, handler_with_lists, channel, remote_commands
+    ):
+        """Wenn der Store crasht (z.B. ungueltige Daten), darf der
+        User-Flow trotzdem die Antwort senden."""
+
+        async def _test():
+            from elder_berry.comms.commands.base import CommandResult
+
+            remote_commands.execute.return_value = CommandResult(
+                command="web_search",
+                success=True,
+                text="1. Result A",
+                list_items=[{"title": "A", "url": "https://a.example", "snippet": ""}],
+                list_type="search",
+            )
+            # Store-Mock-Stub einsetzen, der bei register exception wirft
+            broken_store = MagicMock()
+            broken_store.register.side_effect = RuntimeError("store kaputt")
+            handler_with_lists._conversation_lists = broken_store
+
+            msg = _make_msg("suche drohnenbau")
+            await handler_with_lists.handle_remote_command(msg, "web_search")
+
+            # Antwort wurde trotzdem gesendet
+            channel.send_text.assert_called()
+
+        run_async(_test())
+
+
+class TestHandleListPick:
+    """``_handle_list_pick`` dispatcht zur Folge-Action oder antwortet sauber."""
+
+    @staticmethod
+    def _make_pick_result(list_type: str, index: int) -> MagicMock:
+        result = MagicMock()
+        result.response = "[motivated] Schau ich mir an..."
+        result.action_executed = "list_pick"
+        result.action_success = True
+        result.audio_path = None
+        result.plugin_candidate = None
+        result.action_params = {"list_type": list_type, "index": index}
+        return result
+
+    def test_list_pick_dispatches_web_summary(
+        self,
+        handler_with_lists,
+        channel,
+        assistant,
+        remote_commands,
+        conversation_lists,
+    ):
+        """Happy Path: aktive Suchliste -> Treffer 2 -> web_summary
+        mit der ECHTEN URL des zweiten Treffers (keine Halluzination)."""
+
+        async def _test():
+            from elder_berry.comms.commands.base import CommandResult
+
+            sender = "@marcus:matrix.org"
+            conversation_lists.register(
+                user_id=sender,
+                list_type="search",
+                items=[
+                    {"title": "1st", "url": "https://first.example", "snippet": ""},
+                    {"title": "2nd", "url": "https://second.example", "snippet": ""},
+                ],
+            )
+
+            assistant.process.return_value = self._make_pick_result("search", 2)
+            remote_commands.parse_command.return_value = "web_summary"
+            remote_commands.execute.return_value = CommandResult(
+                command="web_summary",
+                success=True,
+                text="Webseiten-Header",
+                history_text="Inhalt der Seite...",
+            )
+
+            msg = _make_msg("fasse den 2. Link zusammen", sender=sender)
+            await handler_with_lists.handle_assistant_message(msg)
+
+            # parse_command muss mit der echten URL aufgerufen worden sein
+            parse_args = [c[0][0] for c in remote_commands.parse_command.call_args_list]
+            assert any("https://second.example" in arg for arg in parse_args), (
+                f"parse_command wurde nicht mit der echten zweiten URL aufgerufen: "
+                f"{parse_args!r}"
+            )
+            # KEIN Aufruf mit der ersten URL
+            assert not any("https://first.example" in arg for arg in parse_args)
+
+        run_async(_test())
+
+    def test_list_pick_without_active_list_says_so(
+        self, handler_with_lists, channel, assistant, conversation_lists
+    ):
+        """TTL abgelaufen / nie eine Liste registriert: klare Fehlermeldung,
+        kein Versuch, irgendeine URL zu raten."""
+
+        async def _test():
+            assistant.process.return_value = self._make_pick_result("search", 2)
+
+            msg = _make_msg("Treffer 2", sender="@marcus:matrix.org")
+            await handler_with_lists.handle_assistant_message(msg)
+
+            # Mind. eine Antwort gesendet, die "keine aktive Liste"-Hinweis enthaelt
+            sent_texts = [c[0][1] for c in channel.send_text.call_args_list]
+            joined = " ".join(sent_texts).lower()
+            assert "keine aktive liste" in joined or "abgelaufen" in joined
+
+        run_async(_test())
+
+    def test_list_pick_out_of_range(
+        self, handler_with_lists, channel, assistant, conversation_lists
+    ):
+        """index > len(items): klare Fehlermeldung."""
+
+        async def _test():
+            sender = "@marcus:matrix.org"
+            conversation_lists.register(
+                user_id=sender,
+                list_type="search",
+                items=[
+                    {"title": "1st", "url": "https://only.example", "snippet": ""},
+                ],
+            )
+            assistant.process.return_value = self._make_pick_result("search", 5)
+
+            msg = _make_msg("Treffer 5", sender=sender)
+            await handler_with_lists.handle_assistant_message(msg)
+
+            sent_texts = [c[0][1] for c in channel.send_text.call_args_list]
+            joined = " ".join(sent_texts).lower()
+            assert "treffer 5" in joined or "gibt es nicht" in joined
+
+        run_async(_test())
+
+    def test_list_pick_invalid_index_param(
+        self, handler_with_lists, channel, assistant
+    ):
+        """index="zwei" (string statt int): Fehlermeldung statt Crash."""
+
+        async def _test():
+            result = MagicMock()
+            result.response = ""
+            result.action_executed = "list_pick"
+            result.action_success = True
+            result.audio_path = None
+            result.plugin_candidate = None
+            result.action_params = {"list_type": "search", "index": "zwei"}
+            assistant.process.return_value = result
+
+            msg = _make_msg("Treffer zwei")
+            await handler_with_lists.handle_assistant_message(msg)
+
+            sent_texts = [c[0][1] for c in channel.send_text.call_args_list]
+            joined = " ".join(sent_texts).lower()
+            assert "zahl" in joined or "ungueltig" in joined or "index" in joined
+
+        run_async(_test())
+
+    def test_list_pick_unknown_list_type_falls_back_gracefully(
+        self, handler_with_lists, channel, assistant, conversation_lists
+    ):
+        """Etappe 3 noch nicht da: mail_inbox-Pick antwortet sauber,
+        kein Crash, kein Dispatch."""
+
+        async def _test():
+            sender = "@marcus:matrix.org"
+            conversation_lists.register(
+                user_id=sender,
+                list_type="mail_inbox",
+                items=[
+                    {"from": "x@y.de", "subject": "Hi", "msg_id": "abc", "date": "..."},
+                ],
+            )
+            assistant.process.return_value = self._make_pick_result("mail_inbox", 1)
+
+            msg = _make_msg("lies Mail 1", sender=sender)
+            await handler_with_lists.handle_assistant_message(msg)
+
+            sent_texts = [c[0][1] for c in channel.send_text.call_args_list]
+            joined = " ".join(sent_texts).lower()
+            assert "etappe" in joined or "nicht verkabelt" in joined
+
+        run_async(_test())
+
+    def test_list_pick_without_store_wired(self, handler, channel, assistant):
+        """Phase 80 inaktiv (handler ohne conversation_lists): list_pick
+        antwortet mit klarer Begruendung statt Crash oder URL-Halluzination."""
+
+        async def _test():
+            result = MagicMock()
+            result.response = ""
+            result.action_executed = "list_pick"
+            result.action_success = True
+            result.audio_path = None
+            result.plugin_candidate = None
+            result.action_params = {"list_type": "search", "index": 1}
+            assistant.process.return_value = result
+
+            msg = _make_msg("Treffer 1")
+            await handler.handle_assistant_message(msg)
+
+            sent_texts = [c[0][1] for c in channel.send_text.call_args_list]
+            joined = " ".join(sent_texts).lower()
+            assert "nicht verfuegbar" in joined or "neue suche" in joined
+
+        run_async(_test())

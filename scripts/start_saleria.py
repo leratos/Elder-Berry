@@ -1303,6 +1303,12 @@ def run_matrix(assistant, stt=None, avatar=None, audio_converter=None, robot=Non
     from elder_berry.tools.intent_aggregator import ProposalIntentAggregator
     from elder_berry.tools.proposal_store import ProposalStore
 
+    # --- 6c. Phase 80: ConversationListStore (Listen-Disambiguation) ---
+    from elder_berry.tools.conversation_list_store import ConversationListStore
+
+    conversation_lists = ConversationListStore()
+    logger.info("Phase 80: ConversationListStore aktiv (TTL=1h)")
+
     proposal_store = ProposalStore()
     proposal_room_id = secrets.get_or_none("matrix_proposal_room_id") or room_id
     if not secrets.get_or_none("matrix_proposal_room_id"):
@@ -1377,6 +1383,7 @@ def run_matrix(assistant, stt=None, avatar=None, audio_converter=None, robot=Non
         email_client=svc.get("email_client"),
         nextcloud_files=svc.get("nextcloud_files"),
         proposal_aggregator=proposal_aggregator,
+        conversation_lists=conversation_lists,
     )
 
     # --- 8. Dashboard + Start ---

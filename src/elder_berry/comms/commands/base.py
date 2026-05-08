@@ -91,6 +91,17 @@ class CommandResult:
     """True wenn der Command nichts gefunden hat und die Bridge
     zum LLM-Fallback weiterleiten soll."""
 
+    list_items: list[dict[str, Any]] | None = None
+    """Phase 80: Strukturierte Mehrfachergebnisse, die der Bridge in den
+    ConversationListStore registriert (zusammen mit ``list_type``).
+    Reihenfolge entspricht der User-sichtbaren Nummerierung in ``text``
+    (1-basiert). None wenn der Command keine Liste liefert."""
+
+    list_type: str | None = None
+    """Phase 80: Listen-Typ fuer den ConversationListStore-Key
+    (z.B. ``"search"``, ``"mail_inbox"``, ``"note_search"``). None wenn
+    ``list_items`` ungesetzt ist."""
+
 
 @dataclass
 class PatternMatch:
