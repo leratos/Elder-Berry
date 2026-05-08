@@ -2,6 +2,7 @@
 
 from datetime import datetime, timezone, timedelta
 from unittest.mock import MagicMock
+from zoneinfo import ZoneInfo
 
 import pytest
 
@@ -10,6 +11,7 @@ from elder_berry.comms.commands.weather_commands import (
     RECURRING_MONTHLY_PATTERN,
     RECURRING_WEEKDAY_PATTERN,
     RECURRING_WEEKLY_PATTERN,
+    REMINDER_DATE_PATTERN,
     WEATHER_LOCATION_PATTERN,
     WeatherCommandHandler,
 )
@@ -111,6 +113,287 @@ class TestRecurringMonthlyPattern:
         )
         assert m is not None
         assert m.group(1) == "15"
+
+
+# ---------------------------------------------------------------------------
+# Phase 81: Einmalige Erinnerungen mit Wochentag / Datum / morgen
+# ---------------------------------------------------------------------------
+
+
+BERLIN = ZoneInfo("Europe/Berlin")
+
+
+class TestReminderDatePattern:
+    def test_am_montag(self):
+        m = REMINDER_DATE_PATTERN.match(
+            "erinnere mich am Montag um 09:00: Bad Belzig anrufen"
+        )
+        assert m is not None
+        assert m.group(1).lower() == "montag"
+        assert m.group(2) is None
+        assert m.group(3) is None
+        assert m.group(4) == "09:00"
+        assert m.group(5) == "Bad Belzig anrufen"
+
+    def test_naechsten_montag(self):
+        m = REMINDER_DATE_PATTERN.match(
+            "erinnere mich nächsten Montag um 9:00: Test"
+        )
+        assert m is not None
+        assert m.group(1).lower() == "montag"
+
+    def test_kommenden_freitag(self):
+        m = REMINDER_DATE_PATTERN.match(
+            "erinnere mich kommenden Freitag um 17:30: Feierabend"
+        )
+        assert m is not None
+        assert m.group(1).lower() == "freitag"
+
+    def test_weekday_ohne_praefix(self):
+        m = REMINDER_DATE_PATTERN.match(
+            "erinnere mich Montag um 9:00: Test"
+        )
+        assert m is not None
+        assert m.group(1).lower() == "montag"
+
+    def test_am_datum_kurz(self):
+        m = REMINDER_DATE_PATTERN.match(
+            "erinnere mich am 12.05. um 09:00: Mietvertrag"
+        )
+        assert m is not None
+        assert m.group(2) == "12.05."
+        assert m.group(4) == "09:00"
+
+    def test_am_datum_mit_jahr(self):
+        m = REMINDER_DATE_PATTERN.match(
+            "erinnere mich am 12.05.2026 um 09:00: Lang"
+        )
+        assert m is not None
+        assert m.group(2) == "12.05.2026"
+
+    def test_morgen(self):
+        m = REMINDER_DATE_PATTERN.match(
+            "erinnere mich morgen um 08:30: Brötchen"
+        )
+        assert m is not None
+        assert m.group(3).lower() == "morgen"
+        assert m.group(4) == "08:30"
+
+    def test_uebermorgen(self):
+        m = REMINDER_DATE_PATTERN.match(
+            "erinnere mich übermorgen um 14:00: Anruf"
+        )
+        assert m is not None
+        assert m.group(3).lower() == "übermorgen"
+
+    def test_uebermorgen_ascii(self):
+        m = REMINDER_DATE_PATTERN.match(
+            "erinnere mich uebermorgen um 14:00: Anruf"
+        )
+        assert m is not None
+        assert m.group(3).lower() == "uebermorgen"
+
+    def test_ohne_nachricht(self):
+        m = REMINDER_DATE_PATTERN.match(
+            "erinnere mich am Montag um 9:00"
+        )
+        assert m is not None
+        assert m.group(5) is None
+
+    def test_recurring_jeden_matcht_NICHT(self):
+        """'jeden Montag' ist wiederkehrend und gehört NICHT in dieses Pattern."""
+        m = REMINDER_DATE_PATTERN.match(
+            "erinnere mich jeden Montag um 9:00: Wochenbericht"
+        )
+        # Sollte nicht matchen, weil "jeden" weder als Praefix noch als
+        # Wochentag akzeptiert ist -- so bleibt RECURRING_WEEKLY_PATTERN
+        # zustaendig.
+        assert m is None
+
+    def test_kein_doppelter_match_mit_reminder_pattern(self):
+        """Sanity: einfaches 'erinnere mich um 18:00' darf hier NICHT matchen."""
+        m = REMINDER_DATE_PATTERN.match(
+            "erinnere mich um 18:00: Wäsche"
+        )
+        assert m is None
+
+
+class TestResolveOneOffTarget:
+    """Resolver-Logik (Wochentag/Datum/morgen → Future-Datetime).
+
+    Alle Tests verwenden einen festen 'now' (Freitag 2026-05-08 12:00 Berlin),
+    damit Wochentagsberechnungen deterministisch sind.
+    """
+
+    @pytest.fixture
+    def now(self):
+        # Freitag, 8. Mai 2026, 12:00 Europe/Berlin
+        return datetime(2026, 5, 8, 12, 0, tzinfo=BERLIN)
+
+    def test_am_montag_resolves_to_next_monday(self, now):
+        due = WeatherCommandHandler._resolve_one_off_target(
+            weekday="Montag",
+            date_str=None,
+            rel_day=None,
+            time_str="09:00",
+            tz=BERLIN,
+            now=now,
+        )
+        # Freitag → Montag = +3 Tage = 2026-05-11
+        assert due.date() == datetime(2026, 5, 11).date()
+        assert due.hour == 9
+        assert due.minute == 0
+        assert due.tzinfo == BERLIN
+
+    def test_today_weekday_with_future_time_uses_today(self, now):
+        # Heute ist Freitag, Uhrzeit 18:00 noch in der Zukunft
+        due = WeatherCommandHandler._resolve_one_off_target(
+            weekday="Freitag",
+            date_str=None,
+            rel_day=None,
+            time_str="18:00",
+            tz=BERLIN,
+            now=now,
+        )
+        assert due.date() == now.date()
+
+    def test_today_weekday_with_past_time_jumps_one_week(self, now):
+        # Heute ist Freitag, Uhrzeit 09:00 schon vorbei
+        due = WeatherCommandHandler._resolve_one_off_target(
+            weekday="Freitag",
+            date_str=None,
+            rel_day=None,
+            time_str="09:00",
+            tz=BERLIN,
+            now=now,
+        )
+        assert due.date() == (now + timedelta(days=7)).date()
+
+    def test_morgen(self, now):
+        due = WeatherCommandHandler._resolve_one_off_target(
+            weekday=None,
+            date_str=None,
+            rel_day="morgen",
+            time_str="08:30",
+            tz=BERLIN,
+            now=now,
+        )
+        assert due.date() == (now + timedelta(days=1)).date()
+        assert due.hour == 8
+        assert due.minute == 30
+
+    def test_uebermorgen(self, now):
+        due = WeatherCommandHandler._resolve_one_off_target(
+            weekday=None,
+            date_str=None,
+            rel_day="übermorgen",
+            time_str="14:00",
+            tz=BERLIN,
+            now=now,
+        )
+        assert due.date() == (now + timedelta(days=2)).date()
+
+    def test_date_ddmm_this_year_future(self, now):
+        # 12.05. liegt nach dem 8.5. → dieses Jahr
+        due = WeatherCommandHandler._resolve_one_off_target(
+            weekday=None,
+            date_str="12.05.",
+            rel_day=None,
+            time_str="09:00",
+            tz=BERLIN,
+            now=now,
+        )
+        assert due.date() == datetime(2026, 5, 12).date()
+
+    def test_date_ddmm_already_past_jumps_to_next_year(self, now):
+        # 1.5. liegt VOR dem 8.5. → nächstes Jahr
+        due = WeatherCommandHandler._resolve_one_off_target(
+            weekday=None,
+            date_str="1.5.",
+            rel_day=None,
+            time_str="09:00",
+            tz=BERLIN,
+            now=now,
+        )
+        assert due.date() == datetime(2027, 5, 1).date()
+
+    def test_date_with_explicit_past_year_raises(self, now):
+        with pytest.raises(ValueError, match="Vergangenheit"):
+            WeatherCommandHandler._resolve_one_off_target(
+                weekday=None,
+                date_str="1.1.2024",
+                rel_day=None,
+                time_str="09:00",
+                tz=BERLIN,
+                now=now,
+            )
+
+    def test_date_with_two_digit_year(self, now):
+        due = WeatherCommandHandler._resolve_one_off_target(
+            weekday=None,
+            date_str="12.05.27",
+            rel_day=None,
+            time_str="09:00",
+            tz=BERLIN,
+            now=now,
+        )
+        assert due.year == 2027
+
+
+class TestReminderDateExecution:
+    def test_happy_path_creates_reminder(self, handler, store):
+        result = handler.execute(
+            "reminder_date",
+            "erinnere mich am Montag um 09:00: Bad Belzig anrufen",
+        )
+        assert result.success is True
+        assert "⏰" in result.text
+        assert "Bad Belzig anrufen" in result.text
+
+        pending = store.get_pending()
+        assert len(pending) == 1
+        assert pending[0].message == "Bad Belzig anrufen"
+        assert pending[0].recurrence is None  # einmalig, nicht wiederkehrend
+
+    def test_morgen_creates_reminder(self, handler, store):
+        result = handler.execute(
+            "reminder_date",
+            "erinnere mich morgen um 08:30: Brötchen",
+        )
+        assert result.success is True
+        assert len(store.get_pending()) == 1
+
+    def test_no_store_returns_error(self):
+        handler = WeatherCommandHandler(reminder_store=None)
+        result = handler.execute(
+            "reminder_date",
+            "erinnere mich am Montag um 9:00: Test",
+        )
+        assert result.success is False
+        assert "nicht verfügbar" in result.text
+
+    def test_invalid_format_returns_friendly_error(self, handler):
+        result = handler.execute(
+            "reminder_date",
+            "erinnere mich am sankt-nimmerleins-tag um 9:00: Test",
+        )
+        assert result.success is False
+        assert "Format nicht erkannt" in result.text
+
+    def test_pattern_registered_in_handler(self, handler):
+        names = [p[1] for p in handler.patterns]
+        assert "reminder_date" in names
+        # Reihenfolge: REMINDER_DATE_PATTERN muss vor REMINDER_PATTERN stehen
+        # damit "erinnere mich am Montag um 9:00" nicht erst auf das einfache
+        # REMINDER_PATTERN trifft (auch wenn das semantisch nicht matchen kann,
+        # ist die Reihenfolge die Vertragsgarantie).
+        date_idx = next(
+            i for i, p in enumerate(handler.patterns) if p[1] == "reminder_date"
+        )
+        reminder_idx = next(
+            i for i, p in enumerate(handler.patterns) if p[1] == "reminder"
+        )
+        assert date_idx < reminder_idx
 
 
 # ---------------------------------------------------------------------------

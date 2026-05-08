@@ -969,6 +969,20 @@ class BridgeMessageHandler:
             "LLM remote_command nach Retry nicht erkannt: '%s'",
             command_text,
         )
+        # Punkt 7: User-Feedback statt Schweigen.
+        # Vorher hat das System bei Retry-Fail nur ein WARNING ins Log
+        # geschrieben -- aus Sicht des Users sah das aus, als wuerde
+        # Saleria still ignorieren. Jetzt bekommt der User eine kurze
+        # Erklaerung und einen Hinweis auf 'hilfe'.
+        try:
+            fallback = (
+                f"Ich habe das als Befehl verstanden ('{command_text}'), "
+                "konnte ihn aber keinem meiner Commands zuordnen. "
+                "Tipp 'hilfe' fuer die Uebersicht."
+            )
+            await self._channel.send_text(msg.room_id, fallback)
+        except Exception as exc:  # pragma: no cover - reine Defensive
+            logger.error("Fallback-Meldung konnte nicht gesendet werden: %s", exc)
 
     async def _retry_llm_remote_command(
         self,

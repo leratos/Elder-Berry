@@ -635,6 +635,49 @@ class TestRetryLlmRemoteCommand:
         run_async(_test())
 
 
+class TestHandleLlmRemoteCommandFallback:
+    """Phase 81 Punkt 7: User-Feedback wenn Retry endgültig scheitert."""
+
+    def test_user_gets_message_when_retry_fails(
+        self,
+        handler,
+        channel,
+        assistant,
+        remote_commands,
+        chat_history,
+        audio_pipeline,
+    ):
+        async def _test():
+            # Erstes parse_command schlaegt fehl, Retry liefert auch keinen
+            # parsbaren Command -> Fallback-Pfad.
+            remote_commands.parse_command.return_value = None
+            remote_commands.get_command_summary.return_value = "termine: Termine"
+            assistant.generate_raw.return_value = "auch nicht"
+            chat_history.format_for_prompt.return_value = ""
+
+            llm_result = MagicMock()
+            llm_result.response = None
+            llm_result.action_params = {
+                "command": "erinnere mich am Montag um 09:00: Bad Belzig anrufen",
+            }
+
+            msg = _make_msg("stell für Montag eine Erinnerung")
+            await handler._handle_llm_remote_command(msg, llm_result)
+
+            # Channel muss die Fallback-Erklaerung an den User geschickt haben
+            sent_texts = [
+                call.args[1] if len(call.args) >= 2 else call.kwargs.get("text", "")
+                for call in channel.send_text.await_args_list
+            ]
+            assert any(
+                "konnte ihn aber keinem meiner Commands zuordnen" in t
+                and "hilfe" in t.lower()
+                for t in sent_texts
+            ), f"Kein Fallback-Hinweis an User gesendet. Gesendet: {sent_texts}"
+
+        run_async(_test())
+
+
 # ---------------------------------------------------------------------------
 # Phase 78: Plugin-Candidate -> ProposalIntentAggregator
 # ---------------------------------------------------------------------------
