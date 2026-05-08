@@ -366,6 +366,62 @@ class TestListEntry:
 
 
 # ---------------------------------------------------------------------------
+# Immutability -- Caller darf den Store-Snapshot nicht aendern koennen
+# ---------------------------------------------------------------------------
+
+
+class TestImmutability:
+    """Schutzversprechen: was Saleria dem User zeigt, bleibt im Store stabil.
+
+    Codex-Review-Befund 2026-05-08: tuple(items) friert nur den Container
+    ein, nicht die dict-Objekte. Ohne deepcopy koennte spaetere Mutation
+    der Source-Liste oder des per get_item retournierten Items den
+    Store-Snapshot aendern -- genau der Bug, den Phase 80 verhindern soll.
+    """
+
+    def test_mutating_source_list_does_not_affect_store(
+        self, store: ConversationListStore
+    ) -> None:
+        items = [{"url": "https://original.de", "title": "orig"}]
+        store.register(USER_A, "search", items)
+        items[0]["url"] = "https://hijacked.de"
+        items.append({"url": "https://injected.de"})
+
+        active = store.get_active(USER_A, "search")
+        assert active is not None
+        assert len(active[1]) == 1
+        assert active[1][0]["url"] == "https://original.de"
+
+    def test_mutating_returned_get_active_items_does_not_affect_store(
+        self, store: ConversationListStore
+    ) -> None:
+        store.register(USER_A, "search", [{"url": "https://original.de"}])
+        active = store.get_active(USER_A, "search")
+        assert active is not None
+        active[1][0]["url"] = "https://hijacked.de"
+        active[1].append({"url": "https://injected.de"})
+
+        again = store.get_active(USER_A, "search")
+        assert again is not None
+        assert len(again[1]) == 1
+        assert again[1][0]["url"] == "https://original.de"
+
+    def test_mutating_returned_get_item_does_not_affect_store(
+        self, store: ConversationListStore
+    ) -> None:
+        list_ref = store.register(USER_A, "search", [{"url": "https://original.de"}])
+        item = store.get_item(USER_A, list_ref, 1)
+        assert item is not None
+        item["url"] = "https://hijacked.de"
+        item["new_field"] = "injected"
+
+        again = store.get_item(USER_A, list_ref, 1)
+        assert again is not None
+        assert again["url"] == "https://original.de"
+        assert "new_field" not in again
+
+
+# ---------------------------------------------------------------------------
 # Threading-Safety (Smoke-Test)
 # ---------------------------------------------------------------------------
 
@@ -373,14 +429,14 @@ class TestListEntry:
 class TestThreadSafety:
     def test_concurrent_registers_do_not_crash(self) -> None:
         s = ConversationListStore(ttl=timedelta(minutes=10))
-        errors: list[BaseException] = []
+        errors: list[Exception] = []
 
         def worker(user: str) -> None:
             try:
                 for i in range(50):
                     s.register(user, "search", [{"i": i}])
                     s.get_active(user, "search")
-            except BaseException as e:  # pragma: no cover - sanity catch
+            except Exception as e:  # pragma: no cover - sanity catch
                 errors.append(e)
 
         threads = [

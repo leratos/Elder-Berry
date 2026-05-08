@@ -21,6 +21,7 @@ Logger pro Modul) -- aber KEIN SQLite.
 
 from __future__ import annotations
 
+import copy
 import logging
 import secrets
 import threading
@@ -109,11 +110,17 @@ class ConversationListStore:
 
         now = self._clock()
         list_ref = self._make_list_ref(list_type, now)
+        # Deep-copy auf Ingress: spaetere Mutation der Source-Liste oder ihrer
+        # Items darf den Store-Snapshot nicht aendern. Sonst bricht das
+        # Schutzversprechen "stabile Liste fuer LLM-Disambiguation" -- der
+        # ganze Sinn der Phase 80 ist, dass der Store zeigt, was Saleria dem
+        # User wirklich gezeigt hat.
+        snapshot = tuple(copy.deepcopy(item) for item in items)
         entry = ListEntry(
             list_ref=list_ref,
             list_type=list_type,
             user_id=user_id,
-            items=tuple(items),
+            items=snapshot,
             created_at=now,
             last_accessed=now,
             expires_at=now + self._ttl,
@@ -147,14 +154,15 @@ class ConversationListStore:
     def get_active(self, user_id: str, list_type: str) -> tuple[str, list[Any]] | None:
         """Liefert (list_ref, items) der aktiven Liste oder None.
 
-        Updated last_accessed/expires_at als Side-Effect.
+        Updated last_accessed/expires_at als Side-Effect. Items werden
+        deep-kopiert: der Caller darf nicht das Store-Interne mutieren.
         """
         with self._lock:
             self._evict_expired_locked()
             entry = self._touch_locked(user_id, list_type)
             if entry is None:
                 return None
-            return entry.list_ref, list(entry.items)
+            return entry.list_ref, [copy.deepcopy(item) for item in entry.items]
 
     def get_item(
         self,
@@ -182,7 +190,7 @@ class ConversationListStore:
             if index > len(entry.items):
                 return None
             self._touch_locked(entry.user_id, entry.list_type)
-            return entry.items[index - 1]
+            return copy.deepcopy(entry.items[index - 1])
 
     def pop_active(self, user_id: str, list_type: str) -> tuple[str, list[Any]] | None:
         """Entfernt die aktive Liste und retourniert sie. Kein Touch noetig."""
