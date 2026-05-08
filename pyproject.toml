@@ -53,11 +53,6 @@ matrix = [
 remote = [
     "mss>=10.2.0",
     "pyperclip>=1.9",
-    # Phase 78 Etappe 3: Plugin-Vorschlaege im Dashboard. Saleria-
-    # generierte Markdown-Specs werden server-side gerendert + ueber
-    # bleach.clean() gegen eine enge Allowlist gesaeubert (Konzept R3).
-    "markdown-it-py>=3.0",
-    "bleach>=6.1",
 ]
 memory = [
     "chromadb>=0.5",
@@ -82,6 +77,11 @@ computer-use = [
 web = [
     "trafilatura>=2.0.0",
     "beautifulsoup4>=4.12",
+    # Phase 78 Etappe 3: Plugin-Vorschlaege im Dashboard. Saleria-
+    # generierte Markdown-Specs werden server-side gerendert + ueber
+    # bleach.clean() gegen eine enge Allowlist gesaeubert (Konzept R3).
+    "markdown-it-py>=3.0",
+    "bleach>=6.1",
 ]
 nextcloud = [
     "caldav>=1.0",

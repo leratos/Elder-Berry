@@ -2,7 +2,15 @@
 
 from __future__ import annotations
 
-from elder_berry.web.markdown_renderer import MarkdownRenderer
+import pytest
+
+# bleach + markdown-it-py liegen in der optionalen [web]-Gruppe.
+# Wenn die nicht installiert ist (z.B. minimale CI-Konfig), skippen
+# wir das ganze Modul statt mit ImportError zu crashen.
+pytest.importorskip("markdown_it")
+pytest.importorskip("bleach")
+
+from elder_berry.web.markdown_renderer import MarkdownRenderer  # noqa: E402
 
 
 class TestBasicRendering:

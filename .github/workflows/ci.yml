@@ -29,7 +29,11 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install pytest pytest-asyncio pytest-cov
-          pip install -e ".[robot,agent]"
+          # web-Gruppe enthaelt seit Phase 78 markdown-it-py + bleach,
+          # die der MarkdownRenderer fuer das Vorschlaege-Dashboard
+          # importiert. Ohne web-Gruppe scheitern test_markdown_renderer
+          # und test_proposals_api beim Sammeln.
+          pip install -e ".[robot,agent,web]"
 
       - name: Install Windows dependencies
         if: runner.os == 'Windows'

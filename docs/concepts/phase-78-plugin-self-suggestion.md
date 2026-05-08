@@ -519,8 +519,12 @@ Etappe N gemerged ist.
     gestripped, *bevor* das HTML den Browser erreicht. CSP aus
     Phase 70 (`script-src 'self'`) und DOMPurify sind zusätzliche
     Schichten, nicht der primäre Schutz.
-  - Neue Dependency: `bleach` — gehört in optionale Gruppe `[remote]`
-    in `pyproject.toml`.
+  - Neue Dependencies: `bleach` und `markdown-it-py` — gehören in
+    optionale Gruppe `[web]` in `pyproject.toml` (semantisch zur
+    Web-Schicht, nicht zur Remote-PC-Steuerung). Tests skippen
+    automatisch wenn die Gruppe nicht installiert ist
+    (`pytest.importorskip`), Konzept-Beispielschritt der CI ist die
+    Erweiterung des Test-Jobs um `,web`.
   - Beim manuellen Review prüft Lera den Inhalt — *insbesondere*
     Codeblöcke werden nicht 1:1 kopiert, sondern als Inspiration
     verwendet.

@@ -19,7 +19,25 @@ try:
 except ImportError:
     HAS_FASTAPI = False
 
-pytestmark = pytest.mark.skipif(not HAS_FASTAPI, reason="fastapi nicht installiert")
+# bleach + markdown-it-py liegen in der optionalen [web]-Gruppe und
+# werden vom MarkdownRenderer (importiert von proposals_api) gebraucht.
+# Ohne die Deps importiert das Dashboard-Modul nicht, aber proposals_api
+# wird in settings_dashboard nur lazy geladen -- der Test braucht beide
+# Layer trotzdem erreichbar.
+HAS_MARKDOWN_DEPS = True
+try:
+    import bleach  # noqa: F401
+    import markdown_it  # noqa: F401
+except ImportError:
+    HAS_MARKDOWN_DEPS = False
+
+pytestmark = [
+    pytest.mark.skipif(not HAS_FASTAPI, reason="fastapi nicht installiert"),
+    pytest.mark.skipif(
+        not HAS_MARKDOWN_DEPS,
+        reason="bleach/markdown-it-py nicht installiert (siehe [web]-Gruppe)",
+    ),
+]
 
 
 # ---------------------------------------------------------------------------
