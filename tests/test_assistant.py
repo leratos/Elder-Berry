@@ -337,6 +337,49 @@ class TestJSONParsing:
             for rec in caplog.records
         )
 
+    def test_llm_reflexion_takes_last_json(self, assistant, mock_llm):
+        """Live-Befund 2026-05-08: LLM denkt laut nach, emittiert
+        zwei JSONs mit Klartext-Reflexion dazwischen. Wir wollen die
+        FINALE (letzte) Antwort, nicht den Mix.
+        """
+        mock_llm.generate.return_value = (
+            '{"action": "remote_command", '
+            '"params": {"command": "todo: erste Idee"}, '
+            '"response": "Ich leg das als Todos an"}\n\n'
+            "Wait, ich sollte das eher als Notiz speichern.\n\n"
+            '{"action": "remote_command", '
+            '"params": {"command": "notiz: zweite Idee"}, '
+            '"response": "Ich speichere das als Notiz"}'
+        )
+        result = assistant.process("speicher das ab")
+        # Finale Antwort ist die zweite (Notiz, nicht Todo).
+        assert result.response == "Ich speichere das als Notiz"
+        # Action-Routing greift auf finale Variante.
+        assert result.action_executed == "remote_command"
+
+    def test_find_last_json_object_skips_garbage(self, assistant):
+        """Direct-Test des Helpers: Klartext zwischen JSONs wird ignoriert."""
+        from elder_berry.core.assistant import Assistant
+
+        raw = 'irgendwas vorne {"a": 1} mittendrin noch was {"b": 2, "c": [1,2,3]} ende'
+        result = Assistant._find_last_json_object(raw)
+        assert result == {"b": 2, "c": [1, 2, 3]}
+
+    def test_find_last_json_object_none_when_no_json(self, assistant):
+        from elder_berry.core.assistant import Assistant
+
+        assert Assistant._find_last_json_object("nur klartext") is None
+        assert Assistant._find_last_json_object("") is None
+
+    def test_find_last_json_object_handles_nested(self, assistant):
+        """Tiefer geschachteltes JSON wird korrekt als ein Object erkannt."""
+        from elder_berry.core.assistant import Assistant
+
+        raw = '{"outer": {"inner": {"deep": "value"}, "list": [1,2]}}'
+        result = Assistant._find_last_json_object(raw)
+        assert result is not None
+        assert result["outer"]["inner"]["deep"] == "value"
+
 
 # ---------------------------------------------------------------------------
 # TTS
