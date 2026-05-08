@@ -315,6 +315,34 @@ class TestParseCommand:
         assert handler.parse_command("wie siehst du aus?") == "avatar"
         assert handler.parse_command("schick ein bild von dir") == "avatar"
 
+    def test_log_keyword_does_not_match_blog_url(self):
+        """Regression: Live-Befund 2026-05-08. Bare 'log' als log-Keyword
+        triggerte Substring-Match auf '/blog/' in URLs und parste die
+        web-summary-Anfrage faelschlich als log-Command.
+        """
+        handler = RemoteCommandHandler()
+        text = (
+            "fasse mir https://www.fpv24.com/de/blog/52/drohnenbuild2022 zusammen bitte"
+        )
+        # Darf NICHT als log-Command erkannt werden -- entweder None
+        # (LLM-Fallback uebernimmt) oder web_summary, aber nicht log.
+        assert handler.parse_command(text) != "log"
+
+    def test_log_keyword_does_not_match_login_path(self):
+        """Auch '/login/' in URLs darf log-Command nicht ausloesen."""
+        handler = RemoteCommandHandler()
+        assert handler.parse_command("geh auf https://example.com/login/page") != "log"
+
+    def test_log_command_still_works_with_imperative(self):
+        """Sicherstellen dass die sinnvollen Aufrufe weiter greifen."""
+        handler = RemoteCommandHandler()
+        # Direct-Match via simple_commands
+        assert handler.parse_command("log") == "log"
+        # Pattern-Match via LOG_PATTERN
+        assert handler.parse_command("log errors 5") == "log"
+        # Keyword-Match via Imperativ-Phrase
+        assert handler.parse_command("zeig mir logs vom letzten Stunde") == "log"
+
 
 # ---------------------------------------------------------------------------
 # execute: status

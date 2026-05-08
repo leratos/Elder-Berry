@@ -278,7 +278,31 @@ class TestHandlerAPI:
     def test_keywords(self, handler):
         kw = handler.keywords
         assert "log" in kw
-        assert "fehlermeldungen" in kw["log"]
+        # Eine eindeutig kommando-formulierte Phrase muss drin sein
+        assert any("zeig" in k for k in kw["log"])
+        assert any("logs" in k for k in kw["log"])
+
+    def test_keywords_dont_match_url_substrings(self, handler):
+        """Regression: Live-Befund 2026-05-08. Bare 'log' / 'logs' / 'error log'
+        triggerten Substring-Match in URL-Pfaden ('/blog/', '/login/'), wodurch
+        'fasse mir https://example.com/de/blog/... zusammen' faelschlich als
+        log-Command erkannt wurde. Keyword-Liste darf KEINE Bare-Substrings
+        enthalten, die im Alltagstext / in URLs vorkommen koennen.
+        """
+        kw_list = handler.keywords["log"]
+        # Keine Substrings die in URL-Pfaden ueblich sind
+        problematic_substrings = {
+            "log",  # /blog/, /login/, analog, dialog, ...
+            "logs",  # plural-form, kommt in URLs auch vor
+            "logfile",  # zu generisch
+            "log datei",  # ohne Imperativ
+            "error log",  # englisch, kommt in technischer Sprache vor
+        }
+        for kw in kw_list:
+            assert kw not in problematic_substrings, (
+                f"Keyword {kw!r} ist zu generisch -- matcht z.B. in URLs "
+                f"oder Wortteilen. Phrase mit Imperativ formulieren."
+            )
 
     def test_command_descriptions(self, handler):
         descs = handler.command_descriptions

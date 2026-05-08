@@ -75,20 +75,32 @@ class LogCommandHandler(CommandHandler):
 
     @property
     def keywords(self) -> dict[str, list[str]]:
+        # Wichtig: NUR eindeutig-kommando-formulierte Phrasen. Bare
+        # "log" / "logs" / "error log" matcht via Substring-Suche
+        # (siehe RemoteCommandHandler.parse_command Stufe 3) auch in
+        # URLs (`/blog/`, `/login/`), Wortteilen ("analog", "Dialog")
+        # und Code-Begriffen ("error log message" als Saleria-Antwort
+        # ueber etwas anderes). Live-Befund 2026-05-08: "fasse mir
+        # https://www.fpv24.com/de/blog/... zusammen" wurde als
+        # log-Command erkannt, weil "log" Substring von "/blog/" ist.
         return {
             "log": [
-                "log",
-                "logs",
-                "logfile",
-                "log-datei",
-                "log datei",
                 "zeig log",
+                "zeig logs",
                 "zeig mir log",
+                "zeig mir logs",
+                "zeig server log",
                 "letzte log",
-                "fehlermeldungen",
-                "fehler log",
-                "error log",
+                "letzte logs",
+                "log-datei",
+                "logfile zeigen",
+                "fehlermeldungen anzeigen",
+                "fehler log zeigen",
+                "fehler-log zeigen",
                 "was sagen die logs",
+                "was steht im log",
+                "server logs",
+                "elder-berry log",
             ],
         }
 
