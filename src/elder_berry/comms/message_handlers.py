@@ -969,20 +969,134 @@ class BridgeMessageHandler:
             "LLM remote_command nach Retry nicht erkannt: '%s'",
             command_text,
         )
+        # Phase 81b: Im Fallback-Pfad versuchen wir, einen Plugin-Vorschlag
+        # ueber die Phase-78-Pipeline anzulegen. Der Aggregator filtert
+        # selbst (Smalltalk, confidence<0.7, abgelehnt nur Trigger-Zaehler);
+        # wir checken zusaetzlich is_rejected vorher, um den User nicht
+        # ueber bereits abgelehnte Features zu informieren.
+        proposal_recorded = await self._propose_plugin_for_failed_command(
+            msg, command_text
+        )
+
         # Punkt 7: User-Feedback statt Schweigen.
-        # Vorher hat das System bei Retry-Fail nur ein WARNING ins Log
-        # geschrieben -- aus Sicht des Users sah das aus, als wuerde
-        # Saleria still ignorieren. Jetzt bekommt der User eine kurze
-        # Erklaerung und einen Hinweis auf 'hilfe'.
         try:
-            fallback = (
+            base = (
                 f"Ich habe das als Befehl verstanden ('{command_text}'), "
-                "konnte ihn aber keinem meiner Commands zuordnen. "
-                "Tipp 'hilfe' fuer die Uebersicht."
+                "konnte ihn aber keinem meiner Commands zuordnen."
             )
+            note = (
+                " Ich habe Marcus eine Notiz hinterlassen -- wenn das oefter "
+                "vorkommt, kuemmert er sich darum."
+                if proposal_recorded
+                else ""
+            )
+            fallback = f"{base}{note} Tipp 'hilfe' fuer die Uebersicht."
             await self._channel.send_text(msg.room_id, fallback)
         except Exception as exc:  # pragma: no cover - reine Defensive
             logger.error("Fallback-Meldung konnte nicht gesendet werden: %s", exc)
+
+    async def _propose_plugin_for_failed_command(
+        self,
+        msg: IncomingMessage,
+        command_text: str,
+    ) -> bool:
+        """Versucht, aus einem nicht-erkannten Command einen Plugin-Vorschlag zu machen.
+
+        Returns:
+            True wenn der Aggregator gefuettert wurde (User bekommt Notiz-
+            Hinweis). False wenn nichts passiert ist (User bekommt nur den
+            Standard-Hilfe-Hinweis): Aggregator nicht verdrahtet, LLM hat
+            keinen plugin-candidate geliefert, Intent ist abgelehnt, oder
+            irgendwo ist ein Fehler passiert.
+        """
+        if self._proposal_aggregator is None:
+            return False
+
+        # Dritter LLM-Call: einen <plugin-candidate>-Block fuer den
+        # nicht-erkannten Command erfragen. Wenn das LLM unsicher ist,
+        # liefert es laut Prompt einen leeren Block (= kein Match).
+        prompt = (
+            f"Der Befehl '{command_text}' wurde an Saleria gerichtet, "
+            f"ist aber im aktuellen System nicht implementiert.\n\n"
+            f"Falls das eine echte fehlende Capability ist (kein Tippfehler, "
+            f"keine Smalltalk-Frage), antworte AUSSCHLIESSLICH mit einem "
+            f"<plugin-candidate>-Block in folgendem Format:\n"
+            f"<plugin-candidate>\n"
+            f'{{"intent":"snake_case_id","title":"Kurzer Titel",'
+            f'"description":"2-3 Saetze was die Capability tun wuerde",'
+            f'"category":"medien|system|productivity|...",'
+            f'"confidence":0.0-1.0}}\n'
+            f"</plugin-candidate>\n\n"
+            f"Wenn du dir nicht sicher bist oder es Smalltalk/Tippfehler "
+            f"sein koennte: antworte mit dem leeren String, KEINEN Block."
+        )
+
+        try:
+            from elder_berry.core.assistant import Assistant
+
+            loop = asyncio.get_running_loop()
+            raw = await asyncio.wait_for(
+                loop.run_in_executor(
+                    None,
+                    self._assistant.generate_raw,
+                    prompt,
+                    "",
+                    "",
+                ),
+                timeout=30.0,
+            )
+        except Exception as exc:
+            logger.error("Plugin-Vorschlag-LLM fehlgeschlagen: %s", exc)
+            return False
+
+        if not raw:
+            return False
+
+        _, candidate = Assistant._extract_plugin_candidate(raw)
+        if candidate is None:
+            return False
+
+        intent = str(candidate.get("intent", "")).strip()
+        if not intent:
+            return False
+
+        # Status-Check: abgelehnt -> still ueberspringen, kein Re-Vorschlag.
+        try:
+            if self._proposal_aggregator.is_rejected(intent):
+                logger.info(
+                    "Plugin-Vorschlag '%s' bereits abgelehnt -- ueberspringe",
+                    intent,
+                )
+                return False
+        except Exception as exc:
+            logger.error("is_rejected-Check fehlgeschlagen fuer %r: %s", intent, exc)
+            # Defensive: lieber einmal zu viel triggern als crashen.
+
+        # An Aggregator weiterreichen; dort greifen Smalltalk-Filter,
+        # Confidence-Schwelle, Threshold-Logik (Phase 78).
+        try:
+            await self._proposal_aggregator.record(
+                intent=intent,
+                title=str(candidate.get("title", "")),
+                description=str(candidate.get("description", "")),
+                sample=command_text,
+                sender=msg.sender,
+                confidence=float(candidate.get("confidence", 0.0)),
+                category=candidate.get("category"),
+            )
+        except Exception as exc:
+            logger.error(
+                "Plugin-Vorschlag '%s' konnte nicht aufgenommen werden: %s",
+                intent,
+                exc,
+            )
+            return False
+
+        logger.info(
+            "Phase 81b: Plugin-Vorschlag '%s' aus Command-Fallback aufgenommen",
+            intent,
+        )
+        return True
 
     async def _retry_llm_remote_command(
         self,

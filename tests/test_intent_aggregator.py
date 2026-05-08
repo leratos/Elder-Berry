@@ -614,3 +614,80 @@ class TestThresholdNotification:
         proposal = store.get_by_id("x")
         assert proposal is not None
         assert proposal.notified_at is not None
+
+
+# ---------------------------------------------------------------------------
+# Phase 81b: is_rejected Helper
+# ---------------------------------------------------------------------------
+
+
+class TestIsRejected:
+    """Phase 81b: BridgeMessageHandler nutzt is_rejected, um still zu
+    bleiben statt User auf bereits abgelehnte Capabilities hinzuweisen."""
+
+    def test_returns_false_for_unknown_intent(
+        self, aggregator: ProposalIntentAggregator
+    ) -> None:
+        assert aggregator.is_rejected("brand_new_thing") is False
+
+    def test_returns_false_for_empty_intent(
+        self, aggregator: ProposalIntentAggregator
+    ) -> None:
+        assert aggregator.is_rejected("") is False
+
+    def test_returns_false_for_in_pruefung(
+        self,
+        aggregator: ProposalIntentAggregator,
+        store: ProposalStore,
+    ) -> None:
+        store.create_pending(
+            intent="x",
+            title="X",
+            description_md="d",
+            sample_message="s",
+            sender_hash="h",
+            confidence=0.9,
+        )
+        assert aggregator.is_rejected("x") is False
+
+    def test_returns_true_for_abgelehnt(
+        self,
+        aggregator: ProposalIntentAggregator,
+        store: ProposalStore,
+    ) -> None:
+        store.create_pending(
+            intent="x",
+            title="X",
+            description_md="d",
+            sample_message="s",
+            sender_hash="h",
+            confidence=0.9,
+        )
+        store.update_status(
+            "x",
+            new_status="abgelehnt",
+            changed_by="lera",
+            rejected_reason="brauchen wir nicht",
+        )
+        assert aggregator.is_rejected("x") is True
+
+    def test_returns_false_for_fertiggestellt(
+        self,
+        aggregator: ProposalIntentAggregator,
+        store: ProposalStore,
+    ) -> None:
+        """Fertiggestellt ist NICHT abgelehnt -- sollte False liefern."""
+        store.create_pending(
+            intent="x",
+            title="X",
+            description_md="d",
+            sample_message="s",
+            sender_hash="h",
+            confidence=0.9,
+        )
+        store.update_status(
+            "x",
+            new_status="fertiggestellt",
+            changed_by="lera",
+        )
+        assert aggregator.is_rejected("x") is False
