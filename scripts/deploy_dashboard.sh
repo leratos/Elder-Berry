@@ -124,23 +124,46 @@ fi
 echo "[2/3] meta-Tag substituiert: example.com -> ${DASHBOARD_HOST}"
 
 # ---------------------------------------------------------------------------
-# rsync zum Remote
+# Build-Cleanup: defensive entfernen was rsync via --exclude nicht
+# uebertragen wuerde. Aktuell nichts davon im Source vorhanden (PWA hat
+# nur 8 statische Files), aber falls jemand mal eine README.md oder
+# .venv ins Source-Dir kippt, soll sie nicht auf den Server.
 # ---------------------------------------------------------------------------
 
-# Trailing-Slash am DEPLOY_PATH normalisieren -- rsync-Semantik haengt davon
-# ab, ob das Ziel-Verzeichnis selbst angelegt oder nur der Inhalt
-# synchronisiert wird. Wir wollen den Inhalt von BUILD_DIR/ in DEPLOY_PATH/
-# spiegeln, daher: beide mit trailing-Slash.
+find "$BUILD_DIR" -name '*.md' -delete 2>/dev/null || true
+find "$BUILD_DIR" -name '.php-ini' -delete 2>/dev/null || true
+find "$BUILD_DIR" -name '.php-version' -delete 2>/dev/null || true
+find "$BUILD_DIR" -type d \( -name '.venv' -o -name 'elder-berry' \) \
+    -prune -exec rm -rf {} + 2>/dev/null || true
+
+# ---------------------------------------------------------------------------
+# Transfer zum Remote
+# ---------------------------------------------------------------------------
+
+# Trailing-Slash am DEPLOY_PATH normalisieren -- rsync- und scp-Semantik
+# haengen davon ab, ob das Ziel-Verzeichnis selbst angelegt oder nur der
+# Inhalt synchronisiert wird. Wir wollen den Inhalt von BUILD_DIR/ in
+# DEPLOY_PATH/ spiegeln, daher: Ziel mit trailing-Slash, Source je nach
+# Tool ('/' bei rsync, '/.' bei scp).
 DEST="${DEPLOY_USER}@${DEPLOY_HOST}:${DEPLOY_PATH%/}/"
 echo "[3/3] Deploy: ${BUILD_DIR}/ -> ${DEST}"
 
-rsync -avz \
-    --exclude='*.md' \
-    --exclude='.php-ini' \
-    --exclude='.php-version' \
-    --exclude='.venv' \
-    --exclude='elder-berry' \
-    "$BUILD_DIR/" "$DEST"
+if command -v rsync >/dev/null 2>&1; then
+    echo "      Transfer-Backend: rsync"
+    rsync -avz "$BUILD_DIR/" "$DEST"
+elif command -v scp >/dev/null 2>&1; then
+    # Git for Windows liefert scp als Teil von OpenSSH out-of-the-box,
+    # rsync hingegen nur in MSYS2/Cygwin oder per manuellem Drop-in.
+    # Funktional gleichwertig fuer eine Static-PWA mit ~17 Files; das
+    # Build-Dir ist bereits gefiltert, also keine excludes noetig.
+    echo "      Transfer-Backend: scp (rsync nicht gefunden)"
+    scp -r "$BUILD_DIR/." "$DEST"
+else
+    echo "FEHLER: weder rsync noch scp gefunden -- Transfer nicht moeglich." >&2
+    echo "       scp kommt normalerweise mit OpenSSH/Git for Windows;" >&2
+    echo "       rsync muesste manuell nachinstalliert werden." >&2
+    exit 1
+fi
 
 echo
 echo "Done. Dashboard erreichbar unter: https://${DASHBOARD_HOST}/"
