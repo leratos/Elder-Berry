@@ -931,6 +931,22 @@ class BridgeMessageHandler:
 
         from elder_berry.comms.message_channel import IncomingMessage as IM
 
+        # Multi-Line-Erkennung VOR dem Single-Command-Pfad.
+        # Saleria emittiert manchmal natural-language-batched Commands
+        # (Live-Befund 2026-05-08: 5x 'todo: ...' fuer eine Einkaufsliste).
+        # Wenn JEDE Zeile ein parsbarer Command ist, alle nacheinander
+        # ausfuehren mit Sammel-Antwort. Strikt: bei einem Fail -> Single-
+        # Pfad (Saleria ist "verwirrt", Phase-81b-Plugin-Vorschlag ist
+        # angemessen).
+        multi_parsed = self._try_parse_multi_line(command_text)
+        if multi_parsed is not None:
+            self._in_llm_command.add(msg.sender)
+            try:
+                await self._execute_multi_line_commands(msg, multi_parsed)
+            finally:
+                self._in_llm_command.discard(msg.sender)
+            return
+
         cmd = self._remote_commands.parse_command(command_text)
         if cmd:
             cmd_msg = IM(
@@ -994,6 +1010,92 @@ class BridgeMessageHandler:
             await self._channel.send_text(msg.room_id, fallback)
         except Exception as exc:  # pragma: no cover - reine Defensive
             logger.error("Fallback-Meldung konnte nicht gesendet werden: %s", exc)
+
+    def _try_parse_multi_line(self, command_text: str) -> list[tuple[str, str]] | None:
+        """Pruefe ob ``command_text`` ein Multi-Line-Batch ist.
+
+        Returns:
+            Liste ``[(line, parsed_cmd), ...]`` wenn alle nicht-leeren
+            Zeilen sich als Commands parsen lassen UND es mehr als eine
+            Zeile gibt. Sonst None (Single-Line oder gemischt -- dann
+            faellt der Caller auf den Single-Path zurueck).
+        """
+        if self._remote_commands is None:
+            return None
+        lines = [line.strip() for line in command_text.split("\n") if line.strip()]
+        if len(lines) <= 1:
+            return None
+        parsed: list[tuple[str, str]] = []
+        for line in lines:
+            line_cmd = self._remote_commands.parse_command(line)
+            if not line_cmd:
+                return None
+            parsed.append((line, line_cmd))
+        return parsed
+
+    async def _execute_multi_line_commands(
+        self,
+        msg: IncomingMessage,
+        parsed_lines: list[tuple[str, str]],
+    ) -> None:
+        """Fuehrt mehrere Commands sequentiell aus, sendet eine Sammel-Antwort.
+
+        Args:
+            msg: Die Original-User-Nachricht (fuer room_id, sender).
+            parsed_lines: ``[(raw_line, parsed_command), ...]`` -- bereits
+                via parse_command validiert.
+        """
+        assert self._remote_commands is not None  # caller-side gepruefft
+
+        loop = asyncio.get_running_loop()
+        successes: list[str] = []
+        failures: list[tuple[str, str]] = []
+
+        for raw_line, parsed_cmd in parsed_lines:
+            try:
+                result: CommandResult = await asyncio.wait_for(
+                    loop.run_in_executor(
+                        None,
+                        self._remote_commands.execute,
+                        parsed_cmd,
+                        raw_line,
+                    ),
+                    timeout=60.0,
+                )
+            except Exception as exc:  # noqa: BLE001
+                logger.error(
+                    "Multi-Line-Command '%s' fehlgeschlagen: %s",
+                    raw_line,
+                    exc,
+                )
+                failures.append((raw_line, type(exc).__name__))
+                continue
+
+            if result.success:
+                successes.append(result.text or raw_line)
+            else:
+                failures.append((raw_line, result.text or "unbekannter Fehler"))
+
+        # Sammel-Antwort an den User. Knapp halten: erst Bilanz, dann
+        # die Kurz-Texte der Einzel-Ergebnisse.
+        bilanz_parts = [f"✅ {len(successes)} ausgefuehrt"]
+        if failures:
+            bilanz_parts.append(f"❌ {len(failures)} fehlgeschlagen")
+        body = " · ".join(bilanz_parts)
+
+        if successes:
+            details = "\n".join(f"  - {text}" for text in successes)
+            body += f"\n\n{details}"
+        if failures:
+            fail_lines = "\n".join(f"  - {line}: {reason}" for line, reason in failures)
+            body += f"\n\nFehler:\n{fail_lines}"
+
+        try:
+            await self._channel.send_text(msg.room_id, body)
+        except Exception as exc:  # pragma: no cover
+            logger.error(
+                "Multi-Line-Sammel-Antwort konnte nicht gesendet werden: %s", exc
+            )
 
     async def _propose_plugin_for_failed_command(
         self,

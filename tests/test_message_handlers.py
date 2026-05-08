@@ -715,13 +715,13 @@ def handler_with_aggregator(
 
 
 _VALID_PLUGIN_BLOCK = (
-    '<plugin-candidate>\n'
+    "<plugin-candidate>\n"
     '{"intent":"reminder_one_off_weekday",'
     '"title":"Einmalige Erinnerung an Wochentag",'
     '"description":"Erinnerung an konkretem Wochentag setzen",'
     '"category":"productivity",'
     '"confidence":0.85}\n'
-    '</plugin-candidate>'
+    "</plugin-candidate>"
 )
 
 
@@ -1072,5 +1072,156 @@ class TestProposalAggregatorIntegration:
             channel.send_text.assert_called_once()
             # Fehler wurde geloggt
             assert any("ProposalAggregator" in rec.message for rec in caplog.records)
+
+        run_async(_test())
+
+
+# ---------------------------------------------------------------------------
+# Multi-Line-Commands (Live-Befund 2026-05-08): Saleria emittierte
+# 5x 'todo: ...' in einem command-String -- Bridge nahm das als einen
+# Command, parse failt, Fallback. Quick-Fix: Multi-Line erkennen wenn
+# JEDE Zeile ein Command ist, alle ausfuehren mit Sammel-Antwort.
+# ---------------------------------------------------------------------------
+
+
+class TestMultiLineLLMRemoteCommand:
+    @staticmethod
+    def _make_llm_result(command_text: str) -> MagicMock:
+        result = MagicMock()
+        result.response = "Ich leg dir das an"
+        result.action_executed = "remote_command"
+        result.action_success = True
+        result.audio_path = None
+        result.plugin_candidate = None
+        result.action_params = {"command": command_text}
+        return result
+
+    def test_multi_line_all_parse_executed_separately(
+        self, handler, channel, assistant, remote_commands
+    ):
+        async def _test():
+            from elder_berry.comms.commands.base import CommandResult
+
+            cmds_text = (
+                "todo: Zahnbuerste, mittel, Einkauf\n"
+                "todo: Vibrationsmotor, mittel, Einkauf\n"
+                "todo: Knopfzelle, mittel, Einkauf"
+            )
+            assistant.process.return_value = self._make_llm_result(cmds_text)
+
+            # parse_command matcht jede Zeile zu "todo"
+            # Echte parse_command lehnt Multi-Line-Strings ab (Pattern hat
+            # ^...$ mit re.MULTILINE-off-Default). Mock spiegelt das wider.
+            remote_commands.parse_command.side_effect = lambda txt: (
+                "todo" if txt.startswith("todo:") and "\n" not in txt else None
+            )
+            # execute liefert pro Zeile success
+            remote_commands.execute.side_effect = lambda cmd, raw: CommandResult(
+                command=cmd,
+                success=True,
+                text=f"Aufgabe angelegt: {raw[:30]}",
+            )
+
+            msg = _make_msg("erstell einkaufsliste")
+            await handler.handle_assistant_message(msg)
+
+            # 3 execute-Calls, einer pro Zeile
+            assert remote_commands.execute.call_count == 3
+            # Genau eine Sammel-Antwort an den User
+            assert channel.send_text.call_count >= 1
+            sent_text = channel.send_text.call_args[0][1]
+            assert "3 ausgefuehrt" in sent_text
+
+        run_async(_test())
+
+    def test_multi_line_one_fails_falls_back_to_single_path(
+        self, handler, assistant, remote_commands
+    ):
+        """Wenn EINE Zeile nicht parsbar ist -> kein Multi-Line-Pfad,
+        Single-Pfad uebernimmt (was dann ueblicherweise auch fehlschlaegt
+        und in den Plugin-Vorschlag-Fallback laeuft -- das ist gewollt,
+        weil der LLM offensichtlich verwirrt war)."""
+
+        async def _test():
+            cmds_text = "todo: A\nirgendwas das kein command ist\ntodo: C"
+            assistant.process.return_value = self._make_llm_result(cmds_text)
+
+            # Echte parse_command lehnt Multi-Line-Strings ab (Pattern hat
+            # ^...$ mit re.MULTILINE-off-Default). Mock spiegelt das wider.
+            remote_commands.parse_command.side_effect = lambda txt: (
+                "todo" if txt.startswith("todo:") and "\n" not in txt else None
+            )
+            # Single-Path-Retry und Proposal-Pfad mocken, damit der Test
+            # auf die Multi-Line-Entscheidung fokussiert (sonst MagicMock-
+            # Rekursion ueber generate_raw -> handle_remote_command -> ...).
+            handler._retry_llm_remote_command = AsyncMock(return_value=None)
+            handler._propose_plugin_for_failed_command = AsyncMock(return_value=False)
+
+            msg = _make_msg("hi")
+            await handler.handle_assistant_message(msg)
+
+            # Multi-Path haette 3 execute-Calls gehabt -- hat NICHT zugeschlagen
+            assert remote_commands.execute.call_count == 0
+            # Stattdessen lief der Single-Pfad ins Plugin-Vorschlag-Fallback
+            handler._propose_plugin_for_failed_command.assert_awaited_once()
+
+        run_async(_test())
+
+    def test_single_line_unaffected(self, handler, channel, assistant, remote_commands):
+        """Single-Line bleibt im Single-Pfad wie zuvor."""
+
+        async def _test():
+            from elder_berry.comms.commands.base import CommandResult
+
+            assistant.process.return_value = self._make_llm_result(
+                "todo: nur eine Zeile"
+            )
+            remote_commands.parse_command.return_value = "todo"
+            remote_commands.execute.return_value = CommandResult(
+                command="todo", success=True, text="Aufgabe angelegt"
+            )
+
+            msg = _make_msg("hi")
+            await handler.handle_assistant_message(msg)
+
+            # Single-Path ruft handle_remote_command -> 1 execute
+            assert remote_commands.execute.call_count == 1
+
+        run_async(_test())
+
+    def test_multi_line_with_failures_reports_them(
+        self, handler, channel, assistant, remote_commands
+    ):
+        """Wenn alle Zeilen parsen aber execute teils failt: Sammel-
+        Antwort listet Erfolge UND Failures separat."""
+
+        async def _test():
+            from elder_berry.comms.commands.base import CommandResult
+
+            cmds_text = "todo: A\ntodo: B\ntodo: C"
+            assistant.process.return_value = self._make_llm_result(cmds_text)
+
+            # Echte parse_command lehnt Multi-Line-Strings ab (Pattern hat
+            # ^...$ mit re.MULTILINE-off-Default). Mock spiegelt das wider.
+            remote_commands.parse_command.side_effect = lambda txt: (
+                "todo" if txt.startswith("todo:") and "\n" not in txt else None
+            )
+
+            def _exec(cmd, raw):
+                if "B" in raw:
+                    return CommandResult(command="todo", success=False, text="DB down")
+                return CommandResult(
+                    command="todo", success=True, text=f"angelegt: {raw}"
+                )
+
+            remote_commands.execute.side_effect = _exec
+
+            msg = _make_msg("hi")
+            await handler.handle_assistant_message(msg)
+
+            sent_text = channel.send_text.call_args[0][1]
+            assert "2 ausgefuehrt" in sent_text
+            assert "1 fehlgeschlagen" in sent_text
+            assert "DB down" in sent_text
 
         run_async(_test())
