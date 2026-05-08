@@ -355,7 +355,10 @@ class SecretStore:
         secrets = self._load_secrets()
         secrets[key] = value
         self._save_secrets(secrets)
-        logger.debug("Secret '%s' gespeichert", key)
+        # Bewusst kein logger-Call mit dem Key-Namen -- bei Keys wie
+        # ``dashboard_password_hash`` oder ``proposal_sender_salt``
+        # leakt schon der Identifier Information ueber den Inhalt
+        # (CodeQL py/clear-text-logging-sensitive-data).
 
     def delete(self, key: str) -> None:
         """Löscht ein Secret. Wirft SecretNotFoundError wenn nicht vorhanden."""
@@ -364,7 +367,7 @@ class SecretStore:
             raise SecretNotFoundError(f"Secret '{key}' nicht gefunden")
         del secrets[key]
         self._save_secrets(secrets)
-        logger.debug("Secret '%s' gelöscht", key)
+        # Kein Key-Logging -- siehe set() (CodeQL py/clear-text-logging).
 
     def has(self, key: str) -> bool:
         """Prüft ob ein Secret existiert."""

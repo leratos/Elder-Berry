@@ -201,7 +201,13 @@ src/elder_berry/comms/
 
 src/elder_berry/web/
 ├── proposals_api.py             (FastAPI-Routen, hinter Login)
-└── templates/proposals.html     (Dashboard-Tab)
+└── markdown_renderer.py         (markdown-it-py + bleach.clean()
+                                  fuer description_md -> HTML)
+
+src/elder_berry/webapp/dashboard/
+└── modules/proposals.js         (PWA-Modul, eigene View "Vorschlaege"
+                                  -- analog zum Plugin-Inspector aus
+                                  Phase 77.5)
 ```
 
 DB-Anlage erfolgt im `ProposalStore.__init__()` (Pattern wie `NoteStore`,
@@ -513,8 +519,12 @@ Etappe N gemerged ist.
     gestripped, *bevor* das HTML den Browser erreicht. CSP aus
     Phase 70 (`script-src 'self'`) und DOMPurify sind zusätzliche
     Schichten, nicht der primäre Schutz.
-  - Neue Dependency: `bleach` — gehört in optionale Gruppe `[remote]`
-    in `pyproject.toml`.
+  - Neue Dependencies: `bleach` und `markdown-it-py` — gehören in
+    optionale Gruppe `[web]` in `pyproject.toml` (semantisch zur
+    Web-Schicht, nicht zur Remote-PC-Steuerung). Tests skippen
+    automatisch wenn die Gruppe nicht installiert ist
+    (`pytest.importorskip`), Konzept-Beispielschritt der CI ist die
+    Erweiterung des Test-Jobs um `,web`.
   - Beim manuellen Review prüft Lera den Inhalt — *insbesondere*
     Codeblöcke werden nicht 1:1 kopiert, sondern als Inspiration
     verwendet.

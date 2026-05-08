@@ -12,7 +12,7 @@
  *   - on401Handler()  → wird global als window.__dashboardOn401 gesetzt
  */
 
-const AUTH_TABS = ["settings", "avatar"];
+const AUTH_TABS = ["settings", "proposals", "avatar"];
 
 export class DashboardAuth {
     constructor() {

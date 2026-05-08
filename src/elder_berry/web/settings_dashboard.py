@@ -67,6 +67,7 @@ if TYPE_CHECKING:
     from elder_berry.core.tower_agent import TowerAgent
     from elder_berry.core.secret_store import SecretStore
     from elder_berry.llm.router import LLMRouter
+    from elder_berry.tools.proposal_store import ProposalStore
 
 logger = logging.getLogger(__name__)
 
@@ -170,6 +171,7 @@ class SettingsDashboard:
         settings_token_path: Path | None = None,
         require_dashboard_login: bool = False,
         dashboard_session_hours: int = 12,
+        proposal_store: ProposalStore | None = None,
     ) -> None:
         self._router = audio_router
         self._computer_use = computer_use
@@ -177,6 +179,7 @@ class SettingsDashboard:
         self._audio_pipeline = audio_pipeline
         self._tower_agent = tower_agent
         self._llm_router = llm_router
+        self._proposal_store = proposal_store
         self._host = host
         self._port = port
         self._app = FastAPI(title="Elder-Berry Settings Dashboard")
@@ -284,6 +287,14 @@ class SettingsDashboard:
         # Phase 77.5: Plugin-Inspector liegt hinter der gleichen
         # Auth-Middleware wie alle /api/-Routen mit Settings-Bezug.
         register_plugins_routes(self._app)
+
+        # Phase 78 Etappe 3: Plugin-Vorschlaege-API. Nur registrieren,
+        # wenn ein Store gesetzt ist -- in Tests/Standalone-Setups ohne
+        # Bridge bleibt /api/proposals 404.
+        if self._proposal_store is not None:
+            from elder_berry.web.proposals_api import register_proposals_routes
+
+            register_proposals_routes(self._app, self._proposal_store)
 
         # Avatar-Editor-Routen
         from elder_berry.web.avatar_editor import register_avatar_editor_routes

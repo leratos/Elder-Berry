@@ -1073,3 +1073,87 @@ textarea.setting-input {
     word-break: break-word;
     border: 1px solid var(--bg-card-hover);
 }
+
+/* ==========================================================================
+   Phase 78: Plugin-Vorschlaege (Proposals)
+   ========================================================================== */
+
+.proposals-row {
+    cursor: pointer;
+    transition: background 0.12s;
+}
+.proposals-row:hover {
+    background: var(--bg-card-hover);
+}
+.proposals-row.selected {
+    background: rgba(124, 58, 237, 0.16);
+    border-left: 3px solid var(--accent);
+}
+
+.proposals-status {
+    display: inline-block;
+    padding: 0.1rem 0.55rem;
+    border-radius: 999px;
+    font-size: 0.72rem;
+    background: var(--bg-card);
+    color: var(--text-primary);
+    border: 1px solid var(--text-muted);
+}
+.proposals-status-in_pruefung    { border-color: var(--status-warn); color: var(--status-warn); }
+.proposals-status-in_bearbeitung { border-color: var(--accent-light); color: var(--accent-light); background: rgba(124,58,237,0.15); }
+.proposals-status-abgelehnt      { border-color: var(--text-muted); color: var(--text-muted); }
+.proposals-status-fertiggestellt { border-color: var(--status-ok); color: var(--status-ok); }
+
+.proposals-detail-card {
+    margin-top: 1rem;
+}
+.proposals-description {
+    background: var(--bg-primary);
+    border-radius: 8px;
+    padding: 0.8rem 1rem;
+    border: 1px solid var(--bg-card-hover);
+    margin: 0.6rem 0;
+}
+.proposals-description h1,
+.proposals-description h2,
+.proposals-description h3,
+.proposals-description h4 {
+    margin: 0.5em 0 0.3em;
+    color: var(--accent-light);
+}
+.proposals-description code {
+    background: var(--bg-card);
+    padding: 0.1em 0.4em;
+    border-radius: 4px;
+    font-size: 0.85em;
+}
+.proposals-description pre {
+    background: var(--bg-card);
+    padding: 0.6rem;
+    border-radius: 6px;
+    overflow-x: auto;
+}
+
+.proposals-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    margin: 0.8rem 0;
+}
+.proposals-action {
+    /* erbt von .toolbar-button */
+}
+
+.proposals-history {
+    margin-top: 0.8rem;
+}
+.proposals-history summary {
+    cursor: pointer;
+    color: var(--text-muted);
+    font-size: 0.88rem;
+    padding: 0.3rem 0;
+}
+.proposals-history table {
+    margin-top: 0.4rem;
+    font-size: 0.82rem;
+}

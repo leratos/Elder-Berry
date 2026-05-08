@@ -19,6 +19,8 @@ const moduleMap = {
     avatar:   () => import("./avatar.js"),
     // Phase 77.5: Plugin-Inspector (read-only).
     plugins:  () => import("./plugins.js"),
+    // Phase 78: Plugin-Vorschlaege Review-Workflow.
+    proposals: () => import("./proposals.js"),
 };
 
 const loadedModules = {};   // name → { mod, section }
