@@ -26,6 +26,7 @@
         <nav class="header-nav" id="header-nav">
             <button class="nav-tab active" data-view="remote">Fernbedienung</button>
             <button class="nav-tab" data-view="settings" style="display:none;">Einstellungen</button>
+            <button class="nav-tab" data-view="proposals" style="display:none;">Vorschläge</button>
             <button class="nav-tab" data-view="avatar" style="display:none;">Avatar</button>
         </nav>
         <div class="header-right">
@@ -83,6 +84,11 @@
                 // Phase 77.5: Plugin-Inspector ist diagnose-Funktion,
                 // sitzt deshalb in der Einstellungen-View.
                 settings: ["system", "settings", "plugins"],
+                // Phase 78: Plugin-Vorschlaege bekommen eigene View, weil
+                // sie ein aktiver Workflow sind (Status-Wechsel, Pfad
+                // eintragen) und nicht mit den Settings-Schrauben gemischt
+                // werden sollten.
+                proposals: ["proposals"],
                 avatar:   ["avatar"]
             },
             defaultView: "remote"
