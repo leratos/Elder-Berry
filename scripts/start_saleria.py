@@ -1551,7 +1551,15 @@ def _maybe_send_summary_to_matrix(summary, channel, room_id) -> None:
 
     Fehler werden geloggt, aber nicht propagiert – ein scheiternder
     Send darf den Startup nicht blockieren.
+
+    Hinweis: ``MatrixChannel.send_text`` ist async; vor ``bridge.start()``
+    laeuft noch kein Event-Loop, daher ``asyncio.run`` fuer den
+    one-shot Send (vermeidet ``RuntimeWarning: coroutine ... was never
+    awaited`` im Bestand-Code).
     """
+    import asyncio
+    import inspect
+
     if channel is None or not room_id:
         return
     try:
@@ -1563,7 +1571,10 @@ def _maybe_send_summary_to_matrix(summary, channel, room_id) -> None:
                 type(channel).__name__,
             )
             return
-        send(room_id, message)
+        if inspect.iscoroutinefunction(send):
+            asyncio.run(send(room_id, message))
+        else:
+            send(room_id, message)
     except Exception as exc:
         logger.warning("Startup-Summary an Matrix senden fehlgeschlagen: %s", exc)
 

@@ -303,6 +303,40 @@ class TestJSONParsing:
         assert result.response == "Ich bin ein einfacher Text ohne JSON."
         assert result.action_executed is None
 
+    def test_real_newlines_in_response_string(self, assistant, mock_llm):
+        """LLMs liefern Markdown-Antworten oft mit echten Newlines im
+        response-String statt \\n-Escape. Mit strict=True scheitert das,
+        mit strict=False wird's toleriert (Server-Logs zeigten den
+        Bug Mai 2026)."""
+        mock_llm.generate.return_value = (
+            '{"action": null, "params": {}, "response": "Klar! '
+            "Das Rezept ist fuer 4 Personen.\n\n"
+            '**Einkaufsliste**\n- Tomaten\n- Kaese"}'
+        )
+        result = assistant.process("Test")
+        # Saubere Extraktion -- User sieht den Markdown, nicht den
+        # rohen JSON-Wrapper.
+        assert "Klar!" in result.response
+        assert "Tomaten" in result.response
+        assert '"action"' not in result.response
+        assert '"response"' not in result.response
+
+    def test_invalid_json_logs_raw_excerpt(self, assistant, mock_llm, caplog):
+        """Fallback-Warning soll raw-Anfang dumpen, damit man im Log
+        sieht WARUM der Parser scheitert."""
+        # Wirklich kaputtes JSON: unterminated string.
+        mock_llm.generate.return_value = '{"response": "incomplete'
+        with caplog.at_level("WARNING"):
+            result = assistant.process("Test")
+        # Fallback hat zugeschlagen
+        assert result.action_executed is None
+        # Warning enthaelt einen Auszug des raw-Inputs
+        assert any(
+            "konnte nicht als JSON geparst" in rec.message
+            and "incomplete" in rec.message
+            for rec in caplog.records
+        )
+
 
 # ---------------------------------------------------------------------------
 # TTS

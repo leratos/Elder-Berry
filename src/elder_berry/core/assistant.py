@@ -633,11 +633,17 @@ class Assistant:
 
         Versucht zuerst den gesamten String als JSON zu parsen.
         Fallback: sucht nach dem ersten { und letzten } im String.
-        Letzter Fallback: gibt die rohe Antwort als response zurück.
+        Letzter Fallback: gibt die rohe Antwort als response zurueck.
+
+        ``strict=False`` toleriert Tab/LF/CR innerhalb von JSON-string-
+        values -- LLMs liefern Markdown-Antworten oft mit echten
+        Newlines statt ``\\n``-Escape-Sequences. Bei ``strict=True``
+        scheitert ``json.loads`` daran, der User saehe den rohen
+        Action-Envelope (Pre-Phase-78-Bug).
         """
         # Versuch 1: Gesamter String
         try:
-            return cast(dict[str, Any], json.loads(raw))
+            return cast(dict[str, Any], json.loads(raw, strict=False))
         except json.JSONDecodeError:
             pass
 
@@ -646,12 +652,20 @@ class Assistant:
         end = raw.rfind("}")
         if start != -1 and end != -1 and end > start:
             try:
-                return cast(dict[str, Any], json.loads(raw[start : end + 1]))
+                return cast(
+                    dict[str, Any],
+                    json.loads(raw[start : end + 1], strict=False),
+                )
             except json.JSONDecodeError:
                 pass
 
-        # Fallback: Rohe Antwort als Text
-        logger.warning("LLM-Antwort konnte nicht als JSON geparst werden")
+        # Fallback: Rohe Antwort als Text. raw[:500] ins Log, damit man
+        # sieht WARUM der Parser kapituliert (Trailing-Plugin-Block,
+        # exotische Escapes, ueberhaupt kein JSON, ...).
+        logger.warning(
+            "LLM-Antwort konnte nicht als JSON geparst werden: %r",
+            raw[:500],
+        )
         return {"action": None, "params": {}, "response": raw}
 
     def _execute_action(self, action_type: str, params: dict[str, Any]) -> bool:
