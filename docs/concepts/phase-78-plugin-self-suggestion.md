@@ -201,7 +201,13 @@ src/elder_berry/comms/
 
 src/elder_berry/web/
 ├── proposals_api.py             (FastAPI-Routen, hinter Login)
-└── templates/proposals.html     (Dashboard-Tab)
+└── markdown_renderer.py         (markdown-it-py + bleach.clean()
+                                  fuer description_md -> HTML)
+
+src/elder_berry/webapp/dashboard/
+└── modules/proposals.js         (PWA-Modul, eigene View "Vorschlaege"
+                                  -- analog zum Plugin-Inspector aus
+                                  Phase 77.5)
 ```
 
 DB-Anlage erfolgt im `ProposalStore.__init__()` (Pattern wie `NoteStore`,
