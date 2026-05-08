@@ -78,11 +78,15 @@ class TestSanitization:
 
     def test_allows_https_link(self) -> None:
         out = MarkdownRenderer().render("[ok](https://example.com)")
-        assert "https://example.com" in out
+        # Praeziser als 'in out' -- der String darf nicht an beliebiger
+        # Stelle stehen (z.B. als Redirect-Parameter), sondern muss als
+        # echtes href des <a>-Tags vorliegen (CodeQL py/incomplete-url-
+        # substring-sanitization).
+        assert '<a href="https://example.com"' in out
 
     def test_allows_mailto_link(self) -> None:
         out = MarkdownRenderer().render("[mail](mailto:a@b.de)")
-        assert "mailto:a@b.de" in out
+        assert '<a href="mailto:a@b.de"' in out
 
     def test_bleach_layer_strips_html_passthrough(self) -> None:
         """Defense-in-Depth: wenn jemand den Parser mit html=True

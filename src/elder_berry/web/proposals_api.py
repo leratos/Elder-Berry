@@ -99,8 +99,12 @@ def register_proposals_routes(
     async def list_proposals(status: str | None = None) -> JSONResponse:
         try:
             proposals = store.list_by_status(status)  # type: ignore[arg-type]
-        except InvalidStatusError as exc:
-            return JSONResponse({"error": str(exc)}, status_code=422)
+        except InvalidStatusError:
+            # Exception-Message NICHT an den Client weiterreichen --
+            # CodeQL py/stack-trace-exposure. Volle Info im Server-Log,
+            # generischer Fehler an den Browser.
+            logger.warning("Invalid status filter in list_proposals: %r", status)
+            return JSONResponse({"error": "invalid status value"}, status_code=422)
         return JSONResponse({"proposals": [_serialize_proposal(p) for p in proposals]})
 
     @app.get("/api/proposals/{proposal_id}")
@@ -144,8 +148,15 @@ def register_proposals_routes(
                 {"error": f"proposal '{proposal_id}' not found"},
                 status_code=404,
             )
-        except InvalidStatusError as exc:
-            return JSONResponse({"error": str(exc)}, status_code=422)
+        except InvalidStatusError:
+            # Siehe list_proposals(): keine Exception-Message an den
+            # Client. Volle Info nur im Server-Log.
+            logger.warning(
+                "Invalid status update for proposal %r: requested=%r",
+                proposal_id,
+                body.get("new_status"),
+            )
+            return JSONResponse({"error": "invalid status transition"}, status_code=422)
         proposal = store.get_by_id(proposal_id)
         assert proposal is not None  # gerade aktualisiert
         return JSONResponse({"proposal": _serialize_proposal(proposal)})
