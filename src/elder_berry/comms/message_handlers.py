@@ -19,6 +19,7 @@ import time
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
+from elder_berry.comms.commands.mail_commands import MAIL_ID_PATTERN
 from elder_berry.comms.confirmation_handlers import ConfirmationHandler
 from elder_berry.comms.pending_confirmation import PendingAction
 
@@ -112,6 +113,23 @@ class BridgeMessageHandler:
         # Bridge.handle_message filtert "if self._remote_commands:" bevor
         # parse_command + diese Methode laufen.
         assert self._remote_commands is not None
+
+        # Phase 80 Etappe 3 Korrektur: "lies Mail 3" / "Mail 3" matcht
+        # MAIL_ID_PATTERN direkt -- die Bridge wuerde sonst "3" als IMAP-UID
+        # interpretieren und der list_pick-Pfad waere nie erreicht. Wenn eine
+        # aktive mail_inbox-Liste existiert und N <= len(items), reroute auf
+        # den Listen-Eintrag (echte msg_id). N > len -> echter UID-Lookup.
+        # _in_llm_command-Guard verhindert Rekursion: wenn _dispatch_mail_pick
+        # die echte UID dispatcht und die zufaellig auch <= len(items) ist,
+        # darf der Reroute nicht erneut zuschlagen.
+        if (
+            command == "mail_by_id"
+            and self._conversation_lists is not None
+            and msg.sender not in self._in_llm_command
+        ):
+            if await self._maybe_reroute_mail_to_list_pick(msg):
+                return
+
         logger.info("Remote-Command erkannt: %s", command)
         timeout = 300.0 if command in self._LONG_RUNNING_COMMANDS else 60.0
 
@@ -891,6 +909,56 @@ class BridgeMessageHandler:
             await self.handle_remote_command(cmd_msg, parsed)
         finally:
             self._in_llm_command.discard(msg.sender)
+
+    async def _maybe_reroute_mail_to_list_pick(
+        self,
+        msg: IncomingMessage,
+    ) -> bool:
+        """Reroute "mail N" auf den N-ten Eintrag der aktiven mail_inbox-Liste.
+
+        Hintergrund: ``MAIL_ID_PATTERN`` matcht "lies Mail 3" /  "Mail 3"
+        direkt in der Bridge-Vorpruefung -- der LLM-list_pick-Pfad waere nie
+        erreicht und "3" wuerde als IMAP-UID interpretiert. Diese Heuristik
+        gibt einer aktiven Inbox-Liste Vorrang, solange N im Listen-Range
+        liegt. Bei N > len(items) bleibt der echte UID-Lookup erhalten.
+
+        Returns:
+            True wenn rerouted (Caller soll early-returnen), sonst False.
+        """
+        # Caller filtert self._conversation_lists is not None.
+        assert self._conversation_lists is not None
+
+        match = MAIL_ID_PATTERN.match(msg.body.strip().lower())
+        if not match:
+            return False
+        try:
+            n = int(match.group(1))
+        except (TypeError, ValueError):
+            return False
+        if n < 1:
+            return False
+
+        active = self._conversation_lists.get_active(msg.sender, "mail_inbox")
+        if active is None:
+            return False
+        list_ref, items = active
+        if n > len(items):
+            # User meint vermutlich eine echte UID jenseits der aktuellen
+            # Inbox-Liste -- regulaerer mail_by_id-Pfad uebernimmt.
+            return False
+
+        item = self._conversation_lists.get_item(msg.sender, list_ref, n)
+        if item is None:
+            return False
+
+        logger.info(
+            "mail_by_id rerouted zu list_pick (n=%d, msg_id=%s) -- "
+            "aktive mail_inbox-Liste hat Vorrang vor UID-Lookup",
+            n,
+            item.get("msg_id"),
+        )
+        await self._dispatch_mail_pick(msg, item)
+        return True
 
     async def _dispatch_mail_pick(
         self,
