@@ -1,13 +1,42 @@
 """Tests: BridgeMessageHandler – Nachrichtenverarbeitung für die MatrixBridge."""
 
 import asyncio
+import re
 import time
 from unittest.mock import AsyncMock, MagicMock, patch
+from urllib.parse import urlparse
 
 import pytest
 
 from elder_berry.comms.message_handlers import BridgeMessageHandler
 from elder_berry.comms.pending_confirmation import PendingAction
+
+# Phase 80 Etappe 2: URL-Hosts aus Mock-Aufruf-Args ziehen statt
+# substring-in-string. CodeQL #328/#329 (py/incomplete-url-substring-
+# sanitization) hatte den substring-Check angemeckert -- in Test-
+# Asserts kein echtes Security-Issue, aber Hostname-Vergleich ist
+# robuster gegen Format-Drift im Command-Template.
+_URL_RE = re.compile(r"https?://\S+")
+
+
+def _hosts_in_call_args(call_args_list: list) -> set[str]:
+    """Extrahiert alle Hostnamen aus Mock.call_args_list.
+
+    Erwartet Mock-Aufrufe mit einem String als erstem Positional-Arg
+    (z.B. ``mock.parse_command("fasse https://example.com zusammen")``).
+    """
+    hosts: set[str] = set()
+    for call in call_args_list:
+        if not call.args:
+            continue
+        first = call.args[0]
+        if not isinstance(first, str):
+            continue
+        for url in _URL_RE.findall(first):
+            host = urlparse(url).hostname
+            if host:
+                hosts.add(host)
+    return hosts
 
 
 # ---------------------------------------------------------------------------
@@ -1423,14 +1452,17 @@ class TestHandleListPick:
             msg = _make_msg("fasse den 2. Link zusammen", sender=sender)
             await handler_with_lists.handle_assistant_message(msg)
 
-            # parse_command muss mit der echten URL aufgerufen worden sein
-            parse_args = [c[0][0] for c in remote_commands.parse_command.call_args_list]
-            assert any("https://second.example" in arg for arg in parse_args), (
-                f"parse_command wurde nicht mit der echten zweiten URL aufgerufen: "
-                f"{parse_args!r}"
+            # parse_command muss mit der echten URL aufgerufen worden
+            # sein. Hostname-Vergleich (statt substring-in-string) ist
+            # robuster und CodeQL-clean (#328/#329).
+            hosts = _hosts_in_call_args(remote_commands.parse_command.call_args_list)
+            assert "second.example" in hosts, (
+                f"parse_command wurde nicht mit der echten zweiten URL "
+                f"aufgerufen. Hosts gesehen: {hosts!r}"
             )
-            # KEIN Aufruf mit der ersten URL
-            assert not any("https://first.example" in arg for arg in parse_args)
+            # KEIN Aufruf mit der ersten URL (LLM hat KEINE URL halluziniert,
+            # wir haben den ECHTEN zweiten Treffer aufgeloest).
+            assert "first.example" not in hosts
 
         run_async(_test())
 
