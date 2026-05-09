@@ -1537,26 +1537,148 @@ class TestHandleListPick:
     def test_list_pick_unknown_list_type_falls_back_gracefully(
         self, handler_with_lists, channel, assistant, conversation_lists
     ):
-        """Etappe 3 noch nicht da: mail_inbox-Pick antwortet sauber,
-        kein Crash, kein Dispatch."""
+        """Phase-80.x-Typ noch nicht verkabelt (z.B. termine): klare Antwort,
+        kein Crash, kein Dispatch. Etappe 3 hat mail_inbox + note_search
+        verkabelt -- 'termine' ist hier ein Stand-in fuer zukuenftige Typen."""
 
         async def _test():
-            sender = "@marcus:matrix.org"
+            sender = "@lera:matrix.org"
             conversation_lists.register(
                 user_id=sender,
-                list_type="mail_inbox",
+                list_type="termine",
                 items=[
-                    {"from": "x@y.de", "subject": "Hi", "msg_id": "abc", "date": "..."},
+                    {"id": 1, "title": "Zahnarzt", "when": "2026-05-12 10:00"},
                 ],
             )
-            assistant.process.return_value = self._make_pick_result("mail_inbox", 1)
+            assistant.process.return_value = self._make_pick_result("termine", 1)
 
-            msg = _make_msg("lies Mail 1", sender=sender)
+            msg = _make_msg("Termin 1", sender=sender)
             await handler_with_lists.handle_assistant_message(msg)
 
             sent_texts = [c[0][1] for c in channel.send_text.call_args_list]
             joined = " ".join(sent_texts).lower()
-            assert "etappe" in joined or "nicht verkabelt" in joined
+            assert "nicht verkabelt" in joined
+
+        run_async(_test())
+
+    def test_list_pick_dispatches_mail_by_id(
+        self,
+        handler_with_lists,
+        channel,
+        assistant,
+        remote_commands,
+        conversation_lists,
+    ):
+        """Phase 80 Etappe 3: aktive mail_inbox-Liste -> 'lies Mail 3' ->
+        mail_by_id mit der ECHTEN msg_id des dritten Treffers (keine
+        ID-Halluzination)."""
+
+        async def _test():
+            from elder_berry.comms.commands.base import CommandResult
+
+            sender = "@lera:matrix.org"
+            conversation_lists.register(
+                user_id=sender,
+                list_type="mail_inbox",
+                items=[
+                    {"from": "a@x.de", "subject": "1.", "msg_id": "111", "date": ""},
+                    {"from": "b@x.de", "subject": "2.", "msg_id": "222", "date": ""},
+                    {"from": "c@x.de", "subject": "3.", "msg_id": "333", "date": ""},
+                ],
+            )
+
+            assistant.process.return_value = self._make_pick_result("mail_inbox", 3)
+            remote_commands.parse_command.return_value = "mail_by_id"
+            remote_commands.execute.return_value = CommandResult(
+                command="mail_by_id",
+                success=True,
+                text="\U0001f4e7 Mail #333: ...",
+                history_text="--- Mail #333 ---\nVon: c@x.de\n...",
+            )
+
+            msg = _make_msg("lies Mail 3", sender=sender)
+            await handler_with_lists.handle_assistant_message(msg)
+
+            # parse_command muss mit der echten msg_id 333 (nicht 111/222)
+            # aufgerufen worden sein.
+            parse_calls = [
+                c.args[0]
+                for c in remote_commands.parse_command.call_args_list
+                if c.args
+            ]
+            joined = " ".join(parse_calls)
+            assert "333" in joined, (
+                f"parse_command wurde nicht mit msg_id 333 aufgerufen. "
+                f"Aufrufe: {parse_calls!r}"
+            )
+            assert "111" not in joined and "222" not in joined
+
+        run_async(_test())
+
+    def test_list_pick_dispatches_note_show(
+        self,
+        handler_with_lists,
+        channel,
+        assistant,
+        remote_commands,
+        conversation_lists,
+    ):
+        """Phase 80 Etappe 3: aktive note_search-Liste -> 'zeig Notiz 1'
+        sendet die echte Notiz direkt aus dem Item (kein Round-Trip durch
+        handle_remote_command, weil es keinen Note-Show-Command gibt)."""
+
+        async def _test():
+            sender = "@lera:matrix.org"
+            conversation_lists.register(
+                user_id=sender,
+                list_type="note_search",
+                items=[
+                    {"id": 7, "key": None, "content": "Vermieter heißt Müller"},
+                    {"id": 8, "key": "wlan", "content": "abc123"},
+                ],
+            )
+
+            assistant.process.return_value = self._make_pick_result("note_search", 1)
+
+            msg = _make_msg("zeig Notiz 1", sender=sender)
+            await handler_with_lists.handle_assistant_message(msg)
+
+            sent_texts = [c[0][1] for c in channel.send_text.call_args_list]
+            joined = " ".join(sent_texts)
+            assert "Vermieter heißt Müller" in joined
+            assert "#7" in joined
+            # Kein parse_command-Round-Trip noetig (Notiz direkt aus Item)
+            remote_commands.parse_command.assert_not_called()
+
+        run_async(_test())
+
+    def test_list_pick_note_with_key_shows_key(
+        self,
+        handler_with_lists,
+        channel,
+        assistant,
+        conversation_lists,
+    ):
+        """Key-Value-Fakten zeigen ihren Schluessel mit an."""
+
+        async def _test():
+            sender = "@lera:matrix.org"
+            conversation_lists.register(
+                user_id=sender,
+                list_type="note_search",
+                items=[
+                    {"id": 8, "key": "wlan büro", "content": "abc123"},
+                ],
+            )
+            assistant.process.return_value = self._make_pick_result("note_search", 1)
+
+            msg = _make_msg("zeig Notiz 1", sender=sender)
+            await handler_with_lists.handle_assistant_message(msg)
+
+            sent_texts = [c[0][1] for c in channel.send_text.call_args_list]
+            joined = " ".join(sent_texts)
+            assert "wlan büro" in joined
+            assert "abc123" in joined
 
         run_async(_test())
 

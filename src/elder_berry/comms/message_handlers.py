@@ -816,16 +816,22 @@ class BridgeMessageHandler:
         if list_type == "search":
             await self._dispatch_search_pick(msg, item)
             return
+        if list_type == "mail_inbox":
+            await self._dispatch_mail_pick(msg, item)
+            return
+        if list_type == "note_search":
+            await self._dispatch_note_pick(msg, item)
+            return
 
-        # mail_inbox / note_search: Etappe 3
+        # Unbekannter list_type (z.B. zukuenftige Phase-80.x-Typen wie
+        # 'termine'): klar zurueckmelden statt zu raten.
         logger.warning(
-            "list_pick fuer list_type '%s' noch nicht implementiert (Etappe 3)",
+            "list_pick fuer list_type '%s' noch nicht verkabelt",
             list_type,
         )
         await self._channel.send_text(
             msg.room_id,
-            f"Listen-Typ '{list_type}' ist noch nicht verkabelt -- kommt "
-            "in Phase 80 Etappe 3.",
+            f"Listen-Typ '{list_type}' ist noch nicht verkabelt.",
         )
 
     async def _dispatch_search_pick(
@@ -885,6 +891,92 @@ class BridgeMessageHandler:
             await self.handle_remote_command(cmd_msg, parsed)
         finally:
             self._in_llm_command.discard(msg.sender)
+
+    async def _dispatch_mail_pick(
+        self,
+        msg: IncomingMessage,
+        item: dict[str, Any],
+    ) -> None:
+        """Mail-Show-Dispatch fuer einen aufgeloesten Mail-Inbox-Treffer.
+
+        Baut ``mail #<msg_id>`` und delegiert an ``handle_remote_command``.
+        Dort matcht ``MAIL_ID_PATTERN`` -> ``mail_by_id`` -> Mail-Body geht
+        ueber ``_handle_mail_summary`` ans LLM (bestehende Pipeline aus
+        Phase 28+).
+        """
+        msg_id = str(item.get("msg_id", "")).strip()
+        if not msg_id:
+            logger.warning("list_pick mail-Item ohne msg_id: %r", item)
+            await self._channel.send_text(
+                msg.room_id,
+                "Die gewaehlte Mail hat keine ID -- ruf die Inbox nochmal ab.",
+            )
+            return
+        if self._remote_commands is None:
+            await self._channel.send_text(
+                msg.room_id,
+                f"Mail #{msg_id} kann gerade nicht abgerufen werden "
+                "(Remote-Commands inaktiv).",
+            )
+            return
+
+        from elder_berry.comms.message_channel import IncomingMessage as IM
+
+        command_text = f"mail #{msg_id}"
+        parsed = self._remote_commands.parse_command(command_text)
+        if not parsed:
+            logger.error(
+                "list_pick: mail_by_id-Command konnte nicht geparst werden: %r",
+                command_text,
+            )
+            await self._channel.send_text(
+                msg.room_id,
+                f"Mail #{msg_id} (konnte sie aber nicht zur Anzeige weiterreichen).",
+            )
+            return
+
+        cmd_msg = IM(
+            sender=msg.sender,
+            room_id=msg.room_id,
+            body=command_text,
+            timestamp=msg.timestamp,
+        )
+        self._in_llm_command.add(msg.sender)
+        try:
+            await self.handle_remote_command(cmd_msg, parsed)
+        finally:
+            self._in_llm_command.discard(msg.sender)
+
+    async def _dispatch_note_pick(
+        self,
+        msg: IncomingMessage,
+        item: dict[str, Any],
+    ) -> None:
+        """Notiz-Show-Dispatch fuer einen aufgeloesten note_search-Treffer.
+
+        Anders als search/mail_inbox kein Round-Trip durch ein Folge-Command:
+        Notizen sind klein und der volle Content liegt schon im Item, also
+        formatieren wir direkt aus den Item-Feldern. Spart einen
+        ``note_show``-Command, der sonst nur fuer den Pick existieren wuerde.
+        """
+        note_id = item.get("id")
+        key = item.get("key")
+        content = str(item.get("content", "")).strip()
+        if not content:
+            logger.warning("list_pick note-Item ohne content: %r", item)
+            await self._channel.send_text(
+                msg.room_id,
+                "Die gewaehlte Notiz hat keinen Inhalt -- such nochmal.",
+            )
+            return
+
+        if key:
+            text = f"\U0001f511 Notiz #{note_id} -- {key}: {content}"
+        else:
+            text = f"\U0001f4dd Notiz #{note_id}: {content}"
+        await self._channel.send_text(msg.room_id, text)
+        # Damit das LLM beim naechsten Turn weiss, welche Notiz angezeigt wurde
+        self._chat_history.add(msg.sender, "assistant", text)
 
     # ------------------------------------------------------------------
     # Standard LLM (Assistant)

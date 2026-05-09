@@ -76,7 +76,7 @@ system_prompt_template: |
     'der zweite Link', 'Eintrag 4', 'die dritte Mail'), nutze list_pick.
     RATE KEINE URL und keine Mail-ID -- das System loest den echten Eintrag
     aus der zuletzt angezeigten Liste auf.
-    Aktuell unterstuetzt: list_type="search". Weitere Typen folgen.
+    Aktuell unterstuetzt: search, mail_inbox, note_search.
     Beispiel User: "fasse den 2. Link zusammen"
     → {{"action": "list_pick", "params": {{"list_type": "search", "index": 2}}, "response": "[motivated] Schau ich mir an..."}}
     Wenn keine aktive Liste existiert oder der Listentyp unklar ist
