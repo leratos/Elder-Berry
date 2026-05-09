@@ -52,6 +52,7 @@ if TYPE_CHECKING:
     from elder_berry.core.audio_router import AudioRouter
     from elder_berry.core.task_chain import TaskChainRunner
     from elder_berry.stt.base import STTEngine
+    from elder_berry.tools.conversation_list_store import ConversationListStore
     from elder_berry.tools.document_reader import DocumentReader
     from elder_berry.tools.email_client import IMAPEmailClient
     from elder_berry.tools.email_sender import EmailSender
@@ -96,6 +97,7 @@ class MatrixBridge:
         pending_store: PendingConfirmationStore | None = None,
         nextcloud_files: NextcloudFilesClient | None = None,
         proposal_aggregator: ProposalIntentAggregator | None = None,
+        conversation_lists: ConversationListStore | None = None,
     ) -> None:
         self._channel = channel
         self._assistant = assistant
@@ -148,6 +150,7 @@ class MatrixBridge:
             email_client=email_client,
             nextcloud_files=nextcloud_files,
             proposal_aggregator=proposal_aggregator,
+            conversation_lists=conversation_lists,
         )
 
     @staticmethod

@@ -20,10 +20,22 @@ from elder_berry.comms.commands.advanced_commands import (
 
 @pytest.fixture
 def search_client():
+    """Mock-BraveSearchClient. Liefert SearchResult-aehnliche Objekte mit
+    title/url/description (Phase 80: list_items-Mapping liest description)."""
     client = MagicMock()
-    client.search.return_value = [{"title": "Result 1", "url": "https://example.com"}]
-    client.format_results.return_value = "1. Result 1"
-    client.format_results_detailed.return_value = "Result 1: https://example.com"
+    result_1 = MagicMock()
+    result_1.title = "Result 1"
+    result_1.url = "https://example.com/1"
+    result_1.description = "Snippet 1"
+    result_2 = MagicMock()
+    result_2.title = "Result 2"
+    result_2.url = "https://example.com/2"
+    result_2.description = "Snippet 2"
+    client.search.return_value = [result_1, result_2]
+    client.format_results.return_value = "1. Result 1\n2. Result 2"
+    client.format_results_detailed.return_value = (
+        "Result 1: https://example.com/1\nResult 2: https://example.com/2"
+    )
     return client
 
 
@@ -317,6 +329,52 @@ class TestWebSearch:
         result = handler.execute("web_search", "such mal Python Tutorial")
         assert result.success is True
         search_client.search.assert_called_once_with("Python Tutorial")
+
+
+# ---------------------------------------------------------------------------
+# Phase 80: list_items / list_type fuer ConversationListStore-Integration
+# ---------------------------------------------------------------------------
+
+
+class TestWebSearchListIntegration:
+    """``_cmd_search`` liefert strukturierte Items, die der Bridge in den
+    ConversationListStore registriert (Phase 80 Etappe 2).
+    """
+
+    def test_list_items_carries_url_title_snippet(self, handler):
+        result = handler.execute("web_search", "suche Drohnenbau")
+        assert result.success is True
+        assert result.list_type == "search"
+        assert result.list_items is not None
+        assert len(result.list_items) == 2
+        first = result.list_items[0]
+        assert first["title"] == "Result 1"
+        assert first["url"] == "https://example.com/1"
+        assert first["snippet"] == "Snippet 1"
+
+    def test_list_items_order_matches_text(self, handler):
+        """1-basierte Reihenfolge in ``text`` muss zur ``list_items``-
+        Reihenfolge passen, sonst zeigt 'Treffer 2' falsch hin."""
+        result = handler.execute("web_search", "suche Drohnenbau")
+        assert result.list_items is not None
+        assert result.list_items[0]["url"] == "https://example.com/1"
+        assert result.list_items[1]["url"] == "https://example.com/2"
+
+    def test_no_results_no_list(self, handler, search_client):
+        """Leere Trefferliste -> kein list_items, kein list_type
+        (sonst registriert die Bridge eine leere Liste)."""
+        search_client.search.return_value = []
+        result = handler.execute("web_search", "suche xyz123nonexistent")
+        # success bleibt True (Brave hat geantwortet, nur halt nichts gefunden)
+        assert result.list_items is None
+        assert result.list_type is None
+
+    def test_other_commands_have_no_list(self, handler):
+        """Audio/CU/etc. sollen keine list_items setzen -- Defensive
+        gegen False-Positive-Registers in der Bridge."""
+        result = handler.execute("audio", "audio")
+        assert result.list_items is None
+        assert result.list_type is None
 
 
 # ---------------------------------------------------------------------------

@@ -243,6 +243,25 @@ class TestWithAction:
         result = assistant.process("Maximiere Firefox")
         assert result.action_success is True
 
+    def test_list_pick_pass_through(self, assistant, mock_llm, mock_controller):
+        """Phase 80: ``list_pick`` ist Pass-through wie ``remote_command`` /
+        ``multi_step``. Assistant fuehrt nichts aus, action_success=True,
+        Bridge dispatcht auf Basis von action_executed."""
+        mock_llm.generate.return_value = json.dumps(
+            {
+                "action": "list_pick",
+                "params": {"list_type": "search", "index": 2},
+                "response": "Schau ich mir an...",
+            }
+        )
+        result = assistant.process("fasse den 2. Link zusammen")
+        assert result.action_executed == "list_pick"
+        assert result.action_success is True
+        assert result.action_params == {"list_type": "search", "index": 2}
+        # Kein lokaler Action-Aufruf darf passiert sein
+        mock_controller.press_key.assert_not_called()
+        mock_controller.type_text.assert_not_called()
+
 
 # ---------------------------------------------------------------------------
 # Unbekannte / fehlerhafte Aktionen
