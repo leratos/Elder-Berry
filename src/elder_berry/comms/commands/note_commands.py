@@ -299,10 +299,18 @@ class NoteCommandHandler(CommandHandler):
         for note in results:
             lines.append(f"  {note.format_short()}")
 
+        # Phase 80 Etappe 3: voller content wandert ins Item, damit der
+        # Bridge-list_pick "zeig mir Notiz 1" ohne Store-Round-Trip die
+        # echte Notiz zeigen kann (Konzept-Tabelle nennt content_excerpt;
+        # voller content ist hier praktischer, weil Notizen klein sind).
+        list_items = [{"id": n.id, "key": n.key, "content": n.content} for n in results]
+
         return CommandResult(
             command="note_search",
             success=True,
             text="\n".join(lines),
+            list_items=list_items,
+            list_type="note_search",
         )
 
     def _cmd_list(self, user_id: str) -> CommandResult:

@@ -14,7 +14,7 @@ import logging
 import re
 import tempfile
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from elder_berry.comms.commands.base import (
     CommandHandler,
@@ -259,7 +259,13 @@ class MailCommandHandler(CommandHandler):
                     )
                 self._last_mails = mails
                 text = self._email_client.format_mails_detailed(mails)
-                return CommandResult(command="mails", success=True, text=text)
+                return CommandResult(
+                    command="mails",
+                    success=True,
+                    text=text,
+                    list_items=_mails_to_list_items(mails),
+                    list_type="mail_inbox",
+                )
 
             if match:
                 days = int(match.group(1))
@@ -272,7 +278,14 @@ class MailCommandHandler(CommandHandler):
             self._last_mails = mails
             count = len(mails)
             text = f"{label} ({count}):\n{self._email_client.format_mails(mails)}"
-            return CommandResult(command="mails", success=True, text=text)
+            list_items = _mails_to_list_items(mails)
+            return CommandResult(
+                command="mails",
+                success=True,
+                text=text,
+                list_items=list_items if list_items else None,
+                list_type="mail_inbox" if list_items else None,
+            )
 
         except Exception as e:
             logger.error("E-Mail-Abfrage fehlgeschlagen: %s", e)
@@ -318,6 +331,8 @@ class MailCommandHandler(CommandHandler):
                 success=True,
                 text=text,
                 history_text=history,
+                list_items=_mails_to_list_items(mails),
+                list_type="mail_inbox",
             )
 
         except Exception as e:
@@ -751,6 +766,28 @@ class MailCommandHandler(CommandHandler):
         if match:
             return match.group(1)
         return sender.strip()
+
+
+# ---------------------------------------------------------------------------
+# Phase 80 Etappe 3: list_items fuer ConversationListStore
+# ---------------------------------------------------------------------------
+
+
+def _mails_to_list_items(mails: list[EmailMessage]) -> list[dict[str, Any]]:
+    """Wandelt EmailMessages in list_items fuer den ConversationListStore.
+
+    Reihenfolge entspricht 1:1 der User-sichtbaren Nummerierung in ``text``,
+    damit "lies Mail 3" eindeutig auf items[2] zeigt (1-basiert via Store).
+    """
+    return [
+        {
+            "from": m.sender,
+            "subject": m.subject,
+            "msg_id": m.msg_id,
+            "date": m.date.isoformat() if m.date else "",
+        }
+        for m in mails
+    ]
 
 
 # ---------------------------------------------------------------------------

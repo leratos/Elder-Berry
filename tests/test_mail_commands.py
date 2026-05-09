@@ -335,6 +335,108 @@ class TestExtractEmailAddress:
 
 
 # ---------------------------------------------------------------------------
+# Phase 80 Etappe 3: list_items / list_type fuer ConversationListStore
+# ---------------------------------------------------------------------------
+
+
+class TestMailListIntegration:
+    """``_cmd_mails`` und ``_cmd_mail_search`` liefern strukturierte Items,
+    die der Bridge in den ConversationListStore registriert (Phase 80 §5.3).
+    """
+
+    def test_mails_unread_list_items_carries_fields(self, handler, email_client):
+        """Item-Form: from / subject / msg_id / date (Konzept §3.5)."""
+        from datetime import datetime
+
+        mail = _make_mail(
+            msg_id="42",
+            subject="Rechnung",
+            sender="Alice <alice@x.de>",
+            date=datetime(2026, 4, 1, 12, 0),
+        )
+        email_client.get_unread.return_value = [mail]
+        result = handler.execute("mails", "mails")
+
+        assert result.list_type == "mail_inbox"
+        assert result.list_items is not None
+        assert len(result.list_items) == 1
+        item = result.list_items[0]
+        assert item["msg_id"] == "42"
+        assert item["subject"] == "Rechnung"
+        assert item["from"] == "Alice <alice@x.de>"
+        assert item["date"] == "2026-04-01T12:00:00"
+
+    def test_mails_days_list_items(self, handler, email_client):
+        email_client.get_recent.return_value = [_make_mail(msg_id="7")]
+        result = handler.execute("mails", "mails 5")
+        assert result.list_type == "mail_inbox"
+        assert result.list_items is not None
+        assert result.list_items[0]["msg_id"] == "7"
+
+    def test_mails_zusammenfassung_list_items(self, handler, email_client):
+        email_client.get_unread.return_value = [
+            _make_mail(msg_id="1"),
+            _make_mail(msg_id="2"),
+        ]
+        result = handler.execute("mails", "mail zusammenfassung")
+        assert result.list_type == "mail_inbox"
+        assert result.list_items is not None
+        assert [it["msg_id"] for it in result.list_items] == ["1", "2"]
+
+    def test_mails_empty_no_list(self, handler, email_client):
+        """Leere Inbox -> kein list_items, sonst registriert die Bridge eine
+        leere Liste."""
+        email_client.get_unread.return_value = []
+        result = handler.execute("mails", "mails")
+        assert result.list_items is None
+        assert result.list_type is None
+
+    def test_mails_zusammenfassung_empty_no_list(self, handler, email_client):
+        email_client.get_unread.return_value = []
+        result = handler.execute("mails", "mail zusammenfassung")
+        assert result.list_items is None
+        assert result.list_type is None
+
+    def test_mails_no_date_serializes_empty(self, handler, email_client):
+        """date=None -> leerer String (kein Crash)."""
+        mail = _make_mail(msg_id="9")
+        mail.date = None
+        email_client.get_unread.return_value = [mail]
+        result = handler.execute("mails", "mails")
+        assert result.list_items is not None
+        assert result.list_items[0]["date"] == ""
+
+    def test_mail_search_list_items_match_text(self, handler, email_client):
+        """Reihenfolge in list_items == User-sichtbare Nummerierung."""
+        m1 = _make_mail(msg_id="100", subject="Erste")
+        m2 = _make_mail(msg_id="200", subject="Zweite")
+        email_client.search.return_value = [m1, m2]
+        result = handler.execute("mail_search", "mail suche test")
+        assert result.list_type == "mail_inbox"
+        assert result.list_items is not None
+        assert result.list_items[0]["msg_id"] == "100"
+        assert result.list_items[1]["msg_id"] == "200"
+
+    def test_mail_search_no_results_no_list(self, handler, email_client):
+        email_client.search.return_value = []
+        result = handler.execute("mail_search", "mail suche xyz")
+        assert result.list_items is None
+        assert result.list_type is None
+
+    def test_mail_by_id_no_list(self, handler, email_client):
+        """Show-Command soll keine Liste registrieren -- Defensive gegen
+        False-Positive-Registers in der Bridge."""
+        result = handler.execute("mail_by_id", "mail 99")
+        assert result.list_items is None
+        assert result.list_type is None
+
+    def test_mail_attachment_no_list(self, handler, email_client):
+        result = handler.execute("mail_attachment", "mail anhang 99")
+        assert result.list_items is None
+        assert result.list_type is None
+
+
+# ---------------------------------------------------------------------------
 # Unknown Command
 # ---------------------------------------------------------------------------
 

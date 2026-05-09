@@ -1537,26 +1537,148 @@ class TestHandleListPick:
     def test_list_pick_unknown_list_type_falls_back_gracefully(
         self, handler_with_lists, channel, assistant, conversation_lists
     ):
-        """Etappe 3 noch nicht da: mail_inbox-Pick antwortet sauber,
-        kein Crash, kein Dispatch."""
+        """Phase-80.x-Typ noch nicht verkabelt (z.B. termine): klare Antwort,
+        kein Crash, kein Dispatch. Etappe 3 hat mail_inbox + note_search
+        verkabelt -- 'termine' ist hier ein Stand-in fuer zukuenftige Typen."""
 
         async def _test():
-            sender = "@marcus:matrix.org"
+            sender = "@lera:matrix.org"
             conversation_lists.register(
                 user_id=sender,
-                list_type="mail_inbox",
+                list_type="termine",
                 items=[
-                    {"from": "x@y.de", "subject": "Hi", "msg_id": "abc", "date": "..."},
+                    {"id": 1, "title": "Zahnarzt", "when": "2026-05-12 10:00"},
                 ],
             )
-            assistant.process.return_value = self._make_pick_result("mail_inbox", 1)
+            assistant.process.return_value = self._make_pick_result("termine", 1)
 
-            msg = _make_msg("lies Mail 1", sender=sender)
+            msg = _make_msg("Termin 1", sender=sender)
             await handler_with_lists.handle_assistant_message(msg)
 
             sent_texts = [c[0][1] for c in channel.send_text.call_args_list]
             joined = " ".join(sent_texts).lower()
-            assert "etappe" in joined or "nicht verkabelt" in joined
+            assert "nicht verkabelt" in joined
+
+        run_async(_test())
+
+    def test_list_pick_dispatches_mail_by_id(
+        self,
+        handler_with_lists,
+        channel,
+        assistant,
+        remote_commands,
+        conversation_lists,
+    ):
+        """Phase 80 Etappe 3: aktive mail_inbox-Liste -> 'lies Mail 3' ->
+        mail_by_id mit der ECHTEN msg_id des dritten Treffers (keine
+        ID-Halluzination)."""
+
+        async def _test():
+            from elder_berry.comms.commands.base import CommandResult
+
+            sender = "@lera:matrix.org"
+            conversation_lists.register(
+                user_id=sender,
+                list_type="mail_inbox",
+                items=[
+                    {"from": "a@x.de", "subject": "1.", "msg_id": "111", "date": ""},
+                    {"from": "b@x.de", "subject": "2.", "msg_id": "222", "date": ""},
+                    {"from": "c@x.de", "subject": "3.", "msg_id": "333", "date": ""},
+                ],
+            )
+
+            assistant.process.return_value = self._make_pick_result("mail_inbox", 3)
+            remote_commands.parse_command.return_value = "mail_by_id"
+            remote_commands.execute.return_value = CommandResult(
+                command="mail_by_id",
+                success=True,
+                text="\U0001f4e7 Mail #333: ...",
+                history_text="--- Mail #333 ---\nVon: c@x.de\n...",
+            )
+
+            msg = _make_msg("lies Mail 3", sender=sender)
+            await handler_with_lists.handle_assistant_message(msg)
+
+            # parse_command muss mit der echten msg_id 333 (nicht 111/222)
+            # aufgerufen worden sein.
+            parse_calls = [
+                c.args[0]
+                for c in remote_commands.parse_command.call_args_list
+                if c.args
+            ]
+            joined = " ".join(parse_calls)
+            assert "333" in joined, (
+                f"parse_command wurde nicht mit msg_id 333 aufgerufen. "
+                f"Aufrufe: {parse_calls!r}"
+            )
+            assert "111" not in joined and "222" not in joined
+
+        run_async(_test())
+
+    def test_list_pick_dispatches_note_show(
+        self,
+        handler_with_lists,
+        channel,
+        assistant,
+        remote_commands,
+        conversation_lists,
+    ):
+        """Phase 80 Etappe 3: aktive note_search-Liste -> 'zeig Notiz 1'
+        sendet die echte Notiz direkt aus dem Item (kein Round-Trip durch
+        handle_remote_command, weil es keinen Note-Show-Command gibt)."""
+
+        async def _test():
+            sender = "@lera:matrix.org"
+            conversation_lists.register(
+                user_id=sender,
+                list_type="note_search",
+                items=[
+                    {"id": 7, "key": None, "content": "Vermieter heißt Müller"},
+                    {"id": 8, "key": "wlan", "content": "abc123"},
+                ],
+            )
+
+            assistant.process.return_value = self._make_pick_result("note_search", 1)
+
+            msg = _make_msg("zeig Notiz 1", sender=sender)
+            await handler_with_lists.handle_assistant_message(msg)
+
+            sent_texts = [c[0][1] for c in channel.send_text.call_args_list]
+            joined = " ".join(sent_texts)
+            assert "Vermieter heißt Müller" in joined
+            assert "#7" in joined
+            # Kein parse_command-Round-Trip noetig (Notiz direkt aus Item)
+            remote_commands.parse_command.assert_not_called()
+
+        run_async(_test())
+
+    def test_list_pick_note_with_key_shows_key(
+        self,
+        handler_with_lists,
+        channel,
+        assistant,
+        conversation_lists,
+    ):
+        """Key-Value-Fakten zeigen ihren Schluessel mit an."""
+
+        async def _test():
+            sender = "@lera:matrix.org"
+            conversation_lists.register(
+                user_id=sender,
+                list_type="note_search",
+                items=[
+                    {"id": 8, "key": "wlan büro", "content": "abc123"},
+                ],
+            )
+            assistant.process.return_value = self._make_pick_result("note_search", 1)
+
+            msg = _make_msg("zeig Notiz 1", sender=sender)
+            await handler_with_lists.handle_assistant_message(msg)
+
+            sent_texts = [c[0][1] for c in channel.send_text.call_args_list]
+            joined = " ".join(sent_texts)
+            assert "wlan büro" in joined
+            assert "abc123" in joined
 
         run_async(_test())
 
@@ -1580,5 +1702,180 @@ class TestHandleListPick:
             sent_texts = [c[0][1] for c in channel.send_text.call_args_list]
             joined = " ".join(sent_texts).lower()
             assert "nicht verfuegbar" in joined or "neue suche" in joined
+
+        run_async(_test())
+
+
+# ---------------------------------------------------------------------------
+# Phase 80 Etappe 3 Korrektur: "lies Mail 3" matcht MAIL_ID_PATTERN direkt,
+# der LLM-list_pick-Pfad waere ohne Reroute nie erreicht. Diese Tests gehen
+# durch den realen handle_remote_command-Pfad (Bridge-Vorpruefung), nicht
+# durch handle_assistant_message.
+# ---------------------------------------------------------------------------
+
+
+class TestMailByIdRerouteToListPick:
+    """Wenn aktive mail_inbox-Liste existiert, schlaegt der Listen-Pick die
+    direkte UID-Interpretation. Sonst wird die UID regulaer aufgeloest."""
+
+    def test_mail_3_with_active_inbox_reroutes_to_list_pick(
+        self,
+        handler_with_lists,
+        channel,
+        remote_commands,
+        conversation_lists,
+    ):
+        """Realer Bridge-Pfad: 'lies Mail 3' -> parse_command -> mail_by_id ->
+        handle_remote_command. Aktive mail_inbox-Liste vorhanden -> Reroute
+        auf den 3. Listen-Eintrag (msg_id=333), NICHT UID=3."""
+
+        async def _test():
+            from elder_berry.comms.commands.base import CommandResult
+
+            sender = "@lera:matrix.org"
+            conversation_lists.register(
+                user_id=sender,
+                list_type="mail_inbox",
+                items=[
+                    {"from": "a@x.de", "subject": "1.", "msg_id": "111", "date": ""},
+                    {"from": "b@x.de", "subject": "2.", "msg_id": "222", "date": ""},
+                    {"from": "c@x.de", "subject": "3.", "msg_id": "333", "date": ""},
+                ],
+            )
+
+            remote_commands.parse_command.return_value = "mail_by_id"
+            remote_commands.execute.return_value = CommandResult(
+                command="mail_by_id",
+                success=True,
+                text="\U0001f4e7 Mail #333: ...",
+                history_text="--- Mail #333 ---\nVon: c@x.de\n...",
+            )
+
+            msg = _make_msg("lies Mail 3", sender=sender)
+            await handler_with_lists.handle_remote_command(msg, "mail_by_id")
+
+            # _dispatch_mail_pick baut "mail #333" und ruft parse_command
+            # mit DIESEM Text auf. Es darf KEIN execute() mit dem original
+            # "lies Mail 3" kommen (das waere UID=3).
+            parse_calls = [
+                c.args[0]
+                for c in remote_commands.parse_command.call_args_list
+                if c.args
+            ]
+            joined = " ".join(parse_calls)
+            assert "333" in joined, (
+                f"Reroute hat nicht die echte msg_id 333 dispatcht. "
+                f"parse_command-Aufrufe: {parse_calls!r}"
+            )
+            assert "111" not in joined and "222" not in joined
+
+        run_async(_test())
+
+    def test_mail_99_without_inbox_falls_through_to_uid_lookup(
+        self, handler_with_lists, channel, remote_commands
+    ):
+        """Keine aktive mail_inbox-Liste -> regulaerer UID-Lookup (mail_by_id
+        execute mit dem Original-Body 'mail 99')."""
+
+        async def _test():
+            from elder_berry.comms.commands.base import CommandResult
+
+            remote_commands.execute.return_value = CommandResult(
+                command="mail_by_id",
+                success=True,
+                text="Mail #99",
+                history_text="...",
+            )
+
+            msg = _make_msg("mail 99", sender="@lera:matrix.org")
+            await handler_with_lists.handle_remote_command(msg, "mail_by_id")
+
+            # execute wurde mit dem ORIGINAL-Text aufgerufen (UID-Pfad),
+            # NICHT ueber den Reroute-Pfad (der wuerde parse_command erneut
+            # bemuehen).
+            remote_commands.execute.assert_called_once()
+            args = remote_commands.execute.call_args.args
+            assert args[0] == "mail_by_id"
+            assert "99" in args[1]
+
+        run_async(_test())
+
+    def test_mail_99_with_short_inbox_falls_through_to_uid(
+        self,
+        handler_with_lists,
+        channel,
+        remote_commands,
+        conversation_lists,
+    ):
+        """N > len(items) -> echter UID-Lookup, kein Reroute (User meint
+        vermutlich eine echte UID jenseits der aktuellen Inbox-Liste)."""
+
+        async def _test():
+            from elder_berry.comms.commands.base import CommandResult
+
+            sender = "@lera:matrix.org"
+            conversation_lists.register(
+                user_id=sender,
+                list_type="mail_inbox",
+                items=[
+                    {"from": "a@x.de", "subject": "1.", "msg_id": "111", "date": ""},
+                ],
+            )
+
+            remote_commands.execute.return_value = CommandResult(
+                command="mail_by_id",
+                success=True,
+                text="Mail #99",
+            )
+
+            msg = _make_msg("mail 99", sender=sender)
+            await handler_with_lists.handle_remote_command(msg, "mail_by_id")
+
+            # Liste hat 1 Eintrag, User fragt nach Mail 99 -> UID-Lookup
+            remote_commands.execute.assert_called_once()
+            args = remote_commands.execute.call_args.args
+            assert "99" in args[1]
+
+        run_async(_test())
+
+    def test_mail_pick_real_uid_in_dispatch_does_not_loop(
+        self,
+        handler_with_lists,
+        channel,
+        remote_commands,
+        conversation_lists,
+    ):
+        """Edge: Listen-Item hat msg_id='2', Liste hat 3 Eintraege. Der
+        Reroute wuerde ohne Guard das Dispatch ('mail #2') wieder als
+        Listen-Pick interpretieren (UID 2 <= len 3) -> Endlosrekursion.
+        Der _in_llm_command-Guard verhindert das."""
+
+        async def _test():
+            from elder_berry.comms.commands.base import CommandResult
+
+            sender = "@lera:matrix.org"
+            conversation_lists.register(
+                user_id=sender,
+                list_type="mail_inbox",
+                items=[
+                    {"from": "a@x.de", "subject": "1.", "msg_id": "1", "date": ""},
+                    {"from": "b@x.de", "subject": "2.", "msg_id": "2", "date": ""},
+                    {"from": "c@x.de", "subject": "3.", "msg_id": "3", "date": ""},
+                ],
+            )
+
+            remote_commands.parse_command.return_value = "mail_by_id"
+            remote_commands.execute.return_value = CommandResult(
+                command="mail_by_id",
+                success=True,
+                text="Mail #2",
+            )
+
+            msg = _make_msg("Mail 2", sender=sender)
+            await handler_with_lists.handle_remote_command(msg, "mail_by_id")
+
+            # Beim Dispatch wird parse_command einmal mit "mail #2"
+            # aufgerufen, dann execute mit mail_by_id. Kein Loop.
+            assert remote_commands.execute.call_count == 1
 
         run_async(_test())

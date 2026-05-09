@@ -235,3 +235,60 @@ class TestExecuteDelete:
     def test_delete_fact_nonexistent(self, handler):
         result = handler.execute("note_delete_fact", "vergiss gibts nicht")
         assert not result.success
+
+
+# ---------------------------------------------------------------------------
+# Phase 80 Etappe 3: list_items / list_type fuer ConversationListStore
+# ---------------------------------------------------------------------------
+
+
+class TestNoteSearchListIntegration:
+    """``_cmd_search`` liefert strukturierte Items, die der Bridge in den
+    ConversationListStore registriert (Phase 80 §5.3)."""
+
+    def test_search_list_items_carries_fields(self, handler, store):
+        """Item-Form: id / key / content. Voller content (nicht nur Excerpt),
+        damit list_pick die echte Notiz zeigen kann."""
+        n1 = store.add_note(USER_A, "Vermieter heißt Müller, Tel. 0123")
+        store.set_fact(USER_A, "wlan müller", "abc123")
+
+        result = handler.execute("note_search", "notizen suche Müller")
+        assert result.success
+        assert result.list_type == "note_search"
+        assert result.list_items is not None
+        # Beide Treffer mit den richtigen Feldern
+        ids = {item["id"] for item in result.list_items}
+        assert n1.id in ids
+        for item in result.list_items:
+            assert "id" in item and "key" in item and "content" in item
+            if item["id"] == n1.id:
+                # Voller content, nicht gekuerzt
+                assert "Vermieter heißt Müller" in item["content"]
+                assert item["key"] is None  # Freitext-Notiz
+
+    def test_search_no_results_no_list(self, handler):
+        """Nichts gefunden -> kein list_items (sonst wuerde die Bridge eine
+        leere Liste registrieren und 'Treffer 1' ginge ins Leere)."""
+        result = handler.execute("note_search", "notizen suche garnichtsda")
+        assert result.success
+        assert result.list_items is None
+        assert result.list_type is None
+
+    def test_search_invalid_format_no_list(self, handler):
+        result = handler.execute("note_search", "suche")
+        assert result.success is False
+        assert result.list_items is None
+        assert result.list_type is None
+
+    def test_other_commands_have_no_list(self, handler, store):
+        """note_add / note_get_fact / notizen sollen keine list_items
+        setzen -- Defensive gegen False-Positive-Registers in der Bridge."""
+        store.set_fact(USER_A, "wlan", "geheim")
+        for cmd, raw in [
+            ("note_add", "notiz: irgendwas"),
+            ("note_get_fact", "was ist wlan"),
+            ("notizen", "notizen"),
+        ]:
+            result = handler.execute(cmd, raw)
+            assert result.list_items is None, f"{cmd} setzt list_items"
+            assert result.list_type is None, f"{cmd} setzt list_type"
