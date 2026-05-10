@@ -596,14 +596,14 @@ Etappe N gemerged ist.
 
 ## 9. Folge-Phasen
 
-- **Phase 79 (offen, unter Vorbehalt R1) – reichere Pseudocode-
-  Anhänge:** Erweiterung, bei der Saleria im Markdown-Body zusätzliche
-  Pseudocode-Snippets liefert (z. B. konkretere `execute()`-Skizzen,
-  Beispiel-Tests). **Niemals als ladbare `.py`-Datei** — der R1-Guard
-  bleibt auch in 79 in Kraft. Alles was über reicheren Markdown-
-  Inhalt hinausgeht (Filesystem-Drops, ausführbare Skelette,
-  Sandbox-Lint-Pipelines), erfordert eine separate Sicherheits-
-  Bewertung und ist in dieser Roadmap-Linie nicht vorgesehen.
+- **Phase 79 (ON HOLD, 2026-05-10) – reichere Pseudocode-Anhänge:**
+  Eigene Konzept-Datei mit harter Trigger-Bedingung:
+  [`phase-79-richer-pseudocode.md`](phase-79-richer-pseudocode.md).
+  Wird **erst** umgesetzt, wenn ≥5 Live-Vorschläge in der DB sind,
+  ≥3 davon den Implementierungs-Prozess durchlaufen haben, und Lera
+  pro Vorschlag eine konkrete Spec-Lücke dokumentiert hat. R1-Guard
+  bleibt auch in 79 zwingend in Kraft (kein `.py`-Drop, kein
+  Filesystem-Schreiben, kein Sandbox-Lint).
 - **Phase 80 (offen) – Proaktive Vorschläge:** Saleria reflektiert
   über Tagebuch-/Briefing-Daten und schlägt Plugins ohne konkreten
   Fail-Trigger vor.
