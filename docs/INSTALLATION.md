@@ -221,6 +221,9 @@ python scripts/start_saleria.py --debug             # Debug-Logging
 | `scripts/setup_wizard.py` | Setup-Wizard im Browser (alle Dienste konfigurieren) |
 | `scripts/setup_email.py` | E-Mail (IMAP + SMTP) interaktiv konfigurieren |
 | `scripts/setup_google_oauth.py` | Google Calendar OAuth2 einrichten |
+| `scripts/set_dashboard_password.py` | Dashboard-Passwort setzen (bcrypt, mind. 12 Zeichen) |
+| `scripts/generate_plugin.py` | Plugin-Wizard – legt ein neues Command-Plugin in `~/.elder-berry/plugins/` an (Phase 77). Details in [USAGE.md](USAGE.md). |
+| `scripts/check_public_readiness.py` | Audit gegen `.public-readiness-blocklist.txt`; läuft auch als pre-push-Hook. |
 
 ### 9. Alexa Sprachsteuerung (optional)
 
@@ -311,9 +314,9 @@ wird weiterhin durchgelassen.
 
 | Modus | Modell | Einsatz |
 |---|---|---|
-| Primär | Anthropic Claude Sonnet 4.5 | Gespräch, PC-Steuerung, alle Aufgaben |
+| Primär | Anthropic Claude Sonnet 4.6 (`claude-sonnet-4-6`) | Gespräch, PC-Steuerung, alle Aufgaben |
 | Fallback | Ollama phi4:14b | Offline-Modus, kein Internet nötig |
-| Agent | Anthropic Claude Sonnet 4.5 | Komplexe Aufgaben via Matrix (Journal, Docs, Tests) |
+| Agent | Anthropic Claude Sonnet 4.6 | Komplexe Aufgaben via Matrix (Journal, Docs, Tests) |
 
 ### TTS-Strategie
 

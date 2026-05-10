@@ -51,15 +51,28 @@
 ## Design-Patterns
 
 - **ABC + Implementierung + DI**: Durchgehend für alle Komponenten
-- **CommandHandler ABC**: Einheitliches Interface für alle Remote-Commands
+- **CommandHandler ABC + Plugin-Registry (Phase 77)**: Einheitliches
+  Interface für alle Remote-Commands. Handler werden als `CommandPlugin`-
+  Manifest exportiert und via Registry aus drei Quellen geladen
+  (Builtin / `~/.elder-berry/plugins/` / Entry-Points).
   - `simple_commands`: Exakte Matches (z.B. "status", "todos")
   - `patterns`: Regex-Patterns mit Gruppen-Extraktion
   - `keywords`: Natürliche Sprache → Command-Mapping
   - `execute()` → `CommandResult` (success, text, file, pending_confirmation, fallthrough)
+  - Conflict-Detector als CI-Gate: kollidierende Patterns müssen explizit
+    via `conflicts=("other_name",)` deklariert werden.
 - **Graceful Degradation**: Fehlende Dependencies → Fehlertext, nie Crash
-- **Constructor-based DI**: Alle Abhängigkeiten über Konstruktor, TYPE_CHECKING für zirkuläre Imports
-- **SQLite + WAL-Modus**: Für alle lokalen Stores (Notes, Contacts, Todos, Reminders, Actions)
-- **FTS5 Volltext**: Für NoteStore, ContactStore (automatische Trigger-basierte Index-Sync)
+- **Constructor-based DI / HandlerContext**: Alle Abhängigkeiten über
+  Konstruktor, TYPE_CHECKING für zirkuläre Imports. Phase 77 hat den
+  Service-Container `HandlerContext` eingeführt, der allen Handlern
+  einheitlich injiziert wird.
+- **mypy --strict (Phasen 76, 76b, 76c)**: `core/`, `comms/`, `tools/`
+  und `web/` werden im CI strict typgeprüft. Tier-Whitelist im
+  `pyproject.toml` macht die Erweiterung sichtbar.
+- **SQLite + WAL-Modus**: Für alle lokalen Stores (Notes, Contacts,
+  Todos, Reminders, Actions, Proposals).
+- **FTS5 Volltext**: Für `NoteStore`, `ContactStore`, `ProposalStore`
+  (Dedupe-Suche, automatische Trigger-basierte Index-Sync).
 
 ## Zentrale Klassen
 
@@ -69,7 +82,7 @@
 |---|---|---|
 | `Assistant` | `core.assistant` | Orchestrator: LLM → Aktion → TTS → Avatar → Memory |
 | `LLMRouter` | `llm.router` | Anthropic (primär) → Ollama (Fallback) |
-| `AnthropicClient` | `llm.anthropic_client` | Claude Sonnet 4.5, primäres LLM-Backend |
+| `AnthropicClient` | `llm.anthropic_client` | Claude Sonnet 4.6, primäres LLM-Backend |
 | `SecretStore` | `core.secret_store` | Fernet-verschlüsselter Credential-Speicher |
 | `AudioRouter` | `core.audio_router` | Thread-safe Audio-Routing (matrix_only / matrix_and_local) |
 | `TTSRouter` | `core.tts_router` | ElevenLabs (primär) → CoquiTTS → WindowsTTS (Notfall) |
@@ -83,7 +96,9 @@
 | `MatrixChannel` | `comms.matrix_channel` | matrix-nio Async-Client |
 | `MatrixBridge` | `comms.bridge` | Async/Sync Bridge mit Command-Router |
 | `RemoteCommandHandler` | `comms.remote_commands` | Orchestrator: delegiert an Domain-Handler |
-| `CommandHandler` (ABC) | `comms.commands.base` | Basisklasse für Command-Handler |
+| `CommandHandler` (ABC) + `CommandPlugin` | `comms.commands.base` | Basisklasse + Plugin-Manifest (Phase 77) |
+| `PluginRegistry` | `comms.commands.registry` | Discovery aus Builtin / User-Dir / Entry-Points (Phase 77) |
+| `ProposalNotifier` | `comms.proposal_notifier` | Erkennt LLM-Fallback-Lücken → speichert Plugin-Vorschläge (Phase 78) |
 | `ClaudeAgent` | `comms.claude_agent` | Anthropic API für komplexe Aufgaben |
 | `AlertMonitor` | `comms.alert_monitor` | Proaktive Alerts (Disk, Prozess-Crash) |
 | `ChatHistory` | `comms.chat_history` | Sliding Window pro User + Rolling Summary |
@@ -121,6 +136,8 @@
 | `ContactStore` | `tools.contact_store` | SQLite + FTS5, Upsert per Name, E-Mail-Lookup |
 | `TodoStore` | `tools.todo_store` | SQLite, Prioritäten, Kategorien, Briefing-Integration |
 | `ReminderStore` | `tools.reminder_store` | SQLite, UTC, neustart-sichere Timer/Erinnerungen |
+| `ProposalStore` | `tools.proposal_store` | SQLite + FTS5, Plugin-Vorschläge mit Status-Workflow (Phase 78) |
+| `ConversationListStore` | `tools.conversation_list_store` | In-Memory-Listen-Disambiguation, TTL=1h, gegen LLM-ID/URL-Halluzinationen (Phase 80) |
 | `WeatherClient` | `tools.weather_client` | Open-Meteo API, Prognose, WMO-Codes |
 | `BraveSearchClient` | `tools.brave_search_client` | Web-Suche via Brave Search API |
 | `WebFetcher` | `tools.web_fetcher` | Webseiten abrufen + LLM-Zusammenfassung |
@@ -148,9 +165,14 @@
 | `SettingsDashboard` | `web.settings_dashboard` | FastAPI Web-UI (Port 8090), Secret-Verwaltung |
 | `SetupWizard` | `web.setup_wizard` | Browser-basierter Ersteinrichtungsassistent |
 | `SecurityMiddleware` | `web.security_middleware` | CSP, X-Frame-Options, Permissions-Policy |
-| `DashboardAuth` | `web.dashboard_auth` | Passwort-Schutz für Dashboard (bcrypt) |
+| `OriginCheckMiddleware` | `web.origin_check_middleware` | CSRF-Schutz: Origin/Referer-Check für state-changing Routes (Phase 64) |
+| `DashboardAuth` | `web.dashboard_auth` | Passwort-Schutz für Dashboard (bcrypt rounds=14, PW-Min 12, Phase 72) |
+| `SessionRevocationList` | `web.session_revocation_list` | Server-side Logout-Invalidation (Phase 70 H1) |
 | `RateLimiter` | `web.rate_limiter` | IP-basiertes Rate-Limiting für API-Endpunkte |
 | `SettingsTokenManager` | `web.settings_token` | Single-Use Token für Dashboard-Autorisierung |
+| `ProposalsAPI` | `web.proposals_api` | Dashboard-API für Plugin-Vorschläge (Phase 78) |
+| `PluginsAPI` | `web.plugins_api` | Dashboard-API für Plugin-Inspector (Phase 77.5) |
+| `WebFetcher` | `tools.web_fetcher` | SSRF-Schutz (private/loopback/metadata-IPs geblockt), 5 MB Stream-Cap (Phase 65 + 70 H3) |
 
 ## Projektstruktur
 
@@ -162,7 +184,7 @@ src/elder_berry/
 │   └── assets/       # Sprite-Komponenten (body/, eye/, mouth/)
 ├── character/        # Charakter-Engine + Saleria Persönlichkeit
 ├── comms/            # Matrix, Remote Commands, Claude Agent, Alerts
-│   └── commands/     # Domain-spezifische Command-Handler (22 Handler)
+│   └── commands/     # Domain-spezifische Command-Plugins (24 Handler + Registry, Phase 77)
 ├── core/             # Assistant-Orchestrator, SecretStore, TTSRouter, STTRouter
 ├── llm/              # LLM-Clients (Anthropic, Ollama, OpenRouter, Router)
 ├── memory/           # RAG-Gedächtnis (ChromaDB + Embeddings)
@@ -170,17 +192,32 @@ src/elder_berry/
 ├── server/           # Test-/Mock-Server (z.B. Harmony Mock)
 ├── stt/              # Speech-to-Text (Faster Whisper Engine)
 ├── system/           # System-Monitoring
-├── tools/            # Assistent-Tools (Kalender, Mail, Cloud, Nextcloud, Kontakte, ...)
+├── tools/            # Assistent-Tools (Kalender, Mail, Cloud, Nextcloud, Kontakte, Stores, ...)
 ├── tts/              # TTS-Engines (Windows SAPI, Coqui XTTS, ElevenLabs)
 │   └── voices/       # Voice Samples pro Emotion
-├── web/              # Web Dashboard, Setup-Wizard, Security Middleware
+├── web/              # FastAPI Dashboard, Setup-Wizard, Security/CSRF Middleware,
+│                     #   Session-Revocation, Plugin- + Proposal-APIs
 │   └── templates/    # Jinja2 HTML Templates
-└── webapp/           # Progressive Web App (Dashboard React-Frontend, Icons)
+└── webapp/           # Progressive Web App (Dashboard-Frontend, Module, Icons)
 
 docs/
-├── concepts/         # Phase-Konzeptdokumente (historisch)
-├── journal.txt       # Projekt-Log (laufend gepflegt)
-└── personal/         # Persönliche Notizen (gitignored)
+├── README.md             # Repo-Einstieg (im Root)
+├── CHANGELOG.md          # Phasenchronik (kompakt)
+├── PROJECT_ROADMAP.md    # Vollständige Roadmap (Planungsdokument)
+├── INSTALLATION.md       # Installation + API-Keys + Secrets
+├── USAGE.md              # Commands + Workflows + Plugin-System
+├── architecture.md       # Dieses Dokument
+├── matrix_setup.md       # Synapse-Setup (Plesk/Docker)
+├── rpi5_setup.md         # Raspberry Pi 5 Setup
+├── ssh-tunnel.md         # SSH Reverse Tunnels (Tower + RPi5 → Rootserver)
+├── EINKAUFSLISTE.md      # Hardware-Stückliste mit Status
+├── public-readiness-audit.md # Generierter Audit-Bericht (read-only)
+├── concepts/             # Phase-Konzeptdokumente (historisch + ON HOLD)
+├── deploy/               # Beispiel-Configs (z.B. nginx-fern.conf)
+├── prompts/              # LLM-Prompt-Snippets
+├── templates/            # Plugin-Templates (z.B. plugin_template.py)
+├── journal.txt           # Projekt-Log (laufend gepflegt, gitignored)
+└── personal/             # Persönliche Notizen (gitignored)
 
 hardware/
 ├── electronics/      # KiCad 9 Schaltpläne
@@ -195,9 +232,12 @@ scripts/
 ├── setup_email.py           # E-Mail-Konfiguration (IMAP + SMTP)
 ├── setup_google_oauth.py    # Google Calendar OAuth2 Setup
 ├── set_dashboard_password.py # Dashboard-Passwort setzen
+├── generate_plugin.py       # Plugin-Wizard (Phase 77)
+├── check_public_readiness.py # Public-Repo-Audit (pre-push-Hook)
 └── demo_tts_live.py         # Interaktives TTS-Testing
 
-tests/                # 4.000+ Unit- + Integrationstests (141 Testdateien)
+tests/                # 5418 Unit- + Integrationstests (~160 Testdateien, Stand Phase 81),
+                      # mypy --strict-Gate im CI für core/, comms/, tools/, web/
 ```
 
 ## Hardware

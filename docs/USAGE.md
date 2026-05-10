@@ -187,6 +187,22 @@ Kontakte werden vor jedem Briefing automatisch von Nextcloud gesynct.
 | `fasse <URL> zusammen` | Webseite zusammenfassen (LLM-aufbereitet) |
 | `zusammenfassung von <URL>` | Alias |
 
+### List-Pick (Phase 80)
+
+Saleria registriert strukturierte Mehrfachergebnisse intern und löst
+Folge-Anweisungen serverseitig auf — das verhindert, dass das LLM eine
+URL oder Mail-ID errät. Aktive List-Types: Web-Suche (`web_search`),
+Mail-Inbox (`mail_inbox`), Notiz-Treffer (`note_search`).
+
+Workflow:
+
+1. `suche Holunder Pepper's Ghost` → Saleria zeigt nummerierte Treffer.
+2. `fasse Treffer 2 zusammen` / `nimm den ersten` / `mail 3` →
+   Saleria löst den Index auf den realen Wert auf.
+
+Listen halten 1 Stunde ab letztem Zugriff. Pro `(user, list_type)` ist
+nur eine aktive Liste vorhanden — eine neue Suche überschreibt die alte.
+
 ## Dateien & Clipboard
 
 | Command | Beschreibung |
@@ -392,7 +408,7 @@ Home-Verzeichnis. Eine neue Capability = eine neue Datei.
 Die Registry lädt beim Start aus drei Quellen, in dieser Priorität:
 
 1. **Builtin** – `src/elder_berry/comms/commands/<name>_commands.py`
-   im Repo. Standard-Set (23 Plugins).
+   im Repo. Standard-Set (24 Plugins inkl. Plugin-Inspector aus Phase 77.5).
 2. **User-Verzeichnis** – `~/.elder-berry/plugins/<name>.py`. Eigene
    Plugins, die nur lokal benötigt werden. Werden automatisch geladen,
    sobald Saleria neu startet.
@@ -449,9 +465,21 @@ Entry-Point-Plugins (per `pip install`) sind eine Vertrauensfrage:
 fremder Code wird ausgeführt. Lokale User-Plugins sind sicherer, weil
 sie nur dein eigener Code sind.
 
+### Plugin-Self-Suggestion (Phase 78)
+
+Saleria erkennt, wenn ein User-Anliegen ans LLM gefallback'd ist und
+dort eigentlich besser durch ein dediziertes Plugin abgedeckt wäre.
+Solche Capability-Lücken landen automatisch als Vorschlag im
+`ProposalStore` (SQLite + FTS5-Dedupe) und tauchen im Dashboard unter
+"Plugin-Vorschläge" auf — mit Status-Workflow
+(`new` → `reviewed` → `implemented`/`rejected`). Es gibt **kein**
+Auto-Load: Lera prüft die Vorschläge und implementiert manuell
+(R1-Guard).
+
 ### Konzept-Doku
 
 Die vollständige Architektur steht in
 [docs/concepts/phase-77-commands-plugin-registry.md](concepts/phase-77-commands-plugin-registry.md)
 – inklusive Backwards-Compat-Strategie und Folge-Phasen (Hot-Reload,
-Marketplace).
+Marketplace). Self-Suggestion-Details:
+[docs/concepts/phase-78-plugin-self-suggestion.md](concepts/phase-78-plugin-self-suggestion.md).

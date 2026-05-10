@@ -45,11 +45,15 @@ Hologramm-Display in einem 3D-gedruckten Holunder-Baumstamm-Gehäuse.
 - **Nextcloud**: Datei-Hub (Upload + Share-Links), CalDAV, CardDAV, Inhaltssuche
 
 ### Fernsteuerung (via Matrix / Element)
-- 50+ direkte Commands ohne LLM (Status, Screenshot, Medien, Clipboard, Dateien, ...)
+- 50+ direkte Commands ohne LLM, aufgeteilt in 24 Plugin-Handler (Status, Screenshot, Medien, Clipboard, Dateien, ...)
 - PC-Steuerung via Anthropic Vision (Computer Use)
 - Git, Docker, Wake-on-LAN, Self-Update (Tower + RPi5)
 - Sprachnachrichten: Whisper transkribiert, Saleria antwortet mit Text + Sprache
 - Claude Agent: komplexe Aufgaben via Anthropic API
+- Plugin-System (Phase 77): eigene Handler in `~/.elder-berry/plugins/`
+  ablegen oder via `pip install` als Entry-Point. Self-Suggestion
+  (Phase 78) erkennt fehlende Capabilities und sammelt Vorschläge im
+  Dashboard.
 
 ### Sprachsteuerung (via Alexa)
 - Alexa Custom Skill "Meine Saleria" als Sprach-Proxy
@@ -83,10 +87,11 @@ py -3.12 -m venv .venv
 .venv\Scripts\activate  # Windows
 
 # Vollinstallation (empfohlen für Tower)
-pip install -e ".[windows,tts-neural,avatar,matrix,remote,memory,stt,nextcloud,harmony]"
-# Oder als Paketgruppe:
-pip install -e ".[server]"  # Rootserver (Matrix + Cloud-Tools ohne Windows-Extras)
 pip install -e ".[tower]"   # Tower (Windows-Extras + TTS/STT + Matrix, Vollinstallation)
+
+# Andere Plattformen via Metapaketen:
+pip install -e ".[server]"  # Rootserver (Matrix + Cloud-Tools ohne Windows-Extras)
+# RPi5: System-Python 3.13, siehe docs/rpi5_setup.md
 ```
 
 Mindestens benötigt: ein Anthropic API-Key und Matrix-Zugangsdaten.
@@ -181,7 +186,9 @@ Detaillierte Architektur mit allen Klassen und Patterns: **[architecture.md](doc
 pytest tests/ -q
 ```
 
-4.000+ Tests (141 Testdateien).
+5418 Tests in ~160 Testdateien (Stand Phase 81). CI fährt zusätzlich
+`mypy --strict` für `core/`, `comms/`, `tools/` und `web/` (Phasen 76,
+76b, 76c).
 
 ## Roadmap (Auszug)
 
@@ -205,11 +212,24 @@ pytest tests/ -q
 | 52–53 | Unified Settings, Install-Script Härtung, Avatar-Editor UX | ✅ Fertig |
 | 55 | pydub/audioop Migration (Python 3.13-Kompatibilität) | ✅ Fertig |
 | 56 | Nextcloud Tasks als Todo-Backend | ✅ Fertig |
-| 57–58 | Security-Härtung (CORS, CSP, Dashboard-Login) | ✅ Fertig |
-| 59–60 | Alexa Request-Verifikation, Tower-Auth | ✅ Fertig |
+| 57–60 | Security-Härtung (CORS, CSP, Dashboard-Login, Rate-Limiting, IMAP-Sent) | ✅ Fertig |
 | 61 | Remote Log-Zugriff via Matrix | ✅ Fertig |
+| 63–66 | CSP-Härtung, CSRF/SSRF/Robot-Token, mittlere Security-Fixes, Robot-Reverse-Proxy | ✅ Fertig |
+| 67 | Public-Readiness Audit + Sanitization | ✅ Fertig |
+| 68 + 68 B1 | Public-Release-Vorbereitung, Asset-Licensing + NOTICE | ✅ Fertig |
+| 69–72 | Path-Traversal-Schutz, Session-Hardening, Hygiene Runde 2, Auth-Hardening (PW-Min 12, bcrypt 14) | ✅ Fertig |
+| 73 | CodeQL-Triage + PR-A/B/C (SSRF, stack-trace, log-injection) | ✅ Fertig |
+| 74 | Codecov-Integration | ✅ Fertig |
+| 75 + 75b | Repo-Hygiene, ruff-format Massen-Sweep (~300 Dateien) | ✅ Fertig |
+| 76 + 76b + 76c | mypy-Strict-Rollout (`core/`, `comms/`, `tools/`+`web/`), CI-Gate hart | ✅ Fertig |
+| 77 + 77.5 | Commands-Plugin-Registry (24 Builtin-Plugins, Discovery, Wizard) + Plugin-Inspector | ✅ Fertig |
+| 78 | Plugin-Self-Suggestion (ProposalStore + Trigger-Pipeline + Dashboard) | ✅ Fertig |
+| 79 | Richer Pseudocode für Vorschläge | ⏸️ ON HOLD |
+| 80 | ConversationListStore + list_pick (web_search/mail_inbox/note_search) | ✅ Fertig |
+| 81 + 81b | Command-Fallback-UX + Plugin-Vorschlag aus Fallback-Pfad | ✅ Fertig |
 
 Vollständige Roadmap mit Details: **[PROJECT_ROADMAP.md](docs/PROJECT_ROADMAP.md)**
+Phasenchronik mit Beschreibungen: **[CHANGELOG.md](docs/CHANGELOG.md)**
 
 ## Lizenz & Drittanbieter
 
