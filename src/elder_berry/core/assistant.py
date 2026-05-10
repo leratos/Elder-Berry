@@ -162,9 +162,14 @@ class Assistant:
 
         action_success = False
         if action_type:
-            # remote_command / multi_step / list_pick (Phase 80):
-            # Pass-through -- Bridge fuehrt aus
-            if action_type in ("remote_command", "multi_step", "list_pick"):
+            # remote_command / multi_step / list_pick (Phase 80) /
+            # action_sequence (Phase 82): Pass-through -- Bridge fuehrt aus.
+            if action_type in (
+                "remote_command",
+                "multi_step",
+                "list_pick",
+                "action_sequence",
+            ):
                 action_success = True
             # system_status: Daten abrufen und Response erweitern
             elif action_type == "system_status":
