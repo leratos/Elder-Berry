@@ -422,18 +422,22 @@ class TestActionSequenceHandler:
 
         run_async(_test())
 
-    def test_multi_line_in_step_not_split(self, handler, channel, remote_commands):
-        """Step mit Multi-Line-Command darf NICHT rekursiv gesplittet werden.
+    def test_multi_line_in_step_splits_to_subcalls(
+        self, handler, channel, remote_commands
+    ):
+        """Phase 82.1: Step mit Multi-Line-command wird transparent in
+        Sub-Calls gesplittet (umgekehrt zur urspruenglichen ��3.2-
+        Entscheidung). Saleria packt 3 Todos oft in einen Step --
+        das System soll das jetzt unterstuetzen.
 
-        Erwartung: parse_command + execute werden GENAU EINMAL aufgerufen,
-        nicht zweimal (einmal pro Zeile). Dokumentiert das gewollte
-        Verhalten -- Saleria sollte das vermeiden, aber wenn doch:
-        kein Doppel-Splitten.
+        Erwartung: parse_command + execute werden ZWEIMAL aufgerufen
+        (einmal pro Sub-Line, nicht einmal mit dem ganzen Multi-Line-
+        Blob). Bilanz zeigt 2 Sub-Outcomes.
         """
 
         async def _test():
             remote_commands.execute.return_value = CommandResult(
-                command="todo", success=True, text="OK A"
+                command="todo", success=True, text="OK"
             )
             steps = [
                 {
@@ -444,10 +448,152 @@ class TestActionSequenceHandler:
             msg = _make_msg()
             await handler._handle_action_sequence(msg, _llm_result(steps))
 
-            assert remote_commands.execute.call_count == 1
-            # Der RAW-Text mit dem Newline geht unveraendert in execute()
-            execute_args = remote_commands.execute.call_args[0]
-            assert "\n" in execute_args[1]
+            assert remote_commands.execute.call_count == 2
+            # Die echten Sub-Lines (ohne Newline) gehen einzeln rein.
+            call_texts = [c[0][1] for c in remote_commands.execute.call_args_list]
+            assert "todo: A" in call_texts
+            assert "todo: B" in call_texts
+            # Bilanz zeigt 2 Sub-Outcomes als 2 Items.
+            bilanz = channel.send_text.call_args_list[1][0][1]
+            assert "✅ 2 ausgefuehrt" in bilanz
+
+        run_async(_test())
+
+    def test_smoketest_reproducer_3_todos_notiz_reminder(
+        self, handler, channel, remote_commands
+    ):
+        """Phase 82.1 Smoketest-Reproducer (Lera 2026-05-11):
+        '3 Todos UND Notiz UND Reminder' -> 5 Outcomes, alle ✅.
+
+        Bevor Phase 82.1 ergab das ❌ 1 / ✅ 2 (3 Todos in 1 Step,
+        FAILURE 'kein bekannter command'). Mit Multi-Line-Splittung:
+        ✅ 5.
+        """
+
+        async def _test():
+            # 5 erwartete execute-Calls: 3 Todo-Sub-Calls + Notiz + Reminder
+            remote_commands.execute.side_effect = [
+                CommandResult(command="todo", success=True, text="Todo 1"),
+                CommandResult(command="todo", success=True, text="Todo 2"),
+                CommandResult(command="todo", success=True, text="Todo 3"),
+                CommandResult(command="notiz", success=True, text="Notiz OK"),
+                CommandResult(command="erinner", success=True, text="Reminder OK"),
+            ]
+            steps = [
+                {
+                    "action": "remote_command",
+                    "params": {
+                        "command": (
+                            "todo: Zutaten kaufen\ntodo: Pizzateig\ntodo: Pizza backen"
+                        )
+                    },
+                },
+                {"action": "remote_command", "params": {"command": "notiz: Link"}},
+                {
+                    "action": "remote_command",
+                    "params": {"command": "erinnere mich Sa 10:00: Pizza"},
+                },
+            ]
+            msg = _make_msg()
+            await handler._handle_action_sequence(msg, _llm_result(steps))
+
+            assert remote_commands.execute.call_count == 5
+            bilanz = channel.send_text.call_args_list[1][0][1]
+            assert "✅ 5 ausgefuehrt" in bilanz
+            assert "❌" not in bilanz
+
+        run_async(_test())
+
+    def test_multi_line_step_subfailure_continue_runs_rest(
+        self, handler, channel, remote_commands
+    ):
+        """Sub-Step 2 von 3 schlaegt fehl + on_failure='continue':
+        Sub-Step 3 laeuft trotzdem, naechster Top-Step laeuft auch."""
+
+        async def _test():
+            remote_commands.execute.side_effect = [
+                CommandResult(command="todo", success=True, text="Todo 1"),
+                CommandResult(command="todo", success=False, text="DB locked"),
+                CommandResult(command="todo", success=True, text="Todo 3"),
+                CommandResult(command="notiz", success=True, text="Notiz OK"),
+            ]
+            steps = [
+                {
+                    "action": "remote_command",
+                    "params": {"command": "todo: A\ntodo: B\ntodo: C"},
+                },
+                {"action": "remote_command", "params": {"command": "notiz: x"}},
+            ]
+            msg = _make_msg()
+            await handler._handle_action_sequence(
+                msg, _llm_result(steps, on_failure="continue")
+            )
+
+            # Alle 4 execute-Calls (3 Sub + 1 Top)
+            assert remote_commands.execute.call_count == 4
+            bilanz = channel.send_text.call_args_list[1][0][1]
+            assert "✅ 3 ausgefuehrt" in bilanz
+            assert "❌ 1 fehlgeschlagen" in bilanz
+
+        run_async(_test())
+
+    def test_multi_line_step_subfailure_stop_skips_rest(
+        self, handler, channel, remote_commands
+    ):
+        """Sub-Step 2 von 3 schlaegt fehl + on_failure='stop':
+        Sub-Step 3 als skipped, naechster Top-Step auch als skipped."""
+
+        async def _test():
+            remote_commands.execute.side_effect = [
+                CommandResult(command="todo", success=True, text="Todo 1"),
+                CommandResult(command="todo", success=False, text="DB locked"),
+                # Sub-Step 3 darf NICHT ausgefuehrt werden -> kein 3. side_effect
+            ]
+            steps = [
+                {
+                    "action": "remote_command",
+                    "params": {"command": "todo: A\ntodo: B\ntodo: C"},
+                },
+                {"action": "remote_command", "params": {"command": "notiz: x"}},
+            ]
+            msg = _make_msg()
+            await handler._handle_action_sequence(
+                msg, _llm_result(steps, on_failure="stop")
+            )
+
+            # Nur 2 execute-Calls (Sub 1+2, Sub 3 skipped, Top-Notiz skipped)
+            assert remote_commands.execute.call_count == 2
+            bilanz = channel.send_text.call_args_list[1][0][1]
+            assert "✅ 1 ausgefuehrt" in bilanz
+            assert "❌ 1 fehlgeschlagen" in bilanz
+            # 2 skipped: Sub-Step 3 + Top-Step Notiz
+            assert "⏭ 2 uebersprungen" in bilanz
+
+        run_async(_test())
+
+    def test_multi_line_step_ignores_empty_lines(
+        self, handler, channel, remote_commands
+    ):
+        """'todo: A\\n\\ntodo: B' -> leere Mid-Line wird weggefiltert,
+        2 Sub-Outcomes (nicht 3)."""
+
+        async def _test():
+            remote_commands.execute.side_effect = [
+                CommandResult(command="todo", success=True, text="A"),
+                CommandResult(command="todo", success=True, text="B"),
+            ]
+            steps = [
+                {
+                    "action": "remote_command",
+                    "params": {"command": "todo: A\n\ntodo: B"},
+                },
+            ]
+            msg = _make_msg()
+            await handler._handle_action_sequence(msg, _llm_result(steps))
+
+            assert remote_commands.execute.call_count == 2
+            bilanz = channel.send_text.call_args_list[1][0][1]
+            assert "✅ 2 ausgefuehrt" in bilanz
 
         run_async(_test())
 
