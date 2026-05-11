@@ -106,12 +106,22 @@ class NoteCommandHandler(CommandHandler):
 
     @property
     def patterns(self) -> list[tuple[re.Pattern[str], str, bool, bool]]:
+        # Reihenfolge: spezifische Patterns VOR generischen.
+        # 2026-05-11 (Smoketest-Fix): NOTE_ADD_PATTERN matcht ``notiz <text>``
+        # mit beliebigem text -- inkl. ``notiz löschen #1`` und ``notiz suche
+        # ...``. Wenn note_add hier vor note_delete/note_search steht, werden
+        # diese spezifischen Commands als neue Notiz mit text="löschen #1"
+        # bzw. text="suche ..." angelegt. note_set_fact (merk dir: ...) und
+        # note_delete_fact (vergiss ...) sind disjunkt zu note_add (anderer
+        # Stamm), aber zur Klarheit ebenfalls vorne.
         return [
             (NOTE_SET_FACT_PATTERN, "note_set_fact", False, False),
-            (NOTE_ADD_PATTERN, "note_add", False, False),
-            (NOTE_SEARCH_PATTERN, "note_search", False, False),
             (NOTE_DELETE_PATTERN, "note_delete", False, False),
+            (NOTE_SEARCH_PATTERN, "note_search", False, False),
             (NOTE_DELETE_FACT_PATTERN, "note_delete_fact", False, False),
+            # note_add ist generisch (``notiz <text>``) -- muss NACH den
+            # spezifischen Note-Patterns stehen, sonst frisst es sie auf.
+            (NOTE_ADD_PATTERN, "note_add", False, False),
             # note_get_fact zuletzt: "was ist" ist sehr allgemein
             (NOTE_GET_FACT_PATTERN, "note_get_fact", False, False),
         ]
