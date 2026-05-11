@@ -192,6 +192,17 @@ class RemoteCommandHandler:
     graceful Degradation (Fehlertext statt Crash).
     """
 
+    # Phase 82 Hotfix B (2026-05-10): Cap fuer die Keyword-Suche-Stufe
+    # in parse_command. Ueber dieser Schwelle (gemessen am gestrippten
+    # Text, also nach Filler-Removal) wird Stufe 3 uebersprungen und der
+    # Bridge faellt auf den LLM-Pfad zurueck. Verhindert, dass Multi-
+    # Action-Anfragen wie "erstell 3 todos UND schreib notiz UND ..."
+    # an einer Substring-Erkennung ("todos" -> Listenanzeige) haengen
+    # bleiben, bevor Saleria action_sequence emittieren kann.
+    # 8 ist grosszuegig: bestehende keyword-Tests liegen alle bei <= 6
+    # Wortern (nach Filler-Strip).
+    _MAX_KEYWORD_PHRASE_WORDS: int = 8
+
     def __init__(
         self,
         ctx: HandlerContext | None = None,
@@ -412,11 +423,27 @@ class RemoteCommandHandler:
         # Stufe 3: Keyword-Suche in natürlicher Sprache.
         # Hier auf dem *originalen* Text (nicht stripped), damit Keywords
         # wie "zeig mir den bildschirm" oder "schau mal im netz" weiter greifen.
-        for handler in self._handlers:
-            for command, keywords in handler.keywords.items():
-                for keyword in keywords:
-                    if keyword in original_normalized:
-                        return command
+        #
+        # Phase 82 Hotfix B (2026-05-10): zwei Schutzschichten gegen False-
+        # Positives, die action_sequence aushebeln (Multi-Action-Anfragen
+        # wie "erstell 3 todos UND schreib notiz UND ..." landeten frueher
+        # auf "todos"-Listen-Anzeige, weil "todos" als Substring matchte).
+        #
+        # 1) Length-Cap auf den GESTRIPPTEN Text: ueber 8 Wortern ist die
+        #    Anfrage typischerweise eine Beschreibung mehrerer Aktionen
+        #    oder eine komplexe Frage -- der LLM soll entscheiden, nicht
+        #    der Keyword-Matcher. Filler werden vorher abgeschnitten,
+        #    damit hoefliche Variants ("kannst du mir mal die offenen
+        #    todos zeigen") weiterhin durchkommen.
+        # 2) Wort-Boundary statt Substring-Check: verhindert, dass z.B.
+        #    "todoslisten" das keyword "todos" matcht.
+        if len(stripped.split()) <= self._MAX_KEYWORD_PHRASE_WORDS:
+            for handler in self._handlers:
+                for command, keywords in handler.keywords.items():
+                    for keyword in keywords:
+                        kw_pattern = rf"(?<!\w){re.escape(keyword)}(?!\w)"
+                        if re.search(kw_pattern, original_normalized):
+                            return command
 
         return None
 
