@@ -72,10 +72,21 @@ TERMIN_CREATE_PATTERN = re.compile(
 # "termin löschen abc123", "lösche termin abc123", "lösche den termin abc123"
 # "termin löschen alle", "lösche alle termine"
 # "lösch den 2. termin", "entferne termin 1"
+#
+# 2026-05-11 (Smoketest-Fix): zweite/dritte Alternative MUSS jetzt einen
+# expliziten ``termin``-Marker enthalten, sonst matchte "lösch alle" mit
+# text="alle" und endete fälschlich im Termin-Delete-Pfad. Beide ``termin``-
+# Marker waren vorher optional in derselben Alternative -- jetzt aufgesplittet
+# in zwei Sub-Alternativen, jede mit Pflicht-``termin`` an einer der zwei
+# Positionen.
 TERMIN_DELETE_PATTERN = re.compile(
     r"(?:bitte\s+)?"
+    # Alt A: "termin löschen <text>"
     r"(?:termin[e]?\s+(?:löschen|lösche|entferne[n]?|lösch|storniere[n]?)\s+(.+)"
-    r"|(?:lösche?|entferne?|storniere?)\s+(?:den\s+|die\s+|alle\s+)?(?:termin[e]?\s+)?(.+?)(?:\s+termin[e]?)?$"
+    # Alt B: "lösche [den/die/alle] termin[e] [<text>]"
+    r"|(?:lösche?|entferne?|storniere?)\s+(?:den\s+|die\s+|alle\s+)?termin[e]?(?:\s+(.+))?$"
+    # Alt C: "lösche [den/die/alle] <text> termin[e]"
+    r"|(?:lösche?|entferne?|storniere?)\s+(?:den\s+|die\s+|alle\s+)?(.+?)\s+termin[e]?$"
     r")",
     re.IGNORECASE,
 )
@@ -475,7 +486,11 @@ class CalendarCommandHandler(CommandHandler):
                 text="Format: termin löschen <ID> oder lösche den 2. termin",
             )
 
-        target = (match.group(1) or match.group(2) or "").strip().rstrip(".")
+        target = (
+            (match.group(1) or match.group(2) or match.group(3) or "")
+            .strip()
+            .rstrip(".")
+        )
 
         # Füllwörter entfernen (bitte, mal, doch, morgen ohne Datum-Kontext)
         filler = {
