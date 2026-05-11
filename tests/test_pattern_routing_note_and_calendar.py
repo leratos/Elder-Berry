@@ -67,6 +67,35 @@ class TestNotePatternRouting:
         # Mit "bitte"-Prefix
         assert h.parse_command("bitte notiz: Termin morgen") == "note_add"
 
+    def test_bitte_prefix_routes_and_executes_correctly(self) -> None:
+        """Codex-Reviewer P2 (2026-05-11): parse_command strippt 'bitte'
+        VOR dem Pattern-Match, aber execute() bekommt den rohen Text mit
+        'bitte ...' drin. Ohne (?:bitte\\s+)?-Prefix in DELETE/SEARCH/
+        DELETE_FACT-Patterns wuerde der Re-Parse in _cmd_* fehlschlagen
+        und 'Welche Notiz?'/'Suchbegriff fehlt' zurueckliefern -- obwohl
+        das Routing korrekt erkannt hatte.
+
+        Test prueft beide Stufen:
+        1. parse_command erkennt das richtige Command.
+        2. Der Pattern-Re-Parse im _cmd_* (mit rohem Text) gelingt.
+        """
+        h = _handler_with_notes()
+        # Stufe 1: Routing
+        assert h.parse_command("bitte notiz löschen #1") == "note_delete"
+        assert h.parse_command("bitte notizen suche Pizza") == "note_search"
+        assert h.parse_command("bitte vergiss WLAN") == "note_delete_fact"
+
+        # Stufe 2: Pattern-Re-Parse gelingt (matchet auf rohem Text)
+        from elder_berry.comms.commands.note_commands import (
+            NOTE_DELETE_FACT_PATTERN,
+            NOTE_DELETE_PATTERN,
+            NOTE_SEARCH_PATTERN,
+        )
+
+        assert NOTE_DELETE_PATTERN.match("bitte notiz löschen #1") is not None
+        assert NOTE_SEARCH_PATTERN.match("bitte notizen suche Pizza") is not None
+        assert NOTE_DELETE_FACT_PATTERN.match("bitte vergiss WLAN") is not None
+
     def test_notiz_add_with_loeschen_in_text_does_not_match_delete(self) -> None:
         """Edge: ``notiz: löschen meines Accounts ueberlegen`` -- der
         text enthaelt 'löschen' aber es ist kein Delete-Befehl (Doppelpunkt

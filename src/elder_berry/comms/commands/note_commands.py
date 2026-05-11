@@ -50,9 +50,19 @@ NOTE_ADD_PATTERN = re.compile(
 # damit diese an die zuständigen Handler weitergeleitet werden.
 # Negative Lookahead: prueft ob nach optionalem Artikel ein Domain-Keyword folgt.
 # Steht VOR der optionalen Artikel-Gruppe, damit kein Backtracking den Schutz umgeht.
+#
+# 2026-05-11 (Codex-Reviewer P2): ``(?:bitte\s+)?``-Prefix in DELETE,
+# SEARCH, DELETE_FACT und GET_FACT eingefuegt -- parse_command strippt
+# fuehrende Filler bevor es matcht, aber execute() bekommt den rohen
+# Text mit "bitte ..." drin. Ohne den Prefix waere der _cmd_*-Re-Parse-
+# Schritt mit "bitte" am Anfang fehlgeschlagen. Loesung analog zu
+# NOTE_ADD_PATTERN/NOTE_SET_FACT_PATTERN (haben den Prefix schon).
+# Hinweis: das deckt NUR "bitte" ab; andere Filler ("kannst du mir mal"
+# etc.) brauchen einen breiteren Architektur-Fix -- separates Konzept.
 _DOMAIN_WORDS = r"wetter|termin|mail|todo|kontakt|erinnerung|timer"
 NOTE_GET_FACT_PATTERN = re.compile(
-    r"^(?:was\s+ist\s+(?!(?:(?:der|die|das|mein[e]?)\s+)?(?:" + _DOMAIN_WORDS + r")\b)"
+    r"^(?:bitte\s+)?"
+    r"(?:was\s+ist\s+(?!(?:(?:der|die|das|mein[e]?)\s+)?(?:" + _DOMAIN_WORDS + r")\b)"
     r"(?:(?:der|die|das|mein[e]?)\s+)?(.+?)"
     r"|wie\s+lautet\s+(?!(?:(?:der|die|das|mein[e]?)\s+)?(?:" + _DOMAIN_WORDS + r")\b)"
     r"(?:(?:der|die|das|mein[e]?)\s+)?(.+?))"
@@ -62,19 +72,19 @@ NOTE_GET_FACT_PATTERN = re.compile(
 
 # "notizen suche Vermieter"
 NOTE_SEARCH_PATTERN = re.compile(
-    r"^notize?n?\s+suche\s+(.+)$",
+    r"^(?:bitte\s+)?notize?n?\s+suche\s+(.+)$",
     re.IGNORECASE,
 )
 
 # "notiz löschen #3" oder "notiz löschen 3"
 NOTE_DELETE_PATTERN = re.compile(
-    r"^notiz(?:en)?\s+(?:löschen|lösche|entferne?)\s+#?(\d+)$",
+    r"^(?:bitte\s+)?notiz(?:en)?\s+(?:löschen|lösche|entferne?)\s+#?(\d+)$",
     re.IGNORECASE,
 )
 
 # "vergiss WLAN Passwort Büro"
 NOTE_DELETE_FACT_PATTERN = re.compile(
-    r"^vergiss\s+(.+)$",
+    r"^(?:bitte\s+)?vergiss\s+(.+)$",
     re.IGNORECASE,
 )
 
