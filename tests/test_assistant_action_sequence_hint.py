@@ -85,6 +85,26 @@ class TestActionSequenceHintContent:
         hint = Assistant._build_action_sequence_hint()
         assert '"response"' in hint
 
+    def test_phase_82_1_multi_line_in_step_clarification(self) -> None:
+        """Phase 82.1: Hint muss klarstellen, dass gleichartige Items
+        innerhalb einer heterogenen Sequenz wahlweise als einzelne
+        Steps ODER als ein Multi-Line-Step emittiert werden koennen.
+
+        Trigger: Smoketest-Befund -- Saleria packte 3 Todos in 1 Step
+        und parse_command warf FAILURE 'kein bekannter command', weil
+        ��3.2 die Splittung nicht erlaubte. ��3.2 wurde umgekehrt;
+        der Hint dokumentiert die neue Wahlfreiheit + zeigt ein
+        Multi-Line-Few-Shot.
+        """
+        hint = Assistant._build_action_sequence_hint()
+        # Klarstellung-Marker (Wording darf sich aendern, Marker bleiben)
+        assert "Phase 82.1" in hint
+        assert "EINZELNE Steps" in hint or "einzelne Steps" in hint.lower()
+        # Few-Shot zeigt einen Multi-Line-command (\\n im JSON-String)
+        assert "\\n" in hint
+        # Few-Shot ist ein Pizza-Beispiel mit 3 Todos + Notiz + Reminder
+        assert "Pizza" in hint
+
 
 # ---------------------------------------------------------------------------
 # Wiring: Hint erscheint im finalen System-Prompt

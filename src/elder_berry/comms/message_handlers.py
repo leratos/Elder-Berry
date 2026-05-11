@@ -1559,14 +1559,22 @@ class BridgeMessageHandler:
                 skipped += 1
                 continue
 
-            outcome = await self._execute_single_step(index, step, msg)
-            outcomes.append(outcome)
-            if outcome.status == "success":
-                succeeded += 1
-            else:
-                failed += 1
-                if on_failure == "stop":
-                    stop_remaining = True
+            # Phase 82.1: ein Step kann mehrere Outcomes liefern, wenn
+            # sein command-String Multi-Line ist (Sub-Calls werden
+            # transparent gesplittet, analog Top-Level-Quick-Fix).
+            step_outcomes = await self._execute_single_step(
+                index, step, msg, on_failure
+            )
+            for outcome in step_outcomes:
+                outcomes.append(outcome)
+                if outcome.status == "success":
+                    succeeded += 1
+                elif outcome.status == "failure":
+                    failed += 1
+                    if on_failure == "stop":
+                        stop_remaining = True
+                else:  # skipped (durch Multi-Line-Step intern markiert)
+                    skipped += 1
 
         return ActionSequenceResult(
             steps_total=len(steps),
@@ -1581,48 +1589,153 @@ class BridgeMessageHandler:
         index: int,
         step: ActionStep,
         msg: IncomingMessage,
-    ) -> StepOutcome:
-        """Fuehrt einen einzelnen Step aus, returnt das Outcome.
+        on_failure: str,
+    ) -> list[StepOutcome]:
+        """Fuehrt einen Step aus, returnt eine Liste von Outcomes.
 
-        Validierungs-Reihenfolge:
+        Phase 82.1: Liste statt einzelnem Outcome, weil Multi-Line-
+        commands transparent in Sub-Calls gesplittet werden (jeder
+        Sub-Call -> 1 Outcome). Single-Line-commands liefern eine
+        Ein-Element-Liste; das vereinheitlicht den Caller-Loop.
+
+        Validierungs-Reihenfolge (Step-Ebene, vor Splittung):
         1. Recursion-Guard (action == "action_sequence").
         2. Allowlist (action in ALLOWED_STEP_ACTIONS).
         3. Command-Text vorhanden.
-        4. parse_command erkennt was.
-        5. execute() laeuft, pending_confirmation pruefen.
-        """
-        assert self._remote_commands is not None
 
+        Wenn Validierung passt: Multi-Line-Detection -> entweder
+        ``_execute_multi_line_step`` (mit on_failure-Stop-Logik
+        innerhalb der Sub-Calls) oder ein einzelner
+        ``_execute_sub_command``-Call.
+        """
         label = self._step_summary_label(step)
 
         # 1. Recursion-Guard
         if step.action == "action_sequence":
-            return StepOutcome(
-                index=index,
-                status="failure",
-                summary=label,
-                reason="nested action_sequence nicht erlaubt",
-            )
+            return [
+                StepOutcome(
+                    index=index,
+                    status="failure",
+                    summary=label,
+                    reason="nested action_sequence nicht erlaubt",
+                )
+            ]
 
         # 2. Allowlist (Etappe 1: nur remote_command)
         if step.action not in ALLOWED_STEP_ACTIONS:
-            return StepOutcome(
-                index=index,
-                status="failure",
-                summary=label,
-                reason=f"step-action '{step.action}' nicht erlaubt",
-            )
+            return [
+                StepOutcome(
+                    index=index,
+                    status="failure",
+                    summary=label,
+                    reason=f"step-action '{step.action}' nicht erlaubt",
+                )
+            ]
 
         command_text = step.params.get("command", "")
         if not isinstance(command_text, str) or not command_text.strip():
-            return StepOutcome(
-                index=index,
-                status="failure",
-                summary=label,
-                reason="leerer command",
-            )
+            return [
+                StepOutcome(
+                    index=index,
+                    status="failure",
+                    summary=label,
+                    reason="leerer command",
+                )
+            ]
 
-        # 3. + 4. Command parsen
+        # Phase 82.1: Multi-Line-Detection -- aber nur splitten wenn alle
+        # non-empty Lines einzeln als bekanntes Command parsen (konsistent
+        # mit Top-Level-Quick-Fix in _try_parse_multi_line). Sonst behandeln
+        # wir den ganzen Text als legitimen Multi-Line-Payload (z.B. clip:
+        # mit re.DOTALL, langer Notiz-Text mit eingebetteten Newlines) und
+        # geben ihn in EINEM execute-Call an parse_command/execute weiter.
+        # Phase-82.1-PR-Review (Codex P2): unbedingtes Splitten zerstoerte
+        # vorher genau diese Multi-Line-Payload-Commands.
+        if "\n" in command_text:
+            multi_parsed = self._try_parse_multi_line(command_text)
+            if multi_parsed is not None:
+                return await self._execute_multi_line_step(
+                    index, multi_parsed, msg, on_failure
+                )
+            # Fallback: ein- oder mehrere Lines parsen nicht einzeln ->
+            # Single-Path mit dem rohen Multi-Line-Text.
+
+        outcome = await self._execute_sub_command(index, command_text, msg)
+        return [outcome]
+
+    async def _execute_multi_line_step(
+        self,
+        index: int,
+        multi_parsed: list[tuple[str, str]],
+        msg: IncomingMessage,
+        on_failure: str,
+    ) -> list[StepOutcome]:
+        """Fuehrt einen via ``_try_parse_multi_line`` validierten Multi-
+        Line-Step als einzelne Sub-Commands aus.
+
+        Phase 82.1: Saleria packt gleichartige Items oft als Newline-
+        separierten command-String in einen einzigen Step (z.B. 3 Todos).
+        Der Konzept-§3.2 wurde geaendert -- Multi-Line wird jetzt
+        transparent gesplittet, analog zum Top-Level-Multi-Line-Quick-Fix.
+
+        Phase 82.1 PR-Review (Codex P2): Der Caller
+        (``_execute_single_step``) prueft VORHER via
+        ``_try_parse_multi_line``, ob jede non-empty Line einzeln als
+        Command parst. Wenn nicht -> single-call mit dem ganzen Text
+        (legitimer Multi-Line-Payload, z.B. ``clip:`` mit re.DOTALL).
+        Diese Methode hier wird nur aufgerufen, wenn das Gate
+        durchlaufen ist.
+
+        on_failure='stop' wird auch INNERHALB des Multi-Line-Steps
+        respektiert: nach erstem Sub-Failure werden restliche Sub-
+        Commands als 'skipped' markiert (mit Reason). Der Outer-Loop
+        (``_execute_action_sequence``) sieht das Failure-Outcome und
+        setzt seinerseits stop_remaining fuer die naechsten Top-Steps --
+        konsistente Stop-Semantik auf beiden Ebenen.
+
+        Alle Sub-Outcomes tragen denselben ``index`` (= Top-Step-Index).
+        """
+        outcomes: list[StepOutcome] = []
+        stop_subs = False
+        for raw_line, _ in multi_parsed:
+            if stop_subs:
+                outcomes.append(
+                    StepOutcome(
+                        index=index,
+                        status="skipped",
+                        summary=raw_line,
+                        reason=("vorheriger Sub-Step gescheitert (on_failure=stop)"),
+                    )
+                )
+                continue
+
+            # _execute_sub_command parst defensiv erneut (konsistent mit
+            # dem Single-Line-Pfad). parse_command ist guenstig; das
+            # Doppel-Parsen vermeidet eine zweite Code-Linie.
+            outcome = await self._execute_sub_command(index, raw_line, msg)
+            outcomes.append(outcome)
+            if outcome.status == "failure" and on_failure == "stop":
+                stop_subs = True
+
+        return outcomes
+
+    async def _execute_sub_command(
+        self,
+        index: int,
+        command_text: str,
+        msg: IncomingMessage,
+    ) -> StepOutcome:
+        """Fuehrt EINEN Command-String aus, returnt EIN Outcome.
+
+        Phase 82.1: extrahiert aus dem alten ``_execute_single_step``,
+        damit derselbe Pfad sowohl von Single-Line-Steps als auch von
+        Multi-Line-Sub-Calls genutzt werden kann -- 1 Quelle der
+        Wahrheit fuer parse + execute + pending-/restart-Filter +
+        side-effects.
+        """
+        assert self._remote_commands is not None
+
+        # Command parsen
         parsed_cmd = self._remote_commands.parse_command(command_text)
         if parsed_cmd is None:
             return StepOutcome(
@@ -1632,7 +1745,7 @@ class BridgeMessageHandler:
                 reason="kein bekannter command",
             )
 
-        # 5. Step ausfuehren
+        # Command ausfuehren
         loop = asyncio.get_running_loop()
         try:
             result: CommandResult = await asyncio.wait_for(
@@ -1658,7 +1771,7 @@ class BridgeMessageHandler:
                 reason=type(exc).__name__,
             )
 
-        # 6. Pending-Confirmation-Filter (detect-after-fact, R3)
+        # Pending-Confirmation-Filter (detect-after-fact, R3)
         if result.pending_confirmation:
             # PendingAction NICHT setzen -- die Sequenz darf nicht den User
             # mitten drin in einen Confirm-Flow zwingen. Etappe 3 loest das.
@@ -1670,10 +1783,7 @@ class BridgeMessageHandler:
                 reason="Step verlangt Bestaetigung -- in Sequenz nicht erlaubt",
             )
 
-        # 7. Restart-Filter (Phase 82 PR-Review): wenn ein Step Restart
-        # triggert, wuerde die Sammel-Antwort nie ankommen (asyncio loop
-        # stirbt). Lera hat 'a' gewaehlt -- lieber sauber als FAILURE
-        # melden als ein halbes Ergebnis.
+        # Restart-Filter (Phase 82 PR-Review): asyncio loop wuerde sterben.
         if result.restart:
             return StepOutcome(
                 index=index,
@@ -1683,11 +1793,7 @@ class BridgeMessageHandler:
             )
 
         if result.success:
-            # Phase 82 PR-Review (Codex P2): Step-Artefakte (Bilder, Dateien)
-            # an den User ausliefern -- vorher wurden sie stillschweigend
-            # verworfen, der User sah aber Erfolg in der Sammel-Antwort.
-            # list_items werden separat ueber _maybe_register_command_list
-            # registriert, damit ein folgender list_pick funktioniert.
+            # Side-Effects: Bilder, Dateien, list_items registrieren.
             self._maybe_register_command_list(msg, result)
             await self._apply_command_side_effects(msg, result)
             return StepOutcome(

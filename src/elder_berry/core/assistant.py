@@ -547,7 +547,31 @@ class Assistant:
             "Nutze action_sequence NICHT fuer 5x denselben Command (z.B. "
             "'5 Todos fuer Pizza'). Dafuer reicht EIN remote_command mit "
             "Newline-separiertem command-String -- das System splittet "
-            "das automatisch in Einzel-Calls und sammelt die Bilanz."
+            "das automatisch in Einzel-Calls und sammelt die Bilanz.\n"
+            "\n"
+            "Phase 82.1 -- gleichartige Items innerhalb einer heterogenen "
+            "Sequenz: Wenn der Nutzer mehrere gleichartige Items zusammen "
+            "mit anderen Aktionen verlangt (z.B. '3 Todos fuer Pizza UND "
+            "Notiz UND Reminder'), kannst du wahlweise (a) die Items als "
+            "EINZELNE Steps in der Sequenz emittieren, oder (b) die Items "
+            "als EINEN Step mit Newline-separiertem command-String "
+            "emittieren -- BEIDES funktioniert (das System splittet Multi-"
+            "Line auch innerhalb von Steps).\n"
+            "\n"
+            "Beispiel (Multi-Line in einem Step, kompakter):\n"
+            'User: \'3 Todos fuer Pizza UND schreib Notiz "Rezept-Link" '
+            "UND setz Reminder Samstag 10 Uhr'\n"
+            '{"action": "action_sequence", "params": {"steps": ['
+            '{"action": "remote_command", "params": '
+            '{"command": "todo: Zutaten kaufen, mittel, Einkauf\\n'
+            "todo: Pizzateig vorbereiten, mittel, Kochen\\n"
+            'todo: Pizza backen, mittel, Kochen"}}, '
+            '{"action": "remote_command", "params": '
+            '{"command": "notiz: Rezept-Link"}}, '
+            '{"action": "remote_command", "params": '
+            '{"command": "erinnere mich am Samstag um 10:00: Pizza"}}'
+            '], "on_failure": "continue"}, '
+            '"response": "Mach ich -- 3 Todos, Notiz, Reminder."}'
         )
 
     @staticmethod
