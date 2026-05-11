@@ -84,7 +84,7 @@ web = [
     "bleach>=6.1",
 ]
 nextcloud = [
-    "caldav>=1.0",
+    "caldav>=3.2.0",
     "vobject>=0.9",
 ]
 harmony = [
@@ -114,7 +114,7 @@ server = [
     "pymupdf>=1.23",
     "trafilatura>=2.0.0",
     "beautifulsoup4>=4.12",
-    "caldav>=1.0",
+    "caldav>=3.2.0",
     "vobject>=0.9",
 ]
 dev = [
