@@ -162,9 +162,14 @@ class Assistant:
 
         action_success = False
         if action_type:
-            # remote_command / multi_step / list_pick (Phase 80):
-            # Pass-through -- Bridge fuehrt aus
-            if action_type in ("remote_command", "multi_step", "list_pick"):
+            # remote_command / multi_step / list_pick (Phase 80) /
+            # action_sequence (Phase 82): Pass-through -- Bridge fuehrt aus.
+            if action_type in (
+                "remote_command",
+                "multi_step",
+                "list_pick",
+                "action_sequence",
+            ):
                 action_success = True
             # system_status: Daten abrufen und Response erweitern
             elif action_type == "system_status":
@@ -331,6 +336,9 @@ class Assistant:
         active_proposals = self._build_active_proposals_block()
         candidate_hint = self._build_plugin_candidate_hint()
 
+        # Phase 82 Etappe 2: action_sequence-Hint mit Few-Shots.
+        action_sequence_hint = self._build_action_sequence_hint()
+
         if self._character:
             prompt = self._character.build_system_prompt(
                 available_actions=action_list,
@@ -349,6 +357,8 @@ class Assistant:
                 prompt += f"\n\n{plugin_inventory}"
             if active_proposals:
                 prompt += f"\n\n{active_proposals}"
+            if action_sequence_hint:
+                prompt += f"\n\n{action_sequence_hint}"
             if candidate_hint:
                 prompt += f"\n\n{candidate_hint}"
             if chat_history:
@@ -367,6 +377,8 @@ class Assistant:
             full_prompt += f"\n\n{plugin_inventory}"
         if active_proposals:
             full_prompt += f"\n\n{active_proposals}"
+        if action_sequence_hint:
+            full_prompt += f"\n\n{action_sequence_hint}"
         if candidate_hint:
             full_prompt += f"\n\n{candidate_hint}"
         if chat_history:
@@ -472,6 +484,71 @@ class Assistant:
         if lines:
             lines[-1] = lines[-1] + "]"
         return header + "\n" + "\n".join(lines)
+
+    @staticmethod
+    def _build_action_sequence_hint() -> str:
+        """Erklaert action_sequence + on_failure-Strategien (Phase 82 Etappe 2).
+
+        Wird unkonditional in den System-Prompt eingefuegt (analog
+        ``_build_plugin_candidate_hint``). Saleria entscheidet pro
+        Anfrage, ob action_sequence der richtige Action-Typ ist.
+
+        Pflicht laut Konzept ``§5.2``:
+          - mindestens ein Few-Shot mit ``on_failure: stop`` und logischer
+            Step-Abhaengigkeit (sonst lernt Saleria die ``stop``-Strategie
+            nie -- der Pfad ist sonst tot).
+          - ein Few-Shot mit ``on_failure: continue`` (heterogene Sequenz).
+          - Negativ-Hinweis: nicht fuer 5x denselben Command nutzen --
+            dafuer reicht ``remote_command`` mit Newline-separiertem
+            ``command``-String, der Quick-Fix splittet automatisch.
+        """
+        return (
+            "Wenn der Nutzer mehrere UNABHAENGIGE Aktionen in einer Anfrage "
+            "verlangt ('mach X UND Y UND Z'), bundele sie in EINE Antwort "
+            "vom Typ action_sequence:\n"
+            '{"action": "action_sequence", "params": {'
+            '"steps": [{"action": "remote_command", "params": '
+            '{"command": "..."}}, ...], "on_failure": "continue"}, '
+            '"response": "Ich erledige das in 3 Schritten."}\n'
+            "\n"
+            "on_failure-Strategie:\n"
+            "- 'continue' (Default): bei einem Step-Fehler laufen die "
+            "anderen Steps weiter. Nutze das fuer heterogene Sequenzen, "
+            "deren Steps logisch unabhaengig sind.\n"
+            "- 'stop': beim ersten Fehler werden die restlichen Steps "
+            "uebersprungen. Nutze das, wenn Step N+1 logisch von Step N "
+            "abhaengt (sonst macht Step N+1 ohne Step N keinen Sinn).\n"
+            "\n"
+            "Beispiel (continue, heterogen):\n"
+            'User: \'schreib Notiz "Pizza-Rezept Link XY" UND setz '
+            'Reminder Samstag 10 Uhr UND erstell Todo "Hefe kaufen"\'\n'
+            '{"action": "action_sequence", "params": {"steps": ['
+            '{"action": "remote_command", "params": '
+            '{"command": "notiz: Pizza-Rezept Link XY"}}, '
+            '{"action": "remote_command", "params": '
+            '{"command": "erinnere mich am Samstag um 10:00: Pizza"}}, '
+            '{"action": "remote_command", "params": '
+            '{"command": "todo: Hefe kaufen"}}'
+            '], "on_failure": "continue"}, '
+            '"response": "Mach ich -- Notiz, Reminder und Todo."}\n'
+            "\n"
+            "Beispiel (stop, logisch abhaengig):\n"
+            'User: \'Trag Termin Mittwoch 14:00 "Zahnarzt" ein UND '
+            "erinner mich Mittwoch 13:00 daran'\n"
+            '{"action": "action_sequence", "params": {"steps": ['
+            '{"action": "remote_command", "params": '
+            '{"command": "termin: Zahnarzt Mittwoch 14:00"}}, '
+            '{"action": "remote_command", "params": '
+            '{"command": "erinnere mich am Mittwoch um 13:00: Zahnarzt"}}'
+            '], "on_failure": "stop"}, '
+            '"response": "Termin und Reminder zusammen -- wenn der Termin '
+            'nicht klappt, lass ich den Reminder weg."}\n'
+            "\n"
+            "Nutze action_sequence NICHT fuer 5x denselben Command (z.B. "
+            "'5 Todos fuer Pizza'). Dafuer reicht EIN remote_command mit "
+            "Newline-separiertem command-String -- das System splittet "
+            "das automatisch in Einzel-Calls und sammelt die Bilanz."
+        )
 
     @staticmethod
     def _build_plugin_candidate_hint() -> str:
