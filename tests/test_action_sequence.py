@@ -571,6 +571,85 @@ class TestActionSequenceHandler:
 
         run_async(_test())
 
+    def test_multi_line_payload_not_split_when_any_line_unparseable(
+        self, handler, channel, remote_commands
+    ):
+        """Phase 82.1 PR-Review (Codex P2): wenn eine non-empty Line nicht
+        als bekanntes Command parst, ist der ganze Step ein legitimer
+        Multi-Line-Payload (z.B. ``clip:`` mit re.DOTALL). Dann darf NICHT
+        gesplittet werden -- der gesamte Multi-Line-Text geht in EINEM
+        execute-Call durch.
+
+        Vor diesem Fix wuerde "clip: line one\\nline two" zerstueckelt:
+        clip_write kriegt nur "line one", "line two" matcht kein Command
+        -> FAILURE. User-Daten kaputt.
+        """
+
+        async def _test():
+            # parse_command: "clip:" matcht, alles ohne erkennbaren
+            # Command-Prefix matcht NICHT (analog re-Patterns).
+            def fake_parse(text: str) -> str | None:
+                if text.startswith("clip:"):
+                    return "clip_write"
+                return None
+
+            remote_commands.parse_command.side_effect = fake_parse
+            remote_commands.execute.return_value = CommandResult(
+                command="clip_write", success=True, text="Clipboard geschrieben."
+            )
+            steps = [
+                {
+                    "action": "remote_command",
+                    "params": {"command": "clip: line one\nline two"},
+                },
+            ]
+            msg = _make_msg()
+            await handler._handle_action_sequence(msg, _llm_result(steps))
+
+            # GENAU 1 execute-Call mit dem GANZEN Multi-Line-Text
+            assert remote_commands.execute.call_count == 1
+            execute_args = remote_commands.execute.call_args[0]
+            assert execute_args[1] == "clip: line one\nline two"
+
+            bilanz = channel.send_text.call_args_list[1][0][1]
+            assert "✅ 1 ausgefuehrt" in bilanz
+            assert "❌" not in bilanz
+
+        run_async(_test())
+
+    def test_multi_line_payload_mixed_lines_not_split(
+        self, handler, channel, remote_commands
+    ):
+        """Gemischter Fall: erste Line parst, zweite nicht. Analog
+        Top-Level-Quick-Fix faellt der Step zurueck auf single-call
+        mit dem rohen Text."""
+
+        async def _test():
+            def fake_parse(text: str) -> str | None:
+                if text.startswith("todo:"):
+                    return "todo_add"
+                return None
+
+            remote_commands.parse_command.side_effect = fake_parse
+            remote_commands.execute.return_value = CommandResult(
+                command="todo_add", success=True, text="Todo angelegt."
+            )
+            steps = [
+                {
+                    "action": "remote_command",
+                    "params": {"command": "todo: A\nirgendwas was kein command ist"},
+                },
+            ]
+            msg = _make_msg()
+            await handler._handle_action_sequence(msg, _llm_result(steps))
+
+            # Kein Splitten -- 1 execute-Call mit dem ganzen Text.
+            assert remote_commands.execute.call_count == 1
+            execute_args = remote_commands.execute.call_args[0]
+            assert "\n" in execute_args[1]
+
+        run_async(_test())
+
     def test_multi_line_step_ignores_empty_lines(
         self, handler, channel, remote_commands
     ):

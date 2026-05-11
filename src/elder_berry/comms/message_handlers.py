@@ -1643,11 +1643,22 @@ class BridgeMessageHandler:
                 )
             ]
 
-        # Phase 82.1: Multi-Line-Detection.
+        # Phase 82.1: Multi-Line-Detection -- aber nur splitten wenn alle
+        # non-empty Lines einzeln als bekanntes Command parsen (konsistent
+        # mit Top-Level-Quick-Fix in _try_parse_multi_line). Sonst behandeln
+        # wir den ganzen Text als legitimen Multi-Line-Payload (z.B. clip:
+        # mit re.DOTALL, langer Notiz-Text mit eingebetteten Newlines) und
+        # geben ihn in EINEM execute-Call an parse_command/execute weiter.
+        # Phase-82.1-PR-Review (Codex P2): unbedingtes Splitten zerstoerte
+        # vorher genau diese Multi-Line-Payload-Commands.
         if "\n" in command_text:
-            return await self._execute_multi_line_step(
-                index, command_text, msg, on_failure
-            )
+            multi_parsed = self._try_parse_multi_line(command_text)
+            if multi_parsed is not None:
+                return await self._execute_multi_line_step(
+                    index, multi_parsed, msg, on_failure
+                )
+            # Fallback: ein- oder mehrere Lines parsen nicht einzeln ->
+            # Single-Path mit dem rohen Multi-Line-Text.
 
         outcome = await self._execute_sub_command(index, command_text, msg)
         return [outcome]
@@ -1655,16 +1666,25 @@ class BridgeMessageHandler:
     async def _execute_multi_line_step(
         self,
         index: int,
-        command_text: str,
+        multi_parsed: list[tuple[str, str]],
         msg: IncomingMessage,
         on_failure: str,
     ) -> list[StepOutcome]:
-        """Splittet command_text auf '\\n', fuehrt jeden Sub-Command einzeln aus.
+        """Fuehrt einen via ``_try_parse_multi_line`` validierten Multi-
+        Line-Step als einzelne Sub-Commands aus.
 
         Phase 82.1: Saleria packt gleichartige Items oft als Newline-
         separierten command-String in einen einzigen Step (z.B. 3 Todos).
         Der Konzept-§3.2 wurde geaendert -- Multi-Line wird jetzt
         transparent gesplittet, analog zum Top-Level-Multi-Line-Quick-Fix.
+
+        Phase 82.1 PR-Review (Codex P2): Der Caller
+        (``_execute_single_step``) prueft VORHER via
+        ``_try_parse_multi_line``, ob jede non-empty Line einzeln als
+        Command parst. Wenn nicht -> single-call mit dem ganzen Text
+        (legitimer Multi-Line-Payload, z.B. ``clip:`` mit re.DOTALL).
+        Diese Methode hier wird nur aufgerufen, wenn das Gate
+        durchlaufen ist.
 
         on_failure='stop' wird auch INNERHALB des Multi-Line-Steps
         respektiert: nach erstem Sub-Failure werden restliche Sub-
@@ -1673,29 +1693,26 @@ class BridgeMessageHandler:
         setzt seinerseits stop_remaining fuer die naechsten Top-Steps --
         konsistente Stop-Semantik auf beiden Ebenen.
 
-        Leere Lines (``\\n\\n`` oder pur Whitespace) werden weggefiltert.
         Alle Sub-Outcomes tragen denselben ``index`` (= Top-Step-Index).
         """
-        # Leere Sub-Lines wegfiltern; Whitespace am Rand abschneiden.
-        sub_commands = [
-            line.strip() for line in command_text.split("\n") if line.strip()
-        ]
-
         outcomes: list[StepOutcome] = []
         stop_subs = False
-        for sub_command in sub_commands:
+        for raw_line, _ in multi_parsed:
             if stop_subs:
                 outcomes.append(
                     StepOutcome(
                         index=index,
                         status="skipped",
-                        summary=sub_command,
+                        summary=raw_line,
                         reason=("vorheriger Sub-Step gescheitert (on_failure=stop)"),
                     )
                 )
                 continue
 
-            outcome = await self._execute_sub_command(index, sub_command, msg)
+            # _execute_sub_command parst defensiv erneut (konsistent mit
+            # dem Single-Line-Pfad). parse_command ist guenstig; das
+            # Doppel-Parsen vermeidet eine zweite Code-Linie.
+            outcome = await self._execute_sub_command(index, raw_line, msg)
             outcomes.append(outcome)
             if outcome.status == "failure" and on_failure == "stop":
                 stop_subs = True
