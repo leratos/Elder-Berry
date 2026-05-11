@@ -242,43 +242,7 @@ class BridgeMessageHandler:
                     extra={"sender": msg.sender, "handler": f"command:{command}"},
                 )
 
-            # Bild senden (Screenshot): direkt per Matrix (Inline-Preview)
-            if result.image_path and result.image_path.exists():
-                try:
-                    await self._channel.send_image(
-                        msg.room_id,
-                        result.image_path,
-                    )
-                except NotImplementedError:
-                    await self._channel.send_text(
-                        msg.room_id,
-                        "Screenshot aufgenommen, aber Bild-Upload nicht unterstützt.",
-                    )
-                finally:
-                    result.image_path.unlink(missing_ok=True)
-
-            # Datei senden: über Nextcloud (Upload + Share-Link) oder Matrix-Fallback
-            if result.file_path and result.file_path.exists():
-                await self._send_file_via_nc_or_matrix(
-                    msg.room_id,
-                    result.file_path,
-                )
-
-            # Mehrere Dateien senden (z.B. Mail-Anhänge)
-            if result.file_paths:
-                if result.command == "mail_attachment" and self._nc_files:
-                    await self._handle_attachment_upload_with_menu(
-                        msg,
-                        result.file_paths,
-                    )
-                else:
-                    for fpath in result.file_paths:
-                        if fpath.exists():
-                            await self._send_file_via_nc_or_matrix(
-                                msg.room_id,
-                                fpath,
-                                cleanup=True,
-                            )
+            await self._apply_command_side_effects(msg, result)
 
             # Restart
             if result.restart:
@@ -326,6 +290,68 @@ class BridgeMessageHandler:
                 )
             except Exception:
                 logger.error("Konnte Fehlermeldung nicht senden")
+
+    async def _apply_command_side_effects(
+        self,
+        msg: IncomingMessage,
+        result: CommandResult,
+    ) -> None:
+        """Liefert Artefakte aus einem CommandResult an den User aus.
+
+        Phase 82 PR-Review (Codex P2): Vorher waren image_path/file_path/
+        file_paths inline in ``handle_remote_command`` -- die Sequenz-Pipeline
+        (``_execute_single_step``) konnte sie nicht nutzen und meldete dem
+        User Erfolg, ohne das eigentliche Artefakt zu liefern (z.B. Foto in
+        einer "mach Foto UND schreib Notiz"-Sequenz). Jetzt nutzen beide
+        Pfade denselben Helper, eine Quelle der Wahrheit.
+
+        Bewusst NICHT enthalten:
+        - ``result.text`` -- Caller-spezifisch (Sequenz hat Sammel-Antwort).
+        - ``result.list_items`` -- bleibt in ``_maybe_register_command_list``,
+          weil die Reihenfolge "registrieren VOR send_text" semantisch
+          wichtig ist (User koennte sofort auf die Liste antworten).
+        - ``result.restart`` -- Caller-spezifisch (Cooldown-Logik in
+          ``handle_remote_command``; in der Sequenz wird restart als FAILURE
+          markiert, siehe ``_execute_single_step``).
+        - ``result.pending_confirmation`` -- Caller-spezifisch.
+        """
+        # Bild senden (Screenshot): direkt per Matrix (Inline-Preview)
+        if result.image_path and result.image_path.exists():
+            try:
+                await self._channel.send_image(
+                    msg.room_id,
+                    result.image_path,
+                )
+            except NotImplementedError:
+                await self._channel.send_text(
+                    msg.room_id,
+                    "Screenshot aufgenommen, aber Bild-Upload nicht unterstützt.",
+                )
+            finally:
+                result.image_path.unlink(missing_ok=True)
+
+        # Datei senden: über Nextcloud (Upload + Share-Link) oder Matrix-Fallback
+        if result.file_path and result.file_path.exists():
+            await self._send_file_via_nc_or_matrix(
+                msg.room_id,
+                result.file_path,
+            )
+
+        # Mehrere Dateien senden (z.B. Mail-Anhänge)
+        if result.file_paths:
+            if result.command == "mail_attachment" and self._nc_files:
+                await self._handle_attachment_upload_with_menu(
+                    msg,
+                    result.file_paths,
+                )
+            else:
+                for fpath in result.file_paths:
+                    if fpath.exists():
+                        await self._send_file_via_nc_or_matrix(
+                            msg.room_id,
+                            fpath,
+                            cleanup=True,
+                        )
 
     # ------------------------------------------------------------------
     # Pending Confirmation – delegiert an ConfirmationHandler
@@ -1432,9 +1458,25 @@ class BridgeMessageHandler:
             await self._channel.send_text(msg.room_id, llm_result.response)
         await self._audio.send_audio_if_available(msg.room_id, llm_result, None)
 
-        params = llm_result.action_params or {}
-        steps = parse_steps(params.get("steps"))
-        on_failure = normalize_on_failure(params.get("on_failure"))
+        # Phase 82 PR-Review (Codex P2): action_params kann grundsaetzlich
+        # alles sein, was der LLM emittiert -- Liste, String, None. Andere
+        # Action-Pfade (multi_step, list_pick) machen denselben Check, hier
+        # darf .get() nicht mit AttributeError fliegen, bevor der freundliche
+        # parse_steps-Guard greift.
+        raw_params = llm_result.action_params
+        if not isinstance(raw_params, dict):
+            logger.warning(
+                "action_sequence: params kein dict (%s), Sequenz abgebrochen",
+                type(raw_params).__name__,
+            )
+            await self._channel.send_text(
+                msg.room_id,
+                "Konnte die Aktions-Sequenz nicht lesen -- "
+                "sag mir nochmal genauer was ich tun soll.",
+            )
+            return
+        steps = parse_steps(raw_params.get("steps"))
+        on_failure = normalize_on_failure(raw_params.get("on_failure"))
 
         # Guard 1: Top-Level-Form kaputt (kein Listentyp / Step ohne action /
         # Step ohne dict-params). Sequenz abgebrochen, User informieren.
@@ -1466,7 +1508,7 @@ class BridgeMessageHandler:
             sequence_result = await self._execute_action_sequence(
                 steps,
                 on_failure,
-                msg.sender,
+                msg,
             )
         finally:
             self._in_llm_command.discard(msg.sender)
@@ -1484,13 +1526,17 @@ class BridgeMessageHandler:
         self,
         steps: list[ActionStep],
         on_failure: str,
-        sender: str,
+        msg: IncomingMessage,
     ) -> ActionSequenceResult:
         """Fuehrt die Steps sequentiell aus, sammelt Outcomes.
 
         Die eigentliche Step-Ausfuehrung delegiert an
         ``_execute_single_step`` -- separat damit Tests einzelne Steps
         gezielt patchen koennen, ohne den Loop zu duplizieren.
+
+        Phase 82 PR-Review: ``msg`` (frueher nur ``sender``) wird
+        durchgereicht, damit Step-Side-Effects (image_path, file_path,
+        ...) den richtigen room_id treffen.
         """
         assert self._remote_commands is not None
 
@@ -1513,7 +1559,7 @@ class BridgeMessageHandler:
                 skipped += 1
                 continue
 
-            outcome = await self._execute_single_step(index, step, sender)
+            outcome = await self._execute_single_step(index, step, msg)
             outcomes.append(outcome)
             if outcome.status == "success":
                 succeeded += 1
@@ -1534,7 +1580,7 @@ class BridgeMessageHandler:
         self,
         index: int,
         step: ActionStep,
-        sender: str,
+        msg: IncomingMessage,
     ) -> StepOutcome:
         """Fuehrt einen einzelnen Step aus, returnt das Outcome.
 
@@ -1616,7 +1662,7 @@ class BridgeMessageHandler:
         if result.pending_confirmation:
             # PendingAction NICHT setzen -- die Sequenz darf nicht den User
             # mitten drin in einen Confirm-Flow zwingen. Etappe 3 loest das.
-            self._pending.clear(sender)
+            self._pending.clear(msg.sender)
             return StepOutcome(
                 index=index,
                 status="failure",
@@ -1624,7 +1670,26 @@ class BridgeMessageHandler:
                 reason="Step verlangt Bestaetigung -- in Sequenz nicht erlaubt",
             )
 
+        # 7. Restart-Filter (Phase 82 PR-Review): wenn ein Step Restart
+        # triggert, wuerde die Sammel-Antwort nie ankommen (asyncio loop
+        # stirbt). Lera hat 'a' gewaehlt -- lieber sauber als FAILURE
+        # melden als ein halbes Ergebnis.
+        if result.restart:
+            return StepOutcome(
+                index=index,
+                status="failure",
+                summary=command_text,
+                reason="Restart darf nicht Teil einer Sequenz sein",
+            )
+
         if result.success:
+            # Phase 82 PR-Review (Codex P2): Step-Artefakte (Bilder, Dateien)
+            # an den User ausliefern -- vorher wurden sie stillschweigend
+            # verworfen, der User sah aber Erfolg in der Sammel-Antwort.
+            # list_items werden separat ueber _maybe_register_command_list
+            # registriert, damit ein folgender list_pick funktioniert.
+            self._maybe_register_command_list(msg, result)
+            await self._apply_command_side_effects(msg, result)
             return StepOutcome(
                 index=index,
                 status="success",

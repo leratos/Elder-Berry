@@ -285,6 +285,46 @@ class TestActionSequenceHandler:
 
         run_async(_test())
 
+    def test_params_as_list_does_not_raise(self, handler, channel, remote_commands):
+        """Phase 82 PR-Review (Codex P2): wenn der LLM action_sequence mit
+        action_params=[...] (Liste statt dict) emittiert, darf .get() nicht
+        mit AttributeError fliegen -- freundlicher Guard greift stattdessen.
+        """
+
+        async def _test():
+            res = _llm_result([])
+            res.action_params = ["step", "step", "step"]
+            msg = _make_msg()
+            await handler._handle_action_sequence(msg, res)
+
+            remote_commands.execute.assert_not_called()
+            # 2 Calls: Ankuendigung + Guard-Antwort
+            assert channel.send_text.call_count == 2
+            guard = channel.send_text.call_args_list[1][0][1]
+            assert "nicht lesen" in guard
+
+        run_async(_test())
+
+    def test_params_as_string_does_not_raise(self, handler, channel, remote_commands):
+        """Gleicher Schutz fuer params=str (LLM-Halluzination).
+
+        Other action handlers (multi_step, list_pick) haben denselben
+        isinstance-Check -- action_sequence muss konsistent sein.
+        """
+
+        async def _test():
+            res = _llm_result([])
+            res.action_params = "todo: A"
+            msg = _make_msg()
+            await handler._handle_action_sequence(msg, res)
+
+            remote_commands.execute.assert_not_called()
+            assert channel.send_text.call_count == 2
+            guard = channel.send_text.call_args_list[1][0][1]
+            assert "nicht lesen" in guard
+
+        run_async(_test())
+
     def test_step_action_not_allowed(self, handler, channel, remote_commands):
         async def _test():
             remote_commands.execute.return_value = CommandResult(
@@ -430,6 +470,169 @@ class TestActionSequenceHandler:
 
             # Nach Lauf wieder weg
             assert sender not in handler._in_llm_command
+
+        run_async(_test())
+
+
+# ---------------------------------------------------------------------------
+# Phase 82 PR-Review (Codex P2): Step-Side-Effects nicht stillschweigend
+# verwerfen, Restart in Sequenz als FAILURE markieren
+# ---------------------------------------------------------------------------
+
+
+class TestActionSequenceStepSideEffects:
+    """Vor diesem Fix gingen image_path / file_path / file_paths / list_items
+    in der Sequenz verloren -- der User sah Erfolg in der Sammel-Antwort,
+    bekam aber nie das Foto / die Datei / die registrierte Liste.
+    Ausserdem haette ein Restart-Step die Sammel-Antwort gekillt.
+    """
+
+    def test_step_with_image_path_sends_image(self, handler, channel, remote_commands):
+        """Step liefert image_path -> channel.send_image wird aufgerufen,
+        temp file wird hinterher geloescht."""
+
+        async def _test():
+            from pathlib import Path
+            from unittest.mock import MagicMock as MM
+
+            fake_image = MM(spec=Path)
+            fake_image.exists.return_value = True
+            remote_commands.execute.return_value = CommandResult(
+                command="screenshot",
+                success=True,
+                text="Screenshot aufgenommen.",
+                image_path=fake_image,
+            )
+            steps = [
+                {"action": "remote_command", "params": {"command": "screenshot"}},
+            ]
+            msg = _make_msg()
+            await handler._handle_action_sequence(msg, _llm_result(steps))
+
+            channel.send_image.assert_awaited_once_with(msg.room_id, fake_image)
+            fake_image.unlink.assert_called_once_with(missing_ok=True)
+
+            # Sammel-Antwort meldet Erfolg
+            bilanz = channel.send_text.call_args_list[1][0][1]
+            assert "✅ 1 ausgefuehrt" in bilanz
+
+        run_async(_test())
+
+    def test_step_with_file_path_sends_file(self, handler, channel, remote_commands):
+        """Step liefert file_path -> _send_file_via_nc_or_matrix wird
+        aufgerufen."""
+
+        async def _test():
+            from pathlib import Path
+            from unittest.mock import MagicMock as MM
+
+            fake_file = MM(spec=Path)
+            fake_file.exists.return_value = True
+            remote_commands.execute.return_value = CommandResult(
+                command="send_file",
+                success=True,
+                text="Datei gesendet.",
+                file_path=fake_file,
+            )
+
+            handler._send_file_via_nc_or_matrix = AsyncMock()
+
+            steps = [
+                {"action": "remote_command", "params": {"command": "schick mir x"}},
+            ]
+            msg = _make_msg()
+            await handler._handle_action_sequence(msg, _llm_result(steps))
+
+            handler._send_file_via_nc_or_matrix.assert_awaited_once_with(
+                msg.room_id, fake_file
+            )
+
+        run_async(_test())
+
+    def test_step_with_file_paths_loops(self, handler, channel, remote_commands):
+        """Step liefert file_paths (mehrere Dateien, kein mail_attachment)
+        -> jede Datei einzeln per _send_file_via_nc_or_matrix mit cleanup."""
+
+        async def _test():
+            from pathlib import Path
+            from unittest.mock import MagicMock as MM
+
+            fake1 = MM(spec=Path)
+            fake1.exists.return_value = True
+            fake2 = MM(spec=Path)
+            fake2.exists.return_value = True
+            remote_commands.execute.return_value = CommandResult(
+                command="other",  # NICHT mail_attachment -> Loop-Pfad
+                success=True,
+                text="2 Dateien gesendet.",
+                file_paths=[fake1, fake2],
+            )
+
+            handler._send_file_via_nc_or_matrix = AsyncMock()
+
+            steps = [
+                {"action": "remote_command", "params": {"command": "x"}},
+            ]
+            msg = _make_msg()
+            await handler._handle_action_sequence(msg, _llm_result(steps))
+
+            assert handler._send_file_via_nc_or_matrix.await_count == 2
+
+        run_async(_test())
+
+    def test_step_restart_is_failure(self, handler, channel, remote_commands):
+        """Restart-Step in Sequenz darf nicht ausgefuehrt werden -- die
+        laufende asyncio-Schleife wuerde sonst sterben und der User saehe
+        nie eine Sammel-Antwort. Stattdessen FAILURE mit klarer Reason.
+        """
+
+        async def _test():
+            remote_commands.execute.return_value = CommandResult(
+                command="restart",
+                success=True,
+                text="Bot startet neu.",
+                restart=True,
+            )
+            steps = [
+                {"action": "remote_command", "params": {"command": "restart"}},
+            ]
+            msg = _make_msg()
+            await handler._handle_action_sequence(msg, _llm_result(steps))
+
+            # Sammel-Antwort enthaelt Failure-Bilanz und die Reason
+            bilanz = channel.send_text.call_args_list[1][0][1]
+            assert "❌ 1 fehlgeschlagen" in bilanz
+            assert "Restart darf nicht" in bilanz
+
+        run_async(_test())
+
+    def test_step_with_list_items_registered(self, handler, channel, remote_commands):
+        """Step mit list_items soll die Liste im ConversationListStore
+        registrieren -- damit ein folgendes ``list_pick`` (auch in einer
+        spaeteren User-Anfrage) auf die Liste zugreifen kann.
+        """
+
+        async def _test():
+            items = [
+                {"label": "A", "payload": {}},
+                {"label": "B", "payload": {}},
+            ]
+            remote_commands.execute.return_value = CommandResult(
+                command="search",
+                success=True,
+                text="2 Treffer.",
+                list_items=items,
+            )
+
+            handler._maybe_register_command_list = MagicMock()
+
+            steps = [
+                {"action": "remote_command", "params": {"command": "suche x"}},
+            ]
+            msg = _make_msg()
+            await handler._handle_action_sequence(msg, _llm_result(steps))
+
+            handler._maybe_register_command_list.assert_called_once()
 
         run_async(_test())
 
