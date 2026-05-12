@@ -85,6 +85,13 @@ _COLOR_ATTR_HIDDEN: re.Pattern[str] = re.compile(
 
 _CAP_MARKER: str = "\n[...gekuerzt...]"
 
+# CSS-Kommentare /* ... */ gelten in der CSS-Spec als Whitespace und
+# duerfen ueberall stehen, wo Whitespace erlaubt ist. Phase 85.7
+# strippt sie einmalig vor dem Pattern-Matching, weil unsere \s-
+# basierten Regex sonst z.B. opacity:0!/**/important nicht als
+# !important erkennen -- erneuter Bypass-Vektor analog 85.4-85.6.
+_CSS_COMMENT_RE: re.Pattern[str] = re.compile(r"/\*.*?\*/", re.DOTALL)
+
 
 class HtmlEmailSanitizer:
     """Konvertiert HTML-Mail-Bodies in sicherheits-bereinigten Plain-Text.
@@ -164,6 +171,11 @@ class HtmlEmailSanitizer:
                 tag.decompose()
 
     def _style_is_hidden(self, style: str) -> bool:
+        # Phase 85.7: CSS-Kommentare einmal entfernen, damit
+        # opacity:0!/**/important und display/**/:none erkannt werden.
+        # Browser ignorieren Kommentare als Whitespace-Aequivalent,
+        # unsere \s-Regex aber nicht.
+        style = _CSS_COMMENT_RE.sub("", style)
         if any(p.search(style) for p in _HIDDEN_STYLE_PATTERNS):
             return True
         # CSS-Cascade: bei mehreren Deklarationen derselben Property
