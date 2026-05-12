@@ -1,8 +1,23 @@
 # Phase 85 – HTML-Email-Sanitizer
 
-**Status:** Konzept (2026-05-11)
-**Branch:** TBD (`feature/phase-85-html-email-sanitizer` wenn die Phase startet)
+**Status:** Konzept (2026-05-11) – Revision V1–V4 (2026-05-12)
+**Branch:** `feature/phase-85-html-email-sanitizer`
 **Aufwand:** ~1–2 Sessions
+
+## Revisions
+
+* **V1 (2026-05-12):** Backward-Compat-Fallback (alte Regex bei
+  `sanitizer=None`) gestrichen. Sanitizer ist immer aktiv – Default-
+  Instanz im `__init__`, Old-Regex wird in 85.2 vollständig entfernt.
+  CLAUDE.md verbietet Backward-Compat-Shims für interne Konstrukte.
+* **V2 (2026-05-12):** `_extract_body` / `_decode_payload` bleiben
+  `@staticmethod`; der Sanitizer wird als expliziter Parameter
+  durchgereicht. Verhindert das in 3.2 erwähnte „bricht Test-Helpers“.
+* **V3 (2026-05-12):** Dark-Theme-False-Positive (`color:white` auf
+  schwarzem Hintergrund) wird als expliziter Test dokumentiert
+  (`test_dark_theme_white_text_is_stripped_known_limitation`).
+* **V4 (2026-05-12):** Mini-Perf-Smoketest (Median < 100 ms pro Mail,
+  5 synthetische Fixtures) bereits in 85.1, nicht erst 85.3.
 **Trigger:** HTML-only Mails (Marketing, moderne Mail-Clients ohne
 `text/plain`-Multipart) sind bei der `zusammenfassen`-Funktion unbrauchbar.
 Erste Annahme war "Saleria kann HTML nicht auswerten" – tatsächlich
@@ -145,10 +160,9 @@ class HtmlEmailSanitizer:
 
 ### 3.2 Integration in `IMAPEmailClient`
 
-DI über den Konstruktor; `from_secret_store()` instanziiert immer einen
-Sanitizer mit Defaults. Backward-Compat: `sanitizer=None` fällt auf den
-alten Regex-Pfad zurück, damit existierende Tests ohne Sanitizer-Setup
-weiterlaufen können.
+DI über den Konstruktor. `sanitizer` ist optional **am Aufrufer**, aber
+intern garantiert: wird keiner injected, baut `__init__` selbst eine
+Default-Instanz. Es gibt **keinen** zweiten Code-Pfad mit alter Regex.
 
 ```python
 class IMAPEmailClient:
@@ -161,7 +175,12 @@ class IMAPEmailClient:
         use_ssl: bool = True,
         mailbox: str = "INBOX",
         sanitizer: HtmlEmailSanitizer | None = None,  # NEU
-    ) -> None: ...
+    ) -> None:
+        ...
+        # V1 (Phase 85 Revision): immer eine Sanitizer-Instanz halten,
+        # damit kein zweiter Code-Pfad ueberlebt. Tests koennen einen
+        # Mock injecten; sonst greift der Default.
+        self._sanitizer = sanitizer or HtmlEmailSanitizer()
 
     @classmethod
     def from_secret_store(cls, store: SecretStore) -> IMAPEmailClient:
@@ -170,14 +189,33 @@ class IMAPEmailClient:
             user=store.get("email_user"),
             password=store.get("email_password"),
             port=int(store.get_or_none("email_imap_port") or "993"),
-            sanitizer=HtmlEmailSanitizer(),  # NEU
+            # sanitizer wird vom __init__-Default gebaut
         )
 ```
 
-`_extract_body()` und `_decode_payload()` werden **Instanz-Methoden**
-(statt `@staticmethod`), damit sie auf `self._sanitizer` zugreifen
-können. Das bricht die Test-Hilfsmethoden, die diese Helpers direkt
-aufrufen – muss in 85.2 mit angepasst werden.
+**V2 (Phase 85 Revision):** `_extract_body()` und `_decode_payload()`
+bleiben `@staticmethod` – sie sind pure Funktionen ihrer Inputs. Der
+Sanitizer wird als **expliziter Pflichtparameter** durchgereicht:
+
+```python
+@staticmethod
+def _extract_body(msg: email.message.Message, sanitizer: HtmlEmailSanitizer) -> str: ...
+
+@staticmethod
+def _decode_payload(part: email.message.Message, sanitizer: HtmlEmailSanitizer) -> str:
+    ...
+    if part.get_content_type() == "text/html":
+        return sanitizer.sanitize(text)   # V1: keine Regex-Fallback-Pfad mehr
+    return text.strip()
+```
+
+Aufrufer (`_parse_message` Zeile ~593) übergibt `self._sanitizer`.
+Test-Helper, die diese Methoden direkt aufrufen, geben einen frischen
+`HtmlEmailSanitizer()` mit Defaults mit – das ist eine triviale
+Anpassung am Test-Call-Site, keine Architektur-Verrenkung.
+
+Die alte Regex (`re.sub(r"<[^>]+>", " ", text)`) wird in 85.2
+**ersatzlos entfernt**.
 
 ### 3.3 Architektur-Begründung (warum DI, warum diese Stelle)
 
@@ -238,31 +276,48 @@ if not self._keep_blockquotes:
 ### 4.3 Hidden-Style-Filter
 
 Tags mit verdächtigem `style`-Attribut werden ebenfalls per
-`decompose()` entfernt:
+`decompose()` entfernt. Statische Patterns sind als Klassenkonstante,
+der `font-size`-Schwellenwert wird per parse-int gegen
+`self._min_font_size_px` geprüft (das im Konzept-Entwurf gezeigte
+Regex-Template `[0-{min}]px` war fehlerhaft – `[0-6]` ist ein
+Character-Class und matcht nur Einzelziffern, nicht „kleiner als
+Schwelle“):
 
 ```python
 HIDDEN_STYLE_PATTERNS = [
     re.compile(r"display\s*:\s*none", re.IGNORECASE),
     re.compile(r"visibility\s*:\s*hidden", re.IGNORECASE),
     re.compile(r"opacity\s*:\s*0(?!\.)", re.IGNORECASE),  # opacity:0, nicht 0.5
-    re.compile(r"font-size\s*:\s*[0-{min}]px", re.IGNORECASE),  # template
     re.compile(r"color\s*:\s*#?fff(fff)?\b", re.IGNORECASE),
     re.compile(r"color\s*:\s*white\b", re.IGNORECASE),
     re.compile(r"color\s*:\s*rgb\(\s*255\s*,\s*255\s*,\s*255\s*\)", re.IGNORECASE),
 ]
+FONT_SIZE_RE = re.compile(r"font-size\s*:\s*(\d+)\s*px", re.IGNORECASE)
+
+def _style_is_hidden(self, style: str) -> bool:
+    if any(p.search(style) for p in HIDDEN_STYLE_PATTERNS):
+        return True
+    m = FONT_SIZE_RE.search(style)
+    return bool(m and int(m.group(1)) < self._min_font_size_px)
 ```
 
-Hinweis zur **False-Positive-Akzeptanz:** Wir filtern Weiß ohne den
-Background zu kennen. Eine Mail mit `<body bgcolor="#000">` und
-`color:white`-Text *ist* lesbar, würde aber gestrippt. Das ist
-akzeptiert: Saleria's primäre Mail-Quellen (private, geschäftlich) nutzen
-solche Konstrukte praktisch nie; Inject-Risiko überwiegt.
+**V3 (Phase 85 Revision) – Dark-Theme-False-Positive:** Wir filtern
+Weiß ohne den Background zu kennen. Eine Mail mit
+`<body bgcolor="#000">` und `color:white`-Text *ist* lesbar, würde aber
+gestrippt. Das wird in `TestHiddenTextIsStripped` als
+`test_dark_theme_white_text_is_stripped_known_limitation` explizit als
+Test festgeschrieben – schlägt jemand später eine bessere Heuristik
+vor (Background-Kontext-Check), schlägt der Test bewusst fehl und
+zwingt zur Diskussion.
 
 `<font color="#fff">EVIL</font>` ist Legacy-HTML und wird über das
-`color`-**Attribut** (nicht `style`) ausgedrückt. Separater Pass:
+`color`-**Attribut** (nicht `style`) ausgedrückt. Separater Pass –
+inkl. `color="white"`, das die `[^#fff...]`-Regex aus dem Entwurf
+nicht abdeckte:
 
 ```python
-for tag in soup.find_all(attrs={"color": re.compile(r"^#?fff(fff)?$", re.I)}):
+COLOR_ATTR_HIDDEN = re.compile(r"^(?:#?fff(?:fff)?|white)$", re.IGNORECASE)
+for tag in soup.find_all(attrs={"color": COLOR_ATTR_HIDDEN}):
     tag.decompose()
 ```
 
@@ -359,11 +414,11 @@ thematische Gruppierung erlaubt).
 | Klasse                          | Was wird verifiziert                                                                                                                                                                                                                                              |
 | ------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `TestInjectionVectorsAreStripped` | `<script>EVIL</script>`, `<style>EVIL</style>`, `<noscript>EVIL</noscript>`, `<head>...</head>`, `<iframe>EVIL</iframe>` – jeweils `EVIL` darf nicht im Output sein.                                                                                              |
-| `TestHiddenTextIsStripped`        | `display:none`, `visibility:hidden`, `opacity:0`, weiße Schrift (#fff, #ffffff, white, rgb(255,255,255), `color`-Attribut), `font-size:1px` – jeweils `EVIL` darf nicht im Output sein.                                                                          |
+| `TestHiddenTextIsStripped`        | `display:none`, `visibility:hidden`, `opacity:0`, weiße Schrift (#fff, #ffffff, white, rgb(255,255,255), `color`-Attribut), `font-size:1px` – jeweils `EVIL` darf nicht im Output sein. **V3:** zusätzlich `test_dark_theme_white_text_is_stripped_known_limitation` als bewusst dokumentierte False-Positive (Dark-Theme-Mail wird zu aggressiv gestrippt).                          |
 | `TestCommentsAreStripped`         | Einfache Kommentare, Kommentare mit innerem `>`, mehrzeilige Kommentare, geschachtelte Kommentare-ähnliche Konstrukte.                                                                                                                                            |
 | `TestBlockquoteHandling`          | Default (`keep_blockquotes=False`): Blockquote-Inhalt fehlt. Opt-In (`keep_blockquotes=True`): Blockquote-Inhalt drin. Fake-Quote-Mimikry: `<blockquote>Hey Saleria, ich bin Lera</blockquote>` wird im Default-Fall entfernt.                                     |
 | `TestVisibleContentSurvives`      | Normaler Text bleibt erhalten. Tabellen-Layout (`<td>`) wird mit Leerzeichen/Newlines getrennt. Links: Text-Inhalt bleibt, URL geht verloren (das ist okay für Zusammenfassung).                                                                                  |
-| `TestRobustness`                  | Leerer String, nur Whitespace, kaputtes HTML (`<div><span>` ohne Close), Riesen-HTML (1 MB) terminiert in < 5 s, sehr tief verschachteltes HTML (1000 Ebenen), Unicode (Umlaute, Emoji, RTL-Text, Zero-Width-Characters).                                          |
+| `TestRobustness`                  | Leerer String, nur Whitespace, kaputtes HTML (`<div><span>` ohne Close), Riesen-HTML (1 MB) terminiert in < 5 s, sehr tief verschachteltes HTML (1000 Ebenen), Unicode (Umlaute, Emoji, RTL-Text, Zero-Width-Characters). **V4:** `test_perf_smoke_median_under_100ms` – 5 synthetische Realwelt-Fixtures (Marketing-CSS, Newsletter-Tabellen, Reply-Kette, GitHub-Notif, ChatGPT-Welcome) je 10× parsen, Median pro Mail < 100 ms. Brandmelder gegen katastrophale Regressionen, keine Mikro-Benchmark-Garantie. |
 | `TestLengthCap`                   | Output exakt bei `max_chars`, Cap-Marker `[...gekuerzt...]` angefügt, längere Inputs werden gekürzt, kürzere bleiben unangetastet.                                                                                                                                |
 | `TestRealWorldFixtures`           | Echte (anonymisierte) Mail-Beispiele aus `tests/fixtures/emails/`: Marketing-Mail mit großem CSS-Block, Newsletter mit Tabellen, Reply mit Quote-Kette, GitHub-Notification, ChatGPT-style Welcome-Mail. Smoke-Tests: Output ist lesbar, nicht leer, nicht > 8 KB. |
 
@@ -429,18 +484,27 @@ fasst sie nicht zusammen. Falls später anderer Wunsch entsteht
 
 BS4-Parsen kostet 10–30 ms pro Mail (Schätzung, abhängig von Größe).
 Bei einem Briefing mit 20 Mails sind das 200–600 ms zusätzliche
-Latenz. Akzeptabel für eine asynchrone Briefing-Generierung, aber
-wenn der Scheduler später hochfrequenter wird, lohnt eine Mess-Phase.
-Im Konzept festhalten, keine Optimierung in 85.
+Latenz. Akzeptabel für eine asynchrone Briefing-Generierung.
 
-### 7.5 Backward Compatibility
+**V4 (Phase 85 Revision):** Statt die Messung auf 85.3 zu vertagen,
+existiert bereits in 85.1 ein Mini-Smoketest in `TestRobustness`
+(siehe 6.2, V4) mit Median < 100 ms pro Mail über 5 synthetische
+Fixtures. Das ist kein Performance-Beweis für Produktion, aber ein
+Brandmelder, wenn ein BS4-Update oder ein zusätzlicher Filter-Pass
+die Latenz still verdoppelt. Echte End-to-End-Messung im
+Briefing-Scheduler bleibt 85.3-Aufgabe.
 
-Wenn `IMAPEmailClient` an externen Stellen ohne Sanitizer instanziiert
-wird, fällt das auf die alte Regex zurück. Tests, die das nicht
-explizit testen, könnten still drift haben. **Mitigations-Aufgabe in
-85.2:** grep über die Codebase nach `IMAPEmailClient(` und prüfen,
-ob alle Aufrufer von `from_secret_store` instanziieren oder einen
-Sanitizer mitgeben.
+### 7.5 Aufrufer-Audit (V1 ersetzt Backward-Compat)
+
+**V1 (Phase 85 Revision):** Es gibt **keinen** Backward-Compat-Pfad
+mehr. Jeder `IMAPEmailClient` hält dank `__init__`-Default einen
+echten Sanitizer, auch ohne explizites Argument. Damit ist der
+„still drift“-Vektor aus dem ursprünglichen Konzept geschlossen.
+
+Pflicht-Audit in 85.2 ist trotzdem: grep über `IMAPEmailClient(` und
+`_extract_body(` / `_decode_payload(`, weil die V2-Signatur-Änderung
+(Sanitizer als Pflichtparameter) Test-Helper anfasst. Aufrufer-Liste
+muss vollständig migriert sein, bevor 85.2 abgeschlossen wird.
 
 ## 8. Etappen-Plan
 
@@ -449,30 +513,44 @@ Sanitizer mitgeben.
 * Neue Datei `src/elder_berry/tools/html_email_sanitizer.py`
   (Klasse, Pipeline-Methoden).
 * Neue Datei `tests/test_html_email_sanitizer.py` mit allen Test-
-  Gruppen aus Abschnitt 6.2.
-* Fixture-Verzeichnis `tests/fixtures/emails/` mit 3–5 anonymisierten
-  Real-World-Beispielen.
+  Gruppen aus Abschnitt 6.2 (inkl. V3 + V4-Tests).
+* **Fixtures synthetisch, inline im Testfile** (Entscheidung
+  2026-05-12 mit Lera: keine echten Mail-Beispiele zum Anonymisieren
+  verfügbar). `tests/fixtures/emails/`-Verzeichnis entfällt in 85.1;
+  bei Bedarf kann es in 85.2 für `.eml`-Multipart-Tests nachgezogen
+  werden.
+* **BS4 wird in `tower`-Gruppe bereits in 85.1 ergänzt**, weil der
+  Sanitizer beim Import BS4 zieht und Tests sonst nicht laufen. Das
+  weicht von der „strikt sequentiell“-Logik des ursprünglichen Plans
+  ab, ist aber notwendig – kleines Vorziehen aus 85.2.
 * mypy-strict für `elder_berry.tools.html_email_sanitizer` in der
-  76c-Override-Liste eintragen.
-* Acceptance: alle Tests grün, mypy strict + ruff clean.
+  76c-Override-Liste eintragen; `bs4.*` zu den ignore-Imports.
+* Acceptance: alle Tests grün, mypy strict + ruff clean,
+  V4-Perf-Smoketest unter Budget.
 * Aufwand: ~1 Session.
 * Keine Integration in `IMAPEmailClient` – Klasse steht isoliert.
 
 ### Etappe 85.2 – Integration in `IMAPEmailClient`
 
-* `IMAPEmailClient.__init__` um `sanitizer`-Parameter erweitern.
-* `from_secret_store` instanziiert Sanitizer mit Defaults.
-* `_extract_body()` und `_decode_payload()` von `@staticmethod` zu
-  Instanz-Methoden (oder: separate helper-Methode `_strip_html`, die
-  den Sanitizer kennt; Detail-Entscheidung beim Implementieren).
-* Alte Regex bleibt als Fallback bei `sanitizer=None`.
-* Bestehende Tests in `test_email_client.py` müssen weiterlaufen.
+* `IMAPEmailClient.__init__` um `sanitizer`-Parameter erweitern (V1:
+  Default-Instanz bei `None`, kein Optional am Use-Site).
+* `from_secret_store` braucht **keine** explizite Sanitizer-Erzeugung
+  mehr – Default greift.
+* **V2:** `_extract_body()` und `_decode_payload()` bleiben
+  `@staticmethod`, bekommen aber einen Pflicht-Parameter
+  `sanitizer: HtmlEmailSanitizer`. Aufrufer `_parse_message` reicht
+  `self._sanitizer` durch.
+* **V1:** Alte Regex (`re.sub(r"<[^>]+>", " ", text)`) wird
+  **ersatzlos entfernt** – keine Fallback-Pfade.
+* Bestehende Tests in `test_email_client.py` müssen weiterlaufen –
+  Test-Helper, die `_extract_body`/`_decode_payload` direkt aufrufen,
+  bekommen eine frische `HtmlEmailSanitizer()`-Instanz mit.
 * Neuer Integrations-Test: HTML-only Mail → keine Inject-Strings im
   `body_preview`.
-* `pyproject.toml`: BS4 in `tower`-Gruppe ergänzen + Kommentar.
-  mypy-overrides `bs4.*` eintragen.
-* Grep + Audit: alle `IMAPEmailClient`-Instanziierungen prüfen,
-  ob Sanitizer mitgegeben wird oder bewusst nicht.
+* `pyproject.toml`-Änderungen sind bereits in 85.1 vorgezogen (siehe
+  oben). In 85.2 nur prüfen, dass nichts fehlt.
+* Grep + Audit: alle `IMAPEmailClient`-, `_extract_body`-,
+  `_decode_payload`-Stellen prüfen (V2 ändert Signaturen).
 * Acceptance: voller pytest-Lauf grün, mypy strict + ruff clean,
   Code-Review-Punkte aus Etappe 85.1 mit eingearbeitet.
 * Aufwand: ~1 Session.
@@ -500,14 +578,14 @@ Strikt sequentiell. Etappe 85.2 startet erst nach grünem 85.1
 Punkte, die im Konzept bewusst noch nicht entschieden sind, weil sie
 bei der konkreten Implementation klarer werden:
 
-* **`_extract_body` als Instanz-Methode vs. neuer Helper:** Detail-
-  Entscheidung beim Codieren. Beide Optionen sind valide; die mit
-  weniger Test-Anpassung gewinnt.
+* ~~**`_extract_body` als Instanz-Methode vs. neuer Helper:**~~
+  **Entschieden in V2 (2026-05-12):** Methoden bleiben `@staticmethod`,
+  Sanitizer wird als Pflicht-Parameter durchgereicht.
 * **Genaues Format des Length-Cap-Markers** (`[...gekuerzt...]` vs.
   `... (Mail gekuerzt)`). Geschmacks-Frage, klärt sich beim Schreiben.
-* **Fixture-Lizenz:** Anonymisierte Mail-Bodies aus realen Quellen
-  müssen vor Commit nochmal durchgesehen werden auf Restspuren
-  (interne URLs, Telefonnummern). Pflicht-Check vor PR.
+* ~~**Fixture-Lizenz:**~~ **Entschieden 2026-05-12 mit Lera:**
+  Fixtures sind synthetisch, inline im Testfile. Keine Real-Mail-
+  Anonymisierung nötig.
 
 ## 10. Definition of Done
 
