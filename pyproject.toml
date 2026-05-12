@@ -49,10 +49,17 @@ agent = [
 matrix = [
     "matrix-nio>=0.25.2",
     "aiofiles>=23.0",
+    # Phase 85.4: HtmlEmailSanitizer wird ueber email_client transitiv
+    # gezogen, sobald der Matrix-Bot remote_commands -> mail_commands
+    # importiert. Ohne bs4 knallt der Import bei .[matrix]-Installs.
+    "beautifulsoup4>=4.12",
 ]
 remote = [
     "mss>=10.2.0",
     "pyperclip>=1.9",
+    # Phase 85.4: gleiche Begruendung wie matrix-Gruppe -- remote-
+    # Client-Pfade laden email_client transitiv.
+    "beautifulsoup4>=4.12",
 ]
 memory = [
     "chromadb>=1.5.9",
@@ -103,6 +110,9 @@ tower = [
     "pycaw>=20251023",
     "comtypes>=1.2",
     "mss>=10.2.0",
+    # Phase 85: HtmlEmailSanitizer fuer IMAPEmailClient -- robustes
+    # HTML-Stripping mit Hidden-Text-Filter statt naiver Regex.
+    "beautifulsoup4>=4.12",
 ]
 server = [
     "matrix-nio>=0.25.2",
@@ -183,6 +193,8 @@ module = [
     "google_auth_oauthlib.*",  # google_calendar (OAuth-Flow)
     "googleapiclient.*",    # google_calendar (build, errors)
     "fitz.*",               # pymupdf, document_reader
+    "bs4.*",                # Phase 85: html_email_sanitizer. Keine Stubs,
+                            # oeffentliche Sanitizer-API ist str -> str.
 ]
 ignore_missing_imports = true
 
@@ -309,6 +321,7 @@ module = [
     "elder_berry.tools.email_sender",
     "elder_berry.tools.google_calendar",
     "elder_berry.tools.gym_data",
+    "elder_berry.tools.html_email_sanitizer",
     "elder_berry.tools.nextcloud_files",
     "elder_berry.tools.note_store",
     "elder_berry.tools.recurrence",

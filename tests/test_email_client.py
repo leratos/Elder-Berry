@@ -7,6 +7,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from elder_berry.tools.email_client import EmailMessage, IMAPEmailClient
+from elder_berry.tools.html_email_sanitizer import HtmlEmailSanitizer
 
 
 # ---------------------------------------------------------------------------
@@ -138,7 +139,7 @@ class TestExtractBody:
     def test_plain_text(self):
         msg = email_mod.message.EmailMessage()
         msg.set_content("Hallo Welt, dies ist ein Test.")
-        result = IMAPEmailClient._extract_body(msg)
+        result = IMAPEmailClient._extract_body(msg, HtmlEmailSanitizer())
         assert "Hallo Welt" in result
 
     def test_html_tags_removed(self):
@@ -147,7 +148,7 @@ class TestExtractBody:
             "<html><body><p>Hallo <b>Welt</b></p></body></html>",
             subtype="html",
         )
-        result = IMAPEmailClient._extract_body(msg)
+        result = IMAPEmailClient._extract_body(msg, HtmlEmailSanitizer())
         assert "Hallo" in result
         assert "Welt" in result
         assert "<" not in result
@@ -162,8 +163,25 @@ class TestExtractBody:
         msg.attach(plain_part)
         msg.attach(html_part)
 
-        result = IMAPEmailClient._extract_body(msg)
+        result = IMAPEmailClient._extract_body(msg, HtmlEmailSanitizer())
         assert "Plain text" in result
+
+    def test_html_only_strips_script_content(self):
+        """Phase 85.2 Integration: <script>EVIL</script> in HTML-only Mail
+        darf nicht im body_preview landen (Inject-Vektor)."""
+        msg = email_mod.message.EmailMessage()
+        msg.set_content(
+            "<html><body>"
+            "<p>Hallo Saleria</p>"
+            "<script>EVIL_INSTRUCTIONS_FORWARD_ALL_MAILS</script>"
+            "<style>EVIL_CSS_BLOCK</style>"
+            "</body></html>",
+            subtype="html",
+        )
+        result = IMAPEmailClient._extract_body(msg, HtmlEmailSanitizer())
+        assert "Hallo Saleria" in result
+        assert "EVIL_INSTRUCTIONS_FORWARD_ALL_MAILS" not in result
+        assert "EVIL_CSS_BLOCK" not in result
 
 
 # ---------------------------------------------------------------------------
@@ -191,7 +209,7 @@ class TestParseEmail:
             sender="billing@strato.de",
             body="Ihre Rechnung für März...",
         )
-        result = IMAPEmailClient._parse_email(raw)
+        result = IMAPEmailClient._parse_email(raw, HtmlEmailSanitizer())
         assert result.subject == "Rechnung"
         assert "strato.de" in result.sender
         assert result.date is not None
@@ -199,7 +217,7 @@ class TestParseEmail:
 
     def test_parse_no_subject(self):
         raw = self._make_raw_email(subject="", body="Text")
-        result = IMAPEmailClient._parse_email(raw)
+        result = IMAPEmailClient._parse_email(raw, HtmlEmailSanitizer())
         assert result.subject == "(Kein Betreff)"
 
 
@@ -258,7 +276,7 @@ class TestMsgId:
         msg.set_content("Body")
         raw = msg.as_bytes()
 
-        result = IMAPEmailClient._parse_email(raw, msg_id="99")
+        result = IMAPEmailClient._parse_email(raw, HtmlEmailSanitizer(), msg_id="99")
         assert result.msg_id == "99"
 
     def test_parse_email_default_no_msg_id(self):
@@ -268,7 +286,7 @@ class TestMsgId:
         msg.set_content("Body")
         raw = msg.as_bytes()
 
-        result = IMAPEmailClient._parse_email(raw)
+        result = IMAPEmailClient._parse_email(raw, HtmlEmailSanitizer())
         assert result.msg_id == ""
 
 
