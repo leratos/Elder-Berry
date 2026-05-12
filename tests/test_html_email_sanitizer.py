@@ -134,6 +134,184 @@ class TestHiddenTextIsStripped:
         html = f'<p><span style="opacity:{opacity_value}">VISIBLE_OPACITY</span></p>'
         assert "VISIBLE_OPACITY" in _sanitize(html), opacity_value
 
+    @pytest.mark.parametrize(
+        "style_attr",
+        [
+            "opacity:1; opacity:0.0",
+            "opacity: 1.0; opacity: 0",
+            "opacity:0.5;opacity:0.00",
+            "opacity:1;opacity:.0",
+        ],
+    )
+    def test_opacity_multi_decl_last_zero_is_hidden(self, style_attr: str) -> None:
+        # Phase 85.5: CSS-Cascade-Regel "later declaration wins".
+        # Bypass-Vektor mit erster Decl visible, letzter Decl hidden.
+        html = f'<p>vorne <span style="{style_attr}">EVIL_MULTI</span> hinten</p>'
+        result = _sanitize(html)
+        assert "EVIL_MULTI" not in result, style_attr
+        assert "vorne" in result
+
+    @pytest.mark.parametrize(
+        "style_attr",
+        [
+            "opacity:0; opacity:1",
+            "opacity:0.0; opacity:0.5",
+            "opacity:.0;opacity:1.0",
+        ],
+    )
+    def test_opacity_multi_decl_last_visible_survives(self, style_attr: str) -> None:
+        # Regressionsschutz: letzte Decl visible -> Browser rendert
+        # visible -> wir behalten.
+        html = f'<p><span style="{style_attr}">VISIBLE_MULTI</span></p>'
+        assert "VISIBLE_MULTI" in _sanitize(html), style_attr
+
+    @pytest.mark.parametrize(
+        "style_attr",
+        [
+            "font-size:20px; font-size:1px",
+            "font-size: 14px; font-size: 3px",
+            "font-size:16px;font-size:5px",
+        ],
+    )
+    def test_font_size_multi_decl_last_small_is_hidden(self, style_attr: str) -> None:
+        # Phase 85.5: gleiche Bug-Klasse wie opacity. Letzte Decl
+        # < threshold -> hidden, auch wenn erste Decl gross war.
+        html = f'<p>vorne <span style="{style_attr}">EVIL_FONT_MULTI</span> hinten</p>'
+        result = _sanitize(html)
+        assert "EVIL_FONT_MULTI" not in result, style_attr
+        assert "vorne" in result
+
+    @pytest.mark.parametrize(
+        "style_attr",
+        [
+            "font-size:1px; font-size:14px",
+            "font-size:3px;font-size:20px",
+        ],
+    )
+    def test_font_size_multi_decl_last_large_survives(self, style_attr: str) -> None:
+        # Regressionsschutz: letzte Decl >= threshold -> visible.
+        html = f'<p><span style="{style_attr}">VISIBLE_FONT_MULTI</span></p>'
+        assert "VISIBLE_FONT_MULTI" in _sanitize(html), style_attr
+
+    @pytest.mark.parametrize(
+        "style_attr",
+        [
+            "opacity:0!important; opacity:1",
+            "opacity:1; opacity:0!important",
+            "opacity:0 !important; opacity:1",
+            "opacity:0!IMPORTANT; opacity:1",
+        ],
+    )
+    def test_opacity_important_hidden_wins(self, style_attr: str) -> None:
+        # Phase 85.6: !important schlaegt non-!important unabhaengig
+        # von Reihenfolge. Browser rendert opacity=0 (hidden).
+        html = f'<p>vorne <span style="{style_attr}">EVIL_IMPORTANT</span> hinten</p>'
+        result = _sanitize(html)
+        assert "EVIL_IMPORTANT" not in result, style_attr
+        assert "vorne" in result
+
+    @pytest.mark.parametrize(
+        "style_attr",
+        [
+            "opacity:0; opacity:1!important",
+            "opacity:1!important; opacity:0",
+            "opacity:0!important; opacity:1!important",
+        ],
+    )
+    def test_opacity_important_visible_wins(self, style_attr: str) -> None:
+        # Regressionsschutz: wenn letzte !important visible ist (oder
+        # einzige !important visible), bleibt Text sichtbar.
+        html = f'<p><span style="{style_attr}">VISIBLE_IMPORTANT</span></p>'
+        assert "VISIBLE_IMPORTANT" in _sanitize(html), style_attr
+
+    @pytest.mark.parametrize(
+        "style_attr",
+        [
+            "font-size:1px!important; font-size:14px",
+            "font-size:14px; font-size:1px!important",
+            "font-size:3px ! important; font-size:20px",
+        ],
+    )
+    def test_font_size_important_hidden_wins(self, style_attr: str) -> None:
+        # Phase 85.6: !important-Beruecksichtigung auch fuer font-size.
+        html = (
+            f'<p>vorne <span style="{style_attr}">EVIL_FONT_IMPORTANT</span> hinten</p>'
+        )
+        result = _sanitize(html)
+        assert "EVIL_FONT_IMPORTANT" not in result, style_attr
+        assert "vorne" in result
+
+    @pytest.mark.parametrize(
+        "style_attr",
+        [
+            "font-size:1px; font-size:14px!important",
+            "font-size:1px!important; font-size:14px!important",
+        ],
+    )
+    def test_font_size_important_visible_wins(self, style_attr: str) -> None:
+        # Regressionsschutz fuer font-size + !important visible.
+        html = f'<p><span style="{style_attr}">VISIBLE_FONT_IMPORTANT</span></p>'
+        assert "VISIBLE_FONT_IMPORTANT" in _sanitize(html), style_attr
+
+    @pytest.mark.parametrize(
+        "style_attr",
+        [
+            "opacity:0!/**/important; opacity:1",
+            "opacity:0!/* foo */important; opacity:1",
+            "opacity:0/**/!important; opacity:1",
+        ],
+    )
+    def test_opacity_important_with_comment_is_hidden(self, style_attr: str) -> None:
+        # Phase 85.7: CSS-Kommentare zwischen Tokens werden vom Browser
+        # als Whitespace behandelt -- !important muss trotzdem erkannt
+        # werden.
+        html = f'<p>vorne <span style="{style_attr}">EVIL_COMMENT</span> hinten</p>'
+        result = _sanitize(html)
+        assert "EVIL_COMMENT" not in result, style_attr
+        assert "vorne" in result
+
+    @pytest.mark.parametrize(
+        "style_attr",
+        [
+            "font-size:1px!/**/important; font-size:14px",
+            "font-size:3px!/* note */important; font-size:20px",
+        ],
+    )
+    def test_font_size_important_with_comment_is_hidden(self, style_attr: str) -> None:
+        html = (
+            f'<p>vorne <span style="{style_attr}">EVIL_FONT_COMMENT</span> hinten</p>'
+        )
+        result = _sanitize(html)
+        assert "EVIL_FONT_COMMENT" not in result, style_attr
+        assert "vorne" in result
+
+    @pytest.mark.parametrize(
+        "style_attr",
+        [
+            "display/**/:none",
+            "visibility/**/: hidden",
+            "color:/**/#fff",
+        ],
+    )
+    def test_hidden_pattern_with_comment_is_hidden(self, style_attr: str) -> None:
+        # Phase 85.7: Auch die statischen _HIDDEN_STYLE_PATTERNS
+        # profitieren vom Kommentar-Strip, ohne dass die Patterns
+        # selbst angefasst werden muessen.
+        html = (
+            f'<p>vorne <span style="{style_attr}">EVIL_STATIC_COMMENT</span> hinten</p>'
+        )
+        result = _sanitize(html)
+        assert "EVIL_STATIC_COMMENT" not in result, style_attr
+        assert "vorne" in result
+
+    def test_comment_between_decls_does_not_create_phantom_decl(self) -> None:
+        # Regression: ein Kommentar zwischen zwei opacity-Decls darf
+        # die Cascade nicht stoeren -- letzte Decl gilt.
+        html = (
+            '<p><span style="opacity:0.5;/* foo */opacity:1">VISIBLE_COMMENT</span></p>'
+        )
+        assert "VISIBLE_COMMENT" in _sanitize(html)
+
     def test_font_size_at_threshold_survives(self) -> None:
         # Default-Threshold = 6 -> 6px ist NICHT < 6, also nicht filtern.
         html = '<p><span style="font-size:6px">JUST_READABLE</span></p>'
