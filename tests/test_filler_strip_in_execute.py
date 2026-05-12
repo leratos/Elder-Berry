@@ -167,7 +167,7 @@ class TestExecuteStripsFillerPrefix:
         store.delete.assert_called_once_with(5)
 
     def test_execute_preserves_suffix_in_user_content(
-        self, monkeypatch: "pytest.MonkeyPatch"
+        self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """clip-Schreib-Befehl mit Suffix-Filler im Content: der
         Suffix-Token landet im Clipboard, weil execute() KEINEN
@@ -175,11 +175,15 @@ class TestExecuteStripsFillerPrefix:
 
         Vor X4a war das der Hauptpunkt der Codex-P2-Anmerkung gegen
         das urspruengliche X4-Konzept.
+
+        Hinweis: pyperclip ist in den optionalen "windows"-extras --
+        nicht jede Test-Umgebung hat es (z.B. CI ohne windows-extras,
+        RPi5). importorskip macht den Test umgebungs-tolerant. Der
+        Suffix-Schutz wird unabhaengig auch von
+        TestStripFillerPrefix.test_preserves_suffix_filler_in_user_content
+        und TestAsymmetryWithStripFillers verifiziert.
         """
-        # pyperclip.copy() wird in _cmd_clipboard_write direkt aufgerufen.
-        # Wir patchen es modul-lokal -- pyperclip ist optional in den
-        # extras, aber in der Dev-Umgebung vorhanden.
-        import pyperclip
+        pyperclip = pytest.importorskip("pyperclip")
 
         captured: list[str] = []
         monkeypatch.setattr(pyperclip, "copy", lambda s: captured.append(s))
