@@ -57,7 +57,6 @@ _DECOMPOSE_TAGS: tuple[str, ...] = (
 _HIDDEN_STYLE_PATTERNS: tuple[re.Pattern[str], ...] = (
     re.compile(r"display\s*:\s*none", re.IGNORECASE),
     re.compile(r"visibility\s*:\s*hidden", re.IGNORECASE),
-    re.compile(r"opacity\s*:\s*0(?!\.)", re.IGNORECASE),
     re.compile(r"color\s*:\s*#?fff(?:fff)?\b", re.IGNORECASE),
     re.compile(r"color\s*:\s*white\b", re.IGNORECASE),
     re.compile(
@@ -66,8 +65,17 @@ _HIDDEN_STYLE_PATTERNS: tuple[re.Pattern[str], ...] = (
     ),
 )
 
+# Decl-Regex mit optionalem !important-Capture (Phase 85.6).
+# CSS-Cascade-Algorithmus priorisiert !important-Deklarationen ueber
+# non-!important, unabhaengig von Reihenfolge. Capture-Group [1] ist
+# leer wenn keine Importance, sonst der Marker-String. Phase 85.5
+# loeste last-declaration-wins ohne Importance-Beruecksichtigung --
+# das war Bypass-Vektor fuer "opacity:0!important; opacity:1".
 _FONT_SIZE_RE: re.Pattern[str] = re.compile(
-    r"font-size\s*:\s*(\d+)\s*px", re.IGNORECASE
+    r"font-size\s*:\s*(\d+)\s*px\s*(!\s*important)?", re.IGNORECASE
+)
+_OPACITY_RE: re.Pattern[str] = re.compile(
+    r"opacity\s*:\s*([\d.]+)\s*(!\s*important)?", re.IGNORECASE
 )
 
 # Legacy <font color="...">: weiss in beiden Schreibweisen.
@@ -76,6 +84,13 @@ _COLOR_ATTR_HIDDEN: re.Pattern[str] = re.compile(
 )
 
 _CAP_MARKER: str = "\n[...gekuerzt...]"
+
+# CSS-Kommentare /* ... */ gelten in der CSS-Spec als Whitespace und
+# duerfen ueberall stehen, wo Whitespace erlaubt ist. Phase 85.7
+# strippt sie einmalig vor dem Pattern-Matching, weil unsere \s-
+# basierten Regex sonst z.B. opacity:0!/**/important nicht als
+# !important erkennen -- erneuter Bypass-Vektor analog 85.4-85.6.
+_CSS_COMMENT_RE: re.Pattern[str] = re.compile(r"/\*.*?\*/", re.DOTALL)
 
 
 class HtmlEmailSanitizer:
@@ -156,10 +171,47 @@ class HtmlEmailSanitizer:
                 tag.decompose()
 
     def _style_is_hidden(self, style: str) -> bool:
+        # Phase 85.7: CSS-Kommentare einmal entfernen, damit
+        # opacity:0!/**/important und display/**/:none erkannt werden.
+        # Browser ignorieren Kommentare als Whitespace-Aequivalent,
+        # unsere \s-Regex aber nicht.
+        style = _CSS_COMMENT_RE.sub("", style)
         if any(p.search(style) for p in _HIDDEN_STYLE_PATTERNS):
             return True
-        match = _FONT_SIZE_RE.search(style)
-        return bool(match and int(match.group(1)) < self._min_font_size_px)
+        # CSS-Cascade: bei mehreren Deklarationen derselben Property
+        # gewinnt (1) die letzte !important-Decl, sonst (2) die letzte
+        # non-!important-Decl. findall() liefert Liste von Tupeln
+        # (value, importance_marker_or_empty). Phase 85.5 loeste nur
+        # last-wins ohne Importance, 85.6 schliesst den !important-
+        # Bypass.
+        font_value = self._resolve_decl(_FONT_SIZE_RE.findall(style))
+        if font_value is not None:
+            try:
+                if int(font_value) < self._min_font_size_px:
+                    return True
+            except ValueError:
+                pass
+        opacity_value = self._resolve_decl(_OPACITY_RE.findall(style))
+        if opacity_value is not None:
+            try:
+                if float(opacity_value) == 0.0:
+                    return True
+            except ValueError:
+                pass
+        return False
+
+    @staticmethod
+    def _resolve_decl(decls: list[tuple[str, str]]) -> str | None:
+        """Waehlt die CSS-effektive Deklaration aus einer Liste von
+        (value, importance_marker)-Tupeln. Importance gewinnt vor
+        Reihenfolge, sonst gilt last-declaration-wins.
+        """
+        if not decls:
+            return None
+        importants = [value for value, marker in decls if marker]
+        if importants:
+            return importants[-1]
+        return decls[-1][0]
 
     @staticmethod
     def _remove_hidden_color_attr(soup: BeautifulSoup) -> None:
