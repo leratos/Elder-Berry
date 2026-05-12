@@ -18,6 +18,13 @@
   (`test_dark_theme_white_text_is_stripped_known_limitation`).
 * **V4 (2026-05-12):** Mini-Perf-Smoketest (Median < 100 ms pro Mail,
   5 synthetische Fixtures) bereits in 85.1, nicht erst 85.3.
+* **V5 (2026-05-12):** Zwei Codex-PR-Review-Findings adressiert in
+  neuer Etappe 85.4 (siehe Abschnitt 8): (P1) `beautifulsoup4` fehlte
+  in `matrix`/`remote`-Gruppen — `email_client`-Import-Chain knallt
+  bei nicht-tower-Installs. (P2) `opacity:0`-Regex `0(?!\.)` schliesst
+  `opacity:0.0`/`0.00` faelschlich aus, obwohl CSS sie als komplett
+  transparent behandelt — Inject-Bypass via decimal-zero. Beide Fixes
+  in 85.4.
 **Trigger:** HTML-only Mails (Marketing, moderne Mail-Clients ohne
 `text/plain`-Multipart) sind bei der `zusammenfassen`-Funktion unbrauchbar.
 Erste Annahme war "Saleria kann HTML nicht auswerten" – tatsächlich
@@ -567,11 +574,79 @@ muss vollständig migriert sein, bevor 85.2 abgeschlossen wird.
 * Acceptance: realer Smoketest erfolgreich, Doku aktualisiert.
 * Aufwand: ~halbe Session.
 
+### Etappe 85.4 – PR-Review-Fixes (Codex)
+
+Zwei Findings aus dem chatgpt-codex-connector-Review zum 85.3-PR.
+Beide verifiziert (siehe V5-Revision oben):
+
+**P1 – `beautifulsoup4` Dep-Scope vs. Import-Graph:**
+`html_email_sanitizer.py` importiert `bs4` auf Modul-Ebene;
+`email_client.py` importiert den Sanitizer auf Modul-Ebene. Damit
+ist BS4 transitive Pflicht-Dep fuer jeden, der den Matrix-Bot-Pfad
+laedt (`remote_commands` → `mail_commands` → `email_client` →
+`html_email_sanitizer`). Bisher stand `beautifulsoup4>=4.12` nur in
+`tower`/`server`/`web`. Anyone mit `pip install -e .[matrix]` oder
+`.[remote]` crasht beim Import mit `ModuleNotFoundError: No module
+named 'bs4'`. Praktisch nicht akut (Saleria deployed mit `[tower]`),
+aber Dep-Deklaration matcht den Import-Graph nicht.
+
+Fix: `beautifulsoup4>=4.12` zusaetzlich in `matrix`- und
+`remote`-Gruppen ergaenzen. Begruendung als Inline-Kommentar
+analog `tower`-Gruppe.
+
+**P2 – `opacity:0`-Regex schliesst decimal-zero aus (Inject-Bypass):**
+[html_email_sanitizer.py:60](src/elder_berry/tools/html_email_sanitizer.py#L60):
+
+```python
+re.compile(r"opacity\s*:\s*0(?!\.)", re.IGNORECASE)
+```
+
+Der Negative-Lookahead `(?!\.)` schliesst `opacity:0.5` (sichtbar)
+korrekt aus, aber gleichzeitig `opacity:0.0`/`0.00`/`0.000` —
+obwohl CSS diese semantisch identisch zu `opacity:0` (komplett
+transparent) behandelt. Bypass-Vektor:
+`<div style="opacity:0.0">EVIL</div>` ueberlebt heute den Sanitizer.
+
+Fix: Numeric-Parse analog `font-size`-Pattern:
+
+```python
+_OPACITY_RE = re.compile(r"opacity\s*:\s*([\d.]+)", re.IGNORECASE)
+
+# In _style_is_hidden():
+opacity_match = _OPACITY_RE.search(style)
+if opacity_match:
+    try:
+        if float(opacity_match.group(1)) == 0.0:
+            return True
+    except ValueError:
+        pass
+```
+
+Vorteile: konsistent zur `font-size`-Logik, robust gegen
+`0`/`0.0`/`0.00`/`.0`, klare Trennung von Match-Pattern und
+Wert-Vergleich. CSS-Spec sagt: opacity-Werte `< 0` clampen zu `0`,
+aber das ueberlassen wir dem Browser; unsere Strip-Logik triggert
+nur bei exakt `0.0`.
+
+**Test-Erweiterung** in `tests/test_html_email_sanitizer.py`:
+* `test_opacity_decimal_zero_is_hidden` (parametrized: `0`, `0.0`,
+  `0.00`, `0.000`, `.0`).
+* `test_opacity_nonzero_visible` (parametrized: `0.5`, `0.01`, `1`,
+  `1.0`) — Regressionsschutz.
+
+**Acceptance:** voller pytest gruen, neue opacity-Tests gruen,
+mypy strict + ruff clean. Zwei separate Commits (P1: Deps, P2:
+Sanitizer + Tests).
+
+**Aufwand:** ~halbe Session.
+
 ### Reihenfolge
 
 Strikt sequentiell. Etappe 85.2 startet erst nach grünem 85.1
 (Sanitizer existiert und ist getestet). Etappe 85.3 erst nach 85.2
-(Tuning braucht echte Integration als Testbett).
+(Tuning braucht echte Integration als Testbett). 85.4 ist
+Review-Reaktion auf den 85.3-PR und kann auf separatem Branch
+laufen.
 
 ## 9. Offene Punkte für die Implementations-Phase
 

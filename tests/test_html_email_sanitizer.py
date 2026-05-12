@@ -110,10 +110,29 @@ class TestHiddenTextIsStripped:
         assert "vorne" in result
         assert "hinten" in result
 
-    def test_opacity_05_is_not_stripped(self) -> None:
-        # opacity:0.5 ist halbtransparent, aber lesbar -- nicht filtern.
-        html = '<p><span style="opacity:0.5">VISIBLE_OPACITY</span></p>'
-        assert "VISIBLE_OPACITY" in _sanitize(html)
+    @pytest.mark.parametrize(
+        "opacity_value",
+        ["0", "0.0", "0.00", "0.000", ".0", "0.0000000"],
+    )
+    def test_opacity_decimal_zero_is_hidden(self, opacity_value: str) -> None:
+        # Phase 85.4 P2: decimal-zero opacity wird CSS-semantisch als
+        # komplett transparent behandelt; alter Regex (?!\.) liess das
+        # als Bypass-Vektor durch.
+        html = f'<p>vorne <span style="opacity:{opacity_value}">EVIL_OPACITY</span> hinten</p>'
+        result = _sanitize(html)
+        assert "EVIL_OPACITY" not in result, opacity_value
+        assert "vorne" in result
+        assert "hinten" in result
+
+    @pytest.mark.parametrize(
+        "opacity_value",
+        ["0.01", "0.1", "0.5", "0.999", "1", "1.0"],
+    )
+    def test_opacity_nonzero_visible(self, opacity_value: str) -> None:
+        # Regressionsschutz: Numeric-Parse darf sichtbare opacity-Werte
+        # nicht faelschlich strippen.
+        html = f'<p><span style="opacity:{opacity_value}">VISIBLE_OPACITY</span></p>'
+        assert "VISIBLE_OPACITY" in _sanitize(html), opacity_value
 
     def test_font_size_at_threshold_survives(self) -> None:
         # Default-Threshold = 6 -> 6px ist NICHT < 6, also nicht filtern.

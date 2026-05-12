@@ -57,7 +57,6 @@ _DECOMPOSE_TAGS: tuple[str, ...] = (
 _HIDDEN_STYLE_PATTERNS: tuple[re.Pattern[str], ...] = (
     re.compile(r"display\s*:\s*none", re.IGNORECASE),
     re.compile(r"visibility\s*:\s*hidden", re.IGNORECASE),
-    re.compile(r"opacity\s*:\s*0(?!\.)", re.IGNORECASE),
     re.compile(r"color\s*:\s*#?fff(?:fff)?\b", re.IGNORECASE),
     re.compile(r"color\s*:\s*white\b", re.IGNORECASE),
     re.compile(
@@ -69,6 +68,12 @@ _HIDDEN_STYLE_PATTERNS: tuple[re.Pattern[str], ...] = (
 _FONT_SIZE_RE: re.Pattern[str] = re.compile(
     r"font-size\s*:\s*(\d+)\s*px", re.IGNORECASE
 )
+
+# opacity: 0.0 / 0.00 / .0 zaehlen alle als komplett transparent
+# (CSS-Semantik). Numeric-Parse statt Regex-Literal, weil der frueher
+# verwendete Negative-Lookahead (?!\.) Decimal-Zero-Bypass durchliess
+# (Phase 85.4 PR-Review P2). Konsistent zu _FONT_SIZE_RE.
+_OPACITY_RE: re.Pattern[str] = re.compile(r"opacity\s*:\s*([\d.]+)", re.IGNORECASE)
 
 # Legacy <font color="...">: weiss in beiden Schreibweisen.
 _COLOR_ATTR_HIDDEN: re.Pattern[str] = re.compile(
@@ -158,8 +163,17 @@ class HtmlEmailSanitizer:
     def _style_is_hidden(self, style: str) -> bool:
         if any(p.search(style) for p in _HIDDEN_STYLE_PATTERNS):
             return True
-        match = _FONT_SIZE_RE.search(style)
-        return bool(match and int(match.group(1)) < self._min_font_size_px)
+        font_match = _FONT_SIZE_RE.search(style)
+        if font_match and int(font_match.group(1)) < self._min_font_size_px:
+            return True
+        opacity_match = _OPACITY_RE.search(style)
+        if opacity_match:
+            try:
+                if float(opacity_match.group(1)) == 0.0:
+                    return True
+            except ValueError:
+                pass
+        return False
 
     @staticmethod
     def _remove_hidden_color_attr(soup: BeautifulSoup) -> None:
