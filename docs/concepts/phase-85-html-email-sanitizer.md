@@ -63,6 +63,25 @@
   -- der richtige Schritt waere `tinycss2`-Refactor, aber das ist
   separate Phase mit eigenem Scope. Defense via LLM-Wrapper bleibt
   primaer.
+* **V9 (2026-05-12):** Codex-Folge-Finding nach 85.7: das in 85.7
+  eingefuehrte `_CSS_COMMENT_RE = compile(r"/\*.*?\*/")` matched nur
+  Kommentare mit `*/`-Closer. CSS-Parser behandeln unterminierte
+  `/*`-Kommentare aber bis EOF als Kommentar (Spec-konform). Damit
+  ueberlebt `style="opacity:0/*; opacity:1"` als Bypass-Vektor:
+  Browser sieht nur `opacity:0` (Rest im Kommentar), 85.7-Filter
+  sieht beide Decls, last-wins -> `opacity:1` (visible). Das war
+  empirisch die fuenfte spec-Mechanik in vier PR-Iterations, die
+  unsere Regex-Pipeline nicht spec-konform abbildet. **Strukturelle
+  Entscheidung:** statt 85.8-Inkrement-Patch wird ein separater
+  tinycss2-basierter Refactor als Phase 86 vorbereitet (siehe
+  `docs/concepts/phase-86-tinycss2-refactor.md`). Aktueller
+  unterminated-Kommentar-Bypass bleibt im 85.7-PR als **Known
+  Limitation** (Abschnitt 11), wird durch Phase 86 strukturell
+  geschlossen. Begruendung: LLM-Untrusted-Wrapper + Pending-
+  Confirmation-Pipeline bleiben primaere Defense, der Bypass-Vektor
+  ist adversarial (kein realer Marketing-Mail-Vektor), und weitere
+  Regex-Patches haben empirisch gezeigt, dass sie eine andere
+  Edge-Case-Klasse aufdecken statt schliessen.
 **Trigger:** HTML-only Mails (Marketing, moderne Mail-Clients ohne
 `text/plain`-Multipart) sind bei der `zusammenfassen`-Funktion unbrauchbar.
 Erste Annahme war "Saleria kann HTML nicht auswerten" – tatsächlich
@@ -875,7 +894,29 @@ Phase 85 gilt als abgeschlossen, wenn:
 6. Journal-Eintrag `## Abgeschlossen: Phase 85` mit Befunden und
    Restrisiken-Notiz aus Abschnitt 7.
 
-## 11. Known CSS-Limitations (Stop-Punkt nach 85.7)
+## 11. Known CSS-Limitations (Stop-Punkt nach 85.7, Phase 86 vorbereitet)
+
+**Update V9 (2026-05-12):** Direkt nach 85.7 hat Codex die naechste
+Bug-Klasse identifiziert -- unterminierte `/*`-Kommentare ohne
+schliessendes `*/`. Spec-konformer CSS-Parser behandelt sie als
+Kommentar bis EOF; unsere `_CSS_COMMENT_RE = r"/\*.*?\*/"` matched
+sie nicht. Beispiel-Vektor:
+
+```html
+<div style="opacity:0/*; opacity:1">EVIL</div>
+```
+
+Browser sieht `opacity:0` (Rest verschluckt), wir sehen beide Decls
+und last-wins → visible → EVIL ueberlebt.
+
+Statt einer 85.8-Inkrement-Iteration (5. PR-Patch fuer denselben
+Code-Block) startet Phase 86 -- `tinycss2`-basierter Refactor mit
+echtem Token-Parser + Cascade-Resolver. Siehe
+`docs/concepts/phase-86-tinycss2-refactor.md`. Diese Known
+Limitation bleibt im aktuellen 85.7-PR offen und wird durch
+86.2-Integration strukturell geschlossen.
+
+---
 
 Stand 2026-05-12 nach Etappe 85.7: der Sanitizer schliesst die
 realistischen Inject-Vektoren ab, die in echter Marketing- und
