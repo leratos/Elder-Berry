@@ -49,10 +49,17 @@ agent = [
 matrix = [
     "matrix-nio>=0.25.2",
     "aiofiles>=23.0",
+    # Phase 85.4: HtmlEmailSanitizer wird ueber email_client transitiv
+    # gezogen, sobald der Matrix-Bot remote_commands -> mail_commands
+    # importiert. Ohne bs4 knallt der Import bei .[matrix]-Installs.
+    "beautifulsoup4>=4.12",
 ]
 remote = [
     "mss>=10.2.0",
     "pyperclip>=1.9",
+    # Phase 85.4: gleiche Begruendung wie matrix-Gruppe -- remote-
+    # Client-Pfade laden email_client transitiv.
+    "beautifulsoup4>=4.12",
 ]
 memory = [
     "chromadb>=1.5.9",
