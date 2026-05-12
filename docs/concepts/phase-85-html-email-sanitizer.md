@@ -25,6 +25,16 @@
   `opacity:0.0`/`0.00` faelschlich aus, obwohl CSS sie als komplett
   transparent behandelt — Inject-Bypass via decimal-zero. Beide Fixes
   in 85.4.
+* **V6 (2026-05-12):** Codex-Folge-Finding zu 85.4-P2: `_OPACITY_RE.search()`
+  liest nur den ersten Match, CSS-Cascade-Regel wendet aber die letzte
+  Deklaration an. Damit: `style="opacity:1; opacity:0.0"` liefert
+  unserem Filter "1" (visible), Browser rendert "0.0" (transparent) →
+  Bypass-Vektor. Eigenkritik: dieselbe Schwaeche steckt auch im
+  `_FONT_SIZE_RE.search()`-Pfad (Codex nicht erkannt). Beide Stellen
+  in neuer Etappe 85.5 auf `findall()` + last-declaration-wins.
+  `_HIDDEN_STYLE_PATTERNS` (display/visibility/color) bleiben
+  bewusst auf "any match wins" — kein Bypass-Risiko, nur false-positive
+  bei pathologischen Multi-Decl-Mails.
 **Trigger:** HTML-only Mails (Marketing, moderne Mail-Clients ohne
 `text/plain`-Multipart) sind bei der `zusammenfassen`-Funktion unbrauchbar.
 Erste Annahme war "Saleria kann HTML nicht auswerten" – tatsächlich
@@ -640,13 +650,75 @@ Sanitizer + Tests).
 
 **Aufwand:** ~halbe Session.
 
+### Etappe 85.5 – CSS-Cascade-Konformitaet (Multi-Decl)
+
+Folge-Finding von Codex auf 85.4-P2 + eigene Audit-Erweiterung
+(siehe V6-Revision). Bug-Klasse: `re.search()` liest den ersten
+Match, CSS-Cascade-Regel aber "later declaration wins".
+
+**Betroffene Stellen:**
+* `_OPACITY_RE.search(style)` (eingefuehrt in 85.4-P2)
+* `_FONT_SIZE_RE.search(style)` (existiert seit 85.1)
+
+**Bypass-Vektoren (vor 85.5):**
+
+```html
+<div style="opacity:1; opacity:0.0">EVIL</div>
+<div style="font-size:20px; font-size:1px">EVIL</div>
+```
+
+Browser rendert beide als versteckt (transparent / unter Lese-
+Schwelle), unser Filter sah die erste Deklaration und liess EVIL
+durch.
+
+**Fix:** `findall()` statt `search()`, letzten Match als
+"effective declaration" parsen:
+
+```python
+opacity_matches = _OPACITY_RE.findall(style)
+if opacity_matches:
+    try:
+        if float(opacity_matches[-1]) == 0.0:
+            return True
+    except ValueError:
+        pass
+
+font_matches = _FONT_SIZE_RE.findall(style)
+if font_matches:
+    try:
+        if int(font_matches[-1]) < self._min_font_size_px:
+            return True
+    except ValueError:
+        pass
+```
+
+**Bewusst NICHT gefixt:** `_HIDDEN_STYLE_PATTERNS` (display:none,
+visibility:hidden, color:#fff etc.) bleiben auf "any match wins".
+Beispiel `display:none; display:block`: Browser rendert visible,
+wir stripppen → false-positive bei pathologischen Mails, kein
+Bypass-Risiko. Aggressiver = sicherer im LLM-Kontext.
+
+**Tests:** `tests/test_html_email_sanitizer.py` erhaelt 4 neue
+parametrisierte Test-Methoden in `TestHiddenTextIsStripped`:
+* `test_opacity_multi_decl_last_zero_is_hidden`
+* `test_opacity_multi_decl_last_visible_survives`
+* `test_font_size_multi_decl_last_small_is_hidden`
+* `test_font_size_multi_decl_last_large_survives`
+
+**Acceptance:** voller pytest gruen, alle 4 neuen Tests gruen,
+mypy strict + ruff clean. Ein Commit (beide Stellen, gleiche
+Bug-Klasse).
+
+**Aufwand:** ~Viertel Session.
+
 ### Reihenfolge
 
 Strikt sequentiell. Etappe 85.2 startet erst nach grünem 85.1
 (Sanitizer existiert und ist getestet). Etappe 85.3 erst nach 85.2
 (Tuning braucht echte Integration als Testbett). 85.4 ist
 Review-Reaktion auf den 85.3-PR und kann auf separatem Branch
-laufen.
+laufen. 85.5 ist Folge-Review-Reaktion auf 85.4-P2 + Eigen-Audit-
+Erweiterung (font-size war gleiche Bug-Klasse).
 
 ## 9. Offene Punkte für die Implementations-Phase
 

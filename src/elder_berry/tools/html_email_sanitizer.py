@@ -163,13 +163,23 @@ class HtmlEmailSanitizer:
     def _style_is_hidden(self, style: str) -> bool:
         if any(p.search(style) for p in _HIDDEN_STYLE_PATTERNS):
             return True
-        font_match = _FONT_SIZE_RE.search(style)
-        if font_match and int(font_match.group(1)) < self._min_font_size_px:
-            return True
-        opacity_match = _OPACITY_RE.search(style)
-        if opacity_match:
+        # CSS-Cascade: bei mehreren Deklarationen derselben Property
+        # in einem Style-Attribut gewinnt die LETZTE. findall() statt
+        # search(), damit z.B. "font-size:20px; font-size:1px" nicht
+        # ueber den Filter rutscht (Browser rendert 1px = hidden).
+        # Phase 85.5 schliesst Bypass-Vektor, der durch 85.4-P2-Fix
+        # (opacity) bzw. seit 85.1 (font-size) bestand.
+        font_matches = _FONT_SIZE_RE.findall(style)
+        if font_matches:
             try:
-                if float(opacity_match.group(1)) == 0.0:
+                if int(font_matches[-1]) < self._min_font_size_px:
+                    return True
+            except ValueError:
+                pass
+        opacity_matches = _OPACITY_RE.findall(style)
+        if opacity_matches:
+            try:
+                if float(opacity_matches[-1]) == 0.0:
                     return True
             except ValueError:
                 pass
