@@ -35,6 +35,20 @@
   `_HIDDEN_STYLE_PATTERNS` (display/visibility/color) bleiben
   bewusst auf "any match wins" — kein Bypass-Risiko, nur false-positive
   bei pathologischen Multi-Decl-Mails.
+* **V7 (2026-05-12):** Codex-Folge-Finding zu 85.5: last-declaration-
+  wins ignoriert `!important`. CSS-Algorithmus priorisiert
+  `!important`-Deklarationen ueber non-`!important`, unabhaengig von
+  der Reihenfolge. `style="opacity:0!important; opacity:1"` →
+  Browser rendert mit opacity=0 (hidden), 85.5-Filter sah `[-1]`-Wert
+  "1" → visible → erneuter Bypass-Vektor. Wieder dieselbe Bug-Klasse
+  bei `font-size` (Eigen-Audit, Codex nicht erkannt). Fix in
+  Etappe 85.6: Decl-Regex mit optionalem `(!\s*important)?`-Capture,
+  Resolver waehlt last-important > last-non-important.
+  **Stop-Punkt:** Nach 85.6 schliesst Konzept-Doc Abschnitt 11
+  "Known CSS-Limitations" weitere Edge-Cases (custom-properties,
+  calc, shorthand, computed-cascade) als bewusste Nicht-Pflicht
+  fuer den Sanitizer ab. Defense-in-Depth ueber LLM-Prompt-
+  Untrusted-Wrapper bleibt die primaere Verteidigung.
 **Trigger:** HTML-only Mails (Marketing, moderne Mail-Clients ohne
 `text/plain`-Multipart) sind bei der `zusammenfassen`-Funktion unbrauchbar.
 Erste Annahme war "Saleria kann HTML nicht auswerten" – tatsächlich
@@ -711,6 +725,54 @@ Bug-Klasse).
 
 **Aufwand:** ~Viertel Session.
 
+### Etappe 85.6 – !important-Konformitaet (Cascade-Importance)
+
+Folge-Finding von Codex auf 85.5 + Eigen-Audit fuer `font-size`.
+CSS-Cascade-Algorithmus: `!important` schlaegt non-`!important`,
+unabhaengig von der Deklarations-Reihenfolge.
+
+**Bypass-Vektor (vor 85.6):**
+
+```html
+<div style="opacity:0!important; opacity:1">EVIL</div>
+<div style="font-size:1px!important; font-size:14px">EVIL</div>
+```
+
+Browser rendert beide als hidden (opacity:0 bzw. font-size:1px
+"gewinnt" durch !important), 85.5-Filter sah `[-1]`-Wert
+("1" bzw. "14") → visible → EVIL ueberlebt.
+
+**Fix:** Decl-Regex mit optionalem `(!\s*important)?`-Capture,
+zweistufiger Resolver:
+
+```python
+_OPACITY_DECL_RE = re.compile(
+    r"opacity\s*:\s*([\d.]+)\s*(!\s*important)?",
+    re.IGNORECASE,
+)
+_FONT_SIZE_DECL_RE = re.compile(
+    r"font-size\s*:\s*(\d+)\s*px\s*(!\s*important)?",
+    re.IGNORECASE,
+)
+
+def _resolve_decl(decls: list[tuple[str, str]]) -> str | None:
+    if not decls:
+        return None
+    importants = [value for value, marker in decls if marker]
+    return importants[-1] if importants else decls[-1][0]
+```
+
+**Tests (8 neue parametrisiert):**
+* `test_opacity_important_hidden_wins` (4 Werte)
+* `test_opacity_important_visible_wins` (3 Werte)
+* `test_font_size_important_hidden_wins` (3 Werte)
+* `test_font_size_important_visible_wins` (2 Werte)
+
+**Acceptance:** voller pytest gruen, 8 neue Tests gruen,
+mypy strict + ruff clean. Ein Commit.
+
+**Aufwand:** ~Viertel Session.
+
 ### Reihenfolge
 
 Strikt sequentiell. Etappe 85.2 startet erst nach grünem 85.1
@@ -750,3 +812,78 @@ Phase 85 gilt als abgeschlossen, wenn:
    Strings im LLM-Kontext (manuell stichprobenartig).
 6. Journal-Eintrag `## Abgeschlossen: Phase 85` mit Befunden und
    Restrisiken-Notiz aus Abschnitt 7.
+
+## 11. Known CSS-Limitations (Stop-Punkt nach 85.6)
+
+Stand 2026-05-12 nach Etappe 85.6: der Sanitizer schliesst die
+realistischen Inject-Vektoren ab, die in echter Marketing- und
+Newsletter-Praxis auftreten (display:none, hidden, decimal-zero
+opacity, Mini-Font, weisse Schrift, Multi-Decl-Cascade, !important).
+Was er bewusst NICHT abdeckt — diese Edge-Cases bleiben
+defense-in-depth-Verantwortung des LLM-Prompt-Untrusted-Wrappers
+und der Pending-Confirmation-Pipeline (Abschnitt 7.1):
+
+**CSS-Custom-Properties (CSS-Variables):**
+
+```html
+<style>:root{--x:0}</style>
+<div style="opacity:var(--x)">EVIL</div>
+```
+
+Der `<style>`-Subtree wird per `decompose()` entfernt, aber der
+inline-`style="opacity:var(--x)"` rutscht durch — `_OPACITY_DECL_RE`
+matched `[\d.]+` nicht gegen `var(--x)`. Eine echte
+CSS-Resolver-Loesung waere ueberzogen, weil moderne Mail-Clients
+custom-properties haeufig garnicht rendern (Apple Mail rendert
+sie, Gmail strippt sie meist).
+
+**`calc()`-Expressions:**
+
+```html
+<div style="opacity:calc(1 - 1)">EVIL</div>
+```
+
+`calc(1 - 1) = 0`, aber wir parsen das nicht. Selten in der
+Realwelt; wenn doch, ist es ein Adversarial-Konstrukt — der
+LLM-Wrapper sieht den Text und filtert via Untrusted-Marker.
+
+**Property-Shorthand:**
+
+```html
+<div style="font:1px arial">EVIL</div>
+```
+
+`font:` ist Shorthand fuer `font-size`/`font-family`/`font-weight`.
+`_FONT_SIZE_DECL_RE` matched nur `font-size:`. Realwelt-Mail
+nutzt fast nie Shorthand fuer Hidden-Text — das wuerde
+beabsichtigt Adversarial sein.
+
+**Computed-Cascade ueber mehrere Tags:**
+
+```html
+<div style="font-size:1px"><span>EVIL</span></div>
+```
+
+`<span>` erbt font-size:1px. Unser Filter haengt am `<span>`-
+style-Attribut (leer), nicht am inherited-Style. Loesung waere
+ein echter Style-Walker -- nicht implementiert.
+
+**`@media`/`@supports`-Queries inline (Marketing-Style-Blocks):**
+
+Generell aus dem `<style>`-Subtree entfernt durch
+`_DECOMPOSE_TAGS`, daher kein Vektor. Falls jemand inline via
+attribute reinpasst -- nicht moeglich, `style=` erlaubt keine
+At-Rules.
+
+**Pragmatischer Stop-Punkt:** Weiter Iterieren bringt
+marginalen Sicherheitsgewinn, kostet Wartungsaufwand und
+false-positive-Risiko fuer normale Mails. Der bestehende
+LLM-Untrusted-Wrapper im System-Prompt (Konzept Abschnitt 1)
+weist Claude an, keine Anweisungen im Mail-Body auszufuehren,
+und die Pending-Confirmation-Pipeline (Phase 18+) verhindert
+ungewollte Folge-Aktionen. Beide Schichten bleiben primaere
+Verteidigung; der Sanitizer ist defense-in-depth.
+
+Sollten in Lera-Smoketests reale Bypass-Vektoren auftauchen,
+die nicht in dieser Liste stehen, ist das Grund fuer eine
+neue Phase (85.7+) — aber bewusst nicht praeemptiv.

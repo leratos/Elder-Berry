@@ -65,15 +65,18 @@ _HIDDEN_STYLE_PATTERNS: tuple[re.Pattern[str], ...] = (
     ),
 )
 
+# Decl-Regex mit optionalem !important-Capture (Phase 85.6).
+# CSS-Cascade-Algorithmus priorisiert !important-Deklarationen ueber
+# non-!important, unabhaengig von Reihenfolge. Capture-Group [1] ist
+# leer wenn keine Importance, sonst der Marker-String. Phase 85.5
+# loeste last-declaration-wins ohne Importance-Beruecksichtigung --
+# das war Bypass-Vektor fuer "opacity:0!important; opacity:1".
 _FONT_SIZE_RE: re.Pattern[str] = re.compile(
-    r"font-size\s*:\s*(\d+)\s*px", re.IGNORECASE
+    r"font-size\s*:\s*(\d+)\s*px\s*(!\s*important)?", re.IGNORECASE
 )
-
-# opacity: 0.0 / 0.00 / .0 zaehlen alle als komplett transparent
-# (CSS-Semantik). Numeric-Parse statt Regex-Literal, weil der frueher
-# verwendete Negative-Lookahead (?!\.) Decimal-Zero-Bypass durchliess
-# (Phase 85.4 PR-Review P2). Konsistent zu _FONT_SIZE_RE.
-_OPACITY_RE: re.Pattern[str] = re.compile(r"opacity\s*:\s*([\d.]+)", re.IGNORECASE)
+_OPACITY_RE: re.Pattern[str] = re.compile(
+    r"opacity\s*:\s*([\d.]+)\s*(!\s*important)?", re.IGNORECASE
+)
 
 # Legacy <font color="...">: weiss in beiden Schreibweisen.
 _COLOR_ATTR_HIDDEN: re.Pattern[str] = re.compile(
@@ -164,26 +167,39 @@ class HtmlEmailSanitizer:
         if any(p.search(style) for p in _HIDDEN_STYLE_PATTERNS):
             return True
         # CSS-Cascade: bei mehreren Deklarationen derselben Property
-        # in einem Style-Attribut gewinnt die LETZTE. findall() statt
-        # search(), damit z.B. "font-size:20px; font-size:1px" nicht
-        # ueber den Filter rutscht (Browser rendert 1px = hidden).
-        # Phase 85.5 schliesst Bypass-Vektor, der durch 85.4-P2-Fix
-        # (opacity) bzw. seit 85.1 (font-size) bestand.
-        font_matches = _FONT_SIZE_RE.findall(style)
-        if font_matches:
+        # gewinnt (1) die letzte !important-Decl, sonst (2) die letzte
+        # non-!important-Decl. findall() liefert Liste von Tupeln
+        # (value, importance_marker_or_empty). Phase 85.5 loeste nur
+        # last-wins ohne Importance, 85.6 schliesst den !important-
+        # Bypass.
+        font_value = self._resolve_decl(_FONT_SIZE_RE.findall(style))
+        if font_value is not None:
             try:
-                if int(font_matches[-1]) < self._min_font_size_px:
+                if int(font_value) < self._min_font_size_px:
                     return True
             except ValueError:
                 pass
-        opacity_matches = _OPACITY_RE.findall(style)
-        if opacity_matches:
+        opacity_value = self._resolve_decl(_OPACITY_RE.findall(style))
+        if opacity_value is not None:
             try:
-                if float(opacity_matches[-1]) == 0.0:
+                if float(opacity_value) == 0.0:
                     return True
             except ValueError:
                 pass
         return False
+
+    @staticmethod
+    def _resolve_decl(decls: list[tuple[str, str]]) -> str | None:
+        """Waehlt die CSS-effektive Deklaration aus einer Liste von
+        (value, importance_marker)-Tupeln. Importance gewinnt vor
+        Reihenfolge, sonst gilt last-declaration-wins.
+        """
+        if not decls:
+            return None
+        importants = [value for value, marker in decls if marker]
+        if importants:
+            return importants[-1]
+        return decls[-1][0]
 
     @staticmethod
     def _remove_hidden_color_attr(soup: BeautifulSoup) -> None:

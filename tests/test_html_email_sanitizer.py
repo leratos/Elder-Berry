@@ -193,6 +193,66 @@ class TestHiddenTextIsStripped:
         html = f'<p><span style="{style_attr}">VISIBLE_FONT_MULTI</span></p>'
         assert "VISIBLE_FONT_MULTI" in _sanitize(html), style_attr
 
+    @pytest.mark.parametrize(
+        "style_attr",
+        [
+            "opacity:0!important; opacity:1",
+            "opacity:1; opacity:0!important",
+            "opacity:0 !important; opacity:1",
+            "opacity:0!IMPORTANT; opacity:1",
+        ],
+    )
+    def test_opacity_important_hidden_wins(self, style_attr: str) -> None:
+        # Phase 85.6: !important schlaegt non-!important unabhaengig
+        # von Reihenfolge. Browser rendert opacity=0 (hidden).
+        html = f'<p>vorne <span style="{style_attr}">EVIL_IMPORTANT</span> hinten</p>'
+        result = _sanitize(html)
+        assert "EVIL_IMPORTANT" not in result, style_attr
+        assert "vorne" in result
+
+    @pytest.mark.parametrize(
+        "style_attr",
+        [
+            "opacity:0; opacity:1!important",
+            "opacity:1!important; opacity:0",
+            "opacity:0!important; opacity:1!important",
+        ],
+    )
+    def test_opacity_important_visible_wins(self, style_attr: str) -> None:
+        # Regressionsschutz: wenn letzte !important visible ist (oder
+        # einzige !important visible), bleibt Text sichtbar.
+        html = f'<p><span style="{style_attr}">VISIBLE_IMPORTANT</span></p>'
+        assert "VISIBLE_IMPORTANT" in _sanitize(html), style_attr
+
+    @pytest.mark.parametrize(
+        "style_attr",
+        [
+            "font-size:1px!important; font-size:14px",
+            "font-size:14px; font-size:1px!important",
+            "font-size:3px ! important; font-size:20px",
+        ],
+    )
+    def test_font_size_important_hidden_wins(self, style_attr: str) -> None:
+        # Phase 85.6: !important-Beruecksichtigung auch fuer font-size.
+        html = (
+            f'<p>vorne <span style="{style_attr}">EVIL_FONT_IMPORTANT</span> hinten</p>'
+        )
+        result = _sanitize(html)
+        assert "EVIL_FONT_IMPORTANT" not in result, style_attr
+        assert "vorne" in result
+
+    @pytest.mark.parametrize(
+        "style_attr",
+        [
+            "font-size:1px; font-size:14px!important",
+            "font-size:1px!important; font-size:14px!important",
+        ],
+    )
+    def test_font_size_important_visible_wins(self, style_attr: str) -> None:
+        # Regressionsschutz fuer font-size + !important visible.
+        html = f'<p><span style="{style_attr}">VISIBLE_FONT_IMPORTANT</span></p>'
+        assert "VISIBLE_FONT_IMPORTANT" in _sanitize(html), style_attr
+
     def test_font_size_at_threshold_survives(self) -> None:
         # Default-Threshold = 6 -> 6px ist NICHT < 6, also nicht filtern.
         html = '<p><span style="font-size:6px">JUST_READABLE</span></p>'
