@@ -21,10 +21,11 @@ import email.header
 import email.utils
 import imaplib
 import logging
-import re
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from typing import TYPE_CHECKING, Any, cast
+
+from elder_berry.tools.html_email_sanitizer import HtmlEmailSanitizer
 
 if TYPE_CHECKING:
     from elder_berry.core.secret_store import SecretStore
@@ -106,6 +107,7 @@ class IMAPEmailClient:
         port: int = 993,
         use_ssl: bool = True,
         mailbox: str = "INBOX",
+        sanitizer: HtmlEmailSanitizer | None = None,
     ) -> None:
         self._host = host
         self._user = user
@@ -113,6 +115,10 @@ class IMAPEmailClient:
         self._port = port
         self._use_ssl = use_ssl
         self._mailbox = mailbox
+        # Phase 85 V1: immer eine Sanitizer-Instanz halten, damit kein
+        # zweiter Code-Pfad ohne Filter ueberlebt. Tests koennen einen
+        # frischen Sanitizer (oder Stub) injecten.
+        self._sanitizer = sanitizer or HtmlEmailSanitizer()
 
     @classmethod
     def from_secret_store(cls, store: SecretStore) -> IMAPEmailClient:
@@ -329,7 +335,12 @@ class IMAPEmailClient:
             raw = msg_data[0][1]
             conn.logout()
 
-            return self._parse_email(raw, is_unread=False, msg_id=msg_id)
+            return self._parse_email(
+                raw,
+                self._sanitizer,
+                is_unread=False,
+                msg_id=msg_id,
+            )
 
         except Exception as e:
             logger.error("Mail UID %s abrufen fehlgeschlagen: %s", msg_id, e)
@@ -551,6 +562,7 @@ class IMAPEmailClient:
                     uid_str = uid.decode() if isinstance(uid, bytes) else str(uid)
                     parsed = self._parse_email(
                         raw,
+                        self._sanitizer,
                         is_unread=is_unread,
                         msg_id=uid_str,
                     )
@@ -569,10 +581,17 @@ class IMAPEmailClient:
     @staticmethod
     def _parse_email(
         raw: bytes,
+        sanitizer: HtmlEmailSanitizer,
         is_unread: bool = True,
         msg_id: str = "",
     ) -> EmailMessage | None:
-        """Parst eine rohe E-Mail in ein EmailMessage-Objekt."""
+        """Parst eine rohe E-Mail in ein EmailMessage-Objekt.
+
+        ``sanitizer`` ist Pflicht-Param (Phase 85 V2): wird an
+        ``_extract_body``/``_decode_payload`` durchgereicht. Aufrufer
+        mit ``self``-Zugriff geben ``self._sanitizer`` mit; Test-Helper
+        eine frische ``HtmlEmailSanitizer()``-Instanz.
+        """
         msg = email.message_from_bytes(raw)
 
         # Subject dekodieren
@@ -590,7 +609,7 @@ class IMAPEmailClient:
                 pass
 
         # Body extrahieren (Text/Plain bevorzugt)
-        body = IMAPEmailClient._extract_body(msg)
+        body = IMAPEmailClient._extract_body(msg, sanitizer)
 
         # Reply-Header für Threading extrahieren
         message_id_header = msg.get("Message-ID", "").strip()
@@ -622,10 +641,17 @@ class IMAPEmailClient:
         return " ".join(decoded)
 
     @staticmethod
-    def _extract_body(msg: email.message.Message) -> str:
+    def _extract_body(
+        msg: email.message.Message,
+        sanitizer: HtmlEmailSanitizer,
+    ) -> str:
         """Extrahiert den Text-Body aus einer E-Mail.
 
-        Bevorzugt text/plain, Fallback auf text/html (Tags entfernt).
+        Bevorzugt text/plain, Fallback auf text/html (durch
+        ``sanitizer`` in Plain-Text konvertiert). ``sanitizer`` ist
+        Pflicht-Param -- Phase 85 V1/V2: kein zweiter Code-Pfad ohne
+        Filter, keine versteckte Default-Konstruktion in statischen
+        Helpern.
         """
         if msg.is_multipart():
             text_parts = []
@@ -642,14 +668,23 @@ class IMAPEmailClient:
                 text_parts[0] if text_parts else (html_parts[0] if html_parts else None)
             )
             if target:
-                return IMAPEmailClient._decode_payload(target)
+                return IMAPEmailClient._decode_payload(target, sanitizer)
             return ""
         else:
-            return IMAPEmailClient._decode_payload(msg)
+            return IMAPEmailClient._decode_payload(msg, sanitizer)
 
     @staticmethod
-    def _decode_payload(part: email.message.Message) -> str:
-        """Dekodiert den Payload eines MIME-Parts."""
+    def _decode_payload(
+        part: email.message.Message,
+        sanitizer: HtmlEmailSanitizer,
+    ) -> str:
+        """Dekodiert den Payload eines MIME-Parts.
+
+        Bei text/html laeuft der Payload durch den ``sanitizer``
+        (Phase 85). Die alte naive Regex (``<[^>]+>`` -> Space) wurde
+        ersatzlos entfernt -- siehe
+        docs/concepts/phase-85-html-email-sanitizer.md Abschnitt 1.1.
+        """
         # get_payload(decode=True) returnt bytes laut docs (oder None
         # bei multipart). Stub deklariert Message[str,str] | Any | bytes
         # weil get_payload() ueberladen ist; mit decode=True ist nur
@@ -661,9 +696,7 @@ class IMAPEmailClient:
         charset = part.get_content_charset() or "utf-8"
         text = payload.decode(charset, errors="replace")
 
-        # HTML-Tags entfernen wenn nötig
         if part.get_content_type() == "text/html":
-            text = re.sub(r"<[^>]+>", " ", text)
-            text = re.sub(r"\s+", " ", text).strip()
+            return sanitizer.sanitize(text)
 
         return text.strip()
