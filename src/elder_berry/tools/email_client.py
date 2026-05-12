@@ -50,8 +50,17 @@ def _uid(
     return conn.uid(command, *args)  # type: ignore[arg-type]
 
 
-# Maximale Textlänge pro Mail für Zusammenfassung
-MAX_BODY_CHARS = 2000
+# Maximale Textlaenge pro Mail fuer Zusammenfassung.
+#
+# Phase 85.3 (2026-05-12): Hochgezogen von 2000 auf 8020.
+# Source of Truth fuer HTML-Bodies ist der Sanitizer-Cap
+# (HtmlEmailSanitizer.max_chars=8000 + 20-Zeichen Cap-Marker
+# "\n[...gekuerzt...]"). MAX_BODY_CHARS ist universelles
+# Sicherheitsnetz fuer beide Pfade -- text/plain hat keinen
+# vorgelagerten Cap, text/html schon. 8020 = sanitizer.max_chars
+# + len(_CAP_MARKER), damit Marker erhalten bleibt und kein
+# zweiter Cap-Pfad im _parse_email noetig ist.
+MAX_BODY_CHARS = 8020
 
 
 @dataclass(frozen=True)

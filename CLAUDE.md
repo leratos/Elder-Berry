@@ -82,6 +82,20 @@ Logiklücken und Fehler hin.
   in CATEGORY_LABELS + HELP_SECTIONS (beide in derselben Datei).
 - KEYWORD_MAP wird automatisch aus allen Handler.keywords aggregiert
 
+## E-MAIL-HANDLING
+- HTML-Mail-Bodies laufen IMMER durch `HtmlEmailSanitizer`
+  (`src/elder_berry/tools/html_email_sanitizer.py`, Phase 85).
+  Pfad: `IMAPEmailClient._decode_payload()` → bei `text/html`
+  `self._sanitizer.sanitize(text)`. Kein zweiter Code-Pfad.
+- Naive HTML-Tag-Strip-Regex (`re.sub(r"<[^>]+>", " ", ...)`) ist verboten –
+  laesst Inhalte von `<script>/<style>/<noscript>` und Hidden-Text
+  (`display:none`, weisse Schrift, Mini-Font) als Inject-Vektor durch.
+  Konzept: `docs/concepts/phase-85-html-email-sanitizer.md`.
+- `MAX_BODY_CHARS` in `email_client.py` ist universeller Sicherheits-Cap
+  (Plain + HTML); Source of Truth fuer HTML ist `HtmlEmailSanitizer.max_chars`
+  (Default 8000 + 20-Zeichen Cap-Marker). Aenderung an einer Stelle erzwingt
+  Abgleich mit der anderen.
+
 ## ARCHITEKTUR (Prinzipien)
 - OOP: jede Komponente als eigene Klasse, eine Klasse pro Datei (snake_case)
 - Klassen kommunizieren über definierte Interfaces, nicht direkt
