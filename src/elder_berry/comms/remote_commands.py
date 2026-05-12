@@ -160,6 +160,14 @@ def _strip_fillers(text: str) -> str:
 
     "Kannst du mir mal den Status zeigen" → "den Status"
     "bitte zeig mir status bitte" → "status"
+
+    ACHTUNG: Diese Funktion entfernt AUCH Suffix-Filler ("bitte", "mal",
+    "zeigen" etc. am Wortende). Das ist OK fuer den ``parse_command``-
+    Pfad, der den Text bewusst zur Routing-Erkennung normalisiert und
+    den Inhalt nicht durchschleift. Fuer den ``execute()``-Pfad, der
+    User-Content an die Sub-Handler reicht (clip:, notiz:, mail-reply
+    etc.), wuerde Suffix-Strip Daten verstuemmeln -- nimm dort
+    ``_strip_filler_prefix`` (siehe unten).
     """
     prev = None
     current = text.strip()
@@ -167,6 +175,47 @@ def _strip_fillers(text: str) -> str:
         prev = current
         current = _FILLER_PREFIX_RE.sub("", current).strip()
         current = _FILLER_SUFFIX_RE.sub("", current).strip()
+    return current or text.strip()
+
+
+def _strip_filler_prefix(text: str) -> str:
+    """Entfernt NUR Prefix-Filler -- nicht den Suffix.
+
+    Phase Filler-Strip-in-execute (2026-05-12, Option X4a):
+    der ``execute()``-Pfad in ``RemoteCommandHandler`` reicht den Text
+    an Sub-Handler weiter, die ihn als Command + User-Content
+    re-parsen. Wenn der User-Content auf einem Filler-Token endet
+    (z.B. ``clip: hallo bitte`` -- Clipboard soll wirklich ``hallo
+    bitte`` enthalten), wuerde der volle ``_strip_fillers`` den
+    Inhalt verstuemmeln. Deshalb gibt es diesen Prefix-only-Helper.
+
+    Asymmetrie zu ``_strip_fillers`` ist gewollt:
+
+    - ``parse_command``  -> ``_strip_fillers``      (Prefix + Suffix)
+      ... bewusste Normalisierung fuer Routing, Inhalt wird nicht
+      durchgereicht.
+    - ``execute()``      -> ``_strip_filler_prefix`` (nur Prefix)
+      ... User-Content darf am Ende erhalten bleiben.
+
+    Codex-Reviewer P2 (2026-05-11) hat diesen Bug-Mechanismus
+    aufgedeckt -- siehe ``docs/concepts/filler-strip-in-execute.md``.
+    Bitte NIEMALS ``_strip_fillers`` im execute()-Pfad verwenden,
+    sonst kehrt der Suffix-Verlust-Bug zurueck.
+
+    Beispiele:
+
+    - "kannst du mir mal clip: hallo bitte"
+      -> "clip: hallo bitte" (Prefix weg, Suffix bleibt -- richtig)
+    - "bitte notiz: meld dich mal"
+      -> "notiz: meld dich mal" (Suffix-"mal" bleibt erhalten)
+    - "zeig mir mal status"
+      -> "status" (Prefix weg, kein Suffix vorhanden)
+    """
+    prev = None
+    current = text.strip()
+    while prev != current:
+        prev = current
+        current = _FILLER_PREFIX_RE.sub("", current).strip()
     return current or text.strip()
 
 
@@ -457,6 +506,20 @@ class RemoteCommandHandler:
         Returns:
             CommandResult mit Ergebnis.
         """
+        # Phase Filler-Strip-in-execute (2026-05-12, Option X4a):
+        # parse_command strippt Filler vor dem Pattern-Match, aber Bridge
+        # reicht den ORIGINALEN msg.body an execute() durch. Die _cmd_*-
+        # Methoden re-parsen den Text mit demselben Pattern -- ohne
+        # Filler-Strip wuerde z.B. "bitte notiz löschen #1" zwar das
+        # Routing passieren, im Re-Parse aber an "bitte" haengen.
+        #
+        # WICHTIG: hier nur ``_strip_filler_prefix`` (Prefix-only), NICHT
+        # ``_strip_fillers``. Letzteres strippt auch Suffix-Filler und
+        # wuerde User-Content verstuemmeln (clip: hallo bitte -> clip:
+        # hallo). Codex-Reviewer P2 (2026-05-11) hat den Bug-Mechanismus
+        # aufgedeckt -- siehe docs/concepts/filler-strip-in-execute.md.
+        text = _strip_filler_prefix(raw_text)
+
         # Hilfe bleibt im Orchestrator (Phase 51.1)
         if command in ("hilfe", "help"):
             return CommandResult(command="hilfe", success=True, text=HELP_OVERVIEW)
@@ -464,8 +527,8 @@ class RemoteCommandHandler:
             return CommandResult(command="hilfe", success=True, text=HELP_TEXT)
         if command.startswith("hilfe:?"):
             unknown = command[len("hilfe:?") :]
-            text = f"Unbekannte Hilfe-Kategorie: '{unknown}'.\n\n" + HELP_OVERVIEW
-            return CommandResult(command="hilfe", success=True, text=text)
+            text_out = f"Unbekannte Hilfe-Kategorie: '{unknown}'.\n\n" + HELP_OVERVIEW
+            return CommandResult(command="hilfe", success=True, text=text_out)
         if command.startswith("hilfe:"):
             category = command.split(":", 1)[1]
             section = get_section(category)
@@ -476,7 +539,7 @@ class RemoteCommandHandler:
         # Handler-Lookup (alle Commands bei Init registriert)
         handler = self._command_handler_map.get(command)
         if handler:
-            return handler.execute(command, raw_text)
+            return handler.execute(command, text)
 
         return CommandResult(
             command=command,
