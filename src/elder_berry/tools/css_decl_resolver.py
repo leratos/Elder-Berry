@@ -34,7 +34,7 @@ Sanitizer-Kontext akzeptabler als False-Positives):
 
 from __future__ import annotations
 
-from collections.abc import Iterable
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 from typing import Final
 
@@ -54,6 +54,248 @@ from tinycss2.ast import (
 
 _HEX_WHITE: Final[frozenset[str]] = frozenset({"fff", "ffffff"})
 _RGB_WHITE_COMPONENT: Final[float] = 255.0
+
+# CSS-Wide-Keywords aus CSS-Cascade-Spec, gelten fuer JEDE Property.
+_CSS_WIDE_KEYWORDS: Final[frozenset[str]] = frozenset(
+    {"inherit", "initial", "unset", "revert", "revert-layer"}
+)
+
+# Math- und Reference-Functions: opaque-Werte, die wir nicht aufloesen,
+# aber als "syntaktisch valid fuer fast jede Property" anerkennen.
+_MATH_FUNCTIONS: Final[frozenset[str]] = frozenset(
+    {"calc", "min", "max", "clamp", "var", "env", "attr"}
+)
+
+# display-Werte aus CSS-Display-3-Spec. Liste ist gross, aber stabil.
+# CSS-wide-keywords werden separat geprueft.
+_DISPLAY_KEYWORDS: Final[frozenset[str]] = frozenset(
+    {
+        "none",
+        "block",
+        "inline",
+        "inline-block",
+        "flex",
+        "inline-flex",
+        "grid",
+        "inline-grid",
+        "flow-root",
+        "inline-flow-root",
+        "table",
+        "inline-table",
+        "table-row-group",
+        "table-header-group",
+        "table-footer-group",
+        "table-row",
+        "table-cell",
+        "table-column-group",
+        "table-column",
+        "table-caption",
+        "list-item",
+        "inline-list-item",
+        "contents",
+        "run-in",
+        "ruby",
+        "ruby-base",
+        "ruby-text",
+        "ruby-base-container",
+        "ruby-text-container",
+    }
+)
+
+# visibility-Werte aus CSS-Box-Model.
+_VISIBILITY_KEYWORDS: Final[frozenset[str]] = frozenset(
+    {"visible", "hidden", "collapse"}
+)
+
+# Absolute + relative font-size-Keywords aus CSS-Fonts-Spec.
+_FONT_SIZE_KEYWORDS: Final[frozenset[str]] = frozenset(
+    {
+        "xx-small",
+        "x-small",
+        "small",
+        "medium",
+        "large",
+        "x-large",
+        "xx-large",
+        "xxx-large",
+        "smaller",
+        "larger",
+    }
+)
+
+# Color-Functions, die wir als syntaktisch valid anerkennen.
+_COLOR_FUNCTIONS: Final[frozenset[str]] = frozenset(
+    {
+        "rgb",
+        "rgba",
+        "hsl",
+        "hsla",
+        "hwb",
+        "lab",
+        "lch",
+        "oklab",
+        "oklch",
+        "color",
+        "color-mix",
+    }
+)
+
+# CSS Named Colors (CSS-Color-3) + transparent/currentcolor.
+# Quelle: https://www.w3.org/TR/css-color-3/#svg-color
+_COLOR_NAMED: Final[frozenset[str]] = frozenset(
+    {
+        "transparent",
+        "currentcolor",
+        "aliceblue",
+        "antiquewhite",
+        "aqua",
+        "aquamarine",
+        "azure",
+        "beige",
+        "bisque",
+        "black",
+        "blanchedalmond",
+        "blue",
+        "blueviolet",
+        "brown",
+        "burlywood",
+        "cadetblue",
+        "chartreuse",
+        "chocolate",
+        "coral",
+        "cornflowerblue",
+        "cornsilk",
+        "crimson",
+        "cyan",
+        "darkblue",
+        "darkcyan",
+        "darkgoldenrod",
+        "darkgray",
+        "darkgreen",
+        "darkgrey",
+        "darkkhaki",
+        "darkmagenta",
+        "darkolivegreen",
+        "darkorange",
+        "darkorchid",
+        "darkred",
+        "darksalmon",
+        "darkseagreen",
+        "darkslateblue",
+        "darkslategray",
+        "darkslategrey",
+        "darkturquoise",
+        "darkviolet",
+        "deeppink",
+        "deepskyblue",
+        "dimgray",
+        "dimgrey",
+        "dodgerblue",
+        "firebrick",
+        "floralwhite",
+        "forestgreen",
+        "fuchsia",
+        "gainsboro",
+        "ghostwhite",
+        "gold",
+        "goldenrod",
+        "gray",
+        "green",
+        "greenyellow",
+        "grey",
+        "honeydew",
+        "hotpink",
+        "indianred",
+        "indigo",
+        "ivory",
+        "khaki",
+        "lavender",
+        "lavenderblush",
+        "lawngreen",
+        "lemonchiffon",
+        "lightblue",
+        "lightcoral",
+        "lightcyan",
+        "lightgoldenrodyellow",
+        "lightgray",
+        "lightgreen",
+        "lightgrey",
+        "lightpink",
+        "lightsalmon",
+        "lightseagreen",
+        "lightskyblue",
+        "lightslategray",
+        "lightslategrey",
+        "lightsteelblue",
+        "lightyellow",
+        "lime",
+        "limegreen",
+        "linen",
+        "magenta",
+        "maroon",
+        "mediumaquamarine",
+        "mediumblue",
+        "mediumorchid",
+        "mediumpurple",
+        "mediumseagreen",
+        "mediumslateblue",
+        "mediumspringgreen",
+        "mediumturquoise",
+        "mediumvioletred",
+        "midnightblue",
+        "mintcream",
+        "mistyrose",
+        "moccasin",
+        "navajowhite",
+        "navy",
+        "oldlace",
+        "olive",
+        "olivedrab",
+        "orange",
+        "orangered",
+        "orchid",
+        "palegoldenrod",
+        "palegreen",
+        "paleturquoise",
+        "palevioletred",
+        "papayawhip",
+        "peachpuff",
+        "peru",
+        "pink",
+        "plum",
+        "powderblue",
+        "purple",
+        "rebeccapurple",
+        "red",
+        "rosybrown",
+        "royalblue",
+        "saddlebrown",
+        "salmon",
+        "sandybrown",
+        "seagreen",
+        "seashell",
+        "sienna",
+        "silver",
+        "skyblue",
+        "slateblue",
+        "slategray",
+        "slategrey",
+        "snow",
+        "springgreen",
+        "steelblue",
+        "tan",
+        "teal",
+        "thistle",
+        "tomato",
+        "turquoise",
+        "violet",
+        "wheat",
+        "white",
+        "whitesmoke",
+        "yellow",
+        "yellowgreen",
+    }
+)
 
 
 @dataclass(frozen=True)
@@ -188,17 +430,32 @@ def _cascade_resolve(decls: Iterable[Declaration]) -> list[ResolvedDecl]:
 
     Regel (verkuerzt aus CSS-Cascade-Spec):
 
-    1. ``!important``-Decls schlagen non-important Decls derselben
+    1. Syntaktisch parsebare aber semantisch invalide Decls werden
+       fuer Properties, die wir ueberhaupt validieren (siehe
+       ``_VALIDATORS``), uebersprungen -- die vorherige gueltige
+       Decl bleibt aktiv. Phase 87.1.1 schliesst damit den
+       invalid-later-value-Bypass aus Codex-PR-Review (z.B.
+       ``opacity:0; opacity:bogus`` wuerde sonst die Hidden-Decl
+       ueberschreiben).
+    2. ``!important``-Decls schlagen non-important Decls derselben
        Property.
-    2. Innerhalb derselben Importance gilt ``last-declaration-wins``.
+    3. Innerhalb derselben Importance gilt ``last-declaration-wins``.
     """
     resolved: dict[str, ResolvedDecl] = {}
     insertion_order: list[str] = []
     for decl in decls:
         name = str(decl.lower_name)
+        value_tokens = _strip_value_whitespace(decl.value)
+        validator = _VALIDATORS.get(name)
+        if validator is not None and not validator(value_tokens):
+            # Browser-Spec: invalid declaration wird ignoriert,
+            # vorherige gueltige Decl bleibt aktiv. Ohne diesen
+            # Skip wuerde "opacity:0; opacity:bogus" die hidden-
+            # Decl ueberschreiben und EVIL durchlassen.
+            continue
         new = ResolvedDecl(
             name=name,
-            value_tokens=_strip_value_whitespace(decl.value),
+            value_tokens=value_tokens,
             important=bool(decl.important),
         )
         existing = resolved.get(name)
@@ -249,3 +506,110 @@ def _rgb_args_are_white(arguments: list[Node]) -> bool:
         if float(arg.value) != _RGB_WHITE_COMPONENT:
             return False
     return True
+
+
+# --- Recognition-Validatoren (Phase 87.1.1) ------------------------------
+#
+# Pro Hidden-Detection-Property eine Funktion, die ``True`` liefert, wenn
+# die Token-Liste einen syntaktisch erwarteten Wert fuer diese Property
+# enthaelt. Wird vom Cascade-Resolver genutzt, um Browser-konform
+# "invalid declarations werden ignoriert" umzusetzen.
+#
+# Diese Funktionen sind absichtlich tolerant: alles, was wir nicht
+# eindeutig als invalid erkennen, wird recognized. False-Negative bei
+# der Recognition (= Decl als invalid markiert, obwohl Browser sie als
+# valid sieht) ist unproblematisch, weil die vorherige gueltige Decl
+# dann aktiv bleibt -- konservativ in Richtung Hidden-Detection.
+
+
+def _is_function_recognized_as_value(name: str) -> bool:
+    """Math- und Reference-Functions sind opaque, aber syntaktisch
+    valid fuer fast jede Property -- z.B. ``calc(...)``, ``var(--x)``.
+    """
+    return name in _MATH_FUNCTIONS
+
+
+def _is_recognized_opacity(tokens: list[Node]) -> bool:
+    first = _first_non_whitespace(tokens)
+    if first is None:
+        return False
+    if isinstance(first, (NumberToken, PercentageToken)):
+        return True
+    if isinstance(first, IdentToken):
+        return first.lower_value in _CSS_WIDE_KEYWORDS
+    if isinstance(first, FunctionBlock):
+        return _is_function_recognized_as_value(first.lower_name)
+    return False
+
+
+def _is_recognized_font_size(tokens: list[Node]) -> bool:
+    first = _first_non_whitespace(tokens)
+    if first is None:
+        return False
+    if isinstance(first, (DimensionToken, PercentageToken)):
+        return True
+    if isinstance(first, IdentToken):
+        return (
+            first.lower_value in _FONT_SIZE_KEYWORDS
+            or first.lower_value in _CSS_WIDE_KEYWORDS
+        )
+    if isinstance(first, FunctionBlock):
+        return _is_function_recognized_as_value(first.lower_name)
+    return False
+
+
+def _is_recognized_display(tokens: list[Node]) -> bool:
+    first = _first_non_whitespace(tokens)
+    if first is None:
+        return False
+    if isinstance(first, IdentToken):
+        return (
+            first.lower_value in _DISPLAY_KEYWORDS
+            or first.lower_value in _CSS_WIDE_KEYWORDS
+        )
+    if isinstance(first, FunctionBlock):
+        return _is_function_recognized_as_value(first.lower_name)
+    return False
+
+
+def _is_recognized_visibility(tokens: list[Node]) -> bool:
+    first = _first_non_whitespace(tokens)
+    if first is None:
+        return False
+    if isinstance(first, IdentToken):
+        return (
+            first.lower_value in _VISIBILITY_KEYWORDS
+            or first.lower_value in _CSS_WIDE_KEYWORDS
+        )
+    if isinstance(first, FunctionBlock):
+        return _is_function_recognized_as_value(first.lower_name)
+    return False
+
+
+def _is_recognized_color(tokens: list[Node]) -> bool:
+    first = _first_non_whitespace(tokens)
+    if first is None:
+        return False
+    if isinstance(first, HashToken):
+        # Akzeptiert jeden HashToken; semantische Korrektheit (3/6/8-stelliges
+        # Hex, gueltige Hex-Zeichen) ist Browser-Aufgabe. Hidden-Detection
+        # entscheidet sich an color_is_white und filtert nur 'fff'/'ffffff'.
+        return True
+    if isinstance(first, IdentToken):
+        return (
+            first.lower_value in _COLOR_NAMED or first.lower_value in _CSS_WIDE_KEYWORDS
+        )
+    if isinstance(first, FunctionBlock):
+        return first.lower_name in _COLOR_FUNCTIONS or _is_function_recognized_as_value(
+            first.lower_name
+        )
+    return False
+
+
+_VALIDATORS: Final[dict[str, Callable[[list[Node]], bool]]] = {
+    "opacity": _is_recognized_opacity,
+    "font-size": _is_recognized_font_size,
+    "display": _is_recognized_display,
+    "visibility": _is_recognized_visibility,
+    "color": _is_recognized_color,
+}

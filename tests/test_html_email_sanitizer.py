@@ -388,6 +388,33 @@ class TestHiddenTextIsStripped:
     @pytest.mark.parametrize(
         "style_attr",
         [
+            # Codex-Folgefinding aus 87.1-PR-Review (Phase 87.1.1):
+            # Browser ignoriert invalid declarations, vorherige
+            # gueltige Decl bleibt aktiv. Resolver macht jetzt eine
+            # Recognition-Pruefung vor dem Cascade-Ueberschreiben.
+            "opacity:0; opacity:bogus",
+            "opacity:0; opacity:notavalue",
+            "opacity:0; opacity:foo bar baz",
+            "display:none; display:bogus",
+            "display:none; display:notavalue",
+            "font-size:1px; font-size:bogus",
+            "font-size:5px; font-size:notavalue",
+            # Invalid auch in mittlerer Position:
+            "opacity:1; opacity:bogus; opacity:0",
+            # Mit !important + invalid letztem Wert:
+            "opacity:0!important; opacity:bogus",
+        ],
+    )
+    def test_invalid_later_value_does_not_bypass_hidden(self, style_attr: str) -> None:
+        html = f'<p>vorne <span style="{style_attr}">EVIL_INVALID</span> hinten</p>'
+        result = _sanitize(html)
+        assert "EVIL_INVALID" not in result, style_attr
+        assert "vorne" in result
+        assert "hinten" in result
+
+    @pytest.mark.parametrize(
+        "style_attr",
+        [
             "opacity:0/*; opacity:1",
             "font-size:1px/*; font-size:14px",
         ],
