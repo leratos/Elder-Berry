@@ -31,16 +31,22 @@ damit thread-safe.
 
 from __future__ import annotations
 
+import itertools
 import logging
 import re
 
+import tinycss2
 from bs4 import BeautifulSoup, Comment, Tag
 
 from elder_berry.tools.css_decl_resolver import (
+    RGB,
+    background_color_rgb,
+    background_is_dark,
     color_is_white,
     display_is_none,
     font_size_below_threshold,
     opacity_is_zero,
+    parse_color_to_rgb,
     parse_inline_style,
     visibility_is_hidden,
 )
@@ -163,7 +169,7 @@ class HtmlEmailSanitizer:
             style = tag.get("style", "")
             if not isinstance(style, str):
                 continue
-            if self._style_is_hidden(style):
+            if self._style_is_hidden(tag, style):
                 to_remove.append(tag)
         for tag in to_remove:
             if getattr(tag, "attrs", None) is None:
@@ -173,7 +179,7 @@ class HtmlEmailSanitizer:
                 continue
             tag.decompose()
 
-    def _style_is_hidden(self, style: str) -> bool:
+    def _style_is_hidden(self, tag: Tag, style: str) -> bool:
         # Phase 86.2: tinycss2-basierter Resolver ersetzt die Regex-
         # Pipeline der 85.x-Sub-Etappen. parse_inline_style fuehrt
         # Tokenisierung, Kommentar-Strip (auch unterminierte /*...EOF)
@@ -181,6 +187,9 @@ class HtmlEmailSanitizer:
         # in einem Schritt aus und liefert pro Property genau eine
         # ResolvedDecl. Die Wert-Pruefer arbeiten direkt auf den
         # tinycss2-Token-Listen.
+        # Phase 87.B-2: Signatur um ``tag`` erweitert, damit der
+        # color:white-Check den Walker-Pfad-Background des Tags
+        # konsultieren kann (V3-Self + V10-Inheritance-Fix).
         by_name = {decl.name: decl for decl in parse_inline_style(style)}
 
         opacity = by_name.get("opacity")
@@ -202,14 +211,77 @@ class HtmlEmailSanitizer:
             return True
 
         color = by_name.get("color")
-        if color is not None and color_is_white(color.value_tokens):
+        if (
+            color is not None
+            and color_is_white(color.value_tokens)
+            and self._color_is_hidden_in_context(tag)
+        ):
             return True
 
         return False
 
-    @staticmethod
-    def _remove_hidden_color_attr(soup: BeautifulSoup) -> None:
+    def _compute_effective_background_rgb(self, tag: Tag) -> RGB | None:
+        """Walker: traversiert Tag + Vorfahren, sucht den naechsten
+        explizit gesetzten Background. Erstes Hit gewinnt.
+
+        Beruecksichtigt zwei Quellen pro Ancestor (Reihenfolge):
+
+        1. Legacy ``bgcolor``-HTML-Attribut (Marketing-Mails fuer
+           Outlook-Kompatibilitaet).
+        2. CSS ``background-color`` aus dem ``style``-Attribut.
+
+        ``transparent``/``currentcolor`` zaehlen NICHT als gesetzter
+        Background (``parse_color_to_rgb`` liefert ``None``) -- der
+        Walker geht in dem Fall zur naechsten Ebene hoch. Phase 87.B-3
+        nutzt diesen Helper auch fuer die visible-island-Pruefung im
+        Hidden-Strip-Unwrap.
+        """
+        for ancestor in itertools.chain([tag], tag.parents):
+            bgcolor = ancestor.get("bgcolor")
+            if isinstance(bgcolor, str) and bgcolor:
+                rgb = parse_color_to_rgb(tinycss2.parse_component_value_list(bgcolor))
+                if rgb is not None:
+                    return rgb
+            style = ancestor.get("style", "")
+            if isinstance(style, str) and "background-color" in style.lower():
+                rgb = background_color_rgb(parse_inline_style(style))
+                if rgb is not None:
+                    return rgb
+        return None
+
+    def _color_is_hidden_in_context(self, tag: Tag) -> bool:
+        """``True``, wenn ein als weiss erkannter Tag-Color im konkreten
+        Walker-Kontext als hidden gilt.
+
+        Regeln:
+
+        * Walker findet dunklen Background → not hidden (weiss-auf-
+          dunkel ist sichtbar).
+        * Walker findet hellen Background → hidden (weiss-auf-hell).
+        * Walker findet keinen Background (transparent/var/keine
+          Vorfahren-Decl) → hidden (Default-weiss-Mail-Body-Annahme,
+          Status-Quo erhalten; siehe Konzept 87.B Frage B).
+        """
+        bg = self._compute_effective_background_rgb(tag)
+        if bg is None:
+            return True
+        return not background_is_dark(bg)
+
+    def _remove_hidden_color_attr(self, soup: BeautifulSoup) -> None:
+        # Phase 87.B-2: vor dem Strip den Walker-Pfad-Background
+        # konsultieren, damit <font color="white"> in einem dunklen
+        # Container nicht faelschlich gestrippt wird. Zwei-Phasen-
+        # Schleife analog zu _remove_hidden_styled (verschachtelte
+        # hidden-Container -> tote Tags).
+        to_remove: list[Tag] = []
         for tag in soup.find_all(attrs={"color": _COLOR_ATTR_HIDDEN}):
+            if getattr(tag, "attrs", None) is None:
+                continue
+            if self._color_is_hidden_in_context(tag):
+                to_remove.append(tag)
+        for tag in to_remove:
+            if getattr(tag, "attrs", None) is None:
+                continue
             tag.decompose()
 
     def _normalize_and_cap(self, text: str) -> str:
