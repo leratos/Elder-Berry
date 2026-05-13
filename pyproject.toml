@@ -152,6 +152,13 @@ dev = [
     "mypy>=1.13",      # Phase 76: Type-Checking core/
     "types-PyYAML",    # Stubs fuer YAML-Konfiguration
     "types-psutil",    # Stubs fuer system/info.py + startup_summary.py
+    # Phase 86.2.1 (Codex-Folgefix): IMAPEmailClient importiert top-level
+    # HtmlEmailSanitizer, der bs4 + tinycss2 braucht. Ohne diese Deps in
+    # der dev-Gruppe scheitert `pip install -e .[dev]` und CI an dem
+    # transitiven Import. Beide Pakete sind Pure-Python und klein, der
+    # Aufwand fuer dev-Setup ist gegen die Test-Coverage vernachlaessigbar.
+    "beautifulsoup4>=4.12",
+    "tinycss2>=1.3.0",
 ]
 
 [tool.setuptools.packages.find]

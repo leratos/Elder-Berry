@@ -315,6 +315,32 @@ class TestHiddenTextIsStripped:
     @pytest.mark.parametrize(
         "style_attr",
         [
+            "background-color:#fff",
+            "background-color:white",
+            "background-color:#fff;color:#000",
+            "background:#fff",
+        ],
+    )
+    def test_background_color_is_not_treated_as_hidden(self, style_attr: str) -> None:
+        # Codex P2 aus dem 86.2-PR-Review: in der 85.x-Regex-Pipeline
+        # matched _HIDDEN_STYLE_PATTERNS "color:#fff" als Substring in
+        # "background-color:#fff", was den ganzen Container gedropped
+        # hat -- inkl. legitimem Body. 86.2 nutzt tinycss2-Property-
+        # Lookup, der "background-color" und "color" als unterschied-
+        # liche Properties behandelt. Regression-Schutz, damit kein
+        # zukuenftiges Refactoring die substring-Bug-Klasse wieder
+        # einfuehrt.
+        html = (
+            f'<div style="{style_attr}">'
+            "<p>SICHTBARER_BODY mit weissem Hintergrund</p>"
+            "</div>"
+        )
+        result = _sanitize(html)
+        assert "SICHTBARER_BODY" in result, style_attr
+
+    @pytest.mark.parametrize(
+        "style_attr",
+        [
             "opacity:0/*; opacity:1",
             "font-size:1px/*; font-size:14px",
         ],
