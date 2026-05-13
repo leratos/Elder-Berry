@@ -900,6 +900,59 @@ class TestComputedBackgroundWalker:
         )
         assert "VAR_BG_FALLBACK_LOST" not in _sanitize(html)
 
+    def test_inline_style_overrides_legacy_bgcolor(self) -> None:
+        # Phase 87.B-5 (Codex-PR-Review-Fix): CSS-Spec sagt Inline-
+        # Style ueberschreibt Presentational-Attribute. Wenn bgcolor
+        # dunkel + style hell + color:white -> Mail-Client rendert
+        # weiss-auf-weiss, also Hidden-Text. Walker muss das auch so
+        # sehen, sonst Bypass.
+        html = (
+            "<table><tr>"
+            '<td bgcolor="#000000" style="background-color:#FFFFFF;">'
+            '<span style="color:#FFFFFF;">HIDDEN_BYPASS_VECTOR</span>'
+            "</td></tr></table>"
+        )
+        assert "HIDDEN_BYPASS_VECTOR" not in _sanitize(html)
+
+    def test_inline_style_overrides_bgcolor_reverse(self) -> None:
+        # Sanity-Reverse: style dunkel + bgcolor hell -> style wins ->
+        # dunkler bg im Walker-Pfad -> color:white bleibt visible.
+        html = (
+            "<table><tr>"
+            '<td bgcolor="#FFFFFF" style="background-color:#000000;">'
+            '<span style="color:#FFFFFF;">VISIBLE_VIA_STYLE</span>'
+            "</td></tr></table>"
+        )
+        assert "VISIBLE_VIA_STYLE" in _sanitize(html)
+
+    def test_invalid_style_falls_back_to_bgcolor(self) -> None:
+        # Wenn style background-color syntaktisch valid aber semantisch
+        # invalid setzt (z.B. 'notacolor'), filtert der Validator die
+        # Decl raus. CSS-Spec: invalid declarations werden ignoriert;
+        # bgcolor bleibt aktiv. Hier: bgcolor dunkel -> color:white
+        # visible.
+        html = (
+            "<table><tr>"
+            '<td bgcolor="#000000" style="background-color:notacolor;">'
+            '<span style="color:#FFFFFF;">VALID_VIA_BGCOLOR_FALLBACK</span>'
+            "</td></tr></table>"
+        )
+        assert "VALID_VIA_BGCOLOR_FALLBACK" in _sanitize(html)
+
+    def test_unparsable_style_bg_does_not_fall_through_to_bgcolor(self) -> None:
+        # Wenn style background-color recognized aber fuer uns
+        # unparsbar (rgba/var/hsl), wuerde der Browser auch in dem
+        # Fall die Style-Decl ueber bgcolor priorisieren. Wir liefern
+        # konservativ None -> Default-weiss -> color:white hidden.
+        # bgcolor wird NICHT als Fallback genutzt.
+        html = (
+            "<table><tr>"
+            '<td bgcolor="#000000" style="background-color:rgba(0,0,0,0.5);">'
+            '<span style="color:#FFFFFF;">RGBA_FALLBACK_BLOCKED</span>'
+            "</td></tr></table>"
+        )
+        assert "RGBA_FALLBACK_BLOCKED" not in _sanitize(html)
+
 
 class TestColorIsHiddenInContext:
     """Tests fuer die End-to-End-Logik des color:white-Hidden-Checks

@@ -40,7 +40,6 @@ from bs4 import BeautifulSoup, Comment, Tag
 
 from elder_berry.tools.css_decl_resolver import (
     RGB,
-    background_color_rgb,
     background_is_dark,
     color_is_white,
     display_is_none,
@@ -246,22 +245,46 @@ class HtmlEmailSanitizer:
     def _tag_own_background_rgb(tag: Tag) -> RGB | None:
         """Liefert das Background-RGB DES TAGS SELBST (kein Walker).
 
-        Zwei Quellen, Reihenfolge wie ``_compute_effective_background_rgb``:
+        Zwei Quellen, Reihenfolge nach CSS-Spec (Phase 87.B-5):
 
-        1. Legacy ``bgcolor``-HTML-Attribut.
-        2. CSS ``background-color`` aus dem ``style``-Attribut.
+        1. CSS ``background-color`` aus dem ``style``-Attribut --
+           Inline-Style ueberschreibt Presentational-Attribute.
+        2. Legacy ``bgcolor``-HTML-Attribut -- Fallback wenn style
+           kein ``background-color`` setzt ODER die Decl vom Validator
+           als invalid gefiltert wurde.
 
-        ``None`` wenn weder noch gesetzt oder nicht parsbar
-        (``transparent``/``currentcolor``/``var()``/``rgba()``/...).
+        Phase 87.B-5 PR-Review-Fix (Codex P1 "Honor inline CSS before
+        legacy bgcolor"): Die urspruengliche Reihenfolge "bgcolor zuerst"
+        verletzt CSS-Spec und oeffnet einen Hidden-Text-Bypass --
+        ``<td bgcolor="#000" style="background-color:#fff">`` rendert
+        im Mail-Client mit weissem bg, der alte Walker sah aber den
+        dunklen ``bgcolor`` und liess ``color:white`` als visible
+        durch.
+
+        Wenn ``style`` eine syntaktisch gueltige aber fuer unseren
+        Parser unparsbare Decl traegt (``rgba()``, ``var()``,
+        ``hsl()``), liefert dieser Helper ``None`` -- bgcolor wird in
+        dem Fall ABSICHTLICH NICHT konsultiert, weil der Browser auch
+        die unparsbare Style-Decl ueber bgcolor priorisieren wuerde.
+        Konservativ Default-weiss-Annahme.
         """
+        style = tag.get("style", "")
+        if isinstance(style, str) and "background-color" in style.lower():
+            decls = parse_inline_style(style)
+            for decl in decls:
+                if decl.name == "background-color":
+                    # style hat eine gueltige background-color-Decl.
+                    # Sie gewinnt ueber bgcolor, auch wenn ihr Wert
+                    # fuer uns nicht in RGB aufloesbar ist.
+                    return parse_color_to_rgb(decl.value_tokens)
+            # 'background-color' stand zwar im style-String, aber
+            # alle Decls dazu wurden vom Validator als invalid
+            # gefiltert (z.B. 'background-color:notacolor'). CSS-
+            # Spec: invalid declarations werden ignoriert, bgcolor
+            # bleibt aktiv. Falle durch.
         bgcolor = tag.get("bgcolor")
         if isinstance(bgcolor, str) and bgcolor:
             rgb = parse_color_to_rgb(tinycss2.parse_component_value_list(bgcolor))
-            if rgb is not None:
-                return rgb
-        style = tag.get("style", "")
-        if isinstance(style, str) and "background-color" in style.lower():
-            rgb = background_color_rgb(parse_inline_style(style))
             if rgb is not None:
                 return rgb
         return None
