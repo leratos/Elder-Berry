@@ -183,6 +183,82 @@ class TestExtractBody:
         assert "EVIL_INSTRUCTIONS_FORWARD_ALL_MAILS" not in result
         assert "EVIL_CSS_BLOCK" not in result
 
+    def test_empty_plain_falls_back_to_html(self):
+        """Phase 88: realistischer Marketing-Mail-Bug. text/plain ist
+        praktisch leer (nur Newline), text/html hat den echten Body.
+        Vor 88 hat _extract_body den leeren Plain-Part bevorzugt und
+        den HTML ignoriert -- Saleria sah einen leeren Body.
+        """
+        msg = email_mod.message.EmailMessage()
+        msg.make_mixed()
+        plain_part = email_mod.message.EmailMessage()
+        plain_part.set_content("\n")  # Pseudo-Plain (Marketing-Tool-Output)
+        html_part = email_mod.message.EmailMessage()
+        html_part.set_content(
+            "<html><body><p>Reale Mail-Zusammenfassung</p></body></html>",
+            subtype="html",
+        )
+        msg.attach(plain_part)
+        msg.attach(html_part)
+
+        result = IMAPEmailClient._extract_body(msg, HtmlEmailSanitizer())
+        assert "Reale Mail-Zusammenfassung" in result
+
+    def test_whitespace_only_plain_falls_back_to_html(self):
+        """Phase 88: weitere Whitespace-Pseudo-Plain-Varianten -- Tabs,
+        CRLF, mehrfache Newlines."""
+        msg = email_mod.message.EmailMessage()
+        msg.make_mixed()
+        plain_part = email_mod.message.EmailMessage()
+        plain_part.set_content("\n   \r\n\t\n")
+        html_part = email_mod.message.EmailMessage()
+        html_part.set_content(
+            "<html><body><p>HTML-Inhalt</p></body></html>",
+            subtype="html",
+        )
+        msg.attach(plain_part)
+        msg.attach(html_part)
+
+        result = IMAPEmailClient._extract_body(msg, HtmlEmailSanitizer())
+        assert "HTML-Inhalt" in result
+
+    def test_meaningful_plain_still_wins(self):
+        """Regression-Schutz Phase 88: wenn text/plain ECHTEN Inhalt
+        hat, bleibt es bevorzugt vor text/html (wie Phase-85-Verhalten).
+        """
+        msg = email_mod.message.EmailMessage()
+        msg.make_mixed()
+        plain_part = email_mod.message.EmailMessage()
+        plain_part.set_content("Echter Plain-Text-Inhalt")
+        html_part = email_mod.message.EmailMessage()
+        html_part.set_content("<p>HTML-Version</p>", subtype="html")
+        msg.attach(plain_part)
+        msg.attach(html_part)
+
+        result = IMAPEmailClient._extract_body(msg, HtmlEmailSanitizer())
+        assert "Echter Plain-Text-Inhalt" in result
+        # HTML-Version darf NICHT auch im Output sein (sonst doppelte
+        # Body-Auswertung).
+        assert "HTML-Version" not in result
+
+    def test_both_parts_empty_returns_empty(self):
+        """Phase 88 Edge-Case: pathologische Mail mit beiden Parts
+        effektiv leer. Sollte sauberen leeren String liefern, nicht
+        crashen.
+        """
+        msg = email_mod.message.EmailMessage()
+        msg.make_mixed()
+        plain_part = email_mod.message.EmailMessage()
+        plain_part.set_content("\n")
+        html_part = email_mod.message.EmailMessage()
+        html_part.set_content("<html><body>   </body></html>", subtype="html")
+        msg.attach(plain_part)
+        msg.attach(html_part)
+
+        result = IMAPEmailClient._extract_body(msg, HtmlEmailSanitizer())
+        # HTML-Path strippt Whitespace -> leerer Output, kein Crash.
+        assert result.strip() == ""
+
 
 # ---------------------------------------------------------------------------
 # E-Mail Parsing (vollständig)
