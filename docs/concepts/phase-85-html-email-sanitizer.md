@@ -374,6 +374,13 @@ Test festgeschrieben – schlägt jemand später eine bessere Heuristik
 vor (Background-Kontext-Check), schlägt der Test bewusst fehl und
 zwingt zur Diskussion.
 
+**Update V11 (Phase 87.B, 2026-05-13):** Die Diskussion ist passiert,
+die Heuristik existiert. `_compute_effective_background_rgb`
+traversiert den Walker-Pfad und entscheidet ueber WCAG-Luminanz, ob
+ein Background als dunkel zaehlt. Der Test wurde in Phase 87.B-2 zu
+`test_dark_theme_white_text_survives` umgedreht. Section 11 V11
+fuehrt die strukturelle Aufloesung im Detail aus.
+
 `<font color="#fff">EVIL</font>` ist Legacy-HTML und wird über das
 `color`-**Attribut** (nicht `style`) ausgedrückt. Separater Pass –
 inkl. `color="white"`, das die `[^#fff...]`-Regex aus dem Entwurf
@@ -896,6 +903,68 @@ Phase 85 gilt als abgeschlossen, wenn:
 
 ## 11. Known CSS-Limitations (post Phase 86)
 
+**Update V11 (2026-05-13):** Phase 87.B abgeschlossen
+(`docs/concepts/phase-87-b-computed-background-heuristik.md`).
+Der Sanitizer kennt jetzt einen computed-background-Walker fuer
+`color:white`-Hidden-Checks. Damit sind zwei vormalige
+Limitations strukturell geschlossen:
+
+* **V3-Limitation Dark-Theme-False-Positive (Phase 85 Revision):**
+  weisser Text auf schwarzem `bgcolor`-Body wurde bisher
+  gestrippt, obwohl er fuer den Empfaenger lesbar war. Ist
+  weg. Der vormalige Test
+  `test_dark_theme_white_text_is_stripped_known_limitation`
+  wurde umgedreht und heisst jetzt
+  `test_dark_theme_white_text_survives`.
+* **V3-Self-Vektor (87.B Realwelt-Befund Fewo-Direkt):** ein
+  `<a>` mit eigenem dunklen `background-color` + `color:#FFFFFF`
+  am gleichen Tag (Marketing-Buttons). Walker findet den
+  eigenen bg, Text bleibt erhalten.
+* **V10-Inheritance fuer `background-color` (Section 11 V10
+  Computed-Cascade-Hinweis unten):** Container-bg dunkel + Child
+  mit `color:white` ohne eigenen bg. Walker traversiert
+  `[tag, *tag.parents]` und findet den Container-bg.
+* **Eltern-Strip-Falle (87.B-3 Implementations-Befund):** ein
+  hidden `color:white`-Eltern-Tag (z.B. MSO-Outlook-Hack-`<p>`)
+  riss visible Children mit eigenem dunklen bg via
+  `decompose()` mit. `_strip_hidden_color_tag` rettet jetzt
+  Dark-bg-Islands per `extract()` an die Eltern-Ebene, bevor
+  der Strip-Target faellt. Reine Spam-Text-Nodes ohne Island-
+  Wrapper bleiben gestrippt (Anti-Bypass).
+
+**Was 87.B explizit NICHT macht** (Restrisiken aus dem 87.B-
+Konzept):
+
+* **Computed-Cascade fuer andere Properties.** Der Walker ist
+  ausschliesslich `background-color`-spezifisch.
+  `font-size`-Inheritance (siehe "Computed-Cascade ueber
+  mehrere Tags" weiter unten) bleibt Limitation. Analog
+  `opacity`-Inheritance.
+* **Color-Inheritance.** Eltern-Tag mit `color:white`, Child
+  ohne eigenes `color` -- der Hidden-Check feuert nur bei
+  explizitem `color:white` am Tag selbst.
+* **Unwrap nur fuer Color-Hidden.** Visible Islands in
+  `opacity:0`/`display:none`/`visibility:hidden`/
+  `font-size:1px`-Wrappern werden nicht gerettet -- diese
+  Hidden-Pfade rendern im Mail-Client gar nicht; konservatives
+  Default-Verhalten weiterhin `decompose()`.
+* **`background:` Shorthand, `background-image`, CSS-Variablen
+  im bg.** Walker liest nur `background-color`-Decls. Reale
+  Marketing-Mails nutzen fast immer `background-color` (Outlook-
+  Kompatibilitaet), aber falls ein Vektor auftaucht ist die
+  Erweiterung trivial (`_tag_own_background_rgb` in
+  `html_email_sanitizer.py`).
+
+**87.B-5 Inline-Style-vs-bgcolor-Reihenfolge (Codex-PR-Review
+P1):** CSS-Spec sagt Inline-Style ueberschreibt
+Presentational-Attribute. Der Walker prueft jetzt erst
+`style:background-color`, dann `bgcolor`-Fallback. Vorher war
+die Reihenfolge invertiert, was einen Hidden-Text-Bypass via
+`<td bgcolor="#000" style="background-color:#fff">` ermoeglicht
+haette. Fix-Commit `29c9109`.
+
+---
+
 **Update V10 (2026-05-13):** Phase 86 abgeschlossen
 (`docs/concepts/phase-86-tinycss2-refactor.md`). Der Sanitizer
 nutzt jetzt `css_decl_resolver` (tinycss2) statt der Regex-
@@ -983,7 +1052,16 @@ Pruefer im Resolver, falls ein realer Vektor auftaucht.
 `<span>` erbt `font-size:1px`. Unser Filter haengt am `<span>`-
 style-Attribut (leer), nicht am inherited-Style. Loesung waere
 ein echter Style-Walker, der die Tag-Hierarchie traversiert --
-nicht implementiert, kein Sanitizer-Scope.
+fuer `font-size` und `opacity` NICHT implementiert.
+
+Update V11 (Phase 87.B): fuer `background-color` IST ein Walker
+implementiert (`_compute_effective_background_rgb`), der
+`[tag, *tag.parents]` traversiert und die naechste
+`background-color`/`bgcolor`-Decl aufloesen kann. Damit ist
+die V10-Inheritance fuer `color:white`-Hidden-Checks
+geschlossen. `font-size`/`opacity`-Inheritance bleibt Limitation
+-- Erweiterung des Walkers waere mechanisch trivial, ist aber
+ohne realen Vektor out-of-scope.
 
 **`em`/`rem`/`%`-Font-Sizes:**
 
@@ -1007,6 +1085,13 @@ Known Limitation Phase 86.1.
 oder `hsl(0, 0%, 100%)` werden nicht als weiss erkannt --
 Out-of-Scope 86.1, Erweiterung trivial wenn ein realer Vektor
 auftaucht.
+
+Update V11 (Phase 87.B-1): analoge Limitation gilt fuer
+`background-color` im Walker. `parse_color_to_rgb` erkennt
+nur Hex (3/4/6/8-stellig), Named-Colors (CSS-Color-3 voll) und
+`rgb()`. `rgba()`/`hsl()`/`hsla()` liefern `None` -- der Walker
+geht eine Ebene hoch. Alpha-Compositing ist Render-Engine-
+Scope, bleibt out-of-scope.
 
 **Weitere Maskierungs-Tricks (nicht-Vektoren oder andere
 Verteidigungsschicht):**
