@@ -312,6 +312,53 @@ class TestHiddenTextIsStripped:
         )
         assert "VISIBLE_COMMENT" in _sanitize(html)
 
+    def test_nested_hidden_containers_do_not_crash(self) -> None:
+        # Phase 87.1: in realistischen Marketing-Mails (z.B. Fewo-Direkt-
+        # Reservierungs-Bestaetigung #184) haben Button-Container die
+        # Struktur <p style="color:#fff"><a style="color:#fff">CTA</a></p>.
+        # Vor 87.1 hat _remove_hidden_styled in der Iteration ueber
+        # find_all(style=True) die <p> dekomponiert, was die Child-<a>
+        # tot macht (attrs=None). Der naechste Schleifen-Schritt
+        # crashed mit AttributeError beim tag.get("style", ""). Die
+        # Exception propagiert raus und der Caller behandelt es als
+        # "Mail ist leer" -- ein realer Workflow-Bug, der in Realwelt-
+        # Marketing-Mails systematisch auftritt.
+        html = (
+            "<div>"
+            "<p>Hauptinhalt der Mail bleibt sichtbar.</p>"
+            '<p style="color:#fff">'
+            '<a style="color:#fff">CTA_BUTTON</a>'
+            "</p>"
+            "<p>Weiterer sichtbarer Inhalt nach dem Button.</p>"
+            "</div>"
+        )
+        # Wichtigste Behauptung: kein Crash.
+        result = _sanitize(html)
+        # Sekundaer-Behauptung: Hauptinhalt bleibt, CTA wird gestrippt
+        # (das ist die V3-Dark-Theme-Limitation, durch Phase 87.B mit
+        # Computed-Background-Heuristik adressiert -- 87.1 ist nur
+        # Crash-Fix, keine Verhaltensaenderung).
+        assert "Hauptinhalt der Mail bleibt sichtbar." in result
+        assert "Weiterer sichtbarer Inhalt nach dem Button." in result
+        assert "CTA_BUTTON" not in result
+
+    def test_deeply_nested_hidden_chain_does_not_crash(self) -> None:
+        # Defensive Erweiterung: drei Ebenen verschachtelter
+        # hidden-Decls, falls Marketing-Mails noch tiefer schachteln.
+        html = (
+            "<div>"
+            "<p>Sichtbar</p>"
+            '<div style="display:none">'
+            '  <span style="color:#fff">'
+            '    <a style="opacity:0">EVIL_DEEP</a>'
+            "  </span>"
+            "</div>"
+            "</div>"
+        )
+        result = _sanitize(html)
+        assert "Sichtbar" in result
+        assert "EVIL_DEEP" not in result
+
     @pytest.mark.parametrize(
         "style_attr",
         [
