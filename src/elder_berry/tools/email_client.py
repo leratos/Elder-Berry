@@ -668,11 +668,21 @@ class IMAPEmailClient:
         Part als Pseudo-Multipart-Signal, der echte Body steht im
         text/html. Ohne diesen Fallback wuerde der Sanitizer fuer
         diese Mails gar nicht aufgerufen.
+
+        Phase 88.1: ``msg.walk()`` iteriert auch ueber Attachments.
+        Bei einer multipart/mixed-Mail mit leerem Alternative-Plain
+        und einem text/plain-Attachment wuerde der Attachment-Body
+        als Mail-Body extrahiert (Codex-Folgefinding). Daher filtern
+        wir Parts mit ``Content-Disposition: attachment`` explizit
+        raus, bevor wir text/plain- und text/html-Listen sammeln.
+        ``inline`` und ``None`` zaehlen weiter als Body-Kandidat.
         """
         if msg.is_multipart():
             text_parts = []
             html_parts = []
             for part in msg.walk():
+                if part.get_content_disposition() == "attachment":
+                    continue
                 content_type = part.get_content_type()
                 if content_type == "text/plain":
                     text_parts.append(part)
