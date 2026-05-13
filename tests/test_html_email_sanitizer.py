@@ -312,6 +312,28 @@ class TestHiddenTextIsStripped:
         )
         assert "VISIBLE_COMMENT" in _sanitize(html)
 
+    @pytest.mark.parametrize(
+        "style_attr",
+        [
+            "opacity:0/*; opacity:1",
+            "font-size:1px/*; font-size:14px",
+        ],
+    )
+    def test_unterminated_comment_does_not_leak(self, style_attr: str) -> None:
+        # Phase 86.2: das 85.7-PR hatte die unterminated-/*-bis-EOF-
+        # Variante als Known Limitation dokumentiert. tinycss2 schliesst
+        # den Kommentar implizit am Eingabe-Ende -- der zweite Decl-
+        # Versuch hinter dem offenen /* wird komplett gefressen und
+        # die erste hidden-Decl wird Cascade-effektiv. Damit ist der
+        # letzte dokumentierte Bypass-Vektor strukturell geschlossen.
+        html = (
+            f'<p>vorne <span style="{style_attr}">EVIL_UNTERMINATED</span> hinten</p>'
+        )
+        result = _sanitize(html)
+        assert "EVIL_UNTERMINATED" not in result, style_attr
+        assert "vorne" in result
+        assert "hinten" in result
+
     def test_font_size_at_threshold_survives(self) -> None:
         # Default-Threshold = 6 -> 6px ist NICHT < 6, also nicht filtern.
         html = '<p><span style="font-size:6px">JUST_READABLE</span></p>'
