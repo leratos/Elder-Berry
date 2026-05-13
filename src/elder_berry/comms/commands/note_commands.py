@@ -39,9 +39,13 @@ NOTE_SET_FACT_PATTERN = re.compile(
 )
 
 # "notiz: Vermieter heißt Müller"
+# DOTALL: ``.`` matcht auch Newlines, damit Multi-Line-Notizen
+# (Saleria-Command "notiz: Einkaufsliste\n- Vodka\n- Limette") nicht
+# am ersten ``\n`` abgeschnitten werden -- Phase 90-A,
+# Lera-Smoketest 2026-05-13 (Moscow-Mule-Einkaufsliste).
 NOTE_ADD_PATTERN = re.compile(
     r"^(?:bitte\s+)?notiz[:\s]+(.+)$",
-    re.IGNORECASE,
+    re.IGNORECASE | re.DOTALL,
 )
 
 # "was ist das WLAN Passwort?" oder "was ist WLAN Büro"

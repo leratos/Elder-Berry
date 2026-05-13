@@ -141,6 +141,29 @@ class TestExecuteAddNote:
         # add_note Pattern braucht "notiz:" Prefix
         assert not result.success
 
+    def test_note_add_multiline_content_preserved(self, handler, store):
+        """Phase 90-A: Multi-Line-Notiz (Lera-Smoketest Moscow-Mule-Liste)
+        wird mit allen Zeilen gespeichert -- NOTE_ADD_PATTERN mit re.DOTALL
+        frisst ``\\n`` und beendet erst am String-Ende."""
+        raw = "notiz: Einkaufsliste\n- Vodka\n- Limette\n- Ginger Beer"
+        result = handler.execute("note_add", raw)
+        assert result.success
+        # NoteStore enthaelt den vollen Multi-Line-Content (Roundtrip).
+        notes = store.list_all(USER_A)
+        assert len(notes) == 1
+        assert notes[0].content == "Einkaufsliste\n- Vodka\n- Limette\n- Ginger Beer"
+
+    def test_note_add_multiline_strip_only_outer(self, handler, store):
+        """Phase 90-A: leading/trailing Whitespace inkl. Newlines wird
+        gestrippt, INTERNE Newlines bleiben (match.group(1).strip())."""
+        raw = "notiz:   Liste\n- A\n- B\n\n   "
+        result = handler.execute("note_add", raw)
+        assert result.success
+        notes = store.list_all(USER_A)
+        assert len(notes) == 1
+        # Innen: \n bleibt; aussen: alle Whitespaces weg.
+        assert notes[0].content == "Liste\n- A\n- B"
+
 
 # ---------------------------------------------------------------------------
 # execute() – get_fact

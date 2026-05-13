@@ -107,6 +107,33 @@ class TestNotePatternRouting:
             h.parse_command("notiz: löschen meines Accounts ueberlegen") == "note_add"
         )
 
+    def test_multiline_notiz_routes_to_note_add(self) -> None:
+        """Phase 90-A: ``notiz: <multi-line content>`` (Saleria-Smoketest
+        2026-05-13, Moscow-Mule-Einkaufsliste) muss auf note_add routen.
+        Vor 90-A: NOTE_ADD_PATTERN ohne re.DOTALL matchte NICHT --
+        parse_command lieferte None und Saleria halluzinierte 'Gespeichert!'.
+        """
+        h = _handler_with_notes()
+        assert (
+            h.parse_command("notiz: Einkaufsliste\n- Vodka\n- Limette\n- Ginger Beer")
+            == "note_add"
+        )
+        # Mit bitte-Prefix bleibt's auch korrekt.
+        assert h.parse_command("bitte notiz: Liste\nA\nB") == "note_add"
+
+    def test_multiline_notiz_does_not_eat_note_delete(self) -> None:
+        """Phase 90-A Restrisiko 2: DOTALL macht NOTE_ADD_PATTERN
+        greedy-ueber-Zeilengrenzen. ``notiz löschen #1`` muss weiter zu
+        note_delete routen, NICHT zu note_add (NOTE_DELETE_PATTERN steht
+        in der patterns-Liste VOR NOTE_ADD_PATTERN -- diese Reihenfolge
+        schuetzt vor dem Catch-All-Charakter von NOTE_ADD).
+        """
+        h = _handler_with_notes()
+        # Einzeilig (bestehender Fall, hier nur als Reminder):
+        assert h.parse_command("notiz löschen #1") == "note_delete"
+        # Notizen-Suche bleibt note_search, nicht note_add:
+        assert h.parse_command("notizen suche Vermieter") == "note_search"
+
 
 # ---------------------------------------------------------------------------
 # Bug 2: CalendarCommandHandler -- TERMIN_DELETE_PATTERN
