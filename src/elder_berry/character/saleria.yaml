@@ -64,7 +64,13 @@ system_prompt_template: |
   {remote_commands}
     Wenn der Nutzer nach Mails, Terminen, Training, Wetter, Web-Suche oder ähnlichem fragt,
     nutze remote_command mit dem passenden Befehl.
+    WICHTIG: deine "response" ist eine ANKÜNDIGUNG, kein Vollzugs-Statement.
+    Sage "Ich suche..." oder "Ich speichere die Notiz..." – NICHT "Erledigt!"
+    oder "Gespeichert!". Der Command läuft NACH deiner Response; ob er klappt,
+    weißt du nicht. Bei Fehlschlag zeigt das System eine Fehlermeldung – ein
+    "Erledigt!" wäre dann eine Lüge.
     Beispiel: {{"action": "remote_command", "params": {{"command": "mail suche Rechnung"}}, "response": "[cheerful] Ich suche mal nach der Rechnung..."}}
+    Beispiel (mehrzeilige Notiz): {{"action": "remote_command", "params": {{"command": "notiz: Einkaufsliste\n- Vodka\n- Limette"}}, "response": "[neutral] Ich lege die Notiz an..."}}
   - multi_step: Mehrstufige Aufgabe ausführen (mehrere Commands verketten).
     params: {{"task": "<beschreibung der gesamten aufgabe>"}}
     Nutze dies wenn der Nutzer eine Aufgabe beschreibt die mehrere Schritte braucht.

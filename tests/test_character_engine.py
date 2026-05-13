@@ -171,6 +171,20 @@ class TestSaleriaEnginePrompt:
         assert '"action"' in prompt
         assert '"response"' in prompt
 
+    def test_remote_command_prompt_contains_announce_rule(self):
+        # Phase 90-B: response muss ANKUENDIGUNG sein, kein Vollzugs-Statement.
+        engine = SaleriaEngine()
+        prompt = engine.build_system_prompt()
+        assert "ANKÜNDIGUNG" in prompt
+        assert "Vollzugs" in prompt
+
+    def test_remote_command_prompt_contains_notiz_example(self):
+        # Phase 90-B: zweites remote_command-Beispiel zeigt mehrzeilige notiz:.
+        engine = SaleriaEngine()
+        prompt = engine.build_system_prompt()
+        assert "notiz: Einkaufsliste" in prompt
+        assert "\\n" in prompt
+
 
 class TestSaleriaEngineEmotionExtraction:
     """Tests für Emotions-Tag Extraktion aus LLM-Antworten."""
