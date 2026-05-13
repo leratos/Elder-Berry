@@ -134,8 +134,9 @@ CREATE TABLE facts (
 Methoden: `set_fact`, `get_fact`, `delete_fact`, `list_facts`.
 Keine FTS5, keine Tag-Spalte, kein Notizen-Code.
 
-DB-Pfad bleibt `~/.elder-berry/notes.db` (Bestandsschutz; oder umbenennen
-auf `facts.db` — Entscheidung in Etappe 1, beide trivial).
+DB-Pfad: `~/.elder-berry/facts.db` (Lera-Entscheidung 2026-05-13: saubere
+Trennung statt Co-Existenz mit der alten `notes`-Tabelle in `notes.db`).
+Die alte `notes.db` wird nach Abschluss Etappe 3 manuell gelöscht.
 
 `NoteStore` wird **komplett gelöscht** (auch die `Note`-DTO-Klasse, da
 sie das Doppel-Modell repräsentiert).
@@ -324,8 +325,9 @@ neu lernen.
 
 Bestätigt 2026-05-13 (Lera): aktuell keine produktiven Notizen, alles
 Testphase. NoteStore-DB wird beim Wegfall des Notizen-Codes nicht
-migriert; nur die Fakten-Tabelle wandert konzeptuell in den `FactStore`
-(gleiche DB-Datei oder umbenannt, siehe §3.2).
+migriert; nur die Fakten wandern in eine frische `facts.db` (siehe §3.2,
+Lera-Entscheidung). Alte `notes.db` wird nach Etappe-3-Smoketest
+manuell gelöscht.
 
 Falls beim Etappe-1-Start doch noch Notizen vorhanden sind: einmaliger
 Ad-hoc-Dump per Hand (`sqlite3 notes.db "SELECT content FROM notes
@@ -344,10 +346,21 @@ dafür schreiben.
   Notizen-Tests werden gelöscht (kommen neu in Etappe 2/3 gegen
   Nextcloud-Mock).
 - `NoteCommandHandler` temporär: Fakten-Commands gehen an `FactStore`,
-  Notizen-Commands geben „Backend wird umgestellt, bitte warten"-Antwort
-  zurück (oder werden temporär deaktiviert). Sauberer: dieser Schritt
-  und Etappe 2 in einem Branch zusammenführen, damit keine Production-
-  Lücke entsteht.
+  Notizen-Commands geben Stub-Response „Notizen-Backend in Umstellung
+  — kommt in Phase 91-B/C" zurück. Lera-Entscheidung 2026-05-13:
+  Production-Lücke akzeptiert, weil Testphase ohne produktive Notizen.
+  Etappe 1 und Etappe 2 werden NICHT in einem Branch gebündelt.
+- `saleria.yaml` `remote_command`-Sektion: `notiz:`-Beispiele temporär
+  auskommentieren, sonst kündigt das LLM weiter „Ich speichere die
+  Notiz ..." an (Vollzugs-Halluzinations-Schutz aus Phase 90-B greift
+  hier nicht, weil der Stub einen echten Fehler liefert).
+- **Einmalige Fakten-Migration:** Beim FactStore-Init prüfen, ob
+  `~/.elder-berry/notes.db` existiert. Falls ja: alle Einträge mit
+  `key IS NOT NULL` einmalig in die neue `facts.db` kopieren (idempotent
+  via `INSERT OR IGNORE` auf `UNIQUE(user_id, key)`). Notes-Inhalte
+  (`key IS NULL`) werden NICHT migriert (Testphase, Lera-Freigabe).
+  Migration läuft genau einmal beim ersten Start; danach existiert
+  `facts.db` und die Migrations-Routine ist no-op.
 
 ### 4.2 Etappe 2 — NextcloudNotesClient + Tests (1 Session)
 
@@ -443,12 +456,10 @@ dafür schreiben.
   Jahren stabil. Mitigation: bei unerwartetem Response-Format Sync-Call
   loggen + Exception statt Crash. Standard Error-Handling.
 
-- **R6 — FactStore-DB-Datei vs. NoteStore-DB-Datei.** Wenn die DB-Datei
-  übernommen wird (`notes.db` → `FactStore` benutzt sie weiter), bleibt
-  die alte `notes`-Tabelle als toter Code in der DB liegen, bis ein
-  `VACUUM` läuft. Kosmetisch, kein Funktionsproblem. Alternativ:
-  `FactStore` erzeugt frische `facts.db`, alte Datei wird nach
-  manueller Bestätigung gelöscht. Entscheidung in Etappe 1.
+- **R6 — Alte `notes.db` bleibt nach Etappe 3 liegen.** Entschieden:
+  frische `facts.db` (siehe §3.2). Die alte `notes.db` wird nach
+  Etappe 3 manuell gelöscht, kein Auto-Cleanup im Code (Lera bestätigt
+  Löschung im Nextcloud-Web-Smoketest).
 
 - **R7 — Whitelist-Drift / Tippfehler-Categories.** Whitelist-Override
   erlaubt freie Strings, daher kann sich über Zeit eine Mischung aus
