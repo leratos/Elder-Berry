@@ -982,14 +982,168 @@ class TestColorIsHiddenInContext:
         assert "CTA-INHERITED-MARKER" in result
         assert "Sichtbarer Begleittext INHERITED." in result
 
-    def test_fixture_parent_wraps_visible_child_still_strips_in_87_b_2(
-        self,
-    ) -> None:
-        # Eltern-Strip-Falle: nach 87.B-2 NOCH rot -- der color:white-
-        # Eltern-<p> wird vom Walker korrekt als hidden eingestuft
-        # (weisser Section-bg ueber der <p>), via decompose() gestrippt
-        # und der CTA-Child fliegt mit. Phase 87.B-3 (Hidden-Strip-
-        # Unwrap) wird diesen Test umdrehen.
+    def test_fixture_parent_wraps_visible_child_keeps_marker(self) -> None:
+        # Phase 87.B-3: Eltern-Strip-Falle erschlagen. Der color:white-
+        # Eltern-<p> wird vom Walker korrekt als hidden eingestuft,
+        # aber _strip_hidden_color_tag rettet das visible <a>-Island
+        # (eigener dunkler bg) per extract() an die Eltern-Ebene,
+        # bevor der <p> via decompose() faellt.
         result = _sanitize(HIDDEN_PARENT_WRAPS_VISIBLE_CHILD)
-        assert "CTA-PARENT-WRAPS-MARKER" not in result
+        assert "CTA-PARENT-WRAPS-MARKER" in result
         assert "Sichtbarer Begleittext PARENT." in result
+
+
+class TestHiddenStripUnwrap:
+    """Tests fuer die Hidden-Strip-Unwrap-Logik (Phase 87.B-3).
+
+    Wenn ein color-hidden Tag visible Dark-bg-Islands enthaelt,
+    werden die Islands ueber ``_strip_hidden_color_tag`` an die
+    Eltern-Ebene gerettet, BEVOR der Tag via ``decompose()`` faellt.
+    Reine Spam-Text-Nodes und Tags ohne eigenen dunklen bg gehen
+    mit dem Strip verloren (Anti-Bypass-Schutz).
+    """
+
+    def test_spam_text_node_without_island_stripped(self) -> None:
+        # color:white-Wrapper enthaelt nur Text -- keine Insel.
+        # Text faellt mit dem Eltern.
+        html = (
+            '<div><p style="color:#FFFFFF">SPAM_TEXT_ONLY</p><p>Begleittext.</p></div>'
+        )
+        result = _sanitize(html)
+        assert "SPAM_TEXT_ONLY" not in result
+        assert "Begleittext." in result
+
+    def test_mixed_island_and_spam_text(self) -> None:
+        # color:white-Wrapper enthaelt visible Island + Spam-Text.
+        # Island wird gerettet, Spam-Text faellt.
+        html = (
+            "<div>"
+            '<p style="color:#FFFFFF">EVIL_SPAM_PRE'
+            '<a style="background-color:#0F51EC; color:#FFFFFF">'
+            "RESCUED_ISLAND</a>"
+            "EVIL_SPAM_POST</p>"
+            "</div>"
+        )
+        result = _sanitize(html)
+        assert "RESCUED_ISLAND" in result
+        assert "EVIL_SPAM_PRE" not in result
+        assert "EVIL_SPAM_POST" not in result
+
+    def test_deeply_nested_island_rescued(self) -> None:
+        # color:white-Eltern -> Wrapper-Tags ohne bg -> visible Island
+        # tief unten. Walk findet das Island und rettet es; alle
+        # Wrapper-Tags fallen mit dem Eltern.
+        html = (
+            '<div><p style="color:#FFFFFF">'
+            "<span><div><section>"
+            '<a style="background-color:#0F51EC; color:#FFFFFF">'
+            "DEEP_NESTED_ISLAND</a>"
+            "</section></div></span>"
+            "</p></div>"
+        )
+        result = _sanitize(html)
+        assert "DEEP_NESTED_ISLAND" in result
+
+    def test_multiple_islands_preserve_order(self) -> None:
+        # Zwei unabhaengige visible Islands im selben hidden Wrapper.
+        # Beide werden gerettet, Reihenfolge bleibt erhalten.
+        html = (
+            "<div>"
+            '<p style="color:#FFFFFF">'
+            '<a style="background-color:#0F51EC; color:#FFFFFF">'
+            "FIRST_ISLAND</a>"
+            '<a style="background-color:#0F51EC; color:#FFFFFF">'
+            "SECOND_ISLAND</a>"
+            "</p>"
+            "</div>"
+        )
+        result = _sanitize(html)
+        idx_first = result.find("FIRST_ISLAND")
+        idx_second = result.find("SECOND_ISLAND")
+        assert idx_first >= 0
+        assert idx_second >= 0
+        assert idx_first < idx_second
+
+    def test_nested_islands_collapse_to_outermost(self) -> None:
+        # Innerhalb eines visible Islands ist ein zweites visible
+        # Island. Nur das auessere wird gesammelt; das innere bleibt
+        # im Subtree des aeusseren (Walk skipped Children gesammelter
+        # Islands).
+        html = (
+            '<div><p style="color:#FFFFFF">'
+            '<div style="background-color:#0F51EC">'
+            "OUTER_ISLAND_TEXT"
+            '<span style="background-color:darkgreen; color:#FFFFFF">'
+            "NESTED_INSIDE</span>"
+            "</div>"
+            "</p></div>"
+        )
+        result = _sanitize(html)
+        assert "OUTER_ISLAND_TEXT" in result
+        assert "NESTED_INSIDE" in result
+
+    def test_island_with_bgcolor_attribute_rescued(self) -> None:
+        # Legacy bgcolor am Island (statt style). Soll auch gerettet
+        # werden, weil _tag_own_background_rgb beide Quellen kennt.
+        html = (
+            '<div><p style="color:#FFFFFF">'
+            '<table bgcolor="#0F51EC"><tr><td>'
+            '<span style="color:#FFFFFF">BGCOLOR_ISLAND</span>'
+            "</td></tr></table>"
+            "</p></div>"
+        )
+        result = _sanitize(html)
+        assert "BGCOLOR_ISLAND" in result
+
+    def test_hard_hidden_does_not_rescue_islands(self) -> None:
+        # opacity:0-Eltern + visible Island im Subtree. Konzept-Doc
+        # Restrisiko: hard-hidden bleibt decompose() ohne Unwrap.
+        # Der Island geht mit.
+        html = (
+            '<div><p style="opacity:0">'
+            '<a style="background-color:#0F51EC; color:#FFFFFF">'
+            "OPACITY_HIDDEN_ISLAND</a>"
+            "</p></div>"
+        )
+        result = _sanitize(html)
+        assert "OPACITY_HIDDEN_ISLAND" not in result
+
+    def test_display_none_does_not_rescue_islands(self) -> None:
+        # display:none -- analog opacity:0.
+        html = (
+            '<div><p style="display:none">'
+            '<a style="background-color:#0F51EC; color:#FFFFFF">'
+            "DISPLAY_HIDDEN_ISLAND</a>"
+            "</p></div>"
+        )
+        result = _sanitize(html)
+        assert "DISPLAY_HIDDEN_ISLAND" not in result
+
+    def test_legacy_font_attr_hidden_with_island_rescue(self) -> None:
+        # <font color="white"> als Eltern-Wrapper, Island im Subtree.
+        # _remove_hidden_color_attr nutzt jetzt auch
+        # _strip_hidden_color_tag -- Island wird gerettet.
+        html = (
+            '<div><font color="white">'
+            '<a style="background-color:#0F51EC; color:#FFFFFF">'
+            "LEGACY_FONT_ISLAND</a>"
+            "</font></div>"
+        )
+        result = _sanitize(html)
+        assert "LEGACY_FONT_ISLAND" in result
+
+    def test_island_in_light_bg_context_after_extract(self) -> None:
+        # Edge-Case-Sanity: nach Extract des Islands steht es auf der
+        # Eltern-Ebene. Solange das Island selbst einen dunklen bg
+        # hat, ist es im neuen Kontext (Walker findet eigenen bg)
+        # nach wie vor visible -- der CTA-Marker bleibt.
+        html = (
+            '<div style="background-color:#FFFFFF">'
+            '<p style="color:#FFFFFF">'
+            '<a style="background-color:#0F51EC; color:#FFFFFF">'
+            "EXTRACTED_TO_LIGHT_PARENT</a>"
+            "</p>"
+            "</div>"
+        )
+        result = _sanitize(html)
+        assert "EXTRACTED_TO_LIGHT_PARENT" in result
