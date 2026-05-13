@@ -661,26 +661,58 @@ class IMAPEmailClient:
         Pflicht-Param -- Phase 85 V1/V2: kein zweiter Code-Pfad ohne
         Filter, keine versteckte Default-Konstruktion in statischen
         Helpern.
+
+        Phase 88: ein text/plain-Part wird nur dann bevorzugt, wenn
+        sein Payload nach ``.strip()`` nicht-leer ist. Marketing-Mail-
+        Tools (z.B. Fewo-Direkt) liefern oft einen leeren text/plain-
+        Part als Pseudo-Multipart-Signal, der echte Body steht im
+        text/html. Ohne diesen Fallback wuerde der Sanitizer fuer
+        diese Mails gar nicht aufgerufen.
+
+        Phase 88.1: ``msg.walk()`` iteriert auch ueber Attachments.
+        Bei einer multipart/mixed-Mail mit leerem Alternative-Plain
+        und einem text/plain-Attachment wuerde der Attachment-Body
+        als Mail-Body extrahiert (Codex-Folgefinding). Daher filtern
+        wir Parts mit ``Content-Disposition: attachment`` explizit
+        raus, bevor wir text/plain- und text/html-Listen sammeln.
+        ``inline`` und ``None`` zaehlen weiter als Body-Kandidat.
         """
         if msg.is_multipart():
             text_parts = []
             html_parts = []
             for part in msg.walk():
+                if part.get_content_disposition() == "attachment":
+                    continue
                 content_type = part.get_content_type()
                 if content_type == "text/plain":
                     text_parts.append(part)
                 elif content_type == "text/html":
                     html_parts.append(part)
 
-            # text/plain bevorzugt
-            target = (
-                text_parts[0] if text_parts else (html_parts[0] if html_parts else None)
+            # text/plain bevorzugt -- aber nur wenn nicht effektiv leer.
+            meaningful_plain = next(
+                (p for p in text_parts if IMAPEmailClient._has_meaningful_content(p)),
+                None,
             )
+            target = meaningful_plain or (html_parts[0] if html_parts else None)
             if target:
                 return IMAPEmailClient._decode_payload(target, sanitizer)
             return ""
         else:
             return IMAPEmailClient._decode_payload(msg, sanitizer)
+
+    @staticmethod
+    def _has_meaningful_content(part: email.message.Message) -> bool:
+        """Phase 88: ``True`` wenn der Payload nach ``.strip()`` nicht
+        leer ist. Faengt Marketing-Mail-Pseudo-Plain-Parts ab (Body
+        nur Whitespace), die sonst den text/html-Pfad blockieren
+        wuerden.
+        """
+        payload = cast("bytes | None", part.get_payload(decode=True))
+        if not payload:
+            return False
+        charset = part.get_content_charset() or "utf-8"
+        return bool(payload.decode(charset, errors="replace").strip())
 
     @staticmethod
     def _decode_payload(
