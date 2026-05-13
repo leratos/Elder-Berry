@@ -45,6 +45,15 @@ from elder_berry.tools.css_decl_resolver import (
     visibility_is_hidden,
 )
 
+from elder_berry.tools.css_decl_resolver import (
+    color_is_white,
+    display_is_none,
+    font_size_below_threshold,
+    opacity_is_zero,
+    parse_inline_style,
+    visibility_is_hidden,
+)
+
 logger = logging.getLogger(__name__)
 
 
