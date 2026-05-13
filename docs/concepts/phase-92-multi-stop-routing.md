@@ -672,14 +672,54 @@ neue Phase = neuer Chat, hier interpretiert als neuer Chat pro Etappe).
 - **Keine ÖPNV-/Fahrrad-Modi**: Nur `travelmode=driving`.
 - **Keine Hin-und-Rückweg-Optimierung**: Wenn User später zurück will, ist das eine zweite Anfrage.
 
-## Setup (für Lera, vor Etappe E2)
+## Voraussetzungen (Status 2026-05-13: erfüllt)
 
-### Google Cloud APIs aktivieren
+### Google Cloud APIs
 
-1. Cloud Console → APIs & Services → Library
-2. **Places API (New)** suchen → Aktivieren (heißt jetzt einfach "Places API")
-3. **Directions API** ist seit Phase 43 bereits aktiv → keine Aktion nötig.
-4. API-Key (existierend aus Phase 43) prüfen: Restrictions sollen beide APIs zulassen.
+Beide für Phase 92 benötigten APIs sind im verwendeten Cloud-Projekt
+aktiviert:
+
+| API | Status | Verwendung |
+|-----|--------|------------|
+| `Directions API` | aktiv (seit Phase 43) | Multi-Stop-Routing mit `waypoints=optimize:true` |
+| `Places API (New)` | aktiv | Search-Along-Route mit `searchAlongRouteParameters` |
+
+### API-Key-Restrictions
+
+Der existierende Maps-API-Key (`google_maps_api_key` im SecretStore) hat
+beide APIs in seiner Restriction-Liste. Kein Anpassen nötig für Phase 92.
+
+### Falls je ein neuer API-Key angelegt werden muss
+
+Diese APIs müssen mindestens in den Restrictions erlaubt sein, damit das
+Konzept funktioniert:
+- `Directions API`
+- `Places API (New)` (nicht zu verwechseln mit `Places API` (Legacy)
+  oder `Places SDK for Android/iOS`)
+
+Aktivierung über: Cloud Console → APIs & Services → Library → API suchen
+→ Aktivieren. Restrictions am Key in: APIs & Services → Credentials →
+Key wählen → API restrictions.
+
+### Hygiene-Hinweise (nicht Teil dieser Phase)
+
+Beim Setup-Check fielen zwei Punkte auf — getrennt zu behandeln, nicht
+in Phase 92:
+
+1. **API-Restriction-Liste ist breit**: Der Key erlaubt aktuell ~30 APIs
+   (Aerial View, Pollen, Solar, Map Tiles, ...). Bei Key-Leak wäre die
+   Angriffsfläche unnötig groß. Empfehlung: Liste auf tatsächlich
+   verwendete APIs reduzieren (Phase 43: Directions; Phase 92: zusätzlich
+   Places API New). Falls weitere Apps gegen denselben Key laufen, dort
+   ebenfalls Bedarf erheben.
+2. **Doppelte Places API aktiviert**: Sowohl `Places API` (Legacy) als
+   auch `Places API (New)` sind im Projekt aktiv. Saleria nutzt nur die
+   neue. Wenn keine andere App die alte braucht, kann sie deaktiviert
+   werden.
+
+Beide Punkte sind reine Hardening-Aufgaben ohne funktionalen Einfluss
+auf Phase 92. Kandidat für eine separate Mini-Phase oder für die
+nächste Security-Review (Phase 57 hat das Thema generell adressiert).
 
 ### Abhängigkeiten
 
