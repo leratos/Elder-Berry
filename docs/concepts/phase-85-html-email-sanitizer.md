@@ -894,38 +894,45 @@ Phase 85 gilt als abgeschlossen, wenn:
 6. Journal-Eintrag `## Abgeschlossen: Phase 85` mit Befunden und
    Restrisiken-Notiz aus Abschnitt 7.
 
-## 11. Known CSS-Limitations (Stop-Punkt nach 85.7, Phase 86 vorbereitet)
+## 11. Known CSS-Limitations (post Phase 86)
 
-**Update V9 (2026-05-12):** Direkt nach 85.7 hat Codex die naechste
-Bug-Klasse identifiziert -- unterminierte `/*`-Kommentare ohne
-schliessendes `*/`. Spec-konformer CSS-Parser behandelt sie als
-Kommentar bis EOF; unsere `_CSS_COMMENT_RE = r"/\*.*?\*/"` matched
-sie nicht. Beispiel-Vektor:
+**Update V10 (2026-05-13):** Phase 86 abgeschlossen
+(`docs/concepts/phase-86-tinycss2-refactor.md`). Der Sanitizer
+nutzt jetzt `css_decl_resolver` (tinycss2) statt der Regex-
+Pipeline aus 85.x. Damit sind alle in 85.x identifizierten
+Bypass-Klassen strukturell geschlossen -- nicht durch
+inkrementellen Regex-Patch, sondern weil tinycss2 die
+CSS-Spec implementiert:
 
-```html
-<div style="opacity:0/*; opacity:1">EVIL</div>
-```
-
-Browser sieht `opacity:0` (Rest verschluckt), wir sehen beide Decls
-und last-wins → visible → EVIL ueberlebt.
-
-Statt einer 85.8-Inkrement-Iteration (5. PR-Patch fuer denselben
-Code-Block) startet Phase 86 -- `tinycss2`-basierter Refactor mit
-echtem Token-Parser + Cascade-Resolver. Siehe
-`docs/concepts/phase-86-tinycss2-refactor.md`. Diese Known
-Limitation bleibt im aktuellen 85.7-PR offen und wird durch
-86.2-Integration strukturell geschlossen.
+* **Decimal-Zero `opacity`** (85.4-P2): NumberToken-Vergleich
+  `float(value) == 0.0` deckt 0, 0.0, 0.00, .0 ab.
+* **Multi-Decl-Cascade** (85.5): Cascade-Resolver wendet
+  last-declaration-wins auf alle 5 Properties an, nicht mehr
+  nur opacity/font-size.
+* **`!important`-Cascade** (85.6): Resolver priorisiert
+  importants vor non-importants spec-konform.
+* **CSS-Kommentar-Maskierung** (85.7): tinycss2 strippt
+  `/* ... */` schon beim Tokenisieren -- `opacity:0!/**/important`
+  wird als `opacity:0!important` gelesen.
+* **Unterminierte Kommentare bis EOF** (85.7-Doku-Luecke,
+  V9): tinycss2 behandelt unterminierte `/*` als Kommentar
+  bis EOF -- alles nach dem `/*` wird verworfen,
+  Cascade sieht nur die noch sichtbare Decl.
+* **`background-color`-Substring-Bug** (Codex P2 aus
+  86.2-PR-Review): tinycss2 trennt Property-Namen
+  exakt; `background-color:white` und `color:white` sind
+  unterschiedliche Properties, `by_name.get("color")`
+  matched nur exact -- kein Substring-Match mehr.
 
 ---
 
-Stand 2026-05-12 nach Etappe 85.7: der Sanitizer schliesst die
+Stand 2026-05-13 nach Phase 86: der Sanitizer schliesst die
 realistischen Inject-Vektoren ab, die in echter Marketing- und
-Newsletter-Praxis auftreten (display:none, hidden, decimal-zero
-opacity, Mini-Font, weisse Schrift, Multi-Decl-Cascade, !important,
-CSS-Kommentar-Maskierung). Was er bewusst NICHT abdeckt — diese
-Edge-Cases bleiben defense-in-depth-Verantwortung des LLM-Prompt-
-Untrusted-Wrappers und der Pending-Confirmation-Pipeline
-(Abschnitt 7.1):
+Newsletter-Praxis auftreten, plus die in 85.x identifizierten
+adversarial Bypass-Klassen. Was er bewusst NICHT abdeckt --
+diese Edge-Cases bleiben defense-in-depth-Verantwortung des
+LLM-Prompt-Untrusted-Wrappers und der Pending-Confirmation-
+Pipeline (Abschnitt 7.1):
 
 **CSS-Custom-Properties (CSS-Variables):**
 
@@ -935,11 +942,12 @@ Untrusted-Wrappers und der Pending-Confirmation-Pipeline
 ```
 
 Der `<style>`-Subtree wird per `decompose()` entfernt, aber der
-inline-`style="opacity:var(--x)"` rutscht durch — `_OPACITY_DECL_RE`
-matched `[\d.]+` nicht gegen `var(--x)`. Eine echte
-CSS-Resolver-Loesung waere ueberzogen, weil moderne Mail-Clients
-custom-properties haeufig garnicht rendern (Apple Mail rendert
-sie, Gmail strippt sie meist).
+inline-`style="opacity:var(--x)"` rutscht durch. `opacity_is_zero`
+sieht eine `FunctionBlock(var)` und liefert konservativ `False` --
+ohne Custom-Property-Resolver waere jede andere Antwort geraten.
+Moderne Mail-Clients rendern Custom Properties uneinheitlich
+(Apple Mail ja, Gmail meist nein), sodass auch im Empfaenger-
+Pfad keine verlaessliche Hidden-Semantik existiert.
 
 **`calc()`-Expressions:**
 
@@ -947,9 +955,11 @@ sie, Gmail strippt sie meist).
 <div style="opacity:calc(1 - 1)">EVIL</div>
 ```
 
-`calc(1 - 1) = 0`, aber wir parsen das nicht. Selten in der
-Realwelt; wenn doch, ist es ein Adversarial-Konstrukt — der
-LLM-Wrapper sieht den Text und filtert via Untrusted-Marker.
+`calc(1 - 1) = 0`, aber `opacity_is_zero` erkennt nur den
+trivialen Fall `calc(0)` (genau ein `NumberToken`-Argument mit
+Wert 0). Zusammengesetzte Expressions liefern konservativ
+`False`. Eine vollstaendige Arithmetik-Evaluation waere
+ueberzogen; adversarial sehr selten in Realwelt-Mails.
 
 **Property-Shorthand:**
 
@@ -958,9 +968,11 @@ LLM-Wrapper sieht den Text und filtert via Untrusted-Marker.
 ```
 
 `font:` ist Shorthand fuer `font-size`/`font-family`/`font-weight`.
-`_FONT_SIZE_DECL_RE` matched nur `font-size:`. Realwelt-Mail
-nutzt fast nie Shorthand fuer Hidden-Text — das wuerde
-beabsichtigt Adversarial sein.
+`by_name.get("font-size")` matched die Shorthand-Decl nicht --
+die landet als Property `font` im Resolver. Realwelt-Mails nutzen
+Shorthand fast nie fuer Hidden-Text; das waere beabsichtigt
+adversarial. Erweiterung waere ein `font_shorthand_below_threshold`-
+Pruefer im Resolver, falls ein realer Vektor auftaucht.
 
 **Computed-Cascade ueber mehrere Tags:**
 
@@ -968,46 +980,59 @@ beabsichtigt Adversarial sein.
 <div style="font-size:1px"><span>EVIL</span></div>
 ```
 
-`<span>` erbt font-size:1px. Unser Filter haengt am `<span>`-
+`<span>` erbt `font-size:1px`. Unser Filter haengt am `<span>`-
 style-Attribut (leer), nicht am inherited-Style. Loesung waere
-ein echter Style-Walker -- nicht implementiert.
+ein echter Style-Walker, der die Tag-Hierarchie traversiert --
+nicht implementiert, kein Sanitizer-Scope.
 
-**`@media`/`@supports`-Queries inline (Marketing-Style-Blocks):**
+**`em`/`rem`/`%`-Font-Sizes:**
 
-Generell aus dem `<style>`-Subtree entfernt durch
-`_DECOMPOSE_TAGS`, daher kein Vektor. Falls jemand inline via
-attribute reinpasst -- nicht moeglich, `style=` erlaubt keine
-At-Rules.
+```html
+<span style="font-size:0.05em">EVIL</span>
+```
 
-**Weitere Maskierungs-Tricks (nach 85.7 noch nicht abgedeckt):**
+`font_size_below_threshold` wertet nur `px` aus -- relative
+Einheiten brauchen den Render-Kontext (Eltern-Font-Size),
+den der Sanitizer nicht kennt. Konservative False-Negative,
+Known Limitation Phase 86.1.
 
-* `@supports`-Rules in inline-Style: nicht moeglich (style-Attribut
-  erlaubt keine At-Rules), daher kein Vektor.
-* CSS-Line-Continuation mit `\` am Zeilenende: legal in CSS-Token,
-  aber inline-Style ist typischerweise auf einer Zeile -- adversarial
-  vermutlich nicht relevant. Falls doch: Phase 85.8.
-* URL-Encoding oder HTML-Entity-Encoding im Style-Attribut (z.B.
-  `&#x21;important` statt `!important`): BS4 decodiert HTML-
-  Entities beim Parsen automatisch, der Style-Attribut-Wert ist
-  schon decoded -- daher meist kein Vektor. URL-Encoding in
-  `url(...)` Werten ist eine andere Geschichte (kein Sanitizer-
-  Pfad, weil wir url() garnicht parsen).
-* Bidirectional-Override-Characters (U+202E etc.) im sichtbaren Text:
-  nicht CSS, eher Unicode-Layer. Sanitizer-Pipeline strippt
-  HTML-Tags, behaelt Text-Inhalte -- ein Mail-Body mit RTL-Override
-  ist ein Inject-Vektor anderer Klasse (LLM-Prompt-Layer).
+**`rgba`/`hsl`/`hsla`-Color:**
 
-**Pragmatischer Stop-Punkt:** Weiter Iterieren bringt
-marginalen Sicherheitsgewinn, kostet Wartungsaufwand und
-false-positive-Risiko fuer normale Mails. Der bestehende
-LLM-Untrusted-Wrapper im System-Prompt (Konzept Abschnitt 1)
-weist Claude an, keine Anweisungen im Mail-Body auszufuehren,
-und die Pending-Confirmation-Pipeline (Phase 18+) verhindert
-ungewollte Folge-Aktionen. Beide Schichten bleiben primaere
+```html
+<span style="color:rgba(255,255,255,1)">EVIL</span>
+```
+
+`color_is_white` erkennt nur die drei explizit gelisteten Formen
+(Hex, Ident `white`, `rgb()`). `rgba()` mit voller Opazitaet
+oder `hsl(0, 0%, 100%)` werden nicht als weiss erkannt --
+Out-of-Scope 86.1, Erweiterung trivial wenn ein realer Vektor
+auftaucht.
+
+**Weitere Maskierungs-Tricks (nicht-Vektoren oder andere
+Verteidigungsschicht):**
+
+* `@media`/`@supports`-Rules in inline-Style: nicht moeglich,
+  `style=`-Attribut erlaubt keine At-Rules -- kein Vektor.
+* CSS-Line-Continuation mit `\` am Zeilenende: tinycss2 handhabt
+  das spec-konform beim Tokenisieren; falls ein adversarial-
+  Konstrukt auftaucht, bleibt das im Resolver -- kein
+  bekannter Vektor.
+* URL-Encoding/HTML-Entity-Encoding im Style-Attribut: BS4
+  decodiert HTML-Entities beim Parsen, der Sanitizer sieht den
+  decoded String -- kein Vektor. `url()` parsen wir nicht;
+  keine Sanitizer-Pfad-Relevanz.
+* Bidirectional-Override-Characters (U+202E etc.) im sichtbaren
+  Text: nicht CSS, eher Unicode-Layer. Sanitizer-Pipeline
+  strippt HTML-Tags und behaelt Text-Inhalte -- ein Mail-Body
+  mit RTL-Override ist ein Inject-Vektor anderer Klasse, der
+  am LLM-Prompt-Layer abgefangen wird.
+
+**Pragmatischer Stand:** Phase 86 hat die strukturelle Antwort
+auf die 85.x-Iterations-Spirale geliefert. Falls in Lera-
+Smoketests oder kuenftigen Codex-Reviews reale Bypass-Vektoren
+auftauchen, die nicht in dieser Liste stehen, ist die Fix-Stelle
+voraussichtlich `css_decl_resolver.py` (neue Property-Pruefer
+oder erweiterte Token-Auswertung) -- keine Regex zurueck in den
+Sanitizer. Der LLM-Untrusted-Wrapper (Konzept Abschnitt 1) und
+die Pending-Confirmation-Pipeline (Phase 18+) bleiben primaere
 Verteidigung; der Sanitizer ist defense-in-depth.
-
-Sollten in Lera-Smoketests reale Bypass-Vektoren auftauchen,
-die nicht in dieser Liste stehen, ist das Grund fuer eine
-neue Phase (85.8+) -- aber bewusst nicht praeemptiv.
-Strukturwechsel auf `tinycss2`-basierten Parser bleibt
-optional, wenn die Iterations-Frequenz weiter steigt.

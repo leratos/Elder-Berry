@@ -91,6 +91,18 @@ Logiklücken und Fehler hin.
   laesst Inhalte von `<script>/<style>/<noscript>` und Hidden-Text
   (`display:none`, weisse Schrift, Mini-Font) als Inject-Vektor durch.
   Konzept: `docs/concepts/phase-85-html-email-sanitizer.md`.
+- Phase 86: CSS-Style-Decls werden ueber `css_decl_resolver`
+  (`src/elder_berry/tools/css_decl_resolver.py`, tinycss2) spec-konform
+  geparst. `_style_is_hidden` macht KEIN Regex-Pattern auf Style-Strings
+  mehr; alle 5 Hidden-Properties (`opacity`, `font-size`, `display`,
+  `visibility`, `color`) laufen ueber den Cascade-Resolver
+  (`!important` > non-important, sonst last-wins). Konzept:
+  `docs/concepts/phase-86-tinycss2-refactor.md`.
+- Neue Property-Pruefer (z.B. `text-indent:-9999px`-Hidden-Detection)
+  gehoeren als reine Funktion in `css_decl_resolver.py`, nicht in den
+  Sanitizer. Kein Zurueck zur Style-String-Regex -- das war Phase 85.x
+  und hat sich strukturell als bypass-anfaellig erwiesen (5 Codex-
+  Findings in 4 PR-Iterations).
 - `MAX_BODY_CHARS` in `email_client.py` ist universeller Sicherheits-Cap
   (Plain + HTML); Source of Truth fuer HTML ist `HtmlEmailSanitizer.max_chars`
   (Default 8000 + 20-Zeichen Cap-Marker). Aenderung an einer Stelle erzwingt
