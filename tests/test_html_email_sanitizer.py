@@ -581,14 +581,19 @@ class TestRobustness:
         assert "nur_text" in result
 
     def test_huge_html_terminates(self) -> None:
-        # ~ 400 KB Mail muss in unter 5 Sekunden durch. max_chars hoch
-        # genug, damit das Cap-Verhalten den Test nicht stoert (Cap hat
-        # eigenen Test in TestLengthCap).
+        # ~ 400 KB Mail muss in 10 Sekunden durch -- DoS-Resistenz-Test,
+        # nicht Performance-Bench. Schwelle Phase 87.1.2 von 5s auf 10s
+        # angehoben: lokal misst Tower ~0.7s, GitHub-Actions-Windows-CI
+        # ist als shared-runner 5-10x volatiler und hatte mit 5s
+        # gelegentlich knapp gerissen (5.08s). 10s ist immer noch klar
+        # DoS-Bereich, kein Performance-Regression-Risiko. max_chars
+        # hoch genug, damit das Cap-Verhalten den Test nicht stoert
+        # (Cap hat eigenen Test in TestLengthCap).
         body = "MARKER_START " + "<p>x</p>" * 50_000 + " MARKER_END"
         start = time.perf_counter()
         result = HtmlEmailSanitizer(max_chars=10_000_000).sanitize(body)
         elapsed = time.perf_counter() - start
-        assert elapsed < 5.0, f"Sanitize-Latenz {elapsed:.2f}s > 5s"
+        assert elapsed < 10.0, f"Sanitize-Latenz {elapsed:.2f}s > 10s"
         assert "MARKER_START" in result and "MARKER_END" in result
 
     def test_deeply_nested_html(self) -> None:
