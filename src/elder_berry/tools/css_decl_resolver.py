@@ -473,18 +473,25 @@ def _cascade_resolve(decls: Iterable[Declaration]) -> list[ResolvedDecl]:
 def _strip_value_whitespace(tokens: list[Node]) -> list[Node]:
     """Entfernt fuehrende/abschliessende ``WhitespaceToken``; Inner-
     Whitespace bleibt fuer Funktions-Argument-Separatoren erhalten.
+
+    Phase 87.1.3: ``tokens or ()`` als Iteration-Quelle, damit CodeQL's
+    Inter-Procedural-Analyse den Datenfluss als garantiert iterable
+    erkennt (False-Positive ``py/non-iterable-in-for-loop`` aus dem
+    Security-Scan).
     """
+    safe_tokens = tokens or ()
     start = 0
-    end = len(tokens)
-    while start < end and isinstance(tokens[start], WhitespaceToken):
+    end = len(safe_tokens)
+    while start < end and isinstance(safe_tokens[start], WhitespaceToken):
         start += 1
-    while end > start and isinstance(tokens[end - 1], WhitespaceToken):
+    while end > start and isinstance(safe_tokens[end - 1], WhitespaceToken):
         end -= 1
-    return list(tokens[start:end])
+    return list(safe_tokens[start:end])
 
 
 def _first_non_whitespace(tokens: list[Node]) -> Node | None:
-    for token in tokens:
+    # Phase 87.1.3: ``tokens or ()`` -- siehe _strip_value_whitespace.
+    for token in tokens or ():
         if not isinstance(token, WhitespaceToken):
             return token
     return None

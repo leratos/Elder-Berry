@@ -25,7 +25,7 @@ import time
 from dataclasses import FrozenInstanceError
 
 import pytest
-from tinycss2.ast import NumberToken, WhitespaceToken
+from tinycss2.ast import Node, NumberToken, WhitespaceToken
 
 from elder_berry.tools.css_decl_resolver import (
     ResolvedDecl,
@@ -38,9 +38,13 @@ from elder_berry.tools.css_decl_resolver import (
 )
 
 
-def _value_tokens_for(style: str, name: str) -> list:
+def _value_tokens_for(style: str, name: str) -> list[Node]:
     """Hilfs-Helper: parst ``style`` und gibt die Value-Tokens der
     angegebenen Property aus der Cascade-aufgeloesten Liste zurueck.
+
+    Phase 87.1.3: Return-Type praeziser ``list[Node]`` (war vorher
+    unparametrisiertes ``list``) -- damit CodeQL's Datenfluss-Analyse
+    den Type-Flow zu ``_first_non_whitespace`` korrekt einordnet.
     """
     decls = parse_inline_style(style)
     for decl in decls:
