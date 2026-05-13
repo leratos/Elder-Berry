@@ -103,6 +103,25 @@ Logiklücken und Fehler hin.
   Sanitizer. Kein Zurueck zur Style-String-Regex -- das war Phase 85.x
   und hat sich strukturell als bypass-anfaellig erwiesen (5 Codex-
   Findings in 4 PR-Iterations).
+- Phase 87.B: `color:white`-Hidden-Check ist KONTEXTABHAENGIG. Der
+  Sanitizer-Walker `_compute_effective_background_rgb` traversiert
+  `[tag, *tag.parents]`, sammelt das naechste `background-color`/
+  `bgcolor` und entscheidet ueber WCAG-Relative-Luminanz (< 0.179 =
+  dunkel), ob `color:white` als hidden oder visible einzustufen ist.
+  Default ohne erkennbaren bg im Walker-Pfad = weiss = hidden
+  (Status-Quo, schuetzt vor Spam-Bypass). Konzept:
+  `docs/concepts/phase-87-b-computed-background-heuristik.md`.
+- Phase 87.B-3: Hidden-Strip ist UNWRAP-FAEHIG fuer color-hidden
+  Tags. `_strip_hidden_color_tag` extrahiert visible Dark-bg-Islands
+  (Tags mit eigenem dunklen bg) per `.extract()` an die Eltern-Ebene,
+  bevor der color-hidden Eltern via `decompose()` faellt. Reine
+  Text-Nodes ohne Island-Wrapper fallen mit (Anti-Spam-Bypass).
+  Hard-Hidden (opacity:0, display:none, visibility:hidden, font-size
+  unter Schwelle) bleibt bei direktem `decompose()` ohne Unwrap --
+  das ist semantisch korrekt, weil der Mail-Client diese Pfade gar
+  nicht rendert. Neue Island-Quellen (z.B. CSS-Background-Image,
+  `background:` Shorthand) gehoeren in `_tag_own_background_rgb`,
+  nicht in den Walker.
 - `MAX_BODY_CHARS` in `email_client.py` ist universeller Sicherheits-Cap
   (Plain + HTML); Source of Truth fuer HTML ist `HtmlEmailSanitizer.max_chars`
   (Default 8000 + 20-Zeichen Cap-Marker). Aenderung an einer Stelle erzwingt

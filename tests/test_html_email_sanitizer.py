@@ -450,24 +450,25 @@ class TestHiddenTextIsStripped:
             html = f'<p><font color="{color}">EVIL_LEGACY</font></p>'
             assert "EVIL_LEGACY" not in _sanitize(html), color
 
-    def test_dark_theme_white_text_is_stripped_known_limitation(self) -> None:
-        """V3 KNOWN LIMITATION: weisser Text auf schwarzem Hintergrund
-        wird gestrippt, obwohl er fuer den Empfaenger lesbar waere.
+    def test_dark_theme_white_text_survives(self) -> None:
+        """Phase 87.B-2: vormalige V3-Known-Limitation umgedreht.
 
-        Wir kennen den Background nicht (CSS-Kaskaden waeren zu teuer
-        und unzuverlaessig nachzubauen). Trade-off: Inject-Risiko
-        ueberwiegt den seltenen Dark-Theme-Marketing-Fall.
+        Weisser Text auf schwarzem ``bgcolor``-Body bleibt erhalten,
+        weil der Sanitizer jetzt den Walker-Pfad-Background konsultiert
+        (``_color_is_hidden_in_context`` über ``_compute_effective_
+        background_rgb``). WCAG-Relative-Luminanz von ``#000000`` ist
+        ``0.0`` → unter Schwelle 0.179 → dunkel → ``color:white`` ist
+        sichtbar.
 
-        Wenn jemand eine bessere Heuristik vorschlaegt -- bgcolor-
-        Lookup, computed-style-Cascade -- muss DIESER Test bewusst
-        angepasst werden, nicht versehentlich brechen.
+        Adversarial weiss-auf-weiss wird weiterhin gestrippt; das ist
+        in ``TestColorIsHiddenInContext`` separat abgedeckt.
         """
         html = (
             '<body bgcolor="#000000">'
             '<span style="color:white">DARKTHEME_VISIBLE</span>'
             "</body>"
         )
-        assert "DARKTHEME_VISIBLE" not in _sanitize(html)
+        assert "DARKTHEME_VISIBLE" in _sanitize(html)
 
 
 # -----------------------------------------------------------------------------
@@ -770,3 +771,432 @@ def _build_perf_fixtures() -> list[str]:
     )
 
     return [marketing, newsletter, reply, github, chatgpt]
+
+
+# -----------------------------------------------------------------------------
+# Phase 87.B-2 -- Computed-Background-Walker
+# -----------------------------------------------------------------------------
+#
+# Synthetische, PII-freie Fixtures abgeleitet aus realer Marketing-Mail-
+# Struktur (Reservierungs-Bestaetigung 2026-05-13). Drei Vektoren:
+#
+#   - HIDDEN_DARK_BG_SELF: Pure V3-Self. Element traegt eigenen
+#     dunklen background-color + color:white am selben Tag. Phase
+#     87.B-2-Fix.
+#   - HIDDEN_DARK_BG_INHERITED: Pure V10-Inheritance. Container-bg
+#     dunkel, Child traegt color:white ohne eigenen bg. Phase 87.B-2-Fix.
+#   - HIDDEN_PARENT_WRAPS_VISIBLE_CHILD: Eltern-Strip-Falle. color:white-
+#     Eltern (kein eigener bg, in weisser Section) wrappt visible-island
+#     Child. Bleibt nach 87.B-2 noch rot; Phase 87.B-3 wird das Subset
+#     ueber den Hidden-Strip-Unwrap erschlagen.
+#
+# Marker-Strings sind so gewaehlt, dass sie unmissverstaendlich nur in
+# der Test-HTML auftauchen.
+
+HIDDEN_DARK_BG_SELF = """<div style="background-color: #FFFFFF;">
+  <div class="column">
+    <a style="padding: 8px 16px; background-color: #0F51EC; color: #FFFFFF;"
+       href="https://example.test/cta">CTA-SELF-MARKER</a>
+    <p style="color: #191E3B;">Sichtbarer Begleittext SELF.</p>
+  </div>
+</div>"""
+
+HIDDEN_DARK_BG_INHERITED = """<div style="background-color: #F6F3EE;">
+  <div style="background-color: #0F51EC; padding: 16px;">
+    <span style="color: #FFFFFF;">CTA-INHERITED-MARKER</span>
+  </div>
+  <p style="color: #191E3B;">Sichtbarer Begleittext INHERITED.</p>
+</div>"""
+
+HIDDEN_PARENT_WRAPS_VISIBLE_CHILD = """<div style="background-color:#FFFFFF;">
+  <div class="column">
+    <p style="color:#FFFFFF;" class="button__primary">
+      <a style="padding:8px 16px; background-color:#0F51EC; color:#FFFFFF;"
+         href="https://example.test/cta">CTA-PARENT-WRAPS-MARKER</a>
+    </p>
+    <p style="color:#191E3B;">Sichtbarer Begleittext PARENT.</p>
+  </div>
+</div>"""
+
+
+class TestComputedBackgroundWalker:
+    """Black-box Tests fuer den Walker via ``_color_is_hidden_in_context``
+    durch ``sanitize()``-Output.
+
+    Walker-Implementation: ``HtmlEmailSanitizer._compute_effective_
+    background_rgb`` traversiert ``[tag, *tag.parents]`` und liefert den
+    ersten ``RGB``-Hit aus ``bgcolor``-Attribut oder ``style``-
+    ``background-color``.
+    """
+
+    def test_bg_on_tag_itself(self) -> None:
+        # Walker-Tiefe 1: bg an dem Tag, der die color:white-Decl traegt.
+        result = _sanitize(HIDDEN_DARK_BG_SELF)
+        assert "CTA-SELF-MARKER" in result
+        assert "Sichtbarer Begleittext SELF." in result
+
+    def test_bg_on_direct_parent(self) -> None:
+        # Walker-Tiefe 2: bg an dem direkten Eltern-Container.
+        result = _sanitize(HIDDEN_DARK_BG_INHERITED)
+        assert "CTA-INHERITED-MARKER" in result
+        assert "Sichtbarer Begleittext INHERITED." in result
+
+    def test_bg_deeper_in_hierarchy_5_levels(self) -> None:
+        html = (
+            '<div style="background-color: #0F51EC;">'
+            "<div><div><div><div>"
+            '<span style="color: #FFFFFF;">DEEP_5_MARKER</span>'
+            "</div></div></div></div>"
+            "</div>"
+        )
+        assert "DEEP_5_MARKER" in _sanitize(html)
+
+    def test_bg_deeper_in_hierarchy_20_levels(self) -> None:
+        inner = '<span style="color: #FFFFFF;">DEEP_20_MARKER</span>'
+        wrapped = inner
+        for _ in range(20):
+            wrapped = f"<div>{wrapped}</div>"
+        html = f'<div style="background-color: #0F51EC;">{wrapped}</div>'
+        assert "DEEP_20_MARKER" in _sanitize(html)
+
+    def test_bgcolor_legacy_attribute(self) -> None:
+        # Legacy HTML-Attribut bgcolor (Marketing-Mails fuer Outlook).
+        html = (
+            '<table bgcolor="#0F51EC">'
+            '<tr><td><span style="color: #FFFFFF;">LEGACY_BGCOLOR_MARKER</span></td></tr>'
+            "</table>"
+        )
+        assert "LEGACY_BGCOLOR_MARKER" in _sanitize(html)
+
+    def test_bgcolor_named_color(self) -> None:
+        # bgcolor mit Named Color (case-insensitive).
+        html = (
+            '<table bgcolor="NAVY">'
+            '<tr><td><span style="color: white;">NAVY_BGCOLOR_MARKER</span></td></tr>'
+            "</table>"
+        )
+        assert "NAVY_BGCOLOR_MARKER" in _sanitize(html)
+
+    def test_transparent_bg_walker_continues_upward(self) -> None:
+        # background-color: transparent zaehlt nicht als gesetzter bg;
+        # Walker geht weiter hoch und findet das aeussere darkbox.
+        html = (
+            '<div style="background-color: #0F51EC;">'
+            '<div style="background-color: transparent;">'
+            '<span style="color: #FFFFFF;">TRANSPARENT_PASSTHROUGH</span>'
+            "</div>"
+            "</div>"
+        )
+        assert "TRANSPARENT_PASSTHROUGH" in _sanitize(html)
+
+    def test_var_bg_falls_back_to_default(self) -> None:
+        # var() ist nicht parsbar -> Walker liefert None -> Default
+        # hidden. Variable-basierte Dark-Theme-Templates bleiben
+        # Limitation (Konzept-Doc Restrisiken).
+        html = (
+            '<div style="background-color: var(--theme-bg);">'
+            '<span style="color: #FFFFFF;">VAR_BG_FALLBACK_LOST</span>'
+            "</div>"
+        )
+        assert "VAR_BG_FALLBACK_LOST" not in _sanitize(html)
+
+    def test_inline_style_overrides_legacy_bgcolor(self) -> None:
+        # Phase 87.B-5 (Codex-PR-Review-Fix): CSS-Spec sagt Inline-
+        # Style ueberschreibt Presentational-Attribute. Wenn bgcolor
+        # dunkel + style hell + color:white -> Mail-Client rendert
+        # weiss-auf-weiss, also Hidden-Text. Walker muss das auch so
+        # sehen, sonst Bypass.
+        html = (
+            "<table><tr>"
+            '<td bgcolor="#000000" style="background-color:#FFFFFF;">'
+            '<span style="color:#FFFFFF;">HIDDEN_BYPASS_VECTOR</span>'
+            "</td></tr></table>"
+        )
+        assert "HIDDEN_BYPASS_VECTOR" not in _sanitize(html)
+
+    def test_inline_style_overrides_bgcolor_reverse(self) -> None:
+        # Sanity-Reverse: style dunkel + bgcolor hell -> style wins ->
+        # dunkler bg im Walker-Pfad -> color:white bleibt visible.
+        html = (
+            "<table><tr>"
+            '<td bgcolor="#FFFFFF" style="background-color:#000000;">'
+            '<span style="color:#FFFFFF;">VISIBLE_VIA_STYLE</span>'
+            "</td></tr></table>"
+        )
+        assert "VISIBLE_VIA_STYLE" in _sanitize(html)
+
+    def test_invalid_style_falls_back_to_bgcolor(self) -> None:
+        # Wenn style background-color syntaktisch valid aber semantisch
+        # invalid setzt (z.B. 'notacolor'), filtert der Validator die
+        # Decl raus. CSS-Spec: invalid declarations werden ignoriert;
+        # bgcolor bleibt aktiv. Hier: bgcolor dunkel -> color:white
+        # visible.
+        html = (
+            "<table><tr>"
+            '<td bgcolor="#000000" style="background-color:notacolor;">'
+            '<span style="color:#FFFFFF;">VALID_VIA_BGCOLOR_FALLBACK</span>'
+            "</td></tr></table>"
+        )
+        assert "VALID_VIA_BGCOLOR_FALLBACK" in _sanitize(html)
+
+    def test_unparsable_style_bg_does_not_fall_through_to_bgcolor(self) -> None:
+        # Wenn style background-color recognized aber fuer uns
+        # unparsbar (rgba/var/hsl), wuerde der Browser auch in dem
+        # Fall die Style-Decl ueber bgcolor priorisieren. Wir liefern
+        # konservativ None -> Default-weiss -> color:white hidden.
+        # bgcolor wird NICHT als Fallback genutzt.
+        html = (
+            "<table><tr>"
+            '<td bgcolor="#000000" style="background-color:rgba(0,0,0,0.5);">'
+            '<span style="color:#FFFFFF;">RGBA_FALLBACK_BLOCKED</span>'
+            "</td></tr></table>"
+        )
+        assert "RGBA_FALLBACK_BLOCKED" not in _sanitize(html)
+
+
+class TestColorIsHiddenInContext:
+    """Tests fuer die End-to-End-Logik des color:white-Hidden-Checks
+    im Walker-Kontext.
+    """
+
+    def test_white_text_on_dark_bg_visible(self) -> None:
+        html = (
+            '<div style="background-color: #0F51EC;">'
+            '<span style="color: #FFFFFF;">DARK_BG_VISIBLE</span>'
+            "</div>"
+        )
+        assert "DARK_BG_VISIBLE" in _sanitize(html)
+
+    def test_white_text_on_light_bg_hidden(self) -> None:
+        html = (
+            '<div style="background-color: #F5F5F5;">'
+            '<span style="color: #FFFFFF;">LIGHT_BG_HIDDEN</span>'
+            "</div>"
+        )
+        assert "LIGHT_BG_HIDDEN" not in _sanitize(html)
+
+    def test_white_text_without_any_bg_hidden(self) -> None:
+        # Default-Annahme: kein bg im Walker-Pfad -> Mail-Body ist weiss
+        # -> color:white = hidden. Status-Quo aus Phase 85.x bleibt.
+        html = '<div><span style="color: #FFFFFF;">DEFAULT_HIDDEN</span></div>'
+        assert "DEFAULT_HIDDEN" not in _sanitize(html)
+
+    def test_font_color_white_with_dark_container_visible(self) -> None:
+        # Legacy <font color="white"> + dunkler Container ueber Walker
+        # erkannt -> sichtbar.
+        html = (
+            '<div style="background-color: #000000;">'
+            '<font color="white">FONT_DARK_VISIBLE</font>'
+            "</div>"
+        )
+        assert "FONT_DARK_VISIBLE" in _sanitize(html)
+
+    def test_font_color_white_with_light_container_hidden(self) -> None:
+        html = (
+            '<div style="background-color: #FFFFFF;">'
+            '<font color="white">FONT_LIGHT_HIDDEN</font>'
+            "</div>"
+        )
+        assert "FONT_LIGHT_HIDDEN" not in _sanitize(html)
+
+    def test_font_color_white_without_container_hidden(self) -> None:
+        # Default-Annahme greift auch fuer Legacy-Attribut.
+        html = '<p><font color="white">FONT_DEFAULT_HIDDEN</font></p>'
+        assert "FONT_DEFAULT_HIDDEN" not in _sanitize(html)
+
+    def test_white_text_on_mid_grey_hidden(self) -> None:
+        # #888 hat Luminance ca. 0.246 -> ueber Schwelle 0.179 ->
+        # gilt als heller bg -> color:white = hidden.
+        html = (
+            '<div style="background-color: #888888;">'
+            '<span style="color: #FFFFFF;">MID_GREY_HIDDEN</span>'
+            "</div>"
+        )
+        assert "MID_GREY_HIDDEN" not in _sanitize(html)
+
+    def test_named_color_dark_bg_visible(self) -> None:
+        # Named-Color als bg.
+        html = (
+            '<div style="background-color: darkgreen;">'
+            '<span style="color: white;">NAMED_DARK_VISIBLE</span>'
+            "</div>"
+        )
+        assert "NAMED_DARK_VISIBLE" in _sanitize(html)
+
+    def test_fixture_hidden_dark_bg_self_keeps_marker(self) -> None:
+        # Fixture-Smoke: HIDDEN_DARK_BG_SELF muss nach 87.B-2 visible sein.
+        result = _sanitize(HIDDEN_DARK_BG_SELF)
+        assert "CTA-SELF-MARKER" in result
+        assert "Sichtbarer Begleittext SELF." in result
+
+    def test_fixture_hidden_dark_bg_inherited_keeps_marker(self) -> None:
+        # Fixture-Smoke: HIDDEN_DARK_BG_INHERITED muss nach 87.B-2 visible sein.
+        result = _sanitize(HIDDEN_DARK_BG_INHERITED)
+        assert "CTA-INHERITED-MARKER" in result
+        assert "Sichtbarer Begleittext INHERITED." in result
+
+    def test_fixture_parent_wraps_visible_child_keeps_marker(self) -> None:
+        # Phase 87.B-3: Eltern-Strip-Falle erschlagen. Der color:white-
+        # Eltern-<p> wird vom Walker korrekt als hidden eingestuft,
+        # aber _strip_hidden_color_tag rettet das visible <a>-Island
+        # (eigener dunkler bg) per extract() an die Eltern-Ebene,
+        # bevor der <p> via decompose() faellt.
+        result = _sanitize(HIDDEN_PARENT_WRAPS_VISIBLE_CHILD)
+        assert "CTA-PARENT-WRAPS-MARKER" in result
+        assert "Sichtbarer Begleittext PARENT." in result
+
+
+class TestHiddenStripUnwrap:
+    """Tests fuer die Hidden-Strip-Unwrap-Logik (Phase 87.B-3).
+
+    Wenn ein color-hidden Tag visible Dark-bg-Islands enthaelt,
+    werden die Islands ueber ``_strip_hidden_color_tag`` an die
+    Eltern-Ebene gerettet, BEVOR der Tag via ``decompose()`` faellt.
+    Reine Spam-Text-Nodes und Tags ohne eigenen dunklen bg gehen
+    mit dem Strip verloren (Anti-Bypass-Schutz).
+    """
+
+    def test_spam_text_node_without_island_stripped(self) -> None:
+        # color:white-Wrapper enthaelt nur Text -- keine Insel.
+        # Text faellt mit dem Eltern.
+        html = (
+            '<div><p style="color:#FFFFFF">SPAM_TEXT_ONLY</p><p>Begleittext.</p></div>'
+        )
+        result = _sanitize(html)
+        assert "SPAM_TEXT_ONLY" not in result
+        assert "Begleittext." in result
+
+    def test_mixed_island_and_spam_text(self) -> None:
+        # color:white-Wrapper enthaelt visible Island + Spam-Text.
+        # Island wird gerettet, Spam-Text faellt.
+        html = (
+            "<div>"
+            '<p style="color:#FFFFFF">EVIL_SPAM_PRE'
+            '<a style="background-color:#0F51EC; color:#FFFFFF">'
+            "RESCUED_ISLAND</a>"
+            "EVIL_SPAM_POST</p>"
+            "</div>"
+        )
+        result = _sanitize(html)
+        assert "RESCUED_ISLAND" in result
+        assert "EVIL_SPAM_PRE" not in result
+        assert "EVIL_SPAM_POST" not in result
+
+    def test_deeply_nested_island_rescued(self) -> None:
+        # color:white-Eltern -> Wrapper-Tags ohne bg -> visible Island
+        # tief unten. Walk findet das Island und rettet es; alle
+        # Wrapper-Tags fallen mit dem Eltern.
+        html = (
+            '<div><p style="color:#FFFFFF">'
+            "<span><div><section>"
+            '<a style="background-color:#0F51EC; color:#FFFFFF">'
+            "DEEP_NESTED_ISLAND</a>"
+            "</section></div></span>"
+            "</p></div>"
+        )
+        result = _sanitize(html)
+        assert "DEEP_NESTED_ISLAND" in result
+
+    def test_multiple_islands_preserve_order(self) -> None:
+        # Zwei unabhaengige visible Islands im selben hidden Wrapper.
+        # Beide werden gerettet, Reihenfolge bleibt erhalten.
+        html = (
+            "<div>"
+            '<p style="color:#FFFFFF">'
+            '<a style="background-color:#0F51EC; color:#FFFFFF">'
+            "FIRST_ISLAND</a>"
+            '<a style="background-color:#0F51EC; color:#FFFFFF">'
+            "SECOND_ISLAND</a>"
+            "</p>"
+            "</div>"
+        )
+        result = _sanitize(html)
+        idx_first = result.find("FIRST_ISLAND")
+        idx_second = result.find("SECOND_ISLAND")
+        assert idx_first >= 0
+        assert idx_second >= 0
+        assert idx_first < idx_second
+
+    def test_nested_islands_collapse_to_outermost(self) -> None:
+        # Innerhalb eines visible Islands ist ein zweites visible
+        # Island. Nur das auessere wird gesammelt; das innere bleibt
+        # im Subtree des aeusseren (Walk skipped Children gesammelter
+        # Islands).
+        html = (
+            '<div><p style="color:#FFFFFF">'
+            '<div style="background-color:#0F51EC">'
+            "OUTER_ISLAND_TEXT"
+            '<span style="background-color:darkgreen; color:#FFFFFF">'
+            "NESTED_INSIDE</span>"
+            "</div>"
+            "</p></div>"
+        )
+        result = _sanitize(html)
+        assert "OUTER_ISLAND_TEXT" in result
+        assert "NESTED_INSIDE" in result
+
+    def test_island_with_bgcolor_attribute_rescued(self) -> None:
+        # Legacy bgcolor am Island (statt style). Soll auch gerettet
+        # werden, weil _tag_own_background_rgb beide Quellen kennt.
+        html = (
+            '<div><p style="color:#FFFFFF">'
+            '<table bgcolor="#0F51EC"><tr><td>'
+            '<span style="color:#FFFFFF">BGCOLOR_ISLAND</span>'
+            "</td></tr></table>"
+            "</p></div>"
+        )
+        result = _sanitize(html)
+        assert "BGCOLOR_ISLAND" in result
+
+    def test_hard_hidden_does_not_rescue_islands(self) -> None:
+        # opacity:0-Eltern + visible Island im Subtree. Konzept-Doc
+        # Restrisiko: hard-hidden bleibt decompose() ohne Unwrap.
+        # Der Island geht mit.
+        html = (
+            '<div><p style="opacity:0">'
+            '<a style="background-color:#0F51EC; color:#FFFFFF">'
+            "OPACITY_HIDDEN_ISLAND</a>"
+            "</p></div>"
+        )
+        result = _sanitize(html)
+        assert "OPACITY_HIDDEN_ISLAND" not in result
+
+    def test_display_none_does_not_rescue_islands(self) -> None:
+        # display:none -- analog opacity:0.
+        html = (
+            '<div><p style="display:none">'
+            '<a style="background-color:#0F51EC; color:#FFFFFF">'
+            "DISPLAY_HIDDEN_ISLAND</a>"
+            "</p></div>"
+        )
+        result = _sanitize(html)
+        assert "DISPLAY_HIDDEN_ISLAND" not in result
+
+    def test_legacy_font_attr_hidden_with_island_rescue(self) -> None:
+        # <font color="white"> als Eltern-Wrapper, Island im Subtree.
+        # _remove_hidden_color_attr nutzt jetzt auch
+        # _strip_hidden_color_tag -- Island wird gerettet.
+        html = (
+            '<div><font color="white">'
+            '<a style="background-color:#0F51EC; color:#FFFFFF">'
+            "LEGACY_FONT_ISLAND</a>"
+            "</font></div>"
+        )
+        result = _sanitize(html)
+        assert "LEGACY_FONT_ISLAND" in result
+
+    def test_island_in_light_bg_context_after_extract(self) -> None:
+        # Edge-Case-Sanity: nach Extract des Islands steht es auf der
+        # Eltern-Ebene. Solange das Island selbst einen dunklen bg
+        # hat, ist es im neuen Kontext (Walker findet eigenen bg)
+        # nach wie vor visible -- der CTA-Marker bleibt.
+        html = (
+            '<div style="background-color:#FFFFFF">'
+            '<p style="color:#FFFFFF">'
+            '<a style="background-color:#0F51EC; color:#FFFFFF">'
+            "EXTRACTED_TO_LIGHT_PARENT</a>"
+            "</p>"
+            "</div>"
+        )
+        result = _sanitize(html)
+        assert "EXTRACTED_TO_LIGHT_PARENT" in result

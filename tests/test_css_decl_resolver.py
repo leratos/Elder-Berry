@@ -28,11 +28,16 @@ import pytest
 from tinycss2.ast import Node, NumberToken, WhitespaceToken
 
 from elder_berry.tools.css_decl_resolver import (
+    RGB,
     ResolvedDecl,
+    _relative_luminance,
+    background_color_rgb,
+    background_is_dark,
     color_is_white,
     display_is_none,
     font_size_below_threshold,
     opacity_is_zero,
+    parse_color_to_rgb,
     parse_inline_style,
     visibility_is_hidden,
 )
@@ -714,3 +719,242 @@ def test_resolveddecl_is_frozen() -> None:
     )
     with pytest.raises(FrozenInstanceError):
         decl.name = "color"  # type: ignore[misc]
+
+
+# ----------------------------------------------------------------------
+# Phase 87.B-1 -- Background-Color-RGB + WCAG-Helligkeits-Heuristik.
+# ----------------------------------------------------------------------
+
+
+def _value_tokens(style: str, name: str) -> list[Node]:
+    """Hilfs-Helper fuer 87.B-1-Tests -- alias zu ``_value_tokens_for``."""
+    return _value_tokens_for(style, name)
+
+
+class TestParseColorToRgb:
+    def test_hex_six_digit(self) -> None:
+        tokens = _value_tokens("background-color: #0F51EC", "background-color")
+        assert parse_color_to_rgb(tokens) == RGB(15, 81, 236)
+
+    def test_hex_three_digit(self) -> None:
+        tokens = _value_tokens("background-color: #f0a", "background-color")
+        assert parse_color_to_rgb(tokens) == RGB(255, 0, 170)
+
+    def test_hex_three_digit_white(self) -> None:
+        tokens = _value_tokens("background-color: #fff", "background-color")
+        assert parse_color_to_rgb(tokens) == RGB(255, 255, 255)
+
+    def test_hex_six_digit_uppercase(self) -> None:
+        tokens = _value_tokens("background-color: #FFFFFF", "background-color")
+        assert parse_color_to_rgb(tokens) == RGB(255, 255, 255)
+
+    def test_hex_eight_digit_alpha_ignored(self) -> None:
+        tokens = _value_tokens("background-color: #0F51EC80", "background-color")
+        assert parse_color_to_rgb(tokens) == RGB(15, 81, 236)
+
+    def test_hex_four_digit_alpha_ignored(self) -> None:
+        tokens = _value_tokens("background-color: #f0a8", "background-color")
+        assert parse_color_to_rgb(tokens) == RGB(255, 0, 170)
+
+    def test_hex_invalid_length_returns_none(self) -> None:
+        # Phase 87.B-1: 5-stelliges Hex ist kein gueltiges CSS-Hex.
+        # tinycss2 erkennt es trotzdem als HashToken; parse_color_to_rgb
+        # gibt konservativ None zurueck.
+        tokens = _value_tokens("background-color: #12345", "background-color")
+        assert parse_color_to_rgb(tokens) is None
+
+    def test_named_color_darkgreen(self) -> None:
+        tokens = _value_tokens("background-color: darkgreen", "background-color")
+        assert parse_color_to_rgb(tokens) == RGB(0, 100, 0)
+
+    def test_named_color_white(self) -> None:
+        tokens = _value_tokens("background-color: white", "background-color")
+        assert parse_color_to_rgb(tokens) == RGB(255, 255, 255)
+
+    def test_named_color_case_insensitive(self) -> None:
+        tokens = _value_tokens("background-color: NAVY", "background-color")
+        assert parse_color_to_rgb(tokens) == RGB(0, 0, 128)
+
+    def test_named_color_unknown_returns_none(self) -> None:
+        # Browser-Spec: invalid color → wird vom Validator gefiltert,
+        # daher steht im parse_inline_style-Output gar nichts mehr.
+        # Hier direkt testen via parse_component_value_list-aequivalent.
+        decls = parse_inline_style("background-color: notacolor")
+        assert background_color_rgb(decls) is None
+
+    def test_transparent_returns_none(self) -> None:
+        tokens = _value_tokens("background-color: transparent", "background-color")
+        assert parse_color_to_rgb(tokens) is None
+
+    def test_currentcolor_returns_none(self) -> None:
+        tokens = _value_tokens("background-color: currentcolor", "background-color")
+        assert parse_color_to_rgb(tokens) is None
+
+    def test_rgb_with_commas(self) -> None:
+        tokens = _value_tokens("background-color: rgb(15, 81, 236)", "background-color")
+        assert parse_color_to_rgb(tokens) == RGB(15, 81, 236)
+
+    def test_rgb_with_spaces(self) -> None:
+        tokens = _value_tokens("background-color: rgb(15 81 236)", "background-color")
+        assert parse_color_to_rgb(tokens) == RGB(15, 81, 236)
+
+    def test_rgb_clamps_out_of_range(self) -> None:
+        # CSS-Spec: out-of-range Komponenten werden geclamped.
+        tokens = _value_tokens(
+            "background-color: rgb(999, -10, 128)", "background-color"
+        )
+        assert parse_color_to_rgb(tokens) == RGB(255, 0, 128)
+
+    def test_rgba_returns_none(self) -> None:
+        # rgba() ist out-of-scope (Alpha-Compositing). Konservativ None.
+        decls = parse_inline_style("background-color: rgba(0,0,0,0.5)")
+        # rgba ist immerhin als Color-Function recognized → Cascade
+        # behaelt die Decl; parse_color_to_rgb gibt aber None zurueck.
+        assert background_color_rgb(decls) is None
+
+    def test_hsl_returns_none(self) -> None:
+        decls = parse_inline_style("background-color: hsl(120, 50%, 25%)")
+        assert background_color_rgb(decls) is None
+
+    def test_var_returns_none(self) -> None:
+        decls = parse_inline_style("background-color: var(--theme-bg)")
+        assert background_color_rgb(decls) is None
+
+    def test_empty_tokens_returns_none(self) -> None:
+        assert parse_color_to_rgb([]) is None
+
+
+class TestBackgroundColorRgb:
+    def test_single_decl(self) -> None:
+        decls = parse_inline_style("background-color: #0F51EC")
+        assert background_color_rgb(decls) == RGB(15, 81, 236)
+
+    def test_missing_property_returns_none(self) -> None:
+        decls = parse_inline_style("color: red; font-size: 14px")
+        assert background_color_rgb(decls) is None
+
+    def test_empty_style_returns_none(self) -> None:
+        assert background_color_rgb([]) is None
+
+    def test_cascade_last_wins_without_important(self) -> None:
+        decls = parse_inline_style("background-color: white; background-color: black")
+        assert background_color_rgb(decls) == RGB(0, 0, 0)
+
+    def test_cascade_important_wins(self) -> None:
+        decls = parse_inline_style(
+            "background-color: white !important; background-color: black"
+        )
+        assert background_color_rgb(decls) == RGB(255, 255, 255)
+
+    def test_invalid_later_decl_skipped(self) -> None:
+        # Phase 87.1.1-Bypass-Schutz: invalid second decl darf erste
+        # gueltige Decl nicht ueberschreiben.
+        decls = parse_inline_style(
+            "background-color: #000; background-color: bogus-not-a-color"
+        )
+        assert background_color_rgb(decls) == RGB(0, 0, 0)
+
+    def test_bgcolor_attr_form_not_via_inline_style(self) -> None:
+        # background-color als Property, nicht als HTML-Attribut.
+        # Das HTML-Attribut bgcolor wird in 87.B-2 separat im Sanitizer
+        # behandelt; hier nur die CSS-Property.
+        decls = parse_inline_style("background-color: navy")
+        assert background_color_rgb(decls) == RGB(0, 0, 128)
+
+
+class TestRelativeLuminance:
+    @pytest.mark.parametrize(
+        "rgb, expected",
+        [
+            (RGB(0, 0, 0), 0.0),
+            (RGB(255, 255, 255), 1.0),
+        ],
+    )
+    def test_extreme_anchors(self, rgb: RGB, expected: float) -> None:
+        assert _relative_luminance(rgb) == pytest.approx(expected, abs=1e-9)
+
+    def test_fewo_marketing_button_is_low_luminance(self) -> None:
+        # Phase 87.B-1: typischer Marketing-Button-bg (z.B. #0F51EC).
+        # Erwartet Luminance unter Schwelle 0.179.
+        lum = _relative_luminance(RGB(15, 81, 236))
+        assert lum == pytest.approx(0.1204, abs=1e-3)
+        assert lum < 0.179
+
+    def test_mid_grey_is_above_threshold(self) -> None:
+        # #888 liegt knapp UEBER der WCAG-Schwelle.
+        lum = _relative_luminance(RGB(136, 136, 136))
+        assert lum == pytest.approx(0.2462, abs=1e-3)
+        assert lum > 0.179
+
+    def test_red_luminance(self) -> None:
+        # Reines Rot hat moderate Luminanz (0.2126 nach WCAG).
+        lum = _relative_luminance(RGB(255, 0, 0))
+        assert lum == pytest.approx(0.2126, abs=1e-3)
+
+    def test_blue_luminance(self) -> None:
+        # Reines Blau hat sehr niedrige Luminanz (0.0722).
+        lum = _relative_luminance(RGB(0, 0, 255))
+        assert lum == pytest.approx(0.0722, abs=1e-3)
+
+
+class TestBackgroundIsDark:
+    @pytest.mark.parametrize(
+        "rgb, expected_dark",
+        [
+            (RGB(0, 0, 0), True),
+            (RGB(255, 255, 255), False),
+            (RGB(15, 81, 236), True),  # Marketing-Button-bg
+            (RGB(136, 136, 136), False),  # mid-grey ueber Schwelle
+            (RGB(0, 0, 128), True),  # navy
+            (RGB(139, 0, 0), True),  # darkred
+            (RGB(0, 100, 0), True),  # darkgreen
+            (RGB(245, 245, 245), False),  # whitesmoke
+        ],
+    )
+    def test_named_marketing_backgrounds(self, rgb: RGB, expected_dark: bool) -> None:
+        assert background_is_dark(rgb) is expected_dark
+
+    def test_threshold_override(self) -> None:
+        # Niedrigere Schwelle → mehr Werte gelten als dunkel.
+        # Bei Schwelle 0.0 ist nur reines Schwarz dunkel.
+        assert background_is_dark(RGB(0, 0, 0), threshold=0.0) is False
+        assert background_is_dark(RGB(15, 81, 236), threshold=0.0) is False
+        # Hoehere Schwelle → mid-grey gilt jetzt als dunkel.
+        assert background_is_dark(RGB(136, 136, 136), threshold=0.3) is True
+
+
+class TestBackgroundColorValidator:
+    """``_VALIDATORS["background-color"]`` setzt Browser-konforme
+    invalid-declaration-Behandlung im Cascade-Resolver durch.
+    """
+
+    def test_recognized_named_color_kept(self) -> None:
+        decls = parse_inline_style("background-color: navy")
+        names = [d.name for d in decls]
+        assert "background-color" in names
+
+    def test_recognized_hex_kept(self) -> None:
+        decls = parse_inline_style("background-color: #0F51EC")
+        names = [d.name for d in decls]
+        assert "background-color" in names
+
+    def test_unrecognized_bareword_skipped(self) -> None:
+        # Nicht-Color-Ident wird vom Validator als invalid markiert
+        # und im Cascade-Resolver ausgefiltert.
+        decls = parse_inline_style("background-color: notacolor")
+        names = [d.name for d in decls]
+        assert "background-color" not in names
+
+    def test_invalid_later_bypass_protected(self) -> None:
+        # Wenn die zweite Decl invalid ist, bleibt die erste aktiv.
+        decls = parse_inline_style(
+            "background-color: navy; background-color: notacolor"
+        )
+        assert background_color_rgb(decls) == RGB(0, 0, 128)
+
+
+def test_rgb_is_frozen() -> None:
+    """RGB ist immutable -- analog zu ResolvedDecl."""
+    rgb = RGB(15, 81, 236)
+    with pytest.raises(FrozenInstanceError):
+        rgb.r = 0  # type: ignore[misc]

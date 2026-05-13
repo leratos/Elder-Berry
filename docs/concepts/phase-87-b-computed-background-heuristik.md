@@ -1,9 +1,10 @@
 # Phase 87.B – Computed-Background-Heuristik
 
-**Status:** Konzept (2026-05-13)
+**Status:** Abgeschlossen (2026-05-13)
 **Branch:** `feature/phase-87-b-konzept` (Konzept-Commit) →
-`feature/phase-87-b-computed-background` (Implementation, geplant)
-**Aufwand:** 1 Konzept-Session + ~3-4 Implementations-Sessions (4 Etappen)
+`feature/phase-87-b-computed-background` (Implementation)
+**Aufwand:** 1 Konzept-Session + 1 Implementations-Session (4 Etappen,
+in einer Session abgearbeitet)
 **Vorgaenger:** Phase 85 (HtmlEmailSanitizer, V3-Limitation),
 Phase 86 (tinycss2-Refactor, `css_decl_resolver`),
 Phase 87.1 (Iteration-Crash-Hotfix + Realwelt-Befund Fewo-Direkt)
@@ -647,3 +648,84 @@ strippen. Bilder als Background-Definition kann der Sanitizer ohne
 OCR und Image-Loading nicht aufloesen -- bleibt Limitation, wenn ein
 realer Vektor auftaucht, ist die Antwort "Marketing-Mail-Erkennung
 per Subject" (Section 7.3 in 85-Konzept), nicht Sanitizer-Aufruestung.
+
+## Abgeschlossen
+
+### Implementations-Befunde (2026-05-13)
+
+Phase 87.B wurde in 4 Etappen in einer Session abgearbeitet:
+
+* **87.B-1** (Commit `b4ffe68`): `css_decl_resolver.py` um RGB-
+  Dataclass, vollstaendige CSS-Color-3-Map (147 Named Colors),
+  `parse_color_to_rgb`, `background_color_rgb`, `_srgb_to_linear`,
+  `_relative_luminance`, `background_is_dark` (WCAG-Schwelle 0.179),
+  `_is_recognized_background_color` in `_VALIDATORS`. 46 neue Tests
+  in 5 Klassen.
+* **87.B-2** (Commit `b440aee`): `html_email_sanitizer.py` um
+  `_compute_effective_background_rgb` (Walker durch
+  `[tag, *tag.parents]`) und `_color_is_hidden_in_context`.
+  `_style_is_hidden`-Signatur auf `(tag, style)` erweitert.
+  `_remove_hidden_color_attr` static → instance, Walker-Check vor
+  Strip. V3-Test umgedreht. 19 neue Tests in 2 Klassen.
+* **87.B-3** (Commit `6481908`): Hidden-Strip-Unwrap.
+  `_hidden_reason` klassifiziert `"hard"` vs `"color"`;
+  `_collect_dark_bg_islands` + `_strip_hidden_color_tag` retten
+  visible Dark-bg-Islands per `.extract()` vor dem Eltern-Strip.
+  `_remove_hidden_styled` + `_remove_hidden_color_attr` nutzen den
+  neuen Strip-Helper. 10 neue Tests in `TestHiddenStripUnwrap`.
+* **87.B-4** (dieser Commit): CLAUDE.md-Hinweis ergaenzt; Konzept-
+  Doc-Status auf "Abgeschlossen"; Section-11-Migration in 85-Konzept
+  als Folge-Phase markiert.
+
+### Abweichungen vom Konzept-Pseudocode
+
+**Island-Definition.** Konzept-Pseudocode wollte
+"Island = Tag mit color:white am Tag selbst UND eigener visible-
+Kontext zwischen Tag und Strip-Target". Bei Implementation gefunden:
+ein zwischenliegender bg-Ancestor wird mit dem Strip-Target
+dekomponiert, so dass nach Extract der bg verloren waere. Saubere
+Definition stattdessen: **"Island = Tag mit eigenem dunklen bg
+(style oder bgcolor)"**. Children mit `color:white` werden im
+Subtree des Islands automatisch mit-gerettet, weil sie in seinem
+Sub-Walker-Pfad den eigenen dunklen bg finden.
+
+**`_hidden_reason` statt `_style_is_color_only_hidden`.** Konzept-
+Diskussion sah einen separaten Helper fuer den color-only-Check vor.
+Implementiert: ein gemeinsamer `_hidden_reason(tag, style) -> str |
+None`, der den Hidden-Grund klassifiziert. Das ist eine
+parse-Operation pro Tag (statt zwei) und macht die Split-Logik in
+`_remove_hidden_styled` explizit.
+
+### Realwelt-Verifikation
+
+Synthetisches Fewo-Direkt-Replikat (`HIDDEN_PARENT_WRAPS_VISIBLE_
+CHILD` in `tests/test_html_email_sanitizer.py`): der CTA-Button-
+Marker ueberlebt nach Phase 87.B-3 den Sanitizer. Konkret: der
+color:white-Eltern-`<p>` (MSO-Outlook-Hack) wird vom Walker als
+hidden eingestuft; das visible `<a>`-Island mit eigenem `background-
+color:#0F51EC` wird per `.extract()` an die Eltern-Ebene gerettet,
+bevor der `<p>` faellt.
+
+### Folge-Phasen
+
+* **Section 11 V10 Doku-Migration** in `phase-85-html-email-
+  sanitizer.md`: V3-Limitation als gefixt vermerken, Inheritance-
+  Limitation auf andere Properties (font-size, opacity) einschraenken,
+  Verweis auf 87.B-Konzept aufnehmen. Anti-Scope-Schutz hat das
+  bewusst aus 87.B rausgehalten.
+* **Color-Inheritance** (Restrisiken): Wenn ein Eltern-Tag
+  `color:white` traegt und der Child gar kein `color` setzt, sieht
+  der Hidden-Check den Child nicht als verdaechtig. Selten in
+  Marketing-Mails, bei realem Vektor nachruesten.
+* **Hard-Hidden-Unwrap** (Restrisiken): `_strip_hidden_color_tag`
+  rettet aktuell nur color-hidden Pfade. Falls ein realer Vektor
+  einen visible Island in einem `opacity:0`/`display:none`-Wrapper
+  zeigt, mechanisch trivial nachruestbar -- bewusst out-of-scope, da
+  semantisch der Mail-Client den Subtree gar nicht rendert.
+
+### Test-Statistik (Stand 87.B-3)
+
+* 5881 Tests passed (+75 ggue. Baseline vor 87.B): 46 (87.B-1) + 19
+  (87.B-2) + 10 (87.B-3) = 75 neue Sanitizer/Resolver-Tests.
+* 0 Regressionen (V4-Perf-Smoke gruen, Median < 100ms).
+* mypy `--strict` clean, ruff clean.
