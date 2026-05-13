@@ -2143,3 +2143,27 @@ Repo-Hygiene, Audit-Tools und Doku.
 - **Tests**: `tests/test_message_handlers.py` (3 neue Tests) +
   `is_rejected`-Helper-Tests in `tests/test_intent_aggregator.py`.
 - **Suite**: 5418 Tests collected (Stand 2026-05-10).
+
+## Phase 92 – Multi-Stop-Routing 🗺️ KONZEPT
+
+- **Trigger**: User-Request – Routen mit mehreren Stops planen, Reihenfolge
+  optimieren, POIs entlang der Route finden (z.B. "nach Leipzig Hbf,
+  vorher Lisa und Andrea abholen, auf dem Weg bei Kaufland einkaufen").
+- **Architektur**: Neuer `RouteProvider`-Interface (`tools/route_provider.py`),
+  `GoogleMapsRouteProvider` als erste Implementierung (Directions API +
+  Places API v1 "Search Along Route"), `MultiStopRoutePlanner`,
+  `RouteIntentParser` (Pattern-Vorfilter + Claude-Sonnet-Tool-Call mit
+  JSON-Schema), `MultiStopRouteCommandHandler` mit Plugin-Pattern
+  (priority=80, fallthrough zu Single-Stop bei priority=76).
+- **Disambiguierung**: Sequenziell mit nummerierten Listen, Zustand in
+  `PendingConfirmationStore` (`action_type="route_disambig"`).
+  Handler-eigener Zahl-Antwort-Vorcheck — `PendingConfirmationStore` selbst
+  bleibt unverändert.
+- **Phase 43-Single-Stop bleibt unangetastet**. Existierender Bug im
+  `RouteCommandHandler._resolve_address()` (immer `results[0]` ohne
+  Mehrdeutigkeits-Check) explizit aus Phase 92 ausgeschlossen –
+  separater Bugfix-Branch.
+- **Konzept**: `docs/concepts/phase-92-multi-stop-routing.md`.
+- **Etappen**: E1 (Konzept) abgeschlossen 2026-05-13.
+  E2–E6 (Implementierung) in eigenen Folge-Chats.
+- **Branch (Konzept)**: `feature/phase-92-multi-stop-routing-concept`.
