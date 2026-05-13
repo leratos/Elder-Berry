@@ -3,7 +3,7 @@
 **Status:** Konzept (2026-05-13)
 **Branch:** `feature/phase-87-b-konzept` (Konzept-Commit) →
 `feature/phase-87-b-computed-background` (Implementation, geplant)
-**Aufwand:** 1 Konzept-Session + ~2-3 Implementations-Sessions (3 Etappen)
+**Aufwand:** 1 Konzept-Session + ~3-4 Implementations-Sessions (4 Etappen)
 **Vorgaenger:** Phase 85 (HtmlEmailSanitizer, V3-Limitation),
 Phase 86 (tinycss2-Refactor, `css_decl_resolver`),
 Phase 87.1 (Iteration-Crash-Hotfix + Realwelt-Befund Fewo-Direkt)
@@ -34,16 +34,34 @@ Aktions-Empfehlung fehlt.
 sie nur die verwandte Inheritance-Limitation
 (`<div style="font-size:1px"><span>EVIL</span>` -- Eltern-Style
 greift, Filter haengt am leeren Span-Style). Bei der V10-Migration ist
-die V3-Limitation versehentlich weggekuerzt worden. Der Fewo-Direkt-
-Button kombiniert in der Praxis beide Limitations: die Hidden-Color-
-Pruefung kennt weder den Background-Kontext (V3) noch sieht sie den
-am Eltern-Container definierten Background (V10-Inheritance).
+die V3-Limitation versehentlich weggekuerzt worden.
 
-Phase 87.B addressiert genau diese Kombination: ein Style-Walker
-traversiert die Tag-Hierarchie, sammelt die `background-color`
-Vorfahren-Decls (Inheritance), und entscheidet ueber eine Helligkeits-
-Heuristik, ob `color:white` in dem konkreten Kontext als hidden oder
-visible einzustufen ist.
+**Korrektur des urspruenglichen Befundes (Strip-Effekt-Probe 2026-05-13
+vor 87.B-Implementation gegen C:\tmp\fewo-184.eml):** Der CTA-Button
+selbst kombiniert NICHT V3 + V10. Er traegt `background-color:#0F51EC`
+UND `color:#FFFFFF` AM SELBEN `<a>`-Tag -- das ist reine V3-Self-
+Limitation. V10-Inheritance trifft ein anderes Element der Mail: den
+Eltern-`<p>` mit `color:#FFFFFF` (Outlook-MSO-Kompatibilitaets-Hack
+hinter `<![endif]-->`), der in der weissen Section sitzt. Beide
+Vektoren sind eigenstaendig, treten aber in derselben Mail an unter-
+schiedlichen Tags auf.
+
+**Daraus folgt eine dritte, vom urspruenglichen 87.B-Walker NICHT
+erfasste Limitation -- die Eltern-Strip-Falle:** Wenn der Walker den
+Eltern-`<p>` (color:white, kein eigener bg, in weisser Section)
+korrekt als hidden einstuft und ihn via `decompose()` strippt, fliegt
+der visible Child-`<a>` mit eigenem dunklen bg als Sub-Tree mit raus
+-- obwohl der Walker den `<a>` auf eigener Ebene als visible erkennen
+wuerde. Der Lookup-Fix allein reicht also fuer den Realwelt-Vektor
+nicht. Es braucht zusaetzlich eine Unwrap-Logik (Etappe 87.B-3), die
+visible Children vor dem Eltern-Decompose herauszieht.
+
+Phase 87.B addressiert beides: ein Style-Walker traversiert die Tag-
+Hierarchie, sammelt die `background-color` Vorfahren-Decls
+(Inheritance), und entscheidet ueber eine Helligkeits-Heuristik, ob
+`color:white` in dem konkreten Kontext als hidden oder visible einzu-
+stufen ist (Etappen 87.B-1/2). Anschliessend rettet der Hidden-Strip-
+Unwrap visible Children aus Hidden-Eltern (Etappe 87.B-3).
 
 ## Abgrenzung
 
@@ -74,6 +92,14 @@ Adversarial weiss-auf-weiss bleibt als hidden erkannt:
 * Background im Walker-Pfad ist hell → color:white = hidden.
 * Kein Background im Walker-Pfad gesetzt → Default "weisser Mail-Body"
   → color:white = hidden (Status-Quo erhalten, siehe Frage B).
+
+Zusaetzlich (Etappe 87.B-3 Hidden-Strip-Unwrap): wenn ein Tag selbst
+als hidden eingestuft wird, aber visible Children (eigener dunkler bg
+oder Walker-bg-dunkel + color:white) enthaelt, werden die visible
+Children vor dem Eltern-Strip per `extract()` an die Eltern-Ebene
+hochgezogen. Reine Text-Nodes und nicht-visible Tags bleiben im
+gestripptem Subtree und gehen mit ihm verloren (Anti-Bypass-Schutz
+gegen versteckten Spam-Text in color:white-Wrappern).
 
 ## Out of Scope
 
@@ -255,6 +281,66 @@ Aufgerufen aus:
    Pfade benutzen dieselbe Walker-Logik, das wird zentralisiert -- das
    war die Lehre aus 85.x "zwei Code-Pfade pro Hidden-Check sind teuer".
 
+### Hidden-Strip-Unwrap (Etappe 87.B-3)
+
+Wenn der Sanitizer einen Tag als hidden einstuft, wird er heute via
+`tag.decompose()` aus dem Tree entfernt -- der gesamte Subtree faellt
+mit. Das ist der Eltern-Strip-Falle-Vektor: ein color:white-Eltern-
+Tag (z.B. MSO-Hack-`<p>`) frisst einen visible Child-Button mit
+eigenem dunklen bg.
+
+Neuer Helper, der `decompose()` an allen Hidden-Strip-Stellen ersetzt:
+
+```python
+def _strip_hidden_tag(self, tag: Tag) -> None:
+    """Strip a hidden tag, but rescue visible children first.
+
+    Visible-Island-Definition: ein descendant Tag, dessen
+    _color_is_hidden_in_context-Pruefung in der eigenen Walker-
+    Hierarchie False liefert UND der einen eigenstaendigen visible-
+    Kontext setzt (eigener bg-color/bgcolor im Walker-Pfad,
+    irgendwo zwischen Tag und dem zu-strippenden Eltern).
+
+    Reine Text-Nodes (NavigableString) und Tags ohne eigenen
+    visible-Kontext bleiben im Subtree und werden mit-gestrippt.
+    """
+    rescuable = self._collect_visible_islands(tag)
+    parent = tag.parent
+    if parent is None or not rescuable:
+        tag.decompose()
+        return
+    insert_at = parent.index(tag)
+    for island in rescuable:
+        extracted = island.extract()
+        parent.insert(insert_at, extracted)
+        insert_at += 1
+    tag.decompose()
+```
+
+`_collect_visible_islands` macht eine `find_all(True)`-Walk durch den
+Subtree, sammelt Tags die `_color_is_hidden_in_context` als visible
+einstuft. Wichtig: rekursive Walks ueberspringen Children eines
+bereits gesammelten Islands (sonst wuerden visible Sub-Islands eines
+visible Islands doppelt extrahiert, was die DOM-Struktur zerlegt).
+
+**Anti-Bypass-Eigenschaft.** Das Walker-Pfad-Visible-Kriterium kennt
+die OPACE-Eltern-Hierarchie -- ein Spam-Text-Node ohne eigenen Tag
+oder ein span ohne eigenen bg ist nie visible-Island und faellt
+deshalb mit dem Hidden-Eltern. Damit bleibt der 85.x-Anti-Spam-
+Hidden-Text-Strip wirksam.
+
+Aufgerufen aus:
+
+* `_style_is_hidden` → vorher `tag.decompose()` → jetzt
+  `self._strip_hidden_tag(tag)`.
+* Legacy-Color-Attribut-Pass → analog.
+* Andere Hidden-Strips (opacity:0, display:none, visibility:hidden,
+  font-size<1) bleiben bei `tag.decompose()` -- die haben keinen
+  Color-Kontext, der visible Children definieren wuerde. Theoretisch
+  koennten auch dort Children-Rettung sinnvoll sein, aber kein
+  Realwelt-Vektor zwingt dazu; bleibt out-of-scope (siehe
+  Restrisiken).
+
 ### Performance
 
 Pro hidden-style-Tag ein Walker-Lauf bis zur ersten background-Definition
@@ -296,9 +382,11 @@ ist hier die teurere Variante.
 * V3-Test `test_dark_theme_white_text_is_stripped_known_limitation`
   wird **umgedreht** und umbenannt zu
   `test_dark_theme_white_text_survives` -- dokumentiert den 87.B-Fix.
-* Neue Tests:
-  * Fewo-Direkt-Replikat: Container mit `background-color:#0F51EC`,
-    Child mit `color:#FFFFFF` → visible.
+* Neue Tests gegen die in Etappe 87.B-2 fixbaren Vektoren:
+  * `HIDDEN_DARK_BG_SELF`: `<a>` mit eigenem dunklen bg + color:white
+    → visible (pure V3-Self).
+  * `HIDDEN_DARK_BG_INHERITED`: Container mit dunklem bg, Child mit
+    color:white ohne eigenen bg → visible (pure V10-Inheritance).
   * Adversarial-Fall: kein bg gesetzt + `color:white` → hidden
     (Default-weiss-Annahme).
   * Heller bg im Walker-Pfad + `color:white` → hidden.
@@ -309,14 +397,49 @@ ist hier die teurere Variante.
 * Perf-Smoke: bestehende V4-Suite mit dem neuen Walker laufen lassen,
   Median weiterhin < 100ms.
 * Acceptance: voller pytest gruen, mypy strict + ruff clean,
-  Realwelt-Smoke mit echter Fewo-Direkt-Mail (von Lera).
+  Sanitizer-Unit-Smoke gegen Fixture `HIDDEN_DARK_BG_SELF` +
+  `HIDDEN_DARK_BG_INHERITED` (Marker im Output).
+* **Limitation am Ende von 87.B-2:** Die Realwelt-Fixture
+  `HIDDEN_PARENT_WRAPS_VISIBLE_CHILD` (color:white-Eltern wrappt
+  visible-island Child) bleibt nach 87.B-2 noch rot -- der Eltern-
+  Strip frisst den Child mit. Wird in 87.B-3 erschlagen.
 * Aufwand: ~1 Session.
 
-### Etappe 87.B-3 -- Doku + Befund Section 11 V10
+### Etappe 87.B-3 -- Hidden-Strip-Unwrap (Eltern-Strip-Falle)
+
+* `html_email_sanitizer.py`: `_strip_hidden_tag` (ersetzt direkte
+  `decompose()`-Aufrufe an Hidden-Color-Strip-Stellen) +
+  `_collect_visible_islands` (rekursive Subtree-Walk, sammelt visible
+  descendants, ueberspringt Children gesammelter Islands).
+* Refactor: alle `tag.decompose()`-Aufrufe in Color-Hidden-Pfaden auf
+  `self._strip_hidden_tag(tag)` umgestellt. opacity/display/visibility/
+  font-size-Pfade bleiben unveraendert (out-of-scope, kein Realwelt-
+  Vektor).
+* Neue Tests:
+  * `HIDDEN_PARENT_WRAPS_VISIBLE_CHILD`: color:white-Eltern-Tag um
+    `<a>` mit eigenem dunklen bg + color:white → Eltern weg, `<a>`
+    samt Text gerettet.
+  * Adversarial: color:white-Eltern um reinen Spam-Text-Node (ohne
+    eigenen visible-Kontext) → Eltern + Text weg (Anti-Bypass).
+  * Misch-Fall: color:white-Eltern enthaelt 1 visible-Island + 1
+    Spam-Text-Node → Island gerettet, Spam-Text weg.
+  * Tief verschachtelte Insel: color:white-Eltern → `<div>` ohne bg
+    → `<a>` mit eigenem dunklen bg + color:white → der `<a>` wird
+    gerettet, alle daruebliegenden Wrapper fallen.
+* Perf-Smoke: bestehende V4-Suite + die neuen Fixtures, Median
+  weiterhin < 100ms (Unwrap-Pass ist O(n) ueber den Hidden-Subtree).
+* Acceptance: voller pytest gruen, mypy strict + ruff clean,
+  Lera-Realwelt-Smoketest mit dem konkreten Fewo-Direkt-Replikat
+  (synthetisch generierte PII-freie eml).
+* Aufwand: ~halbe bis 1 Session (Komplexitaet liegt im Island-Walk,
+  nicht im Strip).
+
+### Etappe 87.B-4 -- Doku + Befund Section 11 V10
 
 * `CLAUDE.md`-Abschnitt "E-MAIL-HANDLING": kurzer Verweis, dass
   `color:white`-Hidden-Check kontextabhaengig ist (background-Walker
-  in Sanitizer).
+  in Sanitizer) UND dass Hidden-Strip visible Children rettet
+  (Eltern-Strip-Falle-Fix).
 * `phase-87-b-computed-background-heuristik.md`-Konzept-Doc selbst
   bekommt einen Abschnitt "Abgeschlossen" mit Befunden -- analog wie
   bei Phase 85/86.
@@ -371,8 +494,45 @@ Cascade-Tests:
 * `color:white` + heller Walker-bg → hidden.
 * `color:white` + kein Walker-bg → hidden (Default).
 * `<font color="white">` + dunkler Container → not hidden.
-* Fewo-Direkt-Replikat exact: vollstaendige Tag-Hierarchie wie in der
-  Realwelt-Mail.
+
+### TestHiddenStripUnwrap (im Sanitizer-Test, neu in Etappe 87.B-3)
+
+* `HIDDEN_PARENT_WRAPS_VISIBLE_CHILD`: color:white-`<p>` (kein eigener
+  bg) wrappt visible `<a>` (eigener bg #0F51EC + color:white) →
+  `<p>` weg, `<a>` samt Text-Marker auf Eltern-Ebene ueberlebt.
+* Spam-Bypass-Schutz: color:white-`<p>` wrappt nur einen Spam-Text-
+  Node ("HIDDEN SPAM TEXT") → komplett weg.
+* Misch-Fall: color:white-`<p>` enthaelt 1 visible Island +
+  1 Spam-Text-Node → Island gerettet, Spam-Text mit-gestrippt.
+* Tief verschachtelt: color:white-`<p>` → `<span>` ohne bg →
+  `<a>` mit eigenem bg + color:white → der `<a>` wird gerettet
+  (Walk findet das Island, alle Wrapper fallen weg).
+* Mehrere visible Islands: color:white-`<p>` enthaelt 2 unab-
+  haengige visible `<a>`-Buttons → beide gerettet, Reihenfolge
+  erhalten.
+* Island enthaelt eigenen Hidden-Subtree: visible `<a>` enthaelt
+  einen color:white-`<span>` als Child → Island wird gerettet, der
+  eigene Hidden-Subtree wird im naechsten Sanitizer-Pass / am
+  gleichen Pass weiter behandelt (Idempotenz-Test).
+
+### Fixture-Konstanten (Inline-Python-Strings, generische Namen)
+
+Drei Sanitizer-Test-Fixtures als `tests/test_html_email_sanitizer.py`-
+Modul-Konstanten, abgeleitet aus realer Mail-Struktur (PII-frei,
+ohne Tracking-URLs, ohne Vendor-Namen im Variablen-Identifier):
+
+* `HIDDEN_DARK_BG_SELF` -- Pure V3-Self. `<a>` traegt eigenen
+  dunklen bg + color:white am selben Tag. Etappe 87.B-2-Fixbar.
+* `HIDDEN_DARK_BG_INHERITED` -- Pure V10-Inheritance. Container-bg
+  dunkel, Child mit color:white ohne eigenen bg. Etappe 87.B-2-Fixbar.
+* `HIDDEN_PARENT_WRAPS_VISIBLE_CHILD` -- Eltern-Strip-Falle.
+  color:white-Eltern (kein eigener bg, in weisser Section) wrappt
+  visible-island Child mit eigenem dunklen bg + color:white.
+  Etappe 87.B-3-Fixbar (87.B-2 allein reicht nicht).
+
+Jede Fixture enthaelt einen klar identifizierbaren Marker-String
+(z.B. `CTA-MARKER-SELF`), gegen den Tests assertieren. Sichtbarer
+Begleittext bleibt als Negativ-Probe (darf nicht verloren gehen).
 
 ### Regressionsschutz
 
@@ -391,14 +551,21 @@ Phase 87.B gilt als abgeschlossen, wenn:
    `_color_is_hidden_in_context` existieren; `_style_is_hidden`-
    Signatur aufgeruestet; Legacy-Color-Attribut-Pass auf Walker
    umgestellt.
-3. Umgedrehter V3-Test
+3. `HtmlEmailSanitizer._strip_hidden_tag` +
+   `_collect_visible_islands` existieren; alle Color-Hidden-Strip-
+   Stellen rufen den Helper statt direkt `tag.decompose()`.
+4. Umgedrehter V3-Test
    (`test_dark_theme_white_text_survives`) ist gruen.
-4. Fewo-Direkt-Replikat-Test ist gruen.
-5. Voller pytest-Lauf gruen, keine Regressionen, V4-Perf-Smoke ok.
-6. Lera-Realwelt-Smoketest mit der konkreten Fewo-Direkt-Mail: CTA
-   "Freunde einladen" steht in der Zusammenfassung.
-7. CLAUDE.md kurzer Hinweis ergaenzt.
-8. Journal: `## Abgeschlossen: Phase 87.B` mit Befunden + expliziter
+5. Alle drei Fixture-Tests gruen:
+   * `HIDDEN_DARK_BG_SELF` (87.B-2-Fix)
+   * `HIDDEN_DARK_BG_INHERITED` (87.B-2-Fix)
+   * `HIDDEN_PARENT_WRAPS_VISIBLE_CHILD` (87.B-3-Fix)
+6. Spam-Bypass-Test gruen: color:white-Wrapper um reinen Text-Node
+   ohne visible Island → Inhalt wird gestrippt (Anti-Bypass).
+7. Voller pytest-Lauf gruen, keine Regressionen, V4-Perf-Smoke ok
+   (Median < 100ms ueber 5 Fixtures).
+8. CLAUDE.md kurzer Hinweis ergaenzt (Walker + Unwrap).
+9. Journal: `## Abgeschlossen: Phase 87.B` mit Befunden + expliziter
    Verweis "Section 11 V10 in 85-Konzept-Doc braucht Folge-Migration".
 
 ## Restrisiken
@@ -433,6 +600,24 @@ Hidden-Check feuert nur bei explizitem `color:white` am Tag selbst.
 Das war auch vor 87.B so; 87.B macht es nicht schlimmer, aber auch
 nicht besser. Realer Vektor selten, weil Marketing-Mails Color
 typischerweise pro Text-Element setzen.
+
+### Unwrap nur fuer Color-Hidden, nicht fuer andere Hidden-Pfade
+
+`_strip_hidden_tag` (Etappe 87.B-3) ersetzt `decompose()` NUR an den
+Color-Hidden-Stellen (Walker-Pfad + Legacy-Attribut-Pass). Andere
+Hidden-Pfade (opacity:0, display:none, visibility:hidden, font-size
+<1px) rufen weiterhin direkt `tag.decompose()`. Theoretisch koennte
+auch dort ein visible Child stecken (z.B. `<div display:none>` mit
+einem `<a bg:dark color:white>` als Kind), aber:
+
+1. Kein Realwelt-Vektor zwingt dazu -- die V4-Suite und 85.x-Tests
+   zeigen keinen Fall.
+2. `display:none` ist semantisch stark: der Mail-Client rendert nichts
+   davon. Children rauszuziehen wuerde adversarial Hidden-Content
+   sichtbar machen.
+3. Erweiterung waere mechanisch trivial (selbe API), aber bewusst
+   ausgespart bis ein realer Vektor auftaucht. Konservatives
+   Default-Verhalten: weiterhin komplett strippen.
 
 ### `background:` Shorthand
 
