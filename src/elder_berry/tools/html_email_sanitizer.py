@@ -34,7 +34,7 @@ from __future__ import annotations
 import logging
 import re
 
-from bs4 import BeautifulSoup, Comment
+from bs4 import BeautifulSoup, Comment, Tag
 
 from elder_berry.tools.css_decl_resolver import (
     color_is_white,
@@ -142,12 +142,36 @@ class HtmlEmailSanitizer:
             bq.decompose()
 
     def _remove_hidden_styled(self, soup: BeautifulSoup) -> None:
+        # Phase 87.1: two-phase, weil decompose() in der Iteration die
+        # Children des dekomponierten Tags "tot" macht (attrs wird None)
+        # und ein spaeterer Schleifen-Schritt auf einem dieser tot-Tags
+        # crashed. Real-Welt-Beispiel (Fewo-Direkt-Reservierungsmail):
+        # <p style="color:#FFFFFF"><a style="color:#FFFFFF">Button</a></p>
+        # -- find_all matched beide, dekomponiere <p>, naechste
+        # Iteration trifft die tote <a> -> AttributeError. Fix: erst
+        # alle hidden-Decisions sammeln, dann separat dekomponieren.
+        # bs4-Stubs typen Tag.attrs als nicht-None, aber zur Laufzeit
+        # IST es None nach decompose() -- daher getattr-defensiv.
+        to_remove: list[Tag] = []
         for tag in soup.find_all(style=True):
+            if getattr(tag, "attrs", None) is None:
+                # Falls eine vorhergehende remove_*-Methode (oder ein
+                # frueherer Schritt in dieser Schleife) schon
+                # dekomponiert hat, ist das Tag tot -- skip statt
+                # crashen.
+                continue
             style = tag.get("style", "")
             if not isinstance(style, str):
                 continue
             if self._style_is_hidden(style):
-                tag.decompose()
+                to_remove.append(tag)
+        for tag in to_remove:
+            if getattr(tag, "attrs", None) is None:
+                # Kann durch einen frueheren decompose-Call in diesem
+                # Loop tot gemacht worden sein (verschachtelte
+                # hidden-Container).
+                continue
+            tag.decompose()
 
     def _style_is_hidden(self, style: str) -> bool:
         # Phase 86.2: tinycss2-basierter Resolver ersetzt die Regex-

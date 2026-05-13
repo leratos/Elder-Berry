@@ -25,7 +25,7 @@ import time
 from dataclasses import FrozenInstanceError
 
 import pytest
-from tinycss2.ast import NumberToken, WhitespaceToken
+from tinycss2.ast import Node, NumberToken, WhitespaceToken
 
 from elder_berry.tools.css_decl_resolver import (
     ResolvedDecl,
@@ -38,9 +38,13 @@ from elder_berry.tools.css_decl_resolver import (
 )
 
 
-def _value_tokens_for(style: str, name: str) -> list:
+def _value_tokens_for(style: str, name: str) -> list[Node]:
     """Hilfs-Helper: parst ``style`` und gibt die Value-Tokens der
     angegebenen Property aus der Cascade-aufgeloesten Liste zurueck.
+
+    Phase 87.1.3: Return-Type praeziser ``list[Node]`` (war vorher
+    unparametrisiertes ``list``) -- damit CodeQL's Datenfluss-Analyse
+    den Type-Flow zu ``_first_non_whitespace`` korrekt einordnet.
     """
     decls = parse_inline_style(style)
     for decl in decls:
@@ -151,6 +155,185 @@ class TestCascadeResolver:
         decls = parse_inline_style("opacity:0; color:red; opacity:1; color:black")
         # opacity ist zuerst gesehen worden, color danach
         assert [d.name for d in decls] == ["opacity", "color"]
+
+    @pytest.mark.parametrize(
+        ("style", "prop", "checker", "expected_hidden"),
+        [
+            # Codex-Folgefinding (Phase 87.1.1): syntaktisch parsebar
+            # aber semantisch invalid -- Browser ignoriert die invalid
+            # Decl, vorherige gueltige Decl bleibt aktiv.
+            ("opacity:0; opacity:bogus", "opacity", opacity_is_zero, True),
+            ("display:none; display:bogus", "display", display_is_none, True),
+            (
+                "font-size:1px; font-size:bogus",
+                "font-size",
+                lambda t: font_size_below_threshold(t, 6),
+                True,
+            ),
+            # Invalid auch in mittlerer Position -- nur die LETZTE
+            # gueltige Decl darf wirken.
+            (
+                "opacity:1; opacity:bogus; opacity:0",
+                "opacity",
+                opacity_is_zero,
+                True,
+            ),
+            (
+                "opacity:0; opacity:bogus; opacity:notavalue",
+                "opacity",
+                opacity_is_zero,
+                True,
+            ),
+        ],
+    )
+    def test_invalid_decl_does_not_overwrite_valid_decl(
+        self,
+        style: str,
+        prop: str,
+        checker: object,
+        expected_hidden: bool,
+    ) -> None:
+        tokens = _value_tokens_for(style, prop)
+        assert checker(tokens) is expected_hidden  # type: ignore[operator]
+
+    @pytest.mark.parametrize(
+        ("style", "prop", "checker", "expected_hidden"),
+        [
+            # CSS-wide-keywords sind recognized -> ueberschreiben normal.
+            ("opacity:0; opacity:inherit", "opacity", opacity_is_zero, False),
+            ("opacity:0; opacity:initial", "opacity", opacity_is_zero, False),
+            ("opacity:0; opacity:unset", "opacity", opacity_is_zero, False),
+            # Math/Var-Functions sind recognized -> ueberschreiben normal.
+            ("opacity:0; opacity:var(--x)", "opacity", opacity_is_zero, False),
+            ("opacity:0; opacity:calc(0.5)", "opacity", opacity_is_zero, False),
+            # calc(0) selbst ist recognized UND zero.
+            ("opacity:1; opacity:calc(0)", "opacity", opacity_is_zero, True),
+        ],
+    )
+    def test_recognized_decl_overwrites_normally(
+        self,
+        style: str,
+        prop: str,
+        checker: object,
+        expected_hidden: bool,
+    ) -> None:
+        tokens = _value_tokens_for(style, prop)
+        assert checker(tokens) is expected_hidden  # type: ignore[operator]
+
+
+class TestRecognitionValidators:
+    """Phase 87.1.1: pro Hidden-Detection-Property pruefen, dass der
+    Cascade-Resolver invalid-aussehende Decls korrekt ueberspringt.
+
+    Recognition-Funktionen sind private, daher testen wir indirekt
+    via parse_inline_style + Cascade-Output.
+    """
+
+    @pytest.mark.parametrize(
+        ("style", "prop_is_resolved"),
+        [
+            # Recognized: Decl bleibt im Output.
+            ("opacity:0", True),
+            ("opacity:0.5", True),
+            ("opacity:100%", True),
+            ("opacity:inherit", True),
+            ("opacity:initial", True),
+            ("opacity:var(--x)", True),
+            ("opacity:calc(0.5)", True),
+            # Nicht recognized: Decl wird ueberspringt, Property nicht
+            # im Cascade-Output (wenn keine vorherige Decl da war).
+            ("opacity:bogus", False),
+            ("opacity:notavalue", False),
+            ("opacity:red", False),
+            ("opacity:#fff", False),  # HashToken passt nicht zu opacity.
+        ],
+    )
+    def test_opacity_recognition(self, style: str, prop_is_resolved: bool) -> None:
+        decls = parse_inline_style(style)
+        has_opacity = any(d.name == "opacity" for d in decls)
+        assert has_opacity is prop_is_resolved
+
+    @pytest.mark.parametrize(
+        ("style", "prop_is_resolved"),
+        [
+            ("font-size:1px", True),
+            ("font-size:1em", True),
+            ("font-size:50%", True),
+            ("font-size:small", True),
+            ("font-size:xx-large", True),
+            ("font-size:inherit", True),
+            ("font-size:calc(1em)", True),
+            ("font-size:bogus", False),
+            ("font-size:#fff", False),
+        ],
+    )
+    def test_font_size_recognition(self, style: str, prop_is_resolved: bool) -> None:
+        decls = parse_inline_style(style)
+        has_prop = any(d.name == "font-size" for d in decls)
+        assert has_prop is prop_is_resolved
+
+    @pytest.mark.parametrize(
+        ("style", "prop_is_resolved"),
+        [
+            ("display:none", True),
+            ("display:block", True),
+            ("display:flex", True),
+            ("display:inline-block", True),
+            ("display:table-row", True),
+            ("display:contents", True),
+            ("display:inherit", True),
+            ("display:bogus", False),
+            ("display:notavalue", False),
+            ("display:#fff", False),
+            ("display:1px", False),
+        ],
+    )
+    def test_display_recognition(self, style: str, prop_is_resolved: bool) -> None:
+        decls = parse_inline_style(style)
+        has_prop = any(d.name == "display" for d in decls)
+        assert has_prop is prop_is_resolved
+
+    @pytest.mark.parametrize(
+        ("style", "prop_is_resolved"),
+        [
+            ("visibility:visible", True),
+            ("visibility:hidden", True),
+            ("visibility:collapse", True),
+            ("visibility:inherit", True),
+            ("visibility:bogus", False),
+            ("visibility:1px", False),
+            ("visibility:#fff", False),
+        ],
+    )
+    def test_visibility_recognition(self, style: str, prop_is_resolved: bool) -> None:
+        decls = parse_inline_style(style)
+        has_prop = any(d.name == "visibility" for d in decls)
+        assert has_prop is prop_is_resolved
+
+    @pytest.mark.parametrize(
+        ("style", "prop_is_resolved"),
+        [
+            ("color:#fff", True),
+            ("color:#ffffff", True),
+            ("color:white", True),
+            ("color:papayawhip", True),  # exotischer aber valider Named-Color.
+            ("color:rebeccapurple", True),
+            ("color:transparent", True),
+            ("color:currentcolor", True),
+            ("color:rgb(0,0,0)", True),
+            ("color:rgba(0,0,0,0.5)", True),
+            ("color:hsl(0,0%,0%)", True),
+            ("color:inherit", True),
+            ("color:var(--x)", True),
+            ("color:bogus", False),
+            ("color:notacolor", False),
+            ("color:1px", False),
+        ],
+    )
+    def test_color_recognition(self, style: str, prop_is_resolved: bool) -> None:
+        decls = parse_inline_style(style)
+        has_prop = any(d.name == "color" for d in decls)
+        assert has_prop is prop_is_resolved
 
 
 class TestOpacityIsZero:
@@ -442,6 +625,32 @@ class TestHistoricalBypassVectors:
             assert font_size_below_threshold(decl.value_tokens, 6) is True
         else:
             raise AssertionError(f"Unerwartete Property: {decl.name}")
+
+    @pytest.mark.parametrize(
+        ("style", "prop", "checker"),
+        [
+            ("opacity:0; opacity:bogus", "opacity", opacity_is_zero),
+            ("display:none; display:bogus", "display", display_is_none),
+            (
+                "font-size:1px; font-size:bogus",
+                "font-size",
+                lambda t: font_size_below_threshold(t, 6),
+            ),
+        ],
+    )
+    def test_phase_87_1_1_invalid_later_value_bypass(
+        self,
+        style: str,
+        prop: str,
+        checker: object,
+    ) -> None:
+        # 7. Bug-Klasse (Phase 86+) -- Codex-PR-Review-Folgefinding auf
+        # der 87.1-Spitze. Browser-Spec: invalid declarations werden
+        # ignoriert, vorherige gueltige Decl bleibt aktiv. Resolver
+        # macht jetzt eine Recognition-Pruefung vor dem Cascade-
+        # Ueberschreiben.
+        tokens = _value_tokens_for(style, prop)
+        assert checker(tokens) is True  # type: ignore[operator]
 
 
 class TestPerformanceSmoke:

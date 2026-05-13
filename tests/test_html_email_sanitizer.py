@@ -312,6 +312,53 @@ class TestHiddenTextIsStripped:
         )
         assert "VISIBLE_COMMENT" in _sanitize(html)
 
+    def test_nested_hidden_containers_do_not_crash(self) -> None:
+        # Phase 87.1: in realistischen Marketing-Mails (z.B. Fewo-Direkt-
+        # Reservierungs-Bestaetigung #184) haben Button-Container die
+        # Struktur <p style="color:#fff"><a style="color:#fff">CTA</a></p>.
+        # Vor 87.1 hat _remove_hidden_styled in der Iteration ueber
+        # find_all(style=True) die <p> dekomponiert, was die Child-<a>
+        # tot macht (attrs=None). Der naechste Schleifen-Schritt
+        # crashed mit AttributeError beim tag.get("style", ""). Die
+        # Exception propagiert raus und der Caller behandelt es als
+        # "Mail ist leer" -- ein realer Workflow-Bug, der in Realwelt-
+        # Marketing-Mails systematisch auftritt.
+        html = (
+            "<div>"
+            "<p>Hauptinhalt der Mail bleibt sichtbar.</p>"
+            '<p style="color:#fff">'
+            '<a style="color:#fff">CTA_BUTTON</a>'
+            "</p>"
+            "<p>Weiterer sichtbarer Inhalt nach dem Button.</p>"
+            "</div>"
+        )
+        # Wichtigste Behauptung: kein Crash.
+        result = _sanitize(html)
+        # Sekundaer-Behauptung: Hauptinhalt bleibt, CTA wird gestrippt
+        # (das ist die V3-Dark-Theme-Limitation, durch Phase 87.B mit
+        # Computed-Background-Heuristik adressiert -- 87.1 ist nur
+        # Crash-Fix, keine Verhaltensaenderung).
+        assert "Hauptinhalt der Mail bleibt sichtbar." in result
+        assert "Weiterer sichtbarer Inhalt nach dem Button." in result
+        assert "CTA_BUTTON" not in result
+
+    def test_deeply_nested_hidden_chain_does_not_crash(self) -> None:
+        # Defensive Erweiterung: drei Ebenen verschachtelter
+        # hidden-Decls, falls Marketing-Mails noch tiefer schachteln.
+        html = (
+            "<div>"
+            "<p>Sichtbar</p>"
+            '<div style="display:none">'
+            '  <span style="color:#fff">'
+            '    <a style="opacity:0">EVIL_DEEP</a>'
+            "  </span>"
+            "</div>"
+            "</div>"
+        )
+        result = _sanitize(html)
+        assert "Sichtbar" in result
+        assert "EVIL_DEEP" not in result
+
     @pytest.mark.parametrize(
         "style_attr",
         [
@@ -337,6 +384,33 @@ class TestHiddenTextIsStripped:
         )
         result = _sanitize(html)
         assert "SICHTBARER_BODY" in result, style_attr
+
+    @pytest.mark.parametrize(
+        "style_attr",
+        [
+            # Codex-Folgefinding aus 87.1-PR-Review (Phase 87.1.1):
+            # Browser ignoriert invalid declarations, vorherige
+            # gueltige Decl bleibt aktiv. Resolver macht jetzt eine
+            # Recognition-Pruefung vor dem Cascade-Ueberschreiben.
+            "opacity:0; opacity:bogus",
+            "opacity:0; opacity:notavalue",
+            "opacity:0; opacity:foo bar baz",
+            "display:none; display:bogus",
+            "display:none; display:notavalue",
+            "font-size:1px; font-size:bogus",
+            "font-size:5px; font-size:notavalue",
+            # Invalid auch in mittlerer Position:
+            "opacity:1; opacity:bogus; opacity:0",
+            # Mit !important + invalid letztem Wert:
+            "opacity:0!important; opacity:bogus",
+        ],
+    )
+    def test_invalid_later_value_does_not_bypass_hidden(self, style_attr: str) -> None:
+        html = f'<p>vorne <span style="{style_attr}">EVIL_INVALID</span> hinten</p>'
+        result = _sanitize(html)
+        assert "EVIL_INVALID" not in result, style_attr
+        assert "vorne" in result
+        assert "hinten" in result
 
     @pytest.mark.parametrize(
         "style_attr",
@@ -507,14 +581,19 @@ class TestRobustness:
         assert "nur_text" in result
 
     def test_huge_html_terminates(self) -> None:
-        # ~ 400 KB Mail muss in unter 5 Sekunden durch. max_chars hoch
-        # genug, damit das Cap-Verhalten den Test nicht stoert (Cap hat
-        # eigenen Test in TestLengthCap).
+        # ~ 400 KB Mail muss in 10 Sekunden durch -- DoS-Resistenz-Test,
+        # nicht Performance-Bench. Schwelle Phase 87.1.2 von 5s auf 10s
+        # angehoben: lokal misst Tower ~0.7s, GitHub-Actions-Windows-CI
+        # ist als shared-runner 5-10x volatiler und hatte mit 5s
+        # gelegentlich knapp gerissen (5.08s). 10s ist immer noch klar
+        # DoS-Bereich, kein Performance-Regression-Risiko. max_chars
+        # hoch genug, damit das Cap-Verhalten den Test nicht stoert
+        # (Cap hat eigenen Test in TestLengthCap).
         body = "MARKER_START " + "<p>x</p>" * 50_000 + " MARKER_END"
         start = time.perf_counter()
         result = HtmlEmailSanitizer(max_chars=10_000_000).sanitize(body)
         elapsed = time.perf_counter() - start
-        assert elapsed < 5.0, f"Sanitize-Latenz {elapsed:.2f}s > 5s"
+        assert elapsed < 10.0, f"Sanitize-Latenz {elapsed:.2f}s > 10s"
         assert "MARKER_START" in result and "MARKER_END" in result
 
     def test_deeply_nested_html(self) -> None:
