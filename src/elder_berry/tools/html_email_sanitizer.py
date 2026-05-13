@@ -5,14 +5,17 @@ Inject-armen Plain-Text. Wird vom IMAPEmailClient an den LLM-Prompt der
 zusammenfassen-Funktion durchgereicht.
 
 Phase 85 -- siehe docs/concepts/phase-85-html-email-sanitizer.md fuer
-Architektur und Bug-Diagnose. Filtert:
+Architektur und Bug-Diagnose. Phase 86 ersetzt die Regex-basierte
+Hidden-Style-Pipeline durch ``css_decl_resolver`` (tinycss2), siehe
+docs/concepts/phase-86-tinycss2-refactor.md. Filtert:
 
 - Inhalte gefaehrlicher Subtrees (script, style, head, meta, link,
   noscript, title, iframe, object, embed) -- decompose, nicht unwrap,
   damit auch der Inhalt verschwindet
 - HTML-Kommentare (alte Regex brach an inneren > Zeichen)
 - Hidden-Text per style-Attribut (display:none, visibility:hidden,
-  opacity:0, font-size < min_font_size_px, weisse Schrift)
+  opacity:0, font-size < min_font_size_px, weisse Schrift) -- alle
+  ueber tinycss2-Resolver mit voller CSS-Cascade incl. !important
 - Hidden-Text per legacy color-Attribut (<font color="#fff">)
 - Default: blockquotes (Fake-Quote-Inject-Vektor; opt-in via
   keep_blockquotes=True)
@@ -33,6 +36,15 @@ import re
 
 from bs4 import BeautifulSoup, Comment
 
+from elder_berry.tools.css_decl_resolver import (
+    color_is_white,
+    display_is_none,
+    font_size_below_threshold,
+    opacity_is_zero,
+    parse_inline_style,
+    visibility_is_hidden,
+)
+
 logger = logging.getLogger(__name__)
 
 
@@ -50,47 +62,14 @@ _DECOMPOSE_TAGS: tuple[str, ...] = (
     "embed",
 )
 
-# style-Attribut-Muster fuer Hidden-Text. font-size wird separat per
-# Wert-Vergleich gegen min_font_size_px geprueft -- ein Character-Class-
-# Regex wie [0-{min}]px (frueherer Konzept-Entwurf) scheitert an
-# Schwellen >= 10, weil [0-9] nur Einzelziffern matcht.
-_HIDDEN_STYLE_PATTERNS: tuple[re.Pattern[str], ...] = (
-    re.compile(r"display\s*:\s*none", re.IGNORECASE),
-    re.compile(r"visibility\s*:\s*hidden", re.IGNORECASE),
-    re.compile(r"color\s*:\s*#?fff(?:fff)?\b", re.IGNORECASE),
-    re.compile(r"color\s*:\s*white\b", re.IGNORECASE),
-    re.compile(
-        r"color\s*:\s*rgb\(\s*255\s*,\s*255\s*,\s*255\s*\)",
-        re.IGNORECASE,
-    ),
-)
-
-# Decl-Regex mit optionalem !important-Capture (Phase 85.6).
-# CSS-Cascade-Algorithmus priorisiert !important-Deklarationen ueber
-# non-!important, unabhaengig von Reihenfolge. Capture-Group [1] ist
-# leer wenn keine Importance, sonst der Marker-String. Phase 85.5
-# loeste last-declaration-wins ohne Importance-Beruecksichtigung --
-# das war Bypass-Vektor fuer "opacity:0!important; opacity:1".
-_FONT_SIZE_RE: re.Pattern[str] = re.compile(
-    r"font-size\s*:\s*(\d+)\s*px\s*(!\s*important)?", re.IGNORECASE
-)
-_OPACITY_RE: re.Pattern[str] = re.compile(
-    r"opacity\s*:\s*([\d.]+)\s*(!\s*important)?", re.IGNORECASE
-)
-
-# Legacy <font color="...">: weiss in beiden Schreibweisen.
+# Legacy <font color="...">: weiss in beiden Schreibweisen. Phase 86.2
+# behaelt diesen Regex, weil <font color> ein HTML-Attribut ist, kein
+# CSS-Decl -- der tinycss2-Resolver greift hier nicht.
 _COLOR_ATTR_HIDDEN: re.Pattern[str] = re.compile(
     r"^(?:#?fff(?:fff)?|white)$", re.IGNORECASE
 )
 
 _CAP_MARKER: str = "\n[...gekuerzt...]"
-
-# CSS-Kommentare /* ... */ gelten in der CSS-Spec als Whitespace und
-# duerfen ueberall stehen, wo Whitespace erlaubt ist. Phase 85.7
-# strippt sie einmalig vor dem Pattern-Matching, weil unsere \s-
-# basierten Regex sonst z.B. opacity:0!/**/important nicht als
-# !important erkennen -- erneuter Bypass-Vektor analog 85.4-85.6.
-_CSS_COMMENT_RE: re.Pattern[str] = re.compile(r"/\*.*?\*/", re.DOTALL)
 
 
 class HtmlEmailSanitizer:
@@ -171,47 +150,38 @@ class HtmlEmailSanitizer:
                 tag.decompose()
 
     def _style_is_hidden(self, style: str) -> bool:
-        # Phase 85.7: CSS-Kommentare einmal entfernen, damit
-        # opacity:0!/**/important und display/**/:none erkannt werden.
-        # Browser ignorieren Kommentare als Whitespace-Aequivalent,
-        # unsere \s-Regex aber nicht.
-        style = _CSS_COMMENT_RE.sub("", style)
-        if any(p.search(style) for p in _HIDDEN_STYLE_PATTERNS):
-            return True
-        # CSS-Cascade: bei mehreren Deklarationen derselben Property
-        # gewinnt (1) die letzte !important-Decl, sonst (2) die letzte
-        # non-!important-Decl. findall() liefert Liste von Tupeln
-        # (value, importance_marker_or_empty). Phase 85.5 loeste nur
-        # last-wins ohne Importance, 85.6 schliesst den !important-
-        # Bypass.
-        font_value = self._resolve_decl(_FONT_SIZE_RE.findall(style))
-        if font_value is not None:
-            try:
-                if int(font_value) < self._min_font_size_px:
-                    return True
-            except ValueError:
-                pass
-        opacity_value = self._resolve_decl(_OPACITY_RE.findall(style))
-        if opacity_value is not None:
-            try:
-                if float(opacity_value) == 0.0:
-                    return True
-            except ValueError:
-                pass
-        return False
+        # Phase 86.2: tinycss2-basierter Resolver ersetzt die Regex-
+        # Pipeline der 85.x-Sub-Etappen. parse_inline_style fuehrt
+        # Tokenisierung, Kommentar-Strip (auch unterminierte /*...EOF)
+        # und Cascade-Resolver (!important vor non-, sonst last-wins)
+        # in einem Schritt aus und liefert pro Property genau eine
+        # ResolvedDecl. Die Wert-Pruefer arbeiten direkt auf den
+        # tinycss2-Token-Listen.
+        by_name = {decl.name: decl for decl in parse_inline_style(style)}
 
-    @staticmethod
-    def _resolve_decl(decls: list[tuple[str, str]]) -> str | None:
-        """Waehlt die CSS-effektive Deklaration aus einer Liste von
-        (value, importance_marker)-Tupeln. Importance gewinnt vor
-        Reihenfolge, sonst gilt last-declaration-wins.
-        """
-        if not decls:
-            return None
-        importants = [value for value, marker in decls if marker]
-        if importants:
-            return importants[-1]
-        return decls[-1][0]
+        opacity = by_name.get("opacity")
+        if opacity is not None and opacity_is_zero(opacity.value_tokens):
+            return True
+
+        font_size = by_name.get("font-size")
+        if font_size is not None and font_size_below_threshold(
+            font_size.value_tokens, self._min_font_size_px
+        ):
+            return True
+
+        display = by_name.get("display")
+        if display is not None and display_is_none(display.value_tokens):
+            return True
+
+        visibility = by_name.get("visibility")
+        if visibility is not None and visibility_is_hidden(visibility.value_tokens):
+            return True
+
+        color = by_name.get("color")
+        if color is not None and color_is_white(color.value_tokens):
+            return True
+
+        return False
 
     @staticmethod
     def _remove_hidden_color_attr(soup: BeautifulSoup) -> None:

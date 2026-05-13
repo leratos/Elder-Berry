@@ -53,6 +53,10 @@ matrix = [
     # gezogen, sobald der Matrix-Bot remote_commands -> mail_commands
     # importiert. Ohne bs4 knallt der Import bei .[matrix]-Installs.
     "beautifulsoup4>=4.12",
+    # Phase 86.1: css_decl_resolver (tinycss2) wird via
+    # html_email_sanitizer (geplant 86.2) auf dem gleichen Import-
+    # Pfad transitiv geladen wie bs4.
+    "tinycss2>=1.3.0",
 ]
 remote = [
     "mss>=10.2.0",
@@ -60,6 +64,8 @@ remote = [
     # Phase 85.4: gleiche Begruendung wie matrix-Gruppe -- remote-
     # Client-Pfade laden email_client transitiv.
     "beautifulsoup4>=4.12",
+    # Phase 86.1: siehe matrix-Gruppe.
+    "tinycss2>=1.3.0",
 ]
 memory = [
     "chromadb>=1.5.9",
@@ -89,6 +95,11 @@ web = [
     # bleach.clean() gegen eine enge Allowlist gesaeubert (Konzept R3).
     "markdown-it-py>=3.0",
     "bleach>=6.1",
+    # Phase 86.1: css_decl_resolver fuer html_email_sanitizer
+    # (geplant 86.2). Web-Gruppe zieht trafilatura/bs4 fuer
+    # Article-Extraktion -- gleicher Pipeline-Pfad wie der spaetere
+    # Mail-Sanitizer.
+    "tinycss2>=1.3.0",
 ]
 nextcloud = [
     "caldav>=3.2.0",
@@ -113,6 +124,9 @@ tower = [
     # Phase 85: HtmlEmailSanitizer fuer IMAPEmailClient -- robustes
     # HTML-Stripping mit Hidden-Text-Filter statt naiver Regex.
     "beautifulsoup4>=4.12",
+    # Phase 86.1: css_decl_resolver fuer den Sanitizer (geplant 86.2),
+    # gleicher Import-Pfad wie bs4.
+    "tinycss2>=1.3.0",
 ]
 server = [
     "matrix-nio>=0.25.2",
@@ -126,6 +140,10 @@ server = [
     "beautifulsoup4>=4.12",
     "caldav>=3.2.0",
     "vobject>=0.9",
+    # Phase 86.1: server-Tower-Pipeline pullt html_email_sanitizer
+    # (geplant 86.2) transitiv ueber email_client/IMAP. tinycss2
+    # ist die CSS-Tokenisierungs-Dep dafuer.
+    "tinycss2>=1.3.0",
 ]
 dev = [
     "pytest-timeout>=2.4.0",
@@ -134,6 +152,13 @@ dev = [
     "mypy>=1.13",      # Phase 76: Type-Checking core/
     "types-PyYAML",    # Stubs fuer YAML-Konfiguration
     "types-psutil",    # Stubs fuer system/info.py + startup_summary.py
+    # Phase 86.2.1 (Codex-Folgefix): IMAPEmailClient importiert top-level
+    # HtmlEmailSanitizer, der bs4 + tinycss2 braucht. Ohne diese Deps in
+    # der dev-Gruppe scheitert `pip install -e .[dev]` und CI an dem
+    # transitiven Import. Beide Pakete sind Pure-Python und klein, der
+    # Aufwand fuer dev-Setup ist gegen die Test-Coverage vernachlaessigbar.
+    "beautifulsoup4>=4.12",
+    "tinycss2>=1.3.0",
 ]
 
 [tool.setuptools.packages.find]
@@ -195,6 +220,9 @@ module = [
     "fitz.*",               # pymupdf, document_reader
     "bs4.*",                # Phase 85: html_email_sanitizer. Keine Stubs,
                             # oeffentliche Sanitizer-API ist str -> str.
+    "tinycss2.*",           # Phase 86.1: css_decl_resolver. Keine Stubs,
+                            # oeffentliche Resolver-API arbeitet ueber
+                            # tinycss2.ast.Node-Listen, intern getypt.
 ]
 ignore_missing_imports = true
 
@@ -322,6 +350,7 @@ module = [
     "elder_berry.tools.google_calendar",
     "elder_berry.tools.gym_data",
     "elder_berry.tools.html_email_sanitizer",
+    "elder_berry.tools.css_decl_resolver",
     "elder_berry.tools.nextcloud_files",
     "elder_berry.tools.note_store",
     "elder_berry.tools.recurrence",
