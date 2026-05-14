@@ -2149,12 +2149,16 @@ Repo-Hygiene, Audit-Tools und Doku.
 - **Trigger**: User-Request – Routen mit mehreren Stops planen, Reihenfolge
   optimieren, POIs entlang der Route finden (z.B. "nach Leipzig Hbf,
   vorher Lisa und Andrea abholen, auf dem Weg bei Kaufland einkaufen").
-- **Architektur**: Neuer `RouteProvider`-Interface (`tools/route_provider.py`),
-  `GoogleMapsRouteProvider` als erste Implementierung (Directions API +
-  Places API v1 "Search Along Route"), `MultiStopRoutePlanner`,
-  `RouteIntentParser` (Pattern-Vorfilter + Claude-Sonnet-Tool-Call mit
-  JSON-Schema), `MultiStopRouteCommandHandler` mit Plugin-Pattern
-  (priority=80, fallthrough zu Single-Stop bei priority=76).
+- **Architektur**: `GoogleMapsRoutePlanner` (konkrete Klasse, Google
+  Directions + Places API v1 "Search Along Route"), `MapsLinkBuilder`
+  (provider-unabhängige Util für Google-Maps-Deep-Link), `RouteIntentParser`
+  (Pattern-Vorfilter + Claude-Sonnet-Tool-Call mit JSON-Schema),
+  `MultiStopRouteCommandHandler` mit Plugin-Pattern (priority=80,
+  fallthrough zu Single-Stop bei priority=76).
+- **Kein RouteProvider-Interface (bewusst)**: Datenschutz-Gewinn durch
+  OSM = null wegen Google-Maps-Deep-Link am Ende, Kosten ~$1/Jahr
+  amortisieren keinen Aufwand, Self-Hosting-Stack wäre Sicherheitsrisiko.
+  YAGNI bis konkreter Trigger (Phase 92.3).
 - **Disambiguierung**: Sequenziell mit nummerierten Listen, Zustand in
   `PendingConfirmationStore` (`action_type="route_disambig"`).
   Handler-eigener Zahl-Antwort-Vorcheck — `PendingConfirmationStore` selbst
@@ -2165,5 +2169,7 @@ Repo-Hygiene, Audit-Tools und Doku.
   separater Bugfix-Branch.
 - **Konzept**: `docs/concepts/phase-92-multi-stop-routing.md`.
 - **Etappen**: E1 (Konzept) abgeschlossen 2026-05-13.
-  E2–E6 (Implementierung) in eigenen Folge-Chats.
-- **Branch (Konzept)**: `feature/phase-92-multi-stop-routing-concept`.
+  E2–E5 (Implementierung) in eigenen Folge-Chats.
+- **Branches**: `feature/phase-92-multi-stop-routing-concept` (initial,
+  gemerged via PR #231), `feature/phase-92-concept-refactor-drop-osm-abstraction`
+  (Refactor nach Datenschutz-/Kosten-/Sicherheits-Analyse).
