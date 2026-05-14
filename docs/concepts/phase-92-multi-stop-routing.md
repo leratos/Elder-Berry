@@ -40,9 +40,8 @@ Saleria: "Route geplant:
 | `RouteCommandHandler` (Single-Stop) | **unverändert** – fängt 1-Ziel-Anfragen ab |
 | `ContactStore` + `_resolve_address()` | **wiederverwendet** – Logik in Util ausgliedern |
 | `parse_arrival_time()` | **wiederverwendet** – aus `route_commands.py` |
-| `RouteProvider`-Interface | **neu** (abstrakte Basisklasse) |
-| `GoogleMapsRouteProvider` | **neu** – kapselt Google-spezifische API-Calls |
-| `MultiStopRoutePlanner` | **neu** – Multi-Waypoint + Optimierung + POI-Search |
+| `GoogleMapsRoutePlanner` | **neu** – Multi-Waypoint + Optimierung + POI-Search via Google APIs |
+| `MapsLinkBuilder` | **neu** – baut den Google-Maps-Deep-Link (provider-unabhängige Util-Klasse) |
 | `RouteIntentParser` | **neu** – NLU-Schicht (Pattern + Sonnet-Tool-Call) |
 | `MultiStopRouteCommandHandler` | **neu** – Orchestrator + Disambiguierung |
 
@@ -75,20 +74,16 @@ Bugfix-Branch.
               ┌───────────────────┼──────────────────────┐
               ▼                   ▼                      ▼
    ┌────────────────────┐ ┌──────────────────┐ ┌────────────────────┐
-   │ RouteIntentParser  │ │ ContactStore     │ │ MultiStopRoute     │
+   │ RouteIntentParser  │ │ ContactStore     │ │ GoogleMapsRoute    │
    │ (tools/)           │ │ (bestehend)      │ │ Planner (tools/)   │
-   │  Pattern + Sonnet  │ │                  │ │                    │
+   │  Pattern + Sonnet  │ │                  │ │  Directions + POI  │
    └────────────────────┘ └──────────────────┘ └──────────┬─────────┘
                                                           │
-                                                          ▼
+                                                          ▼ liefert
                                               ┌────────────────────┐
-                                              │ RouteProvider      │
-                                              │ (abstrakt)         │
-                                              └──────────┬─────────┘
-                                                         ▼
-                                              ┌────────────────────┐
-                                              │ GoogleMapsRoute    │
-                                              │ Provider           │
+                                              │ MapsLinkBuilder    │
+                                              │ (tools/) Util      │
+                                              │ baut Deep-Link     │
                                               └────────────────────┘
 ```
 
@@ -96,24 +91,24 @@ Bugfix-Branch.
 
 | Datei | Klasse | Zeilen (Schätzung) |
 |-------|--------|---------------------|
-| `tools/route_provider.py` | `RouteProvider` (ABC) | ~80 |
-| `tools/google_maps_route_provider.py` | `GoogleMapsRouteProvider` | ~250 |
-| `tools/multi_stop_route_planner.py` | `MultiStopRoutePlanner` | ~150 |
+| `tools/google_maps_route_planner.py` | `GoogleMapsRoutePlanner` | ~300 |
+| `tools/maps_link_builder.py` | `MapsLinkBuilder` | ~60 |
 | `tools/route_intent_parser.py` | `RouteIntentParser` | ~250 |
 | `comms/commands/multi_stop_route_commands.py` | `MultiStopRouteCommandHandler` | ~300 |
 
-Plus Tests: ~5 neue `tests/test_*.py`-Dateien, geschätzt 60–80 Tests gesamt.
+Plus Tests: ~4 neue `tests/test_*.py`-Dateien, geschätzt 60–70 Tests gesamt.
 
-## RouteProvider-Interface (`tools/route_provider.py`)
+## GoogleMapsRoutePlanner (`tools/google_maps_route_planner.py`)
 
-Abstrakte Basisklasse, die alle Operationen beschreibt, die ein Routing-
-Backend (Google, OSM, ...) erfüllen muss. Ziel: spätere OSM-Implementierung
-ohne Code-Änderung an Handler / Parser / Planner.
+Konkrete Klasse — kein ABC. Begründung im Abschnitt "Warum kein
+RouteProvider-Interface" weiter unten.
+
+Kapselt zwei Google-APIs und liefert ein fertiges Routenergebnis inkl.
+POI-Kandidaten zurück.
+
+### Dataclasses
 
 ```python
-from abc import ABC, abstractmethod
-from dataclasses import dataclass
-
 @dataclass(frozen=True)
 class Stop:
     """Ein Stop in der Route."""
@@ -129,7 +124,6 @@ class MultiStopRouteResult:
     total_distance_text: str       # "48,2 km"
     leg_durations_seconds: list[int]   # Pro Leg eine Dauer
     encoded_polyline: str          # Für POI-Search-Along-Route
-    maps_link: str
 
 @dataclass(frozen=True)
 class POICandidate:
@@ -140,47 +134,72 @@ class POICandidate:
     detour_seconds: int            # Umweg gegenüber Direktroute
     rating: float | None
 
-class RouteProvider(ABC):
-    """Interface für Routing-Backends."""
+@dataclass(frozen=True)
+class POIRequest:
+    category: str                  # "supermarket", "fuel", "pharmacy"
+    name_hint: str | None          # "Kaufland" (Filterung)
+    max_results: int = 10
+    max_detour_seconds: int = 600  # 10 Min Default
 
-    @abstractmethod
-    def compute_multi_stop_route(
-        self,
-        origin: Stop,
-        waypoints: list[Stop],
-        destination: Stop,
-        optimize_order: bool = True,
-    ) -> MultiStopRouteResult:
-        """Routet Origin → Waypoints (ggf. neu sortiert) → Destination."""
-
-    @abstractmethod
-    def search_poi_along_route(
-        self,
-        encoded_polyline: str,
-        category: str,           # "supermarket", "fuel", "pharmacy"
-        name_hint: str | None,   # "Kaufland" (für Filterung)
-        max_results: int = 5,
-    ) -> list[POICandidate]:
-        """Findet POIs in einem Korridor um eine bestehende Route."""
-
-    @abstractmethod
-    def close(self) -> None:
-        """Ressourcen freigeben (HTTP-Client schließen)."""
+@dataclass(frozen=True)
+class PlannedRoute:
+    route: MultiStopRouteResult
+    poi_candidates: list[POICandidate]   # Leer wenn kein POI gefragt
 ```
 
-**Begründung**: `compute_multi_stop_route()` braucht eine bestehende Route,
-um `search_poi_along_route()` aufrufen zu können. Das macht die Reihenfolge
-in der Orchestrierung deterministisch: erst Kontakte → erste Route → POIs
-suchen → zweite Route mit POIs.
+Anmerkung: `maps_link` ist absichtlich **nicht** Teil von
+`MultiStopRouteResult`. Link-Bau passiert über `MapsLinkBuilder`, weil der
+Link UI-Concern ist und nicht zur Routing-Logik gehört.
 
-## GoogleMapsRouteProvider (`tools/google_maps_route_provider.py`)
+### Methoden
 
-Implementiert `RouteProvider` über zwei Google-APIs:
+```python
+class GoogleMapsRoutePlanner:
+    """Multi-Stop-Routing via Google Directions API + POI via Places API v1."""
 
-| Operation | API | Endpoint |
-|-----------|-----|----------|
-| Multi-Stop-Routing | Directions API v1 (Legacy, JSON) | `/maps/api/directions/json` |
-| POI-Search-Along-Route | Places API v1 (REST) | `/v1/places:searchText` |
+    DIRECTIONS_URL = "https://maps.googleapis.com/maps/api/directions/json"
+    PLACES_URL = "https://places.googleapis.com/v1/places:searchText"
+
+    def __init__(self, api_key: str, client: httpx.Client | None = None):
+        self._api_key = api_key
+        self._client = client or httpx.Client(timeout=10.0)
+
+    def plan(
+        self,
+        origin: Stop,
+        people_stops: list[Stop],
+        destination: Stop,
+        poi_request: POIRequest | None = None,
+    ) -> PlannedRoute:
+        """Zwei-Phasen-Routing.
+
+        Schritt 1: Basis-Route (Origin -> people_stops -> Destination),
+                   optimiert via Directions API (waypoints=optimize:true).
+        Schritt 2 (nur wenn poi_request): POI-Suche entlang der Basis-
+                   Route (Places API v1, searchAlongRouteParameters).
+                   Detour-Filter <= max_detour_seconds, sortiert aufsteigend,
+                   max 5 Kandidaten.
+
+        Final-Routing mit gewähltem POI: separate Methode finalize_with_poi.
+        """
+
+    def finalize_with_poi(
+        self,
+        origin: Stop,
+        people_stops: list[Stop],
+        destination: Stop,
+        chosen_poi: POICandidate,
+    ) -> MultiStopRouteResult:
+        """Finale Route mit POI als zusätzlichem Waypoint."""
+
+    def close(self) -> None:
+        """HTTP-Client schließen."""
+
+    # --- Private Helfer (provider-spezifisch) ---
+    def _call_directions(self, ...) -> MultiStopRouteResult: ...
+    def _call_places_along_route(self, ...) -> list[POICandidate]: ...
+    def _parse_waypoint_order(self, response: dict) -> list[int]: ...
+```
 
 ### Directions-API-Aufruf
 
@@ -221,21 +240,6 @@ Body:
 Die `routingSummaries`-Antwort enthält pro POI einen Umweg-Wert (Detour in
 Sekunden), den wir direkt in `POICandidate.detour_seconds` mappen.
 
-### Maps-Link-Generierung (Multi-Stop)
-
-```
-https://www.google.com/maps/dir/?
-    api=1
-    &origin=<Origin>
-    &destination=<Destination>
-    &waypoints=<Stop1>|<Stop2>|<Stop3>
-    &travelmode=driving
-```
-
-**Detail**: URL-Encoding mit `urlencode(quote_via=quote_plus)`, sonst brechen
-Umlaute und Sonderzeichen. Pipes (`|`) zwischen Waypoints **nicht**
-URL-encoden (das macht Google selbst, sonst funktioniert der Link nicht).
-
 ### Fehlerfälle
 
 | API-Response | Verhalten |
@@ -247,81 +251,77 @@ URL-encoden (das macht Google selbst, sonst funktioniert der Link nicht).
 | Timeout (>10s) | `httpx.TimeoutException` durchreichen |
 | Places-Antwort leer | leere Liste zurückgeben, kein Fehler |
 
-## MultiStopRoutePlanner (`tools/multi_stop_route_planner.py`)
+## MapsLinkBuilder (`tools/maps_link_builder.py`)
 
-Thin Wrapper um `RouteProvider`. Hier liegt Logik, die **nicht**
-provider-spezifisch ist (z.B. Detour-Filtering, Antwort-Formatierung).
+Eigene Util-Klasse — provider-unabhängig. Baut den Google-Maps-Deep-Link
+aus einer fertigen Stop-Reihenfolge. Bewusst von `GoogleMapsRoutePlanner`
+getrennt: der Link funktioniert auch dann, wenn die Routenberechnung in
+Zukunft mal aus einer anderen Quelle käme (Cache, persistierte Route,
+externe Anfrage).
 
 ```python
-class MultiStopRoutePlanner:
-    def __init__(self, provider: RouteProvider):
-        self._provider = provider
+class MapsLinkBuilder:
+    """Baut Google-Maps-Deep-Links für die Anzeige in Android Auto."""
 
-    def plan(
+    BASE = "https://www.google.com/maps/dir/?api=1"
+
+    def build_multi_stop_link(
         self,
         origin: Stop,
-        people_stops: list[Stop],   # Kontakte/Adressen, vom User vorgegeben
+        waypoints: list[Stop],     # in finaler Reihenfolge
         destination: Stop,
-        poi_request: POIRequest | None = None,
-    ) -> PlannedRoute:
+        travel_mode: str = "driving",
+    ) -> str:
         """
-        Zwei-Phasen-Routing:
-          1) Vor-Route ohne POI (zur Polyline-Gewinnung)
-          2) POI-Suche entlang der Vor-Route (wenn poi_request gesetzt)
-          3) Final-Route mit POI als zusätzlichem Waypoint
-        Wenn kein poi_request: nur Schritt 1, mit optimize_order=True.
+        Erzeugt:
+        https://www.google.com/maps/dir/?api=1
+          &origin=<encoded>
+          &destination=<encoded>
+          &waypoints=<encoded>|<encoded>|...
+          &travelmode=driving
+
+        Detail: urlencode mit quote_via=quote_plus für origin/destination.
+        Pipes (|) zwischen Waypoints NICHT URL-encoden -- das macht Google
+        selbst, sonst funktioniert der Link nicht.
         """
-        # Schritt 1: Basis-Route
-        base = self._provider.compute_multi_stop_route(
-            origin, people_stops, destination, optimize_order=True
-        )
-        if poi_request is None:
-            return PlannedRoute(route=base, poi_candidates=[])
-
-        # Schritt 2: POI-Suche entlang der Basis-Route
-        candidates = self._provider.search_poi_along_route(
-            base.encoded_polyline,
-            poi_request.category,
-            poi_request.name_hint,
-            max_results=poi_request.max_results,
-        )
-        # Filtern: nur Kandidaten mit Detour < max_detour_seconds
-        filtered = [c for c in candidates
-                    if c.detour_seconds <= poi_request.max_detour_seconds]
-        # Sortieren: nach Detour aufsteigend
-        filtered.sort(key=lambda c: c.detour_seconds)
-
-        return PlannedRoute(route=base, poi_candidates=filtered[:5])
-
-    def finalize_with_poi(
-        self, origin, people_stops, destination, chosen_poi: POICandidate
-    ) -> MultiStopRouteResult:
-        """Nach POI-Auswahl: finale Route mit POI als Waypoint berechnen."""
-        all_waypoints = people_stops + [
-            Stop(address=chosen_poi.address, label=chosen_poi.name)
-        ]
-        return self._provider.compute_multi_stop_route(
-            origin, all_waypoints, destination, optimize_order=True,
-        )
 ```
 
-```python
-@dataclass(frozen=True)
-class POIRequest:
-    category: str
-    name_hint: str | None
-    max_results: int = 10
-    max_detour_seconds: int = 600   # 10 Min Default
+### Warum kein RouteProvider-Interface
 
-@dataclass(frozen=True)
-class PlannedRoute:
-    route: MultiStopRouteResult
-    poi_candidates: list[POICandidate]   # Leer wenn kein POI gefragt
-```
+Anfangs war ein abstraktes `RouteProvider`-Interface geplant, um später
+OSRM/Valhalla als zweite Implementierung neben Google zu erlauben. Nach
+Diskussion verworfen, weil für diesen Use Case **drei Argumente
+gleichzeitig** gegen OSM sprechen:
 
-**Offene Designentscheidung**: `max_detour_seconds` als Konfig-Wert oder
-hartkodiert. Vorschlag: Default 600s (10 Min), via Constructor überschreibbar,
-nicht im Saleria-Settings sichtbar. Wenn häufig zu eng → später ins Dashboard.
+1. **Datenschutz fällt weg**: Endformat ist ein Google-Maps-Deep-Link für
+   Android Auto. Alle Adressen wandern so oder so an Google. OSM davor zu
+   schalten ändert daran nichts.
+
+2. **Kosten sind irrelevant**: Bei realistischer Nutzung (1–2 Anfragen/Monat)
+   liegen die Google-API-Kosten bei ~$1 pro Jahr. Drei Sessions OSM-
+   Implementierung würden sich nie amortisieren.
+
+3. **Sicherheits-Kosten**: Self-hosted OSM-Stack (Overpass, OSRM/Valhalla,
+   Planet-Updates) bedeutet drei zusätzliche Dienste mit Patch-Pflicht.
+   Bei dem ansonsten gepflegten Sicherheits-Standard (Fail2Ban, ModSecurity,
+   2FA, SSH-Keys) wären das offene Lücken — nicht verwaltete Systeme bleiben
+   unsicher.
+
+**Konsequenz**: `GoogleMapsRoutePlanner` ist eine konkrete Klasse. Wenn in
+mehreren Jahren ein Wechsel nötig wird (z.B. Google-Account aufgegeben),
+ist der Refactor zu einem ABC eine Ein-Session-Aufgabe — die HTTP-Schicht
+ist gekapselt, die Datacontracts (`Stop`, `MultiStopRouteResult`,
+`POICandidate`, `PlannedRoute`) sind provider-agnostisch.
+
+YAGNI-Argument: Keine konkrete Anforderung für einen zweiten Provider
+existiert. Abstraktion ohne zweite Implementierung sorgt für höhere
+Komplexität bei gleicher Funktionalität.
+
+### Offene Designentscheidung
+
+`POIRequest.max_detour_seconds` als Konfig-Wert oder hartkodiert. Vorschlag:
+Default 600s (10 Min), via Konstruktor des Handlers überschreibbar, nicht im
+Saleria-Settings sichtbar. Wenn häufig zu eng → später ins Dashboard.
 
 ## RouteIntentParser (`tools/route_intent_parser.py`)
 
@@ -476,7 +476,7 @@ TURN 2..N (User: "1" oder "2" als Antwort)
   4. Keine weiteren → Routing-Phase (siehe unten).
 
 TURN ROUTING (alle Kontakte/Adressen aufgelöst)
-  1. MultiStopRoutePlanner.plan(origin, people_stops, destination, poi_request)
+  1. GoogleMapsRoutePlanner.plan(origin, people_stops, destination, poi_request)
      → liefert PlannedRoute + ggf. POI-Kandidaten.
   2. Wenn poi_candidates nicht leer und >1: Liste senden ("Welcher Kaufland?")
      PendingAction mit FULL ROUTE STATE + poi_candidates speichern, RETURN.
@@ -485,8 +485,9 @@ TURN ROUTING (alle Kontakte/Adressen aufgelöst)
      Weg gefunden" + Frage "trotzdem die Route ohne Stop?" (Confirm/Cancel).
 
 TURN POI-WAHL (User: "2" auf POI-Liste)
-  1. Wahl übernehmen, MultiStopRoutePlanner.finalize_with_poi(...)
-  2. Antwort formatieren, PendingAction.clear()
+  1. Wahl übernehmen, GoogleMapsRoutePlanner.finalize_with_poi(...)
+  2. MapsLinkBuilder.build_multi_stop_link(...) für Antwort-Link
+  3. Antwort formatieren, PendingAction.clear()
 ```
 
 ### Disambiguierung – Datenstruktur
@@ -565,45 +566,59 @@ Bei `arrival_time_text` leer entfällt die Abfahrt-Zeile.
 | Etappe | Inhalt | Aufwand-Schätzung |
 |--------|--------|--------------------|
 | E1 | **Konzept-Doku** (DIESE Phase, nur dieses Dokument) | abgeschlossen |
-| E2 | `RouteProvider` (ABC) + `GoogleMapsRouteProvider` + Unit-Tests mit gemockten Responses | ~1 Session |
-| E3 | `MultiStopRoutePlanner` + Unit-Tests (Mock-Provider) | ~½ Session |
-| E4 | `RouteIntentParser` + Sonnet-Tool-Schema + Tests (Pattern-Tests + Sonnet-Mock) | ~1 Session |
-| E5 | `MultiStopRouteCommandHandler` + Disambiguierung + Plugin-Registrierung + Integration-Tests | ~1–1½ Sessions |
-| E6 | Live-Smoketest mit echtem API-Key + Prompt-Tuning + Bugfixes | ~½ Session |
+| E2 | `GoogleMapsRoutePlanner` + `MapsLinkBuilder` + Unit-Tests (gemockte API-Responses) | ~1 Session |
+| E3 | `RouteIntentParser` + Sonnet-Tool-Schema + Tests (Pattern-Tests + Sonnet-Mock) | ~1 Session |
+| E4 | `MultiStopRouteCommandHandler` + Disambiguierung + Plugin-Registrierung + Integration-Tests | ~1–1½ Sessions |
+| E5 | Live-Smoketest mit echtem API-Key + Prompt-Tuning + Bugfixes | ~½ Session |
 
-**Gesamt: ~4–5 Sessions**, jede in einem eigenen Chat (Workflow-Regel:
+**Gesamt: ~3½–4 Sessions**, jede in einem eigenen Chat (Workflow-Regel:
 neue Phase = neuer Chat, hier interpretiert als neuer Chat pro Etappe).
 
 ## Test-Plan
 
-### `tests/test_google_maps_route_provider.py` (~18 Tests)
+### `tests/test_google_maps_route_planner.py` (~22 Tests)
 
 ```
-- test_multi_stop_optimize_true: waypoint_order aus Response → ordered_stops
-- test_multi_stop_optimize_false: Reihenfolge bleibt wie übergeben
-- test_multi_stop_zero_results: RouteError
-- test_multi_stop_url_encoding_umlauts: Adressen mit Umlauten korrekt encoded
-- test_multi_stop_link_pipe_not_encoded: | in waypoints bleibt unenkodiert
+# Directions-API-Aufrufe
+- test_plan_optimize_true_default: waypoints=optimize:true wird gesetzt
+- test_plan_waypoint_order_applied: API-Response [1,0,2] → ordered_stops
+- test_plan_zero_results: status=ZERO_RESULTS → RouteError
+- test_plan_over_query_limit: → RouteError
+- test_plan_request_denied: → RouteError
+- test_plan_url_encoding_umlauts: Adressen mit Umlauten korrekt encoded
+- test_plan_origin_destination_not_in_waypoint_order: nur Mittel-Stops werden sortiert
+
+# POI-Search
 - test_search_poi_along_route_with_polyline: Body enthält encodedPolyline
 - test_search_poi_along_route_field_mask: X-Goog-FieldMask gesetzt
 - test_search_poi_along_route_detour_mapping: routingSummaries → detour_seconds
 - test_search_poi_empty_results: leere Liste, kein Fehler
 - test_search_poi_api_error: RouteError mit Status
-- test_api_key_missing_at_init: ValueError
-- test_close_releases_client: httpx.Client.close() aufgerufen
-- ... + Edge-Cases für jedes Statuswort (ZERO_RESULTS, OVER_QUERY_LIMIT, ...)
-```
 
-### `tests/test_multi_stop_route_planner.py` (~10 Tests)
-
-```
-- test_plan_without_poi: nur Schritt 1
+# Plan-Orchestrierung (ehemals MultiStopRoutePlanner)
+- test_plan_without_poi_request: nur Basis-Route, poi_candidates=[]
 - test_plan_with_poi_filters_by_detour: max_detour_seconds wird respektiert
 - test_plan_with_poi_sorts_by_detour_asc: kleinster Umweg zuerst
 - test_plan_with_poi_limits_to_5: maximal 5 Kandidaten
-- test_finalize_with_poi: chosen_poi wird als Waypoint angehängt
-- test_planner_uses_provider_optimize_true: optimize_order=True durchgereicht
-- ...
+- test_finalize_with_poi_appends_waypoint: chosen_poi als zusätzlicher Stop
+
+# Sonstige
+- test_api_key_missing_at_init: ValueError
+- test_close_releases_client: httpx.Client.close() aufgerufen
+- ... + Edge-Cases für jedes Statuswort
+```
+
+### `tests/test_maps_link_builder.py` (~8 Tests)
+
+```
+- test_build_basic_link: Format und Parameter korrekt
+- test_build_with_umlauts: quote_plus für Umlaute
+- test_build_pipe_separator_unencoded: | bleibt als | in waypoints
+- test_build_no_waypoints: nur origin + destination, kein waypoints-Param
+- test_build_travel_mode_driving_default: travelmode=driving wenn nicht gesetzt
+- test_build_special_chars_in_address: Komma, Punkt, &-Zeichen
+- test_build_lat_lng_input: "52.5,13.4" als Koordinaten-Stop
+- test_build_empty_origin_raises: ValueError oder klarer Fehler
 ```
 
 ### `tests/test_route_intent_parser.py` (~15 Tests)
@@ -634,20 +649,16 @@ neue Phase = neuer Chat, hier interpretiert als neuer Chat pro Etappe).
 - test_fallthrough_when_not_multi_stop: gibt fallthrough=True zurück
 - test_arrival_time_in_final_response: Abfahrt-Zeile erscheint
 - test_session_serialization_roundtrip: RouteSession.from_dict(to_dict(x)) == x
+- test_handler_uses_maps_link_builder: Antwort enthält gebauten Link
 - ...
 ```
-
-### `tests/test_route_provider.py` (~5 Tests, Interface-Compliance)
-
-Sicherstellen, dass jede `RouteProvider`-Implementierung die abstrakten
-Methoden implementiert (für künftigen OSM-Provider relevant).
 
 ## Risiken & offene Punkte
 
 | Risiko | Mitigation |
 |--------|------------|
 | Places API v1 "Search Along Route" nicht im Google-Cloud-Projekt aktiviert | Setup-Hinweis in dieser Doku, Lera aktiviert selbst |
-| Kosten – Search Along Route ist relativ teuer (~$0.03/Call) | Caching auf Polyline-Hash für 5 Min in `GoogleMapsRouteProvider` (optional, Etappe E2) |
+| Kosten – Search Along Route ist relativ teuer (~$0.03/Call) | Caching auf Polyline-Hash für 5 Min in `GoogleMapsRoutePlanner` (optional, Etappe E2) |
 | Latenz – 1 Sonnet-Call + bis zu 2 API-Calls + ggf. Disambig-Roundtrips | Akzeptiert; Disambiguierung sequenziell ist explizit gewollt (UX-Robustheit > Geschwindigkeit) |
 | Pattern-Match-Reihenfolge – Multi-Stop muss vor Single-Stop matchen | `priority=80` > `priority=76`. Test `test_plugin_pattern_conflicts.py` prüft das automatisch (Phase 77-CI-Gate) |
 | Disambiguierung: Zahl-Antworten kollidieren mit anderen Handlern, die auch Zahlen erwarten | Handler-eigener Vorcheck nur wenn `PendingAction.action_type == "route_disambig"` exists. Andere Handler bleiben unberührt |
@@ -661,14 +672,54 @@ Methoden implementiert (für künftigen OSM-Provider relevant).
 - **Keine ÖPNV-/Fahrrad-Modi**: Nur `travelmode=driving`.
 - **Keine Hin-und-Rückweg-Optimierung**: Wenn User später zurück will, ist das eine zweite Anfrage.
 
-## Setup (für Lera, vor Etappe E2)
+## Voraussetzungen (Status 2026-05-13: erfüllt)
 
-### Google Cloud APIs aktivieren
+### Google Cloud APIs
 
-1. Cloud Console → APIs & Services → Library
-2. **Places API (New)** suchen → Aktivieren (heißt jetzt einfach "Places API")
-3. **Directions API** ist seit Phase 43 bereits aktiv → keine Aktion nötig.
-4. API-Key (existierend aus Phase 43) prüfen: Restrictions sollen beide APIs zulassen.
+Beide für Phase 92 benötigten APIs sind im verwendeten Cloud-Projekt
+aktiviert:
+
+| API | Status | Verwendung |
+|-----|--------|------------|
+| `Directions API` | aktiv (seit Phase 43) | Multi-Stop-Routing mit `waypoints=optimize:true` |
+| `Places API (New)` | aktiv | Search-Along-Route mit `searchAlongRouteParameters` |
+
+### API-Key-Restrictions
+
+Der existierende Maps-API-Key (`google_maps_api_key` im SecretStore) hat
+beide APIs in seiner Restriction-Liste. Kein Anpassen nötig für Phase 92.
+
+### Falls je ein neuer API-Key angelegt werden muss
+
+Diese APIs müssen mindestens in den Restrictions erlaubt sein, damit das
+Konzept funktioniert:
+- `Directions API`
+- `Places API (New)` (nicht zu verwechseln mit `Places API` (Legacy)
+  oder `Places SDK for Android/iOS`)
+
+Aktivierung über: Cloud Console → APIs & Services → Library → API suchen
+→ Aktivieren. Restrictions am Key in: APIs & Services → Credentials →
+Key wählen → API restrictions.
+
+### Hygiene-Hinweise (nicht Teil dieser Phase)
+
+Beim Setup-Check fielen zwei Punkte auf — getrennt zu behandeln, nicht
+in Phase 92:
+
+1. **API-Restriction-Liste ist breit**: Der Key erlaubt aktuell ~30 APIs
+   (Aerial View, Pollen, Solar, Map Tiles, ...). Bei Key-Leak wäre die
+   Angriffsfläche unnötig groß. Empfehlung: Liste auf tatsächlich
+   verwendete APIs reduzieren (Phase 43: Directions; Phase 92: zusätzlich
+   Places API New). Falls weitere Apps gegen denselben Key laufen, dort
+   ebenfalls Bedarf erheben.
+2. **Doppelte Places API aktiviert**: Sowohl `Places API` (Legacy) als
+   auch `Places API (New)` sind im Projekt aktiv. Saleria nutzt nur die
+   neue. Wenn keine andere App die alte braucht, kann sie deaktiviert
+   werden.
+
+Beide Punkte sind reine Hardening-Aufgaben ohne funktionalen Einfluss
+auf Phase 92. Kandidat für eine separate Mini-Phase oder für die
+nächste Security-Review (Phase 57 hat das Thema generell adressiert).
 
 ### Abhängigkeiten
 
@@ -678,14 +729,19 @@ Für Sonnet-Tool-Calls wird der bestehende Anthropic-Client genutzt
 
 ### Kosten-Schätzung
 
+Realistische Nutzung: 1–2 Multi-Stop-Anfragen pro Monat. Plus Reserve für
+gelegentliche Spitzen.
+
 | Posten | Annahme | Monatskosten |
 |--------|---------|--------------|
-| Directions API (Multi-Stop) | 30 Calls/Monat | $0.15 |
-| Places API (Search Along Route) | 30 Calls/Monat | $0.90 |
-| Claude Sonnet Tool-Call | ~500 Tokens/Call, 30/Monat | <$0.10 |
-| **Summe** | | **~$1.15/Monat** |
+| Directions API (Multi-Stop) | 2 Calls × $0.005 | ~$0.01 |
+| Places API (Search Along Route) | 2 Calls × $0.032 | ~$0.06 |
+| Claude Sonnet Tool-Call | ~500 Tokens × 2 | <$0.01 |
+| **Summe** | | **~$0.08/Monat (~$1/Jahr)** |
 
-Bleibt unter dem $200 Google Free Tier. Kein Schmerz.
+Liegt bei jeder vernünftigen Nutzungsintensität deutlich unter dem $200
+Google Free Tier. Selbst bei 10× höherer Nutzung (20 Anfragen/Monat) bleibt
+es bei ~$1/Monat.
 
 ## Out-of-Scope (explizit)
 
@@ -694,7 +750,14 @@ Bleibt unter dem $200 Google Free Tier. Kein Schmerz.
 - Öffnungszeiten-Check (Phase 92.x oder eigene Phase).
 - Reihenfolge-Heuristiken über Kategorien (Einkauf zuletzt etc.).
 - ÖPNV-Modus (Phase 43 nennt das als Phase-X-Erweiterung).
-- OSM-Provider-Implementierung (`RouteProvider` schon vorbereitet, Code später).
+- **OSM-Provider** – bewusst verworfen, **nicht** vorbereitet als Interface.
+  Begründung: Datenschutz-Gewinn = null (Endformat ist Google-Maps-Deep-Link
+  für Android Auto, Adressen wandern so oder so an Google). Kosten ~$1/Jahr
+  amortisieren keine 3 Sessions OSM-Implementierung. Self-hosted OSM-Stack
+  (Overpass + OSRM/Valhalla + Planet-Updates) = 3 zusätzliche Dienste mit
+  Patch-Pflicht und entsprechendem Sicherheitsrisiko. Falls je relevant:
+  Refactor zu ABC ist ~1 Session, Datacontracts sind heute schon provider-
+  agnostisch.
 - Proaktive Routenplanung aus Kalender-Terminen (Phase 17/Briefing-Integration).
 - Disambiguierung gebündelt statt sequenziell (mögliche Folgephase wenn UX-Bedarf).
 
@@ -702,5 +765,8 @@ Bleibt unter dem $200 Google Free Tier. Kein Schmerz.
 
 - **Phase 92.1** – Öffnungszeiten-Check für POI-Kandidaten (Places API liefert `regularOpeningHours`).
 - **Phase 92.2** – Reihenfolge-Constraints im Tool-Schema (`preserve_order`, `must_be_last`).
-- **Phase 92.3** – OSM-Provider als zweite `RouteProvider`-Implementierung.
+- **Phase 92.3** – Routing-Backend austauschen (z.B. OSM). Trigger:
+  Google-Account aufgegeben ODER >50 Anfragen/Monat. Refactor:
+  `GoogleMapsRoutePlanner` → ABC + zweite Implementierung. Heute kein
+  Trigger erfüllt — bei dem ersten gemeldeten Trigger Phase aktivieren.
 - **Phase 93** – Kalender-Integration: Termin mit Adresse → automatischer Routenvorschlag im Briefing.
