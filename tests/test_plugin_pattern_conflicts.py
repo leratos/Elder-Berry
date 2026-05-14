@@ -102,7 +102,7 @@ def _full_mock_ctx() -> HandlerContext:
         briefing_scheduler=MagicMock(),
         email_client=MagicMock(),
         calendar=MagicMock(),
-        note_store=MagicMock(),
+        fact_store=MagicMock(),
         contact_store=MagicMock(),
         task_client=MagicMock(),
         pending_store=MagicMock(),

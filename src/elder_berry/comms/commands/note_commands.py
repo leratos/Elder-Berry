@@ -1,13 +1,15 @@
-"""NoteCommandHandler – Notizen & Wissensdatenbank Commands.
+"""NoteCommandHandler -- Wissensdatenbank (Fakten) + Notiz-Stubs.
 
-Verwaltet:
-- merk dir: <key> ist/=: <wert> → Key-Value-Fakt speichern
-- notiz: <text>                   → Freitext-Notiz speichern
-- was ist <key>?                  → KV-Fakt abrufen (Miss → LLM-Fallthrough)
-- notizen suche <query>           → Volltextsuche
-- notizen                         → Alle Notizen auflisten
-- notiz löschen #<id>             → Notiz per ID löschen
-- vergiss <key>                   → KV-Fakt per Key löschen
+Phase 91-A: NoteStore wurde gesplittet.
+- Fakten-Commands (`merk dir`, `was ist`, `vergiss`) gehen jetzt an
+  FactStore (lokal, SQLite).
+- Notiz-Commands (`notiz:`, `notizen`, `notizen suche`, `notiz loeschen`)
+  liefern einen Stub bis Phase 91-B/C den NextcloudNotesClient ausrollt.
+
+Stub-Begruendung: Etappen 1 und 2 werden bewusst in getrennten Branches
+gefahren (Konzept docs/concepts/note-nextcloud-replace.md §4.1).
+Production-Luecke ist akzeptiert, weil Saleria in Testphase ohne
+produktive Notizen laeuft (Lera-Freigabe 2026-05-13).
 """
 
 from __future__ import annotations
@@ -24,7 +26,7 @@ from elder_berry.comms.commands.base import (
 )
 
 if TYPE_CHECKING:
-    from elder_berry.tools.note_store import NoteStore
+    from elder_berry.tools.fact_store import FactStore
 
 logger = logging.getLogger(__name__)
 
@@ -32,37 +34,21 @@ logger = logging.getLogger(__name__)
 # Patterns
 # ---------------------------------------------------------------------------
 
-# "merk dir: WLAN Büro ist xyz123" oder "merk dir WLAN Büro = xyz"
+# "merk dir: WLAN Buero ist xyz123" oder "merk dir WLAN Buero = xyz"
 NOTE_SET_FACT_PATTERN = re.compile(
     r"^(?:bitte\s+)?(?:merk|merke)\s+dir[:\s]+(.+?)\s+(?:ist|=|:)\s+(.+)$",
     re.IGNORECASE,
 )
 
-# "notiz: Vermieter heißt Müller"
-# DOTALL: ``.`` matcht auch Newlines, damit Multi-Line-Notizen
-# (Saleria-Command "notiz: Einkaufsliste\n- Vodka\n- Limette") nicht
-# am ersten ``\n`` abgeschnitten werden -- Phase 90-A,
-# Lera-Smoketest 2026-05-13 (Moscow-Mule-Einkaufsliste).
+# "notiz: Vermieter heisst Mueller"
+# DOTALL bleibt erhalten (Phase 90-A, Multi-Line-Notizen).
 NOTE_ADD_PATTERN = re.compile(
     r"^(?:bitte\s+)?notiz[:\s]+(.+)$",
     re.IGNORECASE | re.DOTALL,
 )
 
-# "was ist das WLAN Passwort?" oder "was ist WLAN Büro"
-# "wie lautet das Passwort?" oder "wie lautet die Adresse"
-# Negative Lookahead: Domain-Keywords (wetter, termin, mail, ...) nicht abfangen,
-# damit diese an die zuständigen Handler weitergeleitet werden.
-# Negative Lookahead: prueft ob nach optionalem Artikel ein Domain-Keyword folgt.
-# Steht VOR der optionalen Artikel-Gruppe, damit kein Backtracking den Schutz umgeht.
-#
-# 2026-05-11 (Codex-Reviewer P2): ``(?:bitte\s+)?``-Prefix in DELETE,
-# SEARCH, DELETE_FACT und GET_FACT eingefuegt -- parse_command strippt
-# fuehrende Filler bevor es matcht, aber execute() bekommt den rohen
-# Text mit "bitte ..." drin. Ohne den Prefix waere der _cmd_*-Re-Parse-
-# Schritt mit "bitte" am Anfang fehlgeschlagen. Loesung analog zu
-# NOTE_ADD_PATTERN/NOTE_SET_FACT_PATTERN (haben den Prefix schon).
-# Hinweis: das deckt NUR "bitte" ab; andere Filler ("kannst du mir mal"
-# etc.) brauchen einen breiteren Architektur-Fix -- separates Konzept.
+# "was ist das WLAN Passwort?" / "wie lautet die Adresse"
+# Negative Lookahead schuetzt Domain-Keywords vor Abfangen.
 _DOMAIN_WORDS = r"wetter|termin|mail|todo|kontakt|erinnerung|timer"
 NOTE_GET_FACT_PATTERN = re.compile(
     r"^(?:bitte\s+)?"
@@ -80,34 +66,39 @@ NOTE_SEARCH_PATTERN = re.compile(
     re.IGNORECASE,
 )
 
-# "notiz löschen #3" oder "notiz löschen 3"
+# "notiz loeschen #3" oder "notiz loeschen 3"
 NOTE_DELETE_PATTERN = re.compile(
     r"^(?:bitte\s+)?notiz(?:en)?\s+(?:löschen|lösche|entferne?)\s+#?(\d+)$",
     re.IGNORECASE,
 )
 
-# "vergiss WLAN Passwort Büro"
+# "vergiss WLAN Passwort Buero"
 NOTE_DELETE_FACT_PATTERN = re.compile(
     r"^(?:bitte\s+)?vergiss\s+(.+)$",
     re.IGNORECASE,
 )
 
+_STUB_TEXT = (
+    "📝 Notizen-Backend in Umstellung -- kommt in Phase 91-B/C "
+    "(Nextcloud Notes API). Fakten (`merk dir`, `was ist`, `vergiss`) "
+    "funktionieren weiterhin."
+)
+
 
 class NoteCommandHandler(CommandHandler):
-    """Handler für Notizen & Wissensdatenbank Commands."""
+    """Handler fuer Wissensdatenbank-Commands (Fakten) + Notiz-Stubs."""
 
     def __init__(
         self,
-        note_store: NoteStore,
+        fact_store: FactStore,
         default_user_id: str = "",
     ) -> None:
         """
         Args:
-            note_store: NoteStore-Instanz.
+            fact_store: FactStore-Instanz.
             default_user_id: Fallback-User-ID (Single-User-Projekt).
-                Wird verwendet wenn execute() keinen user_id-Kontext hat.
         """
-        self._store = note_store
+        self._store = fact_store
         self._default_user_id = default_user_id
 
     # ------------------------------------------------------------------
@@ -121,22 +112,15 @@ class NoteCommandHandler(CommandHandler):
     @property
     def patterns(self) -> list[tuple[re.Pattern[str], str, bool, bool]]:
         # Reihenfolge: spezifische Patterns VOR generischen.
-        # 2026-05-11 (Smoketest-Fix): NOTE_ADD_PATTERN matcht ``notiz <text>``
-        # mit beliebigem text -- inkl. ``notiz löschen #1`` und ``notiz suche
-        # ...``. Wenn note_add hier vor note_delete/note_search steht, werden
-        # diese spezifischen Commands als neue Notiz mit text="löschen #1"
-        # bzw. text="suche ..." angelegt. note_set_fact (merk dir: ...) und
-        # note_delete_fact (vergiss ...) sind disjunkt zu note_add (anderer
-        # Stamm), aber zur Klarheit ebenfalls vorne.
+        # note_add ist generisch -- muss nach den spezifischen note_*-Patterns
+        # stehen, sonst frisst es sie auf (z.B. ``notiz loeschen #1`` als
+        # neue Notiz mit Inhalt "loeschen #1").
         return [
             (NOTE_SET_FACT_PATTERN, "note_set_fact", False, False),
             (NOTE_DELETE_PATTERN, "note_delete", False, False),
             (NOTE_SEARCH_PATTERN, "note_search", False, False),
             (NOTE_DELETE_FACT_PATTERN, "note_delete_fact", False, False),
-            # note_add ist generisch (``notiz <text>``) -- muss NACH den
-            # spezifischen Note-Patterns stehen, sonst frisst es sie auf.
             (NOTE_ADD_PATTERN, "note_add", False, False),
-            # note_get_fact zuletzt: "was ist" ist sehr allgemein
             (NOTE_GET_FACT_PATTERN, "note_get_fact", False, False),
         ]
 
@@ -144,11 +128,9 @@ class NoteCommandHandler(CommandHandler):
     def command_descriptions(self) -> list[str]:
         return [
             "merk dir: <schlüssel> ist <wert>: Fakt speichern",
-            "notiz: <text>: Freitext-Notiz speichern",
             "was ist <schlüssel>?: Fakt abrufen",
-            "notizen suche <begriff>: Notizen durchsuchen",
-            "notizen: Alle Notizen anzeigen",
-            "notiz löschen #<id> / vergiss <schlüssel>: Notiz/Fakt löschen",
+            "vergiss <schlüssel>: Fakt löschen",
+            "notiz: <text>: (in Umstellung, kommt in Phase 91-B/C)",
         ]
 
     @property
@@ -184,33 +166,18 @@ class NoteCommandHandler(CommandHandler):
         }
 
     def execute(self, command: str, raw_text: str, user_id: str = "") -> CommandResult:
-        """Führt einen erkannten Command aus.
-
-        Args:
-            command: Normalisierter Command-Name.
-            raw_text: Originaler Nachrichtentext.
-            user_id: Matrix-User-ID (optional, Fallback auf default_user_id).
-
-        Returns:
-            CommandResult. Bei note_get_fact-Miss: success=False für LLM-Fallthrough.
-        """
+        """Fuehrt einen erkannten Command aus."""
         uid = user_id or self._default_user_id
 
         match command:
             case "note_set_fact":
                 return self._cmd_set_fact(raw_text, uid)
-            case "note_add":
-                return self._cmd_add_note(raw_text, uid)
             case "note_get_fact":
                 return self._cmd_get_fact(raw_text, uid)
-            case "note_search":
-                return self._cmd_search(raw_text, uid)
-            case "notizen":
-                return self._cmd_list(uid)
-            case "note_delete":
-                return self._cmd_delete(raw_text)
             case "note_delete_fact":
                 return self._cmd_delete_fact(raw_text, uid)
+            case "note_add" | "note_search" | "note_delete" | "notizen":
+                return self._cmd_notes_stub(command)
 
         return CommandResult(
             command=command,
@@ -219,7 +186,7 @@ class NoteCommandHandler(CommandHandler):
         )
 
     # ------------------------------------------------------------------
-    # Command-Implementierungen
+    # Fakten-Commands (FactStore)
     # ------------------------------------------------------------------
 
     def _cmd_set_fact(self, raw_text: str, user_id: str) -> CommandResult:
@@ -235,45 +202,26 @@ class NoteCommandHandler(CommandHandler):
         key = match.group(1).strip()
         value = match.group(2).strip()
 
-        # Prüfe ob bereits vorhanden (für Feedback)
         existing = self._store.get_fact(user_id, key)
-        note = self._store.set_fact(user_id, key, value)
+        fact = self._store.set_fact(user_id, key, value)
 
         if existing:
             return CommandResult(
                 command="note_set_fact",
                 success=True,
                 text=(
-                    f"✏️ Aktualisiert: **{note.key}** = {value}\n"
+                    f"✏️ Aktualisiert: **{fact.key}** = {value}\n"
                     f"_(vorher: {existing.content})_"
                 ),
             )
         return CommandResult(
             command="note_set_fact",
             success=True,
-            text=f"🔑 Gemerkt: **{note.key}** = {value}",
-        )
-
-    def _cmd_add_note(self, raw_text: str, user_id: str) -> CommandResult:
-        """notiz: <freitext>"""
-        match = NOTE_ADD_PATTERN.match(raw_text.strip())
-        if not match:
-            return CommandResult(
-                command="note_add",
-                success=False,
-                text="Text fehlt. Beispiel: notiz: Vermieter heißt Müller",
-            )
-
-        content = match.group(1).strip()
-        note = self._store.add_note(user_id, content)
-        return CommandResult(
-            command="note_add",
-            success=True,
-            text=f"📝 Notiz #{note.id} gespeichert.",
+            text=f"🔑 Gemerkt: **{fact.key}** = {value}",
         )
 
     def _cmd_get_fact(self, raw_text: str, user_id: str) -> CommandResult:
-        """was ist <key>? → KV-Lookup, Miss → fallthrough ans LLM."""
+        """was ist <key>? -> KV-Lookup, Miss -> fallthrough ans LLM."""
         match = NOTE_GET_FACT_PATTERN.match(raw_text.strip())
         if not match:
             return CommandResult(
@@ -283,10 +231,9 @@ class NoteCommandHandler(CommandHandler):
             )
 
         key = (match.group(1) or match.group(2) or "").strip()
-        note = self._store.get_fact(user_id, key)
+        fact = self._store.get_fact(user_id, key)
 
-        if note is None:
-            # Kein Treffer → LLM-Fallthrough (z.B. "was ist deine meinung")
+        if fact is None:
             return CommandResult(
                 command="note_get_fact",
                 success=False,
@@ -296,91 +243,7 @@ class NoteCommandHandler(CommandHandler):
         return CommandResult(
             command="note_get_fact",
             success=True,
-            text=f"🔑 **{note.key}**: {note.content}",
-        )
-
-    def _cmd_search(self, raw_text: str, user_id: str) -> CommandResult:
-        """notizen suche <query>"""
-        match = NOTE_SEARCH_PATTERN.match(raw_text.strip())
-        if not match:
-            return CommandResult(
-                command="note_search",
-                success=False,
-                text="Suchbegriff fehlt. Beispiel: notizen suche Vermieter",
-            )
-
-        query = match.group(1).strip()
-        results = self._store.search(user_id, query)
-
-        if not results:
-            return CommandResult(
-                command="note_search",
-                success=True,
-                text=f"Keine Notizen gefunden für: '{query}'",
-            )
-
-        lines = [f"🔍 **{len(results)} Treffer** für '{query}':"]
-        for note in results:
-            lines.append(f"  {note.format_short()}")
-
-        # Phase 80 Etappe 3: voller content wandert ins Item, damit der
-        # Bridge-list_pick "zeig mir Notiz 1" ohne Store-Round-Trip die
-        # echte Notiz zeigen kann (Konzept-Tabelle nennt content_excerpt;
-        # voller content ist hier praktischer, weil Notizen klein sind).
-        list_items = [{"id": n.id, "key": n.key, "content": n.content} for n in results]
-
-        return CommandResult(
-            command="note_search",
-            success=True,
-            text="\n".join(lines),
-            list_items=list_items,
-            list_type="note_search",
-        )
-
-    def _cmd_list(self, user_id: str) -> CommandResult:
-        """notizen → Alle Notizen (max 20)"""
-        notes = self._store.list_all(user_id)
-
-        if not notes:
-            return CommandResult(
-                command="notizen",
-                success=True,
-                text="Keine Notizen vorhanden. Tipp: 'merk dir: ...' oder 'notiz: ...'",
-            )
-
-        lines = [f"📋 **{len(notes)} Notizen**:"]
-        for note in notes:
-            lines.append(f"  {note.format_short()}")
-
-        return CommandResult(
-            command="notizen",
-            success=True,
-            text="\n".join(lines),
-        )
-
-    def _cmd_delete(self, raw_text: str) -> CommandResult:
-        """notiz löschen #<id>"""
-        match = NOTE_DELETE_PATTERN.match(raw_text.strip())
-        if not match:
-            return CommandResult(
-                command="note_delete",
-                success=False,
-                text="Welche Notiz? Beispiel: notiz löschen #3",
-            )
-
-        note_id = int(match.group(1))
-        deleted = self._store.delete(note_id)
-
-        if deleted:
-            return CommandResult(
-                command="note_delete",
-                success=True,
-                text=f"🗑️ Notiz #{note_id} gelöscht.",
-            )
-        return CommandResult(
-            command="note_delete",
-            success=False,
-            text=f"Notiz #{note_id} nicht gefunden.",
+            text=f"🔑 **{fact.key}**: {fact.content}",
         )
 
     def _cmd_delete_fact(self, raw_text: str, user_id: str) -> CommandResult:
@@ -408,31 +271,44 @@ class NoteCommandHandler(CommandHandler):
             text=f"Kein Fakt '{key}' gefunden.",
         )
 
+    # ------------------------------------------------------------------
+    # Notiz-Commands (Stub bis Phase 91-B/C)
+    # ------------------------------------------------------------------
+
+    def _cmd_notes_stub(self, command: str) -> CommandResult:
+        """Stub fuer alle Notiz-Commands bis NextcloudNotesClient gerollt ist."""
+        logger.info("Notiz-Command '%s' gestubbt (Phase 91-A)", command)
+        return CommandResult(
+            command=command,
+            success=False,
+            text=_STUB_TEXT,
+        )
+
 
 # ---------------------------------------------------------------------------
 # Phase 77: Plugin-Manifest
 # ---------------------------------------------------------------------------
 
-HELP_SECTION_NOTE = """Notizen & Wissen:
+HELP_SECTION_NOTE = """Wissen & Fakten:
   merk dir: <schluessel> ist <wert>  -- Fakt speichern
-  notiz: <text>                       -- Freitext-Notiz speichern
   was ist <schluessel>?               -- Fakt abrufen
-  notizen suche <Begriff>             -- Notizen durchsuchen
-  notizen                             -- Alle Notizen anzeigen (max 20)
-  notiz loeschen #<id>                -- Notiz per ID loeschen
-  vergiss <schluessel>                -- KV-Fakt vergessen"""
+  vergiss <schluessel>                -- Fakt loeschen
+
+Notizen:
+  notiz: <text>                       -- (in Umstellung, kommt in Phase 91-B/C)
+  notizen / notizen suche / loeschen  -- (in Umstellung)"""
 
 
 def _factory(ctx: HandlerContext) -> CommandHandler | None:
     """Konstruiert NoteCommandHandler aus dem HandlerContext.
 
-    Bedingung: ``ctx.note_store`` muss gesetzt sein -- ohne SQLite-Store
-    keine Notizen.
+    Bedingung: ``ctx.fact_store`` muss gesetzt sein -- ohne FactStore
+    keine Fakten.
     """
-    if ctx.note_store is None:
+    if ctx.fact_store is None:
         return None
     return NoteCommandHandler(
-        note_store=ctx.note_store,
+        fact_store=ctx.fact_store,
         default_user_id=ctx.default_user_id,
     )
 

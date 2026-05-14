@@ -39,8 +39,8 @@ if TYPE_CHECKING:
     from elder_berry.tools.email_client import IMAPEmailClient
     from elder_berry.tools.google_calendar import GoogleCalendarClient
     from elder_berry.tools.gym_data import GymDataClient
+    from elder_berry.tools.fact_store import FactStore
     from elder_berry.tools.nextcloud_files import NextcloudFilesClient
-    from elder_berry.tools.note_store import NoteStore
     from elder_berry.tools.reminder_store import ReminderStore
     from elder_berry.tools.route_planner import RoutePlanner
     from elder_berry.tools.stirling_pdf import StirlingPDFClient
@@ -341,7 +341,7 @@ class HandlerContext:
     briefing_scheduler: BriefingScheduler | None = None
     email_client: IMAPEmailClient | None = None
     calendar: GoogleCalendarClient | None = None
-    note_store: NoteStore | None = None
+    fact_store: FactStore | None = None
     contact_store: ContactStore | None = None
     task_client: CalDAVTaskClient | None = None
     pending_store: PendingConfirmationStore | None = None
@@ -386,7 +386,7 @@ class CommandPlugin:
     factory: Callable[[HandlerContext], "CommandHandler | None"]
     """Konstruktor-Funktion. Liest aus HandlerContext, was sie braucht.
     Darf None zurückgeben, wenn benötigte Services fehlen
-    (z.B. NoteStore=None → kein NoteHandler)."""
+    (z.B. FactStore=None → kein NoteHandler)."""
 
     requires: tuple[str, ...] = field(default_factory=tuple)
     """Plugin-Namen, deren Handler vor diesem laufen müssen.

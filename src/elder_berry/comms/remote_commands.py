@@ -15,7 +15,9 @@ Delegiert an domänenspezifische Handler in comms/commands/:
 - UpdateCommandHandler: Self-Update, Rollback, Backup
 - SelfcheckCommandHandler: Systemgesundheitsprüfung
 - WeatherCommandHandler: Wetter, Timer, Erinnerungen, Briefing, Training
-- NoteCommandHandler: Notizen & Wissensdatenbank (optional, benötigt NoteStore)
+- NoteCommandHandler: Wissensdatenbank/Fakten (optional, benötigt FactStore).
+  Notiz-Commands liefern in Phase 91-A einen Stub bis Phase 91-B/C
+  NextcloudNotesClient ausrollt.
 - RouteCommandHandler: Routenplanung via Google Maps Directions API
 - AdvancedCommandHandler: Computer Use, Web-Suche, Dokumente, Audio
 
@@ -70,7 +72,7 @@ if TYPE_CHECKING:
     from elder_berry.tools.google_calendar import GoogleCalendarClient
     from elder_berry.tools.gym_data import GymDataClient
     from elder_berry.comms.briefing_scheduler import BriefingScheduler
-    from elder_berry.tools.note_store import NoteStore
+    from elder_berry.tools.fact_store import FactStore
     from elder_berry.tools.contact_store import ContactStore
     from elder_berry.tools.caldav_tasks import CalDAVTaskClient
     from elder_berry.tools.reminder_store import ReminderStore
@@ -274,7 +276,7 @@ class RemoteCommandHandler:
         computer_use: ComputerUseController | None = None,
         search_client: BraveSearchClient | None = None,
         web_fetcher: WebFetcher | None = None,
-        note_store: NoteStore | None = None,
+        fact_store: FactStore | None = None,
         contact_store: ContactStore | None = None,
         task_client: CalDAVTaskClient | None = None,
         robot_client: RobotClient | None = None,
@@ -312,7 +314,7 @@ class RemoteCommandHandler:
                 briefing_scheduler=briefing_scheduler,
                 email_client=email_client,
                 calendar=calendar,
-                note_store=note_store,
+                fact_store=fact_store,
                 contact_store=contact_store,
                 task_client=task_client,
                 pending_store=pending_store,

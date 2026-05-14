@@ -158,7 +158,7 @@ def test_weather_factory_always_returns_handler() -> None:
 def test_note_factory_returns_none_without_store() -> None:
     by_name = {p.name: p for p in load_plugins()}
     note_plugin = by_name["note"]
-    ctx = HandlerContext()  # note_store=None
+    ctx = HandlerContext()  # fact_store=None
     handler = note_plugin.factory(ctx)
     assert handler is None
 
@@ -166,7 +166,7 @@ def test_note_factory_returns_none_without_store() -> None:
 def test_note_factory_returns_handler_with_store() -> None:
     by_name = {p.name: p for p in load_plugins()}
     note_plugin = by_name["note"]
-    ctx = HandlerContext(note_store=MagicMock(), default_user_id="@test:matrix")
+    ctx = HandlerContext(fact_store=MagicMock(), default_user_id="@test:matrix")
     handler = note_plugin.factory(ctx)
     assert handler is not None
 
@@ -227,7 +227,7 @@ def test_remote_command_handler_constructs_with_explicit_ctx() -> None:
 
     ctx = HandlerContext(
         weather=MagicMock(),
-        note_store=MagicMock(),
+        fact_store=MagicMock(),
         contact_store=MagicMock(),
         task_client=MagicMock(),
         route_planner=MagicMock(),
@@ -255,7 +255,7 @@ def test_handler_order_matches_pre_plugin_layout() -> None:
 
     ctx = HandlerContext(
         weather=MagicMock(),
-        note_store=MagicMock(),
+        fact_store=MagicMock(),
         contact_store=MagicMock(),
         task_client=MagicMock(),
         route_planner=MagicMock(),

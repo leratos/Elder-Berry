@@ -157,8 +157,10 @@ class CalendarWatcher:
         """Formatiert und sendet eine Termin-Erinnerung.
 
         Beim ERSTEN Reminder (max(reminder_minutes)) wird der Alert mit
-        Kontext aus NoteStore, IMAP, Wetter etc. angereichert – sofern ein
-        ContextEnricher konfiguriert ist. Spätere Reminder bleiben schlank.
+        Kontext aus IMAP, Wetter, Memory etc. angereichert – sofern ein
+        ContextEnricher konfiguriert ist. (Phase 91-A: Note-Lookups
+        temporaer deaktiviert bis NextcloudNotesClient ausgerollt ist.)
+        Spätere Reminder bleiben schlank.
         """
         time_str = event.start.astimezone().strftime("%H:%M")
 

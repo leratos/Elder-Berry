@@ -1,9 +1,13 @@
 """SmartContextProvider – Automatische Kontext-Anreicherung für LLM-Anfragen.
 
 Analysiert den User-Input und entscheidet keyword-basiert, welche Datenquellen
-(Calendar, Todos, Notes, Contacts, Reminders, Weather) relevant sind.
+(Calendar, Todos, Contacts, Reminders, Weather) relevant sind.
 Fragt die relevanten Stores parallel ab und liefert formatierten Kontext
 für den System-Prompt.
+
+Phase 91-A: NOTES-Source ist in dieser Etappe deaktiviert; NoteStore wurde
+in FactStore + NextcloudNotesClient gesplittet. Notes-Lookups kommen in
+Phase 91-B/C zurueck (gegen NextcloudNotesClient).
 
 Wird von Assistant.process() bei jeder Anfrage aufgerufen.
 Graceful Degradation: fehlende oder fehlerhafte Quellen werden übersprungen.
@@ -12,7 +16,6 @@ Verwendung:
     provider = SmartContextProvider(
         calendar=calendar_client,
         task_client=task_client,
-        note_store=note_store,
         contact_store=contact_store,
         reminder_store=reminder_store,
         weather_client=weather_client,
@@ -36,7 +39,6 @@ from typing import TYPE_CHECKING, assert_never
 if TYPE_CHECKING:
     from elder_berry.tools.contact_store import ContactStore
     from elder_berry.tools.google_calendar import GoogleCalendarClient
-    from elder_berry.tools.note_store import NoteStore
     from elder_berry.tools.reminder_store import ReminderStore
     from elder_berry.tools.caldav_tasks import CalDAVTaskClient
     from elder_berry.tools.weather_client import WeatherClient
@@ -105,16 +107,9 @@ _SOURCE_KEYWORDS: dict[ContextSource, set[str]] = {
         "vergessen",
         "erinner",
     },
-    ContextSource.NOTES: {
-        "notiz",
-        "notizen",
-        "note",
-        "notes",
-        "merke",
-        "wissen",
-        "fakt",
-        "fakten",
-    },
+    # ContextSource.NOTES: in Phase 91-A deaktiviert (NoteStore-Refactor).
+    # Keywords (notiz, notizen, fakt, fakten, ...) werden in Phase 91-B/C
+    # gegen den FactStore + NextcloudNotesClient reaktiviert.
     ContextSource.CONTACTS: {
         "kontakt",
         "kontakte",
@@ -272,7 +267,6 @@ class SmartContextProvider:
         self,
         calendar: GoogleCalendarClient | None = None,
         task_client: CalDAVTaskClient | None = None,
-        note_store: NoteStore | None = None,
         contact_store: ContactStore | None = None,
         reminder_store: ReminderStore | None = None,
         weather_client: WeatherClient | None = None,
@@ -280,7 +274,6 @@ class SmartContextProvider:
     ) -> None:
         self._calendar = calendar
         self._task_client = task_client
-        self._note_store = note_store
         self._contact_store = contact_store
         self._reminder_store = reminder_store
         self._weather_client = weather_client
@@ -337,10 +330,11 @@ class SmartContextProvider:
             ContextSource.CALENDAR: self._calendar,
             ContextSource.TODOS: self._task_client,
             ContextSource.REMINDERS: self._reminder_store,
-            ContextSource.NOTES: self._note_store,
             ContextSource.CONTACTS: self._contact_store,
             ContextSource.WEATHER: self._weather_client,
         }
+        # Phase 91-A: NOTES nicht im Mapping -> wird ausgefiltert
+        # (NoteStore-Refactor, Re-Enable in Phase 91-B/C).
         return {s for s in sources if store_map.get(s) is not None}
 
     def _query_sources(
@@ -406,7 +400,10 @@ class SmartContextProvider:
             case ContextSource.REMINDERS:
                 return self._query_reminders
             case ContextSource.NOTES:
-                return lambda: self._query_notes(user_input)
+                # Phase 91-A Stub: NOTES wird nie aktiviert (Keywords + Mapping
+                # entfernt). Lambda steht hier nur als Schutz vor assert_never,
+                # falls Aufrufer NOTES manuell durchschleust.
+                return lambda: ""
             case ContextSource.CONTACTS:
                 return lambda: self._query_contacts(user_input)
             case ContextSource.WEATHER:
@@ -463,21 +460,6 @@ class SmartContextProvider:
             lines.append(
                 f"  #{r.id} – {r.message} (fällig: {local_time.strftime('%H:%M')})"
             )
-        return "\n".join(lines)
-
-    def _query_notes(self, user_input: str) -> str:
-        """Durchsucht NoteStore nach dem User-Input."""
-        assert self._note_store is not None
-        if not self._default_user_id:
-            return ""
-        results = self._note_store.search(self._default_user_id, user_input, 3)
-        if not results:
-            return ""
-        lines = ["📝 Relevante Notizen:"]
-        for n in results:
-            prefix = f"🔑 {n.key}: " if n.key else ""
-            content = n.content[:200]
-            lines.append(f"  {prefix}{content}")
         return "\n".join(lines)
 
     def _query_contacts(self, user_input: str) -> str:

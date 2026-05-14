@@ -32,7 +32,6 @@ if TYPE_CHECKING:
     from elder_berry.tools.contact_store import Contact, ContactStore
     from elder_berry.tools.email_client import IMAPEmailClient
     from elder_berry.tools.google_calendar import GoogleCalendarClient
-    from elder_berry.tools.note_store import NoteStore
     from elder_berry.tools.reminder_store import ReminderStore
     from elder_berry.tools.caldav_tasks import CalDAVTaskClient
     from elder_berry.tools.weather_client import WeatherClient
@@ -56,7 +55,6 @@ class BriefingScheduler:
         task_client: CalDAVTaskClient | None = None,
         email_client: IMAPEmailClient | None = None,
         contact_store: ContactStore | None = None,
-        note_store: NoteStore | None = None,
         carddav_sync: CardDAVSyncClient | None = None,
         default_user_id: str = "",
         briefing_hour: int = 7,
@@ -71,7 +69,6 @@ class BriefingScheduler:
             task_client: CalDAVTaskClient (optional, Phase 56).
             email_client: IMAPEmailClient (optional, Phase 34).
             contact_store: ContactStore (optional, Phase 34 – Geburtstage).
-            note_store: NoteStore (optional, Phase 34 – Vor einem Jahr).
             carddav_sync: CardDAVSyncClient (optional, Phase 38 – Auto-Sync).
             default_user_id: Matrix-User-ID für ContactStore-Abfrage.
             briefing_hour: Stunde des Briefings (0-23, Lokalzeit).
@@ -84,7 +81,6 @@ class BriefingScheduler:
         self._task_client = task_client
         self._email_client = email_client
         self._contact_store = contact_store
-        self._note_store = note_store
         self._carddav_sync = carddav_sync
         self._default_user_id = default_user_id
         self._briefing_hour = briefing_hour
@@ -156,7 +152,9 @@ class BriefingScheduler:
             sections.extend(self._build_todo_section())
 
         sections.extend(self._build_email_section())
-        sections.extend(self._build_flashback_section(now))
+        # Phase 91-A: Flashback-Section ("Vor einem Jahr") entfernt --
+        # Nextcloud Notes API hat keinen created_at-Timestamp, nur
+        # modified. Feature wird nicht ersetzt (Lera-Freigabe 2026-05-14).
 
         if not sections:
             return ""
@@ -431,35 +429,6 @@ class BriefingScheduler:
             return []
         except Exception as e:
             logger.debug("Briefing: E-Mails fehlgeschlagen: %s", e)
-            return []
-
-    def _build_flashback_section(self, now: datetime) -> list[str]:
-        if not self._note_store or not self._default_user_id:
-            return []
-        try:
-            notes = self._note_store.get_notes_from_date(
-                self._default_user_id,
-                now.month,
-                now.day,
-                limit=3,
-            )
-            # Nur Notizen die mindestens ~11 Monate alt sind
-            cutoff = now - timedelta(days=330)
-            old_notes = [
-                n
-                for n in notes
-                if n.created_at.replace(tzinfo=None) < cutoff.replace(tzinfo=None)
-            ]
-            if not old_notes:
-                return []
-            lines = ["📅 Vor einem Jahr:"]
-            for n in old_notes:
-                preview = n.content[:60] + ("..." if len(n.content) > 60 else "")
-                year = n.created_at.year
-                lines.append(f"  ({year}) {preview}")
-            return ["\n".join(lines)]
-        except Exception as e:
-            logger.debug("Briefing: Flashback fehlgeschlagen: %s", e)
             return []
 
     @staticmethod

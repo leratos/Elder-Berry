@@ -33,16 +33,6 @@ def mock_task_client():
 
 
 @pytest.fixture
-def mock_note_store():
-    store = MagicMock()
-    note = MagicMock()
-    note.key = "dach"
-    note.content = "Dachprojekt: Angebot von Firma XY einholen"
-    store.search.return_value = [note]
-    return store
-
-
-@pytest.fixture
 def mock_contact_store():
     store = MagicMock()
     contact = MagicMock()
@@ -85,7 +75,6 @@ def mock_weather():
 def provider_all(
     mock_calendar,
     mock_task_client,
-    mock_note_store,
     mock_contact_store,
     mock_reminder_store,
     mock_weather,
@@ -93,7 +82,6 @@ def provider_all(
     return SmartContextProvider(
         calendar=mock_calendar,
         task_client=mock_task_client,
-        note_store=mock_note_store,
         contact_store=mock_contact_store,
         reminder_store=mock_reminder_store,
         weather_client=mock_weather,
@@ -127,10 +115,12 @@ class TestDetectSources:
             result = provider_all._detect_sources(f"Habe ich eine {kw}?")
             assert ContextSource.REMINDERS in result, f"'{kw}' should trigger REMINDERS"
 
-    def test_note_keywords(self, provider_all):
+    def test_note_keywords_disabled_phase_91a(self, provider_all):
+        """Phase 91-A: NOTES-Keywords sind temporaer entfernt
+        (NoteStore-Refactor). Re-Enable in Phase 91-B/C."""
         for kw in ["notiz", "merke", "fakt"]:
             result = provider_all._detect_sources(f"Gibt es eine {kw}?")
-            assert ContextSource.NOTES in result, f"'{kw}' should trigger NOTES"
+            assert ContextSource.NOTES not in result
 
     def test_contact_keywords(self, provider_all):
         for kw in ["kontakt", "telefon", "email", "nummer"]:
@@ -198,9 +188,11 @@ class TestFilterAvailable:
     """Filtert auf konfigurierte Stores."""
 
     def test_all_stores_configured(self, provider_all):
+        """Phase 91-A: NOTES ist deaktiviert -> wird immer rausgefiltert,
+        auch wenn der Caller sie in der Set hat."""
         all_sources = set(ContextSource)
         result = provider_all._filter_available(all_sources)
-        assert result == all_sources
+        assert result == all_sources - {ContextSource.NOTES}
 
     def test_no_stores_configured(self, provider_empty):
         all_sources = set(ContextSource)
@@ -300,41 +292,23 @@ class TestQueryReminders:
         mock_reminder_store.get_pending.assert_called_once_with(None)
 
 
-class TestQueryNotes:
-    def test_notes_found(self, provider_all):
-        result = provider_all._query_notes("Dachprojekt")
-        assert "📝 Relevante Notizen:" in result
-        assert "🔑 dach:" in result
-        assert "Dachprojekt" in result
+class TestNotesDisabledPhase91a:
+    """Phase 91-A: Notes-Source ist deaktiviert (NoteStore-Refactor).
+    Re-Enable in Phase 91-B/C via NextcloudNotesClient."""
 
-    def test_note_without_key(self, provider_all, mock_note_store):
-        note = MagicMock()
-        note.key = None
-        note.content = "Einfache Notiz"
-        mock_note_store.search.return_value = [note]
-        result = provider_all._query_notes("test")
-        assert "🔑" not in result
-        assert "Einfache Notiz" in result
-
-    def test_no_user_id_returns_empty(self, mock_note_store):
-        provider = SmartContextProvider(
-            note_store=mock_note_store,
-            default_user_id="",
+    def test_notes_keyword_not_detected(self, provider_all):
+        assert ContextSource.NOTES not in provider_all._detect_sources(
+            "Was steht in meinen Notizen?"
         )
-        assert provider._query_notes("test") == ""
 
-    def test_no_results_returns_empty(self, provider_all, mock_note_store):
-        mock_note_store.search.return_value = []
-        assert provider_all._query_notes("xyz") == ""
+    def test_notes_filtered_out_even_if_forced(self, provider_all):
+        result = provider_all._filter_available({ContextSource.NOTES})
+        assert result == set()
 
-    def test_content_truncated_at_200(self, provider_all, mock_note_store):
-        note = MagicMock()
-        note.key = None
-        note.content = "A" * 300
-        mock_note_store.search.return_value = [note]
-        result = provider_all._query_notes("lang")
-        assert "A" * 200 in result
-        assert "A" * 201 not in result
+    def test_notes_get_query_fn_returns_stub(self, provider_all):
+        """Stub-Lambda gibt leeren String zurueck (Schutz vor assert_never)."""
+        fn = provider_all._get_query_fn(ContextSource.NOTES, "anything")
+        assert fn() == ""
 
 
 class TestQueryContacts:

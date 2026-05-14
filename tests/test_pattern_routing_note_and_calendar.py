@@ -27,9 +27,9 @@ from elder_berry.comms.remote_commands import RemoteCommandHandler
 
 
 def _handler_with_notes() -> RemoteCommandHandler:
-    """NoteCommandHandler braucht einen NoteStore -- Mock reicht fuer
+    """NoteCommandHandler braucht einen FactStore -- Mock reicht fuer
     parse_command-Routing (kein execute hier)."""
-    return RemoteCommandHandler(note_store=MagicMock())
+    return RemoteCommandHandler(fact_store=MagicMock())
 
 
 class TestNotePatternRouting:

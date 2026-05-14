@@ -260,21 +260,21 @@ class TestServiceChecks:
 
     def test_service_db_store_exists(self, tmp_path):
         """Store mit existierender _db_path → ✅."""
-        db_file = tmp_path / "notes.db"
+        db_file = tmp_path / "facts.db"
         db_file.touch()
         svc = MagicMock(spec=[])  # no is_available, no is_online
         svc._db_path = db_file
 
-        ok, detail = SelfcheckCommandHandler._probe_service("note_store", svc)
+        ok, detail = SelfcheckCommandHandler._probe_service("fact_store", svc)
         assert ok is True
-        assert "notes.db" in detail
+        assert "facts.db" in detail
 
     def test_service_db_store_missing(self, tmp_path):
         """Store mit fehlender _db_path → ❌."""
         svc = MagicMock(spec=[])
         svc._db_path = tmp_path / "missing.db"
 
-        ok, detail = SelfcheckCommandHandler._probe_service("note_store", svc)
+        ok, detail = SelfcheckCommandHandler._probe_service("fact_store", svc)
         assert ok is False
         assert "nicht gefunden" in detail
 
