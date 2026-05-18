@@ -41,6 +41,7 @@ if TYPE_CHECKING:
     from elder_berry.tools.gym_data import GymDataClient
     from elder_berry.tools.fact_store import FactStore
     from elder_berry.tools.nextcloud_files import NextcloudFilesClient
+    from elder_berry.tools.nextcloud_notes_client import NextcloudNotesClient
     from elder_berry.tools.reminder_store import ReminderStore
     from elder_berry.tools.route_planner import RoutePlanner
     from elder_berry.tools.stirling_pdf import StirlingPDFClient
@@ -346,6 +347,7 @@ class HandlerContext:
     task_client: CalDAVTaskClient | None = None
     pending_store: PendingConfirmationStore | None = None
     nextcloud_files: NextcloudFilesClient | None = None
+    nextcloud_notes: NextcloudNotesClient | None = None
     document_classifier: DocumentClassifier | None = None
     stirling_pdf: StirlingPDFClient | None = None
     route_planner: RoutePlanner | None = None

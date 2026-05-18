@@ -54,6 +54,7 @@ _SERVICE_LABELS: dict[str, str] = {
     "weather": "Wetter (Open-Meteo)",
     "search_client": "Web-Suche (Brave)",
     "nextcloud_files": "Nextcloud Files",
+    "nextcloud_notes": "Nextcloud Notes",
     "stirling_pdf": "Stirling-PDF",
     "carddav_sync": "CardDAV Sync",
     "robot_client": "RPi5 Robot",
@@ -423,6 +424,7 @@ class SelfcheckCommandHandler(CommandHandler):
             "email_sender",
             # Cloud & Dateien
             "nextcloud_files",
+            "nextcloud_notes",
             "stirling_pdf",
             "carddav_sync",
             # Web & Suche
@@ -611,6 +613,7 @@ def _factory(ctx: HandlerContext) -> CommandHandler | None:
         "calendar": ctx.calendar,
         "email_client": ctx.email_client,
         "nextcloud_files": ctx.nextcloud_files,
+        "nextcloud_notes": ctx.nextcloud_notes,
         "stirling_pdf": ctx.stirling_pdf,
         "carddav_sync": ctx.carddav_sync,
         "weather": ctx.weather,

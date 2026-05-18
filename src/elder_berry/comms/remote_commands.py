@@ -79,6 +79,7 @@ if TYPE_CHECKING:
     from elder_berry.tools.weather_client import WeatherClient
     from elder_berry.tools.carddav_sync import CardDAVSyncClient
     from elder_berry.tools.nextcloud_files import NextcloudFilesClient
+    from elder_berry.tools.nextcloud_notes_client import NextcloudNotesClient
     from elder_berry.comms.pending_confirmation import PendingConfirmationStore
     from elder_berry.tools.document_classifier import DocumentClassifier
     from elder_berry.tools.stirling_pdf import StirlingPDFClient
@@ -282,6 +283,7 @@ class RemoteCommandHandler:
         robot_client: RobotClient | None = None,
         anthropic_client: AnthropicClient | None = None,
         nextcloud_files: NextcloudFilesClient | None = None,
+        nextcloud_notes: NextcloudNotesClient | None = None,
         stirling_pdf: StirlingPDFClient | None = None,
         document_classifier: DocumentClassifier | None = None,
         carddav_sync: CardDAVSyncClient | None = None,
@@ -319,6 +321,7 @@ class RemoteCommandHandler:
                 task_client=task_client,
                 pending_store=pending_store,
                 nextcloud_files=nextcloud_files,
+                nextcloud_notes=nextcloud_notes,
                 document_classifier=document_classifier,
                 stirling_pdf=stirling_pdf,
                 route_planner=route_planner,
