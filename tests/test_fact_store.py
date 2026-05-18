@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import sqlite3
 from datetime import datetime
+from unittest.mock import MagicMock
 
 import pytest
 
@@ -188,6 +189,22 @@ class TestClose:
         # Kein Fehler beim zweiten close
         s.close()
 
+    def test_close_logs_on_error(self, tmp_path):
+        """close() loggt einen sqlite3.Error statt ihn zu verschlucken
+        oder zu propagieren (CodeQL: empty-except-Fix)."""
+        db = tmp_path / "close_err.db"
+        legacy = tmp_path / "no_legacy.db"
+        s = FactStore(db_path=db, legacy_notes_db=legacy)
+        real_conn = s._conn
+        broken = MagicMock()
+        broken.close.side_effect = sqlite3.Error("boom")
+        s._conn = broken
+
+        s.close()  # darf nicht propagieren
+
+        broken.close.assert_called_once()
+        real_conn.close()  # echte Verbindung sauber schliessen
+
 
 # ---------------------------------------------------------------------------
 # _normalize_key
@@ -351,3 +368,55 @@ class TestLegacyMigration:
         facts = store2.list_facts(USER_A)
         assert len(facts) == 1
         store2.close()
+
+    def test_migration_handles_unreadable_legacy_db(self, tmp_path):
+        """Legacy-DB ohne notes-Tabelle -> SELECT wirft sqlite3.Error.
+        Die Migration loggt eine Warning und gibt auf, kein Crash."""
+        legacy = tmp_path / "notes.db"
+        conn = sqlite3.connect(str(legacy))
+        conn.execute("CREATE TABLE other_table (x TEXT)")
+        conn.commit()
+        conn.close()
+
+        db = tmp_path / "facts.db"
+        store = FactStore(db_path=db, legacy_notes_db=legacy)
+        assert store.list_facts(USER_A) == []
+        store.close()
+
+    def test_migration_default_legacy_path_when_none(self, tmp_path, monkeypatch):
+        """legacy_notes_db=None -> der Default-Pfad _LEGACY_NOTES_DB wird
+        geprueft (hier auf eine nicht-existente Datei umgebogen)."""
+        nonexistent = tmp_path / "default_notes.db"
+        monkeypatch.setattr(
+            "elder_berry.tools.fact_store._LEGACY_NOTES_DB", nonexistent
+        )
+        db = tmp_path / "facts.db"
+        store = FactStore(db_path=db, legacy_notes_db=None)
+        assert store.list_facts(USER_A) == []
+        store.close()
+
+    def test_migration_logs_on_insert_error(self, tmp_path):
+        """executemany-Fehler in der Migration wird geloggt, kein Crash.
+
+        Reproduziert ueber eine geschlossene Ziel-Verbindung -- der
+        anschliessende INSERT wirft einen sqlite3.Error."""
+        legacy = tmp_path / "notes.db"
+        conn = self._create_legacy_db(legacy)
+        conn.execute(
+            "INSERT INTO notes (user_id, key, content, created_at, updated_at) "
+            "VALUES (?, ?, ?, ?, ?)",
+            (
+                USER_A,
+                "key_x",
+                "value_x",
+                "2026-01-01T10:00:00+00:00",
+                "2026-01-01T10:00:00+00:00",
+            ),
+        )
+        conn.commit()
+        conn.close()
+
+        db = tmp_path / "facts.db"
+        store = FactStore(db_path=db, legacy_notes_db=tmp_path / "absent.db")
+        store._conn.close()  # Ziel-Verbindung kaputt -> executemany faellt
+        store._migrate_legacy_facts(legacy)  # darf nicht propagieren

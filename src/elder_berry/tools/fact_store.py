@@ -270,8 +270,8 @@ class FactStore:
         """Verbindung sauber schliessen."""
         try:
             self._conn.close()
-        except sqlite3.Error:
-            pass
+        except sqlite3.Error as exc:
+            logger.warning("Fehler beim Schliessen der SQLite-Verbindung: %s", exc)
 
     @staticmethod
     def _normalize_key(key: str) -> str:

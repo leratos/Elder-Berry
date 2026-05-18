@@ -222,6 +222,17 @@ class TestListNotes:
         note = client.list_notes()[0]
         assert note.modified == datetime.fromtimestamp(1700000000, tz=timezone.utc)
 
+    @patch(_HTTPX_CLIENT)
+    def test_modified_invalid_falls_back_to_epoch(self, mock_client_cls):
+        """Kaputtes 'modified'-Feld -> Fallback auf Epoch-UTC, kein Crash."""
+        _install_client(
+            mock_client_cls,
+            response=_make_response(200, [_note_json(1, "x", modified="kaputt")]),
+        )
+        client = NextcloudNotesClient(_make_secret_store())
+        note = client.list_notes()[0]
+        assert note.modified == datetime.fromtimestamp(0, tz=timezone.utc)
+
 
 # ── get_note ─────────────────────────────────────────────────────────
 
