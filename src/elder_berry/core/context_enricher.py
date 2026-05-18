@@ -1,12 +1,11 @@
 """ContextEnricher – Reichert Kalender-Events mit Kontext aus anderen Quellen an.
 
-Sucht in IMAPEmailClient, WeatherClient und MemoryStore nach relevanten
-Informationen zu einem Termin-Titel und lässt das LLM eine natürliche
-Zusammenfassung formulieren.
+Sucht in NextcloudNotesClient, IMAPEmailClient, WeatherClient und
+MemoryStore nach relevanten Informationen zu einem Termin-Titel und
+lässt das LLM eine natürliche Zusammenfassung formulieren.
 
-Phase 91-A: NoteStore-Suche ist in dieser Etappe deaktiviert; das
-Notizen-Backend wandert nach Nextcloud (Phase 91-B/C). raw_notes bleibt
-im EnrichmentResult fuer API-Stabilitaet, ist aber immer leer.
+Phase 91-C: Die Notiz-Suche fragt den NextcloudNotesClient ab. In
+Phase 91-A war sie temporaer deaktiviert (NoteStore-Refactor).
 
 Wird vom CalendarWatcher beim ersten Reminder (z.B. 15 Min vor Termin)
 aufgerufen. Graceful Degradation: fehlende oder fehlerhafte Quellen werden
@@ -14,6 +13,7 @@ aufgerufen. Graceful Degradation: fehlende oder fehlerhafte Quellen werden
 
 Verwendung:
     enricher = ContextEnricher(
+        nextcloud_notes=notes_client,
         email_client=email_client,
         weather_client=weather_client,
         llm=llm_client,
@@ -36,6 +36,7 @@ if TYPE_CHECKING:
     from elder_berry.llm.base import LLMClient
     from elder_berry.memory.base import MemoryStore
     from elder_berry.tools.email_client import IMAPEmailClient
+    from elder_berry.tools.nextcloud_notes_client import NextcloudNotesClient
     from elder_berry.tools.weather_client import WeatherClient
 
 logger = logging.getLogger(__name__)
@@ -81,6 +82,7 @@ class ContextEnricher:
 
     def __init__(
         self,
+        nextcloud_notes: NextcloudNotesClient | None = None,
         email_client: IMAPEmailClient | None = None,
         weather_client: WeatherClient | None = None,
         memory_store: MemoryStore | None = None,
@@ -89,12 +91,14 @@ class ContextEnricher:
     ) -> None:
         """
         Args:
+            nextcloud_notes: NextcloudNotesClient für die Notiz-Suche.
             email_client: IMAPEmailClient für Mail-Suche.
             weather_client: WeatherClient für aktuelle Wetterdaten.
             memory_store: MemoryStore (ChromaDB) für semantische Suche.
             llm: LLMClient für natürliche Formatierung der Ergebnisse.
             default_user_id: User-ID für externe Stores.
         """
+        self._nextcloud_notes = nextcloud_notes
         self._email_client = email_client
         self._weather_client = weather_client
         self._memory_store = memory_store
@@ -118,9 +122,7 @@ class ContextEnricher:
             EnrichmentResult mit Roh-Daten und formatierter Zusammenfassung.
             Bei Fehler oder leerem Kontext: EnrichmentResult mit has_context=False.
         """
-        # Phase 91-A: Notes-Suche deaktiviert (NoteStore-Refactor).
-        # Kommt in Phase 91-B/C via NextcloudNotesClient zurueck.
-        raw_notes: list[str] = []
+        raw_notes = self._search_notes(title)
         raw_mails = self._search_mails(title)
         raw_weather = self._get_weather(location)
         raw_memories = self._search_memories(title)
@@ -165,6 +167,26 @@ class ContextEnricher:
         except Exception as e:
             logger.warning("ContextEnricher: %s Fehler: %s", source_name, e)
             return None
+
+    def _search_notes(self, query: str) -> list[str]:
+        """Durchsucht die Nextcloud-Notizen nach dem Termin-Titel."""
+        if not self._nextcloud_notes:
+            return []
+
+        result = self._run_with_timeout(
+            self._nextcloud_notes.search,
+            query,
+            None,
+            3,
+            source_name="Nextcloud Notes",
+        )
+        if not result:
+            return []
+
+        return [
+            f"📝 {('[' + n.category + '] ') if n.category else ''}{n.content}"
+            for n in result
+        ]
 
     def _search_mails(self, query: str) -> list[str]:
         """Durchsucht IMAP nach dem Termin-Titel (letzte 7 Tage)."""

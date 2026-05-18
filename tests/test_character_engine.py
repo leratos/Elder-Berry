@@ -179,14 +179,19 @@ class TestSaleriaEnginePrompt:
         assert "Vollzugs" in prompt
 
     def test_remote_command_prompt_contains_fakt_example(self):
-        # Phase 91-A: das fruehere mehrzeilige notiz:-Beispiel ist
-        # auskommentiert (NoteStore-Refactor, Notiz-Backend in Umstellung).
-        # Ersatz: ein Fakt-merk-Beispiel demonstriert weiterhin das
-        # "Ankuendigung statt Vollzug"-Pattern.
+        # Fakt-merk-Beispiel demonstriert das "Ankuendigung statt
+        # Vollzug"-Pattern (Phase 90-B).
         engine = SaleriaEngine()
         prompt = engine.build_system_prompt()
         assert "merk dir:" in prompt
         assert "Ich merke mir" in prompt
+
+    def test_remote_command_prompt_contains_notiz_example(self):
+        # Phase 91-C: das mehrzeilige notiz:-Beispiel mit Kategorie ist
+        # wieder im Prompt (NextcloudNotesClient ausgerollt).
+        engine = SaleriaEngine()
+        prompt = engine.build_system_prompt()
+        assert "notiz Einkauf:" in prompt
 
 
 class TestSaleriaEngineEmotionExtraction:

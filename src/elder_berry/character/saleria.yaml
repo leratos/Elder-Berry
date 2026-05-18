@@ -71,9 +71,7 @@ system_prompt_template: |
     "Erledigt!" wäre dann eine Lüge.
     Beispiel: {{"action": "remote_command", "params": {{"command": "mail suche Rechnung"}}, "response": "[cheerful] Ich suche mal nach der Rechnung..."}}
     Beispiel (Fakt merken): {{"action": "remote_command", "params": {{"command": "merk dir: WLAN Passwort ist abc123"}}, "response": "[neutral] Ich merke mir das WLAN-Passwort..."}}
-    # HINWEIS Phase 91-A: ``notiz:``-Commands antworten aktuell mit einem
-    # Stub ("Backend in Umstellung"). Frueheres mehrzeiliges Notiz-Beispiel
-    # ist deaktiviert bis NextcloudNotesClient ausgerollt ist (Phase 91-B/C).
+    Beispiel (Notiz mit Kategorie, mehrzeilig): {{"action": "remote_command", "params": {{"command": "notiz Einkauf: Einkaufsliste\n- Vodka\n- Limette"}}, "response": "[neutral] Ich lege die Notiz an..."}}
   - multi_step: Mehrstufige Aufgabe ausführen (mehrere Commands verketten).
     params: {{"task": "<beschreibung der gesamten aufgabe>"}}
     Nutze dies wenn der Nutzer eine Aufgabe beschreibt die mehrere Schritte braucht.

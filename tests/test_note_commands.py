@@ -1,25 +1,35 @@
-"""Tests: NoteCommandHandler -- Fakten + Notiz-Stubs (Phase 91-A)."""
+"""Tests: NoteCommandHandler -- Fakten (FactStore) + Notizen (Nextcloud).
+
+Phase 91-C: Notiz-Commands laufen gegen einen Mock-NextcloudNotesClient,
+Fakten-Commands gegen einen echten FactStore (lokale SQLite-DB im tmp_path).
+"""
 
 from __future__ import annotations
 
+from datetime import datetime, timezone
+from unittest.mock import MagicMock
+
 import pytest
 
-from elder_berry.tools.fact_store import FactStore
 from elder_berry.comms.commands.note_commands import (
     NOTE_ADD_PATTERN,
+    NOTE_CATEGORIES_PATTERN,
     NOTE_DELETE_FACT_PATTERN,
     NOTE_DELETE_PATTERN,
     NOTE_GET_FACT_PATTERN,
+    NOTE_LIST_PATTERN,
     NOTE_SEARCH_PATTERN,
     NOTE_SET_FACT_PATTERN,
     NoteCommandHandler,
 )
+from elder_berry.tools.fact_store import FactStore
+from elder_berry.tools.nextcloud_notes_client import NextcloudNote, NextcloudNotesError
 
 USER_A = "@alice:matrix.org"
 
 
 # ---------------------------------------------------------------------------
-# Fixtures
+# Fixtures / Helpers
 # ---------------------------------------------------------------------------
 
 
@@ -33,8 +43,39 @@ def store(tmp_path):
 
 
 @pytest.fixture
-def handler(store):
+def notes():
+    """Mock-NextcloudNotesClient -- list/search liefern per Default []."""
+    client = MagicMock()
+    client.list_notes.return_value = []
+    client.search.return_value = []
+    return client
+
+
+@pytest.fixture
+def handler(store, notes):
+    return NoteCommandHandler(
+        fact_store=store,
+        nextcloud_notes=notes,
+        default_user_id=USER_A,
+    )
+
+
+@pytest.fixture
+def handler_no_notes(store):
+    """Handler ohne NextcloudNotesClient -- Notiz-Commands sind dann
+    'nicht konfiguriert', Fakten funktionieren weiter."""
     return NoteCommandHandler(fact_store=store, default_user_id=USER_A)
+
+
+def _note(note_id=1, content="Testnotiz", category="Allgemein", modified=1000):
+    """Baut ein NextcloudNote -- title = erste Content-Zeile (Server-Logik)."""
+    return NextcloudNote(
+        id=note_id,
+        content=content,
+        category=category,
+        modified=datetime.fromtimestamp(modified, tz=timezone.utc),
+        title=content.splitlines()[0] if content else "",
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -52,14 +93,47 @@ class TestPatterns:
     def test_set_fact_equals(self):
         assert NOTE_SET_FACT_PATTERN.match("merk dir: Code = 1234")
 
-    def test_merke_dir(self):
-        assert NOTE_SET_FACT_PATTERN.match("merke dir: test ist wert")
+    def test_add_colon_no_category(self):
+        match = NOTE_ADD_PATTERN.match("notiz: Vermieter heißt Müller")
+        assert match
+        assert match.group("category") is None
+        assert match.group("content") == "Vermieter heißt Müller"
 
-    def test_add_colon(self):
-        assert NOTE_ADD_PATTERN.match("notiz: Vermieter heißt Müller")
+    def test_add_with_category(self):
+        match = NOTE_ADD_PATTERN.match("notiz Einkauf: Milch kaufen")
+        assert match
+        assert match.group("category") == "Einkauf"
+        assert match.group("content") == "Milch kaufen"
 
-    def test_add_space(self):
-        assert NOTE_ADD_PATTERN.match("notiz Vermieter heißt Müller")
+    def test_add_without_colon_no_match(self):
+        """Phase 91-C: ohne ":" ist Kategorie vs. Content nicht trennbar."""
+        assert NOTE_ADD_PATTERN.match("notiz Vermieter heißt Müller") is None
+
+    def test_add_multiline(self):
+        match = NOTE_ADD_PATTERN.match("notiz: Liste\n- Vodka\n- Limette")
+        assert match
+        assert match.group("content") == "Liste\n- Vodka\n- Limette"
+
+    def test_add_empty_content_no_match(self):
+        assert NOTE_ADD_PATTERN.match("notiz:") is None
+
+    def test_list_plain(self):
+        match = NOTE_LIST_PATTERN.match("notizen liste")
+        assert match
+        assert match.group("category") is None
+
+    def test_list_with_category(self):
+        match = NOTE_LIST_PATTERN.match("notizen liste Einkauf")
+        assert match
+        assert match.group("category") == "Einkauf"
+
+    def test_list_bare_notizen_no_match(self):
+        """``notizen`` allein ist ein simple_command, kein NOTE_LIST-Match."""
+        assert NOTE_LIST_PATTERN.match("notizen") is None
+
+    def test_categories(self):
+        assert NOTE_CATEGORIES_PATTERN.match("notizen kategorien")
+        assert NOTE_CATEGORIES_PATTERN.match("notiz kategorie")
 
     def test_get_fact(self):
         assert NOTE_GET_FACT_PATTERN.match("was ist das WLAN?")
@@ -97,11 +171,16 @@ class TestRegistration:
         assert "notiz:" in handler.keywords["note_add"]
         assert "notiere" in handler.keywords["note_add"]
 
-    def test_keywords_get_fact(self, handler):
-        assert "was ist" in handler.keywords["note_get_fact"]
+    def test_keywords_note_list(self, handler):
+        assert "notizen liste" in handler.keywords["note_list"]
 
-    def test_keywords_list(self, handler):
-        assert "notizen" in handler.keywords["notizen"]
+    def test_keywords_note_categories(self, handler):
+        assert "notizen kategorien" in handler.keywords["note_categories"]
+
+    def test_patterns_include_new_commands(self, handler):
+        names = {cmd for _p, cmd, _o, _s in handler.patterns}
+        assert "note_list" in names
+        assert "note_categories" in names
 
 
 # ---------------------------------------------------------------------------
@@ -158,38 +237,217 @@ class TestExecuteDeleteFact:
 
 
 # ---------------------------------------------------------------------------
-# execute() -- Notiz-Commands (Stub bis Phase 91-B/C)
+# execute() -- notiz: (create_note)
 # ---------------------------------------------------------------------------
 
 
-class TestNoteStubs:
-    """Phase 91-A: Notiz-Commands liefern Stub-Response bis Phase 91-B/C
-    den NextcloudNotesClient ausrollt. Production-Luecke akzeptiert
-    (Lera-Freigabe 2026-05-13)."""
+class TestExecuteAddNote:
+    def test_add_default_category(self, handler, notes):
+        notes.create_note.return_value = _note(5, "Testnotiz", "Allgemein")
+        result = handler.execute("note_add", "notiz: Testnotiz")
+        assert result.success
+        notes.create_note.assert_called_once_with("Testnotiz", category="Allgemein")
+        assert "#5" in result.text
+
+    def test_add_known_category(self, handler, notes):
+        notes.create_note.return_value = _note(6, "Milch", "Einkauf")
+        result = handler.execute("note_add", "notiz Einkauf: Milch kaufen")
+        assert result.success
+        notes.create_note.assert_called_once_with("Milch kaufen", category="Einkauf")
+
+    def test_add_category_case_normalized(self, handler, notes):
+        """``einkauf`` (lowercase) -> kanonische Whitelist-Schreibweise."""
+        notes.create_note.return_value = _note(7, "Milch", "Einkauf")
+        handler.execute("note_add", "notiz einkauf: Milch")
+        notes.create_note.assert_called_once_with("Milch", category="Einkauf")
+
+    def test_add_unknown_category_override(self, handler, notes):
+        """Unbekannte Kategorie wird akzeptiert, Antwort enthaelt Hinweis."""
+        notes.create_note.return_value = _note(8, "X", "MoscowMule")
+        result = handler.execute("note_add", "notiz MoscowMule: X")
+        assert result.success
+        notes.create_note.assert_called_once_with("X", category="MoscowMule")
+        assert "MoscowMule" in result.text
+        assert "Bekannte Kategorien" in result.text
+
+    def test_add_multiline(self, handler, notes):
+        notes.create_note.return_value = _note(9, "Liste\n- A\n- B", "Allgemein")
+        result = handler.execute("note_add", "notiz: Liste\n- A\n- B")
+        assert result.success
+        notes.create_note.assert_called_once_with(
+            "Liste\n- A\n- B", category="Allgemein"
+        )
+
+    def test_add_empty_fails(self, handler, notes):
+        result = handler.execute("note_add", "notiz:")
+        assert not result.success
+        notes.create_note.assert_not_called()
+
+    def test_add_api_error(self, handler, notes):
+        notes.create_note.side_effect = NextcloudNotesError("kaputt", status_code=500)
+        result = handler.execute("note_add", "notiz: X")
+        assert not result.success
+
+
+# ---------------------------------------------------------------------------
+# execute() -- notizen / notizen liste (list_notes)
+# ---------------------------------------------------------------------------
+
+
+class TestExecuteList:
+    def test_list_empty(self, handler, notes):
+        result = handler.execute("notizen", "notizen")
+        assert result.success
+        assert "Keine Notizen" in result.text
+        notes.list_notes.assert_called_once_with(category=None, limit=20)
+
+    def test_list_filled(self, handler, notes):
+        notes.list_notes.return_value = [_note(1, "Erste"), _note(2, "Zweite")]
+        result = handler.execute("notizen", "notizen")
+        assert result.success
+        assert "#1" in result.text and "#2" in result.text
+
+    def test_list_with_category(self, handler, notes):
+        notes.list_notes.return_value = [_note(1, "Milch", "Einkauf")]
+        result = handler.execute("note_list", "notizen liste Einkauf")
+        assert result.success
+        notes.list_notes.assert_called_once_with(category="Einkauf", limit=20)
+
+    def test_list_category_case_normalized(self, handler, notes):
+        handler.execute("note_list", "notizen liste einkauf")
+        notes.list_notes.assert_called_once_with(category="Einkauf", limit=20)
+
+    def test_list_unknown_category_hint(self, handler, notes):
+        result = handler.execute("note_list", "notizen liste Quatsch")
+        assert "Whitelist" in result.text
+        notes.list_notes.assert_called_once_with(category="Quatsch", limit=20)
+
+    def test_list_api_error(self, handler, notes):
+        notes.list_notes.side_effect = NextcloudNotesError("kaputt", status_code=500)
+        result = handler.execute("notizen", "notizen")
+        assert not result.success
+
+
+# ---------------------------------------------------------------------------
+# execute() -- notizen suche (search)
+# ---------------------------------------------------------------------------
+
+
+class TestExecuteSearch:
+    def test_search_hit(self, handler, notes):
+        notes.search.return_value = [_note(1, "Milch kaufen", "Einkauf")]
+        result = handler.execute("note_search", "notizen suche Milch")
+        assert result.success
+        notes.search.assert_called_once_with("Milch", limit=20)
+        assert result.list_type == "note_search"
+        assert result.list_items == [{"id": 1, "content": "Milch kaufen"}]
+
+    def test_search_no_match(self, handler, notes):
+        result = handler.execute("note_search", "notizen suche xyz")
+        assert result.success
+        assert "Keine Notizen" in result.text
+        assert result.list_items is None
+
+    def test_search_missing_query(self, handler):
+        result = handler.execute("note_search", "notizen suche")
+        assert not result.success
+
+    def test_search_api_error(self, handler, notes):
+        notes.search.side_effect = NextcloudNotesError("kaputt", status_code=500)
+        result = handler.execute("note_search", "notizen suche X")
+        assert not result.success
+
+
+# ---------------------------------------------------------------------------
+# execute() -- notiz löschen (delete_note)
+# ---------------------------------------------------------------------------
+
+
+class TestExecuteDelete:
+    def test_delete_success(self, handler, notes):
+        result = handler.execute("note_delete", "notiz löschen #3")
+        assert result.success
+        notes.delete_note.assert_called_once_with(3)
+
+    def test_delete_not_found(self, handler, notes):
+        notes.delete_note.side_effect = NextcloudNotesError("weg", status_code=404)
+        result = handler.execute("note_delete", "notiz löschen #99")
+        assert not result.success
+        assert "nicht gefunden" in result.text
+
+    def test_delete_api_error(self, handler, notes):
+        notes.delete_note.side_effect = NextcloudNotesError("kaputt", status_code=500)
+        result = handler.execute("note_delete", "notiz löschen #3")
+        assert not result.success
+
+    def test_delete_missing_id(self, handler):
+        result = handler.execute("note_delete", "notiz löschen")
+        assert not result.success
+
+
+# ---------------------------------------------------------------------------
+# execute() -- notizen kategorien (list_categories-Aggregat)
+# ---------------------------------------------------------------------------
+
+
+class TestExecuteCategories:
+    def test_categories_counts(self, handler, notes):
+        notes.list_notes.return_value = [
+            _note(1, "a", "Einkauf"),
+            _note(2, "b", "Einkauf"),
+            _note(3, "c", "Arbeit"),
+            _note(4, "d", "MoscowMule"),
+        ]
+        result = handler.execute("note_categories", "notizen kategorien")
+        assert result.success
+        # Whitelist immer aufgelistet, auch ungenutzte.
+        assert "Allgemein (0 Notizen)" in result.text
+        assert "Einkauf (2 Notizen)" in result.text
+        assert "Arbeit (1 Notiz)" in result.text
+        # Freie Kategorie ausserhalb der Whitelist ist markiert.
+        assert "MoscowMule (1 Notiz) — frei" in result.text
+
+    def test_categories_empty(self, handler, notes):
+        result = handler.execute("note_categories", "notizen kategorien")
+        assert result.success
+        assert "Allgemein (0 Notizen)" in result.text
+
+    def test_categories_api_error(self, handler, notes):
+        notes.list_notes.side_effect = NextcloudNotesError("kaputt", status_code=500)
+        result = handler.execute("note_categories", "notizen kategorien")
+        assert not result.success
+
+
+# ---------------------------------------------------------------------------
+# execute() -- ohne NextcloudNotesClient
+# ---------------------------------------------------------------------------
+
+
+class TestNotesNotConfigured:
+    """``nextcloud_notes=None`` -> Notiz-Commands melden 'nicht
+    konfiguriert'. Die Fakten-Commands bleiben unberuehrt."""
 
     @pytest.mark.parametrize(
         "command,raw_text",
         [
-            ("note_add", "notiz: Vermieter Müller"),
-            ("note_search", "notizen suche Müller"),
-            ("note_delete", "notiz löschen #3"),
+            ("note_add", "notiz: X"),
+            ("note_search", "notizen suche X"),
+            ("note_delete", "notiz löschen #1"),
+            ("note_list", "notizen liste"),
             ("notizen", "notizen"),
+            ("note_categories", "notizen kategorien"),
         ],
     )
-    def test_notiz_commands_return_stub(self, handler, command, raw_text):
-        result = handler.execute(command, raw_text)
+    def test_note_command_without_client(self, handler_no_notes, command, raw_text):
+        result = handler_no_notes.execute(command, raw_text)
         assert not result.success
-        assert "Umstellung" in result.text
-        assert "Phase 91-B" in result.text
+        assert "nicht konfiguriert" in result.text
 
-    def test_stub_does_not_touch_fact_store(self, handler, store):
-        """Stub-Pfad darf den FactStore nicht modifizieren."""
-        handler.execute("note_add", "notiz: ein Test")
-        assert store.list_facts(USER_A) == []
+    def test_facts_still_work_without_notes_client(self, handler_no_notes):
+        result = handler_no_notes.execute("note_set_fact", "merk dir: k ist v")
+        assert result.success
 
-    def test_stub_has_no_list_items(self, handler):
-        """Stub liefert weder list_items noch list_type -- die Bridge
-        wuerde sonst eine leere Liste registrieren."""
-        result = handler.execute("note_search", "notizen suche egal")
-        assert result.list_items is None
-        assert result.list_type is None
+    def test_unknown_command(self, handler):
+        result = handler.execute("note_quatsch", "egal")
+        assert not result.success
+        assert "Unbekannter" in result.text

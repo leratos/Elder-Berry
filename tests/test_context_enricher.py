@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -17,6 +17,13 @@ from elder_berry.core.context_enricher import (
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
+
+
+@pytest.fixture
+def mock_nextcloud_notes():
+    client = MagicMock()
+    client.search.return_value = []
+    return client
 
 
 @pytest.fixture
@@ -47,14 +54,28 @@ def mock_llm():
 
 
 @pytest.fixture
-def enricher(mock_email_client, mock_weather_client, mock_memory_store, mock_llm):
+def enricher(
+    mock_nextcloud_notes,
+    mock_email_client,
+    mock_weather_client,
+    mock_memory_store,
+    mock_llm,
+):
     return ContextEnricher(
+        nextcloud_notes=mock_nextcloud_notes,
         email_client=mock_email_client,
         weather_client=mock_weather_client,
         memory_store=mock_memory_store,
         llm=mock_llm,
         default_user_id="@user:matrix.example.com",
     )
+
+
+def _make_note(content="Testnotiz", category=""):
+    note = MagicMock()
+    note.content = content
+    note.category = category
+    return note
 
 
 def _make_mail(sender="Max <max@example.com>", subject="Betreff", date=None):
@@ -123,7 +144,8 @@ class TestInit:
         result = e.enrich_event("Test", datetime.now(timezone.utc))
         assert not result.has_context
 
-    def test_stores_dependencies(self, enricher, mock_llm):
+    def test_stores_dependencies(self, enricher, mock_nextcloud_notes, mock_llm):
+        assert enricher._nextcloud_notes is mock_nextcloud_notes
         assert enricher._llm is mock_llm
 
 
@@ -132,17 +154,46 @@ class TestInit:
 # ---------------------------------------------------------------------------
 
 
-class TestNotesDisabledPhase91a:
-    """Phase 91-A: Notes-Suche im ContextEnricher ist deaktiviert
-    (NoteStore-Refactor, Re-Enable in Phase 91-B/C). raw_notes ist immer
-    leer, hat aber keinen Crash mehr trotz fehlendem note_store."""
+class TestSearchNotes:
+    """Phase 91-C: Notiz-Suche laeuft gegen den NextcloudNotesClient."""
 
-    def test_enrich_returns_empty_raw_notes(self, enricher):
-        result = enricher.enrich_event(
-            "Meeting Max",
-            datetime(2026, 3, 19, 14, 0, tzinfo=timezone.utc),
-        )
-        assert result.raw_notes == []
+    def test_returns_formatted_notes(self, enricher, mock_nextcloud_notes):
+        mock_nextcloud_notes.search.return_value = [
+            _make_note(content="Dachsanierung besprechen", category="Projekt"),
+        ]
+        result = enricher._search_notes("Meeting Max")
+        assert len(result) == 1
+        assert "Dachsanierung" in result[0]
+        assert "[Projekt]" in result[0]
+
+    def test_search_called_positionally(self, enricher, mock_nextcloud_notes):
+        # _run_with_timeout reicht die Args positionell durch:
+        # search(query, category=None, limit=3).
+        enricher._search_notes("Meeting Max")
+        mock_nextcloud_notes.search.assert_called_once_with("Meeting Max", None, 3)
+
+    def test_empty_when_no_client(self):
+        e = ContextEnricher(nextcloud_notes=None)
+        assert e._search_notes("test") == []
+
+    def test_note_without_category(self, enricher, mock_nextcloud_notes):
+        mock_nextcloud_notes.search.return_value = [_make_note(content="Freier Text")]
+        result = enricher._search_notes("query")
+        assert result[0].startswith("\U0001f4dd")  # 📝
+        assert "[" not in result[0]
+
+    def test_timeout_returns_empty(self, enricher, mock_nextcloud_notes):
+        import time
+
+        mock_nextcloud_notes.search.side_effect = lambda *a: time.sleep(10)
+        with patch("elder_berry.core.context_enricher.SOURCE_TIMEOUT_SECONDS", 0.1):
+            result = enricher._search_notes("test")
+        assert result == []
+
+    def test_exception_returns_empty(self, enricher, mock_nextcloud_notes):
+        mock_nextcloud_notes.search.side_effect = RuntimeError("API kaputt")
+        result = enricher._search_notes("test")
+        assert result == []
 
 
 class TestSearchMails:
@@ -296,11 +347,13 @@ class TestEnrichEvent:
     def test_all_sources_deliver_context(
         self,
         enricher,
+        mock_nextcloud_notes,
         mock_email_client,
         mock_weather_client,
         mock_memory_store,
         mock_llm,
     ):
+        mock_nextcloud_notes.search.return_value = [_make_note(content="Wichtig")]
         mock_email_client.search.return_value = [_make_mail()]
         mock_weather_client.get_current.return_value = _make_weather()
         mock_memory_store.search.return_value = [_make_memory()]
@@ -309,8 +362,7 @@ class TestEnrichEvent:
         result = enricher.enrich_event("Meeting Max", now, "Büro")
 
         assert result.has_context
-        # Phase 91-A: raw_notes ist immer leer, andere Quellen liefern.
-        assert result.raw_notes == []
+        assert len(result.raw_notes) == 1
         assert len(result.raw_mails) == 1
         assert result.raw_weather is not None
         assert len(result.raw_memories) == 1
@@ -322,14 +374,14 @@ class TestEnrichEvent:
         assert not result.has_context
         assert result.formatted == ""
 
-    def test_partial_sources(self, enricher, mock_email_client, mock_llm):
-        """Nur Mails vorhanden, Rest leer → trotzdem Kontext."""
-        mock_email_client.search.return_value = [_make_mail()]
+    def test_partial_sources(self, enricher, mock_nextcloud_notes, mock_llm):
+        """Nur Notizen vorhanden, Rest leer → trotzdem Kontext."""
+        mock_nextcloud_notes.search.return_value = [_make_note(content="Nur Notiz")]
         now = datetime(2026, 3, 19, 14, 0, tzinfo=timezone.utc)
         result = enricher.enrich_event("Test", now)
         assert result.has_context
-        assert result.raw_notes == []
-        assert len(result.raw_mails) == 1
+        assert len(result.raw_notes) == 1
+        assert result.raw_mails == []
         assert result.raw_weather is None
         mock_llm.generate.assert_called_once()
 
@@ -345,10 +397,12 @@ class TestEnrichEvent:
     def test_graceful_degradation_all_sources_fail(
         self,
         enricher,
+        mock_nextcloud_notes,
         mock_email_client,
         mock_weather_client,
         mock_memory_store,
     ):
+        mock_nextcloud_notes.search.side_effect = RuntimeError("fail")
         mock_email_client.search.side_effect = RuntimeError("fail")
         mock_weather_client.get_current.side_effect = RuntimeError("fail")
         mock_memory_store.search.side_effect = RuntimeError("fail")

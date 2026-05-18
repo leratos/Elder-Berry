@@ -27,3 +27,28 @@ KNOWN_CATEGORIES: frozenset[str] = frozenset(
 Command-Pattern-Trenner (``notiz <Kategorie>: ...``) erlaubt keine
 Mehr-Wort-Categories. Override mit unbekannter Category ist erlaubt
 (Warning statt Fehler)."""
+
+
+def canonical_category(raw: str) -> tuple[str, bool]:
+    """Bringt eine Kategorie-Eingabe auf die kanonische Schreibweise.
+
+    Der Command-Pattern liefert die Kategorie so, wie der Nutzer sie
+    getippt hat (``einkauf``, ``EINKAUF``, ``Einkauf``). Nextcloud
+    behandelt Kategorien case-sensitiv -- ohne Normalisierung landet
+    ``einkauf`` als eigene Schublade neben ``Einkauf``.
+
+    Args:
+        raw: Rohe Kategorie-Eingabe aus dem Command (wird gestrippt).
+
+    Returns:
+        ``(category, is_known)``. Bei case-insensitivem Treffer in
+        :data:`KNOWN_CATEGORIES` die kanonische Schreibweise + ``True``.
+        Sonst die gestrippte Eingabe unveraendert + ``False`` -- das ist
+        der erlaubte Override-Fall (Handler loggt dann eine Warning).
+    """
+    cleaned = raw.strip()
+    folded = cleaned.casefold()
+    for known in KNOWN_CATEGORIES:
+        if known.casefold() == folded:
+            return known, True
+    return cleaned, False

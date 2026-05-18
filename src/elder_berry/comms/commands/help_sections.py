@@ -138,12 +138,18 @@ Briefing:
   briefing – Tagesübersicht (Wetter + Termine + Erinnerungen)""",
     "notizen": """📝 Notizen & Wissen:
   merk dir: <schlüssel> ist <wert>  – Fakt speichern (z.B. merk dir: WLAN Büro ist xyz123)
-  notiz: <text>                      – Freitext-Notiz speichern
   was ist <schlüssel>?               – Fakt abrufen
-  notizen suche <Begriff>            – Notizen durchsuchen
+  vergiss <schlüssel>                – KV-Fakt vergessen
+
+  notiz: <text>                      – Notiz speichern (Kategorie Allgemein)
+  notiz <Kategorie>: <text>          – Notiz mit Kategorie (z.B. notiz Einkauf: Milch kaufen)
   notizen                            – Alle Notizen anzeigen (max 20)
+  notizen liste <Kategorie>          – Notizen einer Kategorie (z.B. notizen liste Einkauf)
+  notizen suche <Begriff>            – Notizen durchsuchen
+  notizen kategorien                 – Kategorien-Übersicht mit Notiz-Anzahl
   notiz löschen #<id>                – Notiz per ID löschen
-  vergiss <schlüssel>                – KV-Fakt vergessen""",
+  Tipp: Hashtags wie #dringend direkt in den Text – per Suche auffindbar.
+  Notizen liegen in Nextcloud Notes (Web + Mobile-App synchron).""",
     "kontakte": """📇 Kontakte:
   kontakt: Name, Rolle, Email, Anrede – Kontakt anlegen
     Beispiel: kontakt: Herr Müller, Vermieter, info@mueller.de, förmlich

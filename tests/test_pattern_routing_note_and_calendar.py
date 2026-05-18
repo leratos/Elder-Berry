@@ -60,10 +60,15 @@ class TestNotePatternRouting:
 
     def test_notiz_add_still_works_for_legit_freetext(self) -> None:
         """Regression-Schutz: legitime ``notiz: <text>`` und
-        ``notiz <text>`` muessen weiter note_add treffen."""
+        ``notiz <Kategorie>: <text>`` muessen weiter note_add treffen.
+
+        Phase 91-C: NOTE_ADD_PATTERN verlangt jetzt einen ":" (Konzept
+        §3.5) -- ``notiz <text>`` ohne Doppelpunkt matcht nicht mehr,
+        weil sonst Kategorie und Content nicht trennbar waeren.
+        """
         h = _handler_with_notes()
         assert h.parse_command("notiz: Vermieter heißt Müller") == "note_add"
-        assert h.parse_command("notiz Vermieter heißt Müller") == "note_add"
+        assert h.parse_command("notiz Einkauf: Milch kaufen") == "note_add"
         # Mit "bitte"-Prefix
         assert h.parse_command("bitte notiz: Termin morgen") == "note_add"
 

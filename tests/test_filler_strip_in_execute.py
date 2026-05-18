@@ -144,9 +144,8 @@ class TestExecuteStripsFillerPrefix:
     def test_execute_strips_bitte_prefix_before_handler(self) -> None:
         """'bitte vergiss WLAN' -> _cmd_delete_fact bekommt 'vergiss WLAN'.
 
-        Phase 91-A: ``note_delete`` ist ein Stub; wir testen den Filler-
-        Strip stattdessen ueber ``note_delete_fact`` (FactStore-Pfad,
-        Re-Parse-Verhalten identisch)."""
+        Getestet ueber ``note_delete_fact`` (FactStore-Pfad) -- der
+        Re-Parse-Schritt im _cmd_* ist fuer alle Note-Commands gleich."""
         store = MagicMock()
         store.delete_fact.return_value = True
         h = RemoteCommandHandler(fact_store=store)
@@ -246,10 +245,10 @@ class TestParseAndExecuteRoundtrip:
     """
 
     def test_kannst_du_mir_mal_notiz_loeschen(self) -> None:
-        """Phase 91-A: ``notiz loeschen #3`` routet weiter zu note_delete
-        (Pattern unveraendert), execute() liefert aber den Stub."""
-        store = MagicMock()
-        h = RemoteCommandHandler(fact_store=store)
+        """``notiz loeschen #3`` routet zu note_delete; execute() strippt
+        den Filler-Prefix, der _cmd_delete-Re-Parse extrahiert die #3."""
+        notes = MagicMock()
+        h = RemoteCommandHandler(fact_store=MagicMock(), nextcloud_notes=notes)
 
         text = "kannst du mir mal notiz löschen #3"
 
@@ -257,11 +256,9 @@ class TestParseAndExecuteRoundtrip:
         command = h.parse_command(text)
         assert command == "note_delete"
 
-        # 2. execute(command, raw_text) -- liefert in Phase 91-A einen
-        # Stub-Response (success=False, "Umstellung"-Text). Wichtig:
-        # FactStore wurde NICHT modifiziert.
+        # 2. execute(command, raw_text) -- Filler-Prefix wird gestrippt,
+        # der Re-Parse extrahiert die ID trotz "kannst du mir mal".
         result = h.execute(command, text)
 
-        assert result.success is False
-        assert "Umstellung" in (result.text or "")
-        store.delete_fact.assert_not_called()
+        assert result.success is True
+        notes.delete_note.assert_called_once_with(3)

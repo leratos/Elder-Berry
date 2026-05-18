@@ -272,8 +272,7 @@ class TestGetCommandSummary:
         fact_store = MagicMock()
         handler = _make_handler(fact_store=fact_store)
         summary = handler.get_command_summary()
-        # Phase 91-A: Hilfe enthaelt sowohl Fakten- als auch Notiz-Eintraege
-        # (letztere mit "in Umstellung"-Hinweis).
+        # Hilfe enthaelt sowohl Fakten- (merk dir) als auch Notiz-Commands.
         assert "schlüssel" in summary.lower() or "schluessel" in summary.lower()
 
     def test_note_commands_absent_when_no_fact_store(self):
