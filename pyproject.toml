@@ -11,13 +11,13 @@ license-files = ["LICENSE"]
 dependencies = [
     "psutil>=7.2.2",
     "httpx>=0.28.1",
-    "python-dotenv>=1.0",
-    "PyYAML>=6.0",
+    "python-dotenv>=1.2.2",
+    "PyYAML>=6.0.3",
     "cryptography>=48.0.0",
     "anthropic>=0.40",
     "tzdata>=2024.1",
     "fastapi>=0.136.1",
-    "uvicorn[standard]>=0.46.0",
+    "uvicorn[standard]>=0.47.0",
     "bcrypt>=5.0.0",    # Phase 58: Dashboard-Login (PW-Hash, Tower + CI)
     "keyring>=25.7.0",  # Phase 65 (M-1): Fernet-Masterkey im OS-Keyring
                       # (Windows DPAPI / macOS Keychain / Linux Secret Service).
@@ -33,7 +33,7 @@ windows = [
     "pyttsx3>=2.99",
 ]
 tts-neural = [
-    "coqui-tts>=0.27",
+    "coqui-tts>=0.27.5",
     "sounddevice>=0.5.5",
     "numpy>=1.26",
 ]
@@ -56,7 +56,7 @@ matrix = [
     # Phase 86.1: css_decl_resolver (tinycss2) wird via
     # html_email_sanitizer (geplant 86.2) auf dem gleichen Import-
     # Pfad transitiv geladen wie bs4.
-    "tinycss2>=1.3.0",
+    "tinycss2>=1.5.1",
 ]
 remote = [
     "mss>=10.2.0",
@@ -65,7 +65,7 @@ remote = [
     # Client-Pfade laden email_client transitiv.
     "beautifulsoup4>=4.12",
     # Phase 86.1: siehe matrix-Gruppe.
-    "tinycss2>=1.3.0",
+    "tinycss2>=1.5.1",
 ]
 memory = [
     "chromadb>=1.5.9",
@@ -99,7 +99,7 @@ web = [
     # (geplant 86.2). Web-Gruppe zieht trafilatura/bs4 fuer
     # Article-Extraktion -- gleicher Pipeline-Pfad wie der spaetere
     # Mail-Sanitizer.
-    "tinycss2>=1.3.0",
+    "tinycss2>=1.5.1",
 ]
 nextcloud = [
     "caldav>=3.2.0",
@@ -112,7 +112,7 @@ tower = [
     "matrix-nio>=0.25.2",
     "aiofiles>=23.0",
     "python-multipart>=0.0.18",
-    "coqui-tts>=0.27",
+    "coqui-tts>=0.27.5",
     "sounddevice>=0.5.5",
     "numpy>=1.26",
     "faster-whisper>=1.2.1",
@@ -126,7 +126,7 @@ tower = [
     "beautifulsoup4>=4.12",
     # Phase 86.1: css_decl_resolver fuer den Sanitizer (geplant 86.2),
     # gleicher Import-Pfad wie bs4.
-    "tinycss2>=1.3.0",
+    "tinycss2>=1.5.1",
 ]
 server = [
     "matrix-nio>=0.25.2",
@@ -143,7 +143,7 @@ server = [
     # Phase 86.1: server-Tower-Pipeline pullt html_email_sanitizer
     # (geplant 86.2) transitiv ueber email_client/IMAP. tinycss2
     # ist die CSS-Tokenisierungs-Dep dafuer.
-    "tinycss2>=1.3.0",
+    "tinycss2>=1.5.1",
 ]
 dev = [
     "pytest-timeout>=2.4.0",
@@ -158,7 +158,7 @@ dev = [
     # transitiven Import. Beide Pakete sind Pure-Python und klein, der
     # Aufwand fuer dev-Setup ist gegen die Test-Coverage vernachlaessigbar.
     "beautifulsoup4>=4.12",
-    "tinycss2>=1.3.0",
+    "tinycss2>=1.5.1",
 ]
 
 [tool.setuptools.packages.find]
