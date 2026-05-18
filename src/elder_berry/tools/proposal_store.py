@@ -4,7 +4,7 @@ Saleria erkennt bei LLM-Fallbacks Capability-Luecken und legt Vorschlaege
 in dieser SQLite-DB ab. Lera reviewt + implementiert manuell -- es gibt
 explizit keinen Auto-Load (siehe Konzept §6 R1).
 
-Pattern wie NoteStore (Phase 16):
+Pattern wie ContactStore (FTS5) / FactStore (Phase 91-A, ohne FTS5):
 - DB-Anlage im Konstruktor via `_create_tables()`.
 - WAL-Modus, `check_same_thread=False` fuer Multi-Threading.
 - FTS5 fuer Volltext-Dedupe-Suche.
@@ -561,7 +561,7 @@ class ProposalStore:
 
     @staticmethod
     def _sanitize_fts_query(query: str) -> str:
-        """Bereinigt Query fuer FTS5 MATCH (analog NoteStore)."""
+        """Bereinigt Query fuer FTS5 MATCH (analog ContactStore)."""
         words = re.findall(r"[\w]+", query, re.UNICODE)
         fts_operators = {"AND", "OR", "NOT", "NEAR"}
         words = [w for w in words if w.upper() not in fts_operators]

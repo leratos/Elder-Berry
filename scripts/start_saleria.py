@@ -34,7 +34,7 @@ _PROJECT_ROOT = Path(
 ).resolve()
 sys.path.insert(0, str(_PROJECT_ROOT / "src"))
 
-from dotenv import load_dotenv
+from dotenv import load_dotenv  # noqa: E402 -- bewusst nach sys.path-Setup
 
 load_dotenv(_PROJECT_ROOT / ".env")
 
@@ -666,7 +666,7 @@ def run_agent(port: int = 8090):
         sys.exit(1)
 
     print("\n─── Saleria Agent-Modus (TowerServer) ───")
-    print(f"  Endpunkte: /status, /tts, /stt, /action, /screenshot")
+    print("  Endpunkte: /status, /tts, /stt, /action, /screenshot")
     print(f"  Port: {port}")
     print(
         f"  Token: {'aus Env' if os.environ.get('ELDER_BERRY_TOWER_TOKEN') == tower_token else 'aus SecretStore'}"
@@ -918,14 +918,28 @@ def _init_productivity_services(secrets, default_user_id):
     except Exception as e:
         logger.warning("Weather nicht verfügbar: %s", e)
 
-    # NoteStore
+    # FactStore (lokale Key-Value-Fakten -- Phase 91-A)
     try:
-        from elder_berry.tools.note_store import NoteStore
+        from elder_berry.tools.fact_store import FactStore
 
-        svc["note_store"] = NoteStore()
-        logger.info("NoteStore: aktiv (DB: %s)", svc["note_store"]._db_path)
+        svc["fact_store"] = FactStore()
+        logger.info("FactStore: aktiv (DB: %s)", svc["fact_store"]._db_path)
     except Exception as e:
-        logger.warning("NoteStore nicht verfügbar: %s", e)
+        logger.warning("FactStore nicht verfügbar: %s", e)
+
+    # NextcloudNotesClient (Notizen via Nextcloud Notes API -- Phase 91-B/C)
+    if secrets.get_or_none("nextcloud_url"):
+        try:
+            from elder_berry.tools.nextcloud_notes_client import NextcloudNotesClient
+
+            nc_notes = NextcloudNotesClient(secret_store=secrets)
+            if nc_notes.is_available():
+                svc["nextcloud_notes"] = nc_notes
+                logger.info("Nextcloud Notes: aktiv")
+            else:
+                logger.warning("Nextcloud Notes: nicht erreichbar")
+        except Exception as e:
+            logger.warning("Nextcloud Notes nicht verfügbar: %s", e)
 
     # Reminders
     try:
@@ -1009,7 +1023,6 @@ def _init_productivity_services(secrets, default_user_id):
             task_client=svc.get("task_client"),
             email_client=svc.get("email_client"),
             contact_store=svc.get("contact_store"),
-            note_store=svc.get("note_store"),
             default_user_id=default_user_id,
             briefing_hour=7,
             briefing_minute=30,
@@ -1041,7 +1054,7 @@ def _init_context_and_tools(secrets, assistant, svc, tower_agent=None):
         tools["smart_context_provider"] = SmartContextProvider(
             calendar=svc.get("calendar"),
             task_client=svc.get("task_client"),
-            note_store=svc.get("note_store"),
+            nextcloud_notes=svc.get("nextcloud_notes"),
             contact_store=svc.get("contact_store"),
             reminder_store=svc.get("reminder_store"),
             weather_client=svc.get("weather"),
@@ -1052,7 +1065,7 @@ def _init_context_and_tools(secrets, assistant, svc, tower_agent=None):
             for s, v in [
                 ("Calendar", svc.get("calendar")),
                 ("Tasks", svc.get("task_client")),
-                ("Notes", svc.get("note_store")),
+                ("Notes", svc.get("nextcloud_notes")),
                 ("Contacts", svc.get("contact_store")),
                 ("Reminders", svc.get("reminder_store")),
                 ("Weather", svc.get("weather")),
@@ -1071,7 +1084,7 @@ def _init_context_and_tools(secrets, assistant, svc, tower_agent=None):
         from elder_berry.core.context_enricher import ContextEnricher
 
         tools["context_enricher"] = ContextEnricher(
-            note_store=svc.get("note_store"),
+            nextcloud_notes=svc.get("nextcloud_notes"),
             email_client=svc.get("email_client"),
             weather_client=svc.get("weather"),
             memory_store=assistant._memory,
@@ -1081,7 +1094,7 @@ def _init_context_and_tools(secrets, assistant, svc, tower_agent=None):
         sources = [
             s
             for s, v in [
-                ("Notes", svc.get("note_store")),
+                ("Notes", svc.get("nextcloud_notes")),
                 ("Mail", svc.get("email_client")),
                 ("Weather", svc.get("weather")),
             ]
@@ -1252,12 +1265,13 @@ def run_matrix(assistant, stt=None, avatar=None, audio_converter=None, robot=Non
         computer_use=tools.get("computer_use"),
         search_client=tools.get("search_client"),
         web_fetcher=tools.get("web_fetcher"),
-        note_store=svc.get("note_store"),
+        fact_store=svc.get("fact_store"),
         contact_store=svc.get("contact_store"),
         task_client=svc.get("task_client"),
         robot_client=robot,
         anthropic_client=tools.get("vision_client"),
         nextcloud_files=svc.get("nextcloud_files"),
+        nextcloud_notes=svc.get("nextcloud_notes"),
         stirling_pdf=svc.get("stirling_pdf"),
         document_classifier=tools.get("document_classifier"),
         carddav_sync=svc.get("carddav_sync"),
@@ -1439,7 +1453,7 @@ def run_matrix(assistant, stt=None, avatar=None, audio_converter=None, robot=Non
     _maybe_send_summary_to_matrix(summary, channel, room_id)
 
     logger.info("Matrix-Bridge startet – Saleria ist online")
-    print(f"─── Saleria Matrix-Modus ───")
+    print("─── Saleria Matrix-Modus ───")
     print(f"Bot: {user_id}")
     print("Ctrl+C zum Beenden\n")
 
@@ -1533,7 +1547,8 @@ def _build_startup_summary(
     _add_service(summary, "E-Mail (IMAP)", svc.get("email_client"))
     _add_service(summary, "E-Mail (SMTP)", svc.get("email_sender"))
     _add_service(summary, "Wetter", svc.get("weather"))
-    _add_service(summary, "Notizen", svc.get("note_store"))
+    _add_service(summary, "Fakten (FactStore)", svc.get("fact_store"))
+    _add_service(summary, "Notizen (Nextcloud)", svc.get("nextcloud_notes"))
     _add_service(summary, "Kontakte", svc.get("contact_store"))
     _add_service(summary, "Aufgaben", svc.get("task_client"))
     _add_service(summary, "Erinnerungen", svc.get("reminder_store"))

@@ -33,16 +33,6 @@ def mock_task_client():
 
 
 @pytest.fixture
-def mock_note_store():
-    store = MagicMock()
-    note = MagicMock()
-    note.key = "dach"
-    note.content = "Dachprojekt: Angebot von Firma XY einholen"
-    store.search.return_value = [note]
-    return store
-
-
-@pytest.fixture
 def mock_contact_store():
     store = MagicMock()
     contact = MagicMock()
@@ -82,10 +72,21 @@ def mock_weather():
 
 
 @pytest.fixture
+def mock_nextcloud_notes():
+    """Mock-NextcloudNotesClient -- search() liefert eine Notiz."""
+    client = MagicMock()
+    note = MagicMock()
+    note.content = "Dachprojekt: Angebot von Firma XY einholen"
+    note.category = "Projekt"
+    client.search.return_value = [note]
+    return client
+
+
+@pytest.fixture
 def provider_all(
     mock_calendar,
     mock_task_client,
-    mock_note_store,
+    mock_nextcloud_notes,
     mock_contact_store,
     mock_reminder_store,
     mock_weather,
@@ -93,7 +94,7 @@ def provider_all(
     return SmartContextProvider(
         calendar=mock_calendar,
         task_client=mock_task_client,
-        note_store=mock_note_store,
+        nextcloud_notes=mock_nextcloud_notes,
         contact_store=mock_contact_store,
         reminder_store=mock_reminder_store,
         weather_client=mock_weather,
@@ -301,40 +302,52 @@ class TestQueryReminders:
 
 
 class TestQueryNotes:
+    """Phase 91-C: NOTES-Source fragt den NextcloudNotesClient ab."""
+
     def test_notes_found(self, provider_all):
         result = provider_all._query_notes("Dachprojekt")
         assert "📝 Relevante Notizen:" in result
-        assert "🔑 dach:" in result
         assert "Dachprojekt" in result
+        assert "[Projekt]" in result
 
-    def test_note_without_key(self, provider_all, mock_note_store):
+    def test_search_called_with_limit_3(self, provider_all, mock_nextcloud_notes):
+        provider_all._query_notes("Dachprojekt")
+        mock_nextcloud_notes.search.assert_called_once_with("Dachprojekt", limit=3)
+
+    def test_note_without_category(self, provider_all, mock_nextcloud_notes):
         note = MagicMock()
-        note.key = None
         note.content = "Einfache Notiz"
-        mock_note_store.search.return_value = [note]
+        note.category = ""
+        mock_nextcloud_notes.search.return_value = [note]
         result = provider_all._query_notes("test")
-        assert "🔑" not in result
+        assert "[" not in result
         assert "Einfache Notiz" in result
 
-    def test_no_user_id_returns_empty(self, mock_note_store):
-        provider = SmartContextProvider(
-            note_store=mock_note_store,
-            default_user_id="",
-        )
-        assert provider._query_notes("test") == ""
-
-    def test_no_results_returns_empty(self, provider_all, mock_note_store):
-        mock_note_store.search.return_value = []
+    def test_no_results_returns_empty(self, provider_all, mock_nextcloud_notes):
+        mock_nextcloud_notes.search.return_value = []
         assert provider_all._query_notes("xyz") == ""
 
-    def test_content_truncated_at_200(self, provider_all, mock_note_store):
+    def test_content_truncated_at_200(self, provider_all, mock_nextcloud_notes):
         note = MagicMock()
-        note.key = None
         note.content = "A" * 300
-        mock_note_store.search.return_value = [note]
+        note.category = ""
+        mock_nextcloud_notes.search.return_value = [note]
         result = provider_all._query_notes("lang")
         assert "A" * 200 in result
         assert "A" * 201 not in result
+
+    def test_notes_filtered_in_when_client_present(self, provider_all):
+        result = provider_all._filter_available({ContextSource.NOTES})
+        assert result == {ContextSource.NOTES}
+
+    def test_notes_filtered_out_without_client(self):
+        provider = SmartContextProvider(default_user_id="@user:test")
+        result = provider._filter_available({ContextSource.NOTES})
+        assert result == set()
+
+    def test_get_query_fn_returns_callable(self, provider_all):
+        fn = provider_all._get_query_fn(ContextSource.NOTES, "anything")
+        assert callable(fn)
 
 
 class TestQueryContacts:

@@ -5,6 +5,11 @@ Analysiert den User-Input und entscheidet keyword-basiert, welche Datenquellen
 Fragt die relevanten Stores parallel ab und liefert formatierten Kontext
 für den System-Prompt.
 
+Phase 91-C: Die NOTES-Source fragt den NextcloudNotesClient ab (reiner
+API-Wrapper, kein lokaler Cache). In Phase 91-A war sie temporaer
+deaktiviert, weil NoteStore in FactStore + NextcloudNotesClient gesplittet
+wurde.
+
 Wird von Assistant.process() bei jeder Anfrage aufgerufen.
 Graceful Degradation: fehlende oder fehlerhafte Quellen werden übersprungen.
 
@@ -12,7 +17,7 @@ Verwendung:
     provider = SmartContextProvider(
         calendar=calendar_client,
         task_client=task_client,
-        note_store=note_store,
+        nextcloud_notes=notes_client,
         contact_store=contact_store,
         reminder_store=reminder_store,
         weather_client=weather_client,
@@ -36,7 +41,7 @@ from typing import TYPE_CHECKING, assert_never
 if TYPE_CHECKING:
     from elder_berry.tools.contact_store import ContactStore
     from elder_berry.tools.google_calendar import GoogleCalendarClient
-    from elder_berry.tools.note_store import NoteStore
+    from elder_berry.tools.nextcloud_notes_client import NextcloudNotesClient
     from elder_berry.tools.reminder_store import ReminderStore
     from elder_berry.tools.caldav_tasks import CalDAVTaskClient
     from elder_berry.tools.weather_client import WeatherClient
@@ -272,7 +277,7 @@ class SmartContextProvider:
         self,
         calendar: GoogleCalendarClient | None = None,
         task_client: CalDAVTaskClient | None = None,
-        note_store: NoteStore | None = None,
+        nextcloud_notes: NextcloudNotesClient | None = None,
         contact_store: ContactStore | None = None,
         reminder_store: ReminderStore | None = None,
         weather_client: WeatherClient | None = None,
@@ -280,7 +285,7 @@ class SmartContextProvider:
     ) -> None:
         self._calendar = calendar
         self._task_client = task_client
-        self._note_store = note_store
+        self._nextcloud_notes = nextcloud_notes
         self._contact_store = contact_store
         self._reminder_store = reminder_store
         self._weather_client = weather_client
@@ -337,7 +342,7 @@ class SmartContextProvider:
             ContextSource.CALENDAR: self._calendar,
             ContextSource.TODOS: self._task_client,
             ContextSource.REMINDERS: self._reminder_store,
-            ContextSource.NOTES: self._note_store,
+            ContextSource.NOTES: self._nextcloud_notes,
             ContextSource.CONTACTS: self._contact_store,
             ContextSource.WEATHER: self._weather_client,
         }
@@ -466,18 +471,20 @@ class SmartContextProvider:
         return "\n".join(lines)
 
     def _query_notes(self, user_input: str) -> str:
-        """Durchsucht NoteStore nach dem User-Input."""
-        assert self._note_store is not None
-        if not self._default_user_id:
-            return ""
-        results = self._note_store.search(self._default_user_id, user_input, 3)
+        """Durchsucht die Nextcloud-Notizen nach dem User-Input.
+
+        Vorbedingung: ``_nextcloud_notes is not None`` -- gefiltert in
+        ``_filter_available``. Substring-Suche, max 3 Treffer.
+        """
+        assert self._nextcloud_notes is not None
+        results = self._nextcloud_notes.search(user_input, limit=3)
         if not results:
             return ""
         lines = ["📝 Relevante Notizen:"]
-        for n in results:
-            prefix = f"🔑 {n.key}: " if n.key else ""
-            content = n.content[:200]
-            lines.append(f"  {prefix}{content}")
+        for note in results:
+            category = f"[{note.category}] " if note.category else ""
+            content = note.content[:200]
+            lines.append(f"  {category}{content}")
         return "\n".join(lines)
 
     def _query_contacts(self, user_input: str) -> str:

@@ -15,7 +15,7 @@ Eigenschaften (Konzept §2 + §4):
   Konzept §6 R4).
 - Thread-safe via threading.Lock; Saleria-Bridge ruft sync.
 
-Pattern wie NoteStore/ProposalStore (Klasse pro Datei, Dataclass-DTO,
+Pattern wie FactStore/ProposalStore (Klasse pro Datei, Dataclass-DTO,
 Logger pro Modul) -- aber KEIN SQLite.
 """
 

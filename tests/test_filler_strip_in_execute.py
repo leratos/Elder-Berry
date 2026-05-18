@@ -142,29 +142,32 @@ class TestExecuteStripsFillerPrefix:
     """
 
     def test_execute_strips_bitte_prefix_before_handler(self) -> None:
-        """'bitte notiz löschen #1' -> _cmd_delete bekommt 'notiz löschen #1'."""
-        store = MagicMock()
-        store.delete.return_value = True
-        h = RemoteCommandHandler(note_store=store)
+        """'bitte vergiss WLAN' -> _cmd_delete_fact bekommt 'vergiss WLAN'.
 
-        # Bridge-Aufruf: parse_command erkennt korrekt note_delete,
-        # execute() bekommt rohem Text -- nach X4a-Strip kann _cmd_delete
-        # den Re-Parse machen und die Notiz wirklich loeschen.
-        result = h.execute("note_delete", "bitte notiz löschen #1")
+        Getestet ueber ``note_delete_fact`` (FactStore-Pfad) -- der
+        Re-Parse-Schritt im _cmd_* ist fuer alle Note-Commands gleich."""
+        store = MagicMock()
+        store.delete_fact.return_value = True
+        h = RemoteCommandHandler(fact_store=store)
+
+        result = h.execute("note_delete_fact", "bitte vergiss WLAN")
 
         assert result.success is True
-        store.delete.assert_called_once_with(1)
+        store.delete_fact.assert_called_once()
+        # 2. Argument an delete_fact ist der normalisierte Key.
+        assert store.delete_fact.call_args[0][1] == "WLAN"
 
     def test_execute_strips_multi_word_filler_before_handler(self) -> None:
-        """'kannst du mir mal notiz löschen #5' funktioniert genauso."""
+        """'kannst du mir mal vergiss WLAN' funktioniert genauso."""
         store = MagicMock()
-        store.delete.return_value = True
-        h = RemoteCommandHandler(note_store=store)
+        store.delete_fact.return_value = True
+        h = RemoteCommandHandler(fact_store=store)
 
-        result = h.execute("note_delete", "kannst du mir mal notiz löschen #5")
+        result = h.execute("note_delete_fact", "kannst du mir mal vergiss WLAN")
 
         assert result.success is True
-        store.delete.assert_called_once_with(5)
+        store.delete_fact.assert_called_once()
+        assert store.delete_fact.call_args[0][1] == "WLAN"
 
     def test_execute_preserves_suffix_in_user_content(
         self, monkeypatch: pytest.MonkeyPatch
@@ -204,13 +207,13 @@ class TestExecuteStripsFillerPrefix:
     def test_execute_without_filler_unchanged(self) -> None:
         """Texte ohne Filler-Prefix gehen unangetastet durch."""
         store = MagicMock()
-        store.delete.return_value = True
-        h = RemoteCommandHandler(note_store=store)
+        store.delete_fact.return_value = True
+        h = RemoteCommandHandler(fact_store=store)
 
-        result = h.execute("note_delete", "notiz löschen #1")
+        result = h.execute("note_delete_fact", "vergiss WLAN")
 
         assert result.success is True
-        store.delete.assert_called_once_with(1)
+        store.delete_fact.assert_called_once()
 
     def test_execute_help_paths_not_affected(self) -> None:
         """Hilfe-Commands werden vor dem Handler-Lookup behandelt und
@@ -242,9 +245,10 @@ class TestParseAndExecuteRoundtrip:
     """
 
     def test_kannst_du_mir_mal_notiz_loeschen(self) -> None:
-        store = MagicMock()
-        store.delete.return_value = True
-        h = RemoteCommandHandler(note_store=store)
+        """``notiz loeschen #3`` routet zu note_delete; execute() strippt
+        den Filler-Prefix, der _cmd_delete-Re-Parse extrahiert die #3."""
+        notes = MagicMock()
+        h = RemoteCommandHandler(fact_store=MagicMock(), nextcloud_notes=notes)
 
         text = "kannst du mir mal notiz löschen #3"
 
@@ -252,9 +256,9 @@ class TestParseAndExecuteRoundtrip:
         command = h.parse_command(text)
         assert command == "note_delete"
 
-        # 2. execute(command, raw_text) -- nutzt _strip_filler_prefix
-        # intern und schickt prefix-gestrippten Text an _cmd_delete.
+        # 2. execute(command, raw_text) -- Filler-Prefix wird gestrippt,
+        # der Re-Parse extrahiert die ID trotz "kannst du mir mal".
         result = h.execute(command, text)
 
         assert result.success is True
-        store.delete.assert_called_once_with(3)
+        notes.delete_note.assert_called_once_with(3)

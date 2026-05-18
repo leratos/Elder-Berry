@@ -179,8 +179,8 @@ class TestKeywordAudit:
         ],
     )
     def test_note_keywords(self, handler, text, expected):
-        note_store = MagicMock()
-        h = _make_handler(note_store=note_store)
+        fact_store = MagicMock()
+        h = _make_handler(fact_store=fact_store)
         assert h.parse_command(text) == expected
 
 
@@ -268,16 +268,17 @@ class TestGetCommandSummary:
         summary = handler.get_command_summary()
         assert "termin" in summary.lower()
 
-    def test_note_commands_included_when_note_store_present(self):
-        note_store = MagicMock()
-        handler = _make_handler(note_store=note_store)
+    def test_note_commands_included_when_fact_store_present(self):
+        fact_store = MagicMock()
+        handler = _make_handler(fact_store=fact_store)
         summary = handler.get_command_summary()
-        assert "notiz" in summary.lower()
+        # Hilfe enthaelt sowohl Fakten- (merk dir) als auch Notiz-Commands.
+        assert "schlüssel" in summary.lower() or "schluessel" in summary.lower()
 
-    def test_note_commands_absent_when_no_note_store(self):
+    def test_note_commands_absent_when_no_fact_store(self):
         handler = _make_handler()
         summary = handler.get_command_summary()
-        # NoteCommandHandler wird nicht registriert wenn note_store=None
+        # NoteCommandHandler wird nicht registriert wenn fact_store=None
         assert "merk dir" not in summary.lower()
 
     def test_each_line_starts_with_dash(self):
@@ -305,14 +306,14 @@ class TestCommandDescriptions:
     """Prüft dass jeder Handler command_descriptions definiert."""
 
     def test_all_handlers_have_descriptions(self):
-        handler = _make_handler(note_store=MagicMock())
+        handler = _make_handler(fact_store=MagicMock())
         for h in handler._handlers:
             descs = h.command_descriptions
             assert isinstance(descs, list), f"{h.__class__.__name__} hat keine Liste"
             assert len(descs) > 0, f"{h.__class__.__name__} hat leere Descriptions"
 
     def test_descriptions_are_strings(self):
-        handler = _make_handler(note_store=MagicMock())
+        handler = _make_handler(fact_store=MagicMock())
         for h in handler._handlers:
             for desc in h.command_descriptions:
                 assert isinstance(desc, str), (
@@ -513,7 +514,7 @@ class TestKeywordPriorities:
     def handler(self):
         return _make_handler(
             reminder_store=MagicMock(),
-            note_store=MagicMock(),
+            fact_store=MagicMock(),
         )
 
     def test_loeschen_not_ambiguous(self):

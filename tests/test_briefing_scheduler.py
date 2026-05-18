@@ -6,7 +6,6 @@ from unittest.mock import MagicMock, patch
 
 from elder_berry.comms.briefing_scheduler import BriefingScheduler
 from elder_berry.tools.contact_store import Contact
-from elder_berry.tools.note_store import Note
 
 
 # ---------------------------------------------------------------------------
@@ -429,69 +428,10 @@ class TestEmailSection:
 
 
 # ---------------------------------------------------------------------------
-# Vor-einem-Jahr-Sektion (Phase 34)
+# Phase 91-A: "Vor einem Jahr"-Sektion wurde entfernt. Nextcloud Notes API
+# hat keinen created_at-Timestamp; das Feature ist nicht 1:1 portierbar.
+# Lera-Freigabe 2026-05-14 (Konzept docs/concepts/note-nextcloud-replace.md).
 # ---------------------------------------------------------------------------
-
-
-def _make_note(content: str, created_at: datetime) -> Note:
-    """Erstellt eine Test-Note."""
-    return Note(
-        id=1,
-        user_id="@test:matrix.org",
-        key=None,
-        content=content,
-        tags=[],
-        created_at=created_at,
-        updated_at=created_at,
-    )
-
-
-class TestFlashbackSection:
-    def test_flashback_with_notes(self):
-        """Notizen von vor einem Jahr → Sektion angezeigt."""
-        note_store = MagicMock()
-        old_date = datetime(2025, 3, 28, 10, 0, 0, tzinfo=timezone.utc)
-        note_store.get_notes_from_date.return_value = [
-            _make_note("Dachprojekt gestartet", old_date),
-        ]
-        scheduler = BriefingScheduler(
-            send_briefing=MagicMock(),
-            note_store=note_store,
-            default_user_id="@test:matrix.org",
-        )
-        now = datetime(2026, 3, 28, 7, 30)
-        text = scheduler.build_briefing(now=now)
-
-        assert "📅 Vor einem Jahr" in text
-        assert "Dachprojekt gestartet" in text
-        assert "(2025)" in text
-
-    def test_flashback_no_notes(self):
-        """Keine alten Notizen → Sektion fehlt."""
-        note_store = MagicMock()
-        note_store.get_notes_from_date.return_value = []
-        scheduler = BriefingScheduler(
-            send_briefing=MagicMock(),
-            note_store=note_store,
-            default_user_id="@test:matrix.org",
-        )
-        text = scheduler.build_briefing(now=_WEDNESDAY)
-        assert "Vor einem Jahr" not in text
-
-    def test_flashback_recent_notes_filtered(self):
-        """Notizen von vor wenigen Tagen → nicht angezeigt (< 330 Tage)."""
-        note_store = MagicMock()
-        recent = datetime.now(timezone.utc) - timedelta(days=10)
-        note_store.get_notes_from_date.return_value = [
-            _make_note("Gestern notiert", recent),
-        ]
-        scheduler = BriefingScheduler(
-            send_briefing=MagicMock(),
-            note_store=note_store,
-            default_user_id="@test:matrix.org",
-        )
-        text = scheduler.build_briefing(now=_WEDNESDAY)
-        assert "Vor einem Jahr" not in text
 
 
 # ---------------------------------------------------------------------------

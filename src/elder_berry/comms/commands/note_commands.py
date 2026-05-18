@@ -1,13 +1,18 @@
-"""NoteCommandHandler – Notizen & Wissensdatenbank Commands.
+"""NoteCommandHandler -- Wissensdatenbank (Fakten) + Notizen (Nextcloud).
 
-Verwaltet:
-- merk dir: <key> ist/=: <wert> → Key-Value-Fakt speichern
-- notiz: <text>                   → Freitext-Notiz speichern
-- was ist <key>?                  → KV-Fakt abrufen (Miss → LLM-Fallthrough)
-- notizen suche <query>           → Volltextsuche
-- notizen                         → Alle Notizen auflisten
-- notiz löschen #<id>             → Notiz per ID löschen
-- vergiss <key>                   → KV-Fakt per Key löschen
+Phase 91-C: Notiz-Commands laufen jetzt gegen die Nextcloud Notes API.
+- Fakten-Commands (`merk dir`, `was ist`, `vergiss`) gehen an FactStore
+  (lokal, SQLite).
+- Notiz-Commands (`notiz:`, `notiz <Kategorie>:`, `notizen`, `notizen
+  liste`, `notizen suche`, `notizen kategorien`, `notiz loeschen`) gehen
+  an den NextcloudNotesClient (reiner API-Wrapper, kein lokaler Cache).
+
+Categories sind die strukturelle Hauptschublade einer Notiz. Die
+Whitelist (siehe ``note_categories.py``) ist eine Soft-Convention: eine
+unbekannte Category wird trotzdem akzeptiert, der Handler loggt nur eine
+Warning und haengt einen Hinweis an die Matrix-Antwort.
+
+Konzept: docs/concepts/note-nextcloud-replace.md Paragraph 3.4 / 3.5.
 """
 
 from __future__ import annotations
@@ -21,10 +26,21 @@ from elder_berry.comms.commands.base import (
     CommandPlugin,
     CommandResult,
     HandlerContext,
+    user_friendly_error,
 )
+from elder_berry.tools.note_categories import (
+    DEFAULT_CATEGORY,
+    KNOWN_CATEGORIES,
+    canonical_category,
+)
+from elder_berry.tools.nextcloud_notes_client import NextcloudNotesError
 
 if TYPE_CHECKING:
-    from elder_berry.tools.note_store import NoteStore
+    from elder_berry.tools.fact_store import FactStore
+    from elder_berry.tools.nextcloud_notes_client import (
+        NextcloudNote,
+        NextcloudNotesClient,
+    )
 
 logger = logging.getLogger(__name__)
 
@@ -32,37 +48,24 @@ logger = logging.getLogger(__name__)
 # Patterns
 # ---------------------------------------------------------------------------
 
-# "merk dir: WLAN Büro ist xyz123" oder "merk dir WLAN Büro = xyz"
+# "merk dir: WLAN Buero ist xyz123" oder "merk dir WLAN Buero = xyz"
 NOTE_SET_FACT_PATTERN = re.compile(
     r"^(?:bitte\s+)?(?:merk|merke)\s+dir[:\s]+(.+?)\s+(?:ist|=|:)\s+(.+)$",
     re.IGNORECASE,
 )
 
-# "notiz: Vermieter heißt Müller"
-# DOTALL: ``.`` matcht auch Newlines, damit Multi-Line-Notizen
-# (Saleria-Command "notiz: Einkaufsliste\n- Vodka\n- Limette") nicht
-# am ersten ``\n`` abgeschnitten werden -- Phase 90-A,
-# Lera-Smoketest 2026-05-13 (Moscow-Mule-Einkaufsliste).
+# "notiz: Vermieter heisst Mueller" / "notiz Einkauf: Milch kaufen"
+# Optionale Category-Group vor dem Doppelpunkt (Konzept Paragraph 3.5).
+# Single-Word-Category -- der ":" ist Pflicht-Trenner, sonst waere
+# "notiz Vermieter ..." nicht eindeutig (Category vs. Content).
+# DOTALL bleibt erhalten (Phase 90-A, Multi-Line-Notizen).
 NOTE_ADD_PATTERN = re.compile(
-    r"^(?:bitte\s+)?notiz[:\s]+(.+)$",
+    r"^(?:bitte\s+)?notiz(?:\s+(?P<category>[\wÄÖÜäöüß\-]+))?\s*:\s*(?P<content>.+)$",
     re.IGNORECASE | re.DOTALL,
 )
 
-# "was ist das WLAN Passwort?" oder "was ist WLAN Büro"
-# "wie lautet das Passwort?" oder "wie lautet die Adresse"
-# Negative Lookahead: Domain-Keywords (wetter, termin, mail, ...) nicht abfangen,
-# damit diese an die zuständigen Handler weitergeleitet werden.
-# Negative Lookahead: prueft ob nach optionalem Artikel ein Domain-Keyword folgt.
-# Steht VOR der optionalen Artikel-Gruppe, damit kein Backtracking den Schutz umgeht.
-#
-# 2026-05-11 (Codex-Reviewer P2): ``(?:bitte\s+)?``-Prefix in DELETE,
-# SEARCH, DELETE_FACT und GET_FACT eingefuegt -- parse_command strippt
-# fuehrende Filler bevor es matcht, aber execute() bekommt den rohen
-# Text mit "bitte ..." drin. Ohne den Prefix waere der _cmd_*-Re-Parse-
-# Schritt mit "bitte" am Anfang fehlgeschlagen. Loesung analog zu
-# NOTE_ADD_PATTERN/NOTE_SET_FACT_PATTERN (haben den Prefix schon).
-# Hinweis: das deckt NUR "bitte" ab; andere Filler ("kannst du mir mal"
-# etc.) brauchen einen breiteren Architektur-Fix -- separates Konzept.
+# "was ist das WLAN Passwort?" / "wie lautet die Adresse"
+# Negative Lookahead schuetzt Domain-Keywords vor Abfangen.
 _DOMAIN_WORDS = r"wetter|termin|mail|todo|kontakt|erinnerung|timer"
 NOTE_GET_FACT_PATTERN = re.compile(
     r"^(?:bitte\s+)?"
@@ -80,34 +83,76 @@ NOTE_SEARCH_PATTERN = re.compile(
     re.IGNORECASE,
 )
 
-# "notiz löschen #3" oder "notiz löschen 3"
+# "notizen liste" / "notizen liste Einkauf"
+NOTE_LIST_PATTERN = re.compile(
+    r"^(?:bitte\s+)?notize?n?\s+liste(?:\s+(?P<category>[\wÄÖÜäöüß\-]+))?\s*$",
+    re.IGNORECASE,
+)
+
+# "notizen kategorien"
+NOTE_CATEGORIES_PATTERN = re.compile(
+    r"^(?:bitte\s+)?notize?n?\s+kategorien?\s*$",
+    re.IGNORECASE,
+)
+
+# "notiz loeschen #3" oder "notiz loeschen 3"
 NOTE_DELETE_PATTERN = re.compile(
     r"^(?:bitte\s+)?notiz(?:en)?\s+(?:löschen|lösche|entferne?)\s+#?(\d+)$",
     re.IGNORECASE,
 )
 
-# "vergiss WLAN Passwort Büro"
+# "vergiss WLAN Passwort Buero"
 NOTE_DELETE_FACT_PATTERN = re.compile(
     r"^(?:bitte\s+)?vergiss\s+(.+)$",
     re.IGNORECASE,
 )
 
 
+# ---------------------------------------------------------------------------
+# Formatierungs-Helfer
+# ---------------------------------------------------------------------------
+
+
+def _known_categories_text() -> str:
+    """Whitelist als sortierte, kommagetrennte Liste fuer Hinweistexte."""
+    return ", ".join(sorted(KNOWN_CATEGORIES))
+
+
+def _count_label(count: int) -> str:
+    """'1 Notiz' / 'N Notizen' -- korrekte Pluralform."""
+    return f"{count} Notiz" if count == 1 else f"{count} Notizen"
+
+
+def _format_note_short(note: NextcloudNote) -> str:
+    """Kurzform '#<id> [<Kategorie>] <Titel>' fuer Listen-Ausgaben."""
+    snippet = note.title.strip()
+    if not snippet and note.content:
+        snippet = note.content.splitlines()[0].strip()
+    if len(snippet) > 80:
+        snippet = snippet[:77] + "..."
+    category = f"[{note.category}] " if note.category else ""
+    return f"#{note.id} {category}{snippet}".rstrip()
+
+
 class NoteCommandHandler(CommandHandler):
-    """Handler für Notizen & Wissensdatenbank Commands."""
+    """Handler fuer Wissensdatenbank-Commands (Fakten) + Notizen (Nextcloud)."""
 
     def __init__(
         self,
-        note_store: NoteStore,
+        fact_store: FactStore,
+        nextcloud_notes: NextcloudNotesClient | None = None,
         default_user_id: str = "",
     ) -> None:
         """
         Args:
-            note_store: NoteStore-Instanz.
+            fact_store: FactStore-Instanz fuer die Key-Value-Fakten.
+            nextcloud_notes: NextcloudNotesClient fuer die Notizen. ``None``
+                -> Notiz-Commands antworten mit ``not_configured``; die
+                Fakten-Commands funktionieren trotzdem.
             default_user_id: Fallback-User-ID (Single-User-Projekt).
-                Wird verwendet wenn execute() keinen user_id-Kontext hat.
         """
-        self._store = note_store
+        self._store = fact_store
+        self._notes = nextcloud_notes
         self._default_user_id = default_user_id
 
     # ------------------------------------------------------------------
@@ -120,23 +165,19 @@ class NoteCommandHandler(CommandHandler):
 
     @property
     def patterns(self) -> list[tuple[re.Pattern[str], str, bool, bool]]:
-        # Reihenfolge: spezifische Patterns VOR generischen.
-        # 2026-05-11 (Smoketest-Fix): NOTE_ADD_PATTERN matcht ``notiz <text>``
-        # mit beliebigem text -- inkl. ``notiz löschen #1`` und ``notiz suche
-        # ...``. Wenn note_add hier vor note_delete/note_search steht, werden
-        # diese spezifischen Commands als neue Notiz mit text="löschen #1"
-        # bzw. text="suche ..." angelegt. note_set_fact (merk dir: ...) und
-        # note_delete_fact (vergiss ...) sind disjunkt zu note_add (anderer
-        # Stamm), aber zur Klarheit ebenfalls vorne.
+        # Reihenfolge: spezifische Patterns VOR generischen. note_add ist
+        # generisch (``notiz <Kategorie>: <text>``) -- muss nach den
+        # spezifischen note_*-Patterns stehen. note_add verlangt zwar
+        # einen ":" und frisst dadurch ``notiz loeschen #1`` (kein ":")
+        # nicht mehr auf, aber die Reihenfolge bleibt zur Klarheit.
         return [
             (NOTE_SET_FACT_PATTERN, "note_set_fact", False, False),
+            (NOTE_CATEGORIES_PATTERN, "note_categories", False, False),
+            (NOTE_LIST_PATTERN, "note_list", False, False),
             (NOTE_DELETE_PATTERN, "note_delete", False, False),
             (NOTE_SEARCH_PATTERN, "note_search", False, False),
             (NOTE_DELETE_FACT_PATTERN, "note_delete_fact", False, False),
-            # note_add ist generisch (``notiz <text>``) -- muss NACH den
-            # spezifischen Note-Patterns stehen, sonst frisst es sie auf.
             (NOTE_ADD_PATTERN, "note_add", False, False),
-            # note_get_fact zuletzt: "was ist" ist sehr allgemein
             (NOTE_GET_FACT_PATTERN, "note_get_fact", False, False),
         ]
 
@@ -144,11 +185,13 @@ class NoteCommandHandler(CommandHandler):
     def command_descriptions(self) -> list[str]:
         return [
             "merk dir: <schlüssel> ist <wert>: Fakt speichern",
-            "notiz: <text>: Freitext-Notiz speichern",
             "was ist <schlüssel>?: Fakt abrufen",
+            "vergiss <schlüssel>: Fakt löschen",
+            "notiz: <text> / notiz <Kategorie>: <text>: Notiz speichern",
+            "notizen / notizen liste <Kategorie>: Notizen anzeigen",
             "notizen suche <begriff>: Notizen durchsuchen",
-            "notizen: Alle Notizen anzeigen",
-            "notiz löschen #<id> / vergiss <schlüssel>: Notiz/Fakt löschen",
+            "notizen kategorien: Kategorien-Übersicht",
+            "notiz löschen #<id>: Notiz löschen",
         ]
 
     @property
@@ -178,39 +221,38 @@ class NoteCommandHandler(CommandHandler):
                 "suche in notizen",
                 "durchsuche notizen",
             ],
+            "note_list": ["notizen liste", "liste notizen"],
+            "note_categories": [
+                "notizen kategorien",
+                "notiz kategorien",
+                "welche kategorien",
+            ],
             "notizen": ["notizen", "alle notizen", "meine notizen"],
             "note_delete": ["notiz löschen", "lösche notiz"],
             "note_delete_fact": ["vergiss"],
         }
 
     def execute(self, command: str, raw_text: str, user_id: str = "") -> CommandResult:
-        """Führt einen erkannten Command aus.
-
-        Args:
-            command: Normalisierter Command-Name.
-            raw_text: Originaler Nachrichtentext.
-            user_id: Matrix-User-ID (optional, Fallback auf default_user_id).
-
-        Returns:
-            CommandResult. Bei note_get_fact-Miss: success=False für LLM-Fallthrough.
-        """
+        """Fuehrt einen erkannten Command aus."""
         uid = user_id or self._default_user_id
 
         match command:
             case "note_set_fact":
                 return self._cmd_set_fact(raw_text, uid)
-            case "note_add":
-                return self._cmd_add_note(raw_text, uid)
             case "note_get_fact":
                 return self._cmd_get_fact(raw_text, uid)
-            case "note_search":
-                return self._cmd_search(raw_text, uid)
-            case "notizen":
-                return self._cmd_list(uid)
-            case "note_delete":
-                return self._cmd_delete(raw_text)
             case "note_delete_fact":
                 return self._cmd_delete_fact(raw_text, uid)
+            case "note_add":
+                return self._cmd_add(raw_text)
+            case "note_search":
+                return self._cmd_search(raw_text)
+            case "note_delete":
+                return self._cmd_delete(raw_text)
+            case "note_list" | "notizen":
+                return self._cmd_list(command, raw_text)
+            case "note_categories":
+                return self._cmd_categories()
 
         return CommandResult(
             command=command,
@@ -219,7 +261,7 @@ class NoteCommandHandler(CommandHandler):
         )
 
     # ------------------------------------------------------------------
-    # Command-Implementierungen
+    # Fakten-Commands (FactStore)
     # ------------------------------------------------------------------
 
     def _cmd_set_fact(self, raw_text: str, user_id: str) -> CommandResult:
@@ -235,45 +277,26 @@ class NoteCommandHandler(CommandHandler):
         key = match.group(1).strip()
         value = match.group(2).strip()
 
-        # Prüfe ob bereits vorhanden (für Feedback)
         existing = self._store.get_fact(user_id, key)
-        note = self._store.set_fact(user_id, key, value)
+        fact = self._store.set_fact(user_id, key, value)
 
         if existing:
             return CommandResult(
                 command="note_set_fact",
                 success=True,
                 text=(
-                    f"✏️ Aktualisiert: **{note.key}** = {value}\n"
+                    f"✏️ Aktualisiert: **{fact.key}** = {value}\n"
                     f"_(vorher: {existing.content})_"
                 ),
             )
         return CommandResult(
             command="note_set_fact",
             success=True,
-            text=f"🔑 Gemerkt: **{note.key}** = {value}",
-        )
-
-    def _cmd_add_note(self, raw_text: str, user_id: str) -> CommandResult:
-        """notiz: <freitext>"""
-        match = NOTE_ADD_PATTERN.match(raw_text.strip())
-        if not match:
-            return CommandResult(
-                command="note_add",
-                success=False,
-                text="Text fehlt. Beispiel: notiz: Vermieter heißt Müller",
-            )
-
-        content = match.group(1).strip()
-        note = self._store.add_note(user_id, content)
-        return CommandResult(
-            command="note_add",
-            success=True,
-            text=f"📝 Notiz #{note.id} gespeichert.",
+            text=f"🔑 Gemerkt: **{fact.key}** = {value}",
         )
 
     def _cmd_get_fact(self, raw_text: str, user_id: str) -> CommandResult:
-        """was ist <key>? → KV-Lookup, Miss → fallthrough ans LLM."""
+        """was ist <key>? -> KV-Lookup, Miss -> fallthrough ans LLM."""
         match = NOTE_GET_FACT_PATTERN.match(raw_text.strip())
         if not match:
             return CommandResult(
@@ -283,10 +306,9 @@ class NoteCommandHandler(CommandHandler):
             )
 
         key = (match.group(1) or match.group(2) or "").strip()
-        note = self._store.get_fact(user_id, key)
+        fact = self._store.get_fact(user_id, key)
 
-        if note is None:
-            # Kein Treffer → LLM-Fallthrough (z.B. "was ist deine meinung")
+        if fact is None:
             return CommandResult(
                 command="note_get_fact",
                 success=False,
@@ -296,91 +318,7 @@ class NoteCommandHandler(CommandHandler):
         return CommandResult(
             command="note_get_fact",
             success=True,
-            text=f"🔑 **{note.key}**: {note.content}",
-        )
-
-    def _cmd_search(self, raw_text: str, user_id: str) -> CommandResult:
-        """notizen suche <query>"""
-        match = NOTE_SEARCH_PATTERN.match(raw_text.strip())
-        if not match:
-            return CommandResult(
-                command="note_search",
-                success=False,
-                text="Suchbegriff fehlt. Beispiel: notizen suche Vermieter",
-            )
-
-        query = match.group(1).strip()
-        results = self._store.search(user_id, query)
-
-        if not results:
-            return CommandResult(
-                command="note_search",
-                success=True,
-                text=f"Keine Notizen gefunden für: '{query}'",
-            )
-
-        lines = [f"🔍 **{len(results)} Treffer** für '{query}':"]
-        for note in results:
-            lines.append(f"  {note.format_short()}")
-
-        # Phase 80 Etappe 3: voller content wandert ins Item, damit der
-        # Bridge-list_pick "zeig mir Notiz 1" ohne Store-Round-Trip die
-        # echte Notiz zeigen kann (Konzept-Tabelle nennt content_excerpt;
-        # voller content ist hier praktischer, weil Notizen klein sind).
-        list_items = [{"id": n.id, "key": n.key, "content": n.content} for n in results]
-
-        return CommandResult(
-            command="note_search",
-            success=True,
-            text="\n".join(lines),
-            list_items=list_items,
-            list_type="note_search",
-        )
-
-    def _cmd_list(self, user_id: str) -> CommandResult:
-        """notizen → Alle Notizen (max 20)"""
-        notes = self._store.list_all(user_id)
-
-        if not notes:
-            return CommandResult(
-                command="notizen",
-                success=True,
-                text="Keine Notizen vorhanden. Tipp: 'merk dir: ...' oder 'notiz: ...'",
-            )
-
-        lines = [f"📋 **{len(notes)} Notizen**:"]
-        for note in notes:
-            lines.append(f"  {note.format_short()}")
-
-        return CommandResult(
-            command="notizen",
-            success=True,
-            text="\n".join(lines),
-        )
-
-    def _cmd_delete(self, raw_text: str) -> CommandResult:
-        """notiz löschen #<id>"""
-        match = NOTE_DELETE_PATTERN.match(raw_text.strip())
-        if not match:
-            return CommandResult(
-                command="note_delete",
-                success=False,
-                text="Welche Notiz? Beispiel: notiz löschen #3",
-            )
-
-        note_id = int(match.group(1))
-        deleted = self._store.delete(note_id)
-
-        if deleted:
-            return CommandResult(
-                command="note_delete",
-                success=True,
-                text=f"🗑️ Notiz #{note_id} gelöscht.",
-            )
-        return CommandResult(
-            command="note_delete",
-            success=False,
-            text=f"Notiz #{note_id} nicht gefunden.",
+            text=f"🔑 **{fact.key}**: {fact.content}",
         )
 
     def _cmd_delete_fact(self, raw_text: str, user_id: str) -> CommandResult:
@@ -408,31 +346,241 @@ class NoteCommandHandler(CommandHandler):
             text=f"Kein Fakt '{key}' gefunden.",
         )
 
+    # ------------------------------------------------------------------
+    # Notiz-Commands (NextcloudNotesClient)
+    # ------------------------------------------------------------------
+
+    def _unavailable(self, command: str) -> CommandResult:
+        """Antwort wenn kein NextcloudNotesClient verdrahtet ist."""
+        return self.not_configured(command, "Nextcloud Notes", setup_step=4)
+
+    @staticmethod
+    def _api_error(command: str, exc: NextcloudNotesError) -> CommandResult:
+        """Wandelt einen NextcloudNotesError in eine User-Antwort um."""
+        logger.error("Nextcloud Notes Fehler bei %s: %s", command, exc)
+        return CommandResult(
+            command=command,
+            success=False,
+            text=user_friendly_error(exc, "Notizen"),
+        )
+
+    def _cmd_add(self, raw_text: str) -> CommandResult:
+        """notiz: <text> / notiz <Kategorie>: <text>"""
+        if self._notes is None:
+            return self._unavailable("note_add")
+
+        match = NOTE_ADD_PATTERN.match(raw_text.strip())
+        if not match:
+            return CommandResult(
+                command="note_add",
+                success=False,
+                text=(
+                    "Text fehlt. Beispiel: notiz: Vermieter heißt Müller "
+                    "oder notiz Einkauf: Milch kaufen"
+                ),
+            )
+
+        content = match.group("content").strip()
+        raw_category = match.group("category")
+        if raw_category:
+            category, is_known = canonical_category(raw_category)
+        else:
+            category, is_known = DEFAULT_CATEGORY, True
+
+        try:
+            note = self._notes.create_note(content, category=category)
+        except NextcloudNotesError as exc:
+            return self._api_error("note_add", exc)
+
+        text = f"📝 Notiz #{note.id} in '{category}' gespeichert."
+        if not is_known:
+            logger.warning("Unbekannte Category '%s' verwendet", category)
+            text += (
+                f"\n⚠ Neue Kategorie '{category}' angelegt. "
+                f"Bekannte Kategorien: {_known_categories_text()}."
+            )
+        return CommandResult(command="note_add", success=True, text=text)
+
+    def _cmd_search(self, raw_text: str) -> CommandResult:
+        """notizen suche <query> -- Substring-Suche ueber den Content."""
+        if self._notes is None:
+            return self._unavailable("note_search")
+
+        match = NOTE_SEARCH_PATTERN.match(raw_text.strip())
+        if not match:
+            return CommandResult(
+                command="note_search",
+                success=False,
+                text="Suchbegriff fehlt. Beispiel: notizen suche Vermieter",
+            )
+
+        query = match.group(1).strip()
+        try:
+            results = self._notes.search(query, limit=20)
+        except NextcloudNotesError as exc:
+            return self._api_error("note_search", exc)
+
+        if not results:
+            return CommandResult(
+                command="note_search",
+                success=True,
+                text=f"Keine Notizen gefunden für: '{query}'",
+            )
+
+        lines = [f"🔍 **{len(results)} Treffer** für '{query}':"]
+        for note in results:
+            lines.append(f"  {_format_note_short(note)}")
+
+        # Phase 80: voller Content wandert ins Item, damit der Bridge-
+        # list_pick ("zeig mir Notiz 1") die Notiz ohne Round-Trip zeigen
+        # kann -- Notizen sind klein.
+        list_items = [{"id": n.id, "content": n.content} for n in results]
+
+        return CommandResult(
+            command="note_search",
+            success=True,
+            text="\n".join(lines),
+            list_items=list_items,
+            list_type="note_search",
+        )
+
+    def _cmd_list(self, command: str, raw_text: str) -> CommandResult:
+        """notizen / notizen liste [<Kategorie>] -- Notizen auflisten."""
+        if self._notes is None:
+            return self._unavailable(command)
+
+        match = NOTE_LIST_PATTERN.match(raw_text.strip())
+        raw_category = match.group("category") if match else None
+
+        category: str | None = None
+        hint = ""
+        if raw_category:
+            category, is_known = canonical_category(raw_category)
+            if not is_known:
+                hint = (
+                    f"\n⚠ Kategorie '{category}' ist nicht in der Whitelist "
+                    f"({_known_categories_text()})."
+                )
+
+        try:
+            notes = self._notes.list_notes(category=category, limit=20)
+        except NextcloudNotesError as exc:
+            return self._api_error(command, exc)
+
+        scope = f" in '{category}'" if category else ""
+        if not notes:
+            return CommandResult(
+                command=command,
+                success=True,
+                text=f"Keine Notizen{scope} vorhanden. "
+                f"Tipp: 'notiz: ...' legt eine an." + hint,
+            )
+
+        lines = [f"📋 **{len(notes)} Notizen{scope}**:"]
+        for note in notes:
+            lines.append(f"  {_format_note_short(note)}")
+
+        return CommandResult(
+            command=command,
+            success=True,
+            text="\n".join(lines) + hint,
+        )
+
+    def _cmd_delete(self, raw_text: str) -> CommandResult:
+        """notiz löschen #<id>"""
+        if self._notes is None:
+            return self._unavailable("note_delete")
+
+        match = NOTE_DELETE_PATTERN.match(raw_text.strip())
+        if not match:
+            return CommandResult(
+                command="note_delete",
+                success=False,
+                text="Welche Notiz? Beispiel: notiz löschen #3",
+            )
+
+        note_id = int(match.group(1))
+        try:
+            self._notes.delete_note(note_id)
+        except NextcloudNotesError as exc:
+            if exc.status_code == 404:
+                return CommandResult(
+                    command="note_delete",
+                    success=False,
+                    text=f"Notiz #{note_id} nicht gefunden.",
+                )
+            return self._api_error("note_delete", exc)
+
+        return CommandResult(
+            command="note_delete",
+            success=True,
+            text=f"🗑️ Notiz #{note_id} gelöscht.",
+        )
+
+    def _cmd_categories(self) -> CommandResult:
+        """notizen kategorien -- Whitelist + freie Categories mit Counts."""
+        if self._notes is None:
+            return self._unavailable("note_categories")
+
+        try:
+            notes = self._notes.list_notes()
+        except NextcloudNotesError as exc:
+            return self._api_error("note_categories", exc)
+
+        # Count pro Category (case-sensitiv -- Nextcloud-Categories sind es).
+        counts: dict[str, int] = {}
+        for note in notes:
+            if note.category:
+                counts[note.category] = counts.get(note.category, 0) + 1
+
+        lines = ["📂 Kategorien:"]
+        # Whitelist zuerst -- auch ungenutzte (count 0) anzeigen.
+        for category in sorted(KNOWN_CATEGORIES):
+            count = counts.pop(category, 0)
+            lines.append(f"  • {category} ({_count_label(count)})")
+        # Verbleibende = genutzte Categories ausserhalb der Whitelist.
+        for category in sorted(counts):
+            lines.append(f"  • {category} ({_count_label(counts[category])}) — frei")
+
+        return CommandResult(
+            command="note_categories",
+            success=True,
+            text="\n".join(lines),
+        )
+
 
 # ---------------------------------------------------------------------------
 # Phase 77: Plugin-Manifest
 # ---------------------------------------------------------------------------
 
-HELP_SECTION_NOTE = """Notizen & Wissen:
+HELP_SECTION_NOTE = """Wissen & Fakten:
   merk dir: <schluessel> ist <wert>  -- Fakt speichern
-  notiz: <text>                       -- Freitext-Notiz speichern
   was ist <schluessel>?               -- Fakt abrufen
-  notizen suche <Begriff>             -- Notizen durchsuchen
+  vergiss <schluessel>                -- Fakt loeschen
+
+Notizen (Nextcloud Notes):
+  notiz: <text>                       -- Notiz speichern (Kategorie Allgemein)
+  notiz <Kategorie>: <text>           -- Notiz mit Kategorie (z.B. notiz Einkauf: Milch)
   notizen                             -- Alle Notizen anzeigen (max 20)
+  notizen liste <Kategorie>           -- Notizen einer Kategorie
+  notizen suche <Begriff>             -- Notizen durchsuchen
+  notizen kategorien                  -- Kategorien-Uebersicht
   notiz loeschen #<id>                -- Notiz per ID loeschen
-  vergiss <schluessel>                -- KV-Fakt vergessen"""
+  Tipp: Hashtags (#dringend) direkt in den Text -- per Suche auffindbar."""
 
 
 def _factory(ctx: HandlerContext) -> CommandHandler | None:
     """Konstruiert NoteCommandHandler aus dem HandlerContext.
 
-    Bedingung: ``ctx.note_store`` muss gesetzt sein -- ohne SQLite-Store
-    keine Notizen.
+    Bedingung: ``ctx.fact_store`` muss gesetzt sein -- ohne FactStore
+    keine Fakten. ``ctx.nextcloud_notes`` ist optional; fehlt es,
+    antworten die Notiz-Commands mit ``not_configured``.
     """
-    if ctx.note_store is None:
+    if ctx.fact_store is None:
         return None
     return NoteCommandHandler(
-        note_store=ctx.note_store,
+        fact_store=ctx.fact_store,
+        nextcloud_notes=ctx.nextcloud_notes,
         default_user_id=ctx.default_user_id,
     )
 
