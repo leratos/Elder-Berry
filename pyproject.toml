@@ -17,7 +17,7 @@ dependencies = [
     "anthropic>=0.40",
     "tzdata>=2024.1",
     "fastapi>=0.136.1",
-    "uvicorn[standard]>=0.46.0",
+    "uvicorn[standard]>=0.47.0",
     "bcrypt>=5.0.0",    # Phase 58: Dashboard-Login (PW-Hash, Tower + CI)
     "keyring>=25.7.0",  # Phase 65 (M-1): Fernet-Masterkey im OS-Keyring
                       # (Windows DPAPI / macOS Keychain / Linux Secret Service).
