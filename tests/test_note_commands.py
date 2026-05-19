@@ -21,6 +21,7 @@ from elder_berry.comms.commands.note_commands import (
     NOTE_SEARCH_PATTERN,
     NOTE_SET_FACT_PATTERN,
     NoteCommandHandler,
+    _format_note_short,
 )
 from elder_berry.tools.fact_store import FactStore
 from elder_berry.tools.nextcloud_notes_client import NextcloudNote, NextcloudNotesError
@@ -68,13 +69,19 @@ def handler_no_notes(store):
 
 
 def _note(note_id=1, content="Testnotiz", category="Allgemein", modified=1000):
-    """Baut ein NextcloudNote -- title = erste Content-Zeile (Server-Logik)."""
+    """Baut ein NextcloudNote.
+
+    title = "Neue Notiz" -- so liefert die echte Nextcloud-API frisch per
+    POST erstellte Notizen aus (der Titel wird nicht aus dem Content
+    abgeleitet). Damit pruefen die Listen-/Such-Tests implizit, dass die
+    Anzeige aus dem Content kommt und nicht aus dem Platzhalter-Titel.
+    """
     return NextcloudNote(
         id=note_id,
         content=content,
         category=category,
         modified=datetime.fromtimestamp(modified, tz=timezone.utc),
-        title=content.splitlines()[0] if content else "",
+        title="Neue Notiz",
     )
 
 
@@ -451,3 +458,58 @@ class TestNotesNotConfigured:
         result = handler.execute("note_quatsch", "egal")
         assert not result.success
         assert "Unbekannter" in result.text
+
+
+# ---------------------------------------------------------------------------
+# _format_note_short -- Vorschau aus Content statt Platzhalter-Titel
+# ---------------------------------------------------------------------------
+
+
+class TestFormatNoteShort:
+    """Nextcloud titelt per API erstellte Notizen mit dem Platzhalter
+    "Neue Notiz" -- die Listen-Vorschau muss aus der ersten Content-Zeile
+    kommen, nicht aus note.title."""
+
+    def test_uses_content_first_line_not_title(self):
+        note = NextcloudNote(
+            id=457,
+            content="Milch #dringend",
+            category="Einkauf",
+            modified=datetime.fromtimestamp(1000, tz=timezone.utc),
+            title="Neue Notiz",
+        )
+        result = _format_note_short(note)
+        assert result == "#457 [Einkauf] Milch #dringend"
+        assert "Neue Notiz" not in result
+
+    def test_first_nonempty_content_line(self):
+        note = NextcloudNote(
+            id=1,
+            content="\n\nEinkaufsliste\n- Vodka\n- Limette",
+            category="",
+            modified=datetime.fromtimestamp(0, tz=timezone.utc),
+            title="Neue Notiz",
+        )
+        assert _format_note_short(note) == "#1 Einkaufsliste"
+
+    def test_falls_back_to_title_when_content_empty(self):
+        note = NextcloudNote(
+            id=2,
+            content="",
+            category="",
+            modified=datetime.fromtimestamp(0, tz=timezone.utc),
+            title="Alter Titel",
+        )
+        assert _format_note_short(note) == "#2 Alter Titel"
+
+    def test_long_line_truncated(self):
+        note = NextcloudNote(
+            id=3,
+            content="A" * 200,
+            category="",
+            modified=datetime.fromtimestamp(0, tz=timezone.utc),
+            title="Neue Notiz",
+        )
+        result = _format_note_short(note)
+        assert result.endswith("...")
+        assert result.startswith("#3 ")

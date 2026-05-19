@@ -124,10 +124,23 @@ def _count_label(count: int) -> str:
 
 
 def _format_note_short(note: NextcloudNote) -> str:
-    """Kurzform '#<id> [<Kategorie>] <Titel>' fuer Listen-Ausgaben."""
-    snippet = note.title.strip()
-    if not snippet and note.content:
-        snippet = note.content.splitlines()[0].strip()
+    """Kurzform '#<id> [<Kategorie>] <Vorschau>' fuer Listen-Ausgaben.
+
+    Die Vorschau ist die erste nicht-leere Content-Zeile -- bewusst NICHT
+    ``note.title``: Nextcloud legt per API erstellte Notizen mit dem
+    Platzhalter-Titel "Neue Notiz" an und leitet den Titel nicht aus dem
+    Content ab. Die erste Content-Zeile ist die eigentliche Ueberschrift
+    (Notes-/Markdown-Konvention). ``note.title`` ist nur Fallback, falls
+    der Content komplett leer ist.
+    """
+    snippet = ""
+    for line in note.content.splitlines():
+        stripped = line.strip()
+        if stripped:
+            snippet = stripped
+            break
+    if not snippet:
+        snippet = note.title.strip()
     if len(snippet) > 80:
         snippet = snippet[:77] + "..."
     category = f"[{note.category}] " if note.category else ""
