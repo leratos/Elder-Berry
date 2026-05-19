@@ -1651,7 +1651,7 @@ Repo-Hygiene, Audit-Tools und Doku.
 
 ## Phase 82 – Multi-Action-Sequencing 📦 ✅ ABGESCHLOSSEN
 
-- Neuer Action-Typ `action_sequence` mit Step-DTOS (`comms/action_sequence.py`).
+- Neuer Action-Typ `action_sequence` mit Step-DTOs (`comms/action_sequence.py`).
 - Sequenzielle Step-Ausführung in `message_handlers.py` inkl. `on_failure`-Strategie.
 - Assistant-Prompting für strukturierte Multi-Step-Outputs erweitert.
 
