@@ -1602,574 +1602,102 @@ Repo-Hygiene, Audit-Tools und Doku.
 
 ## Phase 76 – mypy --strict für `core/` 🔍 ✅ ABGESCHLOSSEN
 
-- **Trigger**: Erster Tier-Rollout aus dem mypy-Konzept (Phase 75).
-  `core/` als Tier 1 ist das kleinste Paket mit den meisten
-  Querverbindungen → schmerzhafte Typ-Drift früh fangen.
-- **Etappen 1-4** (2026-05-01): Tier-1 strict (Setup + 3 Module),
-  Tier-2 strict (3 Module), Out-of-Scope-Pakete silencen, Tier-3
-  strict (6 Module), Tier-4 strict (4 Module) + Gate hart. 14 Module
-  insgesamt. CI-Workflow `.github/workflows/mypy-strict.yml` ergänzt.
-- **Tests**: keine Suite-Änderung — mypy ist statische Prüfung.
-- **Branch**: `feature/phase-76-mypy-strict-core` (Etappen einzeln gemergt).
+- `core/` vollständig auf `mypy --strict` umgestellt (Tier-Rollout 1–4).
+- CI-Gate für Typdrift eingeführt.
+- Branch: `feature/phase-76-mypy-strict-core`.
 
 ## Phase 76b – mypy --strict für `comms/` 🔍 ✅ ABGESCHLOSSEN
 
-- **Trigger**: Zweiter Tier-Rollout nach 76 + 76c. `comms/` mit den
-  Plugin-Handlern ist am komplexesten (TYPE_CHECKING-Pattern, viele
-  zirkuläre Imports).
-- **Etappen 0-5** (2026-05-04 bis -05): Setup, Tier 1 (Stores +
-  Schedulers), Tier 2 (Helper), Tier 3 (Bridge-Infra), Tier 4a (alle
-  24 Command-Handler), Tier 4b (Infrastruktur: `bridge.py`,
-  `claude_agent.py`, ...), Tier 5 + CI-Gate.
-- **Hotfix Etappe 5** (2026-05-05): Plattform-Differenz Linux/Windows
-  in `multiprocessing`-Typing. Fix per `if sys.platform == "win32"`-Guards.
-- **Branch**: `feature/phase-76b-mypy-strict-comms`.
+- `comms/` inkl. Command-Handler strict typisiert.
+- Plattform-Fix für Linux/Windows-Unterschiede im Multiprocessing-Typing.
+- Branch: `feature/phase-76b-mypy-strict-comms`.
 
 ## Phase 76c – mypy --strict für `tools/` + `web/` 🔍 ✅ ABGESCHLOSSEN
 
-- **Trigger**: Parallel zu 76b — `tools/` (47 Module) und `web/` als
-  größte Pakete.
-- **Etappen 0-5** (2026-05-02 bis -04): Setup, Tier 1-3 stufenweise,
-  Tier 4 plus Sonderbehandlung für große Module (Etappe 4b), Tier 5
-  + CI-Gate.
-- **Branch**: `feature/phase-76c-mypy-strict-tools-web`.
+- `tools/` und `web/` vollständig auf strict ausgerollt.
+- CI-Gate erweitert (keine schleichende Typregression).
+- Branch: `feature/phase-76c-mypy-strict-tools-web`.
 
 ## Phase 77 – Commands-Plugin-Registry 🧩 ✅ ABGESCHLOSSEN
 
-- **Trigger**: Konzept aus Phase 75 — Command-Handler als Plugins
-  ladbar (Builtin / User-Dir / Entry-Points), damit Selbst-Erweiterung
-  ohne Repo-Edit möglich ist.
-- **Etappe 1** (2026-05-04): `CommandPlugin`-Manifest +
-  `HandlerContext`-Service-Container in `base.py`. 3 Pilot-Handler
-  (weather, todo, note).
-- **Etappe 2** (2026-05-04): Migration der 20 verbleibenden Handler.
-- **Etappe 3** (2026-05-04): `PluginRegistry` mit Discovery aus 3
-  Quellen, Conflict-Detector als CI-Gate
-  (`tests/test_plugin_pattern_conflicts.py`), Generator-Wizard
-  (`scripts/generate_plugin.py`).
-- **Voraussetzung**: Phase 76 + 76c.
-- **Branch**: `feature/phase-77-plugin-registry`.
+- Command-Handler als Plugins (`CommandPlugin`) mit `HandlerContext`-DI.
+- Discovery aus Builtin / User-Dir / Entry-Points via `PluginRegistry`.
+- Conflict-Detector als Test/CI-Gate.
 
 ## Phase 77.5 – Plugin-Inspector 🔬 ✅ ABGESCHLOSSEN
 
-- **Trigger**: Vorbedingung für Phase 78 (Self-Suggestion soll wissen,
-  welche Plugins von welcher Quelle aktiv sind).
-- **Maßnahme** (2026-05-05): Registry-Loader liefern intern
-  `LoadedPlugin`-Wrapper mit Quellen-Information. Neues `plugins`-
-  Builtin-Plugin (24. Builtin) und Dashboard-Modul für Plugin-Inspector
-  (`web.plugins_api`).
-- **Branch**: `feature/phase-77-5-plugin-inspector`.
+- Quellen-Transparenz pro Plugin (`LoadedPlugin`) im Dashboard.
+- Neues `plugins`-Builtin + API in `web.plugins_api`.
 
 ## Phase 78 – Plugin-Self-Suggestion 💡 ✅ ABGESCHLOSSEN
 
-- **Trigger**: Saleria soll Capability-Lücken systematisch sammeln,
-  statt dass Lera sie aus Chat-Verläufen herausklauben muss.
-- **R1-Guard** (Konzept §6 R1): kein `.py`-Drop, kein
-  Filesystem-Schreiben, kein Sandbox-Lint. Manuelle Implementierung
-  durch Maintainer.
-- **Etappe 1** (2026-05-07): `tools.proposal_store.ProposalStore` —
-  SQLite + FTS5, Dedupe-Suche, persistent.
-- **Etappe 2** (2026-05-07): `comms.proposal_notifier` +
-  `tools.intent_aggregator` — Trigger-Pipeline aus dem LLM-Fallback,
-  Smalltalk-Filter, confidence≥0.7.
-- **Etappe 3** (2026-05-08): Dashboard-Modul + `web.proposals_api`.
-  Status-Workflow `new` → `reviewed` → `implemented`/`rejected`.
-- **Hotfixes** (2026-05-08): CI-Fail bleach/markdown-it-Versionen,
-  `deploy_dashboard.sh` mit Auto-Substitution.
-- **Branch**: `feature/phase-78-plugin-self-suggestion`.
+- `ProposalStore` + Trigger-Pipeline (`ProposalNotifier`/`IntentAggregator`).
+- Dashboard-Workflow `new -> reviewed -> implemented/rejected`.
+- R1-Guard: keine automatische Code-Ausführung oder Dateidrops.
 
 ## Phase 79 – Richer Pseudocode für Vorschläge ⏸️ ON HOLD
 
-- **Auftrag (2026-05-10)**: Bewertung "Phase 79 jetzt nicht gebraucht"
-  als Konzept-Datei festhalten — als ON HOLD mit hartem Trigger.
-- **Trigger** (Konzept §2.2): 5 Vorschläge in DB, 3 davon
-  implementiert, pro Vorschlag dokumentierte Spec-Lücke.
-- **Selbst-Verpflichtung** (Konzept §2.3): nach 6 Monaten ohne
-  erfüllten Trigger → Phase VERWORFEN. Schutz gegen ewiges Offenhalten.
-- **Konzept**: `docs/concepts/phase-79-richer-pseudocode.md`.
+- Mit hartem Trigger dokumentiert (siehe Konzeptdatei).
 
 ## Phase 80 – ConversationListStore + list_pick 🧷 ✅ ABGESCHLOSSEN
 
-- **Trigger**: LLM halluzinierte URLs und Mail-IDs in Folge-Befehlen.
-  Lösung: Listen serverseitig vorhalten, LLM bekommt nur den Index.
-- **Etappe 1** (2026-05-08): `tools.conversation_list_store.
-  ConversationListStore` — in-memory, TTL=1h, eine aktive Liste pro
-  `(user_id, list_type)`. Lazy Eviction. Thread-safe.
-- **Etappe 2** (2026-05-08): `web_search`-Integration + erstes
-  `list_pick`-Tool im LLM-Schema.
-- **Etappe 3** (2026-05-09): List-Types `mail_inbox`, `note_search`.
-  Codex-Reviewer-Findings ausgeräumt (`mail_by_id`-Reroute).
-- **Tests**: `tests/test_conversation_list_store.py` + Integrations-
-  Tests pro List-Type.
-- **Merge**: 3 PRs sequenziell auf main.
-- **Branch**: `feature/phase-80-conversation-list-store-*`.
+- Serverseitige Listen je `(user_id, list_type)` mit TTL.
+- `list_pick` verhindert URL-/ID-Halluzinationen bei Folgeaktionen.
 
 ## Phase 81 + 81b – Command-Fallback-UX + Self-Suggestion-Hook 🔁 ✅ ABGESCHLOSSEN
 
-- **Trigger**: Zwei UX-Härtungen während Phase 80.
-- **Phase 81 (Punkt 7)**: Wenn das LLM auch nach Retry kein Command
-  findet, bekommt der User eine kurze Erklärung statt Schweigen
-  ("Ich habe das als Befehl verstanden, konnte ihn aber keinem
-  Command zuordnen — Tipp `hilfe`.").
-- **Phase 81b**: Der Fallback-Pfad legt zusätzlich einen
-  Plugin-Vorschlag über die Phase-78-Pipeline an. `is_rejected`-Check
-  vorab, damit der User nicht über bereits abgelehnte Features
-  informiert wird. Bei Erfolg: "Ich habe Marcus eine Notiz
-  hinterlassen — wenn das öfter vorkommt, kümmert er sich darum."
-- **Files**: `src/elder_berry/comms/message_handlers.py` (Z. ~1362,
-  ~1572), `src/elder_berry/tools/intent_aggregator.py` (`is_rejected`).
-- **Tests**: `tests/test_message_handlers.py` (3 neue Tests) +
-  `is_rejected`-Helper-Tests in `tests/test_intent_aggregator.py`.
-- **Suite**: 5418 Tests collected (Stand 2026-05-10).
+- User-Feedback statt stillem Command-Miss.
+- Optionaler Plugin-Vorschlag im Fallback-Pfad (`is_rejected` berücksichtigt).
 
-## Phase 76 – mypy --strict für `core/` 🔍 ✅ ABGESCHLOSSEN
+## Phase 82 – Multi-Action-Sequencing 📦 ✅ ABGESCHLOSSEN
 
-- **Trigger**: Erster Tier-Rollout aus dem mypy-Konzept (Phase 75).
-  `core/` als Tier 1 ist das kleinste Paket mit den meisten
-  Querverbindungen → schmerzhafte Typ-Drift früh fangen.
-- **Etappen 1-4** (2026-05-01): Tier-1 strict (Setup + 3 Module),
-  Tier-2 strict (3 Module), Out-of-Scope-Pakete silencen, Tier-3
-  strict (6 Module), Tier-4 strict (4 Module) + Gate hart. 14 Module
-  insgesamt. CI-Workflow `.github/workflows/mypy-strict.yml` ergänzt;
-  bei Tier-Drift bricht CI.
-- **Tests**: keine Suite-Änderung — mypy ist statische Prüfung.
-- **Branch**: `feature/phase-76-mypy-strict-core` (Etappen einzeln gemergt).
+- Neuer Action-Typ `action_sequence` mit Step-DTOS (`comms/action_sequence.py`).
+- Sequenzielle Step-Ausführung in `message_handlers.py` inkl. `on_failure`-Strategie.
+- Assistant-Prompting für strukturierte Multi-Step-Outputs erweitert.
 
-## Phase 76b – mypy --strict für `comms/` 🔍 ✅ ABGESCHLOSSEN
+## Phase 82.1 – Multi-Line-in-Step 🧾 ✅ ABGESCHLOSSEN
 
-- **Trigger**: Zweiter Tier-Rollout nach 76 + 76c. `comms/` mit den
-  Plugin-Handlern ist am komplexesten (TYPE_CHECKING-Pattern, viele
-  zirkuläre Imports).
-- **Etappen 0-5** (2026-05-04 bis -05): Setup, Tier 1 (Stores +
-  Schedulers), Tier 2 (Helper), Tier 3 (Bridge-Infra), Tier 4a (alle
-  24 Command-Handler), Tier 4b (Infrastruktur: `bridge.py`,
-  `claude_agent.py`, ...), Tier 5 + CI-Gate. Plugin-Registry-Awareness:
-  `base.py` + `registry.py` sind durch Phase 77 ohnehin bereits strict.
-- **Hotfix Etappe 5** (2026-05-05): CI auf Linux durch, lokal Windows
-  nicht — Plattform-Differenz in `multiprocessing`-Typing. Fix per
-  `if sys.platform == "win32"`-Guards.
-- **Branch**: `feature/phase-76b-mypy-strict-comms`.
+- Ein einzelner Step kann mehrere valide Zeilen-Commands enthalten.
+- Multi-Line-Validierung mit Guardrails in der Sequenz-Ausführung.
 
-## Phase 76c – mypy --strict für `tools/` + `web/` 🔍 ✅ ABGESCHLOSSEN
+## Phase 83 – Reactive AvatarEngine 🎭 🔬 KONZEPT
 
-- **Trigger**: Parallel zu 76b — `tools/` (47 Module) und `web/` als
-  größte Pakete. Konzept §8 hatte das als 76b/c separiert; sequenziell
-  wie Phase 76 abgearbeitet.
-- **Etappen 0-5** (2026-05-02 bis -04): Setup, Tier 1-3 stufenweise,
-  Tier 4 plus Sonderbehandlung für große Module (Etappe 4b), Tier 5
-  + CI-Gate. Pattern aus Phase 76 (`stt_router/_run_async`-Workaround)
-  mehrfach wiederverwendet.
-- **Branch**: `feature/phase-76c-mypy-strict-tools-web`.
+- Konzept dokumentiert, aber noch nicht produktiv umgesetzt.
+- Siehe `docs/concepts/phase-83-reactive-avatar-engine.md`.
 
-## Phase 77 – Commands-Plugin-Registry 🧩 ✅ ABGESCHLOSSEN
+## Phase 85 – HTML-Email-Sanitizer 🛡️ ✅ ABGESCHLOSSEN
 
-- **Trigger**: Konzept aus Phase 75 — Command-Handler sollen als
-  Plugins ladbar sein (Builtin / User-Dir / Entry-Points), damit
-  Selbst-Erweiterung ohne Repo-Edit möglich ist.
-- **Etappe 1** (2026-05-04): `CommandPlugin`-Manifest +
-  `HandlerContext`-Service-Container in `base.py`. 3 Pilot-Handler
-  migriert (weather, todo, note).
-- **Etappe 2** (2026-05-04): Migration der 20 verbleibenden Handler.
-- **Etappe 3** (2026-05-04): `PluginRegistry` mit Discovery aus 3
-  Quellen, Conflict-Detector als CI-Gate
-  (`tests/test_plugin_pattern_conflicts.py`), Generator-Wizard
-  (`scripts/generate_plugin.py`).
-- **Voraussetzung**: Phase 76 + 76c (strict in `core/`, `tools/`, `web/`).
-- **Branch**: `feature/phase-77-plugin-registry`.
+- HTML-Mail-Body-Sanitizing zentral über `HtmlEmailSanitizer`.
+- Verbot naiver Regex-Tag-Strips auf Mail-HTML-Pfad.
 
-## Phase 77.5 – Plugin-Inspector 🔬 ✅ ABGESCHLOSSEN
+## Phase 86 – tinycss2-Refactor für Hidden-Detection 🎯 ✅ ABGESCHLOSSEN
 
-- **Trigger**: Vorbedingung für Phase 78 (Self-Suggestion soll wissen,
-  welche Plugins von welcher Quelle aktiv sind).
-- **Maßnahme** (2026-05-05): Registry-Loader liefern intern
-  `LoadedPlugin`-Wrapper mit Quellen-Information. Neues `plugins`-
-  Builtin-Plugin (24. Builtin) und Dashboard-Modul für Plugin-Inspector
-  (`web.plugins_api`). `load_plugins()` bleibt rückwärtskompatibel.
-- **Tests**: API-Tests in `tests/test_plugins_api.py`.
-- **Branch**: `feature/phase-77-5-plugin-inspector`.
+- CSS-Declaration-Parsing über `css_decl_resolver` + tinycss2.
+- Hidden-Checks laufen über Resolver/Cascade statt Style-Regex.
 
-## Phase 78 – Plugin-Self-Suggestion 💡 ✅ ABGESCHLOSSEN
+## Phase 87.B – Computed-Background-Heuristik 🌓 ✅ ABGESCHLOSSEN
 
-- **Trigger**: Saleria soll Capability-Lücken systematisch sammeln,
-  statt dass Lera sie aus Chat-Verläufen herausklauben muss.
-- **Konzept-Nachschärfung** (2026-05-07): R1-Guard zwingend (kein
-  `.py`-Drop, kein Filesystem-Schreiben, kein Sandbox-Lint). Speicher
-  zentral, Trigger reaktiv, Status-Workflow im Dashboard.
-- **Etappe 1** (2026-05-07): `tools.proposal_store.ProposalStore` —
-  SQLite + FTS5, Dedupe-Suche, persistent. Pattern wie `NoteStore`.
-- **Etappe 2** (2026-05-07): `comms.proposal_notifier` +
-  `tools.intent_aggregator` — Trigger-Pipeline aus dem LLM-Fallback,
-  Smalltalk-Filter, confidence≥0.7.
-- **Etappe 3** (2026-05-08): Dashboard-Modul + `web.proposals_api`.
-  Status-Workflow `new` → `reviewed` → `implemented`/`rejected`.
-- **Hotfixes** (2026-05-08): CI-Fail `bleach`/`markdown-it`-Versionen
-  korrigiert. `deploy_dashboard.sh` mit Auto-Substitution.
-- **Tests**: `tests/test_proposal_store.py`,
-  `tests/test_proposal_notifier.py`, `tests/test_intent_aggregator.py`,
-  `tests/test_proposals_api.py`.
-- **Branch**: `feature/phase-78-plugin-self-suggestion`.
+- Kontextabhängiger `color:white`-Check via effektiver Background-Berechnung.
+- Dark-Background-Islands werden beim Hidden-Strip korrekt erhalten.
 
-## Phase 79 – Richer Pseudocode für Vorschläge ⏸️ ON HOLD
+## Phase 89 – Saleria-Initiativ-Followup 💬 🔬 KONZEPT
 
-- **Auftrag (2026-05-10)**: Bewertung "Phase 79 jetzt nicht gebraucht"
-  als Konzept-Datei festhalten — nicht als offen-unter-Vorbehalt,
-  sondern als ON HOLD mit hartem Trigger.
-- **Trigger-Bedingung** (Konzept §2.2): 5 Vorschläge in der DB, 3 davon
-  durch den Implementierungs-Prozess gelaufen, pro Vorschlag
-  dokumentierte Spec-Lücke (nicht Bauchgefühl).
-- **Selbst-Verpflichtung** (Konzept §2.3): wenn der Trigger nach
-  6 Monaten nicht erfüllt ist, Phase wird VERWORFEN. Schutz gegen
-  ewiges Offenhalten.
-- **Wenn aktiviert**: Pseudocode-Cap 25 Zeilen, Test-Bullets-Cap 5,
-  oranger Banner im Dashboard ("LLM-generiert, nicht 1:1 kopieren").
-  R1-Guard aus Phase 78 bleibt zwingend in Kraft.
-- **Konzept**: `docs/concepts/phase-79-richer-pseudocode.md`.
+- Konzept für robuste Bestätigung auf kurze Followups (`ja bitte`).
+- Noch nicht als produktive Pipeline umgesetzt.
 
-## Phase 80 – ConversationListStore + list_pick 🧷 ✅ ABGESCHLOSSEN
+## Phase 90 – Multi-Line-Notiz-Pattern + Vollzugs-Halluzinations-Vermeidung 🧪 TEILWEISE UMGESETZT
 
-- **Trigger**: LLM halluzinierte URLs und Mail-IDs in Folge-Befehlen
-  ("fasse die zweite Suche zusammen" → Random-URL). Lösung: Listen
-  serverseitig vorhalten, LLM bekommt nur den Index.
-- **Etappe 1** (2026-05-08): `tools.conversation_list_store.
-  ConversationListStore` — in-memory, TTL=1h, eine aktive Liste pro
-  `(user_id, list_type)`. Lazy Eviction. Thread-safe.
-- **Etappe 2** (2026-05-08): `web_search`-Integration + erstes
-  `list_pick`-Tool im LLM-Schema.
-- **Etappe 3** (2026-05-09): Zusätzliche List-Types `mail_inbox`,
-  `note_search`. Codex-Reviewer-Findings ausgeräumt
-  (`mail_by_id`-Reroute).
-- **Tests**: `tests/test_conversation_list_store.py` + Integrations-
-  Tests pro List-Type. CodeQL-Findings aus Etappe 2 nachgezogen.
-- **Merge**: 3 PRs (Etappen 1-3) sequenziell auf main.
-- **Branch**: `feature/phase-80-conversation-list-store-*`.
+- Multi-Line-Notizen im Note-Pattern (`re.DOTALL`) umgesetzt.
+- Prompt-/Response-Teil gegen Vollzugs-Halluzinationen bleibt als separater Strang.
 
-## Phase 81 + 81b – Command-Fallback-UX + Self-Suggestion-Hook 🔁 ✅ ABGESCHLOSSEN
+## Phase 91 – FactStore-Extraktion + Note-Flow-Refactor ✅ ABGESCHLOSSEN
 
-- **Trigger**: Zwei UX-Härtungen, die während Phase 80 aufgefallen
-  sind und zusammen sauber in den Command-Router passen.
-- **Phase 81 (Punkt 7)**: Wenn das LLM auch nach Retry kein Command
-  aus dem User-Text findet, bekommt der User eine kurze Erklärung
-  statt Schweigen ("Ich habe das als Befehl verstanden, konnte ihn
-  aber keinem meiner Commands zuordnen — Tipp `hilfe` für die
-  Übersicht.").
-- **Phase 81b**: Der Fallback-Pfad ruft zusätzlich die Phase-78-
-  Pipeline (`IntentAggregator`) auf, um einen Plugin-Vorschlag anzulegen.
-  Aggregator filtert selbst (Smalltalk, confidence<0.7, abgelehnt nur
-  Trigger-Zähler). Zusätzlicher `is_rejected`-Check vorab, damit der
-  User nicht über bereits abgelehnte Features informiert wird. Bei
-  erfolgreichem Vorschlag ergänzt Saleria im User-Feedback "Ich habe
-  Marcus eine Notiz hinterlassen — wenn das öfter vorkommt, kümmert
-  er sich darum."
-- **Tests**: `tests/test_message_handlers.py` (3 neue Tests:
-  User-Feedback-Pfad, Aggregator-Trigger, Notiz-Hinweis-Bedingung) +
-  `tests/test_intent_aggregator.py::is_rejected`-Helper-Tests.
-- **Files**: `src/elder_berry/comms/message_handlers.py` (Z. ~1362,
-  ~1572), `src/elder_berry/tools/intent_aggregator.py` (`is_rejected`).
-- **Suite**: 5418 Tests collected (Stand 2026-05-10).
-
-## Phase 76 – mypy --strict für `core/` 🔍 ✅ ABGESCHLOSSEN
-
-- **Trigger**: Erster Tier-Rollout aus dem mypy-Konzept (Phase 75
-  Konzept). `core/` ist als Tier 1 das kleinste Paket mit den meisten
-  Querverbindungen → schmerzhafte Typ-Drift früh fangen.
-- **Etappen 1-4** (2026-05-01): Tier-1 strict (Setup + 3 Module),
-  Tier-2 strict (3 Module), Out-of-Scope-Pakete silencen, Tier-3
-  strict (6 Module), Tier-4 strict (4 Module) + Gate hart. 14 Module
-  insgesamt. CI-Workflow `.github/workflows/mypy-strict.yml` ergänzt;
-  bei Tier-Drift bricht CI.
-- **Tests**: keine Suite-Änderung — mypy ist statische Prüfung.
-- **Branch**: `feature/phase-76-mypy-strict-core` (Etappen einzeln
-  gemergt).
-
-## Phase 76b – mypy --strict für `comms/` 🔍 ✅ ABGESCHLOSSEN
-
-- **Trigger**: Zweiter Tier-Rollout nach 76 + 76c. `comms/` mit den
-  Plugin-Handlern ist am komplexesten (TYPE_CHECKING-Pattern, viele
-  zirkuläre Imports).
-- **Etappen 0-5** (2026-05-04 bis -05): Setup, Tier 1 (Stores +
-  Schedulers), Tier 2 (kleine Helper), Tier 3 (Bridge-Infra),
-  Tier 4a (alle 24 Command-Handler), Tier 4b (Infrastruktur:
-  `bridge.py`, `claude_agent.py`, ...), Tier 5 + CI-Gate.
-  Plugin-Registry-Awareness: `base.py` + `registry.py` sind durch
-  Phase 77 ohnehin bereits strict.
-- **Hotfix Etappe 5** (2026-05-05): CI lief auf Linux durch, lokal
-  auf Windows nicht — Plattform-Differenz in `multiprocessing`-
-  Typing. Fix per `if sys.platform == "win32"`-Guards.
-- **Tests**: keine Suite-Änderung.
-- **Branch**: `feature/phase-76b-mypy-strict-comms`.
-
-## Phase 76c – mypy --strict für `tools/` + `web/` 🔍 ✅ ABGESCHLOSSEN
-
-- **Trigger**: Parallel zu 76b — `tools/` (47 Module) und `web/` als
-  größte Pakete. Konzept §8 hatte das als 76b/c separiert; wegen
-  ähnlicher Strukturen sequenziell wie Phase 76.
-- **Etappen 0-5** (2026-05-02 bis -04): Setup, Tier 1-3 stufenweise,
-  Tier 4 plus Sonderbehandlung für große Module (Etappe 4b), Tier 5
-  + CI-Gate. Pattern aus Phase 76 (`stt_router/_run_async`-Workaround)
-  mehrfach wiederverwendet.
-- **Tests**: keine Suite-Änderung.
-- **Branch**: `feature/phase-76c-mypy-strict-tools-web`.
-
-## Phase 77 – Commands-Plugin-Registry 🧩 ✅ ABGESCHLOSSEN
-
-- **Trigger**: Konzept aus Phase 75 — Command-Handler sollen als
-  Plugins ladbar sein (Builtin / User-Dir / Entry-Points), damit
-  Selbst-Erweiterung ohne Repo-Edit möglich ist.
-- **Etappe 1** (2026-05-04): `CommandPlugin`-Manifest +
-  `HandlerContext`-Service-Container in `base.py`. 3 Pilot-Handler
-  migriert (weather, todo, note).
-- **Etappe 2** (2026-05-04): Migration der 20 verbleibenden Handler.
-- **Etappe 3** (2026-05-04): `PluginRegistry` mit Discovery aus 3
-  Quellen, Conflict-Detector als CI-Gate
-  (`tests/test_plugin_pattern_conflicts.py`), Generator-Wizard
-  (`scripts/generate_plugin.py`).
-- **Tests**: Conflict-Detector als pflichtiger Test; pro Handler
-  je 1 Integrations-Test, dass das Plugin korrekt geladen wird.
-- **Voraussetzung**: Phase 76 + 76c (strict in `core/`, `tools/`,
-  `web/`).
-- **Branch**: `feature/phase-77-plugin-registry`.
-
-## Phase 77.5 – Plugin-Inspector 🔬 ✅ ABGESCHLOSSEN
-
-- **Trigger**: Vorbedingung für Phase 78 (Self-Suggestion soll wissen,
-  welche Plugins von welcher Quelle aktiv sind).
-- **Maßnahme** (2026-05-05): Registry-Loader liefern intern
-  `LoadedPlugin`-Wrapper mit Quellen-Information. Neues `plugins`-
-  Builtin-Plugin (24. Builtin) und Dashboard-Modul für Plugin-Inspector
-  (`web.plugins_api`). `load_plugins()` bleibt rückwärtskompatibel.
-- **Tests**: Plugin-Inspector-Tests + API-Tests in
-  `tests/test_plugins_api.py`.
-- **Branch**: `feature/phase-77-5-plugin-inspector`.
-
-## Phase 78 – Plugin-Self-Suggestion 💡 ✅ ABGESCHLOSSEN
-
-- **Trigger**: Saleria soll Capability-Lücken systematisch sammeln,
-  statt dass Lera sie aus Chat-Verläufen herausklauben muss.
-- **Konzept-Nachschärfung** (2026-05-07): R1-Guard zwingend
-  (kein `.py`-Drop, kein Filesystem-Schreiben, kein Sandbox-Lint).
-  Speicher zentral, Trigger reaktiv, Status-Workflow im Dashboard.
-- **Etappe 1** (2026-05-07): `tools.proposal_store.ProposalStore` —
-  SQLite + FTS5, Dedupe-Suche, persistent. Pattern wie `NoteStore`.
-- **Etappe 2** (2026-05-07): `comms.proposal_notifier` +
-  `tools.intent_aggregator` — Trigger-Pipeline aus dem LLM-Fallback,
-  Smalltalk-Filter, confidence≥0.7.
-- **Etappe 3** (2026-05-08): Dashboard-Modul (`webapp/dashboard/
-  modules/proposals.js`) + `web.proposals_api`. Status-Workflow
-  `new` → `reviewed` → `implemented`/`rejected`.
-- **Hotfixes** (2026-05-08): CI-Fail `bleach`/`markdown-it`-Versionen
-  korrigiert. `deploy_dashboard.sh` mit Auto-Substitution.
-- **Tests**: `tests/test_proposal_store.py`,
-  `tests/test_proposal_notifier.py`, `tests/test_intent_aggregator.py`,
-  `tests/test_proposals_api.py`.
-- **Branch**: `feature/phase-78-plugin-self-suggestion`.
-
-## Phase 79 – Richer Pseudocode für Vorschläge ⏸️ ON HOLD
-
-- **Auftrag (2026-05-10)**: Lera will Bewertung "Phase 79 jetzt nicht
-  gebraucht" als Konzept-Datei festhalten — nicht als
-  offen-unter-Vorbehalt, sondern als ON HOLD mit hartem Trigger.
-- **Trigger-Bedingung** (Konzept §2.2): 5 Vorschläge in der DB, 3 davon
-  durch den Implementierungs-Prozess gelaufen, pro Vorschlag
-  dokumentierte Spec-Lücke (nicht Bauchgefühl).
-- **Selbst-Verpflichtung** (Konzept §2.3): wenn der Trigger nach
-  6 Monaten nicht erfüllt ist, Phase wird VERWORFEN. Schutz gegen
-  ewiges Offenhalten.
-- **Wenn aktiviert**: Pseudocode-Cap 25 Zeilen, Test-Bullets-Cap 5,
-  oranger Banner im Dashboard ("LLM-generiert, nicht 1:1 kopieren").
-  R1-Guard aus Phase 78 bleibt zwingend in Kraft.
-- **Konzept**: `docs/concepts/phase-79-richer-pseudocode.md`.
-
-## Phase 80 – ConversationListStore + list_pick 🧷 ✅ ABGESCHLOSSEN
-
-- **Trigger**: LLM halluzinierte URLs und Mail-IDs in Folge-Befehlen
-  ("fasse die zweite Suche zusammen" → Random-URL). Lösung: Listen
-  serverseitig vorhalten, LLM bekommt nur den Index.
-- **Etappe 1** (2026-05-08): `tools.conversation_list_store.
-  ConversationListStore` — in-memory, TTL=1h, eine aktive Liste pro
-  `(user_id, list_type)`. Lazy Eviction. Thread-safe.
-- **Etappe 2** (2026-05-08): `web_search`-Integration + erstes
-  `list_pick`-Tool im LLM-Schema.
-- **Etappe 3** (2026-05-09): Zusätzliche List-Types `mail_inbox`,
-  `note_search`. Codex-Reviewer-Findings ausgeräumt
-  (`mail_by_id`-Reroute).
-- **Tests**: `tests/test_conversation_list_store.py` + Integrations-
-  Tests pro List-Type. CodeQL-Findings aus Etappe 2 nachgezogen.
-- **Merge**: 3 PRs (Etappen 1-3) sequenziell auf main.
-- **Branch**: `feature/phase-80-conversation-list-store-*`.
-
-## Phase 81 + 81b – Command-Fallback-UX + Self-Suggestion-Hook 🔁 ✅ ABGESCHLOSSEN
-
-- **Trigger**: Zwei UX-Härtungen, die während Phase 80 aufgefallen
-  sind und zusammen sauber in den Command-Router passen.
-- **Phase 81 (Punkt 7)**: Wenn das LLM auch nach Retry kein Command
-  aus dem User-Text findet, bekommt der User eine kurze Erklärung
-  statt Schweigen ("Ich habe das als Befehl verstanden, konnte ihn
-  aber keinem meiner Commands zuordnen — Tipp `hilfe` für die
-  Übersicht."). Ohne diesen Hook landete der User in einer stillen
-  Sackgasse.
-- **Phase 81b**: Der Fallback-Pfad ruft zusätzlich die Phase-78-Pipeline
-  (`IntentAggregator`) auf, um einen Plugin-Vorschlag anzulegen.
-  Aggregator filtert selbst (Smalltalk, confidence<0.7, abgelehnt nur
-  Trigger-Zähler). Zusätzlicher `is_rejected`-Check vorab, damit der
-  User nicht über bereits abgelehnte Features informiert wird. Bei
-  erfolgreichem Vorschlag ergänzt Saleria im User-Feedback "Ich habe
-  Marcus eine Notiz hinterlassen — wenn das öfter vorkommt, kümmert
-  er sich darum."
-- **Tests**: `tests/test_message_handlers.py` (3 neue Tests:
-  User-Feedback-Pfad, Aggregator-Trigger, Notiz-Hinweis-Bedingung) +
-  `tests/test_intent_aggregator.py::is_rejected`-Helper-Tests.
-- **Files**: `src/elder_berry/comms/message_handlers.py` (Z. ~1362,
-  ~1572), `src/elder_berry/tools/intent_aggregator.py` (`is_rejected`).
-- **Suite**: 5418 Tests collected (Stand 2026-05-10).
-
-## Phase 76 – mypy --strict für `core/` 🔍 ✅ ABGESCHLOSSEN
-
-- **Trigger**: Erster Tier-Rollout aus dem mypy-Konzept (Phase 75).
-  `core/` als Tier 1 ist das kleinste Paket mit den meisten
-  Querverbindungen → schmerzhafte Typ-Drift früh fangen.
-- **Etappen 1-4** (2026-05-01): Tier-1 strict (Setup + 3 Module),
-  Tier-2 strict (3 Module), Out-of-Scope-Pakete silencen, Tier-3
-  strict (6 Module), Tier-4 strict (4 Module) + Gate hart. 14 Module
-  insgesamt. CI-Workflow `.github/workflows/mypy-strict.yml` ergänzt.
-- **Tests**: keine Suite-Änderung — mypy ist statische Prüfung.
-- **Branch**: `feature/phase-76-mypy-strict-core` (Etappen einzeln gemergt).
-
-## Phase 76b – mypy --strict für `comms/` 🔍 ✅ ABGESCHLOSSEN
-
-- **Trigger**: Zweiter Tier-Rollout nach 76 + 76c. `comms/` mit den
-  Plugin-Handlern ist am komplexesten (TYPE_CHECKING-Pattern, viele
-  zirkuläre Imports).
-- **Etappen 0-5** (2026-05-04 bis -05): Setup, Tier 1 (Stores +
-  Schedulers), Tier 2 (Helper), Tier 3 (Bridge-Infra), Tier 4a (alle
-  24 Command-Handler), Tier 4b (Infrastruktur: `bridge.py`,
-  `claude_agent.py`, ...), Tier 5 + CI-Gate.
-- **Hotfix Etappe 5** (2026-05-05): Plattform-Differenz Linux/Windows
-  in `multiprocessing`-Typing. Fix per `if sys.platform == "win32"`-Guards.
-- **Branch**: `feature/phase-76b-mypy-strict-comms`.
-
-## Phase 76c – mypy --strict für `tools/` + `web/` 🔍 ✅ ABGESCHLOSSEN
-
-- **Trigger**: Parallel zu 76b — `tools/` (47 Module) und `web/` als
-  größte Pakete.
-- **Etappen 0-5** (2026-05-02 bis -04): Setup, Tier 1-3 stufenweise,
-  Tier 4 plus Sonderbehandlung für große Module (Etappe 4b), Tier 5
-  + CI-Gate.
-- **Branch**: `feature/phase-76c-mypy-strict-tools-web`.
-
-## Phase 77 – Commands-Plugin-Registry 🧩 ✅ ABGESCHLOSSEN
-
-- **Trigger**: Konzept aus Phase 75 — Command-Handler als Plugins
-  ladbar (Builtin / User-Dir / Entry-Points), damit Selbst-Erweiterung
-  ohne Repo-Edit möglich ist.
-- **Etappe 1** (2026-05-04): `CommandPlugin`-Manifest +
-  `HandlerContext`-Service-Container in `base.py`. 3 Pilot-Handler
-  (weather, todo, note).
-- **Etappe 2** (2026-05-04): Migration der 20 verbleibenden Handler.
-- **Etappe 3** (2026-05-04): `PluginRegistry` mit Discovery aus 3
-  Quellen, Conflict-Detector als CI-Gate
-  (`tests/test_plugin_pattern_conflicts.py`), Generator-Wizard
-  (`scripts/generate_plugin.py`).
-- **Voraussetzung**: Phase 76 + 76c.
-- **Branch**: `feature/phase-77-plugin-registry`.
-
-## Phase 77.5 – Plugin-Inspector 🔬 ✅ ABGESCHLOSSEN
-
-- **Trigger**: Vorbedingung für Phase 78 (Self-Suggestion soll wissen,
-  welche Plugins von welcher Quelle aktiv sind).
-- **Maßnahme** (2026-05-05): Registry-Loader liefern intern
-  `LoadedPlugin`-Wrapper mit Quellen-Information. Neues `plugins`-
-  Builtin-Plugin (24. Builtin) und Dashboard-Modul für Plugin-Inspector
-  (`web.plugins_api`).
-- **Branch**: `feature/phase-77-5-plugin-inspector`.
-
-## Phase 78 – Plugin-Self-Suggestion 💡 ✅ ABGESCHLOSSEN
-
-- **Trigger**: Saleria soll Capability-Lücken systematisch sammeln,
-  statt dass Lera sie aus Chat-Verläufen herausklauben muss.
-- **R1-Guard** (Konzept §6 R1): kein `.py`-Drop, kein
-  Filesystem-Schreiben, kein Sandbox-Lint. Manuelle Implementierung
-  durch Maintainer.
-- **Etappe 1** (2026-05-07): `tools.proposal_store.ProposalStore` —
-  SQLite + FTS5, Dedupe-Suche, persistent.
-- **Etappe 2** (2026-05-07): `comms.proposal_notifier` +
-  `tools.intent_aggregator` — Trigger-Pipeline aus dem LLM-Fallback,
-  Smalltalk-Filter, confidence>=0.7.
-- **Etappe 3** (2026-05-08): Dashboard-Modul + `web.proposals_api`.
-  Status-Workflow `new` -> `reviewed` -> `implemented`/`rejected`.
-- **Hotfixes** (2026-05-08): CI-Fail bleach/markdown-it-Versionen,
-  `deploy_dashboard.sh` mit Auto-Substitution.
-- **Branch**: `feature/phase-78-plugin-self-suggestion`.
-
-## Phase 79 – Richer Pseudocode für Vorschläge ⏸️ ON HOLD
-
-- **Auftrag (2026-05-10)**: Bewertung "Phase 79 jetzt nicht gebraucht"
-  als Konzept-Datei festhalten — als ON HOLD mit hartem Trigger.
-- **Trigger** (Konzept §2.2): 5 Vorschläge in DB, 3 davon
-  implementiert, pro Vorschlag dokumentierte Spec-Lücke.
-- **Selbst-Verpflichtung** (Konzept §2.3): nach 6 Monaten ohne
-  erfüllten Trigger -> Phase VERWORFEN. Schutz gegen ewiges Offenhalten.
-- **Konzept**: `docs/concepts/phase-79-richer-pseudocode.md`.
-
-## Phase 80 – ConversationListStore + list_pick 🧷 ✅ ABGESCHLOSSEN
-
-- **Trigger**: LLM halluzinierte URLs und Mail-IDs in Folge-Befehlen.
-  Lösung: Listen serverseitig vorhalten, LLM bekommt nur den Index.
-- **Etappe 1** (2026-05-08): `tools.conversation_list_store.
-  ConversationListStore` — in-memory, TTL=1h, eine aktive Liste pro
-  `(user_id, list_type)`. Lazy Eviction. Thread-safe.
-- **Etappe 2** (2026-05-08): `web_search`-Integration + erstes
-  `list_pick`-Tool im LLM-Schema.
-- **Etappe 3** (2026-05-09): List-Types `mail_inbox`, `note_search`.
-  Codex-Reviewer-Findings ausgeräumt (`mail_by_id`-Reroute).
-- **Tests**: `tests/test_conversation_list_store.py` + Integrations-
-  Tests pro List-Type.
-- **Merge**: 3 PRs sequenziell auf main.
-- **Branch**: `feature/phase-80-conversation-list-store-*`.
-
-## Phase 81 + 81b – Command-Fallback-UX + Self-Suggestion-Hook 🔁 ✅ ABGESCHLOSSEN
-
-- **Trigger**: Zwei UX-Härtungen während Phase 80.
-- **Phase 81 (Punkt 7)**: Wenn das LLM auch nach Retry kein Command
-  findet, bekommt der User eine kurze Erklärung statt Schweigen
-  ("Ich habe das als Befehl verstanden, konnte ihn aber keinem
-  Command zuordnen — Tipp `hilfe`.").
-- **Phase 81b**: Der Fallback-Pfad legt zusätzlich einen
-  Plugin-Vorschlag über die Phase-78-Pipeline an. `is_rejected`-Check
-  vorab, damit der User nicht über bereits abgelehnte Features
-  informiert wird. Bei Erfolg: "Ich habe Marcus eine Notiz
-  hinterlassen — wenn das öfter vorkommt, kümmert er sich darum."
-- **Files**: `src/elder_berry/comms/message_handlers.py` (Z. ~1362,
-  ~1572), `src/elder_berry/tools/intent_aggregator.py` (`is_rejected`).
-- **Tests**: `tests/test_message_handlers.py` (3 neue Tests) +
-  `is_rejected`-Helper-Tests in `tests/test_intent_aggregator.py`.
-- **Suite**: 5418 Tests collected (Stand 2026-05-10).
+- Key-Value-Fakten aus `NoteStore` in eigenen `FactStore` extrahiert.
+- Notiz-Commands auf Nextcloud Notes ausgerichtet; Fakten bleiben lokal in SQLite.
+- Notiz-Listen-Vorschau nutzt Content statt Platzhalter-Titel („Neue Notiz“).
 
 ## Phase 92 – Multi-Stop-Routing 🗺️ KONZEPT
 
-- **Trigger**: User-Request – Routen mit mehreren Stops planen, Reihenfolge
-  optimieren, POIs entlang der Route finden (z.B. "nach Leipzig Hbf,
-  vorher Lisa und Andrea abholen, auf dem Weg bei Kaufland einkaufen").
-- **Architektur**: `GoogleMapsRoutePlanner` (konkrete Klasse, Google
-  Directions + Places API v1 "Search Along Route"), `MapsLinkBuilder`
-  (provider-unabhängige Util für Google-Maps-Deep-Link), `RouteIntentParser`
-  (Pattern-Vorfilter + Claude-Sonnet-Tool-Call mit JSON-Schema),
-  `MultiStopRouteCommandHandler` mit Plugin-Pattern (priority=80,
-  fallthrough zu Single-Stop bei priority=76).
-- **Kein RouteProvider-Interface (bewusst)**: Datenschutz-Gewinn durch
-  OSM = null wegen Google-Maps-Deep-Link am Ende, Kosten ~$1/Jahr
-  amortisieren keinen Aufwand, Self-Hosting-Stack wäre Sicherheitsrisiko.
-  YAGNI bis konkreter Trigger (Phase 92.3).
-- **Disambiguierung**: Sequenziell mit nummerierten Listen, Zustand in
-  `PendingConfirmationStore` (`action_type="route_disambig"`).
-  Handler-eigener Zahl-Antwort-Vorcheck — `PendingConfirmationStore` selbst
-  bleibt unverändert.
-- **Phase 43-Single-Stop bleibt unangetastet**. Existierender Bug im
-  `RouteCommandHandler._resolve_address()` (immer `results[0]` ohne
-  Mehrdeutigkeits-Check) explizit aus Phase 92 ausgeschlossen –
-  separater Bugfix-Branch.
-- **Konzept**: `docs/concepts/phase-92-multi-stop-routing.md`.
-- **Etappen**: E1 (Konzept) abgeschlossen 2026-05-13.
-  E2–E5 (Implementierung) in eigenen Folge-Chats.
-- **Branches**: `feature/phase-92-multi-stop-routing-concept` (initial,
-  gemerged via PR #231), `feature/phase-92-concept-refactor-drop-osm-abstraction`
-  (Refactor nach Datenschutz-/Kosten-/Sicherheits-Analyse).
+- Konzept für Routen mit mehreren Stops, Disambiguierung und Along-Route-POIs.
+- Phase 43 (Single-Stop) bleibt bewusst unangetastet.
+- Siehe `docs/concepts/phase-92-multi-stop-routing.md`.

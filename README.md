@@ -38,7 +38,7 @@ Hologramm-Display in einem 3D-gedruckten Holunder-Baumstamm-Gehäuse.
 - **Wetter**: Aktuell, Morgen, Woche (Open-Meteo, kostenlos)
 - **Timer & Erinnerungen**: Einmalig und wiederkehrend (täglich, wöchentlich, monatlich)
 - **Briefing**: Tagesübersicht um 07:30 (Wetter + Termine + Erinnerungen + Todos + Geburtstage)
-- **Notizen**: Fakten-Speicher + Freitext mit Volltextsuche (SQLite + FTS5)
+- **Notizen & Fakten**: Fakten lokal im `FactStore` (SQLite), Freitext-Notizen über Nextcloud Notes (inkl. Suche/Kategorien)
 - **Web-Suche**: Brave Search API + LLM-Aufbereitung der Ergebnisse
 - **Dokumente**: PDF/TXT zusammenfassen, Dokument-Ablage mit Auto-Klassifikation (Nextcloud)
 - **Routenplanung**: Google Maps Directions API, Kontakt-Adressen, Abfahrtszeit-Berechnung
@@ -126,7 +126,7 @@ siehe **[docs/INSTALLATION.md](docs/INSTALLATION.md)**.
 | **[rpi5_setup.md](docs/rpi5_setup.md)** | RPi5-spezifische Einrichtung (Avatar, Drehteller, Kamera) |
 | **[matrix_setup.md](docs/matrix_setup.md)** | Synapse Matrix-Server Setup (Plesk/Docker) |
 | **[ssh-tunnel.md](docs/ssh-tunnel.md)** | SSH Reverse Tunnels (Tower + RPi5 → Rootserver) |
-| **[PROJECT_ROADMAP.md](docs/PROJECT_ROADMAP.md)** | Vollständige Roadmap (Phase 1–61) |
+| **[PROJECT_ROADMAP.md](docs/PROJECT_ROADMAP.md)** | Vollständige Roadmap (aktuelle Phasen inkl. Konzept-/ON-HOLD-Stränge) |
 
 ## Architektur (Kurzfassung)
 
@@ -186,9 +186,10 @@ Detaillierte Architektur mit allen Klassen und Patterns: **[architecture.md](doc
 pytest tests/ -q
 ```
 
-5418 Tests in ~160 Testdateien (Stand Phase 81). CI fährt zusätzlich
-`mypy --strict` für `core/`, `comms/`, `tools/` und `web/` (Phasen 76,
-76b, 76c).
+Aktuell >170 Testdateien im `tests/`-Verzeichnis. CI läuft mit vier
+Gates: `test` (Ubuntu+Windows, inkl. Coverage), `lint` (ruff), `typecheck`
+(`mypy --strict` für `core/`, `comms/`, `tools/`, `web`) und `security`
+(`pip-audit`).
 
 ## Roadmap (Auszug)
 
@@ -227,6 +228,13 @@ pytest tests/ -q
 | 79 | Richer Pseudocode für Vorschläge | ⏸️ ON HOLD |
 | 80 | ConversationListStore + list_pick (web_search/mail_inbox/note_search) | ✅ Fertig |
 | 81 + 81b | Command-Fallback-UX + Plugin-Vorschlag aus Fallback-Pfad | ✅ Fertig |
+| 82 + 82.1 | Multi-Action-Sequencing + Multi-Line-in-Step | ✅ Fertig |
+| 83 | Reactive AvatarEngine | 🔬 Konzept |
+| 85 + 86 + 87.B | HTML-Mail-Sanitizer, tinycss2-Resolver, Background-Heuristik | ✅ Fertig |
+| 89 | Saleria-Initiativ-Followup | 🔬 Konzept |
+| 90 | Multi-Line-Notiz-Pattern + Halluzinations-Vermeidung | 🧪 Teilweise umgesetzt |
+| 91 | FactStore-Extraktion + Note-Flow-Refactor | ✅ Fertig |
+| 92 | Multi-Stop-Routing | 🔬 Konzept |
 
 Vollständige Roadmap mit Details: **[PROJECT_ROADMAP.md](docs/PROJECT_ROADMAP.md)**
 Phasenchronik mit Beschreibungen: **[CHANGELOG.md](docs/CHANGELOG.md)**
