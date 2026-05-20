@@ -594,3 +594,169 @@ class TestParseComputerUseResponse:
 
         with pytest.raises(RuntimeError, match="Keine Aktion"):
             AnthropicClient._parse_computer_use_response(resp)
+
+
+# ---------------------------------------------------------------------------
+# tool_call (Phase 92)
+# ---------------------------------------------------------------------------
+
+
+class TestToolCall:
+    @requires_anthropic
+    def test_returns_tool_input(self) -> None:
+        client = _make_client()
+        sdk = _inject_sdk_mock(client)
+        block = MagicMock()
+        block.type = "tool_use"
+        block.input = {"destination": {"type": "contact", "value": "Lisa"}}
+        resp = MagicMock()
+        resp.content = [block]
+        sdk.messages.create.return_value = resp
+
+        result = client.tool_call(
+            prompt="Fahrt zu Lisa",
+            tool={"name": "extract", "description": "x", "input_schema": {}},
+        )
+        assert result == {"destination": {"type": "contact", "value": "Lisa"}}
+
+    @requires_anthropic
+    def test_passes_tool_choice(self) -> None:
+        client = _make_client()
+        sdk = _inject_sdk_mock(client)
+        block = MagicMock()
+        block.type = "tool_use"
+        block.input = {}
+        sdk.messages.create.return_value = MagicMock(content=[block])
+
+        client.tool_call(
+            prompt="x",
+            tool={"name": "my_tool", "description": "", "input_schema": {}},
+        )
+        _, kwargs = sdk.messages.create.call_args
+        assert kwargs["tool_choice"] == {"type": "tool", "name": "my_tool"}
+        assert kwargs["tools"][0]["name"] == "my_tool"
+
+    @requires_anthropic
+    def test_passes_system_prompt_when_set(self) -> None:
+        client = _make_client()
+        sdk = _inject_sdk_mock(client)
+        block = MagicMock()
+        block.type = "tool_use"
+        block.input = {}
+        sdk.messages.create.return_value = MagicMock(content=[block])
+
+        client.tool_call(
+            prompt="x",
+            tool={"name": "t", "description": "", "input_schema": {}},
+            system="be precise",
+        )
+        _, kwargs = sdk.messages.create.call_args
+        assert kwargs["system"] == "be precise"
+
+    @requires_anthropic
+    def test_omits_system_when_empty(self) -> None:
+        client = _make_client()
+        sdk = _inject_sdk_mock(client)
+        block = MagicMock()
+        block.type = "tool_use"
+        block.input = {}
+        sdk.messages.create.return_value = MagicMock(content=[block])
+
+        client.tool_call(
+            prompt="x",
+            tool={"name": "t", "description": "", "input_schema": {}},
+        )
+        _, kwargs = sdk.messages.create.call_args
+        assert "system" not in kwargs
+
+    @requires_anthropic
+    def test_max_tokens_passed(self) -> None:
+        client = _make_client()
+        sdk = _inject_sdk_mock(client)
+        block = MagicMock()
+        block.type = "tool_use"
+        block.input = {}
+        sdk.messages.create.return_value = MagicMock(content=[block])
+
+        client.tool_call(
+            prompt="x",
+            tool={"name": "t", "description": "", "input_schema": {}},
+            max_tokens=256,
+        )
+        _, kwargs = sdk.messages.create.call_args
+        assert kwargs["max_tokens"] == 256
+
+    @requires_anthropic
+    def test_no_tool_use_block_raises(self) -> None:
+        client = _make_client()
+        sdk = _inject_sdk_mock(client)
+        block = MagicMock()
+        block.type = "text"  # nicht tool_use
+        sdk.messages.create.return_value = MagicMock(content=[block])
+
+        with pytest.raises(RuntimeError, match="tool_use"):
+            client.tool_call(
+                prompt="x",
+                tool={"name": "t", "description": "", "input_schema": {}},
+            )
+
+    def test_raises_without_key(self) -> None:
+        client = _make_client()
+        client._api_key = None
+        with pytest.raises(RuntimeError, match="ANTHROPIC_API_KEY"):
+            client.tool_call(
+                prompt="x",
+                tool={"name": "t", "description": "", "input_schema": {}},
+            )
+
+    @requires_anthropic
+    def test_api_status_error(self) -> None:
+        import anthropic
+
+        client = _make_client()
+        sdk = _inject_sdk_mock(client)
+        sdk.messages.create.side_effect = anthropic.APIStatusError(
+            "boom",
+            response=MagicMock(status_code=500),
+            body={},
+        )
+        with pytest.raises(RuntimeError, match="Anthropic API-Fehler"):
+            client.tool_call(
+                prompt="x",
+                tool={"name": "t", "description": "", "input_schema": {}},
+            )
+
+    @requires_anthropic
+    def test_api_connection_error(self) -> None:
+        import anthropic
+
+        client = _make_client()
+        sdk = _inject_sdk_mock(client)
+        sdk.messages.create.side_effect = anthropic.APIConnectionError(
+            request=MagicMock(),
+        )
+        with pytest.raises(RuntimeError, match="nicht erreichbar"):
+            client.tool_call(
+                prompt="x",
+                tool={"name": "t", "description": "", "input_schema": {}},
+            )
+
+    @requires_anthropic
+    def test_rate_limit_error(self) -> None:
+        """RateLimitError ist Subklasse von APIStatusError und wird
+        dort gefangen -- aber die Codepath-Coverage will den
+        expliziten except-Branch."""
+        import anthropic
+
+        client = _make_client()
+        sdk = _inject_sdk_mock(client)
+        sdk.messages.create.side_effect = anthropic.RateLimitError(
+            "rate limited",
+            response=MagicMock(status_code=429),
+            body={},
+        )
+        with pytest.raises(RuntimeError, match="Anthropic API-Fehler"):
+            client.tool_call(
+                prompt="x",
+                tool={"name": "t", "description": "", "input_schema": {}},
+            )

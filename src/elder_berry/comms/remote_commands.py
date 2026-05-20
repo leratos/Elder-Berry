@@ -84,7 +84,11 @@ if TYPE_CHECKING:
     from elder_berry.tools.document_classifier import DocumentClassifier
     from elder_berry.tools.stirling_pdf import StirlingPDFClient
     from elder_berry.core.tower_agent import TowerAgent
+    from elder_berry.tools.google_maps_route_planner import (
+        GoogleMapsRoutePlanner,
+    )
     from elder_berry.tools.route_planner import RoutePlanner
+    from elder_berry.tools.route_session_store import RouteSessionStore
     from elder_berry.tools.web_fetcher import WebFetcher
 
 logger = logging.getLogger(__name__)
@@ -288,6 +292,8 @@ class RemoteCommandHandler:
         document_classifier: DocumentClassifier | None = None,
         carddav_sync: CardDAVSyncClient | None = None,
         route_planner: RoutePlanner | None = None,
+        multi_stop_route_planner: GoogleMapsRoutePlanner | None = None,
+        route_session_store: RouteSessionStore | None = None,
         pending_store: PendingConfirmationStore | None = None,
         default_user_id: str = "",
         tower_agent: TowerAgent | None = None,
@@ -325,6 +331,8 @@ class RemoteCommandHandler:
                 document_classifier=document_classifier,
                 stirling_pdf=stirling_pdf,
                 route_planner=route_planner,
+                multi_stop_route_planner=multi_stop_route_planner,
+                route_session_store=route_session_store,
                 web_fetcher=web_fetcher,
                 search_client=search_client,
                 document_reader=document_reader,
@@ -371,6 +379,19 @@ class RemoteCommandHandler:
         global KEYWORD_MAP
         KEYWORD_MAP.clear()
         KEYWORD_MAP.update(self.keyword_map)
+
+    def get_handler(self, plugin_name: str) -> CommandHandler | None:
+        """Liefert die Handler-Instanz fuer einen Plugin-Namen oder None.
+
+        Plugin-Namen sind die ``name``-Felder aus den CommandPlugin-
+        Manifests (z.B. ``"multi_stop_route"``). Wird vom Phase-92-
+        list_pick-Dispatch genutzt, um die Pick-Antwort an den passenden
+        Handler weiterzureichen, ohne pseudo-Command-Strings zu bauen.
+        """
+        attr = getattr(self, f"_{plugin_name}", None)
+        if isinstance(attr, CommandHandler):
+            return attr
+        return None
 
     def validate_help_text(self) -> list[str]:
         """Prüft ob HELP_TEXT und Handler-Registrierung synchron sind.

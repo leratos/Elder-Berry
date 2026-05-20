@@ -30,6 +30,7 @@ from elder_berry.comms.commands.registry import (
 
 # Etappe 2: alle Builtin-Plugins muessen geladen werden.
 # Phase 77.5: PluginsCommandHandler dazu -> 24 Plugins.
+# Phase 92: MultiStopRouteCommandHandler -> 25 Plugins.
 EXPECTED_PLUGIN_NAMES = {
     "system",
     "weather",
@@ -53,6 +54,7 @@ EXPECTED_PLUGIN_NAMES = {
     "contact",
     "todo",
     "route",
+    "multi_stop_route",
     "plugins",
     "advanced",
 }

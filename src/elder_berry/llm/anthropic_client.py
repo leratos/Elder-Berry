@@ -123,6 +123,70 @@ class AnthropicClient(LLMClient):
         except _anthropic.RateLimitError as e:
             raise RuntimeError(f"Anthropic Rate-Limit erreicht: {e}") from e
 
+    def tool_call(
+        self,
+        prompt: str,
+        tool: dict,
+        system: str = "",
+        max_tokens: int = 1024,
+    ) -> dict:
+        """Erzwingt einen Tool-Use-Call und gibt das ``tool_input`` zurueck.
+
+        Phase 92: vom RouteIntentParser genutzt, um Multi-Stop-Anfragen
+        in ein strukturiertes Schema zu zwingen (kein Freitext-Roundtrip,
+        kein Hallucinations-Risiko). Bewusst generisch -- jeder Caller,
+        der eine schema-getreue Antwort braucht, kann das Tool als Dict
+        uebergeben und kriegt das geparste Input-Dict zurueck.
+
+        Args:
+            prompt: User-Prompt.
+            tool: Tool-Definition (Dict mit ``name``, ``description``,
+                ``input_schema``).
+            system: Optionaler System-Prompt.
+            max_tokens: Cap fuer die Antwort. Tool-Calls brauchen normaler-
+                weise wenig, Default 1024.
+
+        Returns:
+            Das ``input``-Dict des Tool-Use-Blocks. Anthropic erzwingt
+            das Schema serverseitig via ``tool_choice``, der Caller
+            darf dem trauen.
+
+        Raises:
+            RuntimeError: Bei API-Fehlern oder wenn die Antwort keinen
+                Tool-Use-Block enthielt (sollte mit ``tool_choice`` nie
+                passieren, aber defensiv geprueft).
+        """
+        self._check_available()
+
+        kwargs: dict = {
+            "model": self.model,
+            "max_tokens": max_tokens,
+            "messages": [{"role": "user", "content": prompt}],
+            "tools": [tool],
+            "tool_choice": {"type": "tool", "name": tool["name"]},
+        }
+        if system:
+            kwargs["system"] = system
+
+        try:
+            msg = self._get_client().messages.create(**kwargs)
+        except _anthropic.APIStatusError as e:
+            raise RuntimeError(
+                f"Anthropic API-Fehler: {e.status_code} – {e.message}"
+            ) from e
+        except _anthropic.APIConnectionError as e:
+            raise RuntimeError(f"Anthropic nicht erreichbar: {e}") from e
+        except _anthropic.RateLimitError as e:
+            raise RuntimeError(f"Anthropic Rate-Limit erreicht: {e}") from e
+
+        for block in msg.content:
+            if getattr(block, "type", None) == "tool_use":
+                # SDK liefert input als Dict zurueck.
+                return dict(block.input)
+        raise RuntimeError(
+            f"Anthropic-Antwort enthielt keinen tool_use-Block fuer '{tool['name']}'",
+        )
+
     def describe_image(
         self,
         image_base64: str,

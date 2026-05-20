@@ -14,7 +14,6 @@ from __future__ import annotations
 
 import logging
 import re
-from dataclasses import dataclass
 from datetime import datetime, timedelta
 from typing import TYPE_CHECKING
 
@@ -25,29 +24,23 @@ from elder_berry.comms.commands.base import (
     HandlerContext,
     user_friendly_error,
 )
+from elder_berry.tools.contact_address_resolver import (
+    AddressResolution,
+    HOME_SYNONYMS,
+    is_home_synonym,
+    resolve_contact_address,
+)
 
 if TYPE_CHECKING:
     from elder_berry.tools.contact_store import ContactStore
     from elder_berry.tools.route_planner import RoutePlanner
 
 
-@dataclass(frozen=True)
-class _AddressResolution:
-    """Ergebnis einer Kontakt-/Adressauflösung fuer den RouteHandler.
-
-    Macht Mehrdeutigkeit explizit -- ohne diese Struktur wuerde der
-    Handler bei mehreren gleichnamigen Kontakten still ``results[0]``
-    nehmen und zum falschen Kontakt fahren (Phase 92-Konzept §
-    "Kritischer Bugfix-Hinweis").
-    """
-
-    address: str | None = None
-    """Aufgeloeste Adresse, oder None wenn nicht eindeutig auflösbar
-    (kein Treffer / kein Adressfeld / Mehrdeutigkeit)."""
-
-    ambiguous_matches: tuple[str, ...] = ()
-    """Bei mehreren Treffern: Namen der Kandidaten fuer die Matrix-
-    Rueckfrage. Leer bei eindeutigem Treffer oder Miss."""
+# Phase 92 (E0): Resolver in tools/contact_address_resolver.py
+# ausgegliedert, damit der Multi-Stop-Handler die gleiche Logik nutzen
+# kann. ``_AddressResolution`` (alt) heisst jetzt
+# ``AddressResolution`` (oeffentlich) -- Alias bleibt fuer Klarheit.
+_AddressResolution = AddressResolution
 
 
 logger = logging.getLogger(__name__)
@@ -256,8 +249,7 @@ class RouteCommandHandler(CommandHandler):
         dest_addr = dest_res.address
 
         if not origin_addr:
-            is_home = origin_name is None or origin_name.lower() in self._HOME_SYNONYMS
-            if is_home:
+            if is_home_synonym(origin_name):
                 return CommandResult(
                     command=command,
                     success=True,
@@ -331,61 +323,21 @@ class RouteCommandHandler(CommandHandler):
     # Hilfsmethoden
     # ------------------------------------------------------------------
 
-    # Synonyme für "von mir" / "von zuhause" → Home-Lookup
-    _HOME_SYNONYMS = {"mir", "zuhause", "daheim", "home", "zu hause", "meiner"}
-
-    # Heuristik: enthält Ziffern + mindestens ein Wort → wahrscheinlich
-    # eine direkte Adresse, kein Kontaktname
-    _ADDRESS_PATTERN = re.compile(
-        r"\d+.*[a-zA-ZäöüÄÖÜß]|[a-zA-ZäöüÄÖÜß].*\d+",
-    )
+    # Phase 92 (E0): Synonyme + Address-Pattern leben jetzt in
+    # ``contact_address_resolver``. Aliase fuer bestehende Tests, die
+    # ``handler._HOME_SYNONYMS`` referenzieren.
+    _HOME_SYNONYMS = HOME_SYNONYMS
 
     def _resolve_contact(self, name: str | None) -> _AddressResolution:
-        """Kontaktname oder direkte Adresse mit Mehrdeutigkeits-Check.
+        """Duenner Forwarder auf ``resolve_contact_address``.
 
-        - ``None`` oder Home-Synonym → Home-Kontakt (Gruppe 'home').
-          Multi-Home-Setups sind nicht vorgesehen; der erste Treffer
-          wird genutzt (Single-User-Konvention).
-        - Eingabe mit Ziffern (Hausnummer/PLZ) → direkte Adresse.
-        - Kontaktname → ContactStore-Suche. Bei mehreren Treffern
-          ohne exakten Namensgleichstand: ``ambiguous_matches`` setzen
-          statt blind ``results[0]`` zurueckzugeben.
+        Phase 92 (E0): die Logik lebt in ``contact_address_resolver``;
+        der Handler reicht nur den ContactStore + default_user_id durch.
+        Bleibt als Methode bestehen, damit Tests (private Inspektion in
+        ``TestResolveContact``) und Sub-Handler weiterhin denselben
+        Aufruf nutzen koennen.
         """
-        if name is None or name.lower() in self._HOME_SYNONYMS:
-            homes = self._contacts.find_by_group(
-                self._default_user_id,
-                "home",
-            )
-            if homes:
-                return _AddressResolution(address=homes[0].address or None)
-            return _AddressResolution()
-
-        # Anführungszeichen entfernen (User schreibt "Am Brendegraben 21")
-        cleaned = name.strip().strip('"').strip("'").strip()
-
-        # Direkte Adresse? (enthält Ziffern → Hausnummer oder PLZ)
-        if self._ADDRESS_PATTERN.search(cleaned):
-            return _AddressResolution(address=cleaned)
-
-        # Kontaktname → ContactStore
-        results = self._contacts.search(self._default_user_id, name)
-        if not results:
-            return _AddressResolution()
-
-        if len(results) > 1:
-            # Mehrere Treffer -- nur eindeutig wenn GENAU EIN Kontakt
-            # den eingegebenen Namen exakt traegt (case-insensitiv).
-            # Sonst Rueckfrage statt zum falschen Kontakt fahren.
-            query_folded = name.casefold()
-            exact = [c for c in results if c.name.casefold() == query_folded]
-            if len(exact) == 1:
-                return _AddressResolution(address=exact[0].address or None)
-            return _AddressResolution(
-                ambiguous_matches=tuple(c.name for c in results[:5]),
-            )
-
-        contact = results[0]
-        return _AddressResolution(address=contact.address or None)
+        return resolve_contact_address(self._contacts, self._default_user_id, name)
 
     @staticmethod
     def _ambiguous_response(

@@ -1,0 +1,53 @@
+Phase 93 – NextcloudCookbookClient (Integration)
+Voraussetzung: Cookbook-Smoke-Test positiv (UI taugt, API liefert sauber)
+Ziel
+Saleria kann Rezepte aus Nextcloud Cookbook lesen, suchen und neue Rezepte speichern. Cache-Layer via ChromaDB-Embeddings für semantische Suche vor LLM-Fallback.
+Architektur
+Neue Klassen:
+
+NextcloudCookbookClient (src/elder_berry/tools/nextcloud_cookbook_client.py)
+
+Lesen via REST-API (GET /api/v1/recipes, /search/{query}, /recipes/{id})
+Schreiben via WebDAV (JSON-Datei in /Recipes/) + anschließendes POST /api/v1/reindex
+Basic Auth über bestehende Nextcloud-Credentials aus secrets.yaml
+Reconnect-Wrapper für SSL-Caching-Pattern (bekannte Stack-Falle)
+
+
+RecipeCommandHandler (src/elder_berry/comms/commands/recipe_command_handler.py)
+
+Erbt von CommandHandler ABC
+Pattern-Trigger: ^(rezept|kochbuch|wie mache ich|cocktail)
+Flow:
+
+Semantische Suche in ChromaDB-Collection recipes (Schwelle z.B. > 0.82)
+Hit → Rezept aus Cookbook abrufen und ausgeben
+Miss → Claude-Sonnet generiert Rezept im schema.org/Recipe-JSON-Format
+Generiertes Rezept wird über PendingConfirmationStore zum Speichern angeboten
+Bestätigung → WebDAV-Upload + Reindex + ChromaDB-Embedding hinzufügen
+
+
+
+
+
+Neue ChromaDB-Collection: recipes (768-dim, nomic-embed-text), Inhalt: Titel + Kategorie + Hauptzutaten
+Out of Scope (explizit)
+
+Eigene UI – Cookbook-Web-UI bleibt Frontend zum Kochen
+Einkaufslisten-Generierung (eigene Phase nach Tasks-Migration)
+Mengen-Skalierung (macht Cookbook-UI selbst, Slider)
+Cocktails als separates Schema (erstmal als „Recipe" mit Kategorie „Cocktail")
+
+Tests
+
+tests/tools/test_nextcloud_cookbook_client.py – API-Mock, WebDAV-Mock, Reindex-Aufruf
+tests/comms/commands/test_recipe_command_handler.py – Hit/Miss-Logik, Confirmation-Flow
+
+Risiken / offene Fragen
+
+Cookbook-POST-Bug umgangen durch WebDAV-Strategie → muss Smoke-Test bestätigen
+Cocktails ohne Glas-/Technik-Felder → Workaround: Freitext im recipeInstructions
+Was passiert wenn Reindex fehlschlägt? → Retry mit Backoff, Logging
+Bilder zu Rezepten: erstmal nicht, später optional
+
+Geschätzter Aufwand
+1-2 Wochen, ein Branch: feature/phase-93-cookbook-integration
