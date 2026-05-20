@@ -174,6 +174,13 @@ class TestRegistration:
         assert "merk dir" in handler.keywords["note_set_fact"]
         assert "speicher dir" in handler.keywords["note_set_fact"]
 
+    def test_keyword_speichere_excluded_avoid_collision(self, handler):
+        """Regression-Guard: das einzelne Keyword 'speichere' ist zu
+        generisch und schluckt 'speichere es als Notiz' -- wurde
+        deshalb entfernt. Die spezifischen Varianten 'speicher dir' /
+        'merk dir' decken den Fakt-Pfad ausreichend ab."""
+        assert "speichere" not in handler.keywords["note_set_fact"]
+
     def test_keywords_note_add(self, handler):
         assert "notiz:" in handler.keywords["note_add"]
         assert "notiere" in handler.keywords["note_add"]
