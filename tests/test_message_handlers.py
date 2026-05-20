@@ -1879,3 +1879,179 @@ class TestMailByIdRerouteToListPick:
             assert remote_commands.execute.call_count == 1
 
         run_async(_test())
+
+
+# ---------------------------------------------------------------------------
+# Phase 92: route_contact_pick / route_poi_pick -> MultiStop-Handler-Dispatch
+# ---------------------------------------------------------------------------
+
+
+class TestDispatchRoutePick:
+    """``_dispatch_route_pick`` reicht das Item an den Multi-Stop-Handler
+    durch. Coverage-Gap aus dem Phase-92-PR-Review."""
+
+    @staticmethod
+    def _make_pick_result(list_type: str, index: int) -> MagicMock:
+        result = MagicMock()
+        result.response = ""
+        result.action_executed = "list_pick"
+        result.action_success = True
+        result.audio_path = None
+        result.plugin_candidate = None
+        result.action_params = {"list_type": list_type, "index": index}
+        return result
+
+    def test_route_contact_pick_calls_handler(
+        self,
+        handler_with_lists,
+        channel,
+        assistant,
+        remote_commands,
+        conversation_lists,
+    ):
+        async def _test():
+            from elder_berry.comms.commands.base import CommandResult
+
+            sender = "@lera:matrix.org"
+            conversation_lists.register(
+                user_id=sender,
+                list_type="route_contact_pick",
+                items=[
+                    {"slot": "waypoint_0", "name": "Lisa M", "address": "Adr-M"},
+                    {"slot": "waypoint_0", "name": "Lisa S", "address": "Adr-S"},
+                ],
+            )
+            assistant.process.return_value = self._make_pick_result(
+                "route_contact_pick",
+                2,
+            )
+            multi_stop = MagicMock()
+            multi_stop.continue_with_pick.return_value = CommandResult(
+                command="multi_stop_route",
+                success=True,
+                text="Route geplant: A -> B",
+            )
+            remote_commands.get_handler.return_value = multi_stop
+
+            msg = _make_msg("die zweite", sender=sender)
+            await handler_with_lists.handle_assistant_message(msg)
+
+            multi_stop.continue_with_pick.assert_called_once()
+            args = multi_stop.continue_with_pick.call_args.args
+            # Signatur ist (list_type, item) -- KEIN user_id (Codex-Fix)
+            assert args[0] == "route_contact_pick"
+            assert args[1]["name"] == "Lisa S"
+            # Antwort wurde gesendet
+            sent_texts = [c[0][1] for c in channel.send_text.call_args_list]
+            assert any("Route geplant" in t for t in sent_texts)
+
+        run_async(_test())
+
+    def test_route_poi_pick_calls_handler(
+        self,
+        handler_with_lists,
+        channel,
+        assistant,
+        remote_commands,
+        conversation_lists,
+    ):
+        async def _test():
+            from elder_berry.comms.commands.base import CommandResult
+
+            sender = "@lera:matrix.org"
+            conversation_lists.register(
+                user_id=sender,
+                list_type="route_poi_pick",
+                items=[
+                    {
+                        "name": "Kaufland",
+                        "address": "Adr",
+                        "place_id": "ChIJ",
+                        "detour_seconds": 120,
+                        "rating": 4.0,
+                    },
+                ],
+            )
+            assistant.process.return_value = self._make_pick_result(
+                "route_poi_pick",
+                1,
+            )
+            multi_stop = MagicMock()
+            multi_stop.continue_with_pick.return_value = CommandResult(
+                command="multi_stop_route",
+                success=True,
+                text="Route geplant mit Kaufland",
+            )
+            remote_commands.get_handler.return_value = multi_stop
+
+            msg = _make_msg("der erste", sender=sender)
+            await handler_with_lists.handle_assistant_message(msg)
+
+            multi_stop.continue_with_pick.assert_called_once()
+            args = multi_stop.continue_with_pick.call_args.args
+            assert args[0] == "route_poi_pick"
+            assert args[1]["place_id"] == "ChIJ"
+
+        run_async(_test())
+
+    def test_route_pick_without_handler_replies_gracefully(
+        self,
+        handler_with_lists,
+        channel,
+        assistant,
+        remote_commands,
+        conversation_lists,
+    ):
+        async def _test():
+            sender = "@lera:matrix.org"
+            conversation_lists.register(
+                user_id=sender,
+                list_type="route_contact_pick",
+                items=[{"slot": "waypoint_0", "name": "Lisa", "address": "X"}],
+            )
+            assistant.process.return_value = self._make_pick_result(
+                "route_contact_pick",
+                1,
+            )
+            remote_commands.get_handler.return_value = None
+
+            msg = _make_msg("der erste", sender=sender)
+            await handler_with_lists.handle_assistant_message(msg)
+
+            sent_texts = [c[0][1] for c in channel.send_text.call_args_list]
+            joined = " ".join(sent_texts).lower()
+            assert "nicht konfiguriert" in joined or "nicht verfuegbar" in joined
+
+        run_async(_test())
+
+    def test_route_pick_handler_crash_returns_error_text(
+        self,
+        handler_with_lists,
+        channel,
+        assistant,
+        remote_commands,
+        conversation_lists,
+    ):
+        async def _test():
+            sender = "@lera:matrix.org"
+            conversation_lists.register(
+                user_id=sender,
+                list_type="route_contact_pick",
+                items=[{"slot": "waypoint_0", "name": "Lisa", "address": "X"}],
+            )
+            assistant.process.return_value = self._make_pick_result(
+                "route_contact_pick",
+                1,
+            )
+            multi_stop = MagicMock()
+            multi_stop.continue_with_pick.side_effect = RuntimeError("boom")
+            remote_commands.get_handler.return_value = multi_stop
+
+            msg = _make_msg("der erste", sender=sender)
+            await handler_with_lists.handle_assistant_message(msg)
+
+            sent_texts = [c[0][1] for c in channel.send_text.call_args_list]
+            joined = " ".join(sent_texts)
+            assert "Fehler" in joined and "RuntimeError" in joined
+
+        run_async(_test())

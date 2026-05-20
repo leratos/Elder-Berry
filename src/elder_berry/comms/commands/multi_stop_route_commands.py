@@ -212,18 +212,24 @@ class MultiStopRouteCommandHandler(CommandHandler):
 
     def continue_with_pick(
         self,
-        user_id: str,
         list_type: str,
         item: dict[str, Any],
     ) -> CommandResult:
         """Wird vom message_handlers._dispatch_route_*_pick aufgerufen.
 
         Args:
-            user_id: Sender-MXID.
             list_type: ``"route_contact_pick"`` oder ``"route_poi_pick"``.
             item: Listen-Eintrag aus dem ConversationListStore.
+
+        Note:
+            Der Session-Key ist immer ``self._user_id`` (default_user_id
+            aus dem Konstruktor), konsistent mit Turn 1 und mit allen
+            anderen Handlern (Phase 43, contacts, ...). Saleria ist
+            single-user; ``msg.sender`` durchzureichen wuerde mit der
+            Turn-1-Speicherung kollidieren und ist auch nicht noetig
+            (Codex-Review-Finding 2026-05-20).
         """
-        session = self._sessions.get(user_id)
+        session = self._sessions.get(self._user_id)
         if session is None:
             return CommandResult(
                 command="multi_stop_route",
@@ -255,7 +261,7 @@ class MultiStopRouteCommandHandler(CommandHandler):
                 text=f"Listen-Typ '{list_type}' kenne ich nicht.",
             )
 
-        self._sessions.set(user_id, session)
+        self._sessions.set(self._user_id, session)
         return self._next_response(session)
 
     # ------------------------------------------------------------------
@@ -276,7 +282,7 @@ class MultiStopRouteCommandHandler(CommandHandler):
         # z.B. "konnte keine Adresse finden". Das checken wir separat.)
         not_resolved = self._first_unresolved_people_stop(session)
         if not_resolved is not None:
-            self._sessions.clear(session.user_id)
+            self._sessions.clear(self._user_id)
             return CommandResult(
                 command="multi_stop_route",
                 success=True,
@@ -573,7 +579,7 @@ class MultiStopRouteCommandHandler(CommandHandler):
                 poi_request=session.poi_request,
             )
         except RouteError as exc:
-            self._sessions.clear(session.user_id)
+            self._sessions.clear(self._user_id)
             return CommandResult(
                 command="multi_stop_route",
                 success=True,
@@ -585,7 +591,7 @@ class MultiStopRouteCommandHandler(CommandHandler):
             # Kein POI in Reichweite -- Hinweis + Route ohne POI.
             label = session.poi_request.category if session.poi_request else "POI"
             session.poi_request = None  # damit _finalize keine POI mehr erwartet
-            self._sessions.set(session.user_id, session)
+            self._sessions.set(self._user_id, session)
             final = self._finalize_route(session)
             hint = (
                 f"Keinen '{label}' innerhalb von "
@@ -598,7 +604,7 @@ class MultiStopRouteCommandHandler(CommandHandler):
                 text=hint + (final.text or ""),
             )
         # POI-Pick als naechster Turn
-        self._sessions.set(session.user_id, session)
+        self._sessions.set(self._user_id, session)
         return self._poi_pick_response(session)
 
     def _finalize_route(self, session: RouteSession) -> CommandResult:
@@ -638,7 +644,7 @@ class MultiStopRouteCommandHandler(CommandHandler):
                 )
                 final = planned.route
         except RouteError as exc:
-            self._sessions.clear(session.user_id)
+            self._sessions.clear(self._user_id)
             return CommandResult(
                 command="multi_stop_route",
                 success=True,
@@ -661,7 +667,7 @@ class MultiStopRouteCommandHandler(CommandHandler):
         )
 
         text = self._format_final_response(session, final, link)
-        self._sessions.clear(session.user_id)
+        self._sessions.clear(self._user_id)
         return CommandResult(
             command="multi_stop_route",
             success=True,

@@ -309,7 +309,6 @@ class TestContinueWithPick:
         self._prepare_ambig_session(handler, intent_parser, contact_store)
         # Pick: Lisa Müller
         result = handler.continue_with_pick(
-            USER_ID,
             "route_contact_pick",
             {"slot": "waypoint_0", "name": "Lisa Müller", "address": "Adr-M"},
         )
@@ -326,7 +325,6 @@ class TestContinueWithPick:
         handler: MultiStopRouteCommandHandler,
     ) -> None:
         result = handler.continue_with_pick(
-            USER_ID,
             "route_contact_pick",
             {"slot": "waypoint_0", "name": "Lisa", "address": "X"},
         )
@@ -340,7 +338,6 @@ class TestContinueWithPick:
     ) -> None:
         self._prepare_ambig_session(handler, intent_parser, contact_store)
         result = handler.continue_with_pick(
-            USER_ID,
             "unknown_type",
             {"slot": "waypoint_0", "name": "x", "address": "y"},
         )
@@ -354,11 +351,59 @@ class TestContinueWithPick:
     ) -> None:
         self._prepare_ambig_session(handler, intent_parser, contact_store)
         result = handler.continue_with_pick(
-            USER_ID,
             "route_contact_pick",
             {"slot": "waypoint_99", "name": "Lisa", "address": "X"},
         )
         assert "passt nicht mehr" in (result.text or "")
+
+    def test_session_key_uses_handler_default_user_id(
+        self,
+        intent_parser: MagicMock,
+        contact_store: MagicMock,
+        planner: MagicMock,
+        session_store: RouteSessionStore,
+    ) -> None:
+        """Codex-Review-Finding 2026-05-20:
+        Wenn der Handler mit ``default_user_id="@bot:matrix.org"``
+        konstruiert wird, schreibt Turn 1 die Session unter
+        ``"@bot:matrix.org"``. Folge-Picks duerfen die Session
+        ueber den Handler finden, ohne dass ein anderer Sender den
+        Key verbiegt -- denn der Bridge-Dispatch wird msg.sender
+        gar nicht mehr durchreichen.
+        """
+        bot_uid = "@bot:matrix.org"
+        handler = MultiStopRouteCommandHandler(
+            intent_parser=intent_parser,
+            route_planner=planner,
+            contact_store=contact_store,
+            session_store=session_store,
+            link_builder=MapsLinkBuilder(),
+            default_user_id=bot_uid,
+        )
+        intent_parser.parse.return_value = _intent(
+            destination=IntentStop(type="address", value="Leipzig Hbf"),
+            waypoints=(IntentStop(type="contact", value="Lisa"),),
+        )
+        contact_store.search.return_value = [
+            _contact("Lisa Müller", "Adr-M"),
+            _contact("Lisa Schmidt", "Adr-S"),
+        ]
+        handler.execute(
+            "multi_stop_route",
+            "Fahrt nach Leipzig Hbf, vorher Lisa abholen",
+        )
+        # Session liegt unter bot_uid -- NICHT unter dem leeren default
+        assert session_store.get(bot_uid) is not None
+        assert session_store.get("") is None
+
+        # continue_with_pick nutzt keinen user_id-Param mehr und liest
+        # ueber self._user_id korrekt aus.
+        result = handler.continue_with_pick(
+            "route_contact_pick",
+            {"slot": "waypoint_0", "name": "Lisa Müller", "address": "Adr-M"},
+        )
+        assert result.success is True
+        assert "keine offene Routenanfrage" not in (result.text or "")
 
 
 # ---------------------------------------------------------------------------
@@ -467,7 +512,6 @@ class TestPOIPath:
         )
         # Auch bei n=1 muss der User pickern (Lera-Entscheidung)
         result = handler.continue_with_pick(
-            USER_ID,
             "route_poi_pick",
             {
                 "name": "Kaufland G",

@@ -3024,3 +3024,33 @@ class TestWebSearchExecute:
 
         assert result.success is True
         mock_client.search.assert_called_once_with("Dachdecker in Berlin")
+
+
+# ---------------------------------------------------------------------------
+# Phase 92: get_handler-Lookup
+# ---------------------------------------------------------------------------
+
+
+class TestGetHandler:
+    def test_returns_handler_by_plugin_name(self) -> None:
+        handler = RemoteCommandHandler()
+        # weather ist gracefully ohne weather_client; landet trotzdem
+        # in _handlers (immer-aktiv-Plugin) und via setattr(_weather, ...).
+        h = handler.get_handler("weather")
+        assert h is not None
+        # type-check fuer die Convention: was setattr setzt, ist auch ein Handler.
+        from elder_berry.comms.commands.base import CommandHandler
+
+        assert isinstance(h, CommandHandler)
+
+    def test_returns_none_for_unknown_plugin(self) -> None:
+        handler = RemoteCommandHandler()
+        assert handler.get_handler("does_not_exist") is None
+
+    def test_returns_none_when_attr_is_not_a_handler(self) -> None:
+        handler = RemoteCommandHandler()
+        # Conditional plugin ohne Service: setattr legt None ab,
+        # also setattr(self, '_route', None) -- get_handler liefert None.
+        # route haengt am route_planner; ohne den wird der Handler nicht
+        # erzeugt (CommandPlugin.factory liefert None).
+        assert handler.get_handler("route") is None

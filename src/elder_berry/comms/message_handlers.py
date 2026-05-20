@@ -1082,14 +1082,18 @@ class BridgeMessageHandler:
             )
             return
         # Direktaufruf der Public-Methode -- die laeuft synchron mit
-        # SQLite + httpx, daher in den Executor.
+        # SQLite + httpx, daher in den Executor. Der Handler nutzt
+        # intern seine eigene default_user_id als Session-Key (Codex-
+        # Review-Finding 2026-05-20: Turn 1 schreibt unter
+        # self._user_id, also muss Turn N auch dort lesen -- msg.sender
+        # darf NICHT als Session-Key dienen, sonst bricht Disambig wenn
+        # default_user_id != msg.sender).
         loop = asyncio.get_running_loop()
         try:
             continue_method = handler.continue_with_pick  # type: ignore[attr-defined]
             result = await loop.run_in_executor(
                 None,
                 continue_method,
-                msg.sender,
                 list_type,
                 item,
             )

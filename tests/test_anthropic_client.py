@@ -708,3 +708,55 @@ class TestToolCall:
                 prompt="x",
                 tool={"name": "t", "description": "", "input_schema": {}},
             )
+
+    @requires_anthropic
+    def test_api_status_error(self) -> None:
+        import anthropic
+
+        client = _make_client()
+        sdk = _inject_sdk_mock(client)
+        sdk.messages.create.side_effect = anthropic.APIStatusError(
+            "boom",
+            response=MagicMock(status_code=500),
+            body={},
+        )
+        with pytest.raises(RuntimeError, match="Anthropic API-Fehler"):
+            client.tool_call(
+                prompt="x",
+                tool={"name": "t", "description": "", "input_schema": {}},
+            )
+
+    @requires_anthropic
+    def test_api_connection_error(self) -> None:
+        import anthropic
+
+        client = _make_client()
+        sdk = _inject_sdk_mock(client)
+        sdk.messages.create.side_effect = anthropic.APIConnectionError(
+            request=MagicMock(),
+        )
+        with pytest.raises(RuntimeError, match="nicht erreichbar"):
+            client.tool_call(
+                prompt="x",
+                tool={"name": "t", "description": "", "input_schema": {}},
+            )
+
+    @requires_anthropic
+    def test_rate_limit_error(self) -> None:
+        """RateLimitError ist Subklasse von APIStatusError und wird
+        dort gefangen -- aber die Codepath-Coverage will den
+        expliziten except-Branch."""
+        import anthropic
+
+        client = _make_client()
+        sdk = _inject_sdk_mock(client)
+        sdk.messages.create.side_effect = anthropic.RateLimitError(
+            "rate limited",
+            response=MagicMock(status_code=429),
+            body={},
+        )
+        with pytest.raises(RuntimeError, match="Anthropic API-Fehler"):
+            client.tool_call(
+                prompt="x",
+                tool={"name": "t", "description": "", "input_schema": {}},
+            )
