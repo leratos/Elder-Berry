@@ -273,6 +273,66 @@ class TestExecute:
         assert result.success
         assert "home" in result.text.lower()
 
+    # ------------------------------------------------------------------
+    # Mehrdeutigkeit (Phase 43 Bugfix) -- API darf NICHT aufgerufen werden
+    # ------------------------------------------------------------------
+
+    def test_plan_route_ambiguous_destination(
+        self,
+        handler: RouteCommandHandler,
+        contact_store: MagicMock,
+        route_planner: MagicMock,
+    ) -> None:
+        """Mehrere Treffer fuer Ziel -> Rueckfrage, KEIN API-Call."""
+        contact_store.search.return_value = [
+            _make_contact("Lisa Müller", "Hauptstr. 12, 10115 Berlin"),
+            _make_contact("Lisa Schmidt", "Mozartweg 4, 04416 Markranstädt"),
+        ]
+        result = handler.execute("route_plan", "plane fahrt zu Lisa")
+        assert result.success
+        assert "Mehrere Kontakte" in result.text
+        assert "Lisa Müller" in result.text
+        assert "Lisa Schmidt" in result.text
+        route_planner.get_route.assert_not_called()
+
+    def test_plan_route_ambiguous_origin(
+        self,
+        handler: RouteCommandHandler,
+        contact_store: MagicMock,
+        route_planner: MagicMock,
+    ) -> None:
+        """Mehrere Treffer fuer Start -> Rueckfrage, KEIN API-Call."""
+        contact_store.search.side_effect = [
+            # 1. Aufruf: origin "Mama" -> ambiguous
+            [
+                _make_contact("Mama Müller", "A-Str 1"),
+                _make_contact("Mama Schmidt", "B-Str 2"),
+            ],
+            # 2. Aufruf: dest "Lisa" -> eindeutig
+            [_make_contact("Lisa", "Lisa-Str 1")],
+        ]
+        result = handler.execute("route_from_to", "fahrt von Mama zu Lisa")
+        assert result.success
+        assert "Mehrere Kontakte" in result.text
+        assert "Mama" in result.text
+        route_planner.get_route.assert_not_called()
+
+    def test_plan_route_full_name_disambiguates(
+        self,
+        handler: RouteCommandHandler,
+        contact_store: MagicMock,
+        route_planner: MagicMock,
+    ) -> None:
+        """'Lisa Müller' bei zwei Lisas -> exakte Adresse, API-Call laeuft."""
+        contact_store.search.return_value = [
+            _make_contact("Lisa Müller", "Hauptstr. 12, 10115 Berlin"),
+            _make_contact("Lisa Schmidt", "Mozartweg 4, 04416 Markranstädt"),
+        ]
+        result = handler.execute("route_plan", "plane fahrt zu Lisa Müller")
+        assert result.success
+        assert "Mehrere Kontakte" not in result.text
+        route_planner.get_route.assert_called_once()
+
     def test_api_error(
         self,
         handler: RouteCommandHandler,
@@ -329,19 +389,20 @@ class TestExecute:
 
 
 # ---------------------------------------------------------------------------
-# _resolve_address
+# _resolve_contact
 # ---------------------------------------------------------------------------
 
 
-class TestResolveAddress:
+class TestResolveContact:
     def test_home(
         self,
         handler: RouteCommandHandler,
         contact_store: MagicMock,
     ) -> None:
         """None → Home-Kontakt Adresse."""
-        addr = handler._resolve_address(None)
-        assert addr == "Musterstr. 5, 12345 Berlin"
+        res = handler._resolve_contact(None)
+        assert res.address == "Musterstr. 5, 12345 Berlin"
+        assert res.ambiguous_matches == ()
         contact_store.find_by_group.assert_called_with(USER_ID, "home")
 
     @pytest.mark.parametrize(
@@ -362,8 +423,8 @@ class TestResolveAddress:
         synonym: str,
     ) -> None:
         """Home-Synonyme → Home-Kontakt Adresse."""
-        addr = handler._resolve_address(synonym)
-        assert addr == "Musterstr. 5, 12345 Berlin"
+        res = handler._resolve_contact(synonym)
+        assert res.address == "Musterstr. 5, 12345 Berlin"
         contact_store.find_by_group.assert_called_with(USER_ID, "home")
 
     def test_by_name(
@@ -372,8 +433,9 @@ class TestResolveAddress:
         contact_store: MagicMock,
     ) -> None:
         """'Lisa' → Fuzzy-Match → Adresse."""
-        addr = handler._resolve_address("Lisa")
-        assert addr == "Hauptstr. 12, 10115 Berlin"
+        res = handler._resolve_contact("Lisa")
+        assert res.address == "Hauptstr. 12, 10115 Berlin"
+        assert res.ambiguous_matches == ()
         contact_store.search.assert_called_with(USER_ID, "Lisa")
 
     def test_not_found(
@@ -381,10 +443,11 @@ class TestResolveAddress:
         handler: RouteCommandHandler,
         contact_store: MagicMock,
     ) -> None:
-        """Unbekannt → None."""
+        """Unbekannt → keine Adresse, keine Ambiguitaet."""
         contact_store.search.return_value = []
-        addr = handler._resolve_address("Unbekannt")
-        assert addr is None
+        res = handler._resolve_contact("Unbekannt")
+        assert res.address is None
+        assert res.ambiguous_matches == ()
 
     @pytest.mark.parametrize(
         "raw_address",
@@ -403,8 +466,8 @@ class TestResolveAddress:
         raw_address: str,
     ) -> None:
         """Direkte Adresse (mit Ziffern) wird nicht im ContactStore gesucht."""
-        addr = handler._resolve_address(raw_address)
-        assert addr is not None
+        res = handler._resolve_contact(raw_address)
+        assert res.address is not None
         # ContactStore.search darf NICHT aufgerufen werden
         contact_store.search.assert_not_called()
 
@@ -413,8 +476,80 @@ class TestResolveAddress:
         handler: RouteCommandHandler,
     ) -> None:
         """Anführungszeichen werden von direkten Adressen entfernt."""
-        addr = handler._resolve_address('"Am Brendegraben 21, 13127 Berlin"')
-        assert addr == "Am Brendegraben 21, 13127 Berlin"
+        res = handler._resolve_contact('"Am Brendegraben 21, 13127 Berlin"')
+        assert res.address == "Am Brendegraben 21, 13127 Berlin"
+
+    # ------------------------------------------------------------------
+    # Mehrdeutigkeit (Phase 43 Bugfix)
+    # ------------------------------------------------------------------
+
+    def test_ambiguous_multiple_matches(
+        self,
+        handler: RouteCommandHandler,
+        contact_store: MagicMock,
+    ) -> None:
+        """Zwei Treffer ohne exakten Namens-Match -> Rueckfrage."""
+        contact_store.search.return_value = [
+            _make_contact("Lisa Müller", "Hauptstr. 12, 10115 Berlin"),
+            _make_contact("Lisa Schmidt", "Mozartweg 4, 04416 Markranstädt"),
+        ]
+        res = handler._resolve_contact("Lisa")
+        assert res.address is None
+        assert res.ambiguous_matches == ("Lisa Müller", "Lisa Schmidt")
+
+    def test_ambiguous_resolves_with_exact_name_match(
+        self,
+        handler: RouteCommandHandler,
+        contact_store: MagicMock,
+    ) -> None:
+        """Zwei Treffer, aber Eingabe gleicht exakt einem Namen -> kein Fragen."""
+        contact_store.search.return_value = [
+            _make_contact("Lisa Müller", "Hauptstr. 12, 10115 Berlin"),
+            _make_contact("Lisa Schmidt", "Mozartweg 4, 04416 Markranstädt"),
+        ]
+        res = handler._resolve_contact("Lisa Müller")
+        assert res.address == "Hauptstr. 12, 10115 Berlin"
+        assert res.ambiguous_matches == ()
+
+    def test_ambiguous_exact_match_is_case_insensitive(
+        self,
+        handler: RouteCommandHandler,
+        contact_store: MagicMock,
+    ) -> None:
+        """Case-insensitiver Exact-Match loest die Mehrdeutigkeit auf."""
+        contact_store.search.return_value = [
+            _make_contact("Lisa Müller", "Hauptstr. 12, 10115 Berlin"),
+            _make_contact("Lisa Schmidt", "Mozartweg 4, 04416 Markranstädt"),
+        ]
+        res = handler._resolve_contact("lisa müller")
+        assert res.address == "Hauptstr. 12, 10115 Berlin"
+        assert res.ambiguous_matches == ()
+
+    def test_ambiguous_multiple_exact_matches_still_ambiguous(
+        self,
+        handler: RouteCommandHandler,
+        contact_store: MagicMock,
+    ) -> None:
+        """Zwei Kontakte mit identischem Namen -> trotzdem Rueckfrage."""
+        contact_store.search.return_value = [
+            _make_contact("Lisa", "Hauptstr. 12, 10115 Berlin"),
+            _make_contact("Lisa", "Mozartweg 4, 04416 Markranstädt"),
+        ]
+        res = handler._resolve_contact("Lisa")
+        assert res.address is None
+        assert res.ambiguous_matches == ("Lisa", "Lisa")
+
+    def test_ambiguous_caps_candidate_list_at_five(
+        self,
+        handler: RouteCommandHandler,
+        contact_store: MagicMock,
+    ) -> None:
+        """Mehr als 5 Treffer -> nur die ersten 5 fuer die Matrix-Anzeige."""
+        contact_store.search.return_value = [
+            _make_contact(f"Lisa {i}", f"Str. {i}") for i in range(7)
+        ]
+        res = handler._resolve_contact("Lisa")
+        assert len(res.ambiguous_matches) == 5
 
 
 # ---------------------------------------------------------------------------
