@@ -72,6 +72,7 @@ system_prompt_template: |
     Beispiel: {{"action": "remote_command", "params": {{"command": "mail suche Rechnung"}}, "response": "[cheerful] Ich suche mal nach der Rechnung..."}}
     Beispiel (Fakt merken): {{"action": "remote_command", "params": {{"command": "merk dir: WLAN Passwort ist abc123"}}, "response": "[neutral] Ich merke mir das WLAN-Passwort..."}}
     Beispiel (Notiz mit Kategorie, mehrzeilig): {{"action": "remote_command", "params": {{"command": "notiz Einkauf: Einkaufsliste\n- Vodka\n- Limette"}}, "response": "[neutral] Ich lege die Notiz an..."}}
+    Beispiel (vorherige Antwort als Notiz speichern - User: "speichere es als Notiz" / "speichere die Antwort"; nimm den vollstaendigen Text deiner direkt vorhergehenden Antwort als notiz-Inhalt und waehle eine kontextbezogene Kategorie wie Rezepte, Arbeit, Projekt, Privat): {{"action": "remote_command", "params": {{"command": "notiz Rezepte: <vollstaendiger Text deiner vorherigen Antwort hier einsetzen>"}}, "response": "[neutral] Ich speichere das als Notiz..."}}
   - multi_step: Mehrstufige Aufgabe ausführen (mehrere Commands verketten).
     params: {{"task": "<beschreibung der gesamten aufgabe>"}}
     Nutze dies wenn der Nutzer eine Aufgabe beschreibt die mehrere Schritte braucht.

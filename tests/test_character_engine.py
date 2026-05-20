@@ -193,6 +193,15 @@ class TestSaleriaEnginePrompt:
         prompt = engine.build_system_prompt()
         assert "notiz Einkauf:" in prompt
 
+    def test_remote_command_prompt_teaches_save_previous_as_note(self):
+        # Phase-91-Followup (Live-Test 2026-05-20): bei "speichere es
+        # als Notiz" soll der LLM den Text der vorherigen Antwort als
+        # notiz-Inhalt emittieren statt note_set_fact zu treffen.
+        engine = SaleriaEngine()
+        prompt = engine.build_system_prompt()
+        assert "vorherige Antwort als Notiz" in prompt
+        assert "vorherigen Antwort" in prompt
+
 
 class TestSaleriaEngineEmotionExtraction:
     """Tests für Emotions-Tag Extraktion aus LLM-Antworten."""

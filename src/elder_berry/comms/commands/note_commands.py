@@ -215,7 +215,6 @@ class NoteCommandHandler(CommandHandler):
                 "merke dir",
                 "speicher dir",
                 "denk dran",
-                "speichere",
             ],
             "note_add": ["notiz:", "notiere", "schreib auf"],
             "note_get_fact": [
