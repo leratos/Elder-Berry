@@ -1011,6 +1011,24 @@ def _init_productivity_services(secrets, default_user_id):
         except Exception as e:
             logger.warning("RoutePlanner nicht verfügbar: %s", e)
 
+        # Phase 92: Multi-Stop-Routing braucht denselben API-Key plus
+        # einen persistenten Session-Store (TTL=1h, restart-fest).
+        try:
+            from elder_berry.tools.google_maps_route_planner import (
+                GoogleMapsRoutePlanner,
+            )
+            from elder_berry.tools.route_session_store import RouteSessionStore
+
+            svc["multi_stop_route_planner"] = GoogleMapsRoutePlanner(
+                api_key=secrets.get("google_maps_api_key"),
+            )
+            svc["route_session_store"] = RouteSessionStore()
+            logger.info(
+                "Multi-Stop-Routing: aktiv (Google Directions + Places API)",
+            )
+        except Exception as e:
+            logger.warning("Multi-Stop-Routing nicht verfügbar: %s", e)
+
     # Daily Briefing
     try:
         from elder_berry.comms.briefing_scheduler import BriefingScheduler
@@ -1276,6 +1294,8 @@ def run_matrix(assistant, stt=None, avatar=None, audio_converter=None, robot=Non
         document_classifier=tools.get("document_classifier"),
         carddav_sync=svc.get("carddav_sync"),
         route_planner=svc.get("route_planner"),
+        multi_stop_route_planner=svc.get("multi_stop_route_planner"),
+        route_session_store=svc.get("route_session_store"),
         default_user_id=default_user_id,
         tower_agent=tower_agent,
     )

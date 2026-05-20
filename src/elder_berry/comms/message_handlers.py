@@ -874,6 +874,9 @@ class BridgeMessageHandler:
         if list_type == "note_search":
             await self._dispatch_note_pick(msg, item)
             return
+        if list_type in ("route_contact_pick", "route_poi_pick"):
+            await self._dispatch_route_pick(msg, list_type, item)
+            return
 
         # Unbekannter list_type (z.B. zukuenftige Phase-80.x-Typen wie
         # 'termine'): klar zurueckmelden statt zu raten.
@@ -1048,6 +1051,65 @@ class BridgeMessageHandler:
             await self.handle_remote_command(cmd_msg, parsed)
         finally:
             self._in_llm_command.discard(msg.sender)
+
+    async def _dispatch_route_pick(
+        self,
+        msg: IncomingMessage,
+        list_type: str,
+        item: dict[str, Any],
+    ) -> None:
+        """Phase 92: Route-Disambig-Pick (Kontakt oder POI).
+
+        Anders als search/mail/note: der Multi-Stop-Pfad ist mehrstufig.
+        Wir reichen das Item direkt an den MultiStopRouteCommandHandler
+        weiter; sein ``continue_with_pick`` liefert das naechste
+        CommandResult (entweder neue Liste fuer den naechsten Pick oder
+        die finale Route). Eine Folge-Liste registrieren wir hier wieder
+        wie ein normales Command-Resultat, damit der user den naechsten
+        Treffer per "Treffer N" auswaehlen kann.
+        """
+        if self._remote_commands is None:
+            await self._channel.send_text(
+                msg.room_id,
+                "Multi-Stop-Routing ist gerade nicht verfuegbar.",
+            )
+            return
+        handler = self._remote_commands.get_handler("multi_stop_route")
+        if handler is None:
+            await self._channel.send_text(
+                msg.room_id,
+                "Multi-Stop-Routenplanung ist nicht konfiguriert.",
+            )
+            return
+        # Direktaufruf der Public-Methode -- die laeuft synchron mit
+        # SQLite + httpx, daher in den Executor.
+        loop = asyncio.get_running_loop()
+        try:
+            continue_method = handler.continue_with_pick  # type: ignore[attr-defined]
+            result = await loop.run_in_executor(
+                None,
+                continue_method,
+                msg.sender,
+                list_type,
+                item,
+            )
+        except Exception as exc:  # noqa: BLE001
+            logger.error("Multi-Stop continue_with_pick crashed: %s", exc)
+            await self._channel.send_text(
+                msg.room_id,
+                f"Fehler bei Routenplanung: {type(exc).__name__}",
+            )
+            return
+
+        if result.text:
+            await self._channel.send_text(msg.room_id, result.text)
+        # Folge-Liste registrieren (z.B. naechste contact_pick oder
+        # poi_pick), damit der naechste Pick wieder via list_pick laeuft.
+        self._maybe_register_command_list(msg, result)
+        if result.success and result.text:
+            history = result.history_text or result.text
+            self._chat_history.add(msg.sender, "user", msg.body)
+            self._chat_history.add(msg.sender, "assistant", history)
 
     async def _dispatch_note_pick(
         self,

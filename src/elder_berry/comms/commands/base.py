@@ -43,7 +43,11 @@ if TYPE_CHECKING:
     from elder_berry.tools.nextcloud_files import NextcloudFilesClient
     from elder_berry.tools.nextcloud_notes_client import NextcloudNotesClient
     from elder_berry.tools.reminder_store import ReminderStore
+    from elder_berry.tools.google_maps_route_planner import (
+        GoogleMapsRoutePlanner,
+    )
     from elder_berry.tools.route_planner import RoutePlanner
+    from elder_berry.tools.route_session_store import RouteSessionStore
     from elder_berry.tools.stirling_pdf import StirlingPDFClient
     from elder_berry.tools.weather_client import WeatherClient
     from elder_berry.tools.web_fetcher import WebFetcher
@@ -351,6 +355,8 @@ class HandlerContext:
     document_classifier: DocumentClassifier | None = None
     stirling_pdf: StirlingPDFClient | None = None
     route_planner: RoutePlanner | None = None
+    multi_stop_route_planner: GoogleMapsRoutePlanner | None = None
+    route_session_store: RouteSessionStore | None = None
     web_fetcher: WebFetcher | None = None
     search_client: BraveSearchClient | None = None
     document_reader: DocumentReader | None = None
