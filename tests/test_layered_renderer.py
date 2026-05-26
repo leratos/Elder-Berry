@@ -559,3 +559,82 @@ class TestAvatarConfigLoader:
         assert neutral.body == "relaxed"
         assert neutral.eye_left == "eye_left_open"
         assert neutral.can_blink is True
+
+
+# ---------------------------------------------------------------------------
+# Custom-Asset-Pack-Config (Codex P1)
+# ---------------------------------------------------------------------------
+
+
+class TestRendererAssetsDirConfig:
+    """Renderer akzeptiert eine pack-eigene ``avatar_config.yaml`` neben
+    den Pack-PNGs. Sonst koennten Component-Filenames aus dem Pack mit
+    Emotion-/Lip-Sync-Keys aus dem USER-Override (anderes Mapping)
+    kollidieren -- Codex P1 zum User-Override-Pattern.
+    """
+
+    def test_uses_assets_dir_local_config_when_present(
+        self, mock_pygame, layered_assets
+    ):
+        """assets_dir-local avatar_config.yaml gewinnt gegen USER/DEFAULT."""
+        import yaml
+
+        from elder_berry.avatar.layered_renderer import LayeredSpriteRenderer
+
+        custom_config = {
+            "emotions": {
+                "neutral": {
+                    # Anderer Wert als der Hardcode-Default "relaxed"
+                    # und als der Repo-Default-YAML -- erkennbarer Marker.
+                    "body": "thinking",
+                    "eye_left": "eye_left_open",
+                    "eye_right": "eye_right_open",
+                    "mouth": "mouth_neutral_close",
+                    "can_blink": True,
+                }
+            },
+            "lip_sync": {"frames": {}, "interval": 0.18, "jitter": 0.03},
+            "breathing": {"enabled": True, "speed": 1.0, "amplitude": 1.0},
+            "idle_actions": [],
+        }
+        with open(layered_assets / "avatar_config.yaml", "w", encoding="utf-8") as f:
+            yaml.dump(custom_config, f)
+
+        r = LayeredSpriteRenderer(assets_dir=layered_assets)
+
+        assert r._emotion_map[Emotion.NEUTRAL].body == "thinking"
+
+    def test_falls_through_to_user_when_no_local_config(
+        self, mock_pygame, layered_assets, tmp_path, monkeypatch
+    ):
+        """Ohne assets_dir-local Config greift die USER→DEFAULT-Chain."""
+        import yaml
+
+        from elder_berry.avatar import avatar_config_loader as acl
+        from elder_berry.avatar.layered_renderer import LayeredSpriteRenderer
+
+        # layered_assets hat KEIN avatar_config.yaml im assets_dir
+        # und patched USER/DEFAULT auf nonexistent. Wir biegen USER
+        # jetzt auf eine reale Datei mit Marker um.
+        user_path = tmp_path / "real_user.yaml"
+        user_config = {
+            "emotions": {
+                "neutral": {
+                    "body": "shy",
+                    "eye_left": "eye_left_open",
+                    "eye_right": "eye_right_open",
+                    "mouth": "mouth_neutral_close",
+                    "can_blink": True,
+                }
+            },
+            "lip_sync": {"frames": {}, "interval": 0.18, "jitter": 0.03},
+            "breathing": {"enabled": True, "speed": 1.0, "amplitude": 1.0},
+            "idle_actions": [],
+        }
+        with open(user_path, "w", encoding="utf-8") as f:
+            yaml.dump(user_config, f)
+        monkeypatch.setattr(acl, "USER_CONFIG_PATH", user_path)
+
+        r = LayeredSpriteRenderer(assets_dir=layered_assets)
+
+        assert r._emotion_map[Emotion.NEUTRAL].body == "shy"

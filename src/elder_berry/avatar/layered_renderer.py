@@ -204,14 +204,32 @@ class LayeredSpriteRenderer(AvatarRenderer):
     def _load_yaml_config(self) -> None:
         """Lädt die Avatar-Config aus YAML, Fallback auf hardcoded Defaults.
 
-        Aufruf ohne expliziten Pfad: der Loader resolvt USER-Override
-        (`~/.elder-berry/avatar_config.yaml`) vor dem getrackten
-        Default-Template. So sehen wir Editor-Aenderungen ohne den
-        getrackten Pfad anzufassen.
+        Pfad-Aufloesung in dieser Reihenfolge:
+        1. ``assets_dir/avatar_config.yaml`` -- **nur** wenn der Pfad
+           nicht auf das getrackte Default-File zeigt. Damit gewinnt
+           eine Custom-Asset-Pack-Config (passt zu den Pack-Assets);
+           USER-Overrides aus der Default-Pack-Welt werden bewusst
+           ignoriert, sonst landen Emotion-/Lip-Sync-Keys aus einem
+           anderen Mapping bei diesen Component-PNGs.
+        2. Sonst die ``USER → DEFAULT``-Chain via ``load_avatar_config()``
+           ohne expliziten Pfad. So sehen wir Editor-Aenderungen am
+           Default-Pack ohne den getrackten Pfad anzufassen.
         """
-        from elder_berry.avatar.avatar_config_loader import load_avatar_config
+        from elder_berry.avatar.avatar_config_loader import (
+            DEFAULT_CONFIG_PATH,
+            load_avatar_config,
+        )
 
-        config = load_avatar_config()
+        local_config = self._assets_dir / "avatar_config.yaml"
+        if (
+            local_config.exists()
+            and local_config.resolve() != DEFAULT_CONFIG_PATH.resolve()
+        ):
+            # Custom asset pack: pack-eigene Config ist authoritativ.
+            config = load_avatar_config(local_config)
+        else:
+            # Default-Pack: USER-Override → DEFAULT-Chain.
+            config = load_avatar_config()
         if config and config.emotions:
             self._emotion_map = config.emotions
             self._lip_sync_keys = list(config.lip_sync_weights.keys()) or _LIP_SYNC_KEYS
