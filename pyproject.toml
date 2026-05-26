@@ -98,7 +98,7 @@ web = [
     # generierte Markdown-Specs werden server-side gerendert + ueber
     # bleach.clean() gegen eine enge Allowlist gesaeubert (Konzept R3).
     "markdown-it-py>=3.0",
-    "bleach>=6.1",
+    "bleach>=6.3.0",
     # Phase 86.1: css_decl_resolver fuer html_email_sanitizer
     # (geplant 86.2). Web-Gruppe zieht trafilatura/bs4 fuer
     # Article-Extraktion -- gleicher Pipeline-Pfad wie der spaetere
