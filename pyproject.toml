@@ -85,7 +85,7 @@ tools = [
     "google-auth-httplib2>=0.3.1",
 ]
 documents = [
-    "pymupdf>=1.23",
+    "pymupdf>=1.27.2.3",
 ]
 computer-use = [
     "Pillow>=12.2.0",
@@ -139,7 +139,7 @@ server = [
     "google-api-python-client>=2.194.0",
     "google-auth-oauthlib>=1.3.1",
     "google-auth-httplib2>=0.3.1",
-    "pymupdf>=1.23",
+    "pymupdf>=1.27.2.3",
     "trafilatura>=2.0.0",
     "beautifulsoup4>=4.12",
     "caldav>=3.2.0",
