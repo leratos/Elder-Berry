@@ -152,20 +152,25 @@ def register_avatar_editor_routes(
 
     @app.get("/api/avatar/config")
     async def get_config() -> JSONResponse:
-        """Gibt die aktuelle YAML-Config als JSON zurück."""
-        if not avatar_config_loader.DEFAULT_CONFIG_PATH.exists():
+        """Gibt die aktuelle YAML-Config als JSON zurück.
+
+        Liest aus dem aktiven Pfad: USER-Override wenn vorhanden, sonst
+        das getrackte Default-Template.
+        """
+        active_path = avatar_config_loader.resolve_active_config_path()
+        if not active_path.exists():
             return JSONResponse(
                 {"error": "avatar_config.yaml nicht gefunden"},
                 status_code=404,
             )
 
         try:
-            with open(avatar_config_loader.DEFAULT_CONFIG_PATH, encoding="utf-8") as f:
+            with open(active_path, encoding="utf-8") as f:
                 data = yaml.safe_load(f)
         except Exception:
             logger.exception(
                 "Avatar-Config konnte nicht gelesen werden: %s",
-                avatar_config_loader.DEFAULT_CONFIG_PATH,
+                active_path,
             )
             return JSONResponse(
                 {"error": "Avatar-Config konnte nicht gelesen werden."},
@@ -199,11 +204,13 @@ def register_avatar_editor_routes(
                 status_code=400,
             )
 
-        # YAML schreiben
+        # YAML schreiben -- immer in den USER-Override-Pfad, niemals in
+        # das getrackte Default-Template (sonst kollidiert es mit dem
+        # naechsten ``git pull --ff-only`` beim ``update alles``).
+        user_path = avatar_config_loader.USER_CONFIG_PATH
         try:
-            with open(
-                avatar_config_loader.DEFAULT_CONFIG_PATH, "w", encoding="utf-8"
-            ) as f:
+            user_path.parent.mkdir(parents=True, exist_ok=True)
+            with open(user_path, "w", encoding="utf-8") as f:
                 yaml.dump(
                     config_data,
                     f,
@@ -214,14 +221,14 @@ def register_avatar_editor_routes(
         except Exception:
             logger.exception(
                 "Avatar-Config konnte nicht gespeichert werden: %s",
-                avatar_config_loader.DEFAULT_CONFIG_PATH,
+                user_path,
             )
             return JSONResponse(
                 {"error": "Avatar-Config konnte nicht gespeichert werden."},
                 status_code=500,
             )
 
-        logger.info("Avatar-Config gespeichert via Web-Editor")
+        logger.info("Avatar-Config gespeichert via Web-Editor: %s", user_path)
         return JSONResponse({"saved": True})
 
     @app.post("/api/avatar/reload")

@@ -42,8 +42,21 @@ def mock_pygame():
 
 
 @pytest.fixture
-def layered_assets(tmp_path):
-    """Erstellt temporäre Asset-Ordner mit Dummy-PNGs."""
+def layered_assets(tmp_path, monkeypatch):
+    """Erstellt temporäre Asset-Ordner mit Dummy-PNGs.
+
+    Isoliert zusaetzlich vom realen ``~/.elder-berry/avatar_config.yaml``
+    und dem getrackten Repo-Default -- Renderer-Tests sollen das
+    hardcoded-Fallback-Verhalten testen, nicht den Live-Repo-Config-
+    Stand. Seit dem User-Override-Pattern resolvt der Loader ohne
+    expliziten Pfad und wuerde sonst die echte Datei laden.
+    """
+    from elder_berry.avatar import avatar_config_loader as acl
+
+    monkeypatch.setattr(
+        acl, "DEFAULT_CONFIG_PATH", tmp_path / "_nonexistent_default.yaml"
+    )
+    monkeypatch.setattr(acl, "USER_CONFIG_PATH", tmp_path / "_nonexistent_user.yaml")
     for subdir, names in [
         (
             "body",
@@ -446,12 +459,24 @@ class TestYAMLConfig:
         # Renderer hat _emotion_map von YAML oder hardcoded
         assert len(renderer._emotion_map) == 10
 
-    def test_fallback_without_yaml(self, mock_pygame, tmp_path):
-        """Ohne YAML-Datei: hardcoded Defaults."""
+    def test_fallback_without_yaml(self, mock_pygame, tmp_path, monkeypatch):
+        """Ohne YAML-Datei (weder USER noch DEFAULT): hardcoded Defaults."""
         for subdir in ["body", "eye", "mouth"]:
             d = tmp_path / subdir
             d.mkdir()
             (d / "dummy.png").write_bytes(b"\x89PNG" + b"\x00" * 40)
+
+        # Loader-Pfade auf nicht-existente Sackgassen biegen. Seit dem
+        # User-Override-Pattern entscheidet der Loader (nicht der
+        # assets_dir-Parameter), welche Datei gelesen wird.
+        from elder_berry.avatar import avatar_config_loader as acl
+
+        monkeypatch.setattr(
+            acl, "DEFAULT_CONFIG_PATH", tmp_path / "_nonexistent_default.yaml"
+        )
+        monkeypatch.setattr(
+            acl, "USER_CONFIG_PATH", tmp_path / "_nonexistent_user.yaml"
+        )
 
         from elder_berry.avatar.layered_renderer import (
             LayeredSpriteRenderer,

@@ -44,8 +44,21 @@ def mock_pygame():
 
 
 @pytest.fixture
-def layered_assets(tmp_path):
-    """Erstellt temporäre Layered-Assets (body, eye, mouth Ordner)."""
+def layered_assets(tmp_path, monkeypatch):
+    """Erstellt temporäre Layered-Assets (body, eye, mouth Ordner).
+
+    Isoliert zusaetzlich vom realen ``~/.elder-berry/avatar_config.yaml``
+    und dem getrackten Repo-Default. Seit dem User-Override-Pattern
+    resolvt der Loader ohne expliziten Pfad und wuerde sonst die echte
+    Datei laden -- die Idle/Emotion-Tests hier wollen aber das
+    hardcoded-Fallback-Verhalten.
+    """
+    from elder_berry.avatar import avatar_config_loader as acl
+
+    monkeypatch.setattr(
+        acl, "DEFAULT_CONFIG_PATH", tmp_path / "_nonexistent_default.yaml"
+    )
+    monkeypatch.setattr(acl, "USER_CONFIG_PATH", tmp_path / "_nonexistent_user.yaml")
     for subdir in ("body", "eye", "mouth"):
         d = tmp_path / subdir
         d.mkdir()

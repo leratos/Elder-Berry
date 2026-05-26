@@ -3,8 +3,16 @@
 Liest avatar_config.yaml und erzeugt daraus die Datenstrukturen die der
 LayeredSpriteRenderer benötigt (EMOTION_MAP, LIP_SYNC_WEIGHTS, etc.).
 
-Fallback: Wenn die YAML-Datei fehlt oder invalide ist, werden die
-hardcoded Defaults aus layered_renderer.py verwendet.
+Pfad-Aufloesung (User-Override-Pattern):
+- ``USER_CONFIG_PATH`` (~/.elder-berry/avatar_config.yaml) gewinnt, wenn
+  vorhanden -- gitignored, vom Avatar-Editor beschreibbar, vom
+  ``update alles``-Pull nicht angefasst.
+- ``DEFAULT_CONFIG_PATH`` (src/.../assets/avatar_config.yaml) ist das
+  getrackte Default-Template, das mit dem Code ausgeliefert wird.
+
+Fallback: Wenn weder USER noch DEFAULT existieren oder die Datei
+invalide ist, werden die hardcoded Defaults aus layered_renderer.py
+verwendet.
 """
 
 from __future__ import annotations
@@ -20,6 +28,23 @@ from elder_berry.character.base import Emotion
 logger = logging.getLogger(__name__)
 
 DEFAULT_CONFIG_PATH = Path(__file__).parent / "assets" / "avatar_config.yaml"
+"""Getrackte Default-Config -- liefert das Template aus dem Repo aus."""
+
+USER_CONFIG_PATH = Path.home() / ".elder-berry" / "avatar_config.yaml"
+"""User-Override-Config -- Avatar-Editor schreibt hierhin, der git-Pull
+faesst sie nicht an (gitignored). Konvention analog FactStore (facts.db
+im gleichen Verzeichnis)."""
+
+
+def resolve_active_config_path() -> Path:
+    """Liefert den aktiven Config-Pfad: USER wenn vorhanden, sonst DEFAULT.
+
+    Bei jedem Aufruf neu ausgewertet, damit Tests und der Avatar-Editor
+    nach dem ersten Save sofort die User-Datei sehen.
+    """
+    if USER_CONFIG_PATH.exists():
+        return USER_CONFIG_PATH
+    return DEFAULT_CONFIG_PATH
 
 
 @dataclass(frozen=True)
@@ -67,12 +92,13 @@ def load_avatar_config(path: Path | None = None) -> AvatarConfig | None:
     """Lädt die Avatar-Konfiguration aus einer YAML-Datei.
 
     Args:
-        path: Pfad zur YAML-Datei. Default: assets/avatar_config.yaml.
+        path: Expliziter Pfad zur YAML-Datei. Default: ``resolve_active_
+            config_path()`` (USER-Override gewinnt, sonst DEFAULT).
 
     Returns:
         AvatarConfig oder None wenn die Datei fehlt oder invalide ist.
     """
-    config_path = path or DEFAULT_CONFIG_PATH
+    config_path = path or resolve_active_config_path()
     if not config_path.exists():
         logger.warning("Avatar-Config nicht gefunden: %s", config_path)
         return None

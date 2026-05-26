@@ -87,18 +87,30 @@ def avatar_config_yaml(tmp_path):
 
 
 @pytest.fixture
-def client(avatar_assets, avatar_config_yaml):
-    """TestClient mit gemockten Asset- und Config-Pfaden."""
+def avatar_user_config_yaml(tmp_path):
+    """Pfad fuer die USER-Override-Datei (`~/.elder-berry/avatar_config.yaml`).
+
+    Existiert anfangs NICHT -- der Editor legt sie beim ersten Save an.
+    Tests, die explizit den User-Pfad pruefen, schreiben/lesen daran.
+    """
+    return tmp_path / "user_avatar_config.yaml"
+
+
+@pytest.fixture
+def client(avatar_assets, avatar_config_yaml, avatar_user_config_yaml):
+    """TestClient mit gemockten Asset- und Config-Pfaden (DEFAULT + USER)."""
     from elder_berry.web.settings_dashboard import SettingsDashboard
     import elder_berry.web.avatar_editor as ae
     import elder_berry.avatar.avatar_config_loader as acl
 
-    # avatar_editor referenziert avatar_config_loader.DEFAULT_CONFIG_PATH
-    # via Modul -- daher reicht ein Patch am Loader, beide Module sehen's.
+    # avatar_editor referenziert avatar_config_loader-Konstanten via Modul --
+    # ein Patch am Loader reicht, beide Module sehen's.
     original_assets = ae._ASSETS_DIR
-    original_loader_path = acl.DEFAULT_CONFIG_PATH
+    original_default = acl.DEFAULT_CONFIG_PATH
+    original_user = acl.USER_CONFIG_PATH
     ae._ASSETS_DIR = avatar_assets
     acl.DEFAULT_CONFIG_PATH = avatar_config_yaml
+    acl.USER_CONFIG_PATH = avatar_user_config_yaml
 
     router = AudioRouter(local_available=True)
     dashboard = SettingsDashboard(audio_router=router)
@@ -108,20 +120,23 @@ def client(avatar_assets, avatar_config_yaml):
 
     # Restore
     ae._ASSETS_DIR = original_assets
-    acl.DEFAULT_CONFIG_PATH = original_loader_path
+    acl.DEFAULT_CONFIG_PATH = original_default
+    acl.USER_CONFIG_PATH = original_user
 
 
 @pytest.fixture
-def client_with_renderer(avatar_assets, avatar_config_yaml):
+def client_with_renderer(avatar_assets, avatar_config_yaml, avatar_user_config_yaml):
     """TestClient mit gemocktem Renderer für Hot-Reload-Tests."""
     from elder_berry.web.settings_dashboard import SettingsDashboard
     import elder_berry.web.avatar_editor as ae
     import elder_berry.avatar.avatar_config_loader as acl
 
     original_assets = ae._ASSETS_DIR
-    original_loader_path = acl.DEFAULT_CONFIG_PATH
+    original_default = acl.DEFAULT_CONFIG_PATH
+    original_user = acl.USER_CONFIG_PATH
     ae._ASSETS_DIR = avatar_assets
     acl.DEFAULT_CONFIG_PATH = avatar_config_yaml
+    acl.USER_CONFIG_PATH = avatar_user_config_yaml
 
     mock_renderer = MagicMock()
     mock_renderer.reload_config.return_value = True
@@ -133,7 +148,8 @@ def client_with_renderer(avatar_assets, avatar_config_yaml):
     yield tc, mock_renderer
 
     ae._ASSETS_DIR = original_assets
-    acl.DEFAULT_CONFIG_PATH = original_loader_path
+    acl.DEFAULT_CONFIG_PATH = original_default
+    acl.USER_CONFIG_PATH = original_user
 
 
 # ---------------------------------------------------------------------------
@@ -274,7 +290,9 @@ class TestGetConfig:
 
 
 class TestSaveConfig:
-    def test_save_valid_config(self, client, avatar_config_yaml):
+    def test_save_valid_config(
+        self, client, avatar_config_yaml, avatar_user_config_yaml
+    ):
         config = {
             "version": 1,
             "emotions": {
@@ -293,14 +311,20 @@ class TestSaveConfig:
             },
             "breathing": {"enabled": True, "speed": 1.0, "amplitude": 1.5},
         }
+        default_before = avatar_config_yaml.read_text(encoding="utf-8")
+
         r = client.put("/api/avatar/config", json={"config": config})
         assert r.status_code == 200
         assert r.json()["saved"] is True
 
-        # Verify file was written
-        with open(avatar_config_yaml, encoding="utf-8") as f:
+        # USER-Pfad wurde geschrieben.
+        assert avatar_user_config_yaml.exists()
+        with open(avatar_user_config_yaml, encoding="utf-8") as f:
             saved = yaml.safe_load(f)
         assert saved["emotions"]["neutral"]["body"] == "idle"
+        # DEFAULT-Pfad (= getrackte Datei) wurde NICHT angefasst -- sonst
+        # kollidiert das mit ``git pull --ff-only`` bei ``update alles``.
+        assert avatar_config_yaml.read_text(encoding="utf-8") == default_before
 
     def test_save_missing_body(self, client):
         r = client.put(
@@ -352,7 +376,7 @@ class TestSaveConfig:
         )
         assert r.status_code == 400
 
-    def test_save_with_effect(self, client, avatar_config_yaml):
+    def test_save_with_effect(self, client, avatar_user_config_yaml):
         config = {
             "version": 1,
             "emotions": {
@@ -375,9 +399,99 @@ class TestSaveConfig:
         r = client.put("/api/avatar/config", json={"config": config})
         assert r.status_code == 200
 
-        with open(avatar_config_yaml, encoding="utf-8") as f:
+        # USER-Pfad enthaelt den geschriebenen Effect.
+        with open(avatar_user_config_yaml, encoding="utf-8") as f:
             saved = yaml.safe_load(f)
         assert saved["emotions"]["sad"]["effect"] == "effect_tear"
+
+    # ------------------------------------------------------------------
+    # User-Override-Pattern (Phase: avatar-config-user-override)
+    # ------------------------------------------------------------------
+
+    def test_save_writes_to_user_not_default(
+        self, client, avatar_config_yaml, avatar_user_config_yaml
+    ):
+        """Save schreibt ausschliesslich in USER, DEFAULT bleibt unangetastet."""
+        default_before = avatar_config_yaml.read_text(encoding="utf-8")
+        config = {
+            "emotions": {
+                "neutral": {
+                    "body": "idle",
+                    "eye_left": "eye_left_open",
+                    "eye_right": "eye_right_open",
+                    "mouth": "mouth_neutral_close",
+                },
+            },
+        }
+        r = client.put("/api/avatar/config", json={"config": config})
+        assert r.status_code == 200
+        assert avatar_user_config_yaml.exists()
+        assert avatar_config_yaml.read_text(encoding="utf-8") == default_before
+
+    def test_save_creates_user_parent_dir(
+        self, avatar_assets, avatar_config_yaml, tmp_path
+    ):
+        """USER-Parent-Verzeichnis fehlt -> Editor legt es an (mkdir parents=True)."""
+        from elder_berry.web.settings_dashboard import SettingsDashboard
+        import elder_berry.web.avatar_editor as ae
+        import elder_berry.avatar.avatar_config_loader as acl
+
+        nested_user = tmp_path / "subdir" / "doesnt" / "exist" / "user_avatar.yaml"
+        assert not nested_user.parent.exists()
+
+        original_assets = ae._ASSETS_DIR
+        original_default = acl.DEFAULT_CONFIG_PATH
+        original_user = acl.USER_CONFIG_PATH
+        ae._ASSETS_DIR = avatar_assets
+        acl.DEFAULT_CONFIG_PATH = avatar_config_yaml
+        acl.USER_CONFIG_PATH = nested_user
+
+        try:
+            router = AudioRouter(local_available=True)
+            dashboard = SettingsDashboard(audio_router=router)
+            tc = TestClient(dashboard.app)
+
+            config = {
+                "emotions": {
+                    "neutral": {
+                        "body": "idle",
+                        "eye_left": "eye_left_open",
+                        "eye_right": "eye_right_open",
+                        "mouth": "mouth_neutral_close",
+                    },
+                },
+            }
+            r = tc.put("/api/avatar/config", json={"config": config})
+            assert r.status_code == 200
+            assert nested_user.exists()
+            assert nested_user.parent.is_dir()
+        finally:
+            ae._ASSETS_DIR = original_assets
+            acl.DEFAULT_CONFIG_PATH = original_default
+            acl.USER_CONFIG_PATH = original_user
+
+    def test_get_reads_user_when_present(self, client, avatar_user_config_yaml):
+        """USER existiert mit Override -> GET liefert USER-Content."""
+        user_config = {
+            "version": 1,
+            "emotions": {
+                "neutral": {
+                    "body": "user_override_body",
+                    "eye_left": "eye_left_open",
+                    "eye_right": "eye_right_open",
+                    "mouth": "mouth_neutral_close",
+                    "can_blink": True,
+                },
+            },
+            "lip_sync": {"frames": {}, "interval": 0.18, "jitter": 0.03},
+            "breathing": {"enabled": True, "speed": 1.0, "amplitude": 1.0},
+        }
+        with open(avatar_user_config_yaml, "w", encoding="utf-8") as f:
+            yaml.dump(user_config, f)
+
+        r = client.get("/api/avatar/config")
+        assert r.status_code == 200
+        assert r.json()["config"]["emotions"]["neutral"]["body"] == "user_override_body"
 
 
 # ---------------------------------------------------------------------------
@@ -541,11 +655,17 @@ class TestErrorResponsesDoNotLeak:
             "emotions:\n  neutral: {body: ['unclosed",
             encoding="utf-8",
         )
+        # USER auf nicht-existenten tmp-Pfad, damit resolve_active_config_path
+        # garantiert auf DEFAULT (bad_yaml) faellt -- sonst koennte ein echtes
+        # ~/.elder-berry/avatar_config.yaml auf der Dev-Maschine reinpfuschen.
+        nonexistent_user = tmp_path / "nonexistent_user.yaml"
 
         original_assets = ae._ASSETS_DIR
-        original_config = acl.DEFAULT_CONFIG_PATH
+        original_default = acl.DEFAULT_CONFIG_PATH
+        original_user = acl.USER_CONFIG_PATH
         ae._ASSETS_DIR = avatar_assets
         acl.DEFAULT_CONFIG_PATH = bad_yaml
+        acl.USER_CONFIG_PATH = nonexistent_user
 
         try:
             router = AudioRouter(local_available=True)
@@ -565,22 +685,29 @@ class TestErrorResponsesDoNotLeak:
             assert "column" not in body["error"].lower()
         finally:
             ae._ASSETS_DIR = original_assets
-            acl.DEFAULT_CONFIG_PATH = original_config
+            acl.DEFAULT_CONFIG_PATH = original_default
+            acl.USER_CONFIG_PATH = original_user
 
     def test_save_config_swallows_io_error(self, avatar_assets, tmp_path):
-        """IO-Fehler beim Schreiben -> generic Message, kein OSError-Detail."""
+        """IO-Fehler beim Schreiben -> generic Message, kein OSError-Detail.
+
+        Save schreibt jetzt nach USER_CONFIG_PATH -- also USER unwritable
+        machen, nicht DEFAULT.
+        """
         from elder_berry.web.settings_dashboard import SettingsDashboard
         import elder_berry.web.avatar_editor as ae
         import elder_berry.avatar.avatar_config_loader as acl
 
-        # Pfad zu Verzeichnis statt Datei -> IsADirectoryError beim open()
-        unwritable = tmp_path / "as_directory"
-        unwritable.mkdir()
+        # USER-Pfad zeigt auf ein Verzeichnis -> open(..., 'w') wirft
+        # IsADirectoryError. Der Editor erstellt zwar parent.mkdir(), aber
+        # der Pfad selbst IST ein Verzeichnis, das Schreiben schlaegt fehl.
+        unwritable_user = tmp_path / "as_directory"
+        unwritable_user.mkdir()
 
         original_assets = ae._ASSETS_DIR
-        original_config = acl.DEFAULT_CONFIG_PATH
+        original_user = acl.USER_CONFIG_PATH
         ae._ASSETS_DIR = avatar_assets
-        acl.DEFAULT_CONFIG_PATH = unwritable
+        acl.USER_CONFIG_PATH = unwritable_user
 
         try:
             router = AudioRouter(local_available=True)
@@ -603,8 +730,8 @@ class TestErrorResponsesDoNotLeak:
             # Generic-Message
             assert "nicht gespeichert" in body["error"].lower()
             # Pfad nicht in der Antwort
-            assert str(unwritable) not in body["error"]
+            assert str(unwritable_user) not in body["error"]
             assert "errno" not in body["error"].lower()
         finally:
             ae._ASSETS_DIR = original_assets
-            acl.DEFAULT_CONFIG_PATH = original_config
+            acl.USER_CONFIG_PATH = original_user

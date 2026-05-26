@@ -202,10 +202,16 @@ class LayeredSpriteRenderer(AvatarRenderer):
         self._idle_end_time = 0.0
 
     def _load_yaml_config(self) -> None:
-        """Lädt die Avatar-Config aus YAML, Fallback auf hardcoded Defaults."""
+        """Lädt die Avatar-Config aus YAML, Fallback auf hardcoded Defaults.
+
+        Aufruf ohne expliziten Pfad: der Loader resolvt USER-Override
+        (`~/.elder-berry/avatar_config.yaml`) vor dem getrackten
+        Default-Template. So sehen wir Editor-Aenderungen ohne den
+        getrackten Pfad anzufassen.
+        """
         from elder_berry.avatar.avatar_config_loader import load_avatar_config
 
-        config = load_avatar_config(self._assets_dir / "avatar_config.yaml")
+        config = load_avatar_config()
         if config and config.emotions:
             self._emotion_map = config.emotions
             self._lip_sync_keys = list(config.lip_sync_weights.keys()) or _LIP_SYNC_KEYS
