@@ -46,7 +46,7 @@ avatar = [
 ]
 robot = []
 agent = [
-    "python-multipart>=0.0.18",
+    "python-multipart>=0.0.29",
     "sounddevice>=0.5.5",
     "numpy>=1.26",
 ]
@@ -115,7 +115,7 @@ harmony = [
 tower = [
     "matrix-nio>=0.25.2",
     "aiofiles>=23.0",
-    "python-multipart>=0.0.18",
+    "python-multipart>=0.0.29",
     "coqui-tts>=0.27.5",
     "sounddevice>=0.5.5",
     "numpy>=1.26",
