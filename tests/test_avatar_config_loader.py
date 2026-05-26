@@ -122,3 +122,41 @@ class TestLoadAvatarConfigResolution:
         monkeypatch.setattr(acl, "DEFAULT_CONFIG_PATH", missing_default)
         monkeypatch.setattr(acl, "USER_CONFIG_PATH", missing_user)
         assert load_avatar_config() is None
+
+    def test_no_arg_falls_back_to_default_when_user_invalid_yaml(self, patched_paths):
+        """USER existiert aber ist syntaktisch kaputt -> Loader nimmt
+        DEFAULT statt still auf hardcoded zu degradieren (Codex P2)."""
+        _, user = patched_paths
+        # Bewusst kaputtes YAML
+        user.write_text(
+            "emotions:\n  neutral: {body: ['unclosed",
+            encoding="utf-8",
+        )
+
+        cfg = load_avatar_config()
+        assert cfg is not None
+        # Werte stammen aus DEFAULT (= _MINIMAL_CONFIG)
+        assert cfg.emotions[Emotion.NEUTRAL].body == "relaxed"
+
+    def test_no_arg_falls_back_to_default_when_user_misses_required_fields(
+        self, patched_paths
+    ):
+        """USER ist valides YAML aber semantisch leer (keine 'emotions'-
+        Dict-Substanz) -> _parse_config liefert leere Emotions, der Loader
+        gibt das zurueck. Wir testen den syntaktisch kaputten Pfad
+        gesondert -- dieser Test dokumentiert das aktuelle Verhalten."""
+        _, user = patched_paths
+        # Leeres YAML -> data ist None, _load_one returnt None,
+        # Fallback auf DEFAULT
+        user.write_text("", encoding="utf-8")
+
+        cfg = load_avatar_config()
+        assert cfg is not None
+        assert cfg.emotions[Emotion.NEUTRAL].body == "relaxed"
+
+    def test_explicit_path_does_not_fall_back(self, patched_paths, tmp_path):
+        """Bei expliziter Pfad-Angabe wird KEIN Fallback auf DEFAULT
+        gemacht -- der Caller hat eine bewusste Wahl getroffen."""
+        broken = tmp_path / "broken.yaml"
+        broken.write_text("not: [valid: yaml: {{", encoding="utf-8")
+        assert load_avatar_config(broken) is None

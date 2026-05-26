@@ -92,13 +92,36 @@ def load_avatar_config(path: Path | None = None) -> AvatarConfig | None:
     """Lädt die Avatar-Konfiguration aus einer YAML-Datei.
 
     Args:
-        path: Expliziter Pfad zur YAML-Datei. Default: ``resolve_active_
-            config_path()`` (USER-Override gewinnt, sonst DEFAULT).
+        path: Expliziter Pfad zur YAML-Datei. Wenn gesetzt, wird nur
+            dieser Pfad probiert -- keine USER/DEFAULT-Resolution.
+            Wenn ``None``: Lookup-Chain ``USER → DEFAULT`` mit
+            Fallback auf DEFAULT, falls USER zwar existiert aber
+            unbrauchbar ist (korruptes YAML, fehlende Felder).
 
     Returns:
-        AvatarConfig oder None wenn die Datei fehlt oder invalide ist.
+        AvatarConfig oder ``None`` wenn weder USER noch DEFAULT eine
+        valide Config liefern.
     """
-    config_path = path or resolve_active_config_path()
+    if path is not None:
+        return _load_one(path)
+
+    # Lookup-Chain mit Recovery: ein kaputtes USER-File darf den
+    # Avatar nicht still auf hardcoded Defaults zurueckwerfen, solange
+    # eine valide DEFAULT-Config im Repo liegt.
+    if USER_CONFIG_PATH.exists():
+        config = _load_one(USER_CONFIG_PATH)
+        if config is not None:
+            return config
+        logger.warning(
+            "USER-Override Avatar-Config unbrauchbar (%s) -- Fallback auf DEFAULT.",
+            USER_CONFIG_PATH,
+        )
+
+    return _load_one(DEFAULT_CONFIG_PATH)
+
+
+def _load_one(config_path: Path) -> AvatarConfig | None:
+    """Lädt und parst eine einzelne YAML-Datei. ``None`` bei jedem Fehler."""
     if not config_path.exists():
         logger.warning("Avatar-Config nicht gefunden: %s", config_path)
         return None
