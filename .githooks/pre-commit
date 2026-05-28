@@ -26,7 +26,8 @@ case "$branch" in
         ;;
 esac
 
-if git diff --cached --name-only --diff-filter=ACMR | grep -Fx "docs/journal.txt" >/dev/null 2>&1; then
+journal_staged="$(git diff --cached --name-only --diff-filter=ACMR -- docs/journal.txt 2>/dev/null || true)"
+if [ -n "$journal_staged" ]; then
     echo "pre-commit: docs/journal.txt is historical only. Use Bramble MCP journal_append instead." >&2
     exit 1
 fi

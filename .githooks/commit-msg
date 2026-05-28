@@ -6,22 +6,29 @@ if [ "${ELDER_BERRY_SKIP_GUARDRAILS:-}" = "1" ]; then
 fi
 
 msg_file="$1"
+has_journal=0
 
-if grep -Eiq '^Journal:[[:space:]]*elder-berry#[0-9]+([[:space:]]|$)' "$msg_file"; then
+while IFS= read -r line || [ -n "$line" ]; do
+    case "$line" in
+        "Journal: elder-berry#"[0-9]*)
+            has_journal=1
+            ;;
+        "Journal: skipped ("*")")
+            has_journal=1
+            ;;
+    esac
+done < "$msg_file"
+
+if [ "$has_journal" -eq 1 ]; then
     exit 0
 fi
 
-if grep -Eiq '^Journal:[[:space:]]*skipped[[:space:]]*\(.+\)' "$msg_file"; then
-    exit 0
-fi
-
-cat >&2 <<'EOF'
-commit-msg: missing Elder-Berry journal footer.
-
-Add one of these lines to the commit message:
-  Journal: elder-berry#123
-  Journal: skipped (short reason)
-
-Use "skipped" only for trivial commits or when Bramble MCP is unavailable.
-EOF
+printf '%s\n' \
+    "commit-msg: missing Elder-Berry journal footer." \
+    "" \
+    "Add one of these lines to the commit message:" \
+    "  Journal: elder-berry#123" \
+    "  Journal: skipped (short reason)" \
+    "" \
+    "Use \"skipped\" only for trivial commits or when Bramble MCP is unavailable." >&2
 exit 1
