@@ -229,3 +229,101 @@ def test_save_recipe_does_not_overwrite_existing_file():
         )
 
     assert path == "Recipes/carbonara-2.json"
+
+
+def test_normalize_dir_name_variants():
+    client = NextcloudCookbookClient(_secret_store())
+    assert client._normalize_dir_name(None) is None
+    assert client._normalize_dir_name("  ") is None
+    assert client._normalize_dir_name("/Recipes/") == "Recipes"
+
+
+def test_resolve_recipes_dir_prefers_secret_override():
+    client = NextcloudCookbookClient(
+        _secret_store(nextcloud_cookbook_folder="MyFolder")
+    )
+    client._request_api = MagicMock(side_effect=AssertionError("must not call API"))
+    assert client._resolve_recipes_dir() == "MyFolder"
+
+
+def test_resolve_recipes_dir_uses_config_api_and_caches():
+    client = NextcloudCookbookClient(_secret_store())
+    client._request_api = MagicMock(return_value=_response(200, {"folder": "X"}))
+    client._json = MagicMock(return_value={"folder": "X"})
+
+    assert client._resolve_recipes_dir() == "X"
+    # second call uses cache
+    assert client._resolve_recipes_dir() == "X"
+    client._request_api.assert_called_once()
+
+
+def test_resolve_recipes_dir_falls_back_on_config_error():
+    client = NextcloudCookbookClient(_secret_store())
+    client._request_api = MagicMock(side_effect=NextcloudCookbookError("boom"))
+    assert client._resolve_recipes_dir() == "Recipes"
+
+
+def test_join_remote_path_handles_slashes():
+    client = NextcloudCookbookClient(_secret_store())
+    assert client._join_remote_path("Recipes", "a.json") == "Recipes/a.json"
+    assert client._join_remote_path("/Recipes/", "/a.json") == "Recipes/a.json"
+
+
+def test_webdav_exists_status_branches():
+    client = NextcloudCookbookClient(_secret_store())
+    with patch(_HTTPX_REQUEST) as mock_request:
+        mock_request.return_value = _response(207, None)
+        assert client._webdav_exists("Recipes/a.json") is True
+
+        mock_request.return_value = _response(404, None)
+        assert client._webdav_exists("Recipes/a.json") is False
+
+
+def test_webdav_exists_auth_error_raises():
+    client = NextcloudCookbookClient(_secret_store())
+    with patch(_HTTPX_REQUEST) as mock_request:
+        mock_request.return_value = _response(401, None)
+        with pytest.raises(NextcloudCookbookError):
+            client._webdav_exists("Recipes/a.json")
+
+
+def test_webdav_exists_generic_error_raises():
+    client = NextcloudCookbookClient(_secret_store())
+    with patch(_HTTPX_REQUEST) as mock_request:
+        mock_request.return_value = _response(500, None)
+        with pytest.raises(NextcloudCookbookError):
+            client._webdav_exists("Recipes/a.json")
+
+
+def test_resolve_unique_remote_path_many_collisions():
+    client = NextcloudCookbookClient(_secret_store())
+    client._webdav_exists = MagicMock(side_effect=[True, True, False])
+    path = client._resolve_unique_remote_path("Recipes", "x.json")
+    assert path == "Recipes/x-3.json"
+
+
+def test_resolve_unique_remote_path_without_extension():
+    client = NextcloudCookbookClient(_secret_store())
+    client._webdav_exists = MagicMock(side_effect=[True, False])
+    path = client._resolve_unique_remote_path("Recipes", "x")
+    assert path == "Recipes/x-2"
+
+
+def test_save_recipe_with_blank_filename_falls_back_to_recipe_json_name():
+    with patch(_HTTPX_REQUEST) as mock_request, patch(_HTTPX_CLIENT) as mock_client_cls:
+        mock_request.side_effect = [_response(404, None), _response(201, None)]
+        _install_httpx_client(mock_client_cls, response=_response(200, {"ok": True}))
+
+        client = NextcloudCookbookClient(_secret_store())
+        path = client.save_recipe(
+            {
+                "@context": "https://schema.org",
+                "@type": "Recipe",
+                "name": "Fallback Name",
+                "recipeIngredient": ["A"],
+                "recipeInstructions": ["B"],
+            },
+            filename=" ",
+        )
+
+    assert path.endswith("recipe.json")
