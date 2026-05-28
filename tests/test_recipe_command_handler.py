@@ -242,6 +242,39 @@ def test_lookup_prefers_api_hit_over_semantic_hit(handler, cookbook, index):
     index.search.assert_not_called()
 
 
+def test_lookup_reranks_api_hits_to_exact_name(handler, cookbook, index):
+    cookbook.list_recipes.return_value = []
+    cookbook.search_recipes.return_value = [
+        MagicMock(
+            recipe_id="670",
+            name="Vodka Orange Smash",
+            category="Cocktail",
+            keywords=[],
+        ),
+        MagicMock(
+            recipe_id="671",
+            name="Gin Basil Smash",
+            category="Cocktail",
+            keywords=[],
+        ),
+    ]
+    cookbook.get_recipe.return_value = {
+        "name": "Gin Basil Smash",
+        "recipeCategory": "Cocktail",
+        "recipeIngredient": ["6 cl Gin", "Basilikum"],
+        "recipeInstructions": ["Shaken"],
+    }
+
+    result = handler.execute(
+        "recipe_lookup", "gib mir bitte das Rezept fuer Gin Basil Smash"
+    )
+
+    assert result.success is True
+    assert "Rezept: Gin Basil Smash" in (result.text or "")
+    cookbook.get_recipe.assert_called_once_with("671")
+    index.search.assert_not_called()
+
+
 def test_generate_recipe_json_handles_llm_exception(handler, anthropic):
     anthropic.generate.side_effect = RuntimeError("api down")
     assert handler._generate_recipe_json("x") is None
