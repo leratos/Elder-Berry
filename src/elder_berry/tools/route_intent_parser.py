@@ -182,6 +182,21 @@ _SYSTEM_PROMPT = (
     " 'auf dem weg', 'unterwegs', 'einkaufen' deutet auf type='poi'"
     " mit constraint='along_route'. 'vorher <Name> abholen' ist"
     " type='contact' mit constraint='before_destination'."
+    " Wichtig: Bei Formulierungen wie 'von zuhause zu Nadine und dann zu Lisa'"
+    " ist 'Lisa' das destination-Ziel und 'Nadine' ein waypoint."
+    " 'unterwegs moechte ich noch zu Hornbach' ist ein POI-Waypoint und"
+    " nicht Teil des destination-Strings."
+)
+
+
+_CHAINED_DESTINATION_RE = re.compile(
+    r"\bzu\s+(?P<first>[^,.!?]+?)\s+und\s+dann\s+zu\s+(?P<second>[^,.!?]+)",
+    re.IGNORECASE,
+)
+_ALONG_ROUTE_POI_RE = re.compile(
+    r"\bunterwegs(?:\s+moechte\s+ich)?(?:\s+noch)?\s+zu\s+"
+    r"(?P<poi>[^,.!?]+)",
+    re.IGNORECASE,
 )
 
 
@@ -219,7 +234,8 @@ class RouteIntentParser:
             system=_SYSTEM_PROMPT,
             max_tokens=1024,
         )
-        return self._raw_to_intent(raw)
+        intent = self._raw_to_intent(raw)
+        return self._repair_common_chained_route_phrasing(text, intent)
 
     # ------------------------------------------------------------------
     # Schema-Validierung + DTO-Bau
@@ -322,4 +338,69 @@ class RouteIntentParser:
             value=value,
             poi_category=category,
             constraint=constraint,
+        )
+
+    @staticmethod
+    def _repair_common_chained_route_phrasing(
+        text: str,
+        intent: RouteIntent,
+    ) -> RouteIntent:
+        """Repariert haeufige LLM-Fehlsegmentierungen bei Ketten wie
+        'zu Nadine und dann zu Lisa, unterwegs zu Hornbach'.
+
+        Live-Befund 2026-05-28: Sonnet kann in solchen Formulierungen den
+        kompletten Restsatz in ``destination.value`` kippen. Wir greifen nur
+        ein, wenn der destination-String genau solche Kettenmarker enthaelt;
+        ansonsten bleibt das LLM-Ergebnis unveraendert.
+        """
+        destination_value = intent.destination.value.strip()
+        lowered_destination = destination_value.lower()
+        if "und dann zu" not in lowered_destination:
+            return intent
+
+        match = _CHAINED_DESTINATION_RE.search(destination_value)
+        if match is None:
+            match = _CHAINED_DESTINATION_RE.search(text)
+        if match is None:
+            return intent
+
+        first = match.group("first").strip()
+        second = match.group("second").strip()
+        if not first or not second:
+            return intent
+
+        repaired_waypoints = list(intent.waypoints)
+        repaired_waypoints.insert(
+            0,
+            IntentStop(
+                type="contact",
+                value=first,
+                constraint="before_destination",
+            ),
+        )
+
+        poi_match = _ALONG_ROUTE_POI_RE.search(text)
+        if poi_match is not None:
+            poi_value = poi_match.group("poi").strip()
+            if poi_value and all(
+                w.value.lower() != poi_value.lower() for w in repaired_waypoints
+            ):
+                repaired_waypoints.append(
+                    IntentStop(
+                        type="poi",
+                        value=poi_value,
+                        constraint="along_route",
+                    ),
+                )
+
+        return RouteIntent(
+            origin=intent.origin,
+            destination=IntentStop(
+                type=intent.destination.type,
+                value=second,
+                poi_category=intent.destination.poi_category,
+                constraint=intent.destination.constraint,
+            ),
+            waypoints=tuple(repaired_waypoints),
+            arrival_time_text=intent.arrival_time_text,
         )

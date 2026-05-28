@@ -248,6 +248,31 @@ class TestParse:
         intent = parser.parse("Fahr zu Andrea, vorher Lisa abholen")
         assert intent.waypoints[0].constraint == "before_destination"
 
+    def test_repairs_chained_destination_phrase_from_live_case(
+        self,
+        parser: RouteIntentParser,
+        anthropic_client: MagicMock,
+    ) -> None:
+        anthropic_client.tool_call.return_value = _sonnet_response(
+            destination={
+                "type": "contact",
+                "value": "Nadine und dann zu Lisa. Unterwegs moechte ich noch zu Hornbach",
+            },
+            waypoints=[],
+        )
+        intent = parser.parse(
+            "Ich muss von zuhause zu Nadine und dann zu Lisa. "
+            "Unterwegs moechte ich noch zu Hornbach.",
+        )
+        assert intent.destination.value == "Lisa"
+        assert [waypoint.value for waypoint in intent.waypoints] == [
+            "Nadine",
+            "Hornbach",
+        ]
+        assert intent.waypoints[0].type == "contact"
+        assert intent.waypoints[1].type == "poi"
+        assert intent.waypoints[1].constraint == "along_route"
+
     # ------------------------------------------------------------------
     # Fehlerfaelle
     # ------------------------------------------------------------------
