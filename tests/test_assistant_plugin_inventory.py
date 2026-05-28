@@ -68,14 +68,14 @@ def test_inventory_block_format_has_closing_bracket(tmp_path):
 
 
 def test_inventory_block_one_line_per_plugin_today(tmp_path):
-    """Aktuell 25 Builtin-Plugins (Phase 92: multi_stop_route dazu)
-    -> 25 Plugin-Zeilen + 1 Header = 26 Zeilen. Greift noch nicht
+    """Aktuell 26 Builtin-Plugins (Phase 93: recipe dazu)
+    -> 26 Plugin-Zeilen + 1 Header = 27 Zeilen. Greift noch nicht
     das 30-Zeilen-Limit."""
     a = _make_assistant(tmp_path)
     block = a._build_plugin_inventory_block()
     plugin_lines = [ln for ln in block.splitlines() if ln.startswith("- ")]
-    # 25 Builtin-Plugins, alle in der Liste
-    assert len(plugin_lines) == 25
+    # 26 Builtin-Plugins, alle in der Liste
+    assert len(plugin_lines) == 26
 
 
 # --- Trim-Verhalten ----------------------------------------------------
