@@ -19,6 +19,7 @@
 *.css       text eol=lf
 *.js        text eol=lf
 *.sh        text eol=lf
+.githooks/* text eol=lf
 
 # Windows-Batch: CRLF erzwingen
 *.bat       text eol=crlf
