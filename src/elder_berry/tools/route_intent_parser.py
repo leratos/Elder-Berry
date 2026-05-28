@@ -45,7 +45,11 @@ MULTI_STOP_HINTS = re.compile(
 ROUTE_INTRO = re.compile(
     r"\b(fahrt|fahren|fahre|fahr|route|navig\w+|"
     r"muss\s+nach|"
+    r"muss\s+zu|"
+    r"muss\s+von\b.*?\bzu\s+|"
     r"will\s+nach|"
+    r"will\s+zu|"
+    r"will\s+von\b.*?\bzu\s+|"
     r"zu\s+fahren|"
     r"nach\s+)",
     re.IGNORECASE,
