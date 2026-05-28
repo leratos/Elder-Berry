@@ -49,6 +49,7 @@ def test_not_configured_when_cookbook_missing(anthropic, index):
 
 def test_semantic_hit_fetches_recipe(handler, cookbook, index):
     cookbook.list_recipes.return_value = []
+    cookbook.search_recipes.return_value = []
     index.search.return_value = RecipeMatch(recipe_id="42", score=0.91)
     cookbook.get_recipe.return_value = {
         "name": "Carbonara",
@@ -179,44 +180,58 @@ def test_lookup_search_error_returns_user_friendly_error(handler, cookbook, inde
 
 def test_lookup_semantic_hit_fetch_fail_falls_back_to_api(handler, cookbook, index):
     cookbook.list_recipes.return_value = []
-    index.search.return_value = RecipeMatch(recipe_id="42", score=0.91)
-    cookbook.get_recipe.side_effect = [RuntimeError("kaputt"), {"name": "API"}]
     cookbook.search_recipes.return_value = [
         MagicMock(recipe_id="9", name="API", category="", keywords=[])
     ]
+    index.search.return_value = RecipeMatch(recipe_id="42", score=0.91)
+    cookbook.get_recipe.side_effect = [{"name": "API"}]
 
     result = handler.execute("recipe_lookup", "rezept x")
 
     assert result.success is True
     assert "Rezept: API" in (result.text or "")
-    assert cookbook.get_recipe.call_count == 2
+    assert cookbook.get_recipe.call_count == 1
 
 
 def test_lookup_semantic_false_positive_falls_back_to_api(handler, cookbook, index):
     cookbook.list_recipes.return_value = []
+    cookbook.search_recipes.return_value = []
     index.search.return_value = RecipeMatch(recipe_id="42", score=0.95)
-    cookbook.get_recipe.side_effect = [
-        {
-            "name": "Vegetarisches Gulasch",
-            "recipeCategory": "Hauptgericht",
-            "recipeIngredient": ["500 g Kartoffeln"],
-            "recipeInstructions": ["Kochen"],
-        },
-        {
-            "name": "Gin Basil Smash",
-            "recipeCategory": "Cocktail",
-            "recipeIngredient": ["6 cl Gin", "Basilikum"],
-            "recipeInstructions": ["Shaken"],
-        },
-    ]
+    cookbook.get_recipe.return_value = {
+        "name": "Vegetarisches Gulasch",
+        "recipeCategory": "Hauptgericht",
+        "recipeIngredient": ["500 g Kartoffeln"],
+        "recipeInstructions": ["Kochen"],
+    }
+    handler._anthropic.generate.return_value = (
+        '{"@context":"https://schema.org","@type":"Recipe",'
+        '"name":"Gin Basil Smash","recipeCategory":"Cocktail",'
+        '"recipeIngredient":["6 cl Gin"],"recipeInstructions":["Shaken"]}'
+    )
+
+    result = handler.execute(
+        "recipe_lookup", "gib mir bitte das Rezept fuer Gin Basil Smash"
+    )
+
+    assert result.success is True
+    assert result.pending_confirmation is True
+    assert "Entwurf" in (result.text or "")
+
+
+def test_lookup_prefers_api_hit_over_semantic_hit(handler, cookbook, index):
+    cookbook.list_recipes.return_value = []
     cookbook.search_recipes.return_value = [
         MagicMock(
-            recipe_id="9",
-            name="Gin Basil Smash",
-            category="Cocktail",
-            keywords=[],
+            recipe_id="9", name="Gin Basil Smash", category="Cocktail", keywords=[]
         )
     ]
+    index.search.return_value = RecipeMatch(recipe_id="42", score=0.99)
+    cookbook.get_recipe.return_value = {
+        "name": "Gin Basil Smash",
+        "recipeCategory": "Cocktail",
+        "recipeIngredient": ["6 cl Gin", "Basilikum"],
+        "recipeInstructions": ["Shaken"],
+    }
 
     result = handler.execute(
         "recipe_lookup", "gib mir bitte das Rezept fuer Gin Basil Smash"
@@ -224,7 +239,7 @@ def test_lookup_semantic_false_positive_falls_back_to_api(handler, cookbook, ind
 
     assert result.success is True
     assert "Rezept: Gin Basil Smash" in (result.text or "")
-    assert cookbook.get_recipe.call_count == 2
+    index.search.assert_not_called()
 
 
 def test_generate_recipe_json_handles_llm_exception(handler, anthropic):

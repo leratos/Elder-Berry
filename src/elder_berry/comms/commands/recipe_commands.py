@@ -315,6 +315,36 @@ class RecipeCommandHandler(CommandHandler):
             logger.debug("recipe index hydration skipped: %s", exc)
 
         try:
+            api_hits = self._cookbook.search_recipes(query, limit=1)
+        except Exception as exc:
+            logger.error("cookbook search failed: %s", exc)
+            return CommandResult(
+                command="recipe_lookup",
+                success=False,
+                text=user_friendly_error(exc, "Cookbook-Suche"),
+            )
+
+        if isinstance(api_hits, list) and api_hits:
+            top = api_hits[0]
+            try:
+                self._index.upsert(top)
+            except Exception as exc:
+                logger.debug("recipe index update skipped: %s", exc)
+            try:
+                recipe = self._cookbook.get_recipe(top.recipe_id)
+                return CommandResult(
+                    command="recipe_lookup",
+                    success=True,
+                    text=self._render_recipe(recipe, score=None),
+                )
+            except Exception as exc:
+                return CommandResult(
+                    command="recipe_lookup",
+                    success=False,
+                    text=user_friendly_error(exc, "Cookbook-Rezept"),
+                )
+
+        try:
             match = self._index.search(query)
         except Exception as exc:
             logger.debug("recipe semantic search failed: %s", exc)
@@ -339,36 +369,6 @@ class RecipeCommandHandler(CommandHandler):
                 pass
             except Exception as exc:
                 logger.warning("semantic hit could not be loaded: %s", exc)
-
-        try:
-            api_hits = self._cookbook.search_recipes(query, limit=1)
-        except Exception as exc:
-            logger.error("cookbook search failed: %s", exc)
-            return CommandResult(
-                command="recipe_lookup",
-                success=False,
-                text=user_friendly_error(exc, "Cookbook-Suche"),
-            )
-
-        if api_hits:
-            top = api_hits[0]
-            try:
-                self._index.upsert(top)
-            except Exception as exc:
-                logger.debug("recipe index update skipped: %s", exc)
-            try:
-                recipe = self._cookbook.get_recipe(top.recipe_id)
-                return CommandResult(
-                    command="recipe_lookup",
-                    success=True,
-                    text=self._render_recipe(recipe, score=None),
-                )
-            except Exception as exc:
-                return CommandResult(
-                    command="recipe_lookup",
-                    success=False,
-                    text=user_friendly_error(exc, "Cookbook-Rezept"),
-                )
 
         generated = self._generate_recipe_json(query)
         if generated is None:
