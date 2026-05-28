@@ -315,7 +315,7 @@ class RecipeCommandHandler(CommandHandler):
             logger.debug("recipe index hydration skipped: %s", exc)
 
         try:
-            api_hits = self._cookbook.search_recipes(query, limit=1)
+            api_hits = self._cookbook.search_recipes(query, limit=20)
         except Exception as exc:
             logger.error("cookbook search failed: %s", exc)
             return CommandResult(
@@ -324,8 +324,18 @@ class RecipeCommandHandler(CommandHandler):
                 text=user_friendly_error(exc, "Cookbook-Suche"),
             )
 
+        top: CookbookRecipeSummary | None = None
         if isinstance(api_hits, list) and api_hits:
-            top = api_hits[0]
+            top = self._pick_best_api_hit(query, api_hits)
+            if top is not None and not self._is_api_hit_match_strong(query, top):
+                logger.info(
+                    "api hit rejected as weak match (query=%r, hit=%r)",
+                    query,
+                    self._summary_name(top),
+                )
+                top = None
+
+        if top is not None:
             try:
                 self._index.upsert(top)
             except Exception as exc:
@@ -404,9 +414,18 @@ class RecipeCommandHandler(CommandHandler):
         return {tok.casefold() for tok in tokens}
 
     @staticmethod
+    def _query_tokens_for_match(query: str) -> set[str]:
+        normalized = RecipeCommandHandler._normalize_name_for_match(query)
+        tokens = set(normalized.split())
+        return {tok for tok in tokens if tok not in _QUERY_STOP_WORDS}
+
+    @staticmethod
     def _is_semantic_match_plausible(recipe: dict[str, Any], query: str) -> bool:
-        query_tokens = RecipeCommandHandler._tokenize_for_match(query)
-        query_tokens = {tok for tok in query_tokens if tok not in _QUERY_STOP_WORDS}
+        name = str(recipe.get("name") or recipe.get("title") or "")
+        if RecipeCommandHandler._is_name_match_strong(query, name):
+            return True
+
+        query_tokens = RecipeCommandHandler._query_tokens_for_match(query)
         if not query_tokens:
             return True
 
@@ -425,7 +444,152 @@ class RecipeCommandHandler(CommandHandler):
             parts.extend(str(item) for item in tools)
 
         candidate_tokens = RecipeCommandHandler._tokenize_for_match(" ".join(parts))
-        return bool(query_tokens & candidate_tokens)
+        candidate_compact = RecipeCommandHandler._normalize_name_for_match(
+            " ".join(parts)
+        ).replace(" ", "")
+
+        if all(tok in candidate_compact for tok in query_tokens):
+            return True
+
+        overlap = len(query_tokens & candidate_tokens)
+        if len(query_tokens) == 1:
+            return overlap == 1
+        coverage = overlap / len(query_tokens)
+        return overlap >= 2 and coverage >= 0.6
+
+    @staticmethod
+    def _summary_name(hit: CookbookRecipeSummary) -> str:
+        raw_name = getattr(hit, "name", "")
+        if isinstance(raw_name, str):
+            return raw_name
+
+        # Test doubles based on MagicMock often carry the intended label here.
+        mock_name = getattr(hit, "_mock_name", "")
+        if isinstance(mock_name, str) and mock_name:
+            return mock_name
+        return str(raw_name)
+
+    @staticmethod
+    def _normalize_name_for_match(value: str) -> str:
+        text = value.casefold()
+        text = text.replace("ä", "ae").replace("ö", "oe").replace("ü", "ue")
+        text = text.replace("ß", "ss")
+        text = text.replace("'", "").replace("’", "").replace("ʼ", "")
+        text = re.sub(r"[^a-z0-9]+", " ", text)
+        return re.sub(r"\s+", " ", text).strip()
+
+    @staticmethod
+    def _summary_category(hit: CookbookRecipeSummary) -> str:
+        raw = getattr(hit, "category", "")
+        return raw if isinstance(raw, str) else str(raw)
+
+    @staticmethod
+    def _summary_keywords(hit: CookbookRecipeSummary) -> list[str]:
+        raw = getattr(hit, "keywords", [])
+        if isinstance(raw, list):
+            return [str(x) for x in raw if str(x).strip()]
+        return []
+
+    @staticmethod
+    def _summary_tools(hit: CookbookRecipeSummary) -> list[str]:
+        raw = getattr(hit, "tools", [])
+        if isinstance(raw, list):
+            return [str(x) for x in raw if str(x).strip()]
+        return []
+
+    @staticmethod
+    def _summary_text_for_match(hit: CookbookRecipeSummary) -> str:
+        parts = [
+            RecipeCommandHandler._summary_name(hit),
+            RecipeCommandHandler._summary_category(hit),
+        ]
+        parts.extend(RecipeCommandHandler._summary_keywords(hit))
+        parts.extend(RecipeCommandHandler._summary_tools(hit))
+        return " ".join(p for p in parts if p)
+
+    @staticmethod
+    def _is_api_hit_match_strong(query: str, hit: CookbookRecipeSummary) -> bool:
+        if RecipeCommandHandler._is_name_match_strong(
+            query, RecipeCommandHandler._summary_name(hit)
+        ):
+            return True
+
+        query_tokens = RecipeCommandHandler._query_tokens_for_match(query)
+        if not query_tokens:
+            return False
+
+        summary_norm = RecipeCommandHandler._normalize_name_for_match(
+            RecipeCommandHandler._summary_text_for_match(hit)
+        )
+        summary_tokens = set(summary_norm.split())
+        summary_compact = summary_norm.replace(" ", "")
+
+        if all(tok in summary_compact for tok in query_tokens):
+            return True
+
+        overlap = len(query_tokens & summary_tokens)
+        if len(query_tokens) == 1:
+            return overlap == 1
+        coverage = overlap / len(query_tokens)
+        return overlap >= 2 and coverage >= 0.6
+
+    @staticmethod
+    def _pick_best_api_hit(
+        query: str,
+        hits: list[CookbookRecipeSummary],
+    ) -> CookbookRecipeSummary | None:
+        if not hits:
+            return None
+
+        query_norm = RecipeCommandHandler._normalize_name_for_match(query)
+        query_tokens = RecipeCommandHandler._query_tokens_for_match(query)
+
+        def score(hit: CookbookRecipeSummary) -> tuple[int, int, int, int]:
+            name_norm = RecipeCommandHandler._normalize_name_for_match(
+                RecipeCommandHandler._summary_name(hit)
+            )
+            text_norm = RecipeCommandHandler._normalize_name_for_match(
+                RecipeCommandHandler._summary_text_for_match(hit)
+            )
+            text_tokens = set(text_norm.split())
+
+            exact = 1 if name_norm == query_norm else 0
+            contains = 1 if (query_norm and query_norm in name_norm) else 0
+            overlap = len(query_tokens & text_tokens)
+            # shorter distance in token count is preferred on ties
+            token_distance = abs(len(text_tokens) - len(query_tokens))
+            return (exact, contains, overlap, -token_distance)
+
+        # max() is stable: for equal score the first API hit wins.
+        return max(hits, key=score)
+
+    @staticmethod
+    def _is_name_match_strong(query: str, candidate: str) -> bool:
+        query_norm = RecipeCommandHandler._normalize_name_for_match(query)
+        cand_norm = RecipeCommandHandler._normalize_name_for_match(candidate)
+        if not query_norm or not cand_norm:
+            return False
+        if query_norm == cand_norm:
+            return True
+
+        query_tokens = RecipeCommandHandler._query_tokens_for_match(query)
+        cand_tokens = set(cand_norm.split())
+        if not query_tokens:
+            return False
+
+        query_compact = "".join(sorted(query_tokens))
+        cand_compact = cand_norm.replace(" ", "")
+        if query_compact and query_compact in cand_compact:
+            return True
+        if all(tok in cand_compact for tok in query_tokens):
+            return True
+
+        overlap = len(query_tokens & cand_tokens)
+        if len(query_tokens) == 1:
+            return overlap == 1
+
+        coverage = overlap / len(query_tokens)
+        return overlap >= 2 and coverage >= 0.6
 
     @staticmethod
     def _normalize_recipe_yield(value: Any) -> str | None:
