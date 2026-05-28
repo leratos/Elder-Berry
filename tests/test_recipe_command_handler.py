@@ -240,6 +240,14 @@ def test_generate_recipe_json_normalizes_extended_fields(handler, anthropic):
 def test_extract_query_variants(handler):
     assert handler._extract_query("rezept carbonara") == "carbonara"
     assert handler._extract_query("wie mache ich ramen") == "ramen"
+    assert (
+        handler._extract_query("gib mir ein Rezept fuer ein vegetarisches Gulasch")
+        == "vegetarisches Gulasch"
+    )
+    assert (
+        handler._extract_query("ich moechte ein rezept fuer linsensuppe bitte")
+        == "linsensuppe"
+    )
     assert handler._extract_query("hallo") == ""
 
 

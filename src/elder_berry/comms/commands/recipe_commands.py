@@ -449,14 +449,45 @@ class RecipeCommandHandler(CommandHandler):
         return normalized
 
     @staticmethod
+    def _clean_extracted_query(value: str) -> str:
+        text = value.strip(" \t\n\r:,-")
+        if not text:
+            return ""
+
+        # Strip connector words and leading determiners commonly used in NL requests.
+        text = re.sub(r"^(?:rezept|kochbuch|cocktail)\b\s*", "", text, flags=re.I)
+        text = re.sub(r"^(?:fuer|für|zu|von)\s+", "", text, flags=re.I)
+        text = re.sub(r"^(?:ein|eine|einen|einem|einer)\s+", "", text, flags=re.I)
+        text = re.sub(r"\s+(?:bitte|danke)\b[.!?]*$", "", text, flags=re.I)
+        return text.strip(" .!?")
+
+    @staticmethod
     def _extract_query(raw_text: str) -> str:
         text = raw_text.strip()
         m = RECIPE_PATTERN.match(text)
         if m:
-            return (m.group(1) or "").strip()
+            return RecipeCommandHandler._clean_extracted_query(m.group(1) or "")
         m = HOW_TO_PATTERN.match(text)
         if m:
-            return (m.group(1) or "").strip()
+            return RecipeCommandHandler._clean_extracted_query(m.group(1) or "")
+
+        # Natural language fallback, e.g.:
+        # "gib mir ein Rezept fuer vegetarisches Gulasch"
+        keyword = re.search(r"\b(?:rezept|kochbuch|cocktail)\b", text, re.I)
+        if keyword:
+            suffix = text[keyword.end() :]
+            cleaned = RecipeCommandHandler._clean_extracted_query(suffix)
+            if cleaned:
+                return cleaned
+
+            by_preposition = re.search(r"\b(?:fuer|für|zu|von)\s+(.+)$", text, re.I)
+            if by_preposition:
+                cleaned = RecipeCommandHandler._clean_extracted_query(
+                    by_preposition.group(1)
+                )
+                if cleaned:
+                    return cleaned
+
         return ""
 
     @staticmethod
