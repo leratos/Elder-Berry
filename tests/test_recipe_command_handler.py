@@ -186,7 +186,7 @@ def test_lookup_semantic_hit_fetch_fail_falls_back_to_api(handler, cookbook, ind
     index.search.return_value = RecipeMatch(recipe_id="42", score=0.91)
     cookbook.get_recipe.side_effect = [{"name": "API"}]
 
-    result = handler.execute("recipe_lookup", "rezept x")
+    result = handler.execute("recipe_lookup", "rezept api")
 
     assert result.success is True
     assert "Rezept: API" in (result.text or "")
@@ -273,6 +273,52 @@ def test_lookup_reranks_api_hits_to_exact_name(handler, cookbook, index):
     assert "Rezept: Gin Basil Smash" in (result.text or "")
     cookbook.get_recipe.assert_called_once_with("671")
     index.search.assert_not_called()
+
+
+def test_lookup_allows_stopword_query_with_valid_api_name(handler, cookbook, index):
+    cookbook.list_recipes.return_value = []
+    cookbook.search_recipes.return_value = [
+        MagicMock(recipe_id="11", name="Carbonara", category="Pasta", keywords=[])
+    ]
+    cookbook.get_recipe.return_value = {
+        "name": "Carbonara",
+        "recipeCategory": "Pasta",
+        "recipeIngredient": ["200 g Spaghetti"],
+        "recipeInstructions": ["Kochen"],
+    }
+
+    result = handler.execute("recipe_lookup", "gib mir das Rezept fuer die Carbonara")
+
+    assert result.success is True
+    assert "Rezept: Carbonara" in (result.text or "")
+    index.search.assert_not_called()
+
+
+def test_name_match_normalizes_apostrophes(handler):
+    assert handler._is_name_match_strong("rezept shepherds pie", "Shepherd's Pie") is True
+
+
+def test_lookup_accepts_summary_metadata_match(handler, cookbook, index):
+    cookbook.list_recipes.return_value = []
+    cookbook.search_recipes.return_value = [
+        MagicMock(recipe_id="12", name="Carbonara", category="Pasta", keywords=[])
+    ]
+    cookbook.get_recipe.return_value = {
+        "name": "Carbonara",
+        "recipeCategory": "Pasta",
+        "recipeIngredient": ["200 g Spaghetti"],
+        "recipeInstructions": ["Kochen"],
+    }
+
+    result = handler.execute("recipe_lookup", "rezept pasta carbonara")
+
+    assert result.success is True
+    assert "Rezept: Carbonara" in (result.text or "")
+    index.search.assert_not_called()
+
+
+def test_name_match_accepts_compound_words(handler):
+    assert handler._is_name_match_strong("rezept tomate suppe", "Tomatensuppe") is True
 
 
 def test_generate_recipe_json_handles_llm_exception(handler, anthropic):
