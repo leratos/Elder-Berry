@@ -35,6 +35,34 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
+_QUERY_STOP_WORDS = {
+    "bitte",
+    "cocktail",
+    "das",
+    "dem",
+    "den",
+    "der",
+    "die",
+    "ein",
+    "eine",
+    "einem",
+    "einen",
+    "einer",
+    "fuer",
+    "für",
+    "gib",
+    "ich",
+    "kochbuch",
+    "mache",
+    "mir",
+    "mit",
+    "rezept",
+    "und",
+    "von",
+    "wie",
+    "zu",
+}
+
 RECIPE_PATTERN = re.compile(
     r"^(?:rezept|kochbuch|cocktail)\s*(?::|-)??\s*(.*)$",
     re.IGNORECASE,
@@ -295,11 +323,20 @@ class RecipeCommandHandler(CommandHandler):
         if match is not None:
             try:
                 recipe = self._cookbook.get_recipe(match.recipe_id)
+                if not self._is_semantic_match_plausible(recipe, query):
+                    logger.info(
+                        "semantic hit rejected as implausible (query=%r, recipe=%r)",
+                        query,
+                        recipe.get("name"),
+                    )
+                    raise LookupError("semantic false positive")
                 return CommandResult(
                     command="recipe_lookup",
                     success=True,
                     text=self._render_recipe(recipe, score=match.score),
                 )
+            except LookupError:
+                pass
             except Exception as exc:
                 logger.warning("semantic hit could not be loaded: %s", exc)
 
@@ -360,6 +397,35 @@ class RecipeCommandHandler(CommandHandler):
                 "query": query,
             },
         )
+
+    @staticmethod
+    def _tokenize_for_match(text: str) -> set[str]:
+        tokens = re.findall(r"[A-Za-zÄÖÜäöüß]{3,}", text, flags=re.UNICODE)
+        return {tok.casefold() for tok in tokens}
+
+    @staticmethod
+    def _is_semantic_match_plausible(recipe: dict[str, Any], query: str) -> bool:
+        query_tokens = RecipeCommandHandler._tokenize_for_match(query)
+        query_tokens = {tok for tok in query_tokens if tok not in _QUERY_STOP_WORDS}
+        if not query_tokens:
+            return True
+
+        parts: list[str] = [
+            str(recipe.get("name") or ""),
+            str(recipe.get("title") or ""),
+            str(recipe.get("recipeCategory") or recipe.get("category") or ""),
+        ]
+
+        ingredients = recipe.get("recipeIngredient")
+        if isinstance(ingredients, list):
+            parts.extend(str(item) for item in ingredients)
+
+        tools = recipe.get("tool")
+        if isinstance(tools, list):
+            parts.extend(str(item) for item in tools)
+
+        candidate_tokens = RecipeCommandHandler._tokenize_for_match(" ".join(parts))
+        return bool(query_tokens & candidate_tokens)
 
     @staticmethod
     def _normalize_recipe_yield(value: Any) -> str | None:
