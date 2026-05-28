@@ -236,6 +236,33 @@ class NextcloudCookbookClient:
         slug = re.sub(r"[^a-zA-Z0-9]+", "-", name.strip().lower()).strip("-")
         return slug or "recipe"
 
+    def _webdav_mkcol(self, remote_path: str) -> None:
+        """Creates a collection (directory) via WebDAV MKCOL."""
+        url = f"{self._webdav_base}{remote_path.lstrip('/')}"
+        try:
+            resp = httpx.request(
+                "MKCOL",
+                url,
+                auth=self._auth,
+                timeout=self._timeout,
+            )
+        except self._RETRIABLE_ERRORS as exc:
+            raise NextcloudCookbookError("WebDAV MKCOL failed: %s" % exc) from exc
+
+        # 201 = created, 405 = already exists (acceptable)
+        if resp.status_code in (201, 405):
+            return
+        if resp.status_code in (401, 403):
+            raise NextcloudCookbookError(
+                "Cookbook auth failed (HTTP %d)" % resp.status_code,
+                status_code=resp.status_code,
+            )
+        if resp.status_code >= 400:
+            raise NextcloudCookbookError(
+                "Cookbook MKCOL failed (HTTP %d)" % resp.status_code,
+                status_code=resp.status_code,
+            )
+
     def _webdav_put(self, remote_path: str, payload: str) -> None:
         url = f"{self._webdav_base}{remote_path.lstrip('/')}"
         try:
@@ -330,27 +357,19 @@ class NextcloudCookbookClient:
             return file_clean
         return str(PurePosixPath(folder_clean) / file_clean)
 
-    def _resolve_unique_remote_path(self, folder: str, file_name: str) -> str:
-        """Returns a unique target path, keeping existing recipes untouched."""
-        candidate = self._join_remote_path(folder, file_name)
+    def _resolve_unique_subdir(self, parent: str, slug: str) -> str:
+        """Returns a unique subfolder path inside parent, avoiding collisions."""
+        candidate = self._join_remote_path(parent, slug)
         if not self._webdav_exists(candidate):
             return candidate
 
-        stem, sep, suffix = file_name.rpartition(".")
-        if not sep:
-            stem = file_name
-            suffix = ""
-
         for idx in range(2, 10_000):
-            numbered = f"{stem}-{idx}"
-            if suffix:
-                numbered = f"{numbered}.{suffix}"
-            candidate = self._join_remote_path(folder, numbered)
+            candidate = self._join_remote_path(parent, f"{slug}-{idx}")
             if not self._webdav_exists(candidate):
                 return candidate
 
         raise NextcloudCookbookError(
-            "Could not resolve unique recipe filename after many attempts"
+            "Could not resolve unique recipe subfolder after many attempts"
         )
 
     def trigger_reindex(self) -> None:
@@ -371,21 +390,37 @@ class NextcloudCookbookClient:
         *,
         filename: str | None = None,
     ) -> str:
+        """Saves a recipe using the Cookbook subfolder structure.
+
+        Nextcloud Cookbook expects:
+            {recipes_dir}/{slug}/recipe.json
+
+        The optional ``filename`` parameter is treated as a folder-name hint
+        (with any trailing .json stripped); when omitted the slug is derived
+        from the recipe name.
+        """
         if not isinstance(recipe_json, dict):
             raise NextcloudCookbookError("Recipe payload must be an object")
 
         recipes_dir = self._resolve_recipes_dir()
         name = str(recipe_json.get("name") or recipe_json.get("title") or "recipe")
-        file_name = (filename or f"{self._slugify(name)}.json").strip()
-        if not file_name:
-            file_name = "recipe.json"
-        remote_path = self._resolve_unique_remote_path(recipes_dir, file_name)
+
+        if filename:
+            slug = self._slugify(filename.rstrip("/").removesuffix(".json"))
+        else:
+            slug = self._slugify(name)
+        if not slug:
+            slug = "recipe"
+
+        recipe_subdir = self._resolve_unique_subdir(recipes_dir, slug)
 
         try:
             payload = json.dumps(recipe_json, ensure_ascii=False, indent=2)
         except (TypeError, ValueError) as exc:
             raise NextcloudCookbookError("Recipe JSON is not serializable") from exc
 
+        self._webdav_mkcol(recipe_subdir)
+        remote_path = self._join_remote_path(recipe_subdir, "recipe.json")
         self._webdav_put(remote_path, payload)
         self.trigger_reindex()
         return remote_path

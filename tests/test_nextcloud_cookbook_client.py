@@ -139,8 +139,9 @@ def test_json_error_raises():
 def test_save_recipe_uploads_and_reindexes():
     with patch(_HTTPX_REQUEST) as mock_request, patch(_HTTPX_CLIENT) as mock_client_cls:
         mock_request.side_effect = [
-            _response(404, None),  # first existence check: file missing
-            _response(201, None),  # upload
+            _response(404, None),  # subfolder existence check: missing → new
+            _response(201, None),  # MKCOL creates subfolder
+            _response(201, None),  # PUT recipe.json
         ]
         _install_httpx_client(mock_client_cls, response=_response(200, {"ok": True}))
 
@@ -155,16 +156,15 @@ def test_save_recipe_uploads_and_reindexes():
             }
         )
 
-    assert path.startswith("Recipes/")
-    assert path.endswith(".json")
-    assert "moscow-mule" in path
+    assert path == "Recipes/moscow-mule/recipe.json"
 
 
 def test_reindex_retry_then_fail_raises():
     with patch(_HTTPX_REQUEST) as mock_request, patch(_HTTPX_CLIENT) as mock_client_cls:
         mock_request.side_effect = [
-            _response(404, None),  # first existence check: file missing
-            _response(201, None),  # upload
+            _response(404, None),  # subfolder existence check
+            _response(201, None),  # MKCOL
+            _response(201, None),  # PUT recipe.json
         ]
         _install_httpx_client(
             mock_client_cls,
@@ -187,8 +187,9 @@ def test_reindex_retry_then_fail_raises():
 def test_save_recipe_uses_configured_cookbook_folder_from_secret():
     with patch(_HTTPX_REQUEST) as mock_request, patch(_HTTPX_CLIENT) as mock_client_cls:
         mock_request.side_effect = [
-            _response(404, None),  # first existence check: file missing
-            _response(201, None),  # upload
+            _response(404, None),  # subfolder existence check
+            _response(201, None),  # MKCOL
+            _response(201, None),  # PUT recipe.json
         ]
         _install_httpx_client(mock_client_cls, response=_response(200, {"ok": True}))
 
@@ -206,14 +207,16 @@ def test_save_recipe_uses_configured_cookbook_folder_from_secret():
         )
 
     assert path.startswith("MyRecipes/")
+    assert path.endswith("/recipe.json")
 
 
 def test_save_recipe_does_not_overwrite_existing_file():
     with patch(_HTTPX_REQUEST) as mock_request, patch(_HTTPX_CLIENT) as mock_client_cls:
         mock_request.side_effect = [
-            _response(207, None),  # existing: Recipes/carbonara.json
-            _response(404, None),  # missing: Recipes/carbonara-2.json
-            _response(201, None),  # upload of unique filename
+            _response(207, None),  # Recipes/carbonara/ already exists
+            _response(404, None),  # Recipes/carbonara-2/ is free
+            _response(201, None),  # MKCOL Recipes/carbonara-2/
+            _response(201, None),  # PUT recipe.json
         ]
         _install_httpx_client(mock_client_cls, response=_response(200, {"ok": True}))
 
@@ -228,7 +231,7 @@ def test_save_recipe_does_not_overwrite_existing_file():
             }
         )
 
-    assert path == "Recipes/carbonara-2.json"
+    assert path == "Recipes/carbonara-2/recipe.json"
 
 
 def test_normalize_dir_name_variants():
@@ -295,23 +298,27 @@ def test_webdav_exists_generic_error_raises():
             client._webdav_exists("Recipes/a.json")
 
 
-def test_resolve_unique_remote_path_many_collisions():
+def test_resolve_unique_subdir_many_collisions():
     client = NextcloudCookbookClient(_secret_store())
     client._webdav_exists = MagicMock(side_effect=[True, True, False])
-    path = client._resolve_unique_remote_path("Recipes", "x.json")
-    assert path == "Recipes/x-3.json"
+    path = client._resolve_unique_subdir("Recipes", "x")
+    assert path == "Recipes/x-3"
 
 
-def test_resolve_unique_remote_path_without_extension():
+def test_resolve_unique_subdir_free_on_first_try():
     client = NextcloudCookbookClient(_secret_store())
-    client._webdav_exists = MagicMock(side_effect=[True, False])
-    path = client._resolve_unique_remote_path("Recipes", "x")
-    assert path == "Recipes/x-2"
+    client._webdav_exists = MagicMock(return_value=False)
+    path = client._resolve_unique_subdir("Recipes", "x")
+    assert path == "Recipes/x"
 
 
 def test_save_recipe_with_blank_filename_falls_back_to_recipe_json_name():
     with patch(_HTTPX_REQUEST) as mock_request, patch(_HTTPX_CLIENT) as mock_client_cls:
-        mock_request.side_effect = [_response(404, None), _response(201, None)]
+        mock_request.side_effect = [
+            _response(404, None),  # subfolder existence check
+            _response(201, None),  # MKCOL
+            _response(201, None),  # PUT recipe.json
+        ]
         _install_httpx_client(mock_client_cls, response=_response(200, {"ok": True}))
 
         client = NextcloudCookbookClient(_secret_store())
@@ -326,4 +333,4 @@ def test_save_recipe_with_blank_filename_falls_back_to_recipe_json_name():
             filename=" ",
         )
 
-    assert path.endswith("recipe.json")
+    assert path.endswith("/recipe.json")
