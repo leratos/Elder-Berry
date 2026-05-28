@@ -43,6 +43,7 @@ HOW_TO_PATTERN = re.compile(r"^wie\s+mache\s+ich\s+(.+)$", re.IGNORECASE)
 
 RECIPE_SYSTEM_PROMPT = """Du bist eine Koch-Assistentin.
 Erzeuge NUR gueltiges JSON im schema.org Recipe-Format.
+Verwende in deutschen Texten die korrekte Rechtschreibung mit Umlauten (nicht ae/oe/ue, sondern ä/ö/ü, wo sprachlich korrekt).
 Keine Markdown-Fences, kein Fliesstext, keine Erklaerung.
 Pflichtfelder:
 - @context = https://schema.org
@@ -50,13 +51,13 @@ Pflichtfelder:
 - name (string)
 - recipeCategory (string)
 - recipeIngredient (array of strings, Format pro Eintrag: "Menge Einheit Zutat",
-  z.B. "200 g Karotten", "1 Prise Salz", "2 EL Olivenoel", "3 Stueck Eier".
+    z.B. "200 g Karotten", "1 Prise Salz", "2 EL Olivenöl", "3 Stück Eier".
   Regeln:
   * Immer "Zahl Einheit Zutat" — niemals "Zutat nach Geschmack" oder
     "Zutat zum Garnieren". Stattdessen konkrete Mengen verwenden,
     z.B. "1 Prise Salz" statt "Salz nach Geschmack".
-  * Beilagen und Garnier-Hinweise (z.B. "Reis zum Servieren",
-    "Koriander zum Garnieren") gehoeren NICHT in recipeIngredient,
+    * Beilagen und Garnier-Hinweise (z.B. "Reis zum Servieren",
+        "Koriander zum Garnieren") gehören NICHT in recipeIngredient,
     sondern als letzten Schritt in recipeInstructions.
   * Kein Komma, kein Bindestrich, keine Klammern im Eintrag.)
 - recipeYield (string, Anzahl Portionen, z.B. "4 Portionen")
