@@ -1226,6 +1226,8 @@ def _init_context_and_tools(secrets, assistant, svc, tower_agent=None):
 
         vision = AnthropicClient()
         if vision.is_available():
+            # Derselbe Anthropic-Client wird auch von textbasierten
+            # Remote-Commands genutzt (z.B. Phase-92-RouteIntentParser).
             tools["anthropic_client"] = vision
             tools["vision_client"] = vision
             logger.info("Vision-Client (Kamera): aktiv")

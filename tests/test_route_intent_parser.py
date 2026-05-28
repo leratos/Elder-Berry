@@ -289,6 +289,21 @@ class TestParse:
         assert intent.waypoints[0].type == "contact"
         assert intent.waypoints[1].type == "poi"
 
+    def test_heuristic_parse_with_vorher_and_poi(self) -> None:
+        parser = RouteIntentParser(None)
+        intent = parser.parse(
+            "Ich muss nach Leipzig Hbf, vorher Lisa und Andrea abholen, "
+            "unterwegs bei Hornbach einkaufen",
+        )
+        assert intent.destination.value == "Leipzig Hbf"
+        assert [waypoint.value for waypoint in intent.waypoints] == [
+            "Lisa",
+            "Andrea",
+            "Hornbach einkaufen",
+        ]
+        assert intent.waypoints[2].type == "poi"
+        assert intent.arrival_time_text == ""
+
     def test_heuristic_parse_preserves_arrival_time_text(self) -> None:
         parser = RouteIntentParser(None)
         intent = parser.parse(

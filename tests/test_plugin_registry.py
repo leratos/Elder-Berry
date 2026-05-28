@@ -248,7 +248,12 @@ def test_remote_command_handler_constructs_with_explicit_ctx() -> None:
 
 
 def test_multi_stop_handler_constructs_without_anthropic_when_services_exist() -> None:
-    """Phase 92 live-fix: Multi-Stop darf nicht an Sonnet geblockt sein."""
+    """Phase 92 live-fix: Multi-Stop darf nicht an Sonnet geblockt sein.
+
+    Wenn Google-Route-Services + ContactStore vorhanden sind, muss das
+    Plugin auch ohne ``ctx.anthropic_client`` aktiv werden; der Parser
+    hat einen lokalen Heuristik-Fallback.
+    """
     from elder_berry.comms.remote_commands import RemoteCommandHandler
     from elder_berry.tools.route_session_store import RouteSessionStore
 

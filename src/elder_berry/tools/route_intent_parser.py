@@ -202,6 +202,14 @@ _ALONG_ROUTE_POI_RE = re.compile(
     r"(?P<poi>[^,.!?]+)",
     re.IGNORECASE,
 )
+_HEURISTIC_ARRIVAL_RE = re.compile(
+    r"\b(?:"
+    r"uebermorgen|übermorgen|morgen|heute|"
+    r"montag|dienstag|mittwoch|donnerstag|freitag|samstag|sonntag"
+    r")\b[^,.!?]*?\b(?:um\s+)?\d{1,2}(?::\d{2})?(?:\s*uhr)?\b"
+    r"|\b(?:um\s+)?\d{1,2}(?::\d{2})?(?:\s*uhr)?\b",
+    re.IGNORECASE,
+)
 
 
 class RouteIntentExtractionError(Exception):
@@ -246,12 +254,22 @@ class RouteIntentParser:
 
     @staticmethod
     def _heuristic_parse(text: str) -> RouteIntent:
-        """Lokaler Fallback fuer gaengige Multi-Stop-Satzmuster ohne Sonnet."""
+        """Lokaler Fallback fuer haeufige Multi-Stop-Satzmuster ohne Sonnet.
+
+        Deckt bewusst nur die ueblichen Phase-92-Formulierungen ab:
+        - ``zu X und dann zu Y``
+        - ``vorher X abholen`` / ``vorher X und Y abholen``
+        - ``unterwegs ... zu/bei X`` fuer Marken/POIs
+        """
         normalized = text.strip()
         if not normalized:
             raise RouteIntentExtractionError("leere Routenanfrage")
 
         origin = IntentStop(type="home", value="")
+        if re.search(
+            r"\bvon\s+zuhause\b|\bvon\s+zu\s+hause\b", normalized, re.IGNORECASE
+        ):
+            origin = IntentStop(type="home", value="")
 
         chain_match = _CHAINED_DESTINATION_RE.search(normalized)
         if chain_match is not None:
@@ -277,21 +295,22 @@ class RouteIntentParser:
         if not destination.value:
             raise RouteIntentExtractionError("destination fehlt im Heuristik-Fallback")
 
+        arrival_time_text = RouteIntentParser._heuristic_arrival_time_text(normalized)
+
         return RouteIntent(
             origin=origin,
             destination=destination,
             waypoints=tuple(waypoints),
-            arrival_time_text=RouteIntentParser._heuristic_arrival_time_text(
-                normalized,
-            ),
+            arrival_time_text=arrival_time_text,
         )
 
     @staticmethod
     def _heuristic_destination(text: str) -> IntentStop:
-        for pattern in (
+        patterns = [
             re.compile(r"\bnach\s+(?P<dest>[^,.!?]+)", re.IGNORECASE),
             re.compile(r"\bzu\s+(?P<dest>[^,.!?]+)", re.IGNORECASE),
-        ):
+        ]
+        for pattern in patterns:
             match = pattern.search(text)
             if match is None:
                 continue
@@ -344,15 +363,8 @@ class RouteIntentParser:
 
     @staticmethod
     def _heuristic_arrival_time_text(text: str) -> str:
-        match = re.search(
-            r"\b(?:"
-            r"uebermorgen|übermorgen|morgen|heute|"
-            r"montag|dienstag|mittwoch|donnerstag|freitag|samstag|sonntag"
-            r")\b[^,.!?]*?\b(?:um\s+)?\d{1,2}(?::\d{2})?(?:\s*uhr)?\b"
-            r"|\b(?:um\s+)?\d{1,2}(?::\d{2})?(?:\s*uhr)?\b",
-            text,
-            re.IGNORECASE,
-        )
+        """Extrahiert eine woertliche Zeitphrase fuer parse_arrival_time()."""
+        match = _HEURISTIC_ARRIVAL_RE.search(text)
         if match is None:
             return ""
         return match.group(0).strip()
