@@ -1226,6 +1226,9 @@ def _init_context_and_tools(secrets, assistant, svc, tower_agent=None):
 
         vision = AnthropicClient()
         if vision.is_available():
+            # Derselbe Anthropic-Client wird auch von textbasierten
+            # Remote-Commands genutzt (z.B. Phase-92-RouteIntentParser).
+            tools["anthropic_client"] = vision
             tools["vision_client"] = vision
             logger.info("Vision-Client (Kamera): aktiv")
         else:
@@ -1287,7 +1290,7 @@ def run_matrix(assistant, stt=None, avatar=None, audio_converter=None, robot=Non
         contact_store=svc.get("contact_store"),
         task_client=svc.get("task_client"),
         robot_client=robot,
-        anthropic_client=tools.get("vision_client"),
+        anthropic_client=tools.get("anthropic_client"),
         nextcloud_files=svc.get("nextcloud_files"),
         nextcloud_notes=svc.get("nextcloud_notes"),
         stirling_pdf=svc.get("stirling_pdf"),
