@@ -324,6 +324,7 @@ class RecipeCommandHandler(CommandHandler):
                 text=user_friendly_error(exc, "Cookbook-Suche"),
             )
 
+        top: CookbookRecipeSummary | None = None
         if isinstance(api_hits, list) and api_hits:
             top = self._pick_best_api_hit(query, api_hits)
             if top is not None and not self._is_name_match_strong(
@@ -336,10 +337,7 @@ class RecipeCommandHandler(CommandHandler):
                 )
                 top = None
 
-            if top is None:
-                api_hits = []
-
-        if isinstance(api_hits, list) and api_hits:
+        if top is not None:
             try:
                 self._index.upsert(top)
             except Exception as exc:
