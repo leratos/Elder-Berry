@@ -91,7 +91,9 @@ _DEFAULT_MAX_DETOUR_SECONDS = 600
 # ``is_multi_stop_candidate(text) is False`` direkt fallthrough geht.
 _MULTI_STOP_PATTERN = re.compile(
     r"\b(plane|berechne|navig\w+|fahrt|fahr|fahre|route|"
-    r"wie\s+komme\s+ich|wie\s+fahre\s+ich|muss\s+nach|will\s+nach)\b",
+    r"wie\s+komme\s+ich|wie\s+fahre\s+ich|"
+    r"muss\s+nach|muss\s+zu|muss\s+von|"
+    r"will\s+nach|will\s+zu|will\s+von)\b",
     re.IGNORECASE,
 )
 
@@ -740,7 +742,6 @@ def _factory(ctx: HandlerContext) -> CommandHandler | None:
         ctx.multi_stop_route_planner is None
         or ctx.contact_store is None
         or ctx.route_session_store is None
-        or ctx.anthropic_client is None
     ):
         return None
     from elder_berry.tools.maps_link_builder import MapsLinkBuilder

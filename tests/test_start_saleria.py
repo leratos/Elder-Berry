@@ -217,6 +217,22 @@ class TestMainModeRouting:
         assert "run_agent" in source
 
 
+class TestAnthropicClientWiring:
+    def test_context_tools_publish_general_anthropic_client(self):
+        import inspect
+        from start_saleria import _init_context_and_tools
+
+        source = inspect.getsource(_init_context_and_tools)
+        assert 'tools["anthropic_client"] = vision' in source
+
+    def test_run_matrix_passes_general_anthropic_client_to_remote_commands(self):
+        import inspect
+        from start_saleria import run_matrix
+
+        source = inspect.getsource(run_matrix)
+        assert 'anthropic_client=tools.get("anthropic_client")' in source
+
+
 # ===========================================================================
 # systemd Service-Files (Existenz + Inhalt)
 # ===========================================================================
