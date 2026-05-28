@@ -32,6 +32,27 @@ Saleria: "Route geplant:
           → [Google Maps öffnen]"
 ```
 
+## Umsetzungsstand (Stand 2026-05-28)
+
+Der Konzeptkern von Phase 92 ist inzwischen weitgehend umgesetzt:
+
+- **E0 abgeschlossen**: Resolver-Logik aus Phase 43 in
+    `tools/contact_address_resolver.py` ausgegliedert.
+- **E1 abgeschlossen**: `GoogleMapsRoutePlanner` und `MapsLinkBuilder`
+    existieren samt Unit-Tests.
+- **E2 abgeschlossen**: `RouteIntentParser` und der Anthropic-Tool-Call-
+    Pfad sind implementiert.
+- **E3 abgeschlossen**: Persistenter `RouteSessionStore` (SQLite) ist
+    vorhanden.
+- **E4 abgeschlossen**: `MultiStopRouteCommandHandler`, Plugin-Wiring,
+    Listen-Picks (`route_contact_pick`, `route_poi_pick`) und
+    Integrationstests sind implementiert.
+- **E5 offen**: Live-Smoketest mit echtem API-Key, Prompt-Tuning und
+    eventuelle letzte Bugfixes stehen noch aus.
+
+Die Phase ist damit **code-seitig implementiert und testgrün**, aber noch
+nicht final live abgenommen.
+
 ## Bezug zu Phase 43 – was bleibt, was kommt neu
 
 | Komponente | Status in Phase 92 |
@@ -49,17 +70,14 @@ Saleria: "Route geplant:
 sich später herausstellt, dass Single- und Multi-Stop denselben Provider
 nutzen sollten, ist das ein eigener Refactor-Schritt.
 
-## Kritischer Bugfix-Hinweis (NICHT Teil dieser Phase)
+## Hinweis zum früheren Single-Stop-Bug
 
-`RouteCommandHandler._resolve_address()` nimmt aus `contact_store.search()`
-**immer `results[0]`**, ohne Mehrdeutigkeit zu prüfen. Bei mehreren
-gleichnamigen Kontakten fährt Saleria heute still zum falschen.
+Der ursprünglich hier dokumentierte Phase-43-Bug bei Mehrdeutigkeiten im
+Single-Stop-Handler wurde inzwischen **separat in Phase 43 gefixt**.
 
-Für Single-Stop ist das ein Bug; für Multi-Stop wäre es gefährlicher (mehrere
-falsche Stops in einer Route). Phase 92 löst das Problem **nur für den neuen
-Handler** über `RouteIntentParser` und Listen-Disambiguierung. Der existierende
-Single-Stop-Handler bleibt mit dem Bug — Fix dort gehört in einen separaten
-Bugfix-Branch.
+Für Phase 92 bleibt die Architekturentscheidung trotzdem gültig: Multi-Stop
+nutzt eine eigene Disambiguierungsstrecke über `RouteIntentParser`, Listen-
+Picks und `RouteSessionStore`, statt den Single-Stop-Flow mitzubenutzen.
 
 ## Architektur
 
@@ -87,14 +105,19 @@ Bugfix-Branch.
                                               └────────────────────┘
 ```
 
-### Dateien (alle neu)
+### Dateien (Konzeptkern / Ist-Stand)
 
 | Datei | Klasse | Zeilen (Schätzung) |
 |-------|--------|---------------------|
 | `tools/google_maps_route_planner.py` | `GoogleMapsRoutePlanner` | ~300 |
 | `tools/maps_link_builder.py` | `MapsLinkBuilder` | ~60 |
 | `tools/route_intent_parser.py` | `RouteIntentParser` | ~250 |
+| `tools/route_session_store.py` | `RouteSessionStore` | ~300 |
 | `comms/commands/multi_stop_route_commands.py` | `MultiStopRouteCommandHandler` | ~300 |
+
+Vorarbeit aus E0:
+- `tools/contact_address_resolver.py` – ausgegliederte Resolver-Util aus
+    Phase 43, von Single-Stop und Multi-Stop gemeinsam genutzt.
 
 Plus Tests: ~4 neue `tests/test_*.py`-Dateien, geschätzt 60–70 Tests gesamt.
 
@@ -444,14 +467,18 @@ weil die Logik substantiell anders ist (Sonnet-Call, Multi-Stage-Pending-Action)
 
 Folgt dem Phase-77-Plugin-Pattern (`CommandPlugin`, `_factory`,
 `HandlerContext`). **Priority muss höher sein als die des Single-Stop-Handlers
-(76)**, damit Multi-Stop zuerst geprüft wird. Vorschlag: `priority=80`.
+(76)**, damit Multi-Stop zuerst geprüft wird. Implementiert ist
+`priority=75` (niedrigere Zahl = frühere Prüfung), also weiterhin vor dem
+Single-Stop-Handler.
 Bei `is_multi_stop_candidate(text) == False` macht der Handler einen
 `fallthrough=True`, damit der Single-Stop-Handler ihn übernehmen kann.
 
 ### Lebenszyklus einer Anfrage
 
-Zwei oder mehr Saleria-Turns pro Routenplan. Zustand zwischen Turns liegt
-in `PendingConfirmationStore` als `PendingAction(action_type="route_disambig")`.
+Zwei oder mehr Saleria-Turns pro Routenplan. Im implementierten Stand liegt
+der persistente Routenstatus in `RouteSessionStore` (SQLite). Die konkrete
+Auswahl durch den User läuft über `ConversationListStore` + `list_pick`
+(`route_contact_pick`, `route_poi_pick`) statt über `PendingConfirmationStore`.
 
 ```
 TURN 1 (User: vollständige Routenanfrage)
@@ -464,30 +491,34 @@ TURN 1 (User: vollständige Routenanfrage)
        → bei mehreren Treffern: Liste der Kandidaten merken
   4. Wenn Mehrdeutigkeiten existieren:
        a) erste offene Disambiguierung als Liste senden ("Welche Lisa?")
-       b) PendingAction mit FULL ROUTE STATE setzen, action_type="route_disambig"
+      b) `RouteSessionStore` schreiben und Liste im
+        `ConversationListStore` registrieren
        c) RETURN — auf User-Antwort warten
   5. Sonst: weiter zu Routing (siehe TURN N+1)
 
-TURN 2..N (User: "1" oder "2" als Antwort)
-  1. Handler-Vorcheck: gibt es eine PendingAction(action_type="route_disambig")
-     für diesen user_id? Wenn ja: ZAHL parsen.
-  2. Auswahl in route state übernehmen, nächste offene Disambiguierung suchen.
-  3. Weiter offene → erneut Liste + PendingAction-Update, RETURN.
-  4. Keine weiteren → Routing-Phase (siehe unten).
+TURN 2..N (User: Listen-Pick / "Treffer 1" / "1")
+  1. Bridge löst den Pick über `ConversationListStore` auf.
+  2. `message_handlers.py` dispatcht an
+      `MultiStopRouteCommandHandler.continue_with_pick(...)`.
+  3. Auswahl in den Route-Status übernehmen, nächste offene
+      Disambiguierung suchen.
+  4. Weiter offene → erneut Liste registrieren, RETURN.
+  5. Keine weiteren → Routing-Phase (siehe unten).
 
 TURN ROUTING (alle Kontakte/Adressen aufgelöst)
   1. GoogleMapsRoutePlanner.plan(origin, people_stops, destination, poi_request)
      → liefert PlannedRoute + ggf. POI-Kandidaten.
-  2. Wenn poi_candidates nicht leer und >1: Liste senden ("Welcher Kaufland?")
-     PendingAction mit FULL ROUTE STATE + poi_candidates speichern, RETURN.
-  3. Wenn genau 1 POI-Kandidat: automatisch wählen, weiter.
+  2. Wenn poi_candidates nicht leer: Liste senden ("Welcher Hornbach?")
+      und zusammen mit der Session registrieren, RETURN.
+  3. Wenn genau 1 POI-Kandidat: im aktuellen Implementierungsstand trotzdem
+      als Liste anzeigen, damit der User Adresse und Umweg sieht.
   4. Wenn 0 POI-Kandidaten innerhalb max_detour: Hinweis "keinen X auf dem
      Weg gefunden" + Frage "trotzdem die Route ohne Stop?" (Confirm/Cancel).
 
 TURN POI-WAHL (User: "2" auf POI-Liste)
   1. Wahl übernehmen, GoogleMapsRoutePlanner.finalize_with_poi(...)
   2. MapsLinkBuilder.build_multi_stop_link(...) für Antwort-Link
-  3. Antwort formatieren, PendingAction.clear()
+    3. Antwort formatieren, Session/Listeneintrag bereinigen
 ```
 
 ### Disambiguierung – Datenstruktur
@@ -495,7 +526,7 @@ TURN POI-WAHL (User: "2" auf POI-Liste)
 ```python
 @dataclass
 class RouteSession:
-    """Persistenter Zustand zwischen Turns. Liegt in PendingAction.data."""
+    """Persistenter Zustand zwischen Turns. Liegt im RouteSessionStore."""
     raw_text: str
     origin_addr: str | None
     destination_addr: str | None
@@ -511,38 +542,26 @@ class RouteSession:
         # kind ∈ {"origin", "destination", "waypoint_N", "poi"}
 ```
 
-`RouteSession` wird serialisiert (asdict + JSON) in `PendingAction.data`
+`RouteSession` wird serialisiert (asdict + JSON) im `RouteSessionStore`
 gespeichert. Bei jedem Turn wird sie geladen, modifiziert, zurückgeschrieben.
 
 **Wichtig**: Bei `chosen_poi` ist `POICandidate` ein dataclass — bei
 JSON-Serialisierung über `dataclasses.asdict()` + manuellem Reconstruct.
 Hilfsfunktion `RouteSession.to_dict()` / `from_dict()` ergänzen.
 
-### Zahl-Antworten erkennen
+### Listen-Picks erkennen
 
-Heute kennt `PendingConfirmationStore.check_response()` nur ja/nein/ändern:,
-**keine Zahlen**. Zwei saubere Wege:
+Im implementierten Stand muss `PendingConfirmationStore` dafür nicht erweitert
+werden. Zahlen- oder "Treffer N"-Antworten laufen über den bestehenden
+Phase-80-Listenpfad:
 
-**Variante A: Handler-eigener Vorcheck** (empfohlen)
-Der MultiStopRouteCommandHandler ruft im `execute()` zuerst
-`store.get(user_id)` und prüft selbst, ob die Antwort eine Zahl ist und
-ob `action_type=="route_disambig"`. Erst wenn nicht, geht er den normalen
-Pattern-Match-Pfad.
+- `ConversationListStore` hält die aktive Kontakt- oder POI-Liste.
+- Die Bridge löst den Pick auf das konkrete Item auf.
+- `message_handlers.py` dispatcht das Item an
+    `MultiStopRouteCommandHandler.continue_with_pick(...)`.
 
-Vorteil: Keine Änderung an `PendingConfirmationStore`. Andere Handler bleiben
-unberührt. Nachteil: Pattern-Match-Reihenfolge muss garantieren, dass dieser
-Handler *vor* dem Standard-Bestätigungs-Hook der Bridge angefragt wird.
-
-**Variante B: PendingConfirmationStore erweitern**
-Neue `check_response()`-Variante: gibt zusätzlich `("number", n, action)`
-zurück, wenn Text eine reine Zahl ist UND der `action_type` in einer Liste
-"number-aware action types" steht.
-
-Vorteil: Generisch wiederverwendbar (z.B. für künftige Listen-Picks).
-Nachteil: Eingriff in zentralen Mechanismus, der bisher stabil läuft.
-
-**Empfehlung**: Variante A für Phase 92. Wenn sich das Muster (Zahlen-Pick
-auf gespeicherter Liste) wiederholt, später auf Variante B refactorn.
+Vorteil: kein Eingriff in den zentralen Bestätigungsmechanismus, und das
+Verhalten bleibt konsistent mit Such-, Mail- und Notizlisten.
 
 ### Antwort-Format
 
@@ -561,18 +580,18 @@ Abfahrt: spätestens 14:35 (15 Min Puffer für Ankunft 16:00)
 
 Bei `arrival_time_text` leer entfällt die Abfahrt-Zeile.
 
-## Etappen (Implementierung – nicht Teil dieser Konzept-Phase)
+## Etappen
 
-| Etappe | Inhalt | Aufwand-Schätzung |
-|--------|--------|--------------------|
-| E1 | **Konzept-Doku** (DIESE Phase, nur dieses Dokument) | abgeschlossen |
-| E2 | `GoogleMapsRoutePlanner` + `MapsLinkBuilder` + Unit-Tests (gemockte API-Responses) | ~1 Session |
-| E3 | `RouteIntentParser` + Sonnet-Tool-Schema + Tests (Pattern-Tests + Sonnet-Mock) | ~1 Session |
-| E4 | `MultiStopRouteCommandHandler` + Disambiguierung + Plugin-Registrierung + Integration-Tests | ~1–1½ Sessions |
-| E5 | Live-Smoketest mit echtem API-Key + Prompt-Tuning + Bugfixes | ~½ Session |
+| Etappe | Inhalt | Status |
+|--------|--------|--------|
+| E0 | Resolver-Refactor (`contact_address_resolver.py`) als Vorarbeit | abgeschlossen |
+| E1 | `GoogleMapsRoutePlanner` + `MapsLinkBuilder` + Unit-Tests | abgeschlossen |
+| E2 | `RouteIntentParser` + Sonnet-Tool-Schema + Tests | abgeschlossen |
+| E3 | `RouteSessionStore` (SQLite) + Tests | abgeschlossen |
+| E4 | `MultiStopRouteCommandHandler` + Disambiguierung + Plugin-/Bridge-Wiring + Integration-Tests | abgeschlossen |
+| E5 | Live-Smoketest mit echtem API-Key + Prompt-Tuning + letzte Bugfixes | offen |
 
-**Gesamt: ~3½–4 Sessions**, jede in einem eigenen Chat (Workflow-Regel:
-neue Phase = neuer Chat, hier interpretiert als neuer Chat pro Etappe).
+Status heute: **E0 bis E4 fertig**, **E5 offen**.
 
 ## Test-Plan
 
@@ -660,7 +679,7 @@ neue Phase = neuer Chat, hier interpretiert als neuer Chat pro Etappe).
 | Places API v1 "Search Along Route" nicht im Google-Cloud-Projekt aktiviert | Setup-Hinweis in dieser Doku, Lera aktiviert selbst |
 | Kosten – Search Along Route ist relativ teuer (~$0.03/Call) | Caching auf Polyline-Hash für 5 Min in `GoogleMapsRoutePlanner` (optional, Etappe E2) |
 | Latenz – 1 Sonnet-Call + bis zu 2 API-Calls + ggf. Disambig-Roundtrips | Akzeptiert; Disambiguierung sequenziell ist explizit gewollt (UX-Robustheit > Geschwindigkeit) |
-| Pattern-Match-Reihenfolge – Multi-Stop muss vor Single-Stop matchen | `priority=80` > `priority=76`. Test `test_plugin_pattern_conflicts.py` prüft das automatisch (Phase 77-CI-Gate) |
+| Pattern-Match-Reihenfolge – Multi-Stop muss vor Single-Stop matchen | Implementiert mit `priority=75` vor `priority=76`. Test `test_plugin_pattern_conflicts.py` prüft das automatisch (Phase 77-CI-Gate) |
 | Disambiguierung: Zahl-Antworten kollidieren mit anderen Handlern, die auch Zahlen erwarten | Handler-eigener Vorcheck nur wenn `PendingAction.action_type == "route_disambig"` exists. Andere Handler bleiben unberührt |
 | Sonnet kann Schema verfehlen (z.B. waypoints fehlt) | Validierung + Fallback: bei Schema-Fehler → "Ich hab das nicht ganz verstanden, kannst du es anders formulieren?" |
 | Google API-Quota überschritten | RouteError mit klarer User-Meldung; Fallback NICHT zu OSM (bewusste Entscheidung – Provider-Wechsel ist Architektur-Aufgabe, kein Runtime-Fallback) |
@@ -668,7 +687,7 @@ neue Phase = neuer Chat, hier interpretiert als neuer Chat pro Etappe).
 ### Bekannte Limitierungen (akzeptiert)
 
 - **Keine Öffnungszeiten-Prüfung**: Kaufland um 22:30 erreicht, schließt 22:00 — Saleria warnt nicht. Out-of-Scope für Phase 92.
-- **Keine semantische Reihenfolge-Heuristik**: "Einkauf zuletzt damit Lebensmittel nicht im Auto verderben" wird **nicht** erzwungen. Reine Fahrzeit-Optimierung. User kann durch explizite Formulierung ("zuletzt zu Kaufland") steuern — Sonnet bewahrt dann die Reihenfolge und `optimize_order=False` wird gesetzt. **Erkennung dieses Modus: TODO in Etappe E4** (Tool-Schema-Erweiterung um optionales `preserve_order: bool`).
+- **Keine semantische Reihenfolge-Heuristik**: "Einkauf zuletzt damit Lebensmittel nicht im Auto verderben" wird **nicht** erzwungen. Reine Fahrzeit-Optimierung. Die im Konzept skizzierte Erkennung per optionalem `preserve_order: bool` ist **noch offen** und gehört als Folgearbeit nach E5 in eine kleine Phase 92.x.
 - **Keine ÖPNV-/Fahrrad-Modi**: Nur `travelmode=driving`.
 - **Keine Hin-und-Rückweg-Optimierung**: Wenn User später zurück will, ist das eine zweite Anfrage.
 
@@ -745,8 +764,9 @@ es bei ~$1/Monat.
 
 ## Out-of-Scope (explizit)
 
-- Bugfix für `RouteCommandHandler._resolve_address()` (Mehrdeutigkeit in
-  Single-Stop) – separater Bugfix-Branch.
+- Weitere UX-/Heuristik-Arbeit an Single-Stop und Multi-Stop bleibt von
+    Phase 92 getrennt; der frühere Single-Stop-Mehrdeutigkeits-Bug ist bereits
+    separat in Phase 43 behoben.
 - Öffnungszeiten-Check (Phase 92.x oder eigene Phase).
 - Reihenfolge-Heuristiken über Kategorien (Einkauf zuletzt etc.).
 - ÖPNV-Modus (Phase 43 nennt das als Phase-X-Erweiterung).
