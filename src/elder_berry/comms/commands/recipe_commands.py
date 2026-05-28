@@ -75,10 +75,10 @@ class RecipeSemanticIndex:
         self._db_path = db_path or (Path.home() / ".elder-berry" / "memory")
         self._hydrated = False
         self._disabled = False
-        self._collection = None
+        self._collection: Any | None = None
         self._embedder = OllamaEmbeddingClient()
 
-    def _get_collection(self):
+    def _get_collection(self) -> Any | None:
         if self._disabled:
             return None
         if self._collection is not None:
