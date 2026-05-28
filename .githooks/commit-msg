@@ -1,0 +1,27 @@
+#!/bin/sh
+set -eu
+
+if [ "${ELDER_BERRY_SKIP_GUARDRAILS:-}" = "1" ]; then
+    exit 0
+fi
+
+msg_file="$1"
+
+if grep -Eiq '^Journal:[[:space:]]*elder-berry#[0-9]+([[:space:]]|$)' "$msg_file"; then
+    exit 0
+fi
+
+if grep -Eiq '^Journal:[[:space:]]*skipped[[:space:]]*\(.+\)' "$msg_file"; then
+    exit 0
+fi
+
+cat >&2 <<'EOF'
+commit-msg: missing Elder-Berry journal footer.
+
+Add one of these lines to the commit message:
+  Journal: elder-berry#123
+  Journal: skipped (short reason)
+
+Use "skipped" only for trivial commits or when Bramble MCP is unavailable.
+EOF
+exit 1
