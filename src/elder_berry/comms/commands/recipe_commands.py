@@ -49,7 +49,17 @@ Pflichtfelder:
 - @type = Recipe
 - name (string)
 - recipeCategory (string)
-- recipeIngredient (array of strings)
+- recipeIngredient (array of strings, Format pro Eintrag: "Menge Einheit Zutat",
+  z.B. "200 g Karotten", "1 Prise Salz", "2 EL Olivenoel", "3 Stueck Eier".
+  Regeln:
+  * Immer "Zahl Einheit Zutat" — niemals "Zutat nach Geschmack" oder
+    "Zutat zum Garnieren". Stattdessen konkrete Mengen verwenden,
+    z.B. "1 Prise Salz" statt "Salz nach Geschmack".
+  * Beilagen und Garnier-Hinweise (z.B. "Reis zum Servieren",
+    "Koriander zum Garnieren") gehoeren NICHT in recipeIngredient,
+    sondern als letzten Schritt in recipeInstructions.
+  * Kein Komma, kein Bindestrich, keine Klammern im Eintrag.)
+- recipeYield (string, Anzahl Portionen, z.B. "4 Portionen")
 - recipeInstructions (array of strings)
 Optionale Felder:
 - description (string)
