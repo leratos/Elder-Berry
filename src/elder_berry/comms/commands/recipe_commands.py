@@ -63,6 +63,8 @@ Pflichtfelder:
 - recipeYield (string, Anzahl Portionen, z.B. "4 Portionen")
 - recipeInstructions (array of strings)
 Optionale Felder:
+- tool (array of strings, nur besondere Utensilien, z.B. "Dutch Oven",
+    "Stabmixer", "Auflaufform"; maximal 8 Einträge)
 - description (string)
 - prepTime (ISO8601 duration, z.B. PT20M)
 - cookTime (ISO8601 duration, z.B. PT35M)
@@ -417,6 +419,37 @@ class RecipeCommandHandler(CommandHandler):
         return out or None
 
     @staticmethod
+    def _normalize_tools(value: Any) -> list[str] | None:
+        items: list[str] = []
+
+        if isinstance(value, str):
+            candidate = value.strip()
+            if candidate:
+                items = [candidate]
+        elif isinstance(value, list):
+            for raw in value:
+                candidate = str(raw).strip()
+                if candidate:
+                    items.append(candidate)
+
+        if not items:
+            return None
+
+        # Deduplicate while preserving order, keep list short for readability.
+        seen: set[str] = set()
+        normalized: list[str] = []
+        for item in items:
+            key = item.casefold()
+            if key in seen:
+                continue
+            seen.add(key)
+            normalized.append(item)
+            if len(normalized) >= 8:
+                break
+
+        return normalized or None
+
+    @staticmethod
     def _normalize_generated_recipe(data: dict[str, Any]) -> dict[str, Any]:
         normalized = dict(data)
 
@@ -446,6 +479,12 @@ class RecipeCommandHandler(CommandHandler):
             normalized["nutrition"] = nutrition
         elif "nutrition" in normalized:
             normalized.pop("nutrition", None)
+
+        tools = RecipeCommandHandler._normalize_tools(normalized.get("tool"))
+        if tools:
+            normalized["tool"] = tools
+        elif "tool" in normalized:
+            normalized.pop("tool", None)
 
         return normalized
 
@@ -547,12 +586,19 @@ class RecipeCommandHandler(CommandHandler):
             else []
         )
 
+        tools_raw = recipe.get("tool") or []
+        tools = (
+            [str(x) for x in tools_raw if str(x).strip()]
+            if isinstance(tools_raw, list)
+            else []
+        )
+
         return CookbookRecipeSummary(
             recipe_id=recipe_id,
             name=name,
             category=category,
             keywords=keywords,
-            tools=[],
+            tools=tools,
         )
 
     @staticmethod
@@ -574,6 +620,13 @@ class RecipeCommandHandler(CommandHandler):
             ingredients = [str(x) for x in ingredients_raw[:8]]
         else:
             ingredients = []
+
+        tools_raw = recipe.get("tool") or []
+        tools = (
+            [str(x).strip() for x in tools_raw if str(x).strip()]
+            if isinstance(tools_raw, list)
+            else []
+        )
 
         instructions_raw = recipe.get("recipeInstructions") or []
         instructions: list[str] = []
@@ -613,6 +666,11 @@ class RecipeCommandHandler(CommandHandler):
 
         if image:
             lines.append(f"Bild: {image}")
+
+        if tools:
+            lines.append("Utensilien:")
+            for item in tools[:8]:
+                lines.append(f"- {item}")
 
         if ingredients:
             lines.append("Zutaten:")

@@ -225,7 +225,8 @@ def test_generate_recipe_json_normalizes_extended_fields(handler, anthropic):
         '{"name":"X","recipeYield":4,'
         '"prepTime":"PT15M","cookTime":"15 Minuten",'
         '"totalTime":"PT30M","image":"https://example.com/x.jpg",'
-        '"nutrition":{"calories":"500 kcal","proteinContent":"20 g"}}'
+        '"nutrition":{"calories":"500 kcal","proteinContent":"20 g"},'
+        '"tool":["Dutch Oven","Stabmixer","Dutch Oven"]}'
     )
     data = handler._generate_recipe_json("x")
     assert data is not None
@@ -235,6 +236,7 @@ def test_generate_recipe_json_normalizes_extended_fields(handler, anthropic):
     assert "cookTime" not in data
     assert data["image"] == "https://example.com/x.jpg"
     assert data["nutrition"]["calories"] == "500 kcal"
+    assert data["tool"] == ["Dutch Oven", "Stabmixer"]
 
 
 def test_extract_query_variants(handler):
@@ -266,6 +268,20 @@ def test_summary_from_recipe_json_uses_fallback_and_non_list_ingredients(handler
     assert summary.name == "T"
     assert summary.category == "C"
     assert summary.keywords == []
+    assert summary.tools == []
+
+
+def test_summary_from_recipe_json_reads_tools(handler):
+    summary = handler._summary_from_recipe_json(
+        {
+            "name": "T",
+            "recipeCategory": "C",
+            "recipeIngredient": ["1 g Salz"],
+            "tool": ["Stabmixer", "Topf"],
+        },
+        fallback_id="fallback",
+    )
+    assert summary.tools == ["Stabmixer", "Topf"]
 
 
 def test_render_recipe_formats_dict_instructions_and_score(handler):
@@ -300,6 +316,7 @@ def test_render_recipe_includes_extended_fields(handler):
                 "fatContent": "12 g",
                 "carbohydrateContent": "70 g",
             },
+            "tool": ["Topf", "Pürierstab"],
             "recipeIngredient": ["200 g Linsen"],
             "recipeInstructions": ["Kochen"],
         },
@@ -311,6 +328,8 @@ def test_render_recipe_includes_extended_fields(handler):
     assert "Gesamtzeit: PT50M" in txt
     assert "Kalorien: 520 kcal" in txt
     assert "Bild: https://example.com/dal.jpg" in txt
+    assert "Utensilien:" in txt
+    assert "- Topf" in txt
 
 
 def test_semantic_index_doc_text_and_upsert_flow(monkeypatch):
