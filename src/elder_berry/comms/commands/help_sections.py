@@ -73,6 +73,12 @@ Dokument-Ablage:
   cloud aufräumen – Dateien im Eingang klassifizieren und ablegen
   anhang ablegen #<ID> – PDF-Anhänge aus Mail klassifizieren und ablegen
 
+Rezepte (Nextcloud Cookbook):
+  rezept <name> – Rezept suchen
+  kochbuch <name> – Alias für Rezeptsuche
+  cocktail <name> – Cocktail als Rezept suchen
+  wie mache ich <gericht> – Rezept suchen oder Entwurf erzeugen
+
 PDF-Verarbeitung (Stirling-PDF):
   pdf zusammenfügen <a.pdf> <b.pdf> – PDFs zusammenfügen
   pdf aufteilen <datei> seiten 1-3 – Seiten extrahieren
