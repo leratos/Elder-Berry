@@ -202,6 +202,14 @@ _ALONG_ROUTE_POI_RE = re.compile(
     r"(?P<poi>[^,.!?]+)",
     re.IGNORECASE,
 )
+_HEURISTIC_ARRIVAL_RE = re.compile(
+    r"\b(?:"
+    r"uebermorgen|übermorgen|morgen|heute|"
+    r"montag|dienstag|mittwoch|donnerstag|freitag|samstag|sonntag"
+    r")\b[^,.!?]*?\b(?:um\s+)?\d{1,2}(?::\d{2})?(?:\s*uhr)?\b"
+    r"|\b(?:um\s+)?\d{1,2}(?::\d{2})?(?:\s*uhr)?\b",
+    re.IGNORECASE,
+)
 
 
 class RouteIntentExtractionError(Exception):
@@ -222,7 +230,7 @@ class RouteIntentParser:
     ob er ueberhaupt zum LLM geht.
     """
 
-    def __init__(self, anthropic_client: AnthropicClient) -> None:
+    def __init__(self, anthropic_client: AnthropicClient | None) -> None:
         self._client = anthropic_client
 
     def parse(self, text: str) -> RouteIntent:
@@ -232,6 +240,9 @@ class RouteIntentParser:
             RouteIntentExtractionError: Bei Schema-Verstoss oder leerer
                 Antwort.
         """
+        if self._client is None or not self._client.is_available():
+            return self._heuristic_parse(text)
+
         raw = self._client.tool_call(
             prompt=text,
             tool=ROUTE_EXTRACT_TOOL,
@@ -240,6 +251,123 @@ class RouteIntentParser:
         )
         intent = self._raw_to_intent(raw)
         return self._repair_common_chained_route_phrasing(text, intent)
+
+    @staticmethod
+    def _heuristic_parse(text: str) -> RouteIntent:
+        """Lokaler Fallback fuer haeufige Multi-Stop-Satzmuster ohne Sonnet.
+
+        Deckt bewusst nur die ueblichen Phase-92-Formulierungen ab:
+        - ``zu X und dann zu Y``
+        - ``vorher X abholen`` / ``vorher X und Y abholen``
+        - ``unterwegs ... zu/bei X`` fuer Marken/POIs
+        """
+        normalized = text.strip()
+        if not normalized:
+            raise RouteIntentExtractionError("leere Routenanfrage")
+
+        origin = IntentStop(type="home", value="")
+        if re.search(
+            r"\bvon\s+zuhause\b|\bvon\s+zu\s+hause\b", normalized, re.IGNORECASE
+        ):
+            origin = IntentStop(type="home", value="")
+
+        chain_match = _CHAINED_DESTINATION_RE.search(normalized)
+        if chain_match is not None:
+            destination = IntentStop(
+                type="contact",
+                value=chain_match.group("second").strip(),
+            )
+            waypoints = [
+                IntentStop(
+                    type="contact",
+                    value=chain_match.group("first").strip(),
+                    constraint="before_destination",
+                )
+            ]
+        else:
+            destination = RouteIntentParser._heuristic_destination(normalized)
+            waypoints = RouteIntentParser._heuristic_contact_waypoints(normalized)
+
+        poi = RouteIntentParser._heuristic_poi_waypoint(normalized)
+        if poi is not None:
+            waypoints.append(poi)
+
+        if not destination.value:
+            raise RouteIntentExtractionError("destination fehlt im Heuristik-Fallback")
+
+        arrival_time_text = RouteIntentParser._heuristic_arrival_time_text(normalized)
+
+        return RouteIntent(
+            origin=origin,
+            destination=destination,
+            waypoints=tuple(waypoints),
+            arrival_time_text=arrival_time_text,
+        )
+
+    @staticmethod
+    def _heuristic_destination(text: str) -> IntentStop:
+        patterns = [
+            re.compile(r"\bnach\s+(?P<dest>[^,.!?]+)", re.IGNORECASE),
+            re.compile(r"\bzu\s+(?P<dest>[^,.!?]+)", re.IGNORECASE),
+        ]
+        for pattern in patterns:
+            match = pattern.search(text)
+            if match is None:
+                continue
+            destination = match.group("dest").strip()
+            destination = re.split(
+                r"\s+(?:vorher|danach|unterwegs|auf\s+dem\s+weg|und\s+dann)\b",
+                destination,
+                maxsplit=1,
+                flags=re.IGNORECASE,
+            )[0].strip()
+            if destination:
+                return IntentStop(type="contact", value=destination)
+        return IntentStop(type="contact", value="")
+
+    @staticmethod
+    def _heuristic_contact_waypoints(text: str) -> list[IntentStop]:
+        previous_match = re.search(
+            r"\bvorher\s+(?P<names>[^,.!?]+?)\s+abholen\b",
+            text,
+            re.IGNORECASE,
+        )
+        if previous_match is None:
+            return []
+        names_raw = previous_match.group("names").strip()
+        names = [
+            part.strip() for part in re.split(r"\s+und\s+", names_raw) if part.strip()
+        ]
+        return [
+            IntentStop(type="contact", value=name, constraint="before_destination")
+            for name in names
+        ]
+
+    @staticmethod
+    def _heuristic_poi_waypoint(text: str) -> IntentStop | None:
+        poi_match = re.search(
+            r"\b(?:unterwegs|auf\s+dem\s+weg)(?:\s+moechte\s+ich)?(?:\s+noch)?\s+(?:zu|bei)\s+(?P<poi>[^,.!?]+)",
+            text,
+            re.IGNORECASE,
+        )
+        if poi_match is None:
+            return None
+        poi_value = poi_match.group("poi").strip()
+        if not poi_value:
+            return None
+        return IntentStop(
+            type="poi",
+            value=poi_value,
+            constraint="along_route",
+        )
+
+    @staticmethod
+    def _heuristic_arrival_time_text(text: str) -> str:
+        """Extrahiert eine woertliche Zeitphrase fuer parse_arrival_time()."""
+        match = _HEURISTIC_ARRIVAL_RE.search(text)
+        if match is None:
+            return ""
+        return match.group(0).strip()
 
     # ------------------------------------------------------------------
     # Schema-Validierung + DTO-Bau

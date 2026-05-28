@@ -274,6 +274,44 @@ class TestParse:
         assert intent.waypoints[1].type == "poi"
         assert intent.waypoints[1].constraint == "along_route"
 
+    def test_heuristic_parse_without_anthropic_for_live_case(self) -> None:
+        parser = RouteIntentParser(None)
+        intent = parser.parse(
+            "Ich muss von zuhause zu Nadine und dann zu Lisa. "
+            "Unterwegs moechte ich noch zu Hornbach.",
+        )
+        assert intent.origin.type == "home"
+        assert intent.destination.value == "Lisa"
+        assert [waypoint.value for waypoint in intent.waypoints] == [
+            "Nadine",
+            "Hornbach",
+        ]
+        assert intent.waypoints[0].type == "contact"
+        assert intent.waypoints[1].type == "poi"
+
+    def test_heuristic_parse_with_vorher_and_poi(self) -> None:
+        parser = RouteIntentParser(None)
+        intent = parser.parse(
+            "Ich muss nach Leipzig Hbf, vorher Lisa und Andrea abholen, "
+            "unterwegs bei Hornbach einkaufen",
+        )
+        assert intent.destination.value == "Leipzig Hbf"
+        assert [waypoint.value for waypoint in intent.waypoints] == [
+            "Lisa",
+            "Andrea",
+            "Hornbach einkaufen",
+        ]
+        assert intent.waypoints[2].type == "poi"
+        assert intent.arrival_time_text == ""
+
+    def test_heuristic_parse_preserves_arrival_time_text(self) -> None:
+        parser = RouteIntentParser(None)
+        intent = parser.parse(
+            "Fahrt morgen um 16 uhr nach Leipzig Hbf, vorher Andrea abholen",
+        )
+        assert intent.destination.value == "Leipzig Hbf"
+        assert intent.arrival_time_text == "morgen um 16 uhr"
+
     # ------------------------------------------------------------------
     # Fehlerfaelle
     # ------------------------------------------------------------------
