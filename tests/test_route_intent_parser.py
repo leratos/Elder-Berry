@@ -302,6 +302,15 @@ class TestParse:
             "Hornbach einkaufen",
         ]
         assert intent.waypoints[2].type == "poi"
+        assert intent.arrival_time_text == ""
+
+    def test_heuristic_parse_preserves_arrival_time_text(self) -> None:
+        parser = RouteIntentParser(None)
+        intent = parser.parse(
+            "Fahrt morgen um 16 uhr nach Leipzig Hbf, vorher Andrea abholen",
+        )
+        assert intent.destination.value == "Leipzig Hbf"
+        assert intent.arrival_time_text == "morgen um 16 uhr"
 
     # ------------------------------------------------------------------
     # Fehlerfaelle

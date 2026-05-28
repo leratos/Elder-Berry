@@ -202,6 +202,14 @@ _ALONG_ROUTE_POI_RE = re.compile(
     r"(?P<poi>[^,.!?]+)",
     re.IGNORECASE,
 )
+_HEURISTIC_ARRIVAL_RE = re.compile(
+    r"\b(?:"
+    r"uebermorgen|übermorgen|morgen|heute|"
+    r"montag|dienstag|mittwoch|donnerstag|freitag|samstag|sonntag"
+    r")\b[^,.!?]*?\b(?:um\s+)?\d{1,2}(?::\d{2})?(?:\s*uhr)?\b"
+    r"|\b(?:um\s+)?\d{1,2}(?::\d{2})?(?:\s*uhr)?\b",
+    re.IGNORECASE,
+)
 
 
 class RouteIntentExtractionError(Exception):
@@ -287,11 +295,13 @@ class RouteIntentParser:
         if not destination.value:
             raise RouteIntentExtractionError("destination fehlt im Heuristik-Fallback")
 
+        arrival_time_text = RouteIntentParser._heuristic_arrival_time_text(normalized)
+
         return RouteIntent(
             origin=origin,
             destination=destination,
             waypoints=tuple(waypoints),
-            arrival_time_text="",
+            arrival_time_text=arrival_time_text,
         )
 
     @staticmethod
@@ -350,6 +360,14 @@ class RouteIntentParser:
             value=poi_value,
             constraint="along_route",
         )
+
+    @staticmethod
+    def _heuristic_arrival_time_text(text: str) -> str:
+        """Extrahiert eine woertliche Zeitphrase fuer parse_arrival_time()."""
+        match = _HEURISTIC_ARRIVAL_RE.search(text)
+        if match is None:
+            return ""
+        return match.group(0).strip()
 
     # ------------------------------------------------------------------
     # Schema-Validierung + DTO-Bau
