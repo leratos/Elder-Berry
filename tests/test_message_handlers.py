@@ -341,6 +341,91 @@ class TestHandlePendingConfirm:
 
         run_async(_test())
 
+    def test_recipe_save_success(self, handler, channel, pending, remote_commands):
+        async def _test():
+            remote_commands._recipe = MagicMock()
+            remote_commands._recipe.confirm_pending_recipe.return_value = MagicMock(
+                text="gespeichert"
+            )
+            action = PendingAction(
+                action_type="recipe_save",
+                description="save",
+                data={"recipe_json": {"name": "x"}},
+            )
+            msg = _make_msg("ja")
+
+            await handler.handle_pending_confirm(msg, action)
+
+            pending.clear.assert_called_once()
+            channel.send_text.assert_called()
+
+        run_async(_test())
+
+    def test_recipe_save_no_handler(self, handler, channel, pending, remote_commands):
+        async def _test():
+            remote_commands._recipe = None
+            action = PendingAction(
+                action_type="recipe_save",
+                description="save",
+                data={"recipe_json": {"name": "x"}},
+            )
+            msg = _make_msg("ja")
+
+            await handler.handle_pending_confirm(msg, action)
+
+            pending.clear.assert_called_once()
+            calls = [c[0][1] for c in channel.send_text.call_args_list]
+            assert any("nicht verfuegbar" in c for c in calls)
+
+        run_async(_test())
+
+    def test_recipe_save_error_clears_pending(
+        self, handler, channel, pending, remote_commands
+    ):
+        async def _test():
+            remote_commands._recipe = MagicMock()
+            remote_commands._recipe.confirm_pending_recipe.side_effect = RuntimeError(
+                "boom"
+            )
+            action = PendingAction(
+                action_type="recipe_save",
+                description="save",
+                data={"recipe_json": {"name": "x"}},
+            )
+            msg = _make_msg("ja")
+
+            await handler.handle_pending_confirm(msg, action)
+
+            pending.clear.assert_called_once()
+            calls = [c[0][1] for c in channel.send_text.call_args_list]
+            assert any("fehlgeschlagen" in c for c in calls)
+
+        run_async(_test())
+
+    def test_recipe_save_timeout(self, handler, channel, remote_commands):
+        async def _test():
+            remote_commands._recipe = MagicMock()
+            remote_commands._recipe.confirm_pending_recipe.return_value = MagicMock(
+                text="ok"
+            )
+            action = PendingAction(
+                action_type="recipe_save",
+                description="save",
+                data={"recipe_json": {"name": "x"}},
+            )
+            msg = _make_msg("ja")
+
+            with patch(
+                "elder_berry.comms.confirmation_handlers.asyncio.wait_for",
+                side_effect=asyncio.TimeoutError,
+            ):
+                await handler.handle_pending_confirm(msg, action)
+
+            calls = [c[0][1] for c in channel.send_text.call_args_list]
+            assert any("Zeitueberschreitung" in c for c in calls)
+
+        run_async(_test())
+
     def test_restart_confirm_triggers_restart(self, handler, channel, pending):
         async def _test():
             action = PendingAction(

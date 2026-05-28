@@ -24,6 +24,7 @@ if TYPE_CHECKING:
     from elder_berry.comms.commands.filing_commands import (
         FilingCommandHandler,
     )
+    from elder_berry.comms.commands.recipe_commands import RecipeCommandHandler
     from elder_berry.comms.message_channel import IncomingMessage
     from elder_berry.comms.message_handlers import BridgeMessageHandler
     from elder_berry.core.tower_agent import TowerAgent
@@ -66,6 +67,8 @@ class ConfirmationHandler:
             "bulk_delete_reminders",
         ):
             await self._execute_bulk_delete(msg, action)
+        elif action.action_type == "recipe_save":
+            await self._execute_recipe_save(msg, action)
         else:
             logger.warning("Unbekannter PendingAction-Typ: %s", action.action_type)
             await self._p._channel.send_text(
@@ -413,6 +416,58 @@ class ConfirmationHandler:
             handler: FilingCommandHandler | None = rc._filing
             return handler
         return None
+
+    def _get_recipe_handler(self) -> RecipeCommandHandler | None:
+        """Holt den RecipeCommandHandler ueber den RemoteCommandHandler."""
+        rc = self._p._remote_commands
+        if rc and hasattr(rc, "_recipe"):
+            handler: RecipeCommandHandler | None = rc._recipe
+            return handler
+        return None
+
+    async def _execute_recipe_save(
+        self,
+        msg: IncomingMessage,
+        action: PendingAction,
+    ) -> None:
+        """Speichert ein bestaetigtes Recipe-Draft im Cookbook."""
+        recipe_handler = self._get_recipe_handler()
+        if not recipe_handler:
+            await self._p._channel.send_text(
+                msg.room_id,
+                "Recipe-Handler nicht verfuegbar.",
+            )
+            self._p._pending.clear(msg.sender)
+            return
+
+        try:
+            loop = asyncio.get_running_loop()
+            result = await asyncio.wait_for(
+                loop.run_in_executor(
+                    None,
+                    recipe_handler.confirm_pending_recipe,
+                    action,
+                ),
+                timeout=90.0,
+            )
+            self._p._pending.clear(msg.sender)
+            if result.text:
+                await self._p._channel.send_text(msg.room_id, result.text)
+            self._p._chat_history.add(msg.sender, "user", msg.body)
+            self._p._chat_history.add(msg.sender, "assistant", result.text or "")
+        except asyncio.TimeoutError:
+            logger.error("Timeout bei Recipe-Confirm (90s)")
+            await self._p._channel.send_text(
+                msg.room_id,
+                "Zeitueberschreitung beim Speichern des Rezepts.",
+            )
+        except Exception as e:
+            logger.error("Recipe-Confirm fehlgeschlagen: %s", e)
+            await self._p._channel.send_text(
+                msg.room_id,
+                f"❌ Rezept-Speichern fehlgeschlagen: {type(e).__name__}",
+            )
+            self._p._pending.clear(msg.sender)
 
     async def _execute_restart_confirm(
         self,

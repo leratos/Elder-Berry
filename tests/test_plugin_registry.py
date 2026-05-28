@@ -31,6 +31,7 @@ from elder_berry.comms.commands.registry import (
 # Etappe 2: alle Builtin-Plugins muessen geladen werden.
 # Phase 77.5: PluginsCommandHandler dazu -> 24 Plugins.
 # Phase 92: MultiStopRouteCommandHandler -> 25 Plugins.
+# Phase 93: RecipeCommandHandler dazu -> 26 Plugins.
 EXPECTED_PLUGIN_NAMES = {
     "system",
     "weather",
@@ -38,6 +39,7 @@ EXPECTED_PLUGIN_NAMES = {
     "calendar",
     "file",
     "cloud",
+    "recipe",
     "pdf",
     "filing",
     "process",
@@ -64,7 +66,7 @@ EXPECTED_PLUGIN_NAMES = {
 
 
 def test_load_plugins_finds_all_handlers() -> None:
-    """Phase 77 Etappe 2: alle 23 *_commands.py haben Plugin-Manifest.
+    """Phase 77 Etappe 2: alle *_commands.py haben Plugin-Manifest.
 
     Wenn ein Plugin fehlt: PLUGIN-Konstante in der jeweiligen Datei
     pruefen oder Tippfehler im Manifest-Append.
