@@ -19,6 +19,7 @@ import json
 import logging
 import re
 from dataclasses import dataclass
+from pathlib import PurePosixPath
 from typing import TYPE_CHECKING, Any
 from urllib.parse import quote
 
@@ -61,6 +62,10 @@ class NextcloudCookbookClient:
         self._url = secret_store.get_or_none("nextcloud_url")
         self._user = secret_store.get_or_none("nextcloud_user")
         self._password = secret_store.get_or_none("nextcloud_app_password")
+        self._recipes_dir_override = self._normalize_dir_name(
+            secret_store.get_or_none("nextcloud_cookbook_folder")
+        )
+        self._recipes_dir_cached: str | None = None
         self._timeout = timeout
 
     @property
@@ -256,6 +261,98 @@ class NextcloudCookbookClient:
                 status_code=resp.status_code,
             )
 
+    def _webdav_exists(self, remote_path: str) -> bool:
+        """Checks whether a target path already exists via WebDAV PROPFIND."""
+        url = f"{self._webdav_base}{remote_path.lstrip('/')}"
+        try:
+            resp = httpx.request(
+                "PROPFIND",
+                url,
+                auth=self._auth,
+                headers={"Depth": "0"},
+                timeout=self._timeout,
+            )
+        except self._RETRIABLE_ERRORS as exc:
+            raise NextcloudCookbookError("WebDAV check failed: %s" % exc) from exc
+
+        if resp.status_code in (200, 207):
+            return True
+        if resp.status_code == 404:
+            return False
+        if resp.status_code in (401, 403):
+            raise NextcloudCookbookError(
+                "Cookbook auth failed (HTTP %d)" % resp.status_code,
+                status_code=resp.status_code,
+            )
+        raise NextcloudCookbookError(
+            "Cookbook existence check failed (HTTP %d)" % resp.status_code,
+            status_code=resp.status_code,
+        )
+
+    @staticmethod
+    def _normalize_dir_name(value: str | None) -> str | None:
+        if value is None:
+            return None
+        normalized = value.strip().strip("/")
+        if not normalized:
+            return None
+        return normalized
+
+    def _resolve_recipes_dir(self) -> str:
+        if self._recipes_dir_override:
+            return self._recipes_dir_override
+        if self._recipes_dir_cached:
+            return self._recipes_dir_cached
+
+        configured_dir: str | None = None
+        try:
+            resp = self._request_api("GET", "config")
+            data = self._json(resp)
+            if isinstance(data, dict):
+                for key in ("recipeFolder", "recipesFolder", "folder"):
+                    value = data.get(key)
+                    if isinstance(value, str) and value.strip():
+                        configured_dir = value
+                        break
+        except NextcloudCookbookError:
+            configured_dir = None
+
+        self._recipes_dir_cached = (
+            self._normalize_dir_name(configured_dir) or _RECIPES_DIR
+        )
+        return self._recipes_dir_cached
+
+    @staticmethod
+    def _join_remote_path(folder: str, file_name: str) -> str:
+        folder_clean = folder.strip().strip("/")
+        file_clean = file_name.strip().lstrip("/")
+        if not folder_clean:
+            return file_clean
+        return str(PurePosixPath(folder_clean) / file_clean)
+
+    def _resolve_unique_remote_path(self, folder: str, file_name: str) -> str:
+        """Returns a unique target path, keeping existing recipes untouched."""
+        candidate = self._join_remote_path(folder, file_name)
+        if not self._webdav_exists(candidate):
+            return candidate
+
+        stem, sep, suffix = file_name.rpartition(".")
+        if not sep:
+            stem = file_name
+            suffix = ""
+
+        for idx in range(2, 10_000):
+            numbered = f"{stem}-{idx}"
+            if suffix:
+                numbered = f"{numbered}.{suffix}"
+            candidate = self._join_remote_path(folder, numbered)
+            if not self._webdav_exists(candidate):
+                return candidate
+
+        raise NextcloudCookbookError(
+            "Could not resolve unique recipe filename after many attempts"
+        )
+
     def trigger_reindex(self) -> None:
         # Reindex can be slightly flaky right after upload; retry a few times.
         last_exc: NextcloudCookbookError | None = None
@@ -277,9 +374,12 @@ class NextcloudCookbookClient:
         if not isinstance(recipe_json, dict):
             raise NextcloudCookbookError("Recipe payload must be an object")
 
+        recipes_dir = self._resolve_recipes_dir()
         name = str(recipe_json.get("name") or recipe_json.get("title") or "recipe")
-        file_name = filename or f"{self._slugify(name)}.json"
-        remote_path = f"{_RECIPES_DIR}/{file_name}"
+        file_name = (filename or f"{self._slugify(name)}.json").strip()
+        if not file_name:
+            file_name = "recipe.json"
+        remote_path = self._resolve_unique_remote_path(recipes_dir, file_name)
 
         try:
             payload = json.dumps(recipe_json, ensure_ascii=False, indent=2)

@@ -138,7 +138,10 @@ def test_json_error_raises():
 
 def test_save_recipe_uploads_and_reindexes():
     with patch(_HTTPX_REQUEST) as mock_request, patch(_HTTPX_CLIENT) as mock_client_cls:
-        mock_request.return_value = _response(201, None)
+        mock_request.side_effect = [
+            _response(404, None),  # first existence check: file missing
+            _response(201, None),  # upload
+        ]
         _install_httpx_client(mock_client_cls, response=_response(200, {"ok": True}))
 
         client = NextcloudCookbookClient(_secret_store())
@@ -159,7 +162,10 @@ def test_save_recipe_uploads_and_reindexes():
 
 def test_reindex_retry_then_fail_raises():
     with patch(_HTTPX_REQUEST) as mock_request, patch(_HTTPX_CLIENT) as mock_client_cls:
-        mock_request.return_value = _response(201, None)
+        mock_request.side_effect = [
+            _response(404, None),  # first existence check: file missing
+            _response(201, None),  # upload
+        ]
         _install_httpx_client(
             mock_client_cls,
             response=_response(500, {}),
@@ -176,3 +182,50 @@ def test_reindex_retry_then_fail_raises():
                     "recipeInstructions": ["B"],
                 }
             )
+
+
+def test_save_recipe_uses_configured_cookbook_folder_from_secret():
+    with patch(_HTTPX_REQUEST) as mock_request, patch(_HTTPX_CLIENT) as mock_client_cls:
+        mock_request.side_effect = [
+            _response(404, None),  # first existence check: file missing
+            _response(201, None),  # upload
+        ]
+        _install_httpx_client(mock_client_cls, response=_response(200, {"ok": True}))
+
+        client = NextcloudCookbookClient(
+            _secret_store(nextcloud_cookbook_folder="MyRecipes")
+        )
+        path = client.save_recipe(
+            {
+                "@context": "https://schema.org",
+                "@type": "Recipe",
+                "name": "Folder Test",
+                "recipeIngredient": ["A"],
+                "recipeInstructions": ["B"],
+            }
+        )
+
+    assert path.startswith("MyRecipes/")
+
+
+def test_save_recipe_does_not_overwrite_existing_file():
+    with patch(_HTTPX_REQUEST) as mock_request, patch(_HTTPX_CLIENT) as mock_client_cls:
+        mock_request.side_effect = [
+            _response(207, None),  # existing: Recipes/carbonara.json
+            _response(404, None),  # missing: Recipes/carbonara-2.json
+            _response(201, None),  # upload of unique filename
+        ]
+        _install_httpx_client(mock_client_cls, response=_response(200, {"ok": True}))
+
+        client = NextcloudCookbookClient(_secret_store())
+        path = client.save_recipe(
+            {
+                "@context": "https://schema.org",
+                "@type": "Recipe",
+                "name": "Carbonara",
+                "recipeIngredient": ["A"],
+                "recipeInstructions": ["B"],
+            }
+        )
+
+    assert path == "Recipes/carbonara-2.json"
