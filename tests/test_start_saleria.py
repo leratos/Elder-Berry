@@ -217,11 +217,6 @@ class TestMainModeRouting:
         assert "run_agent" in source
 
 
-# ===========================================================================
-# Anthropic-Wiring fuer Remote-Commands
-# ===========================================================================
-
-
 class TestAnthropicClientWiring:
     def test_context_tools_publish_general_anthropic_client(self):
         import inspect

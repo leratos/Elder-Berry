@@ -534,3 +534,23 @@ class TestKeywordPriorities:
         assert handler.parse_command("SCREENSHOT") == "screenshot"
         assert handler.parse_command("Mails") == "mails"
         assert handler.parse_command("WETTER") == "wetter"
+
+
+class TestRouteCommandSelection:
+    """Regression: Multi-Stop muss vor Single-Stop-Route greifen."""
+
+    def test_multi_stop_wins_over_route_from_to_for_chained_phrase(self):
+        from elder_berry.tools.route_session_store import RouteSessionStore
+
+        handler = _make_handler(
+            contact_store=MagicMock(),
+            route_planner=MagicMock(),
+            multi_stop_route_planner=MagicMock(),
+            route_session_store=RouteSessionStore(),
+        )
+
+        cmd = handler.parse_command(
+            "Ich muss von zuhause zu Nadine und dann zu Lisa. "
+            "Unterwegs moechte ich noch zu Hornbach.",
+        )
+        assert cmd == "multi_stop_route"
