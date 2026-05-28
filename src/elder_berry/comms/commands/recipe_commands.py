@@ -63,7 +63,15 @@ Pflichtfelder:
 - recipeInstructions (array of strings)
 Optionale Felder:
 - description (string)
-- totalTime (ISO8601 duration, z.B. PT20M)
+- prepTime (ISO8601 duration, z.B. PT20M)
+- cookTime (ISO8601 duration, z.B. PT35M)
+- totalTime (ISO8601 duration, z.B. PT55M)
+- nutrition (object), mit bevorzugten Feldern:
+    * calories (z.B. "520 kcal")
+    * proteinContent (z.B. "32 g")
+    * fatContent (z.B. "22 g")
+    * carbohydrateContent (z.B. "38 g")
+- image (string URL, absolut, z.B. https://.../bild.jpg)
 """
 
 
@@ -351,6 +359,96 @@ class RecipeCommandHandler(CommandHandler):
         )
 
     @staticmethod
+    def _normalize_recipe_yield(value: Any) -> str | None:
+        if value is None:
+            return None
+        if isinstance(value, (int, float)):
+            amount = int(value) if float(value).is_integer() else value
+            return f"{amount} Portionen"
+
+        text = str(value).strip()
+        if not text:
+            return None
+        if re.search(r"portion", text, re.IGNORECASE):
+            return text
+        if re.fullmatch(r"\d+(?:[.,]\d+)?", text):
+            return f"{text} Portionen"
+        return text
+
+    @staticmethod
+    def _normalize_image(value: Any) -> str | None:
+        if isinstance(value, str):
+            candidate = value.strip()
+            if candidate.startswith("http://") or candidate.startswith("https://"):
+                return candidate
+            return None
+        if isinstance(value, list):
+            for item in value:
+                normalized = RecipeCommandHandler._normalize_image(item)
+                if normalized:
+                    return normalized
+        return None
+
+    @staticmethod
+    def _normalize_duration(value: Any) -> str | None:
+        if value is None:
+            return None
+        text = str(value).strip()
+        if not text:
+            return None
+        if re.fullmatch(r"P(?:\d+D)?(?:T(?:\d+H)?(?:\d+M)?(?:\d+S)?)?", text):
+            return text
+        return None
+
+    @staticmethod
+    def _normalize_nutrition(value: Any) -> dict[str, str] | None:
+        if not isinstance(value, dict):
+            return None
+        keys = ("calories", "proteinContent", "fatContent", "carbohydrateContent")
+        out: dict[str, str] = {}
+        for key in keys:
+            raw = value.get(key)
+            if raw is None:
+                continue
+            text = str(raw).strip()
+            if text:
+                out[key] = text
+        return out or None
+
+    @staticmethod
+    def _normalize_generated_recipe(data: dict[str, Any]) -> dict[str, Any]:
+        normalized = dict(data)
+
+        yield_text = RecipeCommandHandler._normalize_recipe_yield(
+            normalized.get("recipeYield")
+        )
+        if yield_text:
+            normalized["recipeYield"] = yield_text
+
+        for key in ("prepTime", "cookTime", "totalTime"):
+            duration = RecipeCommandHandler._normalize_duration(normalized.get(key))
+            if duration:
+                normalized[key] = duration
+            elif key in normalized:
+                normalized.pop(key, None)
+
+        image_url = RecipeCommandHandler._normalize_image(normalized.get("image"))
+        if image_url:
+            normalized["image"] = image_url
+        elif "image" in normalized:
+            normalized.pop("image", None)
+
+        nutrition = RecipeCommandHandler._normalize_nutrition(
+            normalized.get("nutrition")
+        )
+        if nutrition:
+            normalized["nutrition"] = nutrition
+        elif "nutrition" in normalized:
+            normalized.pop("nutrition", None)
+
+        return normalized
+
+    @staticmethod
     def _extract_query(raw_text: str) -> str:
         text = raw_text.strip()
         m = RECIPE_PATTERN.match(text)
@@ -399,7 +497,7 @@ class RecipeCommandHandler(CommandHandler):
             data["@type"] = "Recipe"
         if "@context" not in data:
             data["@context"] = "https://schema.org"
-        return data
+        return self._normalize_generated_recipe(data)
 
     @staticmethod
     def _summary_from_recipe_json(
@@ -429,6 +527,15 @@ class RecipeCommandHandler(CommandHandler):
     def _render_recipe(recipe: dict[str, Any], score: float | None) -> str:
         name = str(recipe.get("name") or recipe.get("title") or "Rezept")
         category = str(recipe.get("recipeCategory") or recipe.get("category") or "")
+        recipe_yield = str(recipe.get("recipeYield") or "").strip()
+        prep_time = str(recipe.get("prepTime") or "").strip()
+        cook_time = str(recipe.get("cookTime") or "").strip()
+        total_time = str(recipe.get("totalTime") or "").strip()
+        image = str(recipe.get("image") or "").strip()
+        nutrition_raw = recipe.get("nutrition")
+        nutrition: dict[str, str] = (
+            nutrition_raw if isinstance(nutrition_raw, dict) else {}
+        )
 
         ingredients_raw = recipe.get("recipeIngredient") or []
         if isinstance(ingredients_raw, list):
@@ -450,8 +557,30 @@ class RecipeCommandHandler(CommandHandler):
         lines = [f"Rezept: {name}"]
         if category:
             lines.append(f"Kategorie: {category}")
+        if recipe_yield:
+            lines.append(f"Portionen: {recipe_yield}")
+        if prep_time:
+            lines.append(f"Vorbereitung: {prep_time}")
+        if cook_time:
+            lines.append(f"Kochzeit: {cook_time}")
+        if total_time:
+            lines.append(f"Gesamtzeit: {total_time}")
         if score is not None:
             lines.append(f"Treffer-Score: {score:.2f}")
+
+        if nutrition:
+            lines.append("Naehrwerte:")
+            if nutrition.get("calories"):
+                lines.append(f"- Kalorien: {nutrition['calories']}")
+            if nutrition.get("proteinContent"):
+                lines.append(f"- Protein: {nutrition['proteinContent']}")
+            if nutrition.get("fatContent"):
+                lines.append(f"- Fett: {nutrition['fatContent']}")
+            if nutrition.get("carbohydrateContent"):
+                lines.append(f"- Kohlenhydrate: {nutrition['carbohydrateContent']}")
+
+        if image:
+            lines.append(f"Bild: {image}")
 
         if ingredients:
             lines.append("Zutaten:")
