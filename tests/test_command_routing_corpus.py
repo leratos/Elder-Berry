@@ -100,6 +100,18 @@ CORPUS: list[tuple[str, str | None, str, str]] = [
         "known_conflict",
         "Note(note_get_fact) + Contact(contact_who) – Contact-Pattern gewinnt über Note-Keyword",
     ),
+    (
+        "wann ist lisa geburtstag",
+        "contact_field_query",
+        "known_conflict",
+        "Contact-Feldabfrage gewinnt über die generische Note-Faktfrage",
+    ),
+    (
+        "was ist die adresse von max mustermann",
+        "contact_field_query",
+        "known_conflict",
+        "Contact-Feldabfrage gewinnt über die generische Note-Faktfrage",
+    ),
     # ------------------------------------------------------------------
     # Negative HOW_TO-Faelle: generische Nachfragen dürfen nicht auf
     # recipe_lookup routen.
@@ -191,6 +203,18 @@ EXPECTED_CANDIDATE_CONFLICTS: dict[str, dict[str, object]] = {
         "losers": {"note_get_fact"},
         "sources": {"pattern_match", "keyword"},
         "reason": "Contact-Pattern gewinnt gegen Note-Keyword.",
+    },
+    "wann ist lisa geburtstag": {
+        "winner": "contact_field_query",
+        "losers": {"note_get_fact"},
+        "sources": {"pattern_match", "keyword"},
+        "reason": "Kontakt-Feldabfrage gewinnt gegen Note-Keyword.",
+    },
+    "was ist die adresse von max mustermann": {
+        "winner": "contact_field_query",
+        "losers": {"note_get_fact"},
+        "sources": {"pattern_match"},
+        "reason": "Kontakt-Feldabfrage gewinnt gegen Note-Keyword.",
     },
 }
 

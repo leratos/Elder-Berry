@@ -496,6 +496,8 @@ class RemoteCommandHandler:
                 check_text = text.strip() if spec.use_original_text else normalized
                 if spec.pattern.match(check_text):
                     confidence = spec.confidence if spec.confidence != 70 else 90
+                    if spec.command == "contact_field_query":
+                        confidence = max(confidence, 95)
                     candidates.append(
                         CommandMatchCandidate(
                             command=spec.command,
