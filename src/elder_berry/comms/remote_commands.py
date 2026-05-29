@@ -525,7 +525,14 @@ class RemoteCommandHandler:
                     if spec.command == "multi_stop_route":
                         if not is_multi_stop_candidate(text.strip()):
                             continue
-                        confidence = max(spec.confidence, 95)
+                        has_explicit_pattern_match = any(
+                            c.source == "pattern_match" and c.command != "multi_stop_route"
+                            for c in candidates
+                        )
+                        if has_explicit_pattern_match:
+                            confidence = spec.confidence
+                        else:
+                            confidence = max(spec.confidence, 95)
                     else:
                         confidence = spec.confidence
                     candidates.append(
@@ -560,7 +567,13 @@ class RemoteCommandHandler:
                             kw_words = len(keyword.split())
                             confidence = 45 if kw_words >= 2 else 30
                             if command == "multi_stop_route":
-                                confidence = max(confidence, 95)
+                                has_explicit_pattern_match = any(
+                                    c.source == "pattern_match"
+                                    and c.command != "multi_stop_route"
+                                    for c in candidates
+                                )
+                                if not has_explicit_pattern_match:
+                                    confidence = max(confidence, 95)
                             candidates.append(
                                 CommandMatchCandidate(
                                     command=command,

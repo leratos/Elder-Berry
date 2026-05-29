@@ -137,10 +137,22 @@ CORPUS: list[tuple[str, str | None, str, str]] = [
         "MultiStopRouteCommandHandler: Multi-Stop-Absicht wird korrekt erkannt",
     ),
     (
+        "ich muss von zuhause zu nadine und dann lisa",
+        "route_from_to",
+        "smoke",
+        "Unvollstaendiges 'und dann' darf nicht auf multi_stop_route gehen.",
+    ),
+    (
         "plane route nach leipzig",
         "route_plan",
         "smoke",
         "Single-Stop bleibt bei RouteCommandHandler; Multi-Stop-Gate blockt Catch-All.",
+    ),
+    (
+        "notiz route: ich muss nach leipzig, vorher lisa abholen",
+        "note_add",
+        "known_conflict",
+        "Explizite Notiz darf nicht vom breiten multi_stop_route-Search uebersteuert werden.",
     ),
     (
         "wie mache ich ein backup",
@@ -377,3 +389,24 @@ def test_candidates_confidence_hierarchy(
     assert pattern, "Keine Pattern-Kandidaten für 'wetter morgen'"
     assert pattern[0].confidence == 90
     assert all(c.confidence < 100 for c in pattern)
+
+
+def test_multi_stop_keyword_candidate_rejected_without_route_intro(
+    handler: RemoteCommandHandler,
+) -> None:
+    """Deckt den Keyword-Gate-False-Pfad in collect_candidates ab."""
+    candidates = handler.collect_candidates("unterwegs tanken")
+    assert all(c.command != "multi_stop_route" for c in candidates)
+
+
+def test_multi_stop_keyword_candidate_boosted_when_gate_true(
+    handler: RemoteCommandHandler,
+) -> None:
+    """Deckt den Keyword-Gate-True-Pfad inkl. Confidence-Boost ab."""
+    text = "nach leipzig unterwegs tanken"
+    candidates = handler.collect_candidates(text)
+    multi_stop = [
+        c for c in candidates if c.command == "multi_stop_route" and c.source == "keyword"
+    ]
+    assert multi_stop, "Erwartet multi_stop_route als Keyword-Kandidat"
+    assert max(c.confidence for c in multi_stop) == 95

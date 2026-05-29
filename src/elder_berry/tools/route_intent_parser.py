@@ -34,7 +34,7 @@ logger = logging.getLogger(__name__)
 # Reise-Stops; "abholen", "einkaufen", "tanken", "holen" sind
 # typische Aktivitaeten-Hinweise.
 MULTI_STOP_HINTS = re.compile(
-    r"\b(vorher|danach|und\s+dann|auf dem weg|unterwegs|"
+    r"\b(vorher|danach|und\s+dann\s+(?:zu|nach|richtung)\b|auf dem weg|unterwegs|"
     r"über|ueber|via|"
     r"abholen|einkaufen|tanken|holen|"
     r"einkauf|tankstelle|supermarkt|apotheke)\b",
