@@ -13,7 +13,7 @@ from __future__ import annotations
 import logging
 import re
 from abc import ABC, abstractmethod
-from collections.abc import Callable, Iterator
+from collections.abc import Callable, Iterator, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal
@@ -136,7 +136,9 @@ class CommandHandler(ABC):
         return set()
 
     @property
-    def patterns(self) -> list[tuple[re.Pattern[str], str, bool, bool]]:
+    def patterns(self) -> Sequence[
+        tuple[re.Pattern[str], str, bool, bool] | PatternSpec
+    ]:
         """Regex-Patterns für parametrierte Commands.
 
         Returns:
@@ -146,10 +148,9 @@ class CommandHandler(ABC):
             use_search=True für pattern.search() statt pattern.match().
 
         Note:
-            In E6 (PatternSpec-Migration) wird dieser Rückgabetyp auf
-            ``list[tuple[...] | PatternSpec]`` erweitert.  Bis dahin ist
-            ``iter_pattern_specs()`` der kanonische Weg, Pattern-Einträge
-            zu konsumieren.
+            E6 erlaubt sowohl Legacy-Tupel als auch ``PatternSpec``-Einträge.
+            ``iter_pattern_specs()`` bleibt der kanonische Weg, Pattern-
+            Einträge zu konsumieren.
         """
         return []
 
@@ -441,10 +442,13 @@ def iter_pattern_specs(handler: "CommandHandler") -> Iterator["PatternSpec"]:
     """Normalisiert Legacy-4-Tupel aus handler.patterns zu PatternSpec-Objekten.
 
     Gibt für jeden Eintrag in ``handler.patterns`` einen ``PatternSpec``
-    zurück.  Alle Handler geben aktuell 4-Tupel zurück; die direkte
-    ``PatternSpec``-Unterstützung in ``patterns`` kommt in E6.
+    zurück. Unterstützt sowohl Legacy-4-Tupel als auch direkte
+    ``PatternSpec``-Einträge.
     """
     for entry in handler.patterns:
+        if isinstance(entry, PatternSpec):
+            yield entry
+            continue
         pattern, command, use_original, *rest = entry
         use_search = rest[0] if rest else False
         yield PatternSpec(
