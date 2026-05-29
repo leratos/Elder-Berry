@@ -382,6 +382,20 @@ def test_extract_query_variants(handler):
     assert handler._extract_query("hallo") == ""
 
 
+def test_extract_query_rejects_generic_how_to_queries(handler):
+    assert handler._extract_query("wie mache ich das") == ""
+    assert handler._extract_query("wie mache ich ein backup") == ""
+    assert handler._extract_query("wie mache ich einen screenshot") == ""
+
+
+def test_extract_query_keeps_substantive_how_to_queries(handler):
+    assert handler._extract_query("wie mache ich linsensuppe") == "linsensuppe"
+    assert (
+        handler._extract_query("wie mache ich spaghetti carbonara")
+        == "spaghetti carbonara"
+    )
+
+
 def test_extract_json_object_variants(handler):
     assert handler._extract_json_object('{"a":1}') == '{"a":1}'
     assert handler._extract_json_object('xxx {"a":1} yyy') == '{"a":1}'
