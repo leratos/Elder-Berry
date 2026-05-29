@@ -105,7 +105,10 @@ NOTE_DELETE_PATTERN = re.compile(
 
 # "vergiss WLAN Passwort Buero"
 NOTE_DELETE_FACT_PATTERN = re.compile(
-    r"^(?:bitte\s+)?vergiss\s+(.+)$",
+    r"^(?:bitte\s+)?vergiss\s+"
+    r"(?!(?:alles?|es|das|dies|dieses|sowas|so\s+was|so\s+etwas)"
+    r"(?:[\s?.!,:;]+(?:bitte|danke))?(?:[\s?.!,:;]+)?$)"
+    r"(.+)$",
     re.IGNORECASE,
 )
 
@@ -243,7 +246,7 @@ class NoteCommandHandler(CommandHandler):
             ],
             "notizen": ["notizen", "alle notizen", "meine notizen"],
             "note_delete": ["notiz löschen", "lösche notiz"],
-            "note_delete_fact": ["vergiss"],
+            "note_delete_fact": [],
         }
 
     def execute(self, command: str, raw_text: str, user_id: str = "") -> CommandResult:
