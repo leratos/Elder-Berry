@@ -530,6 +530,34 @@ def test_candidates_confidence_hierarchy(
     assert all(c.confidence < 100 for c in pattern)
 
 
+def test_note_get_fact_pattern_uses_medium_confidence(
+    handler: RemoteCommandHandler,
+) -> None:
+    """E5: Generische Note-Faktfragen bleiben anchored, aber mit 75er Confidence."""
+    candidates = handler.collect_candidates("was ist das wlan passwort")
+    note_candidates = [
+        c
+        for c in candidates
+        if c.command == "note_get_fact" and c.source == "pattern_match"
+    ]
+    assert note_candidates, "Erwartet note_get_fact als Pattern-Match-Kandidat"
+    assert max(c.confidence for c in note_candidates) == 75
+
+
+def test_multi_stop_pattern_search_is_downgraded_with_explicit_non_route_pattern(
+    handler: RemoteCommandHandler,
+) -> None:
+    """E5: Broad multi_stop pattern_search darf explizite Pattern-Kandidaten nicht übersteuern."""
+    candidates = handler.collect_candidates("mail suche route nach leipzig, vorher lisa")
+    multi_stop = [
+        c
+        for c in candidates
+        if c.command == "multi_stop_route" and c.source == "pattern_search"
+    ]
+    assert multi_stop, "Erwartet multi_stop_route als Pattern-Search-Kandidat"
+    assert max(c.confidence for c in multi_stop) == 40
+
+
 def test_multi_stop_keyword_candidate_rejected_without_route_intro(
     handler: RemoteCommandHandler,
 ) -> None:
