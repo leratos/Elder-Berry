@@ -52,6 +52,8 @@ SAMPLE_INPUTS = [
     "notizen suche kennwort",
     "kontakt suche müller",
     "plane route nach leipzig",
+    "wann ist lisa geburtstag",
+    "was ist die adresse von max mustermann",
     # System / Tooling
     "git status",
     "docker ps",
@@ -84,6 +86,16 @@ EXPECTED_ROUTING_CONFLICTS: dict[str, dict[str, object]] = {
         "winner": "multi_stop_route",
         "losers": {"route_plan"},
         "reason": "Multi-stop hat priorisierten Vorrang vor Single-Route.",
+    },
+    "wann ist lisa geburtstag": {
+        "winner": "contact_field_query",
+        "losers": {"note_get_fact"},
+        "reason": "Kontakt-Feldabfrage ist spezifischer als die generische Faktfrage.",
+    },
+    "was ist die adresse von max mustermann": {
+        "winner": "contact_field_query",
+        "losers": {"note_get_fact"},
+        "reason": "Kontakt-Adresse ist spezifischer als die generische Faktfrage.",
     },
 }
 
