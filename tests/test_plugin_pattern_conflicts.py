@@ -1,28 +1,15 @@
-"""Phase 77 Etappe 3: Pattern-Konflikt-Detector als CI-Test.
+"""Phase 95 E3: Candidate-basierter Routing-Konflikt-Detector.
 
-Pre-Flight-Check: prueft ~20 typische Sample-Inputs gegen alle 23
-Builtin-Plugins. Wenn zwei Plugins denselben Text matchen wuerden:
+Der Test nutzt den echten Candidate-Router des Orchestrators:
+``collect_candidates()`` + ``choose_candidate()``.
 
-- Das Plugin mit niedrigerer ``priority`` gewinnt zur Laufzeit
-  (siehe ``RemoteCommandHandler.parse_command``).
-- Damit das in Ordnung ist, MUSS das Sekundaer-Plugin in
-  ``primary.conflicts`` stehen -- so wird der Konflikt im Manifest
-  dokumentiert und beim Code-Review sichtbar.
-- Sonst ist es eine unbeabsichtigte Kollision, die behoben werden
-  muss (Pattern verschaerfen oder Priority anpassen).
-
-Das ist Konzept §6, mit zwei Anpassungen gegenueber dem Pseudocode:
-
-1. Statt ``plugin.factory(...)`` (Ellipse, strict-mypy unfreundlich)
-   nutzen wir einen Mock-Context-Helper, der alle 19+ Services als
-   ``MagicMock`` setzt. So liefern auch conditional Plugins
-   (note/contact/todo/route) einen Handler.
-2. Wir mirroren die echte Matching-Logik aus
-   ``RemoteCommandHandler.parse_command``: ``stripped.lower()`` fuer
-   normale Patterns, ``text.strip()`` fuer ``use_original_text=True``,
-   ``pattern.search`` fuer ``use_search=True`` sonst ``pattern.match``.
-
-Test ist NICHT strict-mypy-geprueft (analog test_plugin_registry.py).
+Regeln:
+- Mehrdeutigkeiten mit bekanntem Outcome stehen in
+    ``EXPECTED_ROUTING_CONFLICTS`` (winner/losers/reason).
+- Pattern-vs-Pattern-Konflikte ohne lokale Allowlist sind nur erlaubt,
+    wenn das Gewinner-Plugin den Verlierer in ``plugin.conflicts`` deklariert.
+- Konflikte mit Keyword-Beteiligung muessen explizit in
+    ``EXPECTED_ROUTING_CONFLICTS`` dokumentiert werden.
 """
 
 from __future__ import annotations
@@ -30,7 +17,8 @@ from __future__ import annotations
 from pathlib import Path
 from unittest.mock import MagicMock
 
-from elder_berry.comms.commands.base import CommandHandler, HandlerContext
+from elder_berry.comms.commands.base import CommandMatchCandidate, HandlerContext
+from elder_berry.comms.remote_commands import RemoteCommandHandler
 from elder_berry.comms.commands.registry import load_plugins
 
 
@@ -76,6 +64,30 @@ SAMPLE_INPUTS = [
 ]
 
 
+EXPECTED_ROUTING_CONFLICTS: dict[str, dict[str, object]] = {
+    "lösche erinnerung 3": {
+        "winner": "reminder_delete",
+        "losers": {"termin_delete"},
+        "reason": "Reminder-Delete ist spezifischer als generisches Termin-Delete.",
+    },
+    "lauter": {
+        "winner": "harmony_volume_up",
+        "losers": {"volume"},
+        "reason": "Harmony-Pattern gewinnt gegen System-Keyword.",
+    },
+    "wer ist max mustermann": {
+        "winner": "contact_who",
+        "losers": {"note_get_fact"},
+        "reason": "Contact-Pattern gewinnt gegen Note-Keyword.",
+    },
+    "plane route nach leipzig": {
+        "winner": "multi_stop_route",
+        "losers": {"route_plan"},
+        "reason": "Multi-stop hat priorisierten Vorrang vor Single-Route.",
+    },
+}
+
+
 def _full_mock_ctx() -> HandlerContext:
     """HandlerContext mit allen Service-Feldern als MagicMock.
 
@@ -118,81 +130,95 @@ def _full_mock_ctx() -> HandlerContext:
     )
 
 
-def _matches_for_input(handler: CommandHandler, raw: str) -> list[str]:
-    """Liefert alle command-Namen, die dieser Handler fuer ``raw`` matcht.
-
-    Mirroring von ``RemoteCommandHandler.parse_command``:
-    - Simple-Commands: exact-match auf normalisierten Text.
-    - Pattern-Match: original Text wenn use_original_text, sonst lower.
-                     pattern.search wenn use_search, sonst pattern.match.
-    """
-    matches: list[str] = []
-    normalized = raw.strip().lower()
-    if normalized in handler.simple_commands:
-        matches.append(normalized)
-    for pattern, command, use_original, use_search in handler.patterns:
-        check_text = raw.strip() if use_original else normalized
-        match_fn = pattern.search if use_search else pattern.match
-        if match_fn(check_text):
-            matches.append(command)
-    return matches
+_SOURCE_ORDER: dict[str, int] = {
+    "simple": 0,
+    "pattern_match": 1,
+    "pattern_search": 2,
+    "keyword": 3,
+}
 
 
-def test_no_undeclared_pattern_collisions() -> None:
-    """Stellt sicher, dass jede Pattern-Kollision in plugin.conflicts steht.
+def _candidate_sort_key(c: CommandMatchCandidate) -> tuple[int, int, int]:
+    return (-c.confidence, _SOURCE_ORDER[c.source], c.priority)
 
-    Bricht der Test: entweder das Sekundaer-Plugin in conflicts des
-    Primaer-Plugins eintragen (wenn die Kollision gewollt ist und die
-    Priority sie sauber aufloest), oder das Pattern verschaerfen, oder
-    die Priority anpassen. NICHT einfach den Sample-Input loeschen --
-    der ist da, damit kuenftige PRs nicht erneut in dasselbe Loch
-    fallen.
+
+def _best_candidate_per_command(
+    candidates: list[CommandMatchCandidate],
+) -> dict[str, CommandMatchCandidate]:
+    """Reduziert Candidate-Liste auf den besten Candidate je Command."""
+    best: dict[str, CommandMatchCandidate] = {}
+    for cand in candidates:
+        current = best.get(cand.command)
+        if current is None or _candidate_sort_key(cand) < _candidate_sort_key(current):
+            best[cand.command] = cand
+    return best
+
+
+def test_no_undeclared_candidate_collisions() -> None:
+    """Stellt sicher, dass Candidate-Konflikte dokumentiert sind.
+
+    - Keyword-Beteiligung => muss in EXPECTED_ROUTING_CONFLICTS stehen.
+    - Reiner Pattern/Simple-Konflikt => winner-plugin muss loser-plugin in
+      plugin.conflicts auffuehren.
     """
     plugins = load_plugins()  # bereits priority-sortiert
-    ctx = _full_mock_ctx()
-
-    # Plugin-Name -> Handler-Instanz (nur jene, deren Factory != None)
-    handlers_by_plugin: dict[str, CommandHandler] = {}
-    for plugin in plugins:
-        handler = plugin.factory(ctx)
-        if handler is not None:
-            handlers_by_plugin[plugin.name] = handler
     plugin_by_name = {p.name: p for p in plugins}
+    handler = RemoteCommandHandler(ctx=_full_mock_ctx())
 
-    collisions: list[str] = []
+    violations: list[str] = []
     for text in SAMPLE_INPUTS:
-        # Pro Plugin nur EIN Match (das erste in handler.patterns / das
-        # simple_command). Mehrere Treffer innerhalb desselben Plugins
-        # sind Handler-interne Reihenfolge, kein Plugin-Konflikt.
-        first_per_plugin: list[tuple[str, str, int]] = []
-        seen_plugins: set[str] = set()
-        for plugin in plugins:
-            if plugin.name in seen_plugins:
-                continue
-            handler = handlers_by_plugin.get(plugin.name)
-            if handler is None:
-                continue
-            cmds = _matches_for_input(handler, text)
-            if not cmds:
-                continue
-            first_per_plugin.append((plugin.name, cmds[0], plugin.priority))
-            seen_plugins.add(plugin.name)
-        if len(first_per_plugin) <= 1:
+        candidates = handler.collect_candidates(text)
+        best_by_command = _best_candidate_per_command(candidates)
+        if len(best_by_command) <= 1:
             continue
 
-        primary_name, primary_cmd, primary_prio = first_per_plugin[0]
-        primary_plugin = plugin_by_name[primary_name]
-        secondary = first_per_plugin[1:]
-        for sname, scmd, sprio in secondary:
-            if sname not in primary_plugin.conflicts:
-                collisions.append(
-                    f"'{text}': primaer={primary_name}/{primary_cmd}"
-                    f"(prio={primary_prio}), sekundaer={sname}/{scmd}"
-                    f"(prio={sprio}) -- nicht in {primary_name}.conflicts"
+        winner = handler.choose_candidate(candidates)
+        assert winner is not None
+        losers = {
+            command: cand
+            for command, cand in best_by_command.items()
+            if command != winner.command
+        }
+
+        expected = EXPECTED_ROUTING_CONFLICTS.get(text)
+        if expected is not None:
+            assert winner.command == expected["winner"], (
+                f"'{text}': winner='{winner.command}', erwartet "
+                f"'{expected['winner']}' ({expected['reason']})"
+            )
+            assert set(losers) == expected["losers"], (
+                f"'{text}': losers={set(losers)}, erwartet {expected['losers']} "
+                f"({expected['reason']})"
+            )
+            continue
+
+        winner_plugin = plugin_by_name[winner.plugin_name]
+        for loser_command, loser in losers.items():
+            # Handler-interne Overlaps (gleiches Plugin) sind kein Plugin-Konflikt.
+            if loser.plugin_name == winner.plugin_name:
+                continue
+            has_keyword_involved = (
+                winner.source == "keyword" or loser.source == "keyword"
+            )
+            if has_keyword_involved:
+                violations.append(
+                    f"'{text}': winner={winner.command}/{winner.plugin_name}"
+                    f"[{winner.source}] vs loser={loser_command}/{loser.plugin_name}"
+                    f"[{loser.source}] -- Keyword-Konflikt muss in "
+                    "EXPECTED_ROUTING_CONFLICTS dokumentiert werden"
+                )
+                continue
+
+            if loser.plugin_name not in winner_plugin.conflicts:
+                violations.append(
+                    f"'{text}': winner={winner.command}/{winner.plugin_name}"
+                    f"[{winner.source}] vs loser={loser_command}/{loser.plugin_name}"
+                    f"[{loser.source}] -- nicht in "
+                    f"{winner.plugin_name}.conflicts"
                 )
 
-    assert not collisions, (
-        "Pattern-Kollisionen ohne conflicts-Deklaration:\n" + "\n".join(collisions)
+    assert not violations, (
+        "Nicht deklarierte Candidate-Konflikte:\n" + "\n".join(violations)
     )
 
 
@@ -203,12 +229,9 @@ def test_sample_inputs_actually_match_something() -> None:
     nichts. Faellt der hier durch: Sample-Input fixen oder durch einen
     treffenden ersetzen.
     """
-    plugins = load_plugins()
-    ctx = _full_mock_ctx()
-    handlers = [h for p in plugins if (h := p.factory(ctx)) is not None]
-
     unmatched: list[str] = []
+    handler = RemoteCommandHandler(ctx=_full_mock_ctx())
     for text in SAMPLE_INPUTS:
-        if not any(_matches_for_input(h, text) for h in handlers):
+        if not handler.collect_candidates(text):
             unmatched.append(text)
     assert not unmatched, f"Sample-Inputs ohne Match: {unmatched}"

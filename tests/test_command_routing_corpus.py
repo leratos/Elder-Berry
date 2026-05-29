@@ -37,11 +37,9 @@ F4  Keyword-Konflikte zwischen System- und Harmony-Handler für "lauter",
     "wer ist" existieren, waren aber nicht in EXPECTED_KEYWORD_CONFLICTS
     deklariert.
 
-F5  collect_candidates erzeugt Duplikate für denselben Command, wenn ein
-    Pattern sowohl via Stufe 2b (search) als auch via Stufe 3 (keyword)
-    matcht (z. B. "plane route nach leipzig" → 2× route_plan).
-    choose_candidate behandelt das korrekt (höchster confidence gewinnt),
-    aber die Duplikate erhöhen Rauschen in Logs und Tests.
+F5  [behoben] collect_candidates dedupliziert Commands vor der Keyword-Stufe,
+    sodass ein bereits per Pattern gefundener Command nicht noch einmal als
+    Keyword-Kandidat auftaucht. Das reduziert Rauschen in Logs und Tests.
 """
 
 from __future__ import annotations
@@ -50,7 +48,7 @@ import pytest
 from pathlib import Path
 from unittest.mock import MagicMock
 
-from elder_berry.comms.commands.base import HandlerContext
+from elder_berry.comms.commands.base import CommandMatchCandidate, HandlerContext
 from elder_berry.comms.remote_commands import RemoteCommandHandler
 
 
@@ -181,6 +179,46 @@ CORPUS: list[tuple[str, str | None, str, str]] = [
 ]
 
 
+EXPECTED_CANDIDATE_CONFLICTS: dict[str, dict[str, object]] = {
+    "plane route nach leipzig": {
+        "winner": "multi_stop_route",
+        "losers": {"route_plan"},
+        "sources": {"pattern_search"},
+        "reason": "Multi-stop gewinnt ueber Prioritaet/Confidence gegen route_plan.",
+    },
+    "wer ist max mustermann": {
+        "winner": "contact_who",
+        "losers": {"note_get_fact"},
+        "sources": {"pattern_match", "keyword"},
+        "reason": "Contact-Pattern gewinnt gegen Note-Keyword.",
+    },
+}
+
+
+_SOURCE_ORDER: dict[str, int] = {
+    "simple": 0,
+    "pattern_match": 1,
+    "pattern_search": 2,
+    "keyword": 3,
+}
+
+
+def _candidate_sort_key(candidate: CommandMatchCandidate) -> tuple[int, int, int]:
+    c = candidate
+    return (-c.confidence, _SOURCE_ORDER[c.source], c.priority)
+
+
+def _best_candidate_per_command(
+    candidates: list[CommandMatchCandidate],
+) -> dict[str, CommandMatchCandidate]:
+    best: dict[str, CommandMatchCandidate] = {}
+    for cand in candidates:
+        current = best.get(cand.command)
+        if current is None or _candidate_sort_key(cand) < _candidate_sort_key(current):
+            best[cand.command] = cand
+    return best
+
+
 def _corpus_params() -> list[pytest.param]:
     """Wandelt CORPUS-Einträge in pytest.param um; xfail-Einträge erhalten Mark."""
     params = []
@@ -273,17 +311,33 @@ def test_routing_corpus(
 def test_collect_candidates_multi_candidate_log(
     handler: RemoteCommandHandler,
 ) -> None:
-    """Für bekannte Konflikte muss collect_candidates > 1 Kandidat liefern."""
-    conflicts = [
-        "plane route nach leipzig",   # route_plan: 2 Kandidaten (pattern_search + keyword)
-        "wer ist max mustermann",     # contact_who + note_get_fact
-    ]
-    for text in conflicts:
+    """Bekannte Konflikte muessen winner/losers/source-Mix stabil zeigen."""
+    for text, expected in EXPECTED_CANDIDATE_CONFLICTS.items():
         candidates = handler.collect_candidates(text)
-        assert len(candidates) > 1, (
-            f"Erwartet Mehrdeutigkeit für '{text}', "
-            f"aber nur {len(candidates)} Kandidat(en): "
+        best_by_command = _best_candidate_per_command(candidates)
+        assert len(best_by_command) > 1, (
+            f"Erwartet Mehrdeutigkeit fuer '{text}', "
+            f"aber nur {len(best_by_command)} Command-Kandidat(en): "
             f"{[(c.command, c.source) for c in candidates]}"
+        )
+
+        chosen = handler.choose_candidate(candidates)
+        assert chosen is not None
+        assert chosen.command == expected["winner"], (
+            f"'{text}': winner='{chosen.command}', erwartet "
+            f"'{expected['winner']}' ({expected['reason']})"
+        )
+
+        losers = {cmd for cmd in best_by_command if cmd != chosen.command}
+        assert losers == expected["losers"], (
+            f"'{text}': losers={losers}, erwartet {expected['losers']} "
+            f"({expected['reason']})"
+        )
+
+        actual_sources = {c.source for c in candidates}
+        assert expected["sources"] <= actual_sources, (
+            f"'{text}': sources={actual_sources}, erwartet mindestens "
+            f"{expected['sources']} ({expected['reason']})"
         )
 
 
