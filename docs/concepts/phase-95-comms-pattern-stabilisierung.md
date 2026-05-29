@@ -206,6 +206,23 @@ class CommandMatchCandidate:
     pattern_name: str | None = None
     keyword: str | None = None
     use_original_text: bool = False
+
+
+@dataclass(frozen=True)
+class RoutedCommand:
+    """Konkrete Routing-Entscheidung inklusive gewaehltem Handler.
+
+    Wichtig: Der ausgewaehlte Handler muss bis zur Ausfuehrung erhalten
+    bleiben. Nur den Command-String zurueckzugeben reicht fuer den
+    Candidate-Router nicht mehr, weil `_command_handler_map[command]` bei
+    gleichen Command-Namen, User-Plugins oder spaeteren Overrides einen
+    anderen Handler liefern kann als `choose_candidate()` ausgewaehlt hat.
+    """
+
+    command: str
+    plugin_name: str
+    handler: CommandHandler
+    candidate: CommandMatchCandidate
 ```
 
 Optional spaeter:
@@ -271,6 +288,9 @@ def choose_candidate(
     candidates: list[CommandMatchCandidate],
 ) -> CommandMatchCandidate | None:
     """Waehlt zunaechst kompatibel zum alten First-Match-Wins."""
+
+def route_command(self, text: str) -> RoutedCommand | None:
+    """Liefert den gewaehlten Command inklusive Handler-Instanz."""
 ```
 
 Kompatibilitaetsregel in E2:
@@ -280,6 +300,26 @@ Kompatibilitaetsregel in E2:
 - Keywords bleiben letzte Stufe.
 - Innerhalb einer Stufe bleibt Plugin-Priority und Handler-Reihenfolge wie
   heute.
+- `parse_command(text) -> str | None` bleibt als Kompatibilitaets-Wrapper
+  erhalten und gibt `route_command(text).command` zurueck.
+- Neue interne Ausfuehrungspfade nutzen `RoutedCommand.handler` direkt und
+  nicht erneut `_command_handler_map[command]`.
+
+Wichtige Migrationsregel:
+
+`handle_remote_command()` darf beim Candidate-Router nicht dauerhaft nur
+einen Command-String transportieren. Sonst geht die ausgewaehlte Handler-
+Instanz zwischen Routing und Execution verloren. Die saubere Zielstruktur ist:
+
+```text
+Bridge -> route_command(msg.body) -> RoutedCommand
+       -> handle_routed_command(msg, routed)
+       -> routed.handler.execute(routed.command, msg.body)
+```
+
+Der alte Pfad `handle_remote_command(msg, command: str)` kann fuer Tests und
+Legacy-Aufrufer bleiben, muss aber als Wrapper verstanden werden. Fuer neue
+Routing-Entscheidungen ist `RoutedCommand` die Quelle der Wahrheit.
 
 Logging:
 
@@ -296,7 +336,11 @@ Akzeptanzkriterien:
 
 - Alle bestehenden Routing-Tests bleiben gruen.
 - Neuer Test zeigt bei Konflikttexten mehr als einen Kandidaten.
-- `parse_command()` bleibt externe API und gibt weiter `str | None` zurueck.
+- `parse_command()` bleibt externe Kompatibilitaets-API und gibt weiter
+  `str | None` zurueck.
+- Ein neuer Test beweist, dass der von `choose_candidate()` gewaehlte Handler
+  bis `execute()` erhalten bleibt, auch wenn ein zweiter Handler denselben
+  Command-Namen registriert.
 
 ## E3 - Conflict-Tests auf Candidate-Basis umstellen
 
@@ -406,15 +450,36 @@ Risiko:
 
 Empfohlene Absicherung:
 
-- `multi_stop_route` als `broad=True` / niedrigere Confidence markieren.
-- Interne Funktion `is_multi_stop_candidate()` bleibt Gate.
-- Bei `False`: `fallthrough=True`.
+- `_MULTI_STOP_PATTERN` bleibt ein breiter Vorfilter und bekommt zunaechst
+  niedrige Confidence.
+- `is_multi_stop_candidate()` bleibt das fachliche Gate.
+- Wenn das Gate `True` liefert, wird der Kandidat zu einem starken
+  `validated_multi_stop` hochgestuft. Seine Confidence muss dann hoeher sein
+  als die Single-Route-Kandidaten, damit echte Multi-Stop-Saetze weiterhin
+  vor `route_from_to` / `route_plan` gewinnen.
+- Wenn das Gate `False` liefert, darf das nicht als normales
+  `fallthrough=True` bis zum LLM laufen. Im Candidate-Router bedeutet das:
+  Multi-Stop-Kandidat verwerfen und den naechsten passenden Kandidaten
+  pruefen, typischerweise `route_plan` oder `route_from_to`.
+- `fallthrough=True` bleibt nur fuer den alten Execute-Pfad relevant. In der
+  neuen Router-Logik ist "Gate failed" eine Kandidaten-Invalidierung, kein
+  sofortiger Sprung zu `handle_assistant_message()`.
 - Candidate-Test fuer:
   - `ich muss von zuhause zu nadine und dann zu lisa`
   - `plane route nach leipzig`
   - `wie komme ich zu lisa`
   - `muss von zuhause zu nadine`
   - `muss von zuhause zu nadine und vorher tanken`
+
+Beispiel-Confidence:
+
+| Kandidat | Bedingung | Confidence |
+|---|---|---:|
+| `multi_stop_route` | Vorfilter matcht, Gate noch nicht bewertet | 40 |
+| `multi_stop_route` | `is_multi_stop_candidate(text) == True` | 95 |
+| `multi_stop_route` | Gate `False` | Kandidat verwerfen |
+| `route_from_to` | Pattern matcht | 85 |
+| `route_plan` | Pattern matcht | 80 |
 
 ### E4.3 Note, Contact und Calendar
 
@@ -459,7 +524,17 @@ Regel:
 
 - Ein Delete-Pattern muss einen Domain-Marker haben:
   - `mail`, `termin`, `erinnerung`, `timer`, `notiz`, `todo`, `aufgabe`.
-- Oder es muss eindeutig aus einem aktiven Listenkontext kommen.
+- Markerlose Deletes duerfen nicht im generischen Direct-Command-Router
+  landen. Der Router bekommt im aktuellen Direct-Matrix-Pfad nur `msg.body`;
+  er kennt ohne Zusatzkontext weder Sender noch `ConversationListStore`.
+- Wenn eine Auswahl aus einer aktiven Liste geloescht werden soll, bleibt das
+  im bestehenden `list_pick`-/ConversationList-Pfad. Dieser Pfad kennt
+  `sender`, `list_type` und den konkreten Listeneintrag.
+- Falls Phase 95 spaeter markerlose Listenkontext-Deletes direkt routen soll,
+  braucht `route_command()` eine explizite `RoutingContext`-Struktur, z.B.
+  `sender`, `room_id`, `conversation_list_store` und aktive `list_type`s.
+  Ohne diesen Kontext darf der Router keine Ausnahme "aktiver Listenkontext"
+  anwenden.
 - `loesch alle` bleibt ungeroutet.
 
 ### E4.5 Advanced
