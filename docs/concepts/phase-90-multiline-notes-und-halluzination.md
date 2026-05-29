@@ -1,6 +1,6 @@
 # Phase 90 -- Multi-Line-Notiz-Pattern + Vollzugs-Halluzinations-Vermeidung
 
-**Status:** Konzept (2026-05-13)
+**Status:** Abgeschlossen (90-A + 90-B umgesetzt; 90-C nach Smoketest nicht nötig, 2026-05-29)
 **Branch:** `feature/phase-90-multiline-notes-und-halluzination-konzept` (Konzept)
 **Folge-Branches (geplant):**
 - `feature/phase-90-a-multiline-note-pattern` (Code-Fix Pattern)

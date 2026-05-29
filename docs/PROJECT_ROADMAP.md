@@ -1685,10 +1685,11 @@ Repo-Hygiene, Audit-Tools und Doku.
 - Konzept für robuste Bestätigung auf kurze Followups (`ja bitte`).
 - Noch nicht als produktive Pipeline umgesetzt.
 
-## Phase 90 – Multi-Line-Notiz-Pattern + Vollzugs-Halluzinations-Vermeidung 🧪 TEILWEISE UMGESETZT
+## Phase 90 – Multi-Line-Notiz-Pattern + Vollzugs-Halluzinations-Vermeidung ✅ ABGESCHLOSSEN
 
-- Multi-Line-Notizen im Note-Pattern (`re.DOTALL`) umgesetzt.
-- Prompt-/Response-Teil gegen Vollzugs-Halluzinationen bleibt als separater Strang.
+- 90-A: Multi-Line-Notizen im Note-Pattern (`re.DOTALL`) umgesetzt.
+- 90-B: Prompt-Fix in `saleria.yaml` – Ankündigungs- statt Vollzugs-Responses für `remote_command`.
+- 90-C (strukturelle Response-Order): nach Smoketest nicht aufgetreten – kein Handlungsbedarf.
 
 ## Phase 91 – FactStore-Extraktion + Note-Flow-Refactor ✅ ABGESCHLOSSEN
 
