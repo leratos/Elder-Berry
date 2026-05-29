@@ -158,6 +158,36 @@ class TestWebSearchPattern:
     def test_valid(self, text):
         assert WEB_SEARCH_PATTERN.match(text) is not None
 
+    @pytest.mark.parametrize(
+        "text",
+        [
+            "finde meine mail von max",
+            "finde mail von max",
+            "suche die mail von max",
+            "suche in mails max",
+            "suche in meinen mails max",
+            "suche meine mails von max",
+            "suche in meinen emails max",
+            "finde in emails nach max",
+            "finde kontakt lisa",
+        ],
+    )
+    def test_internal_domain_query_no_match(self, text):
+        assert WEB_SEARCH_PATTERN.match(text) is None
+
+    @pytest.mark.parametrize(
+        "text",
+        [
+            "suche mail client windows",
+            "suche mail server vergleich",
+            "google kontakte importieren outlook",
+            "google kontakt amazon",
+            "suche kontakt app android",
+        ],
+    )
+    def test_external_mail_topic_still_matches(self, text):
+        assert WEB_SEARCH_PATTERN.match(text) is not None
+
 
 # ---------------------------------------------------------------------------
 # Interface

@@ -88,6 +88,21 @@ class TestContactSearchPattern:
         m = CONTACT_SEARCH_PATTERN.match("kontakt suche Zahnarzt")
         assert m and m.group(1) == "Zahnarzt"
 
+    def test_finde_kontakt(self) -> None:
+        m = CONTACT_SEARCH_PATTERN.match("finde kontakt Lisa")
+        assert m and m.group(2) == "Lisa"
+
+    def test_suche_kontakt(self) -> None:
+        m = CONTACT_SEARCH_PATTERN.match("suche kontakt Zahnarzt")
+        assert m and m.group(2) == "Zahnarzt"
+
+    def test_finde_kontakt_multiword_name(self) -> None:
+        m = CONTACT_SEARCH_PATTERN.match("finde kontakt Lisa Weber")
+        assert m and m.group(2) == "Lisa Weber"
+
+    def test_suche_kontakt_multiword_topic_no_match(self) -> None:
+        assert CONTACT_SEARCH_PATTERN.match("suche kontakt app android") is None
+
 
 class TestContactDeletePattern:
     def test_delete_by_id(self) -> None:
@@ -235,6 +250,18 @@ class TestCmdContactSearch:
         r = handler.execute("contact_search", "kontakte suche Zahnarzt")
         assert r.success
         assert "Keine Kontakte" in r.text
+
+    def test_search_natural_form(self, handler: ContactCommandHandler, store: ContactStore) -> None:
+        store.add(USER, "Lisa Weber", role="Freundin")
+        r = handler.execute("contact_search", "finde kontakt lisa")
+        assert r.success
+        assert "Lisa Weber" in r.text
+
+    def test_search_natural_form_multiword(self, handler: ContactCommandHandler, store: ContactStore) -> None:
+        store.add(USER, "Lisa Weber", role="Freundin")
+        r = handler.execute("contact_search", "finde kontakt lisa weber")
+        assert r.success
+        assert "Lisa Weber" in r.text
 
 
 class TestCmdContactDelete:
