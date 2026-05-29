@@ -146,6 +146,12 @@ class TestPatterns:
         assert NOTE_GET_FACT_PATTERN.match("was ist das WLAN?")
         assert NOTE_GET_FACT_PATTERN.match("was ist WLAN Büro")
 
+    def test_get_fact_domain_guard_route(self):
+        assert NOTE_GET_FACT_PATTERN.match("was ist die route nach Leipzig?") is None
+
+    def test_get_fact_domain_guard_rezept(self):
+        assert NOTE_GET_FACT_PATTERN.match("was ist das rezept fuer Carbonara?") is None
+
     def test_search(self):
         assert NOTE_SEARCH_PATTERN.match("notizen suche Vermieter")
         assert NOTE_SEARCH_PATTERN.match("notiz suche Müller")
