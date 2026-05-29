@@ -79,6 +79,7 @@ CORPUS: list[tuple[str, str | None, str, str]] = [
     ("entferne timer", "reminder_delete", "smoke", "Timer-Delete ohne ID bleibt domain-markiert"),
     ("suche dachdecker plattenburg", "web_search", "smoke", "Advanced-Websuche fuer externe Themen"),
     ("suche mail client windows", "web_search", "smoke", "Externe Mail-Themen bleiben Websuche"),
+    ("google kontakt amazon", "web_search", "smoke", "Explizite Google-Kontakt-Websuche bleibt Websuche"),
     ("google kontakte importieren outlook", "web_search", "smoke", "Externe Kontakt-Themen bleiben Websuche"),
     ("suche kontakt app android", "web_search", "smoke", "Kontakt-App-Websuche darf nicht in contact_search kippen"),
     ("klick auf ok", "computer_use", "smoke", "Computer-Use mit klarem UI-Aktionsverb"),
@@ -118,6 +119,18 @@ CORPUS: list[tuple[str, str | None, str, str]] = [
         "Plausible Mail-Suche wird als Mail-Command geroutet, nicht als web_search.",
     ),
     (
+        "finde mail von max",
+        "mail_search",
+        "smoke",
+        "Mail-von-Form ohne Possessiv bleibt bei mail_search statt web_search.",
+    ),
+    (
+        "suche die mail von max",
+        "mail_search",
+        "smoke",
+        "Mail-von-Form mit Artikel bleibt bei mail_search.",
+    ),
+    (
         "suche in mails max",
         "mail_search",
         "smoke",
@@ -152,6 +165,12 @@ CORPUS: list[tuple[str, str | None, str, str]] = [
         "contact_search",
         "smoke",
         "Kontakt-Suche bleibt im Contact-Handler statt web_search.",
+    ),
+    (
+        "finde kontakt lisa weber",
+        "contact_search",
+        "smoke",
+        "Mehrwort-Kontaktname bleibt bei contact_search statt web_search.",
     ),
     # ------------------------------------------------------------------
     # Known Conflicts: gelöst durch Priority, aber Kollision existiert

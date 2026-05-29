@@ -162,6 +162,8 @@ class TestWebSearchPattern:
         "text",
         [
             "finde meine mail von max",
+            "finde mail von max",
+            "suche die mail von max",
             "suche in mails max",
             "suche in meinen mails max",
             "suche meine mails von max",
@@ -179,6 +181,7 @@ class TestWebSearchPattern:
             "suche mail client windows",
             "suche mail server vergleich",
             "google kontakte importieren outlook",
+            "google kontakt amazon",
             "suche kontakt app android",
         ],
     )

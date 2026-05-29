@@ -68,13 +68,21 @@ COMPUTER_USE_PATTERN = re.compile(
 # Regex fuer Web-Suche: "suche Dachdecker", "such mal Python Tutorial",
 # "google Rezept Lasagne", "google mal was", "finde Dachdecker in der Naehe"
 WEB_SEARCH_PATTERN = re.compile(
-    r"^(?:such\s+mal|suche?|google\s+mal|google\s+mir|google|recherchiere|finde)\s+"
+    r"^(?:"
+    r"(?:google\s+mal|google\s+mir|google|recherchiere)\s+"
     r"(?!in\s+(?:mails?|emails?)\b)"
     r"(?!(?:in\s+)?meinen?\s+(?:mails?|emails?)\b)"
     r"(?!(?:meine?\s+(?:mails?|emails?)\s+(?:nach|von)\b))"
-    r"(?!(?:meine?\s+(?:mail|email)\s+von\b))"
-    r"(?!(?:kontakte?\s+\S+\s*$))"
-    r"(.+)$",
+    r"(?!(?:(?:die\s+)?(?:mail|email)\s+von\b))"
+    r"(.+)"
+    r"|(?:such\s+mal|suche?|finde)\s+"
+    r"(?!in\s+(?:mails?|emails?)\b)"
+    r"(?!(?:in\s+)?meinen?\s+(?:mails?|emails?)\b)"
+    r"(?!(?:meine?\s+(?:mails?|emails?)\s+(?:nach|von)\b))"
+    r"(?!(?:(?:die\s+)?(?:mail|email)\s+von\b))"
+    r"(?!(?:kontakte?\s+(?!(?:app|android|outlook|importieren|client|server|vergleich|windows|amazon)\b)\S+(?:\s+\S+){0,2}\s*$))"
+    r"(.+)"
+    r")$",
     re.IGNORECASE,
 )
 
@@ -540,7 +548,7 @@ class AdvancedCommandHandler(CommandHandler):
         # Suchbegriff extrahieren
         match = WEB_SEARCH_PATTERN.match(raw_text.strip())
         if match:
-            query = match.group(1).strip()
+            query = (match.group(1) or match.group(2) or "").strip()
         else:
             # Keyword-Match: versuche "suche" / "google" etc. zu entfernen
             query = raw_text.strip()
