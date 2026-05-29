@@ -6,11 +6,7 @@ und prüft, ob der gewählte Command dem Erwarteten entspricht.
 Markierungen:
   "smoke"          – sollte immer korrekt routen (Regression-Guard)
   "negative"       – darf NICHT gerouted werden (→ None)
-  "known_conflict" – bekannte Mehrdeutigkeit; aktuell durch Priority gelöst
-  "xfail"          – bekannter Fehler, der noch nicht behoben ist
-
-Wenn ein xfail-Fall unerwartet BESTANDEN wird: Markierung entfernen und
-in known_conflict oder smoke umwandeln. Das zeigt, dass der Fix wirkte.
+    "known_conflict" – bekannte Mehrdeutigkeit; aktuell durch Priority/Gates gelöst
 
 === SIMULATION-BEFUNDE (Phase 95) ===
 
@@ -56,7 +52,7 @@ from elder_berry.comms.remote_commands import RemoteCommandHandler
 # Corpus-Definition
 # ---------------------------------------------------------------------------
 # Format: (text, expected_command_or_None, label, comment)
-# label: "smoke" | "negative" | "known_conflict" | "xfail"
+# label: "smoke" | "negative" | "known_conflict"
 
 CORPUS: list[tuple[str, str | None, str, str]] = [
     # ------------------------------------------------------------------
@@ -142,9 +138,9 @@ CORPUS: list[tuple[str, str | None, str, str]] = [
     ),
     (
         "plane route nach leipzig",
-        "multi_stop_route",
+        "route_plan",
         "smoke",
-        "MultiStopRouteCommandHandler hat Vorrang vor route_plan (Prio 75 < 76)",
+        "Single-Stop bleibt bei RouteCommandHandler; Multi-Stop-Gate blockt Catch-All.",
     ),
     (
         "wie mache ich ein backup",
@@ -192,12 +188,6 @@ CORPUS: list[tuple[str, str | None, str, str]] = [
 
 
 EXPECTED_CANDIDATE_CONFLICTS: dict[str, dict[str, object]] = {
-    "plane route nach leipzig": {
-        "winner": "multi_stop_route",
-        "losers": {"route_plan"},
-        "sources": {"pattern_search"},
-        "reason": "Multi-stop gewinnt ueber Prioritaet/Confidence gegen route_plan.",
-    },
     "wer ist max mustermann": {
         "winner": "contact_who",
         "losers": {"note_get_fact"},
@@ -244,23 +234,11 @@ def _best_candidate_per_command(
 
 
 def _corpus_params() -> list[pytest.param]:
-    """Wandelt CORPUS-Einträge in pytest.param um; xfail-Einträge erhalten Mark."""
+    """Wandelt CORPUS-Einträge in pytest.param um."""
     params = []
     for text, expected, label, comment in CORPUS:
         p_id = f"{label}:{text[:50]}"
-        if label == "xfail":
-            params.append(
-                pytest.param(
-                    text,
-                    expected,
-                    label,
-                    comment,
-                    id=p_id,
-                    marks=pytest.mark.xfail(strict=True, reason=comment),
-                )
-            )
-        else:
-            params.append(pytest.param(text, expected, label, comment, id=p_id))
+        params.append(pytest.param(text, expected, label, comment, id=p_id))
     return params
 
 

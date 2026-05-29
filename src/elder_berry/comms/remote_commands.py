@@ -56,6 +56,7 @@ from elder_berry.comms.commands.help_sections import (
     get_section,
 )
 from elder_berry.comms.commands.registry import load_plugins
+from elder_berry.tools.route_intent_parser import is_multi_stop_candidate
 
 # Phase 77 Etappe 2: Alle 23 Handler werden ueber die Plugin-Registry geladen
 # (registry.py importiert sie via importlib). Direkt-Imports hier nicht mehr noetig.
@@ -519,6 +520,14 @@ class RemoteCommandHandler:
                     continue
                 check_text = text.strip() if spec.use_original_text else normalized
                 if spec.pattern.search(check_text):
+                    # E4.2: Multi-Stop nur als starker Kandidat, wenn das
+                    # fachliche Gate den Text als echten Multi-Stop erkennt.
+                    if spec.command == "multi_stop_route":
+                        if not is_multi_stop_candidate(text.strip()):
+                            continue
+                        confidence = max(spec.confidence, 95)
+                    else:
+                        confidence = spec.confidence
                     candidates.append(
                         CommandMatchCandidate(
                             command=spec.command,
@@ -526,7 +535,7 @@ class RemoteCommandHandler:
                             handler_name=type(handler).__name__,
                             source="pattern_search",
                             priority=priority,
-                            confidence=spec.confidence,
+                            confidence=confidence,
                             matched_text=check_text,
                             pattern_name=spec.name,
                             use_original_text=spec.use_original_text,
@@ -543,8 +552,15 @@ class RemoteCommandHandler:
                     for keyword in keywords:
                         kw_pattern = rf"(?<!\w){re.escape(keyword)}(?!\w)"
                         if re.search(kw_pattern, original_normalized):
+                            if (
+                                command == "multi_stop_route"
+                                and not is_multi_stop_candidate(text.strip())
+                            ):
+                                continue
                             kw_words = len(keyword.split())
                             confidence = 45 if kw_words >= 2 else 30
+                            if command == "multi_stop_route":
+                                confidence = max(confidence, 95)
                             candidates.append(
                                 CommandMatchCandidate(
                                     command=command,

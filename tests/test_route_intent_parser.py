@@ -32,6 +32,7 @@ class TestIsMultiStopCandidate:
         [
             "Ich muss nach Leipzig, vorher noch Lisa abholen",
             "Ich muss von zuhause zu Nadine und dann zu Lisa, unterwegs zu Hornbach",
+            "Ich muss von zuhause zu Nadine und dann zu Lisa",
             "Fahrt zu Andrea, auf dem weg kaufe ich ein",
             "Plane meine route nach Berlin, unterwegs tanken",
             "Fahre nach Markranstaedt, vorher Lisa und Andrea abholen",
