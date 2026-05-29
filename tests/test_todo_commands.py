@@ -81,6 +81,9 @@ class TestTodoAddPattern:
     def test_no_match_todos(self) -> None:
         assert TODO_ADD_PATTERN.match("todos") is None
 
+    def test_no_match_delete_phrase(self) -> None:
+        assert TODO_ADD_PATTERN.match("aufgabe löschen 2") is None
+
 
 class TestTodoCompletePattern:
     def test_todo_erledigt_id(self) -> None:
@@ -119,6 +122,14 @@ class TestTodoDeletePattern:
     def test_delete(self) -> None:
         m = TODO_DELETE_PATTERN.match("todo löschen #3")
         assert m and m.group(1) == "3"
+
+    def test_delete_aufgabe_marker(self) -> None:
+        m = TODO_DELETE_PATTERN.match("aufgabe löschen 3")
+        assert m and m.group(1) == "3"
+
+    def test_delete_verb_first(self) -> None:
+        m = TODO_DELETE_PATTERN.match("lösche aufgabe 3")
+        assert m and m.group(2) == "3"
 
 
 class TestTodoFilterPattern:
