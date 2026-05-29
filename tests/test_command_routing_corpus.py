@@ -70,6 +70,7 @@ CORPUS: list[tuple[str, str | None, str, str]] = [
     ("notizen suche kennwort", "note_search", "smoke", "Notiz-Suche"),
     ("termine woche", "termine", "smoke", "CalendarHandler: Termin-Pattern → 'termine'"),
     ("lösche alle termine", "termin_delete", "smoke", "Calendar-Delete mit Marker"),
+    ("aufgabe löschen 2", "todo_delete", "smoke", "Todo-Delete mit Aufgaben-Marker"),
     ("termin: Zahnarzt morgen 14:00", "termin_create", "smoke", "Termin erstellen"),
     # ------------------------------------------------------------------
     # Negative-Samples: darf NICHT gerouted werden (→ None)
@@ -80,6 +81,12 @@ CORPUS: list[tuple[str, str | None, str, str]] = [
         None,
         "negative",
         "Kein Pattern/Keyword-Match ohne Doppelpunkt",
+    ),
+    (
+        "entferne 2",
+        None,
+        "negative",
+        "Markerloses Delete darf nicht im Direct-Router landen.",
     ),
     # ------------------------------------------------------------------
     # Known Conflicts: gelöst durch Priority, aber Kollision existiert

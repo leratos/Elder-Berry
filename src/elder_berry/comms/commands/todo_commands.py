@@ -37,7 +37,7 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 TODO_ADD_PATTERN = re.compile(
-    r"^(?:bitte\s+)?(?:todo|aufgabe)[:\s]+(.+)$",
+    r"^(?:bitte\s+)?(?:todo|aufgabe)[:\s]+(?!(?:löschen|lösche|entferne?)\b)(.+)$",
     re.IGNORECASE,
 )
 
@@ -60,7 +60,10 @@ TODO_PRIORITY_PATTERN = re.compile(
 )
 
 TODO_DELETE_PATTERN = re.compile(
-    r"^(?:bitte\s+)?todo\s+(?:löschen|lösche|entferne?)\s+#?(\d+)$",
+    r"^(?:bitte\s+)?(?:"
+    r"(?:todo|aufgabe)\s+(?:löschen|lösche|entferne?)\s+#?(\d+)"
+    r"|(?:lösche?|entferne?)\s+(?:die\s+)?(?:todo|aufgabe)\s+#?(\d+)"
+    r")$",
     re.IGNORECASE,
 )
 
@@ -306,7 +309,7 @@ class TodoCommandHandler(CommandHandler):
                 success=False,
                 text="Welche Aufgabe? Beispiel: todo löschen #1",
             )
-        idx = int(match.group(1))
+        idx = int(match.group(1) or match.group(2))
         uid = self._resolve_index(idx)
         if not uid:
             return CommandResult(
