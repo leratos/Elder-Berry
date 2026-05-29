@@ -944,17 +944,17 @@ class TestFieldQueryPattern:
         m = CONTACT_FIELD_QUERY_PATTERN.match("wie ist die Email von Max?")
         assert m is not None
 
-    def test_in_welcher_gruppe(self) -> None:
+    def test_in_welcher_gruppe_no_match(self) -> None:
         m = CONTACT_FIELD_QUERY_PATTERN.match("in welcher Gruppe ist Lisa?")
-        assert m is not None
+        assert m is None
 
-    def test_wo_arbeitet(self) -> None:
+    def test_wo_arbeitet_no_match(self) -> None:
         m = CONTACT_FIELD_QUERY_PATTERN.match("wo arbeitet Max?")
-        assert m is not None
+        assert m is None
 
-    def test_wo_wohnt(self) -> None:
+    def test_wo_wohnt_no_match(self) -> None:
         m = CONTACT_FIELD_QUERY_PATTERN.match("wo wohnt Lisa?")
-        assert m is not None
+        assert m is None
 
     def test_no_match_random(self) -> None:
         assert CONTACT_FIELD_QUERY_PATTERN.match("wie wird das Wetter?") is None
@@ -1024,23 +1024,21 @@ class TestFieldQueryExecution:
         assert "2 Nummern" in r.text
         assert "Mobil" in r.text
 
-    def test_organization_query(
+    def test_organization_query_falls_through(
         self, handler: ContactCommandHandler, store: ContactStore
     ) -> None:
         store.add(USER, "Max", organization="Acme Corp", title="CTO")
         r = handler.execute("contact_field_query", "wo arbeitet Max?")
-        assert r.success
-        assert "Acme Corp" in r.text
-        assert "CTO" in r.text
+        assert not r.success
+        assert r.fallthrough is True
 
-    def test_categories_query(
+    def test_categories_query_falls_through(
         self, handler: ContactCommandHandler, store: ContactStore
     ) -> None:
         store.add(USER, "Lisa", categories="Familie, Freunde")
         r = handler.execute("contact_field_query", "in welcher Gruppe ist Lisa?")
-        assert r.success
-        assert "Familie" in r.text
-        assert "Freunde" in r.text
+        assert not r.success
+        assert r.fallthrough is True
 
     def test_contact_not_found(self, handler: ContactCommandHandler) -> None:
         r = handler.execute("contact_field_query", "wann hat Gandalf Geburtstag?")

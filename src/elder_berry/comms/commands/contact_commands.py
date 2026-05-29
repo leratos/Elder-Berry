@@ -84,7 +84,8 @@ CONTACT_DELETE_PATTERN = re.compile(
 )
 
 # Natürliche Feld-Abfragen
-# Neu: "geburtstag von Max", "wann ist Annas geburtstag" (Genitiv-s)
+# E4.3: Nur explizite Feldmarker (Geburtstag, Adresse, Telefon, Mailadresse),
+# damit der Contact-Feldpfad keine breiten allgemeinen Fragen abfaengt.
 CONTACT_FIELD_QUERY_PATTERN = re.compile(
     r"^(?:wann\s+hat\s+(.+?)\s+geburtstag"
     r"|wann\s+ist\s+(.+?)s?\s+geburtstag"
@@ -92,9 +93,7 @@ CONTACT_FIELD_QUERY_PATTERN = re.compile(
     r"|(?:was|wie)\s+ist\s+(?:die\s+)?(?:adresse|anschrift)\s+von\s+(.+?)"
     r"|(?:was|wie)\s+ist\s+(?:die\s+)?(?:telefonnummer|nummer|handynummer)\s+von\s+(.+?)"
     r"|(?:was|wie)\s+ist\s+(?:die\s+)?(?:email|e-mail|mailadresse)\s+von\s+(.+?)"
-    r"|(?:was|wie)\s+ist\s+(?:die\s+)?(?:adresse|anschrift)\s+von\s+(.+?)"
-    r"|in\s+welcher\s+gruppe\s+ist\s+(.+?)"
-    r"|wo\s+(?:arbeitet|wohnt)\s+(.+?))\??\s*$",
+    r")\??\s*$",
     re.IGNORECASE,
 )
 
@@ -535,8 +534,7 @@ class ContactCommandHandler(CommandHandler):
 
         groups = match.groups()
         # Gruppen: (0) wann hat X geburtstag, (1) wann ist Xs geburtstag,
-        #          (2) geburtstag von X, (3) adresse, (4) telefon, (5) email,
-        #          (6) adresse2, (7) gruppe, (8) wo arbeitet/wohnt
+        #          (2) geburtstag von X, (3) adresse, (4) telefon, (5) email
         name = None
         query_type = None
         for i, g in enumerate(groups):
@@ -544,21 +542,12 @@ class ContactCommandHandler(CommandHandler):
                 name = g.strip()
                 if i in (0, 1, 2):
                     query_type = "birthday"
-                elif i in (3, 6):
+                elif i == 3:
                     query_type = "address"
                 elif i == 4:
                     query_type = "phones"
                 elif i == 5:
                     query_type = "emails"
-                elif i == 7:
-                    query_type = "categories"
-                elif i == 8:
-                    # "wo arbeitet X" → organization, "wo wohnt X" → address
-                    lower = raw_text.lower()
-                    if "arbeitet" in lower:
-                        query_type = "organization"
-                    else:
-                        query_type = "address"
                 break
 
         if not name or not query_type:

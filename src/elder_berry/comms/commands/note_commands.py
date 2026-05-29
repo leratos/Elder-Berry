@@ -66,7 +66,9 @@ NOTE_ADD_PATTERN = re.compile(
 
 # "was ist das WLAN Passwort?" / "wie lautet die Adresse"
 # Negative Lookahead schuetzt Domain-Keywords vor Abfangen.
-_DOMAIN_WORDS = r"wetter|termin|mail|todo|kontakt|erinnerung|timer"
+# E4.3: Liste zentral erweitert um route/rezept, damit Note-Faktabfragen
+# keine fachfremden Commands aus anderen Domains uebernehmen.
+_DOMAIN_WORDS = r"wetter|termin|mail|todo|kontakt|erinnerung|timer|route|rezept"
 NOTE_GET_FACT_PATTERN = re.compile(
     r"^(?:bitte\s+)?"
     r"(?:was\s+ist\s+(?!(?:(?:der|die|das|mein[e]?)\s+)?(?:" + _DOMAIN_WORDS + r")\b)"
