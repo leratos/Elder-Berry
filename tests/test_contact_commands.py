@@ -96,6 +96,9 @@ class TestContactSearchPattern:
         m = CONTACT_SEARCH_PATTERN.match("suche kontakt Zahnarzt")
         assert m and m.group(2) == "Zahnarzt"
 
+    def test_suche_kontakt_multiword_topic_no_match(self) -> None:
+        assert CONTACT_SEARCH_PATTERN.match("suche kontakt app android") is None
+
 
 class TestContactDeletePattern:
     def test_delete_by_id(self) -> None:

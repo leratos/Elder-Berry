@@ -75,7 +75,7 @@ CONTACT_LOOKUP_PATTERN = re.compile(
 
 CONTACT_SEARCH_PATTERN = re.compile(
     r"^(?:kontakte?\s+suche?\s+(.+)"
-    r"|(?:suche?|finde?)\s+kontakte?\s+(.+))$",
+    r"|(?:suche?|finde?)\s+kontakte?\s+([^\s]+))$",
     re.IGNORECASE,
 )
 

@@ -165,6 +165,8 @@ class TestWebSearchPattern:
             "suche in mails max",
             "suche in meinen mails max",
             "suche meine mails von max",
+            "suche in meinen emails max",
+            "finde in emails nach max",
             "finde kontakt lisa",
         ],
     )
@@ -176,6 +178,8 @@ class TestWebSearchPattern:
         [
             "suche mail client windows",
             "suche mail server vergleich",
+            "google kontakte importieren outlook",
+            "suche kontakt app android",
         ],
     )
     def test_external_mail_topic_still_matches(self, text):
