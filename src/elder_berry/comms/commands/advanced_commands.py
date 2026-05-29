@@ -74,15 +74,13 @@ WEB_SEARCH_PATTERN = re.compile(
     r"(?!(?:in\s+)?meinen?\s+(?:mails?|emails?)\b)"
     r"(?!(?:meine?\s+(?:mails?|emails?)\s+(?:nach|von)\b))"
     r"(?!(?:(?:die\s+)?(?:mail|email)\s+von\b))"
-    r"(.+)"
     r"|(?:such\s+mal|suche?|finde)\s+"
     r"(?!in\s+(?:mails?|emails?)\b)"
     r"(?!(?:in\s+)?meinen?\s+(?:mails?|emails?)\b)"
     r"(?!(?:meine?\s+(?:mails?|emails?)\s+(?:nach|von)\b))"
     r"(?!(?:(?:die\s+)?(?:mail|email)\s+von\b))"
     r"(?!(?:kontakte?\s+(?!(?:app|android|outlook|importieren|client|server|vergleich|windows|amazon)\b)\S+(?:\s+\S+){0,2}\s*$))"
-    r"(.+)"
-    r")$",
+    r")(.+)$",
     re.IGNORECASE,
 )
 
@@ -548,7 +546,7 @@ class AdvancedCommandHandler(CommandHandler):
         # Suchbegriff extrahieren
         match = WEB_SEARCH_PATTERN.match(raw_text.strip())
         if match:
-            query = (match.group(1) or match.group(2) or "").strip()
+            query = match.group(1).strip()
         else:
             # Keyword-Match: versuche "suche" / "google" etc. zu entfernen
             query = raw_text.strip()
