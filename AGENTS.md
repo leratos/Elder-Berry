@@ -21,10 +21,14 @@ Projektgedächtnis.
 
 Zu Beginn einer Arbeitssitzung:
 
-- Lies aktuelle Projektkontext-Einträge mit
+- Bevorzuge einen kuratierten Start mit
+  `journal_context(project="elder-berry", n_recent=10)`.
+- Fallback für Rohhistorie:
   `journal_read(project="elder-berry", n=20)`.
 - Wenn der Kontext unklar ist, suche gezielt mit
-  `journal_search(project="elder-berry", query=..., limit=...)`.
+  - `journal_search(project="elder-berry", query=..., limit=...)` oder
+    projektübergreifend mit
+  - `journal_search_all(query=..., limit=...)`.
 - Lies zusätzlich relevante lokale Dokumente, wenn sie zum Arbeitsumfang
   gehören:
   - `PROJECT_ROADMAP.md` nur für Planungs-/Scope-Fragen.
