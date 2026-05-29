@@ -144,6 +144,12 @@ class CommandHandler(ABC):
             use_original_text=True wenn der Pattern auf den Originaltext
             (nicht normalisierten) geprüft werden soll.
             use_search=True für pattern.search() statt pattern.match().
+
+        Note:
+            In E6 (PatternSpec-Migration) wird dieser Rückgabetyp auf
+            ``list[tuple[...] | PatternSpec]`` erweitert.  Bis dahin ist
+            ``iter_pattern_specs()`` der kanonische Weg, Pattern-Einträge
+            zu konsumieren.
         """
         return []
 
@@ -432,24 +438,21 @@ class PatternSpec:
 
 
 def iter_pattern_specs(handler: "CommandHandler") -> Iterator["PatternSpec"]:
-    """Normalisiert Legacy-4-Tupel und PatternSpec-Objekte aus handler.patterns.
+    """Normalisiert Legacy-4-Tupel aus handler.patterns zu PatternSpec-Objekten.
 
     Gibt für jeden Eintrag in ``handler.patterns`` einen ``PatternSpec``
-    zurück, unabhängig davon, ob es ein 4-Tupel oder bereits ein
-    ``PatternSpec`` ist.
+    zurück.  Alle Handler geben aktuell 4-Tupel zurück; die direkte
+    ``PatternSpec``-Unterstützung in ``patterns`` kommt in E6.
     """
     for entry in handler.patterns:
-        if isinstance(entry, PatternSpec):
-            yield entry
-        else:
-            pattern, command, use_original, *rest = entry
-            use_search = rest[0] if rest else False
-            yield PatternSpec(
-                pattern=pattern,
-                command=command,
-                use_original_text=use_original,
-                use_search=use_search,
-            )
+        pattern, command, use_original, *rest = entry
+        use_search = rest[0] if rest else False
+        yield PatternSpec(
+            pattern=pattern,
+            command=command,
+            use_original_text=use_original,
+            use_search=use_search,
+        )
 
 
 @dataclass(frozen=True)

@@ -14,10 +14,12 @@ in known_conflict oder smoke umwandeln. Das zeigt, dass der Fix wirkte.
 
 === SIMULATION-BEFUNDE (Phase 95) ===
 
-F1  MultiStopRouteCommandHandler existiert (multi_stop_route_commands.py),
-    ist aber NICHT im Plugin-Registry eingetragen. Alle Multi-Stop-Texte
-    fallen silent auf RouteCommandHandler durch.
-    → Korrektur: Handler in registry.py eintragen.
+F1  MultiStopRouteCommandHandler: Factory benötigt `multi_stop_route_planner`
+    und `route_session_store` im HandlerContext – ohne diese Dienste liefert
+    `_factory()` None und der Handler wird nicht geladen. Im Test-Kontext
+    müssen diese als MagicMock gesetzt werden; in Produktion werden sie über
+    den echten HandlerContext bereitgestellt.
+    → Korrektur: `_full_mock_ctx()` um beide Felder ergänzt (Session 50f3b1e3).
 
 F2  HOW_TO_PATTERN (^wie\\s+mache\\s+ich\\s+(.+)$) ist zu breit: auch
     "wie mache ich das" (generisches Nachfragen ohne Rezept-Intent) matcht
@@ -112,14 +114,14 @@ CORPUS: list[tuple[str, str | None, str, str]] = [
     (
         "ich muss von zuhause zu nadine und dann zu lisa",
         "multi_stop_route",
-        "xfail",
-        "MultiStopRouteCommandHandler nicht im Registry (F1): fällt auf route_from_to zurück",
+        "smoke",
+        "MultiStopRouteCommandHandler: Multi-Stop-Absicht wird korrekt erkannt",
     ),
     (
         "plane route nach leipzig",
         "multi_stop_route",
-        "xfail",
-        "MultiStopRouteCommandHandler nicht im Registry (F1): fällt auf route_plan zurück",
+        "smoke",
+        "MultiStopRouteCommandHandler hat Vorrang vor route_plan (Prio 75 < 76)",
     ),
     # ------------------------------------------------------------------
     # xfail: bekannte Fehler (false positives/negatives)
@@ -193,6 +195,8 @@ def _full_mock_ctx() -> HandlerContext:
         document_classifier=MagicMock(),
         stirling_pdf=MagicMock(),
         route_planner=MagicMock(),
+        multi_stop_route_planner=MagicMock(),
+        route_session_store=MagicMock(),
         web_fetcher=MagicMock(),
         search_client=MagicMock(),
         document_reader=MagicMock(),

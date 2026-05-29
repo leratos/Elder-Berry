@@ -374,9 +374,9 @@ class RemoteCommandHandler:
             for cmd in handler.simple_commands:
                 self._simple_commands.add(cmd)
                 self._command_handler_map[cmd] = handler
-            # Pattern-Commands ebenfalls registrieren
-            for _pattern, cmd, _use_orig, *_rest in handler.patterns:
-                self._command_handler_map[cmd] = handler
+            # Pattern-Commands ebenfalls registrieren (unterstützt Legacy-Tupel und PatternSpec)
+            for spec in iter_pattern_specs(handler):
+                self._command_handler_map[spec.command] = handler
             # Keyword-Commands ebenfalls registrieren
             for cmd in handler.keywords:
                 self._command_handler_map[cmd] = handler
