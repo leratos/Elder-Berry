@@ -69,8 +69,10 @@ COMPUTER_USE_PATTERN = re.compile(
 # "google Rezept Lasagne", "google mal was", "finde Dachdecker in der Naehe"
 WEB_SEARCH_PATTERN = re.compile(
     r"^(?:such\s+mal|suche?|google\s+mal|google\s+mir|google|recherchiere|finde)\s+"
-    r"(?!(?:in\s+)?mails?\b)"
-    r"(?!(?:meine?\s+)?mail\b)"
+    r"(?!in\s+mails?\b)"
+    r"(?!(?:in\s+)?meinen?\s+mails?\b)"
+    r"(?!(?:meine?\s+mails?\s+(?:nach|von)\b))"
+    r"(?!(?:meine?\s+mail\s+von\b))"
     r"(?!kontakte?\b)"
     r"(.+)$",
     re.IGNORECASE,

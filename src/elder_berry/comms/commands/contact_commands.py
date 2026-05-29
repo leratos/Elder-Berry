@@ -74,7 +74,8 @@ CONTACT_LOOKUP_PATTERN = re.compile(
 )
 
 CONTACT_SEARCH_PATTERN = re.compile(
-    r"^kontakte?\s+suche?\s+(.+)$",
+    r"^(?:kontakte?\s+suche?\s+(.+)"
+    r"|(?:suche?|finde?)\s+kontakte?\s+(.+))$",
     re.IGNORECASE,
 )
 
@@ -710,7 +711,13 @@ class ContactCommandHandler(CommandHandler):
                 success=False,
                 text="Format: kontakte suche <Begriff>",
             )
-        query = match.group(1).strip()
+        query = (match.group(1) or match.group(2) or "").strip()
+        if not query:
+            return CommandResult(
+                command="contact_search",
+                success=False,
+                text="Format: kontakte suche <Begriff>",
+            )
         results = self._store.search(self._default_user_id, query)
         if not results:
             return CommandResult(

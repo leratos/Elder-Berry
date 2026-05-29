@@ -78,6 +78,7 @@ CORPUS: list[tuple[str, str | None, str, str]] = [
     ("lösche alle timer", "reminder_delete", "smoke", "Reminder/Timer-Delete mit Domain-Marker"),
     ("entferne timer", "reminder_delete", "smoke", "Timer-Delete ohne ID bleibt domain-markiert"),
     ("suche dachdecker plattenburg", "web_search", "smoke", "Advanced-Websuche fuer externe Themen"),
+    ("suche mail client windows", "web_search", "smoke", "Externe Mail-Themen bleiben Websuche"),
     ("klick auf ok", "computer_use", "smoke", "Computer-Use mit klarem UI-Aktionsverb"),
     ("termin: Zahnarzt morgen 14:00", "termin_create", "smoke", "Termin erstellen"),
     # ------------------------------------------------------------------
@@ -119,6 +120,18 @@ CORPUS: list[tuple[str, str | None, str, str]] = [
         "mail_search",
         "smoke",
         "Interne Mail-Suche bleibt bei mail_search statt Advanced-Websearch.",
+    ),
+    (
+        "suche in meinen mails max",
+        "mail_search",
+        "smoke",
+        "Interne Mail-Suche (deklinierte Pluralform) bleibt bei mail_search.",
+    ),
+    (
+        "suche meine mails von max",
+        "mail_search",
+        "smoke",
+        "Possessive Mail-Suche bleibt bei mail_search statt web_search.",
     ),
     (
         "finde kontakt lisa",
