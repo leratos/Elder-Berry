@@ -2945,6 +2945,14 @@ class TestWebSearchParseCommand:
         result = handler.parse_command("termin suche Zahnarzt")
         assert result == "termin_search"
 
+    def test_route_command_web_search_keeps_patternspec_name(self):
+        """E6.1-Regression: Advanced-PatternSpec wird im Candidate übernommen."""
+        handler = RemoteCommandHandler()
+        routed = handler.route_command("suche Dachdecker Plattenburg")
+        assert routed is not None
+        assert routed.command == "web_search"
+        assert routed.candidate.pattern_name == "advanced_web_search"
+
 
 class TestWebSearchExecute:
     """Tests für execute('web_search', ...)."""

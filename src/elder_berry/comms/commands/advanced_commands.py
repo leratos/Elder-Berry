@@ -12,6 +12,7 @@ from typing import TYPE_CHECKING, Any
 
 from elder_berry.comms.commands.base import (
     CommandHandler,
+    PatternSpec,
     CommandPlugin,
     CommandResult,
     HandlerContext,
@@ -111,13 +112,43 @@ class AdvancedCommandHandler(CommandHandler):
         return {"audio"}
 
     @property
-    def patterns(self) -> list[tuple[re.Pattern[str], str, bool, bool]]:
+    def patterns(self) -> list[PatternSpec]:
         return [
-            (AUDIO_LOCAL_PATTERN, "audio_toggle", False, False),
-            (WEB_SUMMARY_PATTERN, "web_summary", True, True),
-            (DOCUMENT_SUMMARY_PATTERN, "document_summary", True, True),
-            (COMPUTER_USE_PATTERN, "computer_use", False, False),
-            (WEB_SEARCH_PATTERN, "web_search", False, False),
+            PatternSpec(
+                pattern=AUDIO_LOCAL_PATTERN,
+                command="audio_toggle",
+                use_original_text=False,
+                use_search=False,
+                name="advanced_audio_local",
+            ),
+            PatternSpec(
+                pattern=WEB_SUMMARY_PATTERN,
+                command="web_summary",
+                use_original_text=True,
+                use_search=True,
+                name="advanced_web_summary",
+            ),
+            PatternSpec(
+                pattern=DOCUMENT_SUMMARY_PATTERN,
+                command="document_summary",
+                use_original_text=True,
+                use_search=True,
+                name="advanced_document_summary",
+            ),
+            PatternSpec(
+                pattern=COMPUTER_USE_PATTERN,
+                command="computer_use",
+                use_original_text=False,
+                use_search=False,
+                name="advanced_computer_use",
+            ),
+            PatternSpec(
+                pattern=WEB_SEARCH_PATTERN,
+                command="web_search",
+                use_original_text=False,
+                use_search=False,
+                name="advanced_web_search",
+            ),
         ]
 
     @property
