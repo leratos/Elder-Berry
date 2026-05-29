@@ -456,6 +456,31 @@ class RemoteCommandHandler:
         "keyword": 3,
     }
 
+    # Phase 95 E5: konservative Confidence-Regeln fuer dokumentierte
+    # Konfliktgruppen (ohne Big-Bang in E6/PatternSpec-Migration).
+    _MEDIUM_CONFIDENCE_PATTERN_MATCH_COMMANDS: set[str] = {
+        "note_get_fact",
+    }
+    _BROAD_PATTERN_SEARCH_COMMANDS: set[str] = {
+        "multi_stop_route",
+    }
+
+    def _pattern_match_confidence(self, command: str, default_confidence: int) -> int:
+        """Leitet die Pattern-Match-Confidence fuer E5-Regeln ab."""
+        if default_confidence != 70:
+            return default_confidence
+        if command in self._MEDIUM_CONFIDENCE_PATTERN_MATCH_COMMANDS:
+            return 75
+        return 90
+
+    def _pattern_search_confidence(self, command: str, default_confidence: int) -> int:
+        """Leitet die Pattern-Search-Confidence fuer E5-Regeln ab."""
+        if default_confidence != 70:
+            return default_confidence
+        if command in self._BROAD_PATTERN_SEARCH_COMMANDS:
+            return 50
+        return 70
+
     def collect_candidates(self, text: str) -> list[CommandMatchCandidate]:
         """Sammelt alle Routing-Kandidaten aus allen Stufen ohne early-exit.
 
@@ -497,7 +522,10 @@ class RemoteCommandHandler:
                     continue
                 check_text = text.strip() if spec.use_original_text else normalized
                 if spec.pattern.match(check_text):
-                    confidence = spec.confidence if spec.confidence != 70 else 90
+                    confidence = self._pattern_match_confidence(
+                        spec.command,
+                        spec.confidence,
+                    )
                     if spec.command == "contact_field_query":
                         confidence = max(confidence, 95)
                     candidates.append(
@@ -526,9 +554,15 @@ class RemoteCommandHandler:
                     if spec.command == "multi_stop_route":
                         if not is_multi_stop_candidate(text.strip()):
                             continue
-                        confidence = spec.confidence
+                        confidence = self._pattern_search_confidence(
+                            spec.command,
+                            spec.confidence,
+                        )
                     else:
-                        confidence = spec.confidence
+                        confidence = self._pattern_search_confidence(
+                            spec.command,
+                            spec.confidence,
+                        )
                     candidates.append(
                         CommandMatchCandidate(
                             command=spec.command,
