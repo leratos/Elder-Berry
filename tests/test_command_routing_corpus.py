@@ -88,6 +88,12 @@ CORPUS: list[tuple[str, str | None, str, str]] = [
         "negative",
         "Markerloses Delete darf nicht im Direct-Router landen.",
     ),
+    (
+        "vergiss alles",
+        None,
+        "negative",
+        "Generisches 'vergiss alles' darf nicht als note_delete_fact geroutet werden.",
+    ),
     # ------------------------------------------------------------------
     # Known Conflicts: gelöst durch Priority, aber Kollision existiert
     # ------------------------------------------------------------------

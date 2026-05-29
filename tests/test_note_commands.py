@@ -166,6 +166,10 @@ class TestPatterns:
         assert NOTE_DELETE_FACT_PATTERN.match("vergiss WLAN Passwort")
         assert NOTE_DELETE_FACT_PATTERN.match("vergiss alten code")
 
+    def test_delete_fact_generic_no_match(self):
+        assert NOTE_DELETE_FACT_PATTERN.match("vergiss alles") is None
+        assert NOTE_DELETE_FACT_PATTERN.match("vergiss das") is None
+
 
 # ---------------------------------------------------------------------------
 # simple_commands + keywords
