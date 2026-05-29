@@ -161,6 +161,12 @@ CORPUS: list[tuple[str, str | None, str, str]] = [
         "Explizite Mail-Suche (pattern_search) darf nicht vom multi_stop-Boost uebersteuert werden.",
     ),
     (
+        "fasse zusammen /tmp/route-nach-leipzig-vorher-lisa.txt",
+        "document_summary",
+        "known_conflict",
+        "Explizite Dokument-Zusammenfassung (pattern_search) darf nicht vom multi_stop-Boost uebersteuert werden.",
+    ),
+    (
         "wie mache ich ein backup",
         None,
         "negative",
@@ -206,6 +212,12 @@ CORPUS: list[tuple[str, str | None, str, str]] = [
 
 
 EXPECTED_CANDIDATE_CONFLICTS: dict[str, dict[str, object]] = {
+    "fasse zusammen /tmp/route-nach-leipzig-vorher-lisa.txt": {
+        "winner": "document_summary",
+        "losers": {"multi_stop_route"},
+        "sources": {"pattern_search"},
+        "reason": "Document-Summary bleibt vor broad multi_stop pattern_search.",
+    },
     "mail suche route nach leipzig, vorher lisa": {
         "winner": "mail_search",
         "losers": {"multi_stop_route"},

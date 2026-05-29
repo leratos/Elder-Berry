@@ -38,6 +38,7 @@ from __future__ import annotations
 import difflib
 import logging
 import re
+from dataclasses import replace
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -525,15 +526,7 @@ class RemoteCommandHandler:
                     if spec.command == "multi_stop_route":
                         if not is_multi_stop_candidate(text.strip()):
                             continue
-                        has_explicit_pattern_candidate = any(
-                            c.source in {"pattern_match", "pattern_search"}
-                            and c.command != "multi_stop_route"
-                            for c in candidates
-                        )
-                        if has_explicit_pattern_candidate:
-                            confidence = spec.confidence
-                        else:
-                            confidence = max(spec.confidence, 95)
+                        confidence = spec.confidence
                     else:
                         confidence = spec.confidence
                     candidates.append(
@@ -548,6 +541,32 @@ class RemoteCommandHandler:
                             pattern_name=spec.name,
                             use_original_text=spec.use_original_text,
                         )
+                    )
+
+        # Boost-Entscheidung erst nach kompletter Pattern-Suche treffen,
+        # damit spaetere explizite pattern_search-Kandidaten den Boost
+        # ebenfalls blockieren koennen (iteration-order-unabhaengig).
+        has_explicit_non_route_pattern_candidate = any(
+            c.source in {"pattern_match", "pattern_search"}
+            and c.command not in {"multi_stop_route", "route_from_to", "route_plan"}
+            for c in candidates
+        )
+        for idx, candidate in enumerate(candidates):
+            if (
+                candidate.command == "multi_stop_route"
+                and candidate.source == "pattern_search"
+            ):
+                if has_explicit_non_route_pattern_candidate:
+                    # Breiter Multi-Stop-Catch-All darf explizite Pattern-
+                    # Kandidaten nicht uebersteuern.
+                    candidates[idx] = replace(
+                        candidate,
+                        confidence=min(candidate.confidence, 40),
+                    )
+                else:
+                    candidates[idx] = replace(
+                        candidate,
+                        confidence=max(candidate.confidence, 95),
                     )
 
         # Stufe 3: Keyword (Konfidenz 45/30)
@@ -568,12 +587,17 @@ class RemoteCommandHandler:
                             kw_words = len(keyword.split())
                             confidence = 45 if kw_words >= 2 else 30
                             if command == "multi_stop_route":
-                                has_explicit_pattern_candidate = any(
+                                has_explicit_non_route_pattern_candidate = any(
                                     c.source in {"pattern_match", "pattern_search"}
-                                    and c.command != "multi_stop_route"
+                                    and c.command
+                                    not in {
+                                        "multi_stop_route",
+                                        "route_from_to",
+                                        "route_plan",
+                                    }
                                     for c in candidates
                                 )
-                                if not has_explicit_pattern_candidate:
+                                if not has_explicit_non_route_pattern_candidate:
                                     confidence = max(confidence, 95)
                             candidates.append(
                                 CommandMatchCandidate(
