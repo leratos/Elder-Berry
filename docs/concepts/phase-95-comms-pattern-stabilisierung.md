@@ -2,11 +2,110 @@
 
 ## Status
 
-Konzept fuer eine Folgephase nach Phase 93. Dieses Dokument beschreibt die
-empfohlene Reihenfolge, die benoetigten Umbau-Schritte, Teststrategie,
-Risiken und konkrete Abarbeitungshinweise.
+| Schritt | Stand |
+|---|---|
+| Konzept | fertig |
+| E0 Corpus + Keyword-Audit | ✅ implementiert (2026-05-29) |
+| E1 Match-Metadaten (Dataclasses) | ✅ implementiert (2026-05-29) |
+| E2 Candidate-Sammlung + kompatibler Router | ✅ implementiert (2026-05-29) |
+| E3 Conflict-Tests auf Candidate-Basis | offen |
+| E4 Handler-Gates | offen |
+| E5 Confidence-Regeln aktivieren | offen |
+| E6 PatternSpec-Migration | offen |
 
-Ausgangspunkt ist die Analyse aus Journal-Eintrag `elder-berry#533`.
+Ausgangspunkt: Analyse aus Journal-Eintrag `elder-berry#533`.
+Simulation ausgefuehrt auf Branch `feature/phase-95-comms-pattern-simulation`.
+Baseline: 6 287 Tests, 3 skipped, 5 xfailed.
+
+---
+
+## Simulationsbefunde (2026-05-29)
+
+E1/E2/E0 wurden implementiert und danach gegen das reale Handler-Set
+ausgefuehrt. Die Tests deckten fuenf konkrete Befunde auf, die das Konzept
+praezisieren oder korrigieren.
+
+### F1 – MultiStopRouteCommandHandler nicht im Plugin-Registry ⚠️ kritisch
+
+`multi_stop_route_commands.py` existiert, aber `MultiStopRouteCommandHandler`
+ist **nicht in `registry.py` eingetragen**. Alle Multi-Stop-Eingaben fallen
+silent auf `RouteCommandHandler` durch:
+
+```
+"ich muss von zuhause zu nadine und dann zu lisa"  →  route_from_to  (erwartet: multi_stop_route)
+"plane route nach leipzig"                          →  route_plan     (erwartet: multi_stop_route)
+```
+
+Zwei xfail-Guards sichern diesen Zustand in `test_command_routing_corpus.py` ab.
+Naechster Schritt: Handler in `registry.py` eintragen, xfail entfernen (E4.2).
+
+### F2 – HOW_TO_PATTERN breiter als im Konzept beschrieben ⚠️ mittel
+
+`HOW_TO_PATTERN = ^wie\s+mache\s+ich\s+(.+)$` matcht auch rein generisches
+Nachfragen ohne jeden Rezept-Intent:
+
+```
+"wie mache ich das"      →  recipe_lookup  (kein Stop-Wort-Schutz)
+"wie mache ich ein backup"  →  recipe_lookup  (xfail)
+"wie mache ich einen screenshot"  →  recipe_lookup  (xfail)
+```
+
+Konzept §P2 und §E4.1 beschreiben das Risiko, unterschaetzen aber dessen
+Ausmas. Selbst einsilbige Platzhalter (`das`, `es`, `sowas`) reichen als
+Capture-Gruppe, um das Pattern zu aktivieren.
+Naechster Schritt: Stopp-Wortliste fuer inhaltsleere Capture-Gruppen oder
+`fallthrough=True` bei semantisch schwachen Treffern (E4.1).
+
+### F3 – test_keyword_map_matches_handler_keywords hatte Logic-Bug ✅ behoben
+
+`keyword_map` ist command-indexed: `{command: [keywords]}`.
+Der urspruengliche Testausdruck `kw not in km` prueft einen Keyword-String als
+Dictionary-Key in einem command-indizierten Dict – das ist immer `True` fuer
+normale Keyword-Strings.
+
+Korrektur (in `test_command_keyword_conflicts.py`):
+
+```python
+all_kw_in_km = {kw for keywords in km.values() for kw in keywords}
+missing = {kw for kw in direct if kw not in all_kw_in_km}
+```
+
+### F4 – Vier Keyword-Konflikte waren undeklariert ✅ behoben
+
+Folgende Cross-Handler-Kollisionen existierten, waren aber nicht in
+`EXPECTED_KEYWORD_CONFLICTS` eingetragen:
+
+| Keyword | Handler 1 / Command | Handler 2 / Command |
+|---|---|---|
+| `lauter` | SystemCommandHandler / `volume` | HarmonyCommandHandler / `harmony_volume_up` |
+| `leiser` | SystemCommandHandler / `volume` | HarmonyCommandHandler / `harmony_volume_down` |
+| `musik an` | SystemCommandHandler / `play` | HarmonyCommandHandler / `harmony_activity_on` |
+| `wer ist` | NoteCommandHandler / `note_get_fact` | ContactCommandHandler / `contact_who` |
+
+Aufloesungen:
+- `lauter` / `leiser` / `musik an`: Harmony gewinnt via Pattern-Match (Confidence 90)
+  vor System-Keyword (Confidence 30). Korrekt.
+- `wer ist`: Contact-Pattern (Confidence 90) gewinnt vor Note-Keyword (Confidence 45).
+  Korrekt.
+
+Alle vier in `EXPECTED_KEYWORD_CONFLICTS` nachgetragen.
+
+### F5 – collect_candidates erzeugt Duplikat-Kandidaten ℹ️ gering
+
+Wenn ein Command sowohl via Stufe 2b (pattern_search) als auch via Stufe 3
+(keyword) matcht, erscheint er zweimal in der Kandidatenliste:
+
+```
+"plane route nach leipzig"  →  [route_plan/pattern_search/conf=70, route_plan/keyword/conf=45]
+```
+
+`choose_candidate()` waehlt korrekt den hoeherwertigen Kandidaten.
+Die Duplikate erhoehen aber Rauschen in Logs und erschweren die Lesbarkeit
+von `test_collect_candidates_multi_candidate_log`.
+Naechster Schritt (optional, in E3): Stufe 3 deduplizieren, wenn der Command
+bereits in Stufe 2 gewonnen hat.
+
+---
 
 ## Kurzfassung
 
@@ -128,16 +227,15 @@ nuetzlich:
 Die Reihenfolge ist absichtlich konservativ: erst messen und testen, dann
 klein refactoren, dann Verhalten aendern.
 
-## E0 - Baseline, Corpus und Audit ohne Verhaltensaenderung
+## E0 - Baseline, Corpus und Audit ohne Verhaltensaenderung ✅ implementiert
 
 Ziel: Vor dem Umbau sichtbar machen, was heute matcht.
 
 Dateien:
 
-- `tests/test_plugin_pattern_conflicts.py`
-- neue Testdatei: `tests/test_command_keyword_conflicts.py`
-- neue Testdatei: `tests/test_command_routing_corpus.py`
-- optional: `tests/fixtures/command_routing_corpus.py`
+- `tests/test_plugin_pattern_conflicts.py` (bestehend)
+- `tests/test_command_keyword_conflicts.py` (neu, implementiert)
+- `tests/test_command_routing_corpus.py` (neu, implementiert)
 
 Schritte:
 
@@ -165,22 +263,28 @@ Akzeptanzkriterien:
 - Negative Samples wie `loesch alle`, `wie mache ich ein backup`,
   `was ist wetter`, `speichere es als notiz` sind explizit abgedeckt.
 
-Beispiel-Corpus:
+Beispiel-Corpus (Simulation-Ergebnisse, Stand 2026-05-29):
 
-| Text | Erwartung | Grund |
-|---|---|---|
-| `loesch alle` | `None` | Zu unspezifisch, LLM soll klaeren. |
-| `loesche alle termine` | `termin_delete` | Expliziter Kalender-Marker. |
-| `loesche erinnerung 3` | `reminder_delete` | Weather/Reminder gewinnt vor Calendar. |
-| `speichere es bitte als notiz ab` | `None` oder LLM-Pfad | Darf nicht `note_set_fact` werden. |
-| `ich muss von zuhause zu nadine und dann zu lisa` | `multi_stop_route` | Multi-Stop gewinnt vor Single-Route. |
-| `plane route nach leipzig` | `route_plan` | Single-Route bleibt intakt. |
-| `wie mache ich carbonara` | `recipe_lookup` | Recipe-Intent plausibel. |
-| `wie mache ich ein backup` | `None` oder `web_search` nur explizit | Kein Recipe-False-Positive. |
-| `was ist das wlan passwort` | `note_get_fact` | Faktabfrage. |
-| `was ist das wetter morgen` | `None` oder `wetter` je nach bestehender Policy | Darf kein Fakt-Miss sein. |
+| Text | Erwartung | Label | Befund |
+|---|---|---|---|
+| `loesch alle` | `None` | negative | ✅ korrekt |
+| `loesche alle termine` | `termin_delete` | smoke | ✅ korrekt |
+| `loesche erinnerung 3` | `reminder_delete` | smoke | ✅ Weather/Reminder (prio=15) vor Calendar |
+| `speichere es bitte als notiz ab` | `None` | negative | ✅ korrekt |
+| `git status` | `git` | smoke | ✅ GitHandler routet alle Subcommands als "git" |
+| `docker ps` | `docker` | smoke | ✅ DockerHandler routet alle Subcommands als "docker" |
+| `termine woche` | `termine` | smoke | ✅ CalendarHandler liefert "termine", nicht "termin_list" |
+| `wie mache ich carbonara` | `recipe_lookup` | smoke | ✅ korrekt |
+| `was ist das wlan passwort` | `note_get_fact` | smoke | ✅ korrekt |
+| `lauter` | `harmony_volume_up` | known_conflict | ✅ Harmony (Pattern) vor System (Keyword) |
+| `wer ist max mustermann` | `contact_who` | known_conflict | ✅ Contact (Pattern) vor Note (Keyword) |
+| `ich muss von zuhause zu nadine und dann zu lisa` | `multi_stop_route` | **xfail (F1)** | ⚠️ aktuell `route_from_to` – Handler fehlt im Registry |
+| `plane route nach leipzig` | `multi_stop_route` | **xfail (F1)** | ⚠️ aktuell `route_plan` – Handler fehlt im Registry |
+| `wie mache ich das` | `None` | **xfail (F2)** | ⚠️ aktuell `recipe_lookup` – HOW_TO zu breit |
+| `wie mache ich ein backup` | `None` | **xfail (F2)** | ⚠️ aktuell `recipe_lookup` |
+| `wie mache ich einen screenshot` | `None` | **xfail (F2)** | ⚠️ aktuell `recipe_lookup` |
 
-## E1 - Deklarative Match-Metadaten vorbereiten
+## E1 - Deklarative Match-Metadaten vorbereiten ✅ implementiert
 
 Ziel: Patterns und Keywords bekommen Metadaten, ohne alle Handler sofort
 umzubauen.
@@ -267,7 +371,7 @@ Akzeptanzkriterien:
 - Neue interne Methode kann alle Kandidaten sammeln, wird aber noch nicht als
   Entscheidungsquelle verwendet.
 
-## E2 - Candidate-Sammlung einbauen, Entscheidung noch kompatibel halten
+## E2 - Candidate-Sammlung einbauen, Entscheidung noch kompatibel halten ✅ implementiert
 
 Ziel: Sichtbarkeit schaffen, ohne Verhalten zu veraendern.
 
@@ -413,12 +517,17 @@ Risiko:
 
 - `HOW_TO_PATTERN = ^wie mache ich (.+)$` ist breit.
 - Non-food-Anfragen koennen als Recipe landen.
+- **Bestaetigt durch Simulation F2**: Sogar `"wie mache ich das"` (generisch,
+  kein fachlicher Inhalt) matcht – jeder einsilbige Platzhalter reicht als
+  Capture-Gruppe. Das ist breiter als im Konzept urspruenglich angenommen.
 
 Empfohlene Absicherung:
 
-- Domain-Gate vor echter Ausfuehrung:
-  - Food-Woerter, Cookbook-Treffer oder plausible Zutaten/Kategorien.
-  - Bei unklarem `wie mache ich ...` lieber `fallthrough=True`.
+- Stopp-Wortliste fuer inhaltsleere Capture-Gruppen:
+  `["das", "es", "sowas", "das hier", "das ding"]`
+- Alternativ: Mindest-Token-Qualitaet (Capture-Gruppe muss >= 1 Substantiv
+  enthalten oder mindestens 2 Tokens haben).
+- Bei unklarem `wie mache ich ...` lieber `fallthrough=True`.
 - Negative Tests:
   - `wie mache ich ein backup`
   - `wie mache ich einen screenshot`
@@ -438,6 +547,7 @@ Dateien:
 
 - `src/elder_berry/comms/commands/multi_stop_route_commands.py`
 - `src/elder_berry/comms/commands/route_commands.py`
+- `src/elder_berry/comms/commands/registry.py`
 - `tests/test_multi_stop_route_commands.py`
 - `tests/test_route_commands.py`
 - `tests/test_intent_routing.py`
@@ -447,6 +557,18 @@ Risiko:
 - Beide Handler nutzen Search-Patterns.
 - Multi-Stop muss vor Single-Route gewinnen, aber nur bei echtem
   Multi-Stop-Intent.
+- **Kritischer Befund aus Simulation F1**: `MultiStopRouteCommandHandler`
+  ist **nicht in `registry.py` eingetragen**. Der Handler ist vollstaendig
+  implementiert, wird aber nie geladen. Multi-Stop-Routing faellt komplett
+  auf `RouteCommandHandler` durch. Alle Multi-Stop-Tests sind aktuell als
+  xfail markiert.
+
+Pflicht-Schritt vor allen anderen E4.2-Massnahmen:
+
+1. `MultiStopRouteCommandHandler` in `registry.py` eintragen.
+2. `xfail`-Markierungen in `test_command_routing_corpus.py` entfernen.
+3. Pruefen, ob die bestehende Priority-Reihenfolge (multi_stop=75, route=76)
+   die Konflikte korrekt aufloest.
 
 Empfohlene Absicherung:
 
@@ -770,14 +892,17 @@ Wenn Zeit knapp ist:
 
 ## Definition of Done fuer Phase 95
 
-- [ ] Routing-Corpus existiert und enthaelt positive, negative und
-      konfliktkritische Beispiele.
-- [ ] Keyword-Konflikte werden in CI sichtbar.
-- [ ] `collect_candidates()` existiert und ist getestet.
-- [ ] `parse_command()` bleibt kompatibel oder jede Aenderung ist im Corpus
-      dokumentiert.
-- [ ] Kritische breite Handler haben Domain-Gates oder explizites
-      `fallthrough`.
+- [x] Routing-Corpus existiert und enthaelt positive, negative und
+      konfliktkritische Beispiele (`test_command_routing_corpus.py`).
+- [x] Keyword-Konflikte werden in CI sichtbar (`test_command_keyword_conflicts.py`).
+- [x] `collect_candidates()` existiert und ist getestet.
+- [x] `parse_command()` bleibt kompatibel – Corpus dokumentiert alle
+      Abweichungen als xfail.
+- [ ] **F1 beheben**: `MultiStopRouteCommandHandler` in `registry.py` eintragen
+      und xfail-Guards entfernen.
+- [ ] **F2 eingrenzen**: HOW_TO_PATTERN-Stopp-Wortliste oder `fallthrough=True`
+      fuer inhaltsleere Capture-Gruppen.
+- [ ] Kritische breite Handler haben Domain-Gates oder explizites `fallthrough`.
 - [ ] Runtime-Debugging fuer Mehrfachkandidaten existiert.
 - [ ] Focused Routing-Tests sind gruen.
 - [ ] mypy fuer `comms` bleibt gruen.
@@ -808,6 +933,12 @@ Wenn Zeit knapp ist:
   ankern sollten.
 - Breite Domains verlassen sich auf nachgelagerte Execute-Gates statt auf
   klare Router-Konfidenz.
+- **F1**: `MultiStopRouteCommandHandler` fehlt im Registry – stilles
+  Fallthrough auf `RouteCommandHandler` seit Implementierung des Handlers.
+- **F5**: `collect_candidates()` liefert Duplikat-Kandidaten wenn Pattern
+  und Keyword denselben Command matchen (Stufen 2b + 3 ueberlappen).
+  `choose_candidate()` behandelt das korrekt, aber das Rauschen ist
+  unnoetig. Deduplizierung in E3 empfohlen.
 
 ## Manuelle Smoke-Tests
 
