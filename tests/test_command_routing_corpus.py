@@ -70,7 +70,13 @@ CORPUS: list[tuple[str, str | None, str, str]] = [
     ("notizen suche kennwort", "note_search", "smoke", "Notiz-Suche"),
     ("termine woche", "termine", "smoke", "CalendarHandler: Termin-Pattern → 'termine'"),
     ("lösche alle termine", "termin_delete", "smoke", "Calendar-Delete mit Marker"),
+    ("storniere termin 2", "termin_delete", "smoke", "Calendar-Delete via Storno + Termin-Marker"),
     ("aufgabe löschen 2", "todo_delete", "smoke", "Todo-Delete mit Aufgaben-Marker"),
+    ("mail löschen #2", "mail_delete", "smoke", "Mail-Delete mit Domain-Marker + ID"),
+    ("lösche die mail", "mail_delete", "smoke", "Mail-Delete ohne ID bleibt domain-markiert"),
+    ("mail 2 löschen", "mail_delete", "smoke", "Mail-Delete in ID-Verb-Reihenfolge"),
+    ("lösche alle timer", "reminder_delete", "smoke", "Reminder/Timer-Delete mit Domain-Marker"),
+    ("entferne timer", "reminder_delete", "smoke", "Timer-Delete ohne ID bleibt domain-markiert"),
     ("termin: Zahnarzt morgen 14:00", "termin_create", "smoke", "Termin erstellen"),
     # ------------------------------------------------------------------
     # Negative-Samples: darf NICHT gerouted werden (→ None)
@@ -87,6 +93,12 @@ CORPUS: list[tuple[str, str | None, str, str]] = [
         None,
         "negative",
         "Markerloses Delete darf nicht im Direct-Router landen.",
+    ),
+    (
+        "storniere 2",
+        None,
+        "negative",
+        "Markerloses Storno darf nicht im Direct-Router landen.",
     ),
     (
         "vergiss alles",
