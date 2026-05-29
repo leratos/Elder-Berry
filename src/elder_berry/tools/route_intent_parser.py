@@ -34,7 +34,7 @@ logger = logging.getLogger(__name__)
 # Reise-Stops; "abholen", "einkaufen", "tanken", "holen" sind
 # typische Aktivitaeten-Hinweise.
 MULTI_STOP_HINTS = re.compile(
-    r"\b(vorher|danach|auf dem weg|unterwegs|"
+    r"\b(vorher|danach|und\s+dann\s+(?:zu|zum|zur|nach|richtung)\b|auf dem weg|unterwegs|"
     r"über|ueber|via|"
     r"abholen|einkaufen|tanken|holen|"
     r"einkauf|tankstelle|supermarkt|apotheke)\b",
@@ -194,7 +194,8 @@ _SYSTEM_PROMPT = (
 
 
 _CHAINED_DESTINATION_RE = re.compile(
-    r"\bzu\s+(?P<first>[^,.!?]+?)\s+und\s+dann\s+zu\s+(?P<second>[^,.!?]+)",
+    r"\b(?:zu|zum|zur|nach|richtung)\s+(?P<first>[^,.!?]+?)\s+und\s+dann\s+"
+    r"(?:zu|zum|zur|nach|richtung)\s+(?P<second>[^,.!?]+)",
     re.IGNORECASE,
 )
 _ALONG_ROUTE_POI_RE = re.compile(
@@ -487,7 +488,7 @@ class RouteIntentParser:
         """
         destination_value = intent.destination.value.strip()
         lowered_destination = destination_value.lower()
-        if "und dann zu" not in lowered_destination:
+        if "und dann" not in lowered_destination:
             return intent
 
         match = _CHAINED_DESTINATION_RE.search(destination_value)

@@ -6,11 +6,7 @@ und prüft, ob der gewählte Command dem Erwarteten entspricht.
 Markierungen:
   "smoke"          – sollte immer korrekt routen (Regression-Guard)
   "negative"       – darf NICHT gerouted werden (→ None)
-  "known_conflict" – bekannte Mehrdeutigkeit; aktuell durch Priority gelöst
-  "xfail"          – bekannter Fehler, der noch nicht behoben ist
-
-Wenn ein xfail-Fall unerwartet BESTANDEN wird: Markierung entfernen und
-in known_conflict oder smoke umwandeln. Das zeigt, dass der Fix wirkte.
+    "known_conflict" – bekannte Mehrdeutigkeit; aktuell durch Priority/Gates gelöst
 
 === SIMULATION-BEFUNDE (Phase 95) ===
 
@@ -56,7 +52,7 @@ from elder_berry.comms.remote_commands import RemoteCommandHandler
 # Corpus-Definition
 # ---------------------------------------------------------------------------
 # Format: (text, expected_command_or_None, label, comment)
-# label: "smoke" | "negative" | "known_conflict" | "xfail"
+# label: "smoke" | "negative" | "known_conflict"
 
 CORPUS: list[tuple[str, str | None, str, str]] = [
     # ------------------------------------------------------------------
@@ -141,10 +137,34 @@ CORPUS: list[tuple[str, str | None, str, str]] = [
         "MultiStopRouteCommandHandler: Multi-Stop-Absicht wird korrekt erkannt",
     ),
     (
-        "plane route nach leipzig",
-        "multi_stop_route",
+        "ich muss von zuhause zu nadine und dann lisa",
+        "route_from_to",
         "smoke",
-        "MultiStopRouteCommandHandler hat Vorrang vor route_plan (Prio 75 < 76)",
+        "Unvollstaendiges 'und dann' darf nicht auf multi_stop_route gehen.",
+    ),
+    (
+        "plane route nach leipzig",
+        "route_plan",
+        "smoke",
+        "Single-Stop bleibt bei RouteCommandHandler; Multi-Stop-Gate blockt Catch-All.",
+    ),
+    (
+        "notiz route: ich muss nach leipzig, vorher lisa abholen",
+        "note_add",
+        "known_conflict",
+        "Explizite Notiz darf nicht vom breiten multi_stop_route-Search uebersteuert werden.",
+    ),
+    (
+        "mail suche route nach leipzig, vorher lisa",
+        "mail_search",
+        "known_conflict",
+        "Explizite Mail-Suche (pattern_search) darf nicht vom multi_stop-Boost uebersteuert werden.",
+    ),
+    (
+        "fasse zusammen /tmp/route-nach-leipzig-vorher-lisa.txt",
+        "document_summary",
+        "known_conflict",
+        "Explizite Dokument-Zusammenfassung (pattern_search) darf nicht vom multi_stop-Boost uebersteuert werden.",
     ),
     (
         "wie mache ich ein backup",
@@ -192,11 +212,17 @@ CORPUS: list[tuple[str, str | None, str, str]] = [
 
 
 EXPECTED_CANDIDATE_CONFLICTS: dict[str, dict[str, object]] = {
-    "plane route nach leipzig": {
-        "winner": "multi_stop_route",
-        "losers": {"route_plan"},
+    "fasse zusammen /tmp/route-nach-leipzig-vorher-lisa.txt": {
+        "winner": "document_summary",
+        "losers": {"multi_stop_route"},
         "sources": {"pattern_search"},
-        "reason": "Multi-stop gewinnt ueber Prioritaet/Confidence gegen route_plan.",
+        "reason": "Document-Summary bleibt vor broad multi_stop pattern_search.",
+    },
+    "mail suche route nach leipzig, vorher lisa": {
+        "winner": "mail_search",
+        "losers": {"multi_stop_route"},
+        "sources": {"pattern_search"},
+        "reason": "Mail-Suche bleibt vor broad multi_stop/route pattern_search.",
     },
     "wer ist max mustermann": {
         "winner": "contact_who",
@@ -244,23 +270,11 @@ def _best_candidate_per_command(
 
 
 def _corpus_params() -> list[pytest.param]:
-    """Wandelt CORPUS-Einträge in pytest.param um; xfail-Einträge erhalten Mark."""
+    """Wandelt CORPUS-Einträge in pytest.param um."""
     params = []
     for text, expected, label, comment in CORPUS:
         p_id = f"{label}:{text[:50]}"
-        if label == "xfail":
-            params.append(
-                pytest.param(
-                    text,
-                    expected,
-                    label,
-                    comment,
-                    id=p_id,
-                    marks=pytest.mark.xfail(strict=True, reason=comment),
-                )
-            )
-        else:
-            params.append(pytest.param(text, expected, label, comment, id=p_id))
+        params.append(pytest.param(text, expected, label, comment, id=p_id))
     return params
 
 
@@ -399,3 +413,24 @@ def test_candidates_confidence_hierarchy(
     assert pattern, "Keine Pattern-Kandidaten für 'wetter morgen'"
     assert pattern[0].confidence == 90
     assert all(c.confidence < 100 for c in pattern)
+
+
+def test_multi_stop_keyword_candidate_rejected_without_route_intro(
+    handler: RemoteCommandHandler,
+) -> None:
+    """Deckt den Keyword-Gate-False-Pfad in collect_candidates ab."""
+    candidates = handler.collect_candidates("unterwegs tanken")
+    assert all(c.command != "multi_stop_route" for c in candidates)
+
+
+def test_multi_stop_keyword_candidate_boosted_when_gate_true(
+    handler: RemoteCommandHandler,
+) -> None:
+    """Deckt den Keyword-Gate-True-Pfad inkl. Confidence-Boost ab."""
+    text = "nach leipzig unterwegs tanken"
+    candidates = handler.collect_candidates(text)
+    multi_stop = [
+        c for c in candidates if c.command == "multi_stop_route" and c.source == "keyword"
+    ]
+    assert multi_stop, "Erwartet multi_stop_route als Keyword-Kandidat"
+    assert max(c.confidence for c in multi_stop) == 95

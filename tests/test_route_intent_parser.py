@@ -32,6 +32,7 @@ class TestIsMultiStopCandidate:
         [
             "Ich muss nach Leipzig, vorher noch Lisa abholen",
             "Ich muss von zuhause zu Nadine und dann zu Lisa, unterwegs zu Hornbach",
+            "Ich muss von zuhause zu Nadine und dann zu Lisa",
             "Fahrt zu Andrea, auf dem weg kaufe ich ein",
             "Plane meine route nach Berlin, unterwegs tanken",
             "Fahre nach Markranstaedt, vorher Lisa und Andrea abholen",
@@ -62,6 +63,16 @@ class TestIsMultiStopCandidate:
 
     def test_false_for_empty(self) -> None:
         assert is_multi_stop_candidate("") is False
+
+    @pytest.mark.parametrize(
+        "text",
+        [
+            "Ich muss von zuhause zu Nadine und dann zum Bahnhof",
+            "Ich muss von zuhause zu Nadine und dann zur Apotheke",
+        ],
+    )
+    def test_true_for_contracted_chained_destinations(self, text: str) -> None:
+        assert is_multi_stop_candidate(text) is True
 
 
 # ---------------------------------------------------------------------------
@@ -274,6 +285,38 @@ class TestParse:
         assert intent.waypoints[1].type == "poi"
         assert intent.waypoints[1].constraint == "along_route"
 
+    def test_repairs_chained_destination_phrase_with_nach(
+        self,
+        parser: RouteIntentParser,
+        anthropic_client: MagicMock,
+    ) -> None:
+        anthropic_client.tool_call.return_value = _sonnet_response(
+            destination={
+                "type": "contact",
+                "value": "Nadine und dann nach Lisa",
+            },
+            waypoints=[],
+        )
+        intent = parser.parse("Ich muss von zuhause zu Nadine und dann nach Lisa")
+        assert intent.destination.value == "Lisa"
+        assert [waypoint.value for waypoint in intent.waypoints] == ["Nadine"]
+
+    def test_repairs_chained_destination_phrase_with_richtung(
+        self,
+        parser: RouteIntentParser,
+        anthropic_client: MagicMock,
+    ) -> None:
+        anthropic_client.tool_call.return_value = _sonnet_response(
+            destination={
+                "type": "contact",
+                "value": "Nadine und dann richtung Lisa",
+            },
+            waypoints=[],
+        )
+        intent = parser.parse("Ich muss von zuhause zu Nadine und dann richtung Lisa")
+        assert intent.destination.value == "Lisa"
+        assert [waypoint.value for waypoint in intent.waypoints] == ["Nadine"]
+
     def test_heuristic_parse_without_anthropic_for_live_case(self) -> None:
         parser = RouteIntentParser(None)
         intent = parser.parse(
@@ -288,6 +331,20 @@ class TestParse:
         ]
         assert intent.waypoints[0].type == "contact"
         assert intent.waypoints[1].type == "poi"
+
+    def test_heuristic_parse_without_anthropic_for_chained_nach(self) -> None:
+        parser = RouteIntentParser(None)
+        intent = parser.parse("Ich muss von zuhause zu Nadine und dann nach Lisa")
+        assert intent.origin.type == "home"
+        assert intent.destination.value == "Lisa"
+        assert [waypoint.value for waypoint in intent.waypoints] == ["Nadine"]
+
+    def test_heuristic_parse_without_anthropic_for_chained_richtung(self) -> None:
+        parser = RouteIntentParser(None)
+        intent = parser.parse("Ich muss von zuhause zu Nadine und dann richtung Lisa")
+        assert intent.origin.type == "home"
+        assert intent.destination.value == "Lisa"
+        assert [waypoint.value for waypoint in intent.waypoints] == ["Nadine"]
 
     def test_heuristic_parse_with_vorher_and_poi(self) -> None:
         parser = RouteIntentParser(None)

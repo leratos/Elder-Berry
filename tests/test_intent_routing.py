@@ -554,3 +554,29 @@ class TestRouteCommandSelection:
             "Unterwegs moechte ich noch zu Hornbach.",
         )
         assert cmd == "multi_stop_route"
+
+    def test_single_stop_plan_stays_route_plan(self):
+        from elder_berry.tools.route_session_store import RouteSessionStore
+
+        handler = _make_handler(
+            contact_store=MagicMock(),
+            route_planner=MagicMock(),
+            multi_stop_route_planner=MagicMock(),
+            route_session_store=RouteSessionStore(),
+        )
+
+        cmd = handler.parse_command("plane route nach leipzig")
+        assert cmd == "route_plan"
+
+    def test_single_stop_from_to_stays_route_from_to(self):
+        from elder_berry.tools.route_session_store import RouteSessionStore
+
+        handler = _make_handler(
+            contact_store=MagicMock(),
+            route_planner=MagicMock(),
+            multi_stop_route_planner=MagicMock(),
+            route_session_store=RouteSessionStore(),
+        )
+
+        cmd = handler.parse_command("ich muss von zuhause zu nadine")
+        assert cmd == "route_from_to"
