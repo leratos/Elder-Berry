@@ -158,6 +158,17 @@ class TestWebSearchPattern:
     def test_valid(self, text):
         assert WEB_SEARCH_PATTERN.match(text) is not None
 
+    @pytest.mark.parametrize(
+        "text",
+        [
+            "finde meine mail von max",
+            "suche in mails max",
+            "finde kontakt lisa",
+        ],
+    )
+    def test_internal_domain_query_no_match(self, text):
+        assert WEB_SEARCH_PATTERN.match(text) is None
+
 
 # ---------------------------------------------------------------------------
 # Interface

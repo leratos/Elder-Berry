@@ -68,7 +68,11 @@ COMPUTER_USE_PATTERN = re.compile(
 # Regex fuer Web-Suche: "suche Dachdecker", "such mal Python Tutorial",
 # "google Rezept Lasagne", "google mal was", "finde Dachdecker in der Naehe"
 WEB_SEARCH_PATTERN = re.compile(
-    r"^(?:such\s+mal|suche?|google\s+mal|google\s+mir|google|recherchiere|finde)\s+(.+)$",
+    r"^(?:such\s+mal|suche?|google\s+mal|google\s+mir|google|recherchiere|finde)\s+"
+    r"(?!(?:in\s+)?mails?\b)"
+    r"(?!(?:meine?\s+)?mail\b)"
+    r"(?!kontakte?\b)"
+    r"(.+)$",
     re.IGNORECASE,
 )
 

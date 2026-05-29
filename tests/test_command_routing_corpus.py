@@ -77,6 +77,8 @@ CORPUS: list[tuple[str, str | None, str, str]] = [
     ("mail 2 löschen", "mail_delete", "smoke", "Mail-Delete in ID-Verb-Reihenfolge"),
     ("lösche alle timer", "reminder_delete", "smoke", "Reminder/Timer-Delete mit Domain-Marker"),
     ("entferne timer", "reminder_delete", "smoke", "Timer-Delete ohne ID bleibt domain-markiert"),
+    ("suche dachdecker plattenburg", "web_search", "smoke", "Advanced-Websuche fuer externe Themen"),
+    ("klick auf ok", "computer_use", "smoke", "Computer-Use mit klarem UI-Aktionsverb"),
     ("termin: Zahnarzt morgen 14:00", "termin_create", "smoke", "Termin erstellen"),
     # ------------------------------------------------------------------
     # Negative-Samples: darf NICHT gerouted werden (→ None)
@@ -105,6 +107,24 @@ CORPUS: list[tuple[str, str | None, str, str]] = [
         None,
         "negative",
         "Generisches 'vergiss alles' darf nicht als note_delete_fact geroutet werden.",
+    ),
+    (
+        "finde meine mail von max",
+        "mail_search",
+        "smoke",
+        "Plausible Mail-Suche wird als Mail-Command geroutet, nicht als web_search.",
+    ),
+    (
+        "suche in mails max",
+        "mail_search",
+        "smoke",
+        "Interne Mail-Suche bleibt bei mail_search statt Advanced-Websearch.",
+    ),
+    (
+        "finde kontakt lisa",
+        "contact_search",
+        "smoke",
+        "Kontakt-Suche bleibt im Contact-Handler statt web_search.",
     ),
     # ------------------------------------------------------------------
     # Known Conflicts: gelöst durch Priority, aber Kollision existiert
