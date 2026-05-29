@@ -43,8 +43,11 @@ from typing import TYPE_CHECKING
 
 from elder_berry.comms.commands.base import (
     CommandHandler,
+    CommandMatchCandidate,
     CommandResult,
     HandlerContext,
+    RoutedCommand,
+    iter_pattern_specs,
 )
 from elder_berry.comms.commands.help_sections import (
     CATEGORY_LABELS,
@@ -348,15 +351,20 @@ class RemoteCommandHandler:
         # jetzt durch die priority-Werte kodifiziert, nicht durch implizite
         # Listen-Position.
         self._handlers: list[CommandHandler] = []
+        self._handler_meta: list[tuple[str, int, CommandHandler]] = []
         for plugin in load_plugins():
             handler = plugin.factory(ctx)
             if handler is None:
                 continue
             self._handlers.append(handler)
+            self._handler_meta.append((plugin.name, plugin.priority, handler))
             # Backwards-Compat: bestehende Tests greifen direkt auf
             # self._<plugin_name> zu (z.B. self._calendar._last_events).
             # Wird in 6 Monaten zusammen mit den Legacy-Kwargs entfernt.
             setattr(self, f"_{plugin.name}", handler)
+        self._handler_by_plugin_name: dict[str, CommandHandler] = {
+            name: handler for name, _, handler in self._handler_meta
+        }
 
         # Aggregierte Simple-Commands und Command→Handler Lookup
         self._simple_commands: set[str] = set()
@@ -435,6 +443,179 @@ class RemoteCommandHandler:
         lines.append("    - hilfe: Alle verfügbaren Commands anzeigen")
         return "\n".join(lines)
 
+    # ------------------------------------------------------------------
+    # Phase 95: Kandidaten-Router (E2)
+    # ------------------------------------------------------------------
+
+    _SOURCE_ORDER: dict[str, int] = {
+        "simple": 0,
+        "pattern_match": 1,
+        "pattern_search": 2,
+        "keyword": 3,
+    }
+
+    def collect_candidates(self, text: str) -> list[CommandMatchCandidate]:
+        """Sammelt alle Routing-Kandidaten aus allen Stufen ohne early-exit.
+
+        Ermöglicht Konfidenz-Logging und Konflikt-Sichtbarkeit für E3+.
+        Stufen-Konfidenz: simple=100, pattern_match=90, pattern_search=70,
+        keyword(>=2 Wörter)=45, keyword(1 Wort)=30.
+        """
+        original_normalized = text.strip().lower()
+        stripped = _strip_fillers(text)
+        normalized = stripped.lower()
+
+        candidates: list[CommandMatchCandidate] = []
+
+        # Stufe 1: Simple-Commands (Konfidenz 100)
+        if normalized in self._simple_commands:
+            handler = self._command_handler_map.get(normalized)
+            if handler is not None:
+                plugin_name, priority = self._plugin_info_for(handler)
+                candidates.append(
+                    CommandMatchCandidate(
+                        command=normalized,
+                        plugin_name=plugin_name,
+                        handler_name=type(handler).__name__,
+                        source="simple",
+                        priority=priority,
+                        confidence=100,
+                        matched_text=normalized,
+                    )
+                )
+
+        # Stufe 2a: Pattern-Match (pattern.match, Konfidenz 90)
+        for plugin_name, priority, handler in self._handler_meta:
+            for spec in iter_pattern_specs(handler):
+                if spec.use_search:
+                    continue
+                check_text = text.strip() if spec.use_original_text else normalized
+                if spec.pattern.match(check_text):
+                    confidence = spec.confidence if spec.confidence != 70 else 90
+                    candidates.append(
+                        CommandMatchCandidate(
+                            command=spec.command,
+                            plugin_name=plugin_name,
+                            handler_name=type(handler).__name__,
+                            source="pattern_match",
+                            priority=priority,
+                            confidence=confidence,
+                            matched_text=check_text,
+                            pattern_name=spec.name,
+                            use_original_text=spec.use_original_text,
+                        )
+                    )
+
+        # Stufe 2b: Pattern-Suche (pattern.search, Konfidenz 70)
+        for plugin_name, priority, handler in self._handler_meta:
+            for spec in iter_pattern_specs(handler):
+                if not spec.use_search:
+                    continue
+                check_text = text.strip() if spec.use_original_text else normalized
+                if spec.pattern.search(check_text):
+                    candidates.append(
+                        CommandMatchCandidate(
+                            command=spec.command,
+                            plugin_name=plugin_name,
+                            handler_name=type(handler).__name__,
+                            source="pattern_search",
+                            priority=priority,
+                            confidence=spec.confidence,
+                            matched_text=check_text,
+                            pattern_name=spec.name,
+                            use_original_text=spec.use_original_text,
+                        )
+                    )
+
+        # Stufe 3: Keyword (Konfidenz 45/30)
+        if len(stripped.split()) <= self._MAX_KEYWORD_PHRASE_WORDS:
+            for plugin_name, priority, handler in self._handler_meta:
+                for command, keywords in handler.keywords.items():
+                    for keyword in keywords:
+                        kw_pattern = rf"(?<!\w){re.escape(keyword)}(?!\w)"
+                        if re.search(kw_pattern, original_normalized):
+                            kw_words = len(keyword.split())
+                            confidence = 45 if kw_words >= 2 else 30
+                            candidates.append(
+                                CommandMatchCandidate(
+                                    command=command,
+                                    plugin_name=plugin_name,
+                                    handler_name=type(handler).__name__,
+                                    source="keyword",
+                                    priority=priority,
+                                    confidence=confidence,
+                                    matched_text=original_normalized,
+                                    keyword=keyword,
+                                )
+                            )
+
+        return candidates
+
+    def _plugin_info_for(self, handler: CommandHandler) -> tuple[str, int]:
+        """Liefert (plugin_name, priority) für eine Handler-Instanz."""
+        for name, priority, h in self._handler_meta:
+            if h is handler:
+                return name, priority
+        return ("unknown", 999)
+
+    def choose_candidate(
+        self, candidates: list[CommandMatchCandidate]
+    ) -> CommandMatchCandidate | None:
+        """Wählt den besten Kandidaten (E2: First-Match-Wins-kompatibel).
+
+        Sortierkriterien (Tiebreaker in Reihenfolge):
+        1. Konfidenz absteigend (hoch = besser)
+        2. Stufen-Reihenfolge: simple < pattern_match < pattern_search < keyword
+        3. Handler-Priorität aufsteigend (niedrig = wichtiger)
+        """
+        if not candidates:
+            return None
+
+        def sort_key(c: CommandMatchCandidate) -> tuple[int, int, int]:
+            return (-c.confidence, self._SOURCE_ORDER[c.source], c.priority)
+
+        return min(candidates, key=sort_key)
+
+    def route_command(self, text: str) -> RoutedCommand | None:
+        """Vollständiges Routing: Kandidaten sammeln + auswählen + loggen.
+
+        Loggt auf DEBUG, wenn mehr als ein Kandidat matcht (Konfliktsignal).
+        Bleibt verhaltensidentisch zu parse_command Stufen 2–4.
+        """
+        candidates = self.collect_candidates(text)
+        if not candidates:
+            return None
+
+        chosen = self.choose_candidate(candidates)
+        if chosen is None:
+            return None
+
+        if len(candidates) > 1:
+            runners_up = [c for c in candidates if c is not chosen]
+            logger.debug(
+                "route_command: %d Kandidaten für '%s…' – gewählt: %s (%s, "
+                "confidence=%d), Alternativen: %s",
+                len(candidates),
+                text[:40],
+                chosen.command,
+                chosen.source,
+                chosen.confidence,
+                [(c.command, c.source, c.confidence) for c in runners_up[:3]],
+            )
+
+        handler = self._handler_by_plugin_name.get(chosen.plugin_name)
+        if handler is None:
+            handler = self._command_handler_map.get(chosen.command)
+        if handler is None:
+            return None
+
+        return RoutedCommand(
+            command=chosen.command,
+            plugin_name=chosen.plugin_name,
+            handler=handler,
+            candidate=chosen,
+        )
+
     def parse_command(self, text: str) -> str | None:
         """Prüft ob der Text ein direkter Command ist.
 
@@ -452,14 +633,10 @@ class RemoteCommandHandler:
             Normalisierter Command-Name oder None wenn kein Command erkannt.
             Für Hilfe-Unterkategorien wird ``"hilfe:<kategorie>"`` zurückgegeben.
         """
-        # Phase 51.3: gestrippte Variante für exakte/Pattern-Matches,
-        # originaler Text für Keyword-Suche (Keywords enthalten bewusst
-        # natürlichsprachige Floskeln wie "zeig mir den bildschirm").
-        original_normalized = text.strip().lower()
         stripped = _strip_fillers(text)
         normalized = stripped.lower()
 
-        # Stufe 1: Hilfe (bleibt im Orchestrator)
+        # Stufe 1: Hilfe (bleibt im Orchestrator – nicht via route_command)
         if normalized in ("hilfe", "help"):
             return "hilfe"
         if normalized in ("hilfe alles", "help alles", "hilfe all", "help all"):
@@ -468,59 +645,11 @@ class RemoteCommandHandler:
             category = normalized.split(None, 1)[1].strip()
             if category in CATEGORY_LABELS:
                 return f"hilfe:{category}"
-            # Unbekannte Kategorie – als Hilfe-Overview + Hinweis behandeln
             return f"hilfe:?{category}"
 
-        # Stufe 2: Exakter Match gegen Simple-Commands
-        if normalized in self._simple_commands:
-            return normalized
-
-        # Stufe 2a: Pattern-Match am Textanfang (match, höhere Konfidenz)
-        for handler in self._handlers:
-            for pattern, command, use_original, *rest in handler.patterns:
-                use_search = rest[0] if rest else False
-                if use_search:
-                    continue  # search-Patterns in Stufe 2b
-                check_text = text.strip() if use_original else normalized
-                if pattern.match(check_text):
-                    return command
-
-        # Stufe 2b: Pattern-Suche im Text (search, niedrigere Konfidenz)
-        for handler in self._handlers:
-            for pattern, command, use_original, *rest in handler.patterns:
-                use_search = rest[0] if rest else False
-                if not use_search:
-                    continue  # Bereits in Stufe 2a geprüft
-                check_text = text.strip() if use_original else normalized
-                if pattern.search(check_text):
-                    return command
-
-        # Stufe 3: Keyword-Suche in natürlicher Sprache.
-        # Hier auf dem *originalen* Text (nicht stripped), damit Keywords
-        # wie "zeig mir den bildschirm" oder "schau mal im netz" weiter greifen.
-        #
-        # Phase 82 Hotfix B (2026-05-10): zwei Schutzschichten gegen False-
-        # Positives, die action_sequence aushebeln (Multi-Action-Anfragen
-        # wie "erstell 3 todos UND schreib notiz UND ..." landeten frueher
-        # auf "todos"-Listen-Anzeige, weil "todos" als Substring matchte).
-        #
-        # 1) Length-Cap auf den GESTRIPPTEN Text: ueber 8 Wortern ist die
-        #    Anfrage typischerweise eine Beschreibung mehrerer Aktionen
-        #    oder eine komplexe Frage -- der LLM soll entscheiden, nicht
-        #    der Keyword-Matcher. Filler werden vorher abgeschnitten,
-        #    damit hoefliche Variants ("kannst du mir mal die offenen
-        #    todos zeigen") weiterhin durchkommen.
-        # 2) Wort-Boundary statt Substring-Check: verhindert, dass z.B.
-        #    "todoslisten" das keyword "todos" matcht.
-        if len(stripped.split()) <= self._MAX_KEYWORD_PHRASE_WORDS:
-            for handler in self._handlers:
-                for command, keywords in handler.keywords.items():
-                    for keyword in keywords:
-                        kw_pattern = rf"(?<!\w){re.escape(keyword)}(?!\w)"
-                        if re.search(kw_pattern, original_normalized):
-                            return command
-
-        return None
+        # Stufen 2–4: Kandidaten-Router (Phase 95 E2)
+        routed = self.route_command(text)
+        return routed.command if routed is not None else None
 
     def execute(self, command: str, raw_text: str) -> CommandResult:
         """Führt einen erkannten Command aus.

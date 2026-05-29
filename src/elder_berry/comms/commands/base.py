@@ -13,10 +13,10 @@ from __future__ import annotations
 import logging
 import re
 from abc import ABC, abstractmethod
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Literal
 
 if TYPE_CHECKING:
     from elder_berry.actions.base import ActionController
@@ -406,3 +406,73 @@ class CommandPlugin:
 
     version: str = "1.0.0"
     """Plugin-Version. Macht später Migrations möglich."""
+
+
+# ---------------------------------------------------------------------------
+# Phase 95 – Kandidaten-Router-Datenstrukturen (E1)
+# ---------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class PatternSpec:
+    """Normalisiertes Pattern-Tupel für den Kandidaten-Collector.
+
+    Kann direkt als Eintrag in ``handler.patterns`` stehen (Forward-Compat)
+    oder via ``iter_pattern_specs()`` aus Legacy-4-Tupeln erzeugt werden.
+    """
+
+    pattern: re.Pattern[str]
+    command: str
+    use_original_text: bool = False
+    use_search: bool = False
+    name: str | None = None
+    confidence: int = 70
+    conflict_group: str | None = None
+    broad: bool = False
+
+
+def iter_pattern_specs(handler: "CommandHandler") -> Iterator["PatternSpec"]:
+    """Normalisiert Legacy-4-Tupel und PatternSpec-Objekte aus handler.patterns.
+
+    Gibt für jeden Eintrag in ``handler.patterns`` einen ``PatternSpec``
+    zurück, unabhängig davon, ob es ein 4-Tupel oder bereits ein
+    ``PatternSpec`` ist.
+    """
+    for entry in handler.patterns:
+        if isinstance(entry, PatternSpec):
+            yield entry
+        else:
+            pattern, command, use_original, *rest = entry
+            use_search = rest[0] if rest else False
+            yield PatternSpec(
+                pattern=pattern,
+                command=command,
+                use_original_text=use_original,
+                use_search=use_search,
+            )
+
+
+@dataclass(frozen=True)
+class CommandMatchCandidate:
+    """Einzelner Routing-Kandidat mit Herkunft und Konfidenz."""
+
+    command: str
+    plugin_name: str
+    handler_name: str
+    source: Literal["simple", "pattern_match", "pattern_search", "keyword"]
+    priority: int
+    confidence: int
+    matched_text: str
+    pattern_name: str | None = None
+    keyword: str | None = None
+    use_original_text: bool = False
+
+
+@dataclass(frozen=True)
+class RoutedCommand:
+    """Ergebnis des Candidate-Routers: finaler Command + Herkunft."""
+
+    command: str
+    plugin_name: str
+    handler: "CommandHandler"
+    candidate: CommandMatchCandidate
