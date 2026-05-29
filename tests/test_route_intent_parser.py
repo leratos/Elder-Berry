@@ -290,6 +290,20 @@ class TestParse:
         assert intent.waypoints[0].type == "contact"
         assert intent.waypoints[1].type == "poi"
 
+    def test_heuristic_parse_without_anthropic_for_chained_nach(self) -> None:
+        parser = RouteIntentParser(None)
+        intent = parser.parse("Ich muss von zuhause zu Nadine und dann nach Lisa")
+        assert intent.origin.type == "home"
+        assert intent.destination.value == "Lisa"
+        assert [waypoint.value for waypoint in intent.waypoints] == ["Nadine"]
+
+    def test_heuristic_parse_without_anthropic_for_chained_richtung(self) -> None:
+        parser = RouteIntentParser(None)
+        intent = parser.parse("Ich muss von zuhause zu Nadine und dann richtung Lisa")
+        assert intent.origin.type == "home"
+        assert intent.destination.value == "Lisa"
+        assert [waypoint.value for waypoint in intent.waypoints] == ["Nadine"]
+
     def test_heuristic_parse_with_vorher_and_poi(self) -> None:
         parser = RouteIntentParser(None)
         intent = parser.parse(

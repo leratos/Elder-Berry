@@ -194,7 +194,8 @@ _SYSTEM_PROMPT = (
 
 
 _CHAINED_DESTINATION_RE = re.compile(
-    r"\bzu\s+(?P<first>[^,.!?]+?)\s+und\s+dann\s+zu\s+(?P<second>[^,.!?]+)",
+    r"\b(?:zu|nach|richtung)\s+(?P<first>[^,.!?]+?)\s+und\s+dann\s+"
+    r"(?:zu|nach|richtung)\s+(?P<second>[^,.!?]+)",
     re.IGNORECASE,
 )
 _ALONG_ROUTE_POI_RE = re.compile(
