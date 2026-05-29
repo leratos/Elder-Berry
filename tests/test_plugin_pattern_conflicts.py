@@ -122,6 +122,8 @@ def _full_mock_ctx() -> HandlerContext:
         document_classifier=MagicMock(),
         stirling_pdf=MagicMock(),
         route_planner=MagicMock(),
+        multi_stop_route_planner=MagicMock(),
+        route_session_store=MagicMock(),
         web_fetcher=MagicMock(),
         search_client=MagicMock(),
         document_reader=MagicMock(),
