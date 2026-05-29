@@ -69,9 +69,9 @@ RECIPE_PATTERN = re.compile(
 )
 HOW_TO_PATTERN = re.compile(
     r"^wie\s+mache\s+ich\s+"
-    r"(?!(?:das|es|dies|dieses|sowas|so\s+was|so\s+etwas)(?:[\s?.!,:;]+)?$)"
-    r"(?!(?:ein(?:en|em)?\s+)?backup(?:[\s?.!,:;]+)?$)"
-    r"(?!(?:ein(?:en|em)?\s+)?screenshot(?:[\s?.!,:;]+)?$)"
+    r"(?!(?:das|es|dies|dieses|sowas|so\s+was|so\s+etwas)(?:[\s?.!,:;]+(?:bitte|danke))?(?:[\s?.!,:;]+)?$)"
+    r"(?!(?:ein(?:en|em)?\s+)?backup(?:[\s?.!,:;]+(?:bitte|danke))?(?:[\s?.!,:;]+)?$)"
+    r"(?!(?:ein(?:en|em)?\s+)?screenshot(?:[\s?.!,:;]+(?:bitte|danke))?(?:[\s?.!,:;]+)?$)"
     r"(.+)$",
     re.IGNORECASE,
 )

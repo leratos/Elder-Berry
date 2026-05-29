@@ -119,6 +119,12 @@ CORPUS: list[tuple[str, str | None, str, str]] = [
         "Generisches HOW_TO mit Satzzeichen soll nicht als Rezept gelten",
     ),
     (
+        "wie mache ich das, bitte?",
+        None,
+        "negative",
+        "Generisches HOW_TO mit Hoeflichkeitsendung soll nicht als Rezept gelten",
+    ),
+    (
         "ich muss von zuhause zu nadine und dann zu lisa",
         "multi_stop_route",
         "smoke",
@@ -143,6 +149,12 @@ CORPUS: list[tuple[str, str | None, str, str]] = [
         "Backup-HOW_TO mit Satzzeichen darf nicht als Rezept-Intent erkannt werden",
     ),
     (
+        "wie mache ich ein backup, bitte?",
+        None,
+        "negative",
+        "Backup-HOW_TO mit Hoeflichkeitsendung darf nicht als Rezept-Intent erkannt werden",
+    ),
+    (
         "wie mache ich das perfekte risotto",
         "recipe_lookup",
         "smoke",
@@ -159,6 +171,12 @@ CORPUS: list[tuple[str, str | None, str, str]] = [
         "screenshot",
         "smoke",
         "Screenshot-HOW_TO mit Satzzeichen darf nicht als Rezept-Intent erkannt werden",
+    ),
+    (
+        "wie mache ich einen screenshot, bitte?",
+        "screenshot",
+        "smoke",
+        "Screenshot-HOW_TO mit Hoeflichkeitsendung darf nicht als Rezept-Intent erkannt werden",
     ),
 ]
 

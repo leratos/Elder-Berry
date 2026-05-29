@@ -385,12 +385,15 @@ def test_extract_query_variants(handler):
 def test_extract_query_rejects_generic_how_to_queries(handler):
     assert handler._extract_query("wie mache ich das") == ""
     assert handler._extract_query("wie mache ich das?") == ""
+    assert handler._extract_query("wie mache ich das, bitte?") == ""
     assert handler._extract_query("wie mache ich so was") == ""
     assert handler._extract_query("wie mache ich so etwas") == ""
     assert handler._extract_query("wie mache ich ein backup") == ""
     assert handler._extract_query("wie mache ich ein backup?") == ""
+    assert handler._extract_query("wie mache ich ein backup, bitte?") == ""
     assert handler._extract_query("wie mache ich einen screenshot") == ""
     assert handler._extract_query("wie mache ich einen screenshot?") == ""
+    assert handler._extract_query("wie mache ich einen screenshot, bitte?") == ""
 
 
 def test_extract_query_keeps_substantive_how_to_queries(handler):
