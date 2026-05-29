@@ -103,13 +103,26 @@ CORPUS: list[tuple[str, str | None, str, str]] = [
         "Note(note_get_fact) + Contact(contact_who) – Contact-Pattern gewinnt über Note-Keyword",
     ),
     # ------------------------------------------------------------------
-    # xfail: bekannte Fehler (false positives/negatives)
+    # Negative HOW_TO-Faelle: generische Nachfragen dürfen nicht auf
+    # recipe_lookup routen.
     # ------------------------------------------------------------------
     (
         "wie mache ich das",
         None,
-        "xfail",
-        "HOW_TO_PATTERN False-Positive (F2): 'wie mache ich das' → recipe_lookup statt None",
+        "negative",
+        "Generisches HOW_TO ohne Rezept-Substanz soll nicht als Rezept gelten",
+    ),
+    (
+        "wie mache ich das?",
+        None,
+        "negative",
+        "Generisches HOW_TO mit Satzzeichen soll nicht als Rezept gelten",
+    ),
+    (
+        "wie mache ich das, bitte?",
+        None,
+        "negative",
+        "Generisches HOW_TO mit Hoeflichkeitsendung soll nicht als Rezept gelten",
     ),
     (
         "ich muss von zuhause zu nadine und dann zu lisa",
@@ -123,20 +136,47 @@ CORPUS: list[tuple[str, str | None, str, str]] = [
         "smoke",
         "MultiStopRouteCommandHandler hat Vorrang vor route_plan (Prio 75 < 76)",
     ),
-    # ------------------------------------------------------------------
-    # xfail: bekannte Fehler (false positives/negatives)
-    # ------------------------------------------------------------------
     (
         "wie mache ich ein backup",
         None,
-        "xfail",
-        "HOW_TO_PATTERN False-Positive: aktuell → recipe_lookup",
+        "negative",
+        "System-Task darf nicht als Rezept-Intent erkannt werden",
+    ),
+    (
+        "wie mache ich ein backup?",
+        None,
+        "negative",
+        "Backup-HOW_TO mit Satzzeichen darf nicht als Rezept-Intent erkannt werden",
+    ),
+    (
+        "wie mache ich ein backup, bitte?",
+        None,
+        "negative",
+        "Backup-HOW_TO mit Hoeflichkeitsendung darf nicht als Rezept-Intent erkannt werden",
+    ),
+    (
+        "wie mache ich das perfekte risotto",
+        "recipe_lookup",
+        "smoke",
+        "Substanz nach 'das' darf nicht pauschal geblockt werden",
     ),
     (
         "wie mache ich einen screenshot",
-        None,
-        "xfail",
-        "HOW_TO_PATTERN False-Positive: system-Begriffe als Recipe erkannt",
+        "screenshot",
+        "smoke",
+        "Screenshot-Frage darf nicht als Rezept-Intent erkannt werden; System-Command ist erlaubt",
+    ),
+    (
+        "wie mache ich einen screenshot?",
+        "screenshot",
+        "smoke",
+        "Screenshot-HOW_TO mit Satzzeichen darf nicht als Rezept-Intent erkannt werden",
+    ),
+    (
+        "wie mache ich einen screenshot, bitte?",
+        "screenshot",
+        "smoke",
+        "Screenshot-HOW_TO mit Hoeflichkeitsendung darf nicht als Rezept-Intent erkannt werden",
     ),
 ]
 

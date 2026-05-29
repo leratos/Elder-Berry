@@ -67,7 +67,39 @@ RECIPE_PATTERN = re.compile(
     r"^(?:rezept|kochbuch|cocktail)\s*(?::|-)??\s*(.*)$",
     re.IGNORECASE,
 )
-HOW_TO_PATTERN = re.compile(r"^wie\s+mache\s+ich\s+(.+)$", re.IGNORECASE)
+HOW_TO_PATTERN = re.compile(
+    r"^wie\s+mache\s+ich\s+"
+    r"(?!(?:das|es|dies|dieses|sowas|so\s+was|so\s+etwas)(?:[\s?.!,:;]+(?:bitte|danke))?(?:[\s?.!,:;]+)?$)"
+    r"(?!(?:ein(?:en|em)?\s+)?backup(?:[\s?.!,:;]+(?:bitte|danke))?(?:[\s?.!,:;]+)?$)"
+    r"(?!(?:ein(?:en|em)?\s+)?screenshot(?:[\s?.!,:;]+(?:bitte|danke))?(?:[\s?.!,:;]+)?$)"
+    r"(.+)$",
+    re.IGNORECASE,
+)
+
+_HOW_TO_GENERIC_QUERY_BLOCKLIST = {
+    "das",
+    "das da",
+    "das hier",
+    "dies",
+    "dieses",
+    "es",
+    "ein backup",
+    "backup",
+    "einen screenshot",
+    "ein screenshot",
+    "screenshot",
+    "sowas",
+    "so was",
+    "so etwas",
+}
+
+_HOW_TO_GENERIC_TOKEN_BLOCKLIST = {
+    "das",
+    "dies",
+    "dieses",
+    "es",
+    "sowas",
+}
 
 RECIPE_SYSTEM_PROMPT = """Du bist eine Koch-Assistentin.
 Erzeuge NUR gueltiges JSON im schema.org Recipe-Format.
@@ -245,7 +277,6 @@ class RecipeCommandHandler(CommandHandler):
                 "rezept",
                 "kochbuch",
                 "cocktail",
-                "wie mache ich",
             ]
         }
 
@@ -732,6 +763,24 @@ class RecipeCommandHandler(CommandHandler):
         return text.strip(" .!?")
 
     @staticmethod
+    def _is_substantive_how_to_query(query: str) -> bool:
+        normalized = RecipeCommandHandler._normalize_name_for_match(query)
+        if not normalized:
+            return False
+
+        if normalized in _HOW_TO_GENERIC_QUERY_BLOCKLIST:
+            return False
+
+        tokens = normalized.split()
+        if not tokens:
+            return False
+
+        if len(tokens) == 1 and tokens[0] in _HOW_TO_GENERIC_TOKEN_BLOCKLIST:
+            return False
+
+        return True
+
+    @staticmethod
     def _extract_query(raw_text: str) -> str:
         text = raw_text.strip()
         m = RECIPE_PATTERN.match(text)
@@ -739,7 +788,10 @@ class RecipeCommandHandler(CommandHandler):
             return RecipeCommandHandler._clean_extracted_query(m.group(1) or "")
         m = HOW_TO_PATTERN.match(text)
         if m:
-            return RecipeCommandHandler._clean_extracted_query(m.group(1) or "")
+            how_to_query = RecipeCommandHandler._clean_extracted_query(m.group(1) or "")
+            if not RecipeCommandHandler._is_substantive_how_to_query(how_to_query):
+                return ""
+            return how_to_query
 
         # Natural language fallback, e.g.:
         # "gib mir ein Rezept fuer vegetarisches Gulasch"

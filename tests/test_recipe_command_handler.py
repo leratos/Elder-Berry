@@ -382,6 +382,39 @@ def test_extract_query_variants(handler):
     assert handler._extract_query("hallo") == ""
 
 
+def test_extract_query_rejects_generic_how_to_queries(handler):
+    assert handler._extract_query("wie mache ich das") == ""
+    assert handler._extract_query("wie mache ich das?") == ""
+    assert handler._extract_query("wie mache ich das, bitte?") == ""
+    assert handler._extract_query("wie mache ich so was") == ""
+    assert handler._extract_query("wie mache ich so etwas") == ""
+    assert handler._extract_query("wie mache ich ein backup") == ""
+    assert handler._extract_query("wie mache ich ein backup?") == ""
+    assert handler._extract_query("wie mache ich ein backup, bitte?") == ""
+    assert handler._extract_query("wie mache ich einen screenshot") == ""
+    assert handler._extract_query("wie mache ich einen screenshot?") == ""
+    assert handler._extract_query("wie mache ich einen screenshot, bitte?") == ""
+
+
+def test_extract_query_keeps_substantive_how_to_queries(handler):
+    assert handler._extract_query("wie mache ich linsensuppe") == "linsensuppe"
+    assert (
+        handler._extract_query("wie mache ich das perfekte risotto")
+        == "das perfekte risotto"
+    )
+    assert (
+        handler._extract_query("wie mache ich spaghetti carbonara")
+        == "spaghetti carbonara"
+    )
+
+
+def test_substantive_how_to_query_gate(handler):
+    assert handler._is_substantive_how_to_query("") is False
+    assert handler._is_substantive_how_to_query("das") is False
+    assert handler._is_substantive_how_to_query("so was") is False
+    assert handler._is_substantive_how_to_query("das perfekte risotto") is True
+
+
 def test_extract_json_object_variants(handler):
     assert handler._extract_json_object('{"a":1}') == '{"a":1}'
     assert handler._extract_json_object('xxx {"a":1} yyy') == '{"a":1}'
