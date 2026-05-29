@@ -230,11 +230,14 @@ Gates: `test` (Ubuntu+Windows, inkl. Coverage), `lint` (ruff), `typecheck`
 | 81 + 81b | Command-Fallback-UX + Plugin-Vorschlag aus Fallback-Pfad | ✅ Fertig |
 | 82 + 82.1 | Multi-Action-Sequencing + Multi-Line-in-Step | ✅ Fertig |
 | 83 | Reactive AvatarEngine | 🔬 Konzept |
-| 85 + 86 + 87.B | HTML-Mail-Sanitizer, tinycss2-Resolver, Background-Heuristik | ✅ Fertig |
+| 85 + 86 + 87.1 + 87.B + 87.C | HTML-Mail-Sanitizer, tinycss2-Resolver, Iteration-Crash-Fix, Background-Heuristik (WCAG), Doku-Migration | ✅ Fertig |
 | 89 | Saleria-Initiativ-Followup | 🔬 Konzept |
 | 90 | Multi-Line-Notiz-Pattern + Halluzinations-Vermeidung | 🧪 Teilweise umgesetzt |
 | 91 | FactStore-Extraktion + Note-Flow-Refactor | ✅ Fertig |
-| 92 | Multi-Stop-Routing | 🔬 Konzept |
+| 92 | Multi-Stop-Routing | ✅ Fertig |
+| 93 | Nextcloud Cookbook-Integration (Rezepte, API-Matching, Kategorie-Suche) | ✅ Fertig |
+| 94 | LibreSign-Integration (PDF-Signierung via Nextcloud) | 🔬 Konzept |
+| 95 | Comms-Pattern-Stabilisierung (PatternSpec, Routing-Confidence, Handler-Gates) | ✅ Fertig |
 
 Vollständige Roadmap mit Details: **[PROJECT_ROADMAP.md](docs/PROJECT_ROADMAP.md)**
 Phasenchronik mit Beschreibungen: **[CHANGELOG.md](docs/CHANGELOG.md)**
