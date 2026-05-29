@@ -13,7 +13,7 @@ from __future__ import annotations
 import logging
 import re
 from abc import ABC, abstractmethod
-from collections.abc import Callable, Iterator
+from collections.abc import Callable, Iterator, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal
@@ -136,7 +136,9 @@ class CommandHandler(ABC):
         return set()
 
     @property
-    def patterns(self) -> list[tuple[re.Pattern[str], str, bool, bool] | PatternSpec]:
+    def patterns(self) -> Sequence[
+        tuple[re.Pattern[str], str, bool, bool] | PatternSpec
+    ]:
         """Regex-Patterns für parametrierte Commands.
 
         Returns:

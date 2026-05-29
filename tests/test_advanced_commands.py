@@ -199,7 +199,7 @@ class TestAdvancedInterface:
         assert "audio" in handler.simple_commands
 
     def test_patterns(self, handler):
-        names = [p[1] for p in handler.patterns]
+        names = [p.command if hasattr(p, "command") else p[1] for p in handler.patterns]
         assert "audio_toggle" in names
         assert "document_summary" in names
         assert "computer_use" in names
