@@ -17,8 +17,9 @@ from collections import defaultdict
 from pathlib import Path
 from unittest.mock import MagicMock
 
-from elder_berry.comms.commands.base import HandlerContext
+from elder_berry.comms.commands.base import CommandMatchCandidate, HandlerContext
 from elder_berry.comms.commands.registry import load_plugins
+from elder_berry.comms.remote_commands import RemoteCommandHandler
 
 
 # Erlaubte Keyword-Dopplungen: keyword -> Menge erlaubter Commands.
@@ -36,6 +37,53 @@ EXPECTED_KEYWORD_CONFLICTS: dict[str, set[str]] = {
     # (contact_who).  Contact gewinnt via Pattern-Match.
     "wer ist": {"note_get_fact", "contact_who"},
 }
+
+
+EXPECTED_KEYWORD_ROUTING_CONFLICTS: dict[str, dict[str, object]] = {
+    "lauter": {
+        "winner": "harmony_volume_up",
+        "losers": {"volume"},
+        "reason": "Harmony-Pattern gewinnt gegen System-Keyword.",
+    },
+    "leiser": {
+        "winner": "harmony_volume_down",
+        "losers": {"volume"},
+        "reason": "Harmony-Pattern gewinnt gegen System-Keyword.",
+    },
+    "musik an": {
+        "winner": "harmony_activity_on",
+        "losers": {"play"},
+        "reason": "Harmony-Pattern gewinnt gegen System-Keyword.",
+    },
+    "wer ist max mustermann": {
+        "winner": "contact_who",
+        "losers": {"note_get_fact"},
+        "reason": "Contact-Pattern gewinnt gegen Note-Keyword.",
+    },
+}
+
+
+_SOURCE_ORDER: dict[str, int] = {
+    "simple": 0,
+    "pattern_match": 1,
+    "pattern_search": 2,
+    "keyword": 3,
+}
+
+
+def _candidate_sort_key(c: CommandMatchCandidate) -> tuple[int, int, int]:
+    return (-c.confidence, _SOURCE_ORDER[c.source], c.priority)
+
+
+def _best_candidate_per_command(
+    candidates: list[CommandMatchCandidate],
+) -> dict[str, CommandMatchCandidate]:
+    best: dict[str, CommandMatchCandidate] = {}
+    for cand in candidates:
+        current = best.get(cand.command)
+        if current is None or _candidate_sort_key(cand) < _candidate_sort_key(current):
+            best[cand.command] = cand
+    return best
 
 
 def _full_mock_ctx() -> HandlerContext:
@@ -159,3 +207,41 @@ def test_keyword_map_matches_handler_keywords() -> None:
     all_kw_in_km = {kw for keywords in km.values() for kw in keywords}
     missing = {kw for kw in direct if kw not in all_kw_in_km}
     assert not missing, f"Keywords fehlen in keyword_map: {missing}"
+
+
+def test_expected_keyword_conflicts_resolve_as_documented() -> None:
+    """Prueft bekannte Keyword-Konflikte ueber collect_candidates/route_command.
+
+    Jeder Konfliktfall muss:
+    - mehr als einen Command-Kandidaten liefern,
+    - mindestens einen Keyword-Kandidaten enthalten,
+    - den dokumentierten winner/losers-Ausgang zeigen.
+    """
+    handler = RemoteCommandHandler(ctx=_full_mock_ctx())
+
+    for text, expected in EXPECTED_KEYWORD_ROUTING_CONFLICTS.items():
+        candidates = handler.collect_candidates(text)
+        best_by_command = _best_candidate_per_command(candidates)
+        assert len(best_by_command) > 1, (
+            f"'{text}' sollte mehr als einen Command-Kandidaten liefern, "
+            f"aber hat nur: {list(best_by_command)}"
+        )
+        assert any(c.source == "keyword" for c in candidates), (
+            f"'{text}' sollte mindestens einen Keyword-Kandidaten haben, "
+            f"hat aber nur: {[(c.command, c.source) for c in candidates]}"
+        )
+
+        routed = handler.route_command(text)
+        assert routed is not None
+        assert routed.command == expected["winner"], (
+            f"'{text}': winner='{routed.command}', erwartet "
+            f"'{expected['winner']}' ({expected['reason']})"
+        )
+
+        losers = {
+            command for command in best_by_command if command != routed.command
+        }
+        assert losers == expected["losers"], (
+            f"'{text}': losers={losers}, erwartet {expected['losers']} "
+            f"({expected['reason']})"
+        )

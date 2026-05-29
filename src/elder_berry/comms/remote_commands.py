@@ -460,6 +460,10 @@ class RemoteCommandHandler:
         Ermöglicht Konfidenz-Logging und Konflikt-Sichtbarkeit für E3+.
         Stufen-Konfidenz: simple=100, pattern_match=90, pattern_search=70,
         keyword(>=2 Wörter)=45, keyword(1 Wort)=30.
+
+        Duplikate je Command werden in der Keyword-Stufe unterdrückt:
+        wenn ein Command bereits als Simple/Pattern-Kandidat vorliegt,
+        wird kein zusätzlicher Keyword-Kandidat für denselben Command erzeugt.
         """
         original_normalized = text.strip().lower()
         stripped = _strip_fillers(text)
@@ -529,8 +533,11 @@ class RemoteCommandHandler:
 
         # Stufe 3: Keyword (Konfidenz 45/30)
         if len(stripped.split()) <= self._MAX_KEYWORD_PHRASE_WORDS:
+            existing_commands = {c.command for c in candidates}
             for plugin_name, priority, handler in self._handler_meta:
                 for command, keywords in handler.keywords.items():
+                    if command in existing_commands:
+                        continue
                     for keyword in keywords:
                         kw_pattern = rf"(?<!\w){re.escape(keyword)}(?!\w)"
                         if re.search(kw_pattern, original_normalized):
@@ -548,6 +555,7 @@ class RemoteCommandHandler:
                                     keyword=keyword,
                                 )
                             )
+                            existing_commands.add(command)
 
         return candidates
 
