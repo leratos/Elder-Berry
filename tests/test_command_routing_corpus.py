@@ -131,6 +131,12 @@ CORPUS: list[tuple[str, str | None, str, str]] = [
         "System-Task darf nicht als Rezept-Intent erkannt werden",
     ),
     (
+        "wie mache ich das perfekte risotto",
+        "recipe_lookup",
+        "smoke",
+        "Substanz nach 'das' darf nicht pauschal geblockt werden",
+    ),
+    (
         "wie mache ich einen screenshot",
         "screenshot",
         "smoke",

@@ -69,10 +69,9 @@ RECIPE_PATTERN = re.compile(
 )
 HOW_TO_PATTERN = re.compile(
     r"^wie\s+mache\s+ich\s+"
-    r"(?!das(?:\b|$))"
-    r"(?!es(?:\b|$))"
-    r"(?!(?:ein(?:en|em)?\s+)?backup(?:\b|$))"
-    r"(?!(?:ein(?:en|em)?\s+)?screenshot(?:\b|$))"
+    r"(?!(?:das|es|dies|dieses|sowas|so\s+was|so\s+etwas)\s*$)"
+    r"(?!(?:ein(?:en|em)?\s+)?backup\s*$)"
+    r"(?!(?:ein(?:en|em)?\s+)?screenshot\s*$)"
     r"(.+)$",
     re.IGNORECASE,
 )
@@ -90,6 +89,7 @@ _HOW_TO_GENERIC_QUERY_BLOCKLIST = {
     "ein screenshot",
     "screenshot",
     "sowas",
+    "so was",
     "so etwas",
 }
 
