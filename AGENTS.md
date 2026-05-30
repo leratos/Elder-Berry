@@ -10,57 +10,35 @@ auf diese Datei verweisen, statt ein zweites Regelwerk zu pflegen.
 
 ## Projektgedächtnis
 
-Projekt:
+Projekt: elder-berry
 
-```text
-elder-berry
-```
+Aktives Projektgedächtnis ist das Bramble-MCP-Journal
+(<https://journal.last-strawberry.com/mcp/>, projektgebundenes Token).
 
-Elder-Berry nutzt ab jetzt das Bramble-MCP-Journal als aktives
-Projektgedächtnis.
+Zu Beginn jeder Session:
 
-Zu Beginn einer Arbeitssitzung:
+1. `journal_guide()` aufrufen und befolgen — die kanonischen, geteilten
+   Journal-Konventionen (Status, Tags, Korrektur-/`resolves`-Modell,
+   Open-Item-Semantik, Session-Start/Ende, DoD). Diese Regeln hier NICHT
+   wiederholen.
+2. `journal_context(project="elder-berry", n_recent=10)` lesen
+   (Fallback: `journal_read(project="elder-berry", n=20)`).
 
-- Bevorzuge einen kuratierten Start mit
-  `journal_context(project="elder-berry", n_recent=10)`.
-- Fallback für Rohhistorie:
-  `journal_read(project="elder-berry", n=20)`.
-- Wenn der Kontext unklar ist, suche gezielt mit
-  - `journal_search(project="elder-berry", query=..., limit=...)` oder
-    projektübergreifend mit
-  - `journal_search_all(query=..., limit=...)`.
+Dieses Dokument ergänzt den Guide nur um Projekt-Spezifika (Tech-Stack,
+Test-Runner, Build/Run, Repo-Layout, Branch-Konventionen).
+
+### Elder-Berry-spezifische Ergänzungen zum Session-Start
+
 - Lies zusätzlich relevante lokale Dokumente, wenn sie zum Arbeitsumfang
   gehören:
   - `PROJECT_ROADMAP.md` nur für Planungs-/Scope-Fragen.
   - `docs/concepts/...` vor Beginn einer Phase oder Änderung am betreffenden
     Konzeptbereich.
   - `docs/architecture.md` für Architektur, Hardware und Klassenübersicht.
-
-Wichtig:
-
-- `docs/journal.txt` ist nur noch eine historische Importquelle. Schreibe dort
-  keine neuen Einträge.
-- Das Bramble-MCP-Journal ist die maßgebliche Quelle für laufenden Projektstand.
-- Bestehende Journal-Einträge werden nicht geändert oder gelöscht.
-- Korrekturen sind append-only: schreibe einen neuen `bugfix`- oder `notiz`-
-  Eintrag, der den alten Eintrag per id, Titel oder Datum referenziert.
 - Wenn die Bramble-MCP-Tools nicht verfügbar sind, sage das ausdrücklich.
   Nutze dann nur als groben Fallback: `CHANGELOG.md` -> `git log --oneline -30`
   -> letzte gemergte PR-Beschreibungen. Markiere den Stand dann als
   grobkörnig und rate nicht.
-
-Während der Arbeit:
-
-- Behandle das Bramble-MCP-Journal als Projektgedächtnis.
-- Bei substantiellen Phasen oder längeren Arbeiten: nach Bestätigung einen
-  Start-Eintrag mit `journal_append(project="elder-berry", status="in_arbeit",
-  ...)` schreiben.
-- Nach abgeschlossener substantieller Arbeit: einen Abschluss-Eintrag mit
-  `journal_append(project="elder-berry", status="abgeschlossen", ...)`
-  schreiben.
-- Erlaubte Statuswerte: `in_arbeit`, `abgeschlossen`, `notiz`, `bugfix`.
-- Erwähne im Journal wichtige Tests, Host-Kommandos, Entscheidungen und offene
-  Folgearbeit.
 
 ## Planung Vor Ausführung
 

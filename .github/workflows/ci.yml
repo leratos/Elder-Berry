@@ -136,4 +136,16 @@ jobs:
         # Archiven; pip install von PyPI ist nicht angreifbar. Kein Fix
         # released (Fix Versions leer im Advisory). Wiederbewerten sobald
         # eine gepatchte pip-Version verfuegbar ist.
-        run: pip-audit --desc on --ignore-vuln CVE-2026-3219
+        #
+        # CVE-2026-45829: Pre-Auth Code-Injection im ChromaDB-HTTP-Server
+        # (Endpoint /api/v2/.../collections) bei trust_remote_code=true.
+        # Elder-Berry nutzt ChromaDB ausschliesslich eingebettet via
+        # chromadb.PersistentClient (lokal, in-process) -- der HTTP-Server
+        # wird nie gestartet, HttpClient/trust_remote_code nirgends
+        # verwendet. Kein Fix released (Fix Versions leer im Advisory;
+        # 1.5.9 ist die aktuellste PyPI-Version). Wiederbewerten sobald
+        # eine gepatchte chromadb-Version verfuegbar ist.
+        run: >-
+          pip-audit --desc on
+          --ignore-vuln CVE-2026-3219
+          --ignore-vuln CVE-2026-45829
