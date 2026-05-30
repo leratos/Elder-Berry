@@ -19,6 +19,13 @@ elder-berry
 Elder-Berry nutzt ab jetzt das Bramble-MCP-Journal als aktives
 Projektgedächtnis.
 
+Die geteilten, projektübergreifenden Journal-Konventionen (Status, Tags,
+Korrektur- und `resolves`-Modell, Open-Item-Semantik, Session-Start/Ende,
+DoD) sind kanonisch über das MCP-Tool `journal_guide()` abrufbar. Rufe es
+zu Beginn jeder Sitzung auf und befolge es; dieses Dokument ergänzt den
+Guide nur um Elder-Berry-Repo-Spezifika (Test-Runner, Layout, Deployment) und
+wiederholt die geteilten Regeln nicht.
+
 Zu Beginn einer Arbeitssitzung:
 
 - Bevorzuge einen kuratierten Start mit
@@ -58,6 +65,17 @@ Während der Arbeit:
 - Nach abgeschlossener substantieller Arbeit: einen Abschluss-Eintrag mit
   `journal_append(project="elder-berry", status="abgeschlossen", ...)`
   schreiben.
+- Open-Items schließen (append-only): Sobald Phase 4f deployed ist, den
+  Abschluss-Eintrag per Link `resolves -> <id des in_arbeit-Eintrags>`
+  verknüpfen. Das ist das zuverlässigste Schließsignal für
+  `journal_open_items`/`journal_context`; der alte Eintrag wird nicht
+  verändert.
+- "Offen" wird inferiert, nicht nur am Status abgelesen:
+  `journal_open_items` blendet effektiv geschlossene Items aus und markiert
+  alte unresolved-Items als `stale` (`open_state`/`resolution_reason` im
+  Output). Echten Backlog (noch nicht begonnene Folgearbeit) als schlanken
+  `in_arbeit`-Eintrag mit klarem nächstem Schritt führen — sonst findet ihn
+  kein Tool.
 - Erlaubte Statuswerte: `in_arbeit`, `abgeschlossen`, `notiz`, `bugfix`.
 - Erwähne im Journal wichtige Tests, Host-Kommandos, Entscheidungen und offene
   Folgearbeit.
