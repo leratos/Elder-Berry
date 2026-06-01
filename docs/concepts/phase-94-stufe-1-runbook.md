@@ -161,10 +161,15 @@ Diese Punkte traten bei der echten Installation auf NC 33.0.4 + LibreSign
    **bereits/teilsignierten** PDFs auf (LibreSign liest die vorhandene Signatur
    und stolpert). Immer mit einer **frischen, nie signierten Kopie** arbeiten.
 
-5. **Mailserver-Zertifikat abgelaufen** (separat entdeckt): Nextcloud konnte
-   keine Mails senden (`certificate verify failed`). Ursache war ein
-   abgelaufenes Mail-Zert; in Plesk dem Mail-Dienst das gültige Domain-Zert
-   zuweisen. Betrifft die gesamte Mail, nicht nur LibreSign.
+5. **Mailserver-Zertifikat abgelaufen** (separat entdeckt, **erledigt**):
+   Nextcloud konnte keine Mails senden (`certificate verify failed`) – Ursache
+   war ein abgelaufenes Mail-Zert. Fix in Plesk: gültiges Domain-Zert dem
+   Mail-/Webmail-Dienst zuweisen. **Wichtig:** Eine Zert-Aktualisierung auf der
+   Haupt-Domain-Ebene **kaskadiert nicht** automatisch auf die Mail-/Webmail-
+   Ebene – diese muss **separat** ausgewählt werden. Prüfen mit
+   `openssl s_client -connect <host>:465 -servername <host> </dev/null 2>/dev/null | openssl x509 -noout -enddate`.
+   Betrifft die gesamte Mail, nicht nur LibreSign (z. B. LibreSigns „Mail bei
+   Anfrage/Signierung"-Optionen scheitern sonst am SMTP-Cert).
 
 6. **`open_basedir`-Warnungen** auf einen Zertifikats-DN
    (`file_exists(/C=DE/O=…)`) in `OrderCertificatesTrait.php` – **harmloses
@@ -278,9 +283,14 @@ Erledigt (2026-06-01):
 - [x] Outbound-Download funktionierte.
 - [x] occ-Wrapper: Webroot + Web-User (lokaler vHost-User) bestätigt.
 
+Erledigt (Fortsetzung):
+
+- [x] Finale Gate-Bestätigung: frisches PDF manuell **sichtbar** signiert
+      (Gate grün, 2026-06-01).
+- [x] Stolperstein 5 (Mail-Zert) im Plesk gefixt (Zert auf Mail-/Webmail-Ebene
+      separat zugewiesen).
+
 Noch offen:
 
-- [ ] Finale Gate-Bestätigung: mind. 1 reales PDF manuell **sichtbar** signiert
-      (frische Kopie, kein re-sign).
-- [ ] Stolperstein 5 (Mail-Zert) im Plesk gefixt.
-- [ ] Entscheidung, ob `notifications` (Stolperstein 3) dauerhaft aus bleibt.
+- [ ] Entscheidung, ob `notifications` (Stolperstein 3) dauerhaft aus bleibt
+      (bleibt vorerst deaktiviert).

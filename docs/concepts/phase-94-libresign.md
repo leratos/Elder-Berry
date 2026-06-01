@@ -7,8 +7,11 @@
 - LibreSign ist serverseitig installiert und konfiguriert (OpenSSL-Root-Cert,
   Signatur-Engine JSignPdf). Installationsdetails + Stolpersteine:
   `docs/concepts/phase-94-stufe-1-runbook.md`.
-- Offen: finale Gate-Bestätigung (mind. 1 reales PDF manuell sichtbar
-  signieren) und zwei operative Server-Themen (siehe „Offene Punkte").
+- **Gate grün (2026-06-01):** manuelles, sichtbares Signieren eines frischen
+  PDFs funktioniert end-to-end (Signaturfeld + QR-Validierungslink). LibreSign
+  ist für den manuellen Browser-Workflow nutzbar.
+- Rest: `notifications`-App bleibt deaktiviert (Workaround, siehe „Offene
+  Punkte"); Rest-Admin (Roadmap, Merge) bei Lera.
 
 ## Motivation
 
@@ -119,24 +122,23 @@ ImageMagick-SVG-Decoder (siehe Runbook, Gotcha „SVG").
 - [x] LibreSign serverseitig installiert (Java, JSignPdf, PDFtk, Poppler,
       OpenSSL-Root-Cert) – Konfigurations-Prüfung grün.
 - [x] Sicherheitsentscheidung dokumentiert: keine Saleria-Anbindung.
-- [ ] Mind. 1 reales PDF manuell **sichtbar** signiert (Gate-Bestätigung).
-- [ ] Stufe-1-Runbook mit realen Befehlen + Gotchas finalisiert.
-- [ ] Bramble-Journal aktualisiert (project=elder-berry; `docs/journal.txt` ist
+- [x] Mind. 1 reales PDF manuell **sichtbar** signiert (Gate-Bestätigung,
+      2026-06-01).
+- [x] Stufe-1-Runbook mit realen Befehlen + Gotchas finalisiert.
+- [x] Bramble-Journal aktualisiert (project=elder-berry; `docs/journal.txt` ist
       nur historische Importquelle, dort KEINE neuen Einträge).
 - [ ] PROJECT_ROADMAP.md aktualisiert.
 - [ ] Branch feature/phase-94-libresign-integration gemerged.
 
 ## Offene Punkte (operativ, server-seitig)
 
-Beide unabhängig vom Signieren, aber heute aufgetaucht:
-
 - **`notifications`-App deaktiviert** als Workaround für einen NC-33-Bug
   (`getAppValueString() on null` im Push-Pfad). Folge: keine Nextcloud-
   Benachrichtigungs-Glocke. Wieder aktivieren, sobald ein Upstream-Fix vorliegt.
-- **Mailserver-Zertifikat abgelaufen** (29. Mai 2026) → Nextcloud (und alle
-  Mail-Clients) können nicht mehr verschlüsselt mailen. In Plesk dem Mail-Dienst
-  das gültige Domain-Zertifikat zuweisen. Betrifft die gesamte Mail, nicht nur
-  LibreSign.
+- ~~Mailserver-Zertifikat abgelaufen~~ **erledigt (2026-06-01):** in Plesk dem
+  Mail-/Webmail-Dienst das gültige Domain-Zertifikat zugewiesen. **Learning:**
+  Eine Zert-Aktualisierung auf Haupt-Domain-Ebene kaskadiert **nicht**
+  automatisch auf die Mail-/Webmail-Ebene — die muss separat ausgewählt werden.
 
 ## Plan B (falls die manuelle UX nicht überzeugt)
 
