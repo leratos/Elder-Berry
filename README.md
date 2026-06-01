@@ -236,7 +236,7 @@ Gates: `test` (Ubuntu+Windows, inkl. Coverage), `lint` (ruff), `typecheck`
 | 91 | FactStore-Extraktion + Note-Flow-Refactor | ✅ Fertig |
 | 92 | Multi-Stop-Routing | ✅ Fertig |
 | 93 | Nextcloud Cookbook-Integration (Rezepte, API-Matching, Kategorie-Suche) | ✅ Fertig |
-| 94 | LibreSign-Integration (PDF-Signierung via Nextcloud) | 🔬 Konzept |
+| 94 | LibreSign-Integration (PDF-Signierung via Nextcloud, manuell – bewusst keine Saleria-Anbindung) | ✅ Fertig (Install-only) |
 | 95 | Comms-Pattern-Stabilisierung (PatternSpec, Routing-Confidence, Handler-Gates) | ✅ Fertig |
 
 Vollständige Roadmap mit Details: **[PROJECT_ROADMAP.md](docs/PROJECT_ROADMAP.md)**
