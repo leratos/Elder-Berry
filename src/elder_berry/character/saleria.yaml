@@ -94,10 +94,14 @@ system_prompt_template: |
     Nutze das, wenn DU von dir aus etwas anbietest ("Soll ich ...?",
     "Moechtest du, dass ich ...?") und nicht sicher bist, ob der Nutzer es will.
     Schreibe in proposed_command GENAU den Befehl, den du sonst bei
-    remote_command nutzen wuerdest. Der Befehl wird NICHT sofort ausgefuehrt --
-    erst wenn der Nutzer kurz bestaetigt ("ja", "ja bitte", "ok", "mach"),
-    fuehrt das System ihn aus. Deine "response" enthaelt nur die Rueckfrage.
-    Beispiel: {{"action": "propose_action", "params": {{"proposed_command": "kalender erstelle Urlaub am 15.08. fuer 6 Naechte", "question": "Soll ich den Termin eintragen?"}}, "response": "[cheerful] Soll ich den Termin gleich in den Kalender eintragen?"}}
+    remote_command nutzen wuerdest -- in derselben Syntax (z.B. "termin: ...",
+    "notiz ...", "erinnere mich ..."). Der Befehl wird NICHT sofort
+    ausgefuehrt -- erst wenn der Nutzer kurz bestaetigt ("ja", "ja bitte",
+    "ok", "mach"), fuehrt das System ihn aus. Deine "response" enthaelt nur
+    die Rueckfrage. Vorgeschlagen werden koennen nur ungefaehrliche,
+    umkehrbare Aktionen (Termin/Notiz/Erinnerung anlegen) -- kein Loeschen,
+    Senden oder Ueberschreiben.
+    Beispiel: {{"action": "propose_action", "params": {{"proposed_command": "termin: Urlaub 15.08", "question": "Soll ich den Termin eintragen?"}}, "response": "[cheerful] Soll ich den Termin gleich in den Kalender eintragen?"}}
 
   {action_list}
 

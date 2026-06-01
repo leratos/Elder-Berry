@@ -35,6 +35,7 @@ from elder_berry.comms.message_channel import IncomingMessage, MessageChannel
 from elder_berry.comms.message_handlers import BridgeMessageHandler
 from elder_berry.comms.pending_confirmation import PendingConfirmationStore
 from elder_berry.comms.pending_initiative import (
+    SAFE_PROPOSABLE_COMMANDS,
     PendingInitiative,
     PendingInitiativeStore,
 )
@@ -511,20 +512,38 @@ class MatrixBridge:
             )
             return
 
-        # Den vorgeschlagenen Command als echte Nachricht durch den
-        # Command-Router schicken (frozen DTO -> replace statt Mutation).
-        proposed_msg = dataclasses.replace(msg, body=proposed)
         command = self._remote_commands.parse_command(proposed)
-        if command:
-            await self._handler.handle_remote_command(proposed_msg, command)
+
+        # Sicherheits-Gate (PR #276, Codex P1): default-deny. Nur reversible/
+        # ungefaehrliche Commands laufen automatisch auf eine kurze
+        # Bestaetigung durch. Destruktive (Loeschen/Senden/Schreiben/Restart)
+        # oder unbekannte Vorschlaege werden abgelehnt -- u.a. weil
+        # propose_action aus untrusted Enrichment stammen kann und einige
+        # Delete-Commands KEINE eigene PendingConfirmation setzen. Bewusst
+        # KEIN LLM-Fallback hier (kein attacker-kontrollierter Text an das LLM).
+        if command is None or command not in SAFE_PROPOSABLE_COMMANDS:
+            logger.warning(
+                "Initiativ-Vorschlag abgelehnt (Command %r nicht in Safe-Allowlist): %r",
+                command,
+                proposed,
+            )
+            await self._channel.send_text(
+                msg.room_id,
+                "Das fuehre ich nicht automatisch auf ein kurzes 'ja' aus. "
+                "Wenn du das wirklich willst, tipp den Befehl bitte direkt.",
+            )
             return
 
-        # Kein direkter Command erkannt -> als normale Anfrage an den Assistant.
-        logger.info(
-            "Vorgeschlagener Command %r ist kein direkter Command -> LLM-Pfad",
-            proposed,
-        )
-        await self._handler.handle_assistant_message(proposed_msg)
+        # Den vorgeschlagenen Command als echte Nachricht durch den
+        # Command-Router schicken (frozen DTO -> replace statt Mutation).
+        # Rekursions-Guard wie bei LLM-initiierten Commands (Codex P2): falls
+        # der Command fallthrough liefert, darf er nicht erneut ins LLM laufen.
+        proposed_msg = dataclasses.replace(msg, body=proposed)
+        self._handler._in_llm_command.add(msg.sender)
+        try:
+            await self._handler.handle_remote_command(proposed_msg, command)
+        finally:
+            self._handler._in_llm_command.discard(msg.sender)
 
     # ------------------------------------------------------------------
     # Error Alerting

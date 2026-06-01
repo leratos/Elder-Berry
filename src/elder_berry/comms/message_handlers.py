@@ -933,7 +933,11 @@ class BridgeMessageHandler:
             prefix: Vorangestellter Command-Output (Mail-Enrichment-Pfad);
                 leer im Standard-LLM-Pfad.
         """
-        params = llm_result.action_params or {}
+        # Defensive: bei LLM-Drift kann action_params kein dict sein
+        # (String/Liste). Dann als ungueltigen Vorschlag behandeln, statt
+        # mit .get() den Message-Flow zu craschen (analog action_sequence).
+        raw_params = llm_result.action_params
+        params = raw_params if isinstance(raw_params, dict) else {}
         proposed = str(params.get("proposed_command", "")).strip()
         question = str(params.get("question", "")).strip()
 

@@ -81,6 +81,30 @@ INITIATIVE_CONFIRM_WORDS = frozenset(
     }
 )
 
+# Phase 89 Sicherheit (PR #276, Codex P1): Default-deny-Allowlist fuer
+# Commands, die ein bestaetigter Initiativ-Vorschlag automatisch ausfuehren
+# darf. Bewusst NUR reversible / nicht-destruktive Aktionen. Hintergrund:
+# 1) propose_action kann aus untrusted Mail-/Web-/Doku-Enrichment stammen
+#    (Prompt-Injection-Vektor) -- ein kurzes "ja" darf keine beliebige
+#    Aktion ausloesen.
+# 2) Einige destruktive Commands (z.B. contact_delete, einzelne
+#    termin_delete) loeschen sofort OHNE eigene PendingConfirmation -- sie
+#    duerfen daher nie ueber den Initiativ-Pfad laufen.
+# Alles, was nicht hier steht, wird abgelehnt ("tipp den Befehl direkt").
+# Erweitern nur um nachweislich umkehrbare/harmlose Commands.
+SAFE_PROPOSABLE_COMMANDS = frozenset(
+    {
+        "termin_create",
+        "note_add",
+        "todo_add",
+        "reminder",
+        "reminder_date",
+        "recurring_reminder",
+        "contact_add",
+        "contact_add_natural",
+    }
+)
+
 INITIATIVE_CANCEL_WORDS = frozenset(
     {
         "nein",

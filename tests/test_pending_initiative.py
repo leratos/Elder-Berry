@@ -9,6 +9,7 @@ import pytest
 from elder_berry.comms.pending_initiative import (
     DEFAULT_TTL_SECONDS,
     INITIATIVE_CONFIRM_WORDS,
+    SAFE_PROPOSABLE_COMMANDS,
     PendingInitiative,
     PendingInitiativeStore,
 )
@@ -158,3 +159,32 @@ def test_check_response_none_without_pending(store: PendingInitiativeStore) -> N
 def test_bare_bitte_not_in_confirm_words() -> None:
     # Schutz gegen Über-Erkennung: ein nacktes "bitte" darf nie bestätigen.
     assert "bitte" not in INITIATIVE_CONFIRM_WORDS
+
+
+# --- Safe-Command-Allowlist (PR #276, Codex P1) ---------------------------
+
+
+def test_calendar_create_is_proposable() -> None:
+    # Headline-Szenario (Termin aus Mail) muss erlaubt bleiben.
+    assert "termin_create" in SAFE_PROPOSABLE_COMMANDS
+
+
+@pytest.mark.parametrize(
+    "cmd",
+    [
+        "contact_delete",
+        "termin_delete",
+        "note_delete",
+        "todo_delete",
+        "reminder_delete",
+        "mail_reply",
+        "clip_write",
+        "cloud_upload",
+        "git",
+        "restart",
+    ],
+)
+def test_destructive_commands_not_proposable(cmd: str) -> None:
+    # Default-deny: destruktive/sendende/schreibende Commands duerfen nie
+    # ueber den Initiativ-Pfad auf ein kurzes "ja" laufen.
+    assert cmd not in SAFE_PROPOSABLE_COMMANDS

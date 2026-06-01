@@ -464,6 +464,39 @@ Lera-Freigabe).
 
 **Aufwand (real):** ~1 Session inkl. Code-Verifikation + Tests.
 
+#### PR #276 Review-Hardening (2026-06-01)
+
+Aus dem PR-Review (github-advanced-security CodeQL + chatgpt-codex)
+nachgezogen:
+
+* **Sicherheits-Gate (Codex P1, kritisch):** ``_execute_confirmed_initiative``
+  fuehrt einen bestaetigten Vorschlag nur aus, wenn der geparste Command in
+  ``SAFE_PROPOSABLE_COMMANDS`` (``pending_initiative.py``, default-deny) liegt.
+  Grund: (1) ``propose_action`` kann aus untrusted Mail-/Web-/Doku-Enrichment
+  stammen (Injection-Vektor); (2) verifiziert, dass einige destruktive
+  Commands (``contact_delete``, einzelne ``termin_delete``) SOFORT ohne eigene
+  PendingConfirmation loeschen -- die zuvor dokumentierte "Doppel-Bestaetigung
+  fuer destruktive Commands" galt also NICHT durchgaengig. Allowlist enthaelt
+  nur reversible Creates (termin/notiz/reminder/todo/contact_add). Kein
+  LLM-Fallback fuer abgelehnte Vorschlaege (kein attacker-Text ans LLM).
+* **Param-Typ-Guard (Codex P2):** ``_handle_propose_action`` behandelt
+  ``action_params`` nur als dict (isinstance), sonst ungueltiger Vorschlag --
+  kein Crash bei LLM-Drift.
+* **Parsebares Prompt-Beispiel (Codex P2):** ``proposed_command``-Beispiel in
+  ``saleria.yaml`` von ``kalender erstelle ...`` (matcht ``parse_command``
+  NICHT) auf ``termin: Urlaub 15.08`` (matcht ``TERMIN_CREATE_PATTERN``)
+  geaendert -- sonst waere das Headline-Szenario nach "ja" still im
+  LLM-Fallback gelandet.
+* **Rekursions-Guard (Codex P2):** Ausfuehrung wird mit ``_in_llm_command``
+  geklammert (try/finally), analog ``_handle_llm_remote_command`` -- ein
+  fallthrough-Command laeuft nicht erneut ins LLM.
+* **CodeQL (7x "Statement has no effect"):** ``...``-Stubs im Test-MockChannel
+  durch echte No-op-Bodies ersetzt.
+
+Tests ergaenzt: Allowlist-Inhalt (Creates erlaubt, Deletes/Send/Write
+abgelehnt), destruktiver Vorschlag wird abgewiesen, unparsebarer Vorschlag
+wird abgewiesen (kein LLM-Fallback). Store+Flow jetzt 53 Tests.
+
 ### Etappe 89.3 – Doku
 
 * CLAUDE.md-Abschnitt "SALERIA-INTERAKTION" mit Hinweis auf
