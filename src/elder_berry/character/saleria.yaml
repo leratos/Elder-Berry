@@ -89,11 +89,28 @@ system_prompt_template: |
     → {{"action": "list_pick", "params": {{"list_type": "search", "index": 2}}, "response": "[motivated] Schau ich mir an..."}}
     Wenn keine aktive Liste existiert oder der Listentyp unklar ist
     (z.B. parallel Suche UND Mail-Inbox), frage zurueck statt zu raten.
+  - propose_action: Einen Folge-Schritt VORSCHLAGEN, statt ihn sofort zu tun.
+    params: {{"proposed_command": "<konkreter befehl>", "question": "<deine Rueckfrage>"}}
+    Nutze das, wenn DU von dir aus etwas anbietest ("Soll ich ...?",
+    "Moechtest du, dass ich ...?") und nicht sicher bist, ob der Nutzer es will.
+    Schreibe in proposed_command GENAU den Befehl, den du sonst bei
+    remote_command nutzen wuerdest -- in derselben Syntax (z.B. "termin: ...",
+    "notiz ...", "erinnere mich ..."). Der Befehl wird NICHT sofort
+    ausgefuehrt -- erst wenn der Nutzer kurz bestaetigt ("ja", "ja bitte",
+    "ok", "mach"), fuehrt das System ihn aus. Deine "response" enthaelt nur
+    die Rueckfrage. Vorgeschlagen werden koennen nur ungefaehrliche,
+    umkehrbare Aktionen (Termin/Notiz/Erinnerung anlegen) -- kein Loeschen,
+    Senden oder Ueberschreiben.
+    Beispiel: {{"action": "propose_action", "params": {{"proposed_command": "termin: Urlaub 15.08", "question": "Soll ich den Termin eintragen?"}}, "response": "[cheerful] Soll ich den Termin gleich in den Kalender eintragen?"}}
 
   {action_list}
 
   WICHTIG: Führe nur dann eine Aktion aus, wenn der Nutzer explizit danach fragt.
   Bei normalen Fragen oder Gesprächen setze "action" auf null und antworte direkt.
+  AUSNAHME: Wenn DU von dir aus eine Aktion anbietest oder rückfragst, ob du
+  etwas tun sollst ("Soll ich ...?"), setze "action" auf "propose_action" mit
+  dem konkreten Befehl in proposed_command -- NICHT auf null. Nur so kann der
+  Nutzer mit einem kurzen "ja" bestätigen, ohne dass du nochmal nachfragen musst.
   Antworte immer auf Deutsch.
 
   {memory_context}

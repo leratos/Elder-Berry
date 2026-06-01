@@ -21,6 +21,7 @@ Handler-Logik ist in separate Module ausgelagert:
 from __future__ import annotations
 
 import asyncio
+import dataclasses
 import logging
 import re
 import time
@@ -33,6 +34,11 @@ from elder_berry.comms.chat_history import ChatHistory, Summarizer
 from elder_berry.comms.message_channel import IncomingMessage, MessageChannel
 from elder_berry.comms.message_handlers import BridgeMessageHandler
 from elder_berry.comms.pending_confirmation import PendingConfirmationStore
+from elder_berry.comms.pending_initiative import (
+    SAFE_PROPOSABLE_COMMANDS,
+    PendingInitiative,
+    PendingInitiativeStore,
+)
 from elder_berry.comms.restart_manager import (
     RESTART_FLAG_FILE,
     read_restart_timestamp,
@@ -98,6 +104,7 @@ class MatrixBridge:
         nextcloud_files: NextcloudFilesClient | None = None,
         proposal_aggregator: ProposalIntentAggregator | None = None,
         conversation_lists: ConversationListStore | None = None,
+        pending_initiative_store: PendingInitiativeStore | None = None,
     ) -> None:
         self._channel = channel
         self._assistant = assistant
@@ -122,6 +129,12 @@ class MatrixBridge:
             summarizer=summarizer,
         )
         self._pending = pending_store or PendingConfirmationStore()
+        # Phase 89 (Pfad C): Store fuer Saleria-Initiativ-Vorschlaege. Dieselbe
+        # Instanz wird an den Handler gereicht (er legt Vorschlaege ab) und vom
+        # Intercept in handle_message geprueft (er fuehrt sie aus).
+        self._pending_initiative = (
+            pending_initiative_store or PendingInitiativeStore()
+        )
         self._scheduler_mgr: SchedulerManager | None = None
 
         # AudioPipeline (STT, TTS, Dateien)
@@ -151,6 +164,7 @@ class MatrixBridge:
             nextcloud_files=nextcloud_files,
             proposal_aggregator=proposal_aggregator,
             conversation_lists=conversation_lists,
+            pending_initiative=self._pending_initiative,
         )
 
     @staticmethod
@@ -415,6 +429,36 @@ class MatrixBridge:
             )
             return
 
+        # Pending Initiative Intercept (Phase 89, Pfad C)
+        # Saleria hat proaktiv einen Folge-Command vorgeschlagen
+        # ("Soll ich den Termin eintragen?"). Eine kurze Bestaetigung fuehrt
+        # ihn ueber den normalen Command-Pfad aus; ist der Command destruktiv,
+        # greift dahinter weiterhin PendingConfirmation (Doppel-Bestaetigung).
+        # Nicht-Bestaetigung verwirft den Vorschlag und faellt durch -- kein
+        # Blockieren, weil Vorschlaege optional sind (Lera-Entscheidung).
+        init_type, initiative = self._pending_initiative.check_response(
+            msg.sender,
+            msg.body,
+        )
+        if init_type == "confirm":
+            assert initiative is not None
+            self._pending_initiative.clear(msg.sender)
+            await self._execute_confirmed_initiative(msg, initiative)
+            return
+        if init_type == "cancel":
+            self._pending_initiative.clear(msg.sender)
+            self._chat_history.add(msg.sender, "user", msg.body)
+            self._chat_history.add(msg.sender, "assistant", "Ok, lasse ich.")
+            await self._channel.send_text(msg.room_id, "Ok, dann lasse ich das.")
+            return
+        if init_type == "other":
+            # Vorschlag verwerfen, Nachricht ganz normal weiterverarbeiten.
+            logger.debug(
+                "Initiativ-Vorschlag fuer %s verworfen (keine Bestaetigung)",
+                msg.sender,
+            )
+            self._pending_initiative.clear(msg.sender)
+
         # Command-Router: direkte Commands vor LLM
         if self._remote_commands:
             command = self._remote_commands.parse_command(msg.body)
@@ -436,6 +480,70 @@ class MatrixBridge:
 
         # LLM-Fallback
         await self._handler.handle_assistant_message(msg)
+
+    async def _execute_confirmed_initiative(
+        self,
+        msg: IncomingMessage,
+        initiative: PendingInitiative,
+    ) -> None:
+        """Fuehrt einen bestaetigten Initiativ-Vorschlag aus (Phase 89, Pfad C).
+
+        Der vorgeschlagene Command laeuft durch denselben Pfad wie ein direkt
+        getippter Command (``parse_command`` -> ``handle_remote_command``).
+        Destruktive Commands setzen dort ihre eigene PendingConfirmation --
+        die Initiativ-Bestaetigung ersetzt diese also NICHT, sie kommt davor.
+
+        Args:
+            msg: Die Bestaetigungs-Nachricht des Users (sender/room_id).
+            initiative: Der abgelegte Vorschlag mit ``proposed_command``.
+        """
+        proposed = initiative.proposed_command
+        logger.info(
+            "Initiativ-Vorschlag bestaetigt fuer %s: %r",
+            msg.sender,
+            proposed,
+        )
+
+        if not self._remote_commands:
+            await self._channel.send_text(
+                msg.room_id,
+                "Ich kann den Vorschlag gerade nicht ausfuehren -- "
+                "es sind keine Commands verdrahtet.",
+            )
+            return
+
+        command = self._remote_commands.parse_command(proposed)
+
+        # Sicherheits-Gate (PR #276, Codex P1): default-deny. Nur reversible/
+        # ungefaehrliche Commands laufen automatisch auf eine kurze
+        # Bestaetigung durch. Destruktive (Loeschen/Senden/Schreiben/Restart)
+        # oder unbekannte Vorschlaege werden abgelehnt -- u.a. weil
+        # propose_action aus untrusted Enrichment stammen kann und einige
+        # Delete-Commands KEINE eigene PendingConfirmation setzen. Bewusst
+        # KEIN LLM-Fallback hier (kein attacker-kontrollierter Text an das LLM).
+        if command is None or command not in SAFE_PROPOSABLE_COMMANDS:
+            logger.warning(
+                "Initiativ-Vorschlag abgelehnt (Command %r nicht in Safe-Allowlist): %r",
+                command,
+                proposed,
+            )
+            await self._channel.send_text(
+                msg.room_id,
+                "Das fuehre ich nicht automatisch auf ein kurzes 'ja' aus. "
+                "Wenn du das wirklich willst, tipp den Befehl bitte direkt.",
+            )
+            return
+
+        # Den vorgeschlagenen Command als echte Nachricht durch den
+        # Command-Router schicken (frozen DTO -> replace statt Mutation).
+        # Rekursions-Guard wie bei LLM-initiierten Commands (Codex P2): falls
+        # der Command fallthrough liefert, darf er nicht erneut ins LLM laufen.
+        proposed_msg = dataclasses.replace(msg, body=proposed)
+        self._handler._in_llm_command.add(msg.sender)
+        try:
+            await self._handler.handle_remote_command(proposed_msg, command)
+        finally:
+            self._handler._in_llm_command.discard(msg.sender)
 
     # ------------------------------------------------------------------
     # Error Alerting
