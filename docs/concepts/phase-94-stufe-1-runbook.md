@@ -1,9 +1,11 @@
 # Phase 94 – Stufe 1: LibreSign Installation & Smoke-Test (Runbook)
 
 **Dokument:** `docs/concepts/phase-94-stufe-1-runbook.md`
-**Stand:** 2026-05-30
+**Stand:** 2026-06-01 (Befehle real bestätigt: NC 33.0.4 + LibreSign 13.2.4,
+Ubuntu/Plesk, PHP 8.3, OpenSSL-Engine).
 **Scope:** Server-seitige Installation von LibreSign auf der Nextcloud-Instanz
-und manueller Smoke-Test mit 3 realen PDFs. **Kein Elder-Berry-Code.**
+und manueller Smoke-Test. **Kein Elder-Berry-Code, keine Saleria-Anbindung**
+(Sicherheitsentscheidung, siehe Konzept-Doc).
 **Konzept:** `docs/concepts/phase-94-libresign.md`
 
 ---
@@ -17,14 +19,14 @@ Stufe 1 ist ein **Go/No-Go-Gate**, kein Implementierungsschritt:
 - **Wenn das Gate scheitert** (Installation fummelig oder UX unzureichend):
   Phase abbrechen → Plan B (PDF24 lokal + PyMuPDF-Handler, siehe Konzept-Doc).
   Dann ist kein Elder-Berry-Code verloren.
-- **Out of Scope hier:** `LibreSignClient`, Command-Handler, Tests – das ist
-  erst Stufe 2 und nur sinnvoll, wenn dieses Gate grün ist.
+- **Out of Scope (endgültig):** `LibreSignClient`, Command-Handler, Tests und
+  jede Saleria-Anbindung. Bewusst gestrichen (Sicherheitsentscheidung im
+  Konzept-Doc). LibreSign wird nur manuell im Browser genutzt.
 
-> Hinweis vorab: Exakte `occ libresign:*`-Subkommandos und Flags variieren je
-> LibreSign-Version. Befehle unten, die als **[verifizieren]** markiert sind,
-> vor Ausführung gegen `occ libresign:install --help` und die Admin-UI
-> (Einstellungen → Verwaltung → LibreSign) abgleichen, statt sie blind zu
-> übernehmen.
+> Die Befehle unten sind am 2026-06-01 auf NC 33.0.4 + LibreSign 13.2.4 real
+> ausgeführt worden. Bei anderen Versionen vorher mit
+> `occ libresign:install --help` und der Admin-UI (Einstellungen → Verwaltung →
+> LibreSign) abgleichen.
 
 ---
 
@@ -69,23 +71,26 @@ occ app:install libresign
 occ app:enable libresign
 ```
 
-### 3.2 Binär-Abhängigkeiten ziehen **[verifizieren]**
+### 3.2 Binär-Abhängigkeiten ziehen (real bestätigt)
 
-LibreSign braucht Java, JSignPdf und (je nach Zertifikats-Engine) CFSSL. Die
-Subkommandos zuerst auflisten:
-
-```bash
-occ libresign:install --help
-```
-
-Übliche Form (Flags gegen `--help` der installierten Version abgleichen):
+Bei OpenSSL-Engine werden Java, JSignPdf und PDFtk gebraucht (kein CFSSL). Die
+Admin-UI „Prüfung der Konfiguration" zeigt für jede fehlende Abhängigkeit den
+passenden occ-Befehl als Tipp:
 
 ```bash
 occ libresign:install --java
 occ libresign:install --jsignpdf
-occ libresign:install --cfssl     # nur bei CFSSL-Engine, siehe 3.3
-# oder gebündelt:
-occ libresign:install --all
+occ libresign:install --pdftk
+```
+
+Jeder Befehl lädt sein Binary herunter und meldet „Finished with success."
+(Java ist mit Abstand der größte Download.)
+
+Optional, aber empfohlen (Signatur-Validierung + Seitenmaße – behebt die zwei
+`info`-Punkte pdfsig/pdfinfo). System-Paket, **nicht** occ, als root:
+
+```bash
+apt-get install -y poppler-utils
 ```
 
 > Wenn Outbound-Downloads scheitern (Egress-Filter): Binaries manuell aus den
@@ -93,32 +98,77 @@ occ libresign:install --all
 > App-Data-Verzeichnis legen. Pfad und erwartete Version aus der Fehlermeldung
 > bzw. der Admin-UI entnehmen.
 
-### 3.3 Zertifikats-Engine / Root-CA konfigurieren **[verifizieren]**
+### 3.3 Zertifikats-Engine / Root-CA konfigurieren (real bestätigt)
 
-LibreSign signiert mit einem selbst verwalteten Zertifikat. Für eine
-Single-User-Selfhost-Instanz ist die **OpenSSL-Engine** der einfachere Weg
-(kein zusätzlicher CFSSL-Daemon):
+**OpenSSL-Engine** gewählt (einfachster Weg, kein CFSSL-Daemon). Optionen:
+`--cn`, `--o`, `--c`, `--st`, `--l`, `--ou`. Real ausgeführt (privates Solo-
+Setup, CN = Klarname, O = Klarname, Land DE):
 
 ```bash
-occ libresign:configure:openssl --help        # Optionen prüfen
-occ libresign:configure:openssl --cn "Beispiel Name"   # Felder anpassen
+occ libresign:configure:openssl --cn "Vorname Nachname" --o "Vorname Nachname" --c "DE"
 ```
 
-CFSSL-Engine nur wählen, wenn bewusst gewünscht; dann `--cfssl` in 3.2 nötig
-und die CFSSL-spezifische Konfiguration fahren.
-
-> Entscheidung dokumentieren: OpenSSL vs CFSSL, und mit welchen
-> Zertifikatsfeldern (CN/O/OU/C) – das landet später in Risiko #5 (FES, nicht
-> QES).
+> Die Zertifikatsfelder (CN/O/C) erscheinen als Aussteller-Identität auf den
+> signierten PDFs. Es ist eine FES, keine QES (Risiko #4 im Konzept-Doc).
 
 ### 3.4 Installation verifizieren
 
-1. **Admin-UI:** Einstellungen → Verwaltung → LibreSign. Alle
-   Abhängigkeiten müssen grün/„installiert" sein (Java, JSignPdf, Root-Cert).
-2. **CLI-Gegencheck [verifizieren]:** ein Status-/Check-Kommando aus
-   `occ libresign:` (z. B. `occ libresign:install --all` erneut → meldet
-   „bereits installiert", oder ein dediziertes Check-Kommando der Version).
-3. **Log prüfen:** `occ log:tail` bzw. `data/nextcloud.log` auf LibreSign-Fehler.
+1. **Admin-UI:** Einstellungen → Verwaltung → LibreSign → „Prüfung der
+   Konfiguration". Alle Punkte müssen `success` zeigen: Java, JSignPdf, PDFtk,
+   pdfsig/pdfinfo, „Root certificate setup is working fine."
+2. **Java-UTF-8-Hinweis beachten** – falls ein `info` „Non-UTF-8 encoding"
+   erscheint, siehe Gotcha (3.5).
+3. **Log prüfen:** beim Signieren auftretende Fehler über die `reqId` im
+   `<datadir>/nextcloud.log` per `grep -F "<reqId>"` ziehen.
+
+### 3.5 Real aufgetretene Stolpersteine & Workarounds (2026-06-01)
+
+Diese Punkte traten bei der echten Installation auf NC 33.0.4 + LibreSign
+13.2.4 auf. Alle sind lösbar, kosten aber Zeit (Risiko #1 „fummelig").
+
+1. **Java meldet ASCII statt UTF-8** (Admin-UI `info`: „Non-UTF-8 encoding
+   detected: ANSI_X3.4-1968"). Folge: Umlaute in PDFs/Stempel können
+   verstümmeln. Fix = Locale für den **PHP-FPM-Pool** der Domain setzen. In
+   Plesk → Domain → PHP-Einstellungen → „Zusätzliche Konfigurationsdirektiven";
+   **`env[]` sind FPM-Pool-Direktiven** und brauchen die Trennlinie, sonst
+   schlägt der Config-Test fehl (`unexpected ']'`):
+
+   ```ini
+   [php-fpm-pool-settings]
+   env[LANG] = C.UTF-8
+   env[LC_ALL] = C.UTF-8
+   ```
+
+2. **Gezeichnete Signatur scheitert:** `no decode delegate for image format
+   'SVG'`. LibreSign speichert Draw-Signaturen als SVG; die ImageMagick der
+   PHP-`imagick`-Extension hat keinen SVG-Coder. `librsvg2-bin` reicht **nicht**
+   (nur CLI). Nötig ist das `-extra`-Paket der Library, danach FPM-Restart:
+
+   ```bash
+   apt-get install -y libmagickcore-6.q16-6-extra   # ggf. q16hdri-Variante
+   systemctl restart plesk-php83-fpm_<domain>_<id>.service
+   /opt/plesk/php/8.3/bin/php -r 'var_dump((new Imagick())->queryFormats("SVG"));'
+   ```
+
+   Alternativ ohne Fix: **Text-** oder **Upload-(PNG)-Signatur** statt Draw.
+
+3. **`getAppValueString() on null` beim Signieren** – Bug der `notifications`-
+   App (Push-Pfad) auf NC 33, nicht von LibreSign. Signatur wird trotzdem
+   erzeugt, aber die UI zeigt 500. Workaround: `occ app:disable notifications`
+   (reversibel; Preis: keine Benachrichtigungs-Glocke).
+
+4. **`extractTimestampData(): null given`** beim Signieren – tritt bei
+   **bereits/teilsignierten** PDFs auf (LibreSign liest die vorhandene Signatur
+   und stolpert). Immer mit einer **frischen, nie signierten Kopie** arbeiten.
+
+5. **Mailserver-Zertifikat abgelaufen** (separat entdeckt): Nextcloud konnte
+   keine Mails senden (`certificate verify failed`). Ursache war ein
+   abgelaufenes Mail-Zert; in Plesk dem Mail-Dienst das gültige Domain-Zert
+   zuweisen. Betrifft die gesamte Mail, nicht nur LibreSign.
+
+6. **`open_basedir`-Warnungen** auf einen Zertifikats-DN
+   (`file_exists(/C=DE/O=…)`) in `OrderCertificatesTrait.php` – **harmloses
+   Rauschen** (LibreSign prüft einen DN-String wie einen Pfad), kein Fehler.
 
 ---
 
@@ -165,15 +215,18 @@ Pass/Fail festhalten:
 
 ## 6. Bewertung & Gate-Entscheidung
 
-**Go (→ Stufe 2 freigeben), wenn:**
+**Go (→ LibreSign manuell produktiv nutzen), wenn:**
 
-- Alle 3 PDFs vollständig ausgefüllt **und** signiert (Matrix komplett ☑).
-- Der manuelle Aufwand für #1 (Scan ohne AcroForm) ist im Alltag tragbar.
-- Keine blockierenden Installations-/Stabilitätsprobleme offen.
+- Mind. die realistischen PDF-Typen lassen sich vollständig ausfüllen **und**
+  sichtbar signieren (Matrix möglichst komplett ☑).
+- Der manuelle Aufwand für gescannte PDFs (ohne AcroForm) ist im Alltag
+  tragbar.
+- Keine blockierenden Installations-/Stabilitätsprobleme offen (Stolpersteine
+  aus 3.5 sind gefixt/umschifft).
 
 **No-Go (→ Plan B), wenn:**
 
-- Installation der Binär-Abhängigkeiten nicht robust hinzubekommen ist, **oder**
+- Installation/Stabilität nicht robust hinzubekommen ist, **oder**
 - die Form-Filling-UX (v. a. gescannte PDFs) zu mühsam für den realen Workflow.
 
 Plan B (aus Konzept-Doc): PDF24 lokal auf Tower + PyMuPDF-basierter
@@ -214,11 +267,20 @@ Importquelle). Inhalt:
 
 ---
 
-## 9. Offene Verifikationspunkte (vor Ausführung klären)
+## 9. Stand der Verifikationspunkte
 
-- [ ] LibreSign-Version + Nextcloud-Kompatibilität (App-Store-Eintrag).
-- [ ] Exakte `occ libresign:install`-Flags der Version (`--help`).
-- [ ] Engine-Wahl: OpenSSL (empfohlen) vs CFSSL.
-- [ ] Outbound-Download erlaubt? Sonst manueller Binary-Bezug.
-- [ ] Korrekter Web-User + Webroot-Pfad für occ unter Plesk.
-- [ ] Snapshot/Backup vor Installation auf produktiver NC.
+Erledigt (2026-06-01):
+
+- [x] Version/Kompatibilität: NC 33.0.4 + LibreSign 13.2.4.
+- [x] occ-Flags real bestätigt (`--java`, `--jsignpdf`, `--pdftk`,
+      `configure:openssl`).
+- [x] Engine: OpenSSL gewählt.
+- [x] Outbound-Download funktionierte.
+- [x] occ-Wrapper: Webroot + Web-User (lokaler vHost-User) bestätigt.
+
+Noch offen:
+
+- [ ] Finale Gate-Bestätigung: mind. 1 reales PDF manuell **sichtbar** signiert
+      (frische Kopie, kein re-sign).
+- [ ] Stolperstein 5 (Mail-Zert) im Plesk gefixt.
+- [ ] Entscheidung, ob `notifications` (Stolperstein 3) dauerhaft aus bleibt.
