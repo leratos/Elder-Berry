@@ -127,7 +127,7 @@ ImageMagick-SVG-Decoder (siehe Runbook, Gotcha „SVG").
 - [x] Stufe-1-Runbook mit realen Befehlen + Gotchas finalisiert.
 - [x] Bramble-Journal aktualisiert (project=elder-berry; `docs/journal.txt` ist
       nur historische Importquelle, dort KEINE neuen Einträge).
-- [ ] PROJECT_ROADMAP.md aktualisiert.
+- [x] PROJECT_ROADMAP.md aktualisiert.
 - [ ] Branch feature/phase-94-libresign-integration gemerged.
 
 ## Offene Punkte (operativ, server-seitig)

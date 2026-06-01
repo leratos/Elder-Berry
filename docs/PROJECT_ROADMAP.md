@@ -1702,3 +1702,19 @@ Repo-Hygiene, Audit-Tools und Doku.
 - Konzept für Routen mit mehreren Stops, Disambiguierung und Along-Route-POIs.
 - Phase 43 (Single-Stop) bleibt bewusst unangetastet.
 - Siehe `docs/concepts/phase-92-multi-stop-routing.md`.
+
+## Phase 94 – LibreSign (PDF-Signatur) ✍️ ✅ ABGESCHLOSSEN (Install-only)
+
+- Adobe Acrobat abgelöst: LibreSign als Nextcloud-App installiert; PDFs werden
+  manuell im Browser ausgefüllt und sichtbar signiert (FES, kein QES).
+- **Bewusst kein Elder-Berry-Code, keine Saleria-Anbindung** – sicherheitskritisch:
+  Signieren über einen kompromittierbaren Chat-/Voice-Agenten wäre kein echter
+  zweiter Faktor (Bestätigung liefe über denselben Matrix-Kanal). Nur manuelle
+  Nutzung.
+- Server: NC 33 + LibreSign 13.2.4, OpenSSL-Engine + JSignPdf. Setup + Stolpersteine
+  (UTF-8-Locale, ImageMagick-SVG, notifications-Bug, Mail-Zert) in
+  `docs/concepts/phase-94-stufe-1-runbook.md`.
+- Konzept: `docs/concepts/phase-94-libresign.md`.
+- Offen (nicht funktional): `notifications`-App bleibt als NC-33-Workaround
+  deaktiviert; Plan B (PDF24 + PyMuPDF) dokumentiert, falls die UX langfristig
+  nicht trägt.
