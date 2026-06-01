@@ -1,9 +1,20 @@
 # Phase 89 – Saleria-Initiativ-Vorschlag-Followup
 
-**Status:** Konzept (2026-05-13)
-**Branch:** `feature/phase-89-saleria-initiativ-followup` (geplant)
+**Status:** Konzept abgeschaerft am Code-Stand (2026-06-01); Diagnose 89.1
+weitgehend statisch geklaert, Fix-Pfad-Entscheidung offen.
+**Branch:** `feature/phase-89-saleria-initiativ-followup` (angelegt 2026-06-01)
 **Aufwand:** ~1 Konzept-Session + 1-2 Implementierungs-Sessions
 **Vorgaenger:** Phase 18+ (Pending-Confirmation-Pipeline), Phase 23 (Rolling-Summary in ChatHistory)
+
+> **WICHTIG (Abschaerfung 2026-06-01):** Die urspruengliche Diagnose von
+> 2026-05-13 (Abschnitt "Ausgangslage" + H1/H2/H3) wurde teils gegen einen
+> **gedrifteten/falsch angenommenen** Code-Stand geschrieben. Der real
+> verifizierte Stand steht im neuen Abschnitt
+> [Code-Verifikation (2026-06-01)](#code-verifikation-2026-06-01). Lies diesen
+> ZUERST. Kernkorrektur: **H1 (zwei aufeinanderfolgende Assistant-Turns brechen
+> die Claude-Rollen-Konvention) ist strukturell unmoeglich** — der Code baut
+> nie ein Multi-Turn-Messages-Array. Die Original-Hypothesen bleiben unten als
+> Denkweg stehen, jeweils mit Verdikt markiert.
 
 ## Trigger
 
@@ -80,7 +91,114 @@ behandelt wird.
   Notification mit Bestaetigungsfrage): ist im Briefing-Scheduler
   und Reminder-Scheduler-Bereich, eigene Pipeline.
 
+## Code-Verifikation (2026-06-01)
+
+Statische Verifikation gegen den realen Code-Stand auf `main` (Stand
+2026-06-01), bevor irgendein Fix gebaut wird ("nicht kaputt reparieren").
+
+### Verifizierte Architektur (das aendert die ganze Diagnose)
+
+Der LLM-Call ist **single-turn mit History im System-Prompt** — es gibt
+**kein rollengetaggtes Multi-Turn-Messages-Array**:
+
+* [chat_history.py:176-209](../../src/elder_berry/comms/chat_history.py)
+  `format_for_prompt()` serialisiert die History als **einen Textblock**
+  mit "User:"/"Saleria:"-Praefixen unter der Ueberschrift
+  "Letzte Nachrichten:" (`"\n".join(parts)`). Jede Einzelnachricht wird
+  dabei auf **500 Zeichen** gekuerzt (Z. 205-206).
+* [assistant.py:127-134](../../src/elder_berry/core/assistant.py)
+  `process()` baut den System-Prompt und ruft
+  `self._llm.generate(user_input, system=system_prompt)`. Die `chat_history`
+  wird in `_build_system_prompt` **ans Ende des System-Prompts angehaengt**
+  ([assistant.py:364-365 / 384-385](../../src/elder_berry/core/assistant.py)).
+* Alle LLM-Clients bauen `messages=[{"role": "user", "content": prompt}]` —
+  genau **ein** User-Turn, History nur im `system`-Feld:
+  [anthropic_client.py](../../src/elder_berry/llm/anthropic_client.py),
+  [ollama_client.py](../../src/elder_berry/llm/ollama_client.py),
+  [openrouter_client.py](../../src/elder_berry/llm/openrouter_client.py).
+* Live-Backend ist [router.py](../../src/elder_berry/llm/router.py):
+  **Claude Sonnet 4.6 primaer**, **Ollama phi4:14b Offline-Fallback**, beide
+  ueber dasselbe single-turn `generate(prompt, system)`.
+
+### Verdikt zu den Original-Hypothesen
+
+* **H1 — WIDERLEGT (strukturell unmoeglich).** H1 nahm an, dass zwei
+  aufeinanderfolgende `assistant`-Eintraege ein Claude-Messages-Array mit
+  Rollen-Alternation brechen. Ein solches Array existiert nicht: der API-Call
+  sieht immer nur **einen** User-Turn. Die zwei `_chat_history.add(..., "assistant", ...)`
+  in [message_handlers.py:489-491+523](../../src/elder_berry/comms/message_handlers.py)
+  erzeugen hoechstens **zwei aufeinanderfolgende "Saleria:"-Zeilen im
+  Fliesstext-Block** des System-Prompts — eine Text-Serialisierungs-Nuance,
+  kein API-Rollen-Verstoss. Restproblem-Anteil von H1: gering und anders
+  geartet (siehe Wurzel-Kandidat).
+* **H2 — BESTAETIGT und konkretisiert.** Der System-Prompt enthaelt keine
+  Followup-Regel. **Schaerfer noch:** [saleria.yaml:95-96](../../src/elder_berry/character/saleria.yaml)
+  instruiert aktiv das Gegenteil: *"Fuehre nur dann eine Aktion aus, wenn der
+  Nutzer explizit danach fragt. Bei normalen Fragen oder Gespraechen setze
+  action auf null."* Ein blankes "ja bitte" liest das LLM nicht als explizite
+  Aktionsanfrage → es ist angewiesen, `action=null` zu setzen und nur zu
+  antworten. Das ist die **wahrscheinlichste Wurzel** und ein *aktiv
+  widersprechendes* Signal, nicht nur eine Luecke.
+* **H3 — BESTAETIGT unwahrscheinlich (im Direkt-Flow).** Frage und "ja bitte"
+  liegen im selben 10-Slot-Window; die Rolling-Summary greift erst bei
+  Eviction. Nebenbefund: die 500-Zeichen-Kuerzung in `format_for_prompt`
+  trifft Saleria's kurze Frage nicht, nur lange Mail-Bodies.
+
+### Konkreter Wurzel-Kandidat (statt H1)
+
+Bei "ja bitte" laeuft folgender Pfad:
+[bridge.py:380](../../src/elder_berry/comms/bridge.py) PendingConfirmation-
+Intercept greift nicht (keine offene `PendingAction`) →
+[bridge.py:419](../../src/elder_berry/comms/bridge.py) `parse_command("ja bitte")`
+findet keinen Command → Fallback in
+[message_handlers.py:1153](../../src/elder_berry/comms/message_handlers.py)
+`handle_assistant_message` → LLM mit Fliesstext-History im System-Prompt.
+
+Das LLM sieht seine eigene Frage zwar (im History-Block), bekommt aber per
+[saleria.yaml:95-96](../../src/elder_berry/character/saleria.yaml) die Anweisung,
+ohne explizite Aktionsanfrage `action=null` zu setzen. Ergebnis: Rueckfrage
+statt Aktion. **Fix-Pfad B (System-Prompt) zielt damit direkt auf die Wurzel.**
+
+### Reframing der Fix-Pfade am echten Code
+
+* **Pfad A (Mail-Body-Serialisierung) — umdeuten.** Es gibt kein
+  "Tool-Result-Format im Messages-Array", weil es kein Messages-Array gibt.
+  Sinnvolle A-Variante: in `format_for_prompt` den externen Mail-Body als
+  klar markierten Nicht-Saleria-Block ausweisen (statt als "Saleria:"-Zeile),
+  damit das LLM ihn nicht als eigene fruehere Aeusserung verwechselt.
+  Niedrige Prioritaet — adressiert nicht die Wurzel.
+* **Pfad B (System-Prompt-Followup-Regel) — empfohlener Primaer-Fix.**
+  Ergaenzt den bestehenden Block in
+  [saleria.yaml:67-71](../../src/elder_berry/character/saleria.yaml) (das ist
+  die **Phase-90-B-"ANKUENDIGUNG, kein Vollzugs-Statement"-Regel** — Phase 89
+  und 90-B teilen sich dieselbe Prompt-Stelle, Abgleich noetig). Muss die
+  Z.95-96-Regel explizit relativieren ("eine kurze Bestaetigung auf deine
+  eigene vorherige Rueckfrage IST eine explizite Aktionsanfrage").
+* **Pfad C (Pending-Initiative-Pipeline) — Namens- und Einhaengepunkt
+  geklaert.** Der im Konzept vorgeschlagene Name "PendingProposalStore"
+  **kollidiert** mit dem bereits existierenden
+  [proposal_store.py `ProposalStore`](../../src/elder_berry/tools/proposal_store.py)
+  (Phase-78 Plugin-Vorschlaege, schon in den Assistant injiziert — `Assistant`-
+  Ctor-Param `proposal_store`). Fuer Pfad C anderer Name (z.B.
+  `PendingInitiativeStore`). Einhaengepunkt: in
+  [bridge.py](../../src/elder_berry/comms/bridge.py) **zwischen** dem
+  PendingConfirmation-Intercept (Z. 380) und dem Command-Router (Z. 419).
+
+### Konsequenz fuer Etappe 89.1
+
+Die Diagnostik ist durch diese statische Verifikation **weitgehend erledigt**.
+Das urspruenglich geplante "Messages-Array-Role-Sequenz-Logging" ist
+gegenstandslos (kein Array). Sinnvoller Rest-Diagnostik-Schritt, falls
+ueberhaupt: einmalig den **fertig zusammengebauten System-Prompt** (inkl.
+History-Block) plus `user_input` und `router.active_backend` loggen, um den
+Wurzel-Kandidaten am Live-Fall zu bestaetigen — dann direkt Pfad B.
+
 ## Ausgangslage (Diagnose-Befunde aus dem Code-Stand)
+
+> **Hinweis:** Dieser Abschnitt ist die Original-Diagnose vom 2026-05-13 und
+> teils ueberholt — siehe [Code-Verifikation (2026-06-01)](#code-verifikation-2026-06-01).
+> `_run_llm_enrichment` heisst heute `_handle_llm_enrichment`
+> ([message_handlers.py:476](../../src/elder_berry/comms/message_handlers.py)).
 
 ### Aktueller Mail-Zusammenfass-Flow
 
@@ -124,6 +242,10 @@ Drei Hypothesen, in absteigender Wahrscheinlichkeit:
 
 #### H1 – Zwei aufeinanderfolgende Assistant-Turns brechen den LLM-Pattern-Match
 
+> **VERDIKT 2026-06-01: WIDERLEGT (strukturell unmoeglich).** Kein
+> Multi-Turn-Messages-Array vorhanden. Details:
+> [Code-Verifikation](#code-verifikation-2026-06-01).
+
 Claude-API-Konvention: ``role`` wechselt strikt zwischen ``user``
 und ``assistant``. Zwei Assistant-Turns hintereinander sind
 ungewoehnlich. Der API-Provider akzeptiert sie oft (mit Warning),
@@ -144,6 +266,10 @@ Zuordnung Frage→Antwort ist gestoert.
 
 #### H2 – System-Prompt unterstuetzt Followup-Pattern nicht
 
+> **VERDIKT 2026-06-01: BESTAETIGT + konkretisiert.** Wahrscheinlichste
+> Wurzel; sogar aktiv widersprechende Regel in saleria.yaml:95-96. Details:
+> [Code-Verifikation](#code-verifikation-2026-06-01).
+
 Selbst wenn die History sauber waere, koennte der System-Prompt
 keine explizite Instruktion enthalten, die Saleria sagt: "Wenn
 deine letzte Antwort eine Frage war und der User antwortet mit
@@ -159,6 +285,10 @@ geht, will nur die konkrete Aktion klargestellt haben.
 
 #### H3 – Rolling-Summary loescht die Frage aus dem Kontext
 
+> **VERDIKT 2026-06-01: BESTAETIGT unwahrscheinlich (im Direkt-Flow).** Frage
+> und "ja bitte" liegen im selben Window. Details:
+> [Code-Verifikation](#code-verifikation-2026-06-01).
+
 Phase 23: wenn Nachrichten aus dem 10-Slot-Sliding-Window fallen,
 werden sie zu einer kompakten Summary komprimiert. Falls Saleria's
 Frage und Lera's "ja bitte" durch dazwischenliegende Turns aus dem
@@ -169,6 +299,14 @@ Fenster gerutscht sind, koennte die Summary die Frage verloren haben.
 Risiko in dem Flow.
 
 ### Welche Hypothese stimmt -- braucht Verifikation
+
+> **UEBERHOLT 2026-06-01.** Die statische Code-Verifikation hat die Frage
+> weitgehend beantwortet: H2 (saleria.yaml:95-96) ist die wahrscheinlichste
+> Wurzel, H1 ist widerlegt. Ein "Role-Sequenz-Logging" ist gegenstandslos
+> (kein Messages-Array). Siehe [Code-Verifikation](#code-verifikation-2026-06-01).
+> Der Hinweis auf `claude_agent.py` war zudem falsch: das ist die Stufe-2-
+> JSON-Action-Whitelist, **nicht** der Saleria-Konversationspfad
+> ([assistant.py](../../src/elder_berry/core/assistant.py)).
 
 Ohne Live-Debug ist Implementation-Pfad nicht eindeutig. Etappe
 89.1 ist daher eine **Diagnostik-Phase**: tatsaechliche Request-
@@ -238,6 +376,14 @@ Vorteil: deterministisch und ohne LLM-Interpretation-Risk.
 
 ### Empfohlene Kombination
 
+> **PRAEZISIERT 2026-06-01 nach Code-Verifikation:** Empfehlung jetzt
+> **Pfad B zuerst (Primaer-Fix, trifft die Wurzel an saleria.yaml:95-96)**,
+> Pfad A optional und niedrigpriorisiert (Mail-Body-Markierung in
+> `format_for_prompt`, adressiert die Wurzel nicht). Pfad C bleibt Phase 90+
+> und nur, falls B nicht reicht — mit anderem Store-Namen wegen Kollision mit
+> dem bestehenden `ProposalStore`. Reihenfolge-Begruendung:
+> [Code-Verifikation](#code-verifikation-2026-06-01).
+
 Pfad A + Pfad B als Etappe 89.2 (mittelfristig, ~1 Session).
 Pfad C als Phase 90+ falls A+B nicht ausreichen oder weitere
 Initiativ-Patterns auftauchen.
@@ -246,26 +392,77 @@ Initiativ-Patterns auftauchen.
 
 ### Etappe 89.1 – Diagnostik
 
-* Logging im claude_agent.py oder im Assistant-Wrapper erweitern:
-  Request-Payload (messages-Array) wird strukturell geloggt
-  (Role + Content-Preview), bevor an Claude-API.
+> **STATUS 2026-06-01: weitgehend erledigt durch statische Code-Verifikation.**
+> Das geplante "messages-Array-Logging" ist gegenstandslos (kein Array; alles
+> single-turn + System-Prompt). Wurzel-Kandidat steht: saleria.yaml:95-96 +
+> fehlende Followup-Regel. Optionaler Rest-Schritt zur Live-Bestaetigung
+> unten. Details: [Code-Verifikation](#code-verifikation-2026-06-01).
+
+* ~~Logging im claude_agent.py~~ (falscher Pfad) → falls Live-Bestaetigung
+  gewuenscht: den fertigen System-Prompt + `user_input` +
+  `LLMRouter.active_backend` einmalig in
+  [assistant.py:132](../../src/elder_berry/core/assistant.py) (dort wird schon
+  die Laenge geloggt) auf DEBUG ausgeben.
 * Manueller Smoketest: ``mail suche fewo-direkt`` →
   ``fasse die mail zusammen`` → ``ja bitte``. Logs einsehen.
-* Klaeren welche Hypothese (H1/H2/H3) zutrifft -- oder ob
-  Kombination.
+* ~~Klaeren welche Hypothese zutrifft~~ → erledigt: H2 (konkretisiert), H1
+  widerlegt, H3 unwahrscheinlich.
 * Acceptance: konkrete Beobachtung dokumentiert, Fix-Pfad gewaehlt.
 
-**Aufwand:** ~halbe Session.
+**Aufwand:** ~halbe Session (jetzt: nur noch optionaler Live-Log + Pfad-B-Fix).
 
 ### Etappe 89.2 – Fix-Implementation
 
-* Je nach Diagnose-Ergebnis: Pfad A, B oder beide.
-* Tests fuer den Followup-Flow: synthetische ChatHistory mit
-  Frage-am-Ende → "ja"-Antwort → erwartete Aktion oder Folge-LLM-
-  Response.
-* Realwelt-Smoketest erneut.
+> **UMGESETZT 2026-06-01 als Pfad C (Lera-Entscheidung, statt der
+> urspruenglich empfohlenen Kombination A+B).** Begruendung der Wahl:
+> deterministisch, kein LLM-Interpretations-Risiko. Variante: **strukturierte
+> ``propose_action``** (kein Regex auf Freitext). Verhalten bei Nicht-
+> Bestaetigung: **Vorschlag verwerfen + normal weiterverarbeiten** (nicht
+> blockieren).
 
-**Aufwand:** ~1 Session (Pfad B allein) bis ~2 Sessions (A + B).
+Umgesetzte Bausteine:
+
+* **Neu** ``src/elder_berry/comms/pending_initiative.py``:
+  ``PendingInitiative``-DTO + ``PendingInitiativeStore`` (Spiegel von
+  ``PendingConfirmationStore``; TTL 300s, einer pro User). Eigener,
+  bewusst enger Bestaetigungs-Wortschatz inkl. mehrwortigem "ja bitte";
+  ``check_response`` liefert ``confirm`` / ``cancel`` / ``other`` / ``none``
+  und mutiert nicht (Lifecycle steuert die Bridge).
+* ``core/assistant.py``: ``propose_action`` als Pass-through-Action
+  (Assistant fuehrt sie nicht lokal aus).
+* ``comms/message_handlers.py``: ``_handle_propose_action`` legt den Vorschlag
+  ab und sendet die Frage; Branch im Standard-LLM-Pfad
+  (``handle_assistant_message``) UND im Enrichment-Pfad
+  (``_handle_llm_enrichment`` -- der wertete Aktionen vorher NICHT aus, war
+  also die eigentliche Trigger-Luecke). Store via DI.
+* ``comms/bridge.py``: Intercept zwischen PendingConfirmation und
+  Command-Router. Bei Bestaetigung fuehrt ``_execute_confirmed_initiative``
+  den ``proposed_command`` ueber den normalen ``parse_command`` ->
+  ``handle_remote_command``-Pfad aus (frozen DTO -> ``dataclasses.replace``).
+  Destruktive Commands setzen dort weiterhin ihre eigene PendingConfirmation
+  (Doppel-Bestaetigung bleibt erhalten).
+* ``character/saleria.yaml``: ``propose_action`` dokumentiert (mit Kalender-
+  Beispiel) + Direktive bei der "nur bei expliziter Anfrage"-Regel, dass
+  Eigen-Vorschlaege ``propose_action`` statt ``action:null`` nutzen. Die
+  Bestaetigung selbst interpretiert das LLM NICHT -- das macht der Intercept.
+
+Tests:
+
+* ``tests/test_pending_initiative.py`` (30): Store, TTL, Wortschatz,
+  Normalisierung, Schutz gegen Ueber-Erkennung (nacktes "bitte" ist kein
+  Confirm).
+* ``tests/test_pending_initiative_flow.py`` (8): Vorschlag ablegen (beide
+  Pfade), Bestaetigung -> Command-Ausfuehrung, Absage, Nicht-Match-Verwerfen,
+  Round-Trip propose->confirm.
+
+Verifikation: ruff clean, ``mypy src/elder_berry`` clean (178 Dateien),
+voller pytest **6415 passed, 3 skipped**.
+
+**Offen:** Realwelt-Smoketest mit Lera (Mail-Zusammenfassung -> "ja bitte")
+am Live-System -- nur Lera kann den fahren. Commit steht noch aus (wartet auf
+Lera-Freigabe).
+
+**Aufwand (real):** ~1 Session inkl. Code-Verifikation + Tests.
 
 ### Etappe 89.3 – Doku
 
@@ -300,6 +497,14 @@ Initiativ-Frage → User-Bestaetigung → Aktion ausgefuehrt. Mit
 gemockter Claude-API + assertbarer Action-Aufruf.
 
 ## Definition of Done
+
+> **Status 2026-06-01:** (1) erledigt -- Diagnose statisch geklaert (H1
+> widerlegt, Wurzel H2). (2) erledigt -- Pfad C implementiert, ruff/mypy/pytest
+> clean (6415 passed). (3) OFFEN -- Realwelt-Smoketest mit Lera ausstehend.
+> (4) teilweise -- Konzept-Doc + Journal aktualisiert; CLAUDE.md/Saleria-
+> Interaktions-Abschnitt (Etappe 89.3) noch offen. (5) entfaellt -- Pfad C ist
+> bereits umgesetzt, kein separates Phase-90+-Design noetig. Commit ausstehend
+> (Lera-Freigabe).
 
 Phase 89 gilt als abgeschlossen, wenn:
 

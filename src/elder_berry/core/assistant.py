@@ -163,12 +163,15 @@ class Assistant:
         action_success = False
         if action_type:
             # remote_command / multi_step / list_pick (Phase 80) /
-            # action_sequence (Phase 82): Pass-through -- Bridge fuehrt aus.
+            # action_sequence (Phase 82) / propose_action (Phase 89):
+            # Pass-through -- Bridge/MessageHandler fuehrt aus bzw. legt den
+            # Vorschlag ab. Der Assistant fuehrt diese Typen NICHT lokal aus.
             if action_type in (
                 "remote_command",
                 "multi_step",
                 "list_pick",
                 "action_sequence",
+                "propose_action",
             ):
                 action_success = True
             # system_status: Daten abrufen und Response erweitern

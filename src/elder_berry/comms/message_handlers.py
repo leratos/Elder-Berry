@@ -30,6 +30,10 @@ from elder_berry.comms.action_sequence import (
 from elder_berry.comms.commands.mail_commands import MAIL_ID_PATTERN
 from elder_berry.comms.confirmation_handlers import ConfirmationHandler
 from elder_berry.comms.pending_confirmation import PendingAction
+from elder_berry.comms.pending_initiative import (
+    PendingInitiative,
+    PendingInitiativeStore,
+)
 
 if TYPE_CHECKING:
     from elder_berry.comms.audio_pipeline import AudioPipeline
@@ -78,12 +82,17 @@ class BridgeMessageHandler:
         nextcloud_files: NextcloudFilesClient | None = None,
         proposal_aggregator: ProposalIntentAggregator | None = None,
         conversation_lists: ConversationListStore | None = None,
+        pending_initiative: PendingInitiativeStore | None = None,
     ) -> None:
         self._channel = channel
         self._assistant = assistant
         self._audio = audio_pipeline
         self._chat_history = chat_history
         self._pending = pending
+        # Phase 89 (Pfad C): Store für Saleria-Initiativ-Vorschläge. Default
+        # erzeugt eine eigene Instanz; im Bridge-Betrieb wird dieselbe Instanz
+        # injiziert, die der Bridge-Intercept prüft.
+        self._pending_initiative = pending_initiative or PendingInitiativeStore()
         self._remote_commands = remote_commands
         self._claude_agent = claude_agent
         self._task_chain = task_chain
@@ -518,6 +527,19 @@ class BridgeMessageHandler:
                 timeout=120.0,
             )
 
+            # Phase 89 (Pfad C): Auch im Enrichment-Pfad (Mail-/Web-/Doku-
+            # Zusammenfassung) kann Saleria einen Folge-Vorschlag machen
+            # ("Soll ich den Termin eintragen?"). Dieser Pfad wertete Aktionen
+            # bisher NICHT aus -- propose_action wuerde sonst verpuffen.
+            if (
+                llm_result.action_executed == "propose_action"
+                and llm_result.action_success
+            ):
+                await self._handle_propose_action(
+                    msg, llm_result, tmp_wav, prefix=result.text or ""
+                )
+                return
+
             if llm_result.response:
                 response = f"{result.text}\n\n{llm_result.response}"
                 self._chat_history.add(msg.sender, "assistant", llm_result.response)
@@ -889,6 +911,66 @@ class BridgeMessageHandler:
             f"Listen-Typ '{list_type}' ist noch nicht verkabelt.",
         )
 
+    async def _handle_propose_action(
+        self,
+        msg: IncomingMessage,
+        llm_result: AssistantResult,
+        tmp_wav: Path | None,
+        prefix: str = "",
+    ) -> None:
+        """Phase 89 (Pfad C): Saleria schlaegt eine Aktion vor.
+
+        Der vorgeschlagene Command wird NICHT sofort ausgefuehrt. Die Frage
+        wird gesendet und als ``PendingInitiative`` abgelegt; die naechste
+        kurze Bestaetigung des Users loest die Ausfuehrung deterministisch
+        ueber den Bridge-Intercept aus (kein LLM-Interpretations-Risiko).
+
+        Args:
+            msg: Eingehende Nachricht (fuer sender/room_id).
+            llm_result: Assistant-Ergebnis mit ``action_params``
+                (``proposed_command``, ``question``) und ``response``.
+            tmp_wav: Optionaler TTS-Ziel-Pfad (Audio-Ausgabe wie im Caller).
+            prefix: Vorangestellter Command-Output (Mail-Enrichment-Pfad);
+                leer im Standard-LLM-Pfad.
+        """
+        params = llm_result.action_params or {}
+        proposed = str(params.get("proposed_command", "")).strip()
+        question = str(params.get("question", "")).strip()
+
+        # Frage senden + in History (nur die LLM-Antwort, nicht der Prefix --
+        # konsistent mit dem bestehenden Enrichment-Verhalten).
+        if llm_result.response:
+            self._chat_history.add(msg.sender, "assistant", llm_result.response)
+            sent = (
+                f"{prefix}\n\n{llm_result.response}" if prefix else llm_result.response
+            )
+            await self._channel.send_text(msg.room_id, sent)
+        elif prefix:
+            await self._channel.send_text(msg.room_id, prefix)
+
+        await self._audio.send_audio_if_available(msg.room_id, llm_result, tmp_wav)
+
+        # Ohne konkreten Folge-Command bleibt es bei der Frage -- nichts ablegen.
+        if not proposed:
+            logger.warning(
+                "propose_action ohne proposed_command (sender=%s) -- nur Frage gesendet",
+                msg.sender,
+            )
+            return
+
+        self._pending_initiative.set(
+            msg.sender,
+            PendingInitiative(
+                proposed_command=proposed,
+                question=question or (llm_result.response or ""),
+            ),
+        )
+        logger.info(
+            "Initiativ-Vorschlag abgelegt fuer %s: %r",
+            msg.sender,
+            proposed,
+        )
+
     async def _dispatch_search_pick(
         self,
         msg: IncomingMessage,
@@ -1214,6 +1296,12 @@ class BridgeMessageHandler:
                 and self._remote_commands
             ):
                 await self._handle_llm_remote_command(msg, result)
+                return
+
+            # Phase 89 (Pfad C): LLM → Initiativ-Vorschlag (propose_action).
+            # Command NICHT sofort ausfuehren -- als PendingInitiative ablegen.
+            if result.action_executed == "propose_action" and result.action_success:
+                await self._handle_propose_action(msg, result, tmp_wav)
                 return
 
             if result.response:
