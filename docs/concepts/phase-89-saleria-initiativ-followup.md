@@ -531,13 +531,22 @@ gemockter Claude-API + assertbarer Action-Aufruf.
 
 ## Definition of Done
 
-> **Status 2026-06-01:** (1) erledigt -- Diagnose statisch geklaert (H1
-> widerlegt, Wurzel H2). (2) erledigt -- Pfad C implementiert, ruff/mypy/pytest
-> clean (6415 passed). (3) OFFEN -- Realwelt-Smoketest mit Lera ausstehend.
-> (4) teilweise -- Konzept-Doc + Journal aktualisiert; CLAUDE.md/Saleria-
-> Interaktions-Abschnitt (Etappe 89.3) noch offen. (5) entfaellt -- Pfad C ist
-> bereits umgesetzt, kein separates Phase-90+-Design noetig. Commit ausstehend
-> (Lera-Freigabe).
+> **Status 2026-06-01: ABGESCHLOSSEN (Lera-Entscheidung).** (1) erledigt --
+> Diagnose statisch geklaert (H1 widerlegt, Wurzel H2). (2) erledigt -- Pfad C
+> implementiert + PR-Review-Hardening, ruff/mypy/pytest clean (6430 passed),
+> committed (fa0483b + f1b9bea), PR #276. (3) pragmatisch geschlossen --
+> Live-Smoketest: Mail-Zusammenfassung + expliziter Termin-Befehl laufen sauber
+> (Saleria rechnete 17.08.-7=10.08., direkte Ausfuehrung -- korrekt, KEIN
+> propose_action-Over-Trigger). Der **proaktive** Vorschlag-Fall
+> (Saleria fragt von sich aus -> "ja bitte" -> Ausfuehrung) wurde nicht
+> erzwungen; durch 54 Unit-/Integrationstests abgedeckt und im Alltag zu
+> beobachten. (4) Konzept + Journal aktuell; CLAUDE.md-Abschnitt (89.3)
+> bleibt optional. (5) entfaellt -- Pfad C umgesetzt. Journal-Abschluss:
+> elder-berry#676 (resolves #669, #672).
+>
+> **Backlog (niedrig):** proaktiven Vorschlag im Betrieb bestaetigen; falls
+> Saleria ``propose_action`` nicht zuverlaessig emittiert, ``saleria.yaml``-
+> Direktive nachschaerfen.
 
 Phase 89 gilt als abgeschlossen, wenn:
 
