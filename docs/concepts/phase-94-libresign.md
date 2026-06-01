@@ -15,54 +15,89 @@ Ziele:
 
 ## Komponenten-Übersicht
 
-### Server-Seite (cloud.last-strawberry.com)
+### Server-Seite (Nextcloud, z. B. cloud.example.com)
 - Nextcloud-App LibreSign installiert
 - Dependencies: Java 11+, JSignPdf, CFSSL
 - Konfiguration via occ (Plesk-PHP-Pfad beachten:
   /opt/plesk/php/8.3/bin/php -d memory_limit=512M occ libresign:...)
 
 ### Elder-Berry-Seite (optional, ab Stufe 2)
-- LibreSignClient (analog CalDAVTaskClient-Pattern)
+- LibreSignClient (analog NextcloudCookbookClient: sync httpx, SecretStore-Auth)
 - LibreSignCommandHandler (CommandHandler ABC)
 - Integration in bestehenden PendingConfirmationStore
 
 ## Architektur (Stufe 2+)
 
+Grounding (verifizierte Patterns, an denen sich Stufe 2+ orientiert):
+
+- Nextcloud-HTTP-Client: `src/elder_berry/tools/nextcloud_cookbook_client.py`
+  (Phase 93) – synchron, `httpx`, Basic-Auth, Credentials aus SecretStore.
+- CalDAV-Client: `src/elder_berry/tools/caldav_tasks.py` (Phase 56) – ebenfalls
+  synchron, gleiche `nextcloud_*`-Secrets.
+- Command-Handler-Vertrag: `src/elder_berry/comms/commands/base.py`
+  (`CommandHandler.execute()` ist synchron, DI über `HandlerContext`).
+
+Konsequenz: Der Client ist **synchron** (kein `async`), nutzt `httpx` und liest
+seine Credentials aus dem `SecretStore` – nicht über Konstruktor-URLs.
+
 src/elder_berry/tools/libresign_client.py
   class LibreSignClient:
-    """OCS-API-Client für LibreSign auf Nextcloud."""
-    def __init__(self, base_url, username, app_password, http_client)
-    async def list_pending_signatures() -> list[SignatureRequest]
-    async def get_signature_status(file_id) -> SignatureStatus
-    async def request_signature(file_path, signers, fields) -> str
-    async def sign_document(request_id, signature_data) -> bytes
+    """LibreSign-API-Client (Nextcloud-App) – sync httpx, Basic-Auth.
 
-src/elder_berry/comms/commands/libresign_handler.py
+    Liest nextcloud_url / nextcloud_user / nextcloud_app_password aus dem
+    SecretStore (identisch mit Cookbook-/CalDAV-Client). LibreSign-API-Basis
+    voraussichtlich index.php/apps/libresign/api/v1 – exakte Endpunkte in
+    Stufe 1 verifizieren, bevor sie hier festgeschrieben werden.
+    """
+    def __init__(self, secret_store: SecretStore, timeout: float = 10.0)
+    def is_available(self) -> bool
+    def list_pending_signatures(self) -> list[SignatureRequest]
+    def get_signature_status(self, file_id: str) -> SignatureStatus
+    # erst Stufe 3:
+    def request_signature(self, file_path, signers, fields) -> str
+    def sign_document(self, request_id, signature_data) -> bytes
+
+src/elder_berry/comms/commands/libresign_commands.py
   class LibreSignCommandHandler(CommandHandler):
-    """Routet 'signiere ...', 'signatur-status', 'ausstehende verträge'."""
-    def __init__(self, libresign_client, confirmation_store, ...)
+    """Routet 'signatur-status', 'ausstehende verträge', (Stufe 3) 'signiere …'.
 
-Dependency Injection: LibreSignClient wird im Bootstrap erzeugt
-und in den Handler injiziert. Keine direkten Imports im Handler.
+    execute(self, command: str, raw_text: str) -> CommandResult
+    Fehlende Config → self.not_configured(command, "LibreSign").
+    """
 
-## Datentypen (Pydantic, in core/models.py)
+Dependency Injection: `LibreSignClient` wird im Bootstrap erzeugt und über den
+`HandlerContext`-Service-Container an den Handler übergeben; der Handler wird in
+`RemoteCommandHandler._handlers` registriert (Reihenfolge = Priorität). Keine
+direkten Client-Imports im Handler-Body.
 
-class SignatureRequest(BaseModel):
-  request_id: str
-  file_name: str
-  file_path: str  # WebDAV-Pfad
-  created_at: datetime
-  status: Literal["pending", "signed", "expired", "cancelled"]
-  signers: list[Signer]
+## Datentypen (frozen dataclass, colocated im Client-Modul)
 
-class Signer(BaseModel):
+Konvention im Repo: Domänen-Typen der Nextcloud-Clients sind
+`@dataclass(frozen=True)` direkt im Client-Modul (vgl. `CookbookRecipeSummary`
+in `nextcloud_cookbook_client.py`, `TaskItem` in `caldav_tasks.py`). Es gibt
+kein zentrales `core/models.py`, und Pydantic wird nur in den FastAPI-Servern
+(`robot/`, `agent/`) genutzt – nicht für Client-Domänentypen. Diese Typen
+gehören also nach `libresign_client.py`, nicht in ein neues Modul.
+
+@dataclass(frozen=True)
+class Signer:
   email: str
   display_name: str
   signed_at: datetime | None
 
+@dataclass(frozen=True)
+class SignatureRequest:
+  request_id: str
+  file_name: str
+  file_path: str  # WebDAV-Pfad relativ zu /remote.php/dav/files/{user}/
+  created_at: datetime
+  status: Literal["pending", "signed", "expired", "cancelled"]
+  signers: list[Signer]
+
 ## Implementierungs-Stufen
 
 ### Stufe 1: Installation & Smoke-Test (kein Code)
+Detailliertes Runbook: `docs/concepts/phase-94-stufe-1-runbook.md`
 Erfolgskriterium: 3 reale PDFs erfolgreich ausgefüllt + signiert
 Aufwand: ~2-3h
 - LibreSign via App Store installieren
@@ -88,10 +123,15 @@ Aufwand: ~1 Tag
 Erfolgskriterium: Zwei-Schritt-Bestätigung funktioniert sauber
 Aufwand: ~1-2 Tage
 - LibreSignClient: request_signature, sign_document
-- Two-step confirmation via PendingConfirmationStore:
-  1. "Bereite Vertrag X zur Signatur vor" → Draft
-  2. "Bestätige" → Ausführung
-- KEIN Auto-Signing ohne explizite Bestätigung
+- Two-step confirmation über den eingebauten Mechanismus, NICHT manuell:
+  Der Handler gibt `CommandResult(pending_confirmation=True, pending_data=...)`
+  zurück; die Bridge legt daraus eine `PendingAction` im
+  `PendingConfirmationStore` ab (Default-TTL 300 s, Bestätigung via
+  "ja"/"ok"/"passt", Abbruch via "nein"/"abbrechen").
+  1. "Bereite Vertrag X zur Signatur vor" → CommandResult mit
+     pending_confirmation=True (Draft-Beschreibung im `description`).
+  2. "ja"/"ok" → Bridge führt die hinterlegte Aktion aus.
+- KEIN Auto-Signing ohne explizite Bestätigung.
 
 ### Stufe 4 (optional, später): Workflow-Automation
 NUR umsetzen wenn echter Bedarf entsteht (YAGNI)
@@ -142,28 +182,54 @@ NUR umsetzen wenn echter Bedarf entsteht (YAGNI)
 
 ## Test-Strategie
 
-Stufe 1: Manuell, dokumentiert in journal.txt
-Stufe 2-3: pytest mit asyncio_mode=auto
-- test_libresign_client.py: HTTP-Mock mit aiohttp test utils
-- test_libresign_handler.py: Pattern-Match + Mock-Client
-- Integration-Test optional gegen lokale LibreSign-Instanz
+Stufe 1: Manuell, dokumentiert im Bramble-Journal (project=elder-berry).
+Stufe 2-3: pytest (Runner: `.\.venv\Scripts\python.exe -m pytest`).
 
-## Offene Fragen
+- test_libresign_client.py: `unittest.mock` patcht
+  `elder_berry.tools.libresign_client.httpx.Client` (analog
+  `test_nextcloud_cookbook_client.py`). KEINE externe Mock-Lib
+  (aiohttp/respx) – AGENTS.md verbietet das ohne Rückfrage.
+- test_libresign_commands.py: Pattern-Match + Mock-Client; eigener Testfile
+  pro neuer Klasse (AGENTS.md), nicht in bestehende Tests quetschen.
+- Mindestens: Happy Path, Auth-/HTTP-Fehler (401/403/>=400), leere Liste.
+- Integration-Test optional gegen lokale LibreSign-Instanz.
 
-1. Authentifizierung: Reicht App-Password aus NordPass,
-   oder OAuth nötig?
-2. WebDAV-Pfade: relative zu /remote.php/dav/files/lera/?
-3. Webhook-Endpoint für Signatur-Abschluss: Soll Saleria
-   auf RPi5 Webhooks empfangen, oder Polling reichen?
-4. Wie umgehen mit "Datei ist offen in LibreSign" während
-   Saleria sie verschieben/löschen will?
+## Geklärte Fragen (Entscheidungen)
+
+Die vier ursprünglich offenen Fragen sind anhand des bestehenden Codes
+entschieden. Begründungen sind am Repo verifiziert, nicht angenommen.
+
+1. **Authentifizierung → App-Password (Basic-Auth), keine OAuth.**
+   Begründung: Cookbook-Client (Phase 93) und CalDAV-Client (Phase 56)
+   nutzen bereits `nextcloud_url` / `nextcloud_user` / `nextcloud_app_password`
+   aus dem `SecretStore` via `httpx`-Basic-Auth. LibreSign läuft auf derselben
+   Nextcloud → dieselben Secrets wiederverwenden. KEINE neuen Auth-Keys, kein
+   OAuth-Flow. (App-Password-Herkunft – NordPass o. Ä. – ist irrelevant.)
+2. **WebDAV-Pfade → ja, relativ zu `/remote.php/dav/files/<user>/`.**
+   Bestätigt durch `_webdav_base` im Cookbook-Client
+   (`{url}/remote.php/dav/files/{user}/`). Hinweis: Die LibreSign-API selbst
+   adressiert Dokumente i. d. R. über `fileId`, nicht über WebDAV-Pfade; der
+   WebDAV-Pfad ist v. a. zum Hochlegen/Auffinden relevant.
+3. **Signatur-Abschluss → Polling, kein Webhook (in Stufe 2/3).**
+   Stufe 2 ist On-Demand-Statusabfrage ("was steht zur Signatur an?"); dafür
+   genügt ein Poll beim `LibreSignClient`. Ein eingehender Webhook-Endpoint auf
+   RPi5/Tower ist erst für die Automation in Stufe 4 nötig (YAGNI) und bleibt
+   bis dahin out of scope.
+4. **"Datei offen in LibreSign" beim Verschieben/Löschen → Guard in Stufe 3.**
+   In Stufe 1/2 (read-only) nicht betroffen. Ab Stufe 3: vor move/delete einer
+   Datei mit ausstehender Signatur den Status prüfen und warnen statt blind zu
+   verschieben (würde sonst die offene Signatur-Anfrage verwaisen lassen).
+   Konkrete Integration in `file_commands.py` erst dann entwerfen.
 
 ## Abhängigkeiten
 
-- Phase 93 (Cookbook) abgeschlossen
+- Phase 93 (Cookbook) abgeschlossen – `NextcloudCookbookClient` ist das
+  nächste Vorbild (sync `httpx`, SecretStore-Auth, WebDAV).
 - Nextcloud erreichbar (gegeben)
-- Bestehender PendingConfirmationStore (gegeben)
-- HTTP-Client-Pattern aus CalDAVTaskClient (Phase 56)
+- Bestehender PendingConfirmationStore + `CommandResult.pending_confirmation`
+  (gegeben)
+- HTTP-Client-Pattern: CalDAVTaskClient (Phase 56, nutzt `caldav`-Lib) und
+  NextcloudCookbookClient (Phase 93, nutzt `httpx`) – für LibreSign `httpx`.
 
 ## Definition of Done (gesamte Phase)
 
@@ -172,9 +238,11 @@ Stufe 2-3: pytest mit asyncio_mode=auto
 - [ ] LibreSignCommandHandler mit 2+ Patterns
 - [ ] Tests grün
 - [ ] Zwei-Schritt-Confirmation für sign_document
-- [ ] Concept-Doc finalisiert, journal.txt aktualisiert
+- [ ] Concept-Doc finalisiert, Bramble-Journal aktualisiert
+      (project=elder-berry; `docs/journal.txt` ist nur historische
+      Importquelle, dort KEINE neuen Einträge)
 - [ ] PROJECT_ROADMAP.md aktualisiert
-- [ ] Branch feature/phase-XX-libresign-integration gemerged
+- [ ] Branch feature/phase-94-libresign-integration gemerged
 
 ## Plan B (falls Stufe 1 scheitert)
 
