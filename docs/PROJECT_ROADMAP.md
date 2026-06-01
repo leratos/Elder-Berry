@@ -1680,10 +1680,26 @@ Repo-Hygiene, Audit-Tools und Doku.
 - Kontextabhängiger `color:white`-Check via effektiver Background-Berechnung.
 - Dark-Background-Islands werden beim Hidden-Strip korrekt erhalten.
 
-## Phase 89 – Saleria-Initiativ-Followup 💬 🔬 KONZEPT
+## Phase 89 – Saleria-Initiativ-Followup 💬 ✅ ABGESCHLOSSEN
 
-- Konzept für robuste Bestätigung auf kurze Followups (`ja bitte`).
-- Noch nicht als produktive Pipeline umgesetzt.
+- Deterministische Pipeline (Pfad C): Saleria schlägt einen Folge-Schritt über
+  die Action `propose_action` vor (konkreter Command in `proposed_command`);
+  eine kurze Bestätigung (`ja bitte`/`mach`/`ok`) führt ihn aus – ohne dass das
+  LLM die Bestätigung interpretiert.
+- `PendingInitiativeStore` (TTL 5 min) + Bridge-Intercept zwischen
+  PendingConfirmation und Command-Router; Nicht-Bestätigung verwirft den
+  Vorschlag (kein Blockieren).
+- Sicherheit: **Safe-Command-Allowlist (default-deny)** – nur reversible
+  Commands (Termin/Notiz/Reminder/Todo/Contact-Add) laufen auf ein kurzes „ja"
+  durch. Begründung: `propose_action` kann aus untrusted Mail-/Web-Enrichment
+  stammen, und einige Delete-Commands löschen sofort ohne eigene Bestätigung.
+- Diagnose-Korrektur im Konzept: ursprüngliche Hypothese H1 (Multi-Turn-Rollen)
+  war strukturell unmöglich (Single-Turn, History im System-Prompt); Wurzel war
+  der System-Prompt (`saleria.yaml`).
+- Konzept: `docs/concepts/phase-89-saleria-initiativ-followup.md` (PR #276).
+- Backlog (niedrig): proaktiven Vorschlag im Alltag bestätigen; ggf.
+  `saleria.yaml`-Direktive nachschärfen, falls `propose_action` nicht
+  zuverlässig emittiert wird.
 
 ## Phase 90 – Multi-Line-Notiz-Pattern + Vollzugs-Halluzinations-Vermeidung ✅ ABGESCHLOSSEN
 
