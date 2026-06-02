@@ -72,6 +72,24 @@ class EmotionTracker:
             counts[entry.emotion] = counts.get(entry.emotion, 0) + 1
         return max(counts, key=counts.get)  # type: ignore[arg-type]
 
+    def dominant_with_confidence(
+        self, now: datetime | None = None
+    ) -> tuple[Emotion, float]:
+        """Dominante Emotion plus Dominanz-Ratio der aktiven Einträge.
+
+        Die Ratio ist ``count(dominant) / count(active)`` (0.0–1.0) und dient dem
+        ``EmotionResolver`` (Phase 83.1) als Trend-Gewicht – bewusst **keine**
+        Valenz-Rückabbildung. Ohne aktive Einträge: ``(NEUTRAL, 0.0)``.
+        """
+        active = self._active_entries(now)
+        if not active:
+            return Emotion.NEUTRAL, 0.0
+        counts: dict[Emotion, int] = {}
+        for entry in active:
+            counts[entry.emotion] = counts.get(entry.emotion, 0) + 1
+        dom = max(counts, key=counts.get)  # type: ignore[arg-type]
+        return dom, counts[dom] / len(active)
+
     def get_trend(self, now: datetime | None = None) -> str | None:
         """
         Ermittelt die Tendenz basierend auf dem Valenz-Verlauf.

@@ -104,6 +104,24 @@ class CharacterEngine(ABC):
         """
         pass
 
+    @staticmethod
+    @abstractmethod
+    def parse_emotion_tag(llm_response: str) -> "Emotion | None":
+        """
+        Liest das erste [emotion]-Tag aus der LLM-Antwort – seiteneffektfrei.
+
+        Im Gegensatz zu :meth:`extract_emotion` setzt diese Methode weder Mood
+        noch Tracker und unterscheidet „kein Tag" (``None``) von „NEUTRAL".
+        Grundlage für den :class:`EmotionResolver` (Phase 83.1).
+
+        Args:
+            llm_response: Rohe LLM-Antwort mit möglichen Emotions-Tags.
+
+        Returns:
+            Erkannte Emotion, oder ``None`` wenn kein gültiges Tag vorhanden.
+        """
+        ...
+
     @abstractmethod
     def extract_emotion(self, llm_response: str) -> Emotion:
         """
