@@ -90,6 +90,11 @@ class SaleriaEngine(CharacterEngine):
     def get_mood(self) -> MoodState:
         return self._mood
 
+    @property
+    def emotion_tracker(self) -> EmotionTracker:
+        """Der geteilte EmotionTracker (für EmotionResolver-Wiring, Phase 83.1)."""
+        return self._emotion_tracker
+
     def set_mood(self, emotion: Emotion, intensity: float = 0.5) -> None:
         self._mood = MoodState(current_emotion=emotion, intensity=intensity)
 
@@ -109,6 +114,22 @@ class SaleriaEngine(CharacterEngine):
             memory_context=memory_context,
             remote_commands=remote_commands,
         )
+
+    @staticmethod
+    def parse_emotion_tag(llm_response: str) -> Emotion | None:
+        """Seiteneffektfreies Lesen des ersten [emotion]-Tags (None != NEUTRAL).
+
+        Nutzt dieselbe Regex-Quelle wie ``extract_emotion``; setzt aber weder
+        Mood noch Tracker. Grundlage für den ``EmotionResolver`` (Phase 83.1).
+        """
+        match = _EMOTION_TAG_RE.search(llm_response)
+        if not match:
+            return None
+        try:
+            return Emotion(match.group(1).lower())
+        except ValueError:
+            # Unerreichbar: die Regex matcht nur gültige Emotion-Werte.
+            return None
 
     def extract_emotion(self, llm_response: str) -> Emotion:
         match = _EMOTION_TAG_RE.search(llm_response)
