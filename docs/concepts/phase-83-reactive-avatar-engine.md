@@ -1,8 +1,183 @@
 # Phase 83 – Reactive AvatarEngine
 
-**Status:** Konzept (wartet auf Review).
+**Status:** Konzept – Review + Entscheidungen eingearbeitet 2026-06-02 (siehe §0,
+Journal #683). B1–B4 entschieden; bereit für Umsetzung ab 83.1.
 **Branch:** noch keiner – Konzept liegt auf `main`.
-**Phasennummer:** 83 (letzte abgeschlossene Phase: 82.1, gemerged via PR #205).
+**Phasennummer:** ⚠️ veraltet. Das Konzept entstand 2026-05-11 als „nächste
+freie nach 82.1"; seither liefen die Phasen 85/89/90/93/94/95 (nächste freie
+~96). Phase 83 wurde nie gestartet, sondern übersprungen. Beibehaltung der
+Nummer „83" ist Lera-Entscheidung. Details in §0.1.
+
+## 0. Review-Nachträge (Stand 2026-06-02)
+
+> Dieses Konzept wurde am **2026-05-11** geschrieben und am **2026-06-02**
+> gegen den realen Code-Stand reviewed (Journal `elder-berry` #683, Bezug
+> #116). Die Bestandsaufnahme (§2) ist im Kern korrekt; die ursprünglichen
+> Abschnitte 1–11 bleiben als Konzept-Historie erhalten. Die folgenden Punkte
+> korrigieren bzw. ergänzen sie. **Alle vier Befunde B1–B4 sind entschieden
+> (Lera, 2026-06-02); die Detail-Abschnitte 1–11 sind entsprechend angeglichen.
+> Go für 83.1 möglich.**
+
+### 0.1 Drift seit Konzept-Erstellung (Fakten)
+
+- **Phasennummer veraltet** – siehe Header. `PROJECT_ROADMAP.md` aktualisiert
+  Lera selbst.
+- **Zeilennummern ~+24 verschoben.** Der PR „Avatar-Config User-Override"
+  (#199/#200, 2026-05-26, NACH diesem Konzept) hat `_load_yaml_config`
+  aufgebläht. Verifizierte Verschiebung: `show_emotion` 314→338,
+  `_get_lip_sync_mouth` 431→455, `_start_idle_action` 480→504,
+  `_schedule_next_blink` 416→440. `EMOTION_MAP` Z.73 stimmt noch (liegt vor
+  dem Drift-Punkt).
+- **Zwei reale Code-Pfade fehlen in §2** und müssen beim Renderer-Refactor
+  (83.2/83.3) erhalten bleiben:
+  1. Die `assets_dir`-Config-Auflösung in `_load_yaml_config`
+     (Custom-Asset-Pack-Config vs. USER→DEFAULT-Chain).
+  2. Die **180°-Rotation** (`rotation=180` ist RPi5-Default): `update()` macht
+     am Ende einen Vollbild-`pygame.transform.flip`-Blit. Relevant für die
+     Crossfade-FPS-Messung – §5/§6.1 rechnet diesen Blit nicht mit.
+
+### 0.2 B1 → ENTSCHIEDEN (Lera, 2026-06-02): Option 0 – matrix_only hat keinen Lip-Sync
+
+**Befund:** `Assistant.process` verzweigt nach `audio_output`. Im **Datei-Modus**
+(`_tts_to_file`, gesetzt sobald `audio_to_matrix` aktiv = Default `matrix_only`)
+werden **keine** Speaking-Signale gesendet; nur der lokale **Playback-Modus**
+ruft `set_speaking`. In der realen Topologie (Bot auf Rootserver, Phase 44,
+`matrix_only`) wird `set_speaking` also nie gesendet.
+
+**Entscheidung:** Das wird **akzeptiert, nicht gefixt.** Lip-Sync (§4) ist ein
+**Playback-Modus-Feature**; im `matrix_only`-Betrieb zeigt der Avatar nur
+Emotion, der Mund bleibt auf dem Emotion-Default. **Kein file-mode-Speaking-Code,
+Subphase 83.0 entfällt.** Konsequenz: §4 / 83.4 (Amplitude-Lip-Sync) wirken
+ausschließlich im lokalen Playback-Modus. Die Prämisse „Lip-Sync wirkt zufällig"
+(§2.3 #1) bezog sich ohnehin nur auf diesen Modus.
+
+### 0.3 B3 → ENTSCHIEDEN (Lera, 2026-06-02): Scoring-Modell akzeptiert
+
+Aggregation **nicht** als Enum-Mittelung (unmöglich), sondern als **Scoring**:
+jede Quelle wirft (Emotion, Gewicht) in einen Topf, das Maximum gewinnt die
+*Identität*, die Summe ergibt die *Confidence*. Der LLM-Tag (0.7) entscheidet
+damit faktisch *welche* Emotion; Tracker (0.2) und Sensor (0.1) heben nur die
+Confidence bzw. springen ein, wenn kein Tag da ist. **Keine Valenz-Rückabbildung**
+(mehrdeutig: NEUTRAL und THOUGHTFUL haben beide Valenz 0.0). Konkrete Signaturen,
+Algorithmus und Confidence-Skala in **§0.7**. Akzeptanzkriterium §83.5 auf
+**„≥ 0.7"** korrigiert (getaggter 1. Turn = exakt 0.7).
+
+### 0.4 B2 → ENTSCHIEDEN (Lera, 2026-06-02): Per-Emotion-Blink gestrichen
+
+Verifiziert gegen `avatar_config.yaml`: `can_blink: true` nur für
+**neutral/cheerful/motivated/whisper**; die 6 übrigen sind `can_blink: false`.
+Die ursprüngliche Per-Emotion-Differenzierung betraf fast nur nicht-blinzelnde
+Emotionen → unter aktuellen Assets wirkungslos (die 4 blinzelnden teilen
+ohnehin alle 2–6 s).
+
+**Entscheidung:** Per-Emotion-Blink wird **aus 83.6 gestrichen**.
+`IdleBehaviorPolicy.blink_interval()` liefert das globale 2–6 s; `can_blink:false`
+blinzelt nie. Die Per-Emotion-Tabelle wandert in die **Asset-Phase** (§11), wo die
+Closed-Eye-Sprites entstehen, die sie erst sinnvoll machen. §3.6 entsprechend
+bereinigt.
+
+### 0.5 B4 → ENTSCHIEDEN (mit B3): Resolver übernimmt record()
+
+Der **Resolver** übernimmt `set_mood()` + `tracker.record()` (vorher Seiteneffekt
+in `extract_emotion`, `saleria.py` Z.119/120), **nach** dem Trend-Read und **nur
+bei vorhandenem Tag**. Da bei vorhandenem Tag `emotion == tag` gilt
+(Tracker-Beitrag max 0.2 < 0.7), bleibt die aufgezeichnete Serie **identisch zu
+heute**. `extract_emotion` bleibt unverändert als Adapter (alte Tests grün).
+Code in §0.7.
+
+### 0.6 Minor (beim Implementieren beachten)
+
+- Additive REST-Erweiterung (§6.3) trifft **drei** Pfade: `set_emotion`,
+  `set_speaking` **und** `set_avatar(emotion, is_speaking)` plus das
+  Pydantic-Model `AvatarRequest`. (Relevant nur für 83.4-Decision-Logging im
+  Playback-Modus; das `amplitude`-Feld entfällt im matrix_only-Pfad, siehe B1.)
+- Crossfade-FPS-Messung (§5/§6.1) **mit** `rotation=180` fahren (Vollbild-Blit).
+- `AmplitudeLipSyncDriver` braucht denselben Komponenten-Existenz-Guard wie
+  `_start_idle_action` (fehlendes `mouth_wide` → leerer Blit). Nur Playback-Modus.
+- Tests: kein Per-Emotion-Blink-Test (Feature gestrichen, B2). Stattdessen:
+  `blink_interval()` liefert für jede Emotion das globale Intervall, und
+  `can_blink=false` blinzelt nie.
+- Thread-Lock konkretisieren: ein Lock deckt StateMachine-Mutation **und**
+  `current_layers`-Read (REST-Thread + Render-Loop teilen den Zustand).
+
+### 0.7 Lösungsentwurf EmotionResolver (B3/B4, entschieden)
+
+**Tracker-Ergänzung** – kein Valenz-Export, nur Dominanz-Ratio:
+
+```python
+# emotion_tracker.py
+def dominant_with_confidence(self, now=None) -> tuple[Emotion, float]:
+    active = self._active_entries(now)
+    if not active:
+        return Emotion.NEUTRAL, 0.0
+    counts: dict[Emotion, int] = {}
+    for e in active:
+        counts[e.emotion] = counts.get(e.emotion, 0) + 1
+    dom = max(counts, key=counts.get)
+    return dom, counts[dom] / len(active)
+```
+
+**Seiteneffektfreier Parser** – löst zugleich §2.3 #3 (None = kein Tag ≠ NEUTRAL):
+
+```python
+# saleria.py – rein; extract_emotion bleibt als Adapter und ruft das hier
+@staticmethod
+def parse_emotion_tag(llm_response: str) -> Emotion | None:
+    m = _EMOTION_TAG_RE.search(llm_response)
+    if not m:
+        return None
+    try:
+        return Emotion(m.group(1).lower())
+    except ValueError:
+        return None
+```
+
+**Resolver-Kern:**
+
+```python
+TAG_W, TREND_W, SENSOR_W = 0.7, 0.2, 0.1
+
+def resolve_from_llm(self, llm_response, sensor_state=None) -> EmotionDecision:
+    scores: dict[Emotion, float] = defaultdict(float)
+    raw: dict[str, float] = {}
+
+    tag = self._character.parse_emotion_tag(llm_response)     # Emotion | None
+    if tag is not None:
+        scores[tag] += TAG_W
+        raw["llm_tag"] = TAG_W
+
+    dom, ratio = self._tracker.dominant_with_confidence()     # Trend VOR record lesen
+    if ratio > 0.0:
+        damp = 0.5 if self._tracker.get_trend() == "wechselhaft" else 1.0
+        s = TREND_W * ratio * damp
+        scores[dom] += s
+        raw["tracker_trend"] = s
+
+    # sensor_state: Stub → kein Beitrag (SENSOR_W reserviert)
+
+    if not scores:
+        return EmotionDecision(Emotion.NEUTRAL, 0.0, "fallback", raw)
+
+    emotion = max(scores, key=scores.get)
+    source = ("llm_tag" if tag == emotion
+              else "tracker_trend" if dom == emotion
+              else "fallback")
+    if tag is not None:                       # B4: heutige Semantik erhalten
+        self._character.set_mood(emotion)
+        self._tracker.record(emotion)         # record NACH Trend-Read
+    return EmotionDecision(emotion, round(scores[emotion], 3), source, raw)
+```
+
+**Confidence-Skala (deterministisch):** Tag + leerer Tracker = **0.7**; Tag +
+Tracker-Übereinstimmung bis **0.9**; Tag + Widerspruch = **0.7** (Tag gewinnt die
+Identität); nur Tracker = bis **0.2**; nichts = **0.0**.
+
+**Wiring:** Der Tracker wird heute in `SaleriaEngine.__init__` erzeugt (nicht
+injiziert). → schmale Property `emotion_tracker` ergänzen, damit Resolver und
+Character **dieselbe** Instanz teilen:
+`EmotionResolver(character=eng, emotion_tracker=eng.emotion_tracker)`.
+
+---
 
 ## 1. Ziel und Scope
 
@@ -18,7 +193,7 @@ ein.
   Sensoren).
 - Zustandsmaschine mit Crossfade-Übergängen.
 - Lip-Sync-Treiber mit Amplitude-Profil als Default-Implementierung (ersetzt
-  das 0.18 s-Würfeln).
+  das 0.18 s-Würfeln) – **nur im lokalen Playback-Modus wirksam** (B1/§0.2).
 - Idle-Verhalten kontextsensitiv (Briefing-Modus, Sensor-Presence).
 - Architekturweiche Tower vs. Rootserver vs. RPi5 explizit dokumentieren.
 
@@ -47,6 +222,13 @@ Matrix-Message
         -> tts.speak()  /  tts.generate_audio()
         -> avatar.show_speaking(False) + robot.set_speaking(False)
 ```
+
+> **⚠️ Korrektur (Review §0.2):** Dieser Fluss gilt **nur im lokalen
+> Playback-Modus**. Im Standard-`matrix_only`-Betrieb (`audio_to_matrix=True`)
+> läuft `Assistant.process` in den Datei-Modus (`_tts_to_file`) und sendet
+> **keine** `show_speaking`/`robot.set_speaking`-Signale – nur `show_emotion`
+> und `robot.set_emotion` kommen unbedingt. Das ist B1 – **entschieden: Option 0**
+> (Lip-Sync ist ein Playback-Modus-Feature, §0.2).
 
 ### 2.2 Beteiligte Klassen (existierend)
 
@@ -92,7 +274,9 @@ Matrix-Message
 7. **Architekturschicht fehlt.** Es gibt keinen Layer zwischen "Bot
    entscheidet etwas" und "Renderer zeichnet ein Frame". Verhalten lebt im
    Renderer, weil es nirgendwo sonst hingebracht wurde.
-8. **`can_blink: false` für sad/sarcastic/angry/thoughtful.** Anatomisch
+8. **`can_blink: false` für 6 von 10 Emotionen** (angry/sarcastic/thoughtful/
+   shy/depressed/sad – verifiziert gegen `avatar_config.yaml`; frühere Fassung
+   nannte nur 4, siehe Review §0.4). Anatomisch
    fragwürdig (Menschen blinzeln auch traurig). Liest sich wie ein
    Sprite-Schutz-Workaround – es gibt vermutlich keine passende
    Closed-Eye-Variante. Das ist eine versteckte Asset-Lücke, kein
@@ -158,6 +342,14 @@ aggregiert.
 `character.extract_emotion()` bleibt als dünner Adapter erhalten (gibt nur
 das LLM-Tag zurück), damit alte Tests grün bleiben. Der neue Pfad geht über
 den Resolver.
+
+> **✅ Spezifiziert (Review §0.7, entschieden 2026-06-02):** Die Aggregation ist
+> ein **Scoring-Modell** – jede Quelle wirft (Emotion, Gewicht) in einen Topf,
+> das Maximum gewinnt die Identität, die Summe ergibt die Confidence (keine
+> Enum-Mittelung, keine Valenz-Rückabbildung). Dazu: seiteneffektfreier
+> `parse_emotion_tag`, neue Tracker-Methode `dominant_with_confidence` (keine
+> duplizierte Valenz-Map), und der **Resolver** übernimmt `set_mood`/`record`
+> **nach** dem Trend-Read (B4). Konkrete Signaturen + Confidence-Skala in §0.7.
 
 ### 3.2 AvatarController (`avatar/controller.py`)
 
@@ -287,18 +479,17 @@ class IdleBehaviorPolicy:
   Sensor-Aktivität in den letzten N Sekunden.
 - Briefing-Modus (formell) reduziert Idle-Frequenz um 50 %, lässt nur
   `soft_close` zu, blendet `surprise`/`smile` aus.
-- Per-Emotion-Blink-Frequenz: löst das `can_blink: false`-Problem aus 2.3 #8
-  ohne YAML-Änderung. Default-Mapping (im Code, nicht in YAML, weil
-  Asset-Phase explizit out-of-scope):
-  - `NEUTRAL/CHEERFUL/MOTIVATED/WHISPER`: 2–6 s (heutiges Verhalten).
-  - `SAD/DEPRESSED`: 5–10 s (langsamer).
-  - `ANGRY`: 6–12 s (selten, intensiver Blick).
-  - `SARCASTIC/THOUGHTFUL`: 4–8 s.
-  - `SHY`: 1–3 s (häufiger).
-- `can_blink: false` aus YAML bleibt als Asset-Lock respektiert (wenn kein
-  Close-Eye-Sprite existiert, kann auch nicht geblinzelt werden). Aber das
-  ist eine Asset-Frage, nicht eine Verhaltensfrage – im Konzept als Befund
-  dokumentiert, Fix in einer späteren Asset-Phase.
+- Blink-Frequenz: **global 2–6 s** (`blink_interval()` gibt für jede Emotion
+  dasselbe Intervall zurück).
+  **✅ Entschieden (Review §0.4 / B2, 2026-06-02):** Per-Emotion-Blink wurde
+  **gestrichen**. Eine Mood-abhängige Differenzierung ist unter den aktuellen
+  Assets wirkungslos – nur neutral/cheerful/motivated/whisper können überhaupt
+  blinzeln, und die teilen ohnehin dasselbe Intervall. Die ursprünglich geplante
+  Tabelle (sad langsamer, shy häufiger, …) wandert in die **Asset-Phase** (§11),
+  zusammen mit den Closed-Eye-Sprites, die sie erst wirksam machen.
+- `can_blink: false` aus YAML bleibt als Asset-Lock respektiert: ohne
+  Close-Eye-Sprite wird nicht geblinzelt. Reine Asset-Frage, Fix in der
+  Asset-Phase.
 
 ### 3.7 AttentionProvider (Stub für 83.5)
 
@@ -324,6 +515,11 @@ eigenen Hardware-Phase. Default-Wiring nutzt `NoopAttentionProvider`, damit
 sich am Verhalten nichts ändert.
 
 ## 4. Lip-Sync via Amplitude-Profil
+
+> **⚠️ Geltungsbereich (Review §0.2 / B1, entschieden):** Der gesamte §4 wirkt
+> **nur im lokalen Playback-Modus**. Im Standard-`matrix_only`-Betrieb sendet der
+> Bot kein `set_speaking` (siehe §0.2), daher läuft dort weder das Amplitude-
+> noch das Random-Lip-Sync; der Avatar zeigt nur Emotion. Das ist akzeptiert.
 
 ### 4.1 Was TTS heute liefert (ehrliche Antwort)
 
@@ -461,7 +657,11 @@ nicht thread-safe by default, AvatarController hält den Lock.
 
 ## 7. Migrationspfad (Subphasen)
 
-Reihenfolge so, dass Avatar nie länger als einen Commit kaputt ist:
+Reihenfolge so, dass Avatar nie länger als einen Commit kaputt ist.
+
+> **Hinweis (B1, entschieden):** Die zwischenzeitlich erwogene Vor-Subphase
+> 83.0 (file-mode Speaking) **entfällt** – Lip-Sync ist Playback-Modus-only
+> (§0.2). Der Pfad beginnt mit 83.1.
 
 ### 83.1 – EmotionResolver standalone
 
@@ -502,6 +702,9 @@ Reihenfolge so, dass Avatar nie länger als einen Commit kaputt ist:
 
 ### 83.4 – LipSyncDriver (RandomLipSync + AmplitudeLipSync)
 
+- **Geltungsbereich: nur Playback-Modus** (im matrix_only-Default wird kein
+  Speaking-Trigger gesendet, §0.2 / B1). Random- wie AmplitudeLipSync wirken
+  ausschließlich dort.
 - Neue Datei `avatar/lip_sync.py` mit ABC + zwei Implementierungen.
 - AudioAnalyzer in `core/audio_analyzer.py` (oder in `tts/`, je nachdem
   wo's natürlicher liegt – im Konzept zu klären beim Implementieren).
@@ -526,8 +729,8 @@ Reihenfolge so, dass Avatar nie länger als einen Commit kaputt ist:
 - Spread-Update auf `RobotClient.set_emotion(..., decision=...)` für
   Server-Logging.
 - **Akzeptanz:** End-to-End-Test: LLM-Antwort `"[cheerful] Hi"` →
-  AvatarController bekommt Decision mit confidence>0.7 → StateMachine
-  triggert Übergang von NEUTRAL.
+  AvatarController bekommt Decision mit **confidence ≥ 0.7** (= exakt 0.7 bei
+  leerem Tracker, Skala in §0.7) → StateMachine triggert Übergang von NEUTRAL.
 
 ### 83.6 – IdleBehaviorPolicy + AttentionProvider-Stub
 
@@ -535,14 +738,15 @@ Reihenfolge so, dass Avatar nie länger als einen Commit kaputt ist:
 - Idle-Logik aus `LayeredSpriteRenderer._update_idle` / `_schedule_next_idle`
   / `_start_idle_action` rauspflücken → IdleBehaviorPolicy.
 - Blink-Logik aus `_update_blink` / `_schedule_next_blink` ebenfalls in
-  IdleBehaviorPolicy (Per-Emotion-Intervalle siehe 3.6).
+  IdleBehaviorPolicy. **Globales** Intervall 2–6 s (`blink_interval()`
+  mood-unabhängig); Per-Emotion-Blink ist gestrichen (B2, §0.4).
 - Briefing-Modus-Erkennung: Assistant kennt den `BriefingScheduler` /
   `briefing_mode`-Flag (existiert in `core/`)? **Zu prüfen beim
   Implementieren** – wenn nicht, in dieser Subphase ein schmales
   `BriefingModeProvider`-Stub einbauen, das auf BriefingScheduler-State
   liest.
-- **Akzeptanz:** Tests für Idle-Frequenz pro Mood, formeller vs. casual
-  Modus.
+- **Akzeptanz:** Tests für Idle-Frequenz, formeller vs. casual Modus, und dass
+  `blink_interval()` mood-unabhängig ist + `can_blink=false` nie blinzelt.
 
 ## 8. Tests
 
@@ -557,7 +761,7 @@ neue Dateien:
 | `tests/test_render_plan.py` | Layer-Defaults, Idle-Override, Speaking-Override-Priorität. |
 | `tests/test_lip_sync_driver.py` | RandomLipSyncDriver (Bestand parametrisiert), AmplitudeLipSyncDriver (Bucket-Mapping, Stille-Pausen). |
 | `tests/test_audio_analyzer.py` | Sinus → bekannte RMS-Werte, MP3- und WAV-Pfad. |
-| `tests/test_idle_behavior_policy.py` | Trigger-Bedingungen, Briefing-Modus, Per-Emotion-Blink-Intervall. |
+| `tests/test_idle_behavior_policy.py` | Trigger-Bedingungen, Briefing-Modus, globales Blink-Intervall (mood-unabhängig), `can_blink=false` blinzelt nie. |
 
 Bestehende Tests, die anzupassen sind:
 
@@ -587,14 +791,17 @@ Mocks: `unittest.mock` reicht. Keine neuen externen Mock-Libraries.
 - **Was passiert, wenn der Bot den Avatar nicht mehr nutzt** (z.B. reiner
   Matrix-Modus ohne RPi5): RobotClient ist optional. Resolver läuft
   trotzdem, Decisions landen im Log, ggf. Telemetrie. Nichts kaputt.
-- **Asset-Lücke `can_blink: false` für sad/angry/sarcastic/thoughtful**:
-  identifiziert, hier dokumentiert, Fix als eigene Asset-Phase. Diese Phase
-  respektiert das YAML-Flag.
+- **Asset-Lücke `can_blink: false` für 6 Emotionen** (angry/sarcastic/
+  thoughtful/shy/depressed/sad): identifiziert, hier dokumentiert, Fix als
+  eigene Asset-Phase. Diese Phase respektiert das YAML-Flag. Die Per-Emotion-
+  Blink-Intervalle (B2/§0.4) sind dorthin verschoben.
 
 ## 11. Folge-/Out-of-Scope-Phasen (zur Erinnerung)
 
-- **Asset-Erweiterung**: Closed-Eye-Varianten für alle Emotionen, neue
-  Mouth-Frames für Phoneme/Viseme.
+- **Asset-Erweiterung**: Closed-Eye-Varianten für alle Emotionen (hebt den
+  `can_blink: false`-Lock auf) plus die dann sinnvolle **Per-Emotion-Blink-
+  Tabelle** (sad langsamer, shy häufiger, …; aus B2/§0.4 hierher verschoben),
+  und neue Mouth-Frames für Phoneme/Viseme.
 - **ElevenLabs-Alignment-Migration**: Streaming + Character-Level-Timing für
   echten Phonem-Sync.
 - **Body-Splitting**: Arme/Schultern als separate Layer für Gestik.
@@ -613,6 +820,6 @@ Mocks: `unittest.mock` reicht. Keine neuen externen Mock-Libraries.
    `mouth_open`? Wird sich beim Implementieren zeigen, ggf. mit der
    Mouth-Frame-Gewichtung aus `avatar_config.yaml:lip_sync.frames`
    abgleichen.
-3. Per-Emotion-Blink-Intervalle sind eine Designentscheidung. Wenn Lera
-   das anders sieht: Werte sind zentralisiert in `IdleBehaviorPolicy`,
-   ein-Zeilen-Edit.
+3. Per-Emotion-Blink-Intervalle — **erledigt (B2/§0.4):** gestrichen,
+   `blink_interval()` ist global; die Mood-Tabelle lebt künftig in der
+   Asset-Phase.
