@@ -56,7 +56,7 @@ matrix = [
     # Phase 85.4: HtmlEmailSanitizer wird ueber email_client transitiv
     # gezogen, sobald der Matrix-Bot remote_commands -> mail_commands
     # importiert. Ohne bs4 knallt der Import bei .[matrix]-Installs.
-    "beautifulsoup4>=4.12",
+    "beautifulsoup4>=4.14.3",
     # Phase 86.1: css_decl_resolver (tinycss2) wird via
     # html_email_sanitizer (geplant 86.2) auf dem gleichen Import-
     # Pfad transitiv geladen wie bs4.
@@ -67,7 +67,7 @@ remote = [
     "pyperclip>=1.9",
     # Phase 85.4: gleiche Begruendung wie matrix-Gruppe -- remote-
     # Client-Pfade laden email_client transitiv.
-    "beautifulsoup4>=4.12",
+    "beautifulsoup4>=4.14.3",
     # Phase 86.1: siehe matrix-Gruppe.
     "tinycss2>=1.5.1",
 ]
@@ -93,7 +93,7 @@ computer-use = [
 ]
 web = [
     "trafilatura>=2.0.0",
-    "beautifulsoup4>=4.12",
+    "beautifulsoup4>=4.14.3",
     # Phase 78 Etappe 3: Plugin-Vorschlaege im Dashboard. Saleria-
     # generierte Markdown-Specs werden server-side gerendert + ueber
     # bleach.clean() gegen eine enge Allowlist gesaeubert (Konzept R3).
@@ -127,7 +127,7 @@ tower = [
     "mss>=10.2.0",
     # Phase 85: HtmlEmailSanitizer fuer IMAPEmailClient -- robustes
     # HTML-Stripping mit Hidden-Text-Filter statt naiver Regex.
-    "beautifulsoup4>=4.12",
+    "beautifulsoup4>=4.14.3",
     # Phase 86.1: css_decl_resolver fuer den Sanitizer (geplant 86.2),
     # gleicher Import-Pfad wie bs4.
     "tinycss2>=1.5.1",
@@ -141,7 +141,7 @@ server = [
     "google-auth-httplib2>=0.3.1",
     "pymupdf>=1.27.2.3",
     "trafilatura>=2.0.0",
-    "beautifulsoup4>=4.12",
+    "beautifulsoup4>=4.14.3",
     "caldav>=3.2.1",
     "vobject>=0.9.9",
     # Phase 86.1: server-Tower-Pipeline pullt html_email_sanitizer
@@ -161,7 +161,7 @@ dev = [
     # der dev-Gruppe scheitert `pip install -e .[dev]` und CI an dem
     # transitiven Import. Beide Pakete sind Pure-Python und klein, der
     # Aufwand fuer dev-Setup ist gegen die Test-Coverage vernachlaessigbar.
-    "beautifulsoup4>=4.12",
+    "beautifulsoup4>=4.14.3",
     "tinycss2>=1.5.1",
 ]
 
