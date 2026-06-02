@@ -231,12 +231,12 @@ Gates: `test` (Ubuntu+Windows, inkl. Coverage), `lint` (ruff), `typecheck`
 | 82 + 82.1 | Multi-Action-Sequencing + Multi-Line-in-Step | ✅ Fertig |
 | 83 | Reactive AvatarEngine | 🔬 Konzept |
 | 85 + 86 + 87.1 + 87.B + 87.C | HTML-Mail-Sanitizer, tinycss2-Resolver, Iteration-Crash-Fix, Background-Heuristik (WCAG), Doku-Migration | ✅ Fertig |
-| 89 | Saleria-Initiativ-Followup | 🔬 Konzept |
+| 89 | Saleria-Initiativ-Followup (propose_action + PendingInitiativeStore, Safe-Command-Allowlist) | ✅ Fertig |
 | 90 | Multi-Line-Notiz-Pattern + Halluzinations-Vermeidung (90-C nach Smoketest nicht nötig) | ✅ Fertig |
 | 91 | FactStore-Extraktion + Note-Flow-Refactor | ✅ Fertig |
 | 92 | Multi-Stop-Routing | ✅ Fertig |
 | 93 | Nextcloud Cookbook-Integration (Rezepte, API-Matching, Kategorie-Suche) | ✅ Fertig |
-| 94 | LibreSign-Integration (PDF-Signierung via Nextcloud) | 🔬 Konzept |
+| 94 | LibreSign-Integration (PDF-Signierung via Nextcloud, manuell – bewusst keine Saleria-Anbindung) | ✅ Fertig (Install-only) |
 | 95 | Comms-Pattern-Stabilisierung (PatternSpec, Routing-Confidence, Handler-Gates) | ✅ Fertig |
 
 Vollständige Roadmap mit Details: **[PROJECT_ROADMAP.md](docs/PROJECT_ROADMAP.md)**
