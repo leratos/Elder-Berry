@@ -12,8 +12,9 @@ import logging
 import threading
 from pathlib import Path
 
+from elder_berry.avatar.controller import AvatarController
 from elder_berry.avatar.layered_renderer import LayeredSpriteRenderer
-from elder_berry.character.base import Emotion
+from elder_berry.avatar.state_machine import AvatarStateMachine
 from elder_berry.robot.server import AvatarDisplay
 
 logger = logging.getLogger(__name__)
@@ -131,22 +132,29 @@ class RPi5AvatarDisplay(AvatarDisplay):
                 fullscreen=self._fullscreen,
                 rotation=self._rotation,
             )
+            # Phase 83.2: Semantik-Layer zwischen Snapshot-State und Renderer.
+            # Der Controller leitet weiterhin an den Renderer weiter (Verhalten
+            # identisch); die StateMachine teilt sich die Emotion-Map des
+            # Renderers, damit current_layers dieselben Keys auflöst.
+            controller = AvatarController(
+                renderer=self._renderer,
+                state_machine=AvatarStateMachine(
+                    emotion_map=self._renderer.emotion_map
+                ),
+            )
             logger.info("Render-Loop gestartet")
 
             while not self._stop_event.is_set() and self._renderer.is_running():
-                # State aus Lock lesen
+                # State aus Lock lesen (Snapshot vom REST-Thread)
                 with self._lock:
                     emotion_str = self._emotion
                     speaking = self._speaking
 
-                # Emotion → Enum konvertieren
-                try:
-                    emotion = Emotion(emotion_str)
-                except ValueError:
-                    emotion = Emotion.NEUTRAL
-
-                self._renderer.show_emotion(emotion)
-                self._renderer.show_speaking(speaking)
+                # Controller statt direkter Renderer-Aufrufe. set_emotion
+                # konvertiert den String (Fallback NEUTRAL); set_speaking ist
+                # kantengetriggert, darf also pro Frame aufgerufen werden.
+                controller.set_emotion(emotion_str)
+                controller.set_speaking(speaking)
                 self._renderer.update()
 
         except Exception:

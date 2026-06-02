@@ -13,6 +13,7 @@ except ImportError:
     pygame = None  # type: ignore[assignment]
 
 from elder_berry.avatar.base import AvatarRenderer
+from elder_berry.avatar.render_plan import RenderPlan
 from elder_berry.character.base import Emotion
 
 logger = logging.getLogger(__name__)
@@ -353,7 +354,23 @@ class LayeredSpriteRenderer(AvatarRenderer):
             self._last_lip_switch = time.monotonic()
             self._next_lip_interval = self._lip_sync_interval
 
+    @property
+    def emotion_map(self) -> dict[Emotion, EmotionLayers]:
+        """Read-only Zugriff auf die aktive Emotion→Layer-Zuordnung.
+
+        Quelle ist YAML (``avatar_config_loader``) oder der Hardcode-Fallback.
+        Wird in 83.2 von der :class:`AvatarStateMachine` geteilt, damit deren
+        ``current_layers`` dieselben Keys auflöst wie der Renderer.
+        """
+        return self._emotion_map
+
     def update(self) -> None:
+        """Rendert ein Frame: Event-Pump → Plan bauen → :meth:`render`.
+
+        Adapter über :meth:`render`. ``update`` löst weiterhin die dynamischen
+        Anteile (Idle, Blink, Lip-Sync, Breathing) auf – diese bleiben in 83.2
+        im Renderer – und kapselt das Ergebnis in einen :class:`RenderPlan`.
+        """
         if not self._running or self._screen is None:
             return
 
@@ -362,7 +379,18 @@ class LayeredSpriteRenderer(AvatarRenderer):
                 self._running = False
                 return
 
-        now = time.monotonic()
+        plan = self._build_plan(time.monotonic())
+        self.render(plan)
+
+    def _build_plan(self, now: float) -> RenderPlan:
+        """Löst Emotion + dynamische Overrides zu einem :class:`RenderPlan` auf.
+
+        Repliziert die bisherige ``update``-Logik 1:1 (gleiche Reihenfolge und
+        Bedingungen der Seiteneffekte ``_update_idle`` / ``_update_blink`` /
+        ``_get_lip_sync_mouth``), damit das Verhalten unverändert bleibt.
+        Prioritäten via :meth:`RenderPlan.compose`: Augen blink>idle>Emotion,
+        Mund speaking>idle>Emotion.
+        """
         layers = self._emotion_map.get(self._current_emotion)
         if layers is None:
             layers = self._emotion_map[Emotion.NEUTRAL]
@@ -371,8 +399,6 @@ class LayeredSpriteRenderer(AvatarRenderer):
         if not self._is_speaking:
             self._update_idle(now)
 
-        self._screen.fill(BG_COLOR)
-
         # Breathing-Offset (subtile Y-Verschiebung, nur wenn nicht sprechend)
         breath_y = 0
         if not self._is_speaking and self._breathing_enabled:
@@ -380,40 +406,57 @@ class LayeredSpriteRenderer(AvatarRenderer):
                 math.sin(now * self._breathing_speed) * self._breathing_amplitude
             )
 
-        # Layer 1: Body
-        self._blit_centered(layers.body, y_offset=breath_y)
-
-        # Layer 2: Augen (mit Blink → Idle → Emotion Priorität)
-        eye_left = layers.eye_left
-        eye_right = layers.eye_right
-
-        # Idle-Override (wenn aktiv und nicht blinkend)
+        # Augen: Idle-Override (wenn aktiv und Idle-Augen gesetzt)
+        idle_eyes: tuple[str, str] | None = None
         if self._idle_active and self._idle_eye_left:
-            eye_left = self._idle_eye_left
-            eye_right = self._idle_eye_right
+            idle_eyes = (self._idle_eye_left, self._idle_eye_right or "")
 
+        # Augen: Blink schlägt Idle (nur für can_blink-Emotionen)
+        blink_eyes: tuple[str, str] | None = None
         if layers.can_blink:
             self._update_blink(now)
             if self._blink_active:
-                eye_left = "eye_left_close"
-                eye_right = "eye_right_close"
+                blink_eyes = ("eye_left_close", "eye_right_close")
 
-        self._blit_centered(eye_left, y_offset=breath_y)
-        self._blit_centered(eye_right, y_offset=breath_y)
+        # Mund: Lip-Sync (sprechend) schlägt Idle schlägt Emotion-Default
+        speaking_mouth = self._get_lip_sync_mouth(now) if self._is_speaking else None
+        idle_mouth = (
+            self._idle_mouth
+            if (not self._is_speaking and self._idle_active and self._idle_mouth)
+            else None
+        )
 
-        # Layer 3: Mund (Lip-Sync → Idle → Emotion Priorität)
-        if self._is_speaking:
-            mouth_key = self._get_lip_sync_mouth(now)
-        elif self._idle_active and self._idle_mouth:
-            mouth_key = self._idle_mouth
-        else:
-            mouth_key = layers.mouth
+        return RenderPlan.compose(
+            layers,
+            blink_eyes=blink_eyes,
+            idle_eyes=idle_eyes,
+            speaking_mouth=speaking_mouth,
+            idle_mouth=idle_mouth,
+            y_offset=breath_y,
+        )
 
-        self._blit_centered(mouth_key, y_offset=breath_y)
+    def render(self, plan: RenderPlan) -> None:
+        """Zeichnet genau einen :class:`RenderPlan` (fill → Layer → Flip).
 
+        Reiner Blitter: keine Verhaltens-Logik. ``plan.alpha`` wird in 83.2 noch
+        nicht ausgewertet (opakes Blitting); das Alpha-Blending kommt mit dem
+        Crossfade in 83.3.
+        """
+        if self._screen is None:
+            return
+
+        self._screen.fill(BG_COLOR)
+
+        # Layer 1: Body
+        self._blit_centered(plan.body, y_offset=plan.y_offset)
+        # Layer 2: Augen
+        self._blit_centered(plan.eye_left, y_offset=plan.y_offset)
+        self._blit_centered(plan.eye_right, y_offset=plan.y_offset)
+        # Layer 3: Mund
+        self._blit_centered(plan.mouth, y_offset=plan.y_offset)
         # Layer 4: Effekt (optional)
-        if layers.effect:
-            self._blit_centered(layers.effect, y_offset=breath_y)
+        if plan.effect:
+            self._blit_centered(plan.effect, y_offset=plan.y_offset)
 
         # Display-Rotation: vor flip() den Screen-Inhalt um 180° spiegeln.
         # Hintergrund: RPi5 ignoriert display_lcd_rotate=. Wir machen
@@ -424,7 +467,8 @@ class LayeredSpriteRenderer(AvatarRenderer):
             self._screen.blit(rotated, (0, 0))
 
         pygame.display.flip()
-        self._clock.tick(FPS)
+        if self._clock is not None:
+            self._clock.tick(FPS)
 
     def _blit_centered(self, component_key: str, y_offset: int = 0) -> None:
         """Zeichnet eine Komponente zentriert auf den Screen."""
