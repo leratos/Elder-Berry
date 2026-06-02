@@ -249,7 +249,11 @@ class TestResolveRecordSemantics:
 class TestResolverWiring:
     def test_emotion_tracker_property_is_stable(self):
         engine = SaleriaEngine()
-        assert engine.emotion_tracker is engine.emotion_tracker
+        # Wiederholter Zugriff liefert dieselbe Instanz (kein neuer Tracker je Call).
+        first = engine.emotion_tracker
+        second = engine.emotion_tracker
+        assert first is second
+        assert first is engine.emotion_tracker
 
     def test_records_feed_shared_mood_context(self):
         resolver, engine = _resolver_with_seed()
