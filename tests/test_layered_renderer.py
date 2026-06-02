@@ -638,3 +638,73 @@ class TestRendererAssetsDirConfig:
         r = LayeredSpriteRenderer(assets_dir=layered_assets)
 
         assert r._emotion_map[Emotion.NEUTRAL].body == "shy"
+
+
+# ---------------------------------------------------------------------------
+# render(plan) + _build_plan – Zweige außerhalb des Standard-update()-Pfads
+# (Phase 83.2; Codecov-Patch-Lücken)
+# ---------------------------------------------------------------------------
+
+
+class TestRenderAndBuildPlan:
+    def test_render_returns_early_when_screen_none(self, mock_pygame, layered_assets):
+        """render() ohne initialize() (kein Screen) → no-op, kein Crash."""
+        from elder_berry.avatar.layered_renderer import LayeredSpriteRenderer
+        from elder_berry.avatar.render_plan import RenderPlan
+
+        r = LayeredSpriteRenderer(assets_dir=layered_assets)
+        assert r._screen is None  # nicht initialisiert
+        plan = RenderPlan(
+            body="relaxed",
+            eye_left="eye_left_open",
+            eye_right="eye_right_open",
+            mouth="mouth_neutral_close",
+        )
+        r.render(plan)
+        mock_pygame["pygame"].display.flip.assert_not_called()
+
+    def test_build_plan_falls_back_to_neutral_for_unmapped_emotion(self, renderer):
+        """Emotion nicht in der Map → NEUTRAL-Layer als Fallback."""
+        neutral = renderer._emotion_map[Emotion.NEUTRAL]
+        renderer._emotion_map = {Emotion.NEUTRAL: neutral}
+        renderer._current_emotion = Emotion.ANGRY  # nicht in der Map
+        plan = renderer._build_plan(time.monotonic())
+        assert plan.body == neutral.body
+
+    def test_build_plan_applies_idle_eye_and_mouth_override(self, renderer):
+        """Aktive Idle-Aktion überschreibt Augen- und Mund-Default."""
+        renderer._is_speaking = False
+        renderer._idle_active = True
+        renderer._idle_eye_left = "eye_left_side_open"
+        renderer._idle_eye_right = "eye_right_side_open"
+        renderer._idle_mouth = "mouth_halfopen"
+        renderer._idle_end_time = time.monotonic() + 100  # Idle bleibt aktiv
+        plan = renderer._build_plan(time.monotonic())
+        assert plan.eye_left == "eye_left_side_open"
+        assert plan.eye_right == "eye_right_side_open"
+        assert plan.mouth == "mouth_halfopen"
+
+    def test_build_plan_applies_blink_override(self, renderer):
+        """can_blink-Emotion mit fälligem Blink → geschlossene Augen."""
+        renderer._current_emotion = Emotion.NEUTRAL  # can_blink=True
+        renderer._is_speaking = False
+        renderer._blink_active = False
+        renderer._next_blink_time = 0.0  # sofort fällig
+        plan = renderer._build_plan(time.monotonic())
+        assert plan.eye_left == "eye_left_close"
+        assert plan.eye_right == "eye_right_close"
+
+    def test_render_blits_effect_layer(self, renderer, mock_pygame):
+        """Plan mit Effekt-Key → zusätzlicher Effekt-Blit."""
+        from elder_berry.avatar.render_plan import RenderPlan
+
+        plan = RenderPlan(
+            body="relaxed",
+            eye_left="eye_left_open",
+            eye_right="eye_right_open",
+            mouth="mouth_neutral_close",
+            effect="mouth_open",  # existiert in layered_assets
+        )
+        renderer.render(plan)
+        # body + eyeL + eyeR + mouth + effect = 5 Blits (rotation=0)
+        assert mock_pygame["screen"].blit.call_count >= 5

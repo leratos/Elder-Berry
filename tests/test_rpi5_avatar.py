@@ -500,3 +500,49 @@ class TestDisplayRotation:
                 ValueError, match="SpriteRenderer unterstuetzt keine Rotation"
             ):
                 r.initialize(rotation=180)
+
+
+# ---------------------------------------------------------------------------
+# Emotion-Forwarding-Gating (Phase 83.2, Codex P2)
+# ---------------------------------------------------------------------------
+
+
+class TestEmotionForwardingGating:
+    """Eine konstante (auch ungültige) Emotion darf nicht pro Frame an den
+    Controller gehen – sonst loggt der Fallback-Pfad Warnungen im FPS-Takt.
+    """
+
+    def test_constant_emotion_forwarded_once(self, mock_pygame, layered_assets):
+        from elder_berry.robot.rpi5_avatar import RPi5AvatarDisplay
+
+        with patch("elder_berry.robot.rpi5_avatar.AvatarController") as MockCtrl:
+            controller = MagicMock()
+            MockCtrl.return_value = controller
+
+            avatar = RPi5AvatarDisplay(fullscreen=False, assets_dir=layered_assets)
+            avatar.start()
+            time.sleep(0.3)
+            avatar.stop()
+
+            # Viele Frames liefen (set_speaking pro Frame), aber die konstante
+            # Default-Emotion ging nur einmal an den Controller.
+            assert controller.set_emotion.call_count == 1
+            assert controller.set_speaking.call_count >= 2
+
+    def test_changed_emotion_is_forwarded_again(self, mock_pygame, layered_assets):
+        from elder_berry.robot.rpi5_avatar import RPi5AvatarDisplay
+
+        with patch("elder_berry.robot.rpi5_avatar.AvatarController") as MockCtrl:
+            controller = MagicMock()
+            MockCtrl.return_value = controller
+
+            avatar = RPi5AvatarDisplay(fullscreen=False, assets_dir=layered_assets)
+            avatar.start()
+            time.sleep(0.15)
+            avatar.set_emotion("angry")  # Wechsel → erneutes Forwarding
+            time.sleep(0.15)
+            avatar.stop()
+
+            forwarded = [c.args[0] for c in controller.set_emotion.call_args_list]
+            assert "neutral" in forwarded
+            assert "angry" in forwarded
