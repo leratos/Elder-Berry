@@ -106,7 +106,7 @@ web = [
     "tinycss2>=1.5.1",
 ]
 nextcloud = [
-    "caldav>=3.2.0",
+    "caldav>=3.2.1",
     "vobject>=0.9.9",
 ]
 harmony = [
@@ -142,7 +142,7 @@ server = [
     "pymupdf>=1.27.2.3",
     "trafilatura>=2.0.0",
     "beautifulsoup4>=4.12",
-    "caldav>=3.2.0",
+    "caldav>=3.2.1",
     "vobject>=0.9.9",
     # Phase 86.1: server-Tower-Pipeline pullt html_email_sanitizer
     # (geplant 86.2) transitiv ueber email_client/IMAP. tinycss2
