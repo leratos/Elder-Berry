@@ -144,16 +144,21 @@ class RPi5AvatarDisplay(AvatarDisplay):
             )
             logger.info("Render-Loop gestartet")
 
+            last_emotion: str | None = None
             while not self._stop_event.is_set() and self._renderer.is_running():
                 # State aus Lock lesen (Snapshot vom REST-Thread)
                 with self._lock:
                     emotion_str = self._emotion
                     speaking = self._speaking
 
-                # Controller statt direkter Renderer-Aufrufe. set_emotion
-                # konvertiert den String (Fallback NEUTRAL); set_speaking ist
-                # kantengetriggert, darf also pro Frame aufgerufen werden.
-                controller.set_emotion(emotion_str)
+                # Controller statt direkter Renderer-Aufrufe. set_emotion nur
+                # bei Änderung weiterreichen: bei einem ungültigen Emotion-String
+                # würde der Fallback-Pfad sonst pro Frame eine Warnung loggen
+                # (Spam @ 30 FPS). set_speaking ist kantengetriggert und darf
+                # pro Frame aufgerufen werden.
+                if emotion_str != last_emotion:
+                    controller.set_emotion(emotion_str)
+                    last_emotion = emotion_str
                 controller.set_speaking(speaking)
                 self._renderer.update()
 

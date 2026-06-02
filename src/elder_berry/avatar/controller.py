@@ -15,16 +15,20 @@ Zwei Eingangs-APIs:
   ``on_speech_started`` / ``on_speech_ended``.
 
 ``set_speaking(bool)`` ist **kantengetriggert**: Der Render-Loop ruft es pro
-Frame mit dem aktuellen Snapshot; nur echte Wechsel lösen
-``on_speech_started/-ended`` aus. So bleibt der Sprech-Zähler korrekt, obwohl er
-pro Frame angestoßen wird. Der reine Zähler-Pfad (überlappende
-``on_speech_started``, 83.5) ist für den semantischen Eingang reserviert; beide
-Eingänge gleichzeitig zu mischen ist nicht vorgesehen.
+Frame mit dem aktuellen Snapshot; nur echte Wechsel lösen den
+Sprech-Zähler-Übergang aus (identisch zu ``on_speech_started/-ended``, ohne
+``audio_meta``). So bleibt der Sprech-Zähler korrekt, obwohl er pro Frame
+angestoßen wird. Der reine Zähler-Pfad (überlappende ``on_speech_started``,
+83.5) ist für den semantischen Eingang reserviert; beide Eingänge gleichzeitig
+zu mischen ist nicht vorgesehen.
 
-Thread-Modell: Ein einziger ``threading.Lock`` deckt StateMachine-Mutation
-**und** ``current_layers``-Read (§0.6 / §6.5). In 83.2 wird der Controller nur
-vom Render-Loop-Thread bedient; der Lock implementiert bereits den Vertrag für
-83.5, wenn der REST-Thread direkt ``on_emotion_decision`` aufruft.
+Thread-Modell: Ein einziger ``threading.Lock`` deckt **atomar** die
+Edge-Detection, die StateMachine-Mutation, das Renderer-Forwarding **und**
+``current_layers``-Read (§0.6 / §6.5). Dadurch bleiben Zustand
+(``get_state``) und gerendertes Bild auch bei konkurrierenden REST-/semantischen
+Aufrufern konsistent und in Reihenfolge. In 83.2 wird der Controller nur vom
+Render-Loop-Thread bedient; die Serialisierung ist bereits der Vertrag für 83.5,
+wenn der REST-Thread direkt ``on_emotion_decision``/``set_speaking`` aufruft.
 """
 
 from __future__ import annotations
@@ -82,17 +86,15 @@ class AvatarController(AvatarDisplay):
     def set_speaking(self, is_speaking: bool) -> None:
         """Legacy-Pfad: Sprech-Zustand setzen (kantengetriggert).
 
-        Pro Frame aufrufbar; nur ein echter Wechsel löst
-        ``on_speech_started``/``on_speech_ended`` aus.
+        Pro Frame aufrufbar; nur ein echter Wechsel löst einen
+        Sprech-Zähler-Übergang aus. Edge-Detection und Zähler-Mutation laufen
+        atomar unter einem Lock (kein Race bei konkurrierenden Aufrufern).
         """
         with self._lock:
             if is_speaking == self._legacy_speaking:
                 return
             self._legacy_speaking = is_speaking
-        if is_speaking:
-            self.on_speech_started()
-        else:
-            self.on_speech_ended()
+            self._apply_speech_delta_locked(is_speaking)
 
     def get_state(self) -> dict:
         """Liefert den semantischen Zustand (Emotion, Speaking, Zähler)."""
@@ -107,27 +109,38 @@ class AvatarController(AvatarDisplay):
     # -- Erweiterte semantische API (intern) ----------------------------------
 
     def on_emotion_decision(self, decision: EmotionDecision) -> None:
-        """Übernimmt eine aggregierte Emotion in StateMachine + Renderer."""
+        """Übernimmt eine aggregierte Emotion in StateMachine + Renderer.
+
+        State-Mutation und Renderer-Forwarding laufen unter demselben Lock,
+        damit ``get_state`` und das gerenderte Bild bei konkurrierenden Aufrufern
+        nicht auseinanderlaufen.
+        """
         with self._lock:
             self._state_machine.request_emotion(decision)
-        # Renderer-Weiterleitung außerhalb des SM-Locks: Der Renderer wird in
-        # 83.2 ausschließlich vom Render-Loop-Thread berührt.
-        self._renderer.show_emotion(decision.emotion)
+            self._renderer.show_emotion(decision.emotion)
 
     def on_speech_started(self, audio_meta: object | None = None) -> None:
         """Beginn einer Sprech-Sitzung (``audio_meta`` ist 83.4-Stub)."""
         del audio_meta  # Amplitude-Spur erst 83.4 (nur Playback-Modus).
         with self._lock:
-            self._state_machine.speech_increment()
-            speaking = self._state_machine.is_speaking()
-        self._renderer.show_speaking(speaking)
+            self._apply_speech_delta_locked(started=True)
 
     def on_speech_ended(self) -> None:
         """Ende einer Sprech-Sitzung (Zähler -1, ab 0 endet das Sprechen)."""
         with self._lock:
+            self._apply_speech_delta_locked(started=False)
+
+    def _apply_speech_delta_locked(self, started: bool) -> None:
+        """Mutiert den Sprech-Zähler und leitet den Zustand an den Renderer.
+
+        Caller **muss** ``self._lock`` halten – so bleiben Zähler-Übergang und
+        Renderer-Forwarding atomar und geordnet.
+        """
+        if started:
+            self._state_machine.speech_increment()
+        else:
             self._state_machine.speech_decrement()
-            speaking = self._state_machine.is_speaking()
-        self._renderer.show_speaking(speaking)
+        self._renderer.show_speaking(self._state_machine.is_speaking())
 
     def current_layers(self, now: float) -> RenderPlan:
         """Liefert den Layer-Plan des aktuellen Zustands (unter Lock).
