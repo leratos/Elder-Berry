@@ -256,6 +256,30 @@ def sweep_crossfade_fps(
     return results
 
 
+def result_for(
+    results: list[CrossfadeBenchmarkResult],
+    scope: CrossfadeScope,
+    width: int,
+    height: int,
+) -> CrossfadeBenchmarkResult | None:
+    """Findet im Sweep das Ergebnis einer konkreten (scope, width, height)-Konfig.
+
+    Dient dem **Gate**-Exit-Code: ob die tatsächlich laufende Produktions-Konfig
+    (gewählter Scope @ nativer Auflösung) 30 FPS hält – **nicht** ob irgendeine
+    Sweep-Variante (z. B. der 540x960-Fallback) hält. Sonst meldete das Gate
+    grün, obwohl der echte Lauf unter 30 bleibt und der Fallback nicht
+    automatisch greift.
+
+    Returns:
+        Das passende :class:`CrossfadeBenchmarkResult` oder ``None``, wenn die
+        Kombination nicht im Sweep enthalten ist.
+    """
+    for result in results:
+        if result.scope is scope and result.width == width and result.height == height:
+            return result
+    return None
+
+
 def format_result(result: CrossfadeBenchmarkResult) -> str:
     """Formatiert ein Messergebnis als einzeilige, menschenlesbare Zusammenfassung."""
     verdict = "HOLDS ≥30 FPS" if result.holds_30fps else "UNTER 30 FPS"

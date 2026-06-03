@@ -22,9 +22,26 @@ from elder_berry.avatar.crossfade_benchmark import (
     CrossfadeBenchmarkResult,
     format_result,
     measure_crossfade_fps,
+    result_for,
     sweep_crossfade_fps,
 )
 from elder_berry.avatar.layered_renderer import CrossfadeScope
+
+
+def _result(scope, width, height, holds):
+    """Baut ein CrossfadeBenchmarkResult ohne pygame (für result_for-Tests)."""
+    return CrossfadeBenchmarkResult(
+        frames=8,
+        width=width,
+        height=height,
+        rotation=180,
+        scope=scope,
+        mean_ms=10.0,
+        max_ms=12.0,
+        budget_ms=FRAME_BUDGET_MS,
+        effective_fps=100.0,
+        holds_30fps=holds,
+    )
 
 # Headless für den optionalen Real-Surface-Teil: vor pygame-Display-Init setzen.
 os.environ.setdefault("SDL_VIDEODRIVER", "dummy")
@@ -231,6 +248,28 @@ class TestSweep:
             CrossfadeScope.FULL,
             CrossfadeScope.MOUTH_ONLY,
         }
+
+
+# ---------------------------------------------------------------------------
+# result_for: Gate-Exit gilt der Produktions-Konfig, nicht "irgendeiner Variante"
+# ---------------------------------------------------------------------------
+
+
+class TestResultFor:
+    def test_picks_requested_scope_and_size(self):
+        results = [
+            _result(CrossfadeScope.FULL, 720, 1280, holds=False),
+            _result(CrossfadeScope.MOUTH_ONLY, 720, 1280, holds=True),
+            _result(CrossfadeScope.FULL, 540, 960, holds=True),
+        ]
+        # Produktions-Konfig FULL@720 faellt durch -- obwohl Fallbacks halten.
+        target = result_for(results, CrossfadeScope.FULL, 720, 1280)
+        assert target is results[0]
+        assert target.holds_30fps is False
+
+    def test_returns_none_when_combo_absent(self):
+        results = [_result(CrossfadeScope.FULL, 720, 1280, holds=False)]
+        assert result_for(results, CrossfadeScope.MOUTH_ONLY, 720, 1280) is None
 
 
 # ---------------------------------------------------------------------------
