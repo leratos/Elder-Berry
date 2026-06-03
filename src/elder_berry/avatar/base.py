@@ -1,6 +1,7 @@
 """Abstrakte Basisklasse für Avatar-Renderer."""
 
 from abc import ABC, abstractmethod
+from collections.abc import Collection
 from pathlib import Path
 
 from elder_berry.character.base import Emotion
@@ -13,6 +14,17 @@ class AvatarRenderer(ABC):
     Konkrete Implementierungen rendern den Avatar auf unterschiedlichen
     Ausgabegeräten (z.B. PyGame-Fenster, Holodisplay).
     """
+
+    @property
+    def component_keys(self) -> Collection[str] | None:
+        """Verfügbare Komponenten-Keys – für den Lip-Sync-Existenz-Guard (§0.6).
+
+        Default ``None`` bedeutet „unbekannt / kein Guard": der
+        :class:`~elder_berry.avatar.lip_sync.AmplitudeLipSyncDriver` wendet dann
+        keinen Komponenten-Existenz-Guard an. Konkrete Renderer (z.B.
+        ``LayeredSpriteRenderer``) überschreiben dies mit den geladenen Keys.
+        """
+        return None
 
     @abstractmethod
     def initialize(

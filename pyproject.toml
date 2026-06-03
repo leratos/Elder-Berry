@@ -277,6 +277,7 @@ module = [
     "elder_berry.core.secret_store",
     "elder_berry.core.tower_agent",
     "elder_berry.core.assistant",
+    "elder_berry.core.audio_analyzer",
 ]
 strict = true
 

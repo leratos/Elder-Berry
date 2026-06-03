@@ -16,6 +16,7 @@ from pathlib import Path
 from elder_berry.avatar.controller import AvatarController
 from elder_berry.avatar.layered_renderer import CrossfadeScope, LayeredSpriteRenderer
 from elder_berry.avatar.state_machine import AvatarStateMachine
+from elder_berry.core.audio_analyzer import AmplitudeTrack
 from elder_berry.robot.server import AvatarDisplay
 
 logger = logging.getLogger(__name__)
@@ -71,6 +72,9 @@ class RPi5AvatarDisplay(AvatarDisplay):
         # Thread-safe State (gelesen vom Render-Thread)
         self._emotion = "neutral"
         self._speaking = False
+        # Amplitude-Profil der laufenden Sprech-Sitzung (83.4, nur Playback-
+        # Modus). Vom REST-Thread gesetzt, vom Render-Thread konsumiert.
+        self._audio_meta: AmplitudeTrack | None = None
         self._emotion_changed = threading.Event()
 
     def start(self) -> None:
@@ -113,9 +117,15 @@ class RPi5AvatarDisplay(AvatarDisplay):
                 self._emotion_changed.set()
                 logger.debug("Emotion → %s", emotion)
 
-    def set_speaking(self, is_speaking: bool) -> None:
+    def set_speaking(
+        self, is_speaking: bool, audio_meta: AmplitudeTrack | None = None
+    ) -> None:
         with self._lock:
             self._speaking = is_speaking
+            # Track nur halten, solange gesprochen wird (83.4). Beim Stopp
+            # verwerfen, damit eine Folge-Sitzung ohne Track sauber auf den
+            # Inline-Random fällt.
+            self._audio_meta = audio_meta if is_speaking else None
 
     def get_state(self) -> dict:
         with self._lock:
@@ -158,21 +168,28 @@ class RPi5AvatarDisplay(AvatarDisplay):
                 with self._lock:
                     emotion_str = self._emotion
                     speaking = self._speaking
+                    audio_meta = self._audio_meta
 
                 # Controller statt direkter Renderer-Aufrufe. set_emotion nur
                 # bei Änderung weiterreichen: bei einem ungültigen Emotion-String
                 # würde der Fallback-Pfad sonst pro Frame eine Warnung loggen
                 # (Spam @ 30 FPS). set_speaking ist kantengetriggert und darf
-                # pro Frame aufgerufen werden.
+                # pro Frame aufgerufen werden; der Track wird auf der steigenden
+                # Flanke einmal in den Lip-Sync-Driver übernommen (83.4).
                 if emotion_str != last_emotion:
                     controller.set_emotion(emotion_str)
                     last_emotion = emotion_str
-                controller.set_speaking(speaking)
+                controller.set_speaking(speaking, audio_meta=audio_meta)
+                now = time.monotonic()
                 # 83.3: Crossfade-Transition pro Frame (Lock-gewrappt) lesen und
                 # an den Renderer reichen. Außerhalb einer Transition meldet sie
                 # not in_transition → der Renderer rendert byte-identisch zu 83.2.
-                transition = controller.current_transition(time.monotonic())
-                self._renderer.update(transition=transition)
+                transition = controller.current_transition(now)
+                # 83.4: Amplitude-Mund (oder None → Inline-Random) pro Frame.
+                speaking_mouth = controller.current_speaking_mouth(now)
+                self._renderer.update(
+                    transition=transition, speaking_mouth=speaking_mouth
+                )
 
         except Exception:
             logger.exception("Fehler im Render-Loop")

@@ -164,6 +164,14 @@ class TestSimulatedAvatar:
         a.set_speaking(True)
         assert a.get_state()["speaking"] is True
 
+    def test_set_speaking_ignores_audio_meta(self):
+        # 83.4: Simulator hat keinen Lip-Sync → audio_meta wird ignoriert.
+        from elder_berry.core.audio_analyzer import AmplitudeTrack
+
+        a = SimulatedAvatar()
+        a.set_speaking(True, audio_meta=AmplitudeTrack(samples=[0.5], duration_ms=50))
+        assert a.get_state()["speaking"] is True
+
 
 class TestSimulatedSensors:
     def test_battery_initial_values(self):
@@ -256,6 +264,90 @@ class TestServerAvatar:
         status = client.get("/status").json()
         assert status["avatar_emotion"] == "cheerful"
         assert status["avatar_speaking"] is True
+
+
+class TestServerAvatarAmplitude:
+    """Phase 83.4: additive amplitude-Felder werden zum AmplitudeTrack geroutet."""
+
+    def _server_with_capturing_avatar(self):
+        from elder_berry.robot.server import AvatarDisplay, RobotServer
+        from elder_berry.robot.simulator import SimulatedMotors, SimulatedSensors
+
+        captured: dict = {}
+
+        class CapturingAvatar(AvatarDisplay):
+            def set_emotion(self, emotion: str) -> None:
+                pass
+
+            def set_speaking(self, is_speaking, audio_meta=None) -> None:
+                captured["is_speaking"] = is_speaking
+                captured["audio_meta"] = audio_meta
+
+            def get_state(self) -> dict:
+                return {"emotion": "neutral", "speaking": False}
+
+        server = RobotServer(
+            motors=SimulatedMotors(),
+            avatar=CapturingAvatar(),
+            sensors=SimulatedSensors(),
+        )
+        return server, captured
+
+    def _client(self, server):
+        from fastapi.testclient import TestClient
+
+        return TestClient(server.app)
+
+    def test_amplitude_routed_as_track(self):
+        server, captured = self._server_with_capturing_avatar()
+        r = self._client(server).post(
+            "/avatar/emotion",
+            json={
+                "is_speaking": True,
+                "amplitude": [0.1, 0.9],
+                "amplitude_duration_ms": 100,
+            },
+        )
+        assert r.status_code == 200
+        track = captured["audio_meta"]
+        assert track is not None
+        assert track.samples == [0.1, 0.9]
+        assert track.duration_ms == 100
+
+    def test_no_amplitude_means_no_track(self):
+        server, captured = self._server_with_capturing_avatar()
+        self._client(server).post("/avatar/emotion", json={"is_speaking": True})
+        assert captured["is_speaking"] is True
+        assert captured["audio_meta"] is None
+
+    def test_duration_derived_when_missing(self):
+        server, captured = self._server_with_capturing_avatar()
+        self._client(server).post(
+            "/avatar/emotion",
+            json={"is_speaking": True, "amplitude": [0.2, 0.3, 0.4]},
+        )
+        # 3 Buckets × 50ms = 150ms abgeleitet.
+        assert captured["audio_meta"].duration_ms == 150
+
+    def test_backward_compatible_without_amplitude_fields(self):
+        # Alt-Client ohne amplitude-Felder bleibt gültig (rückwärtskompatibel).
+        server, _ = self._server_with_capturing_avatar()
+        r = self._client(server).post(
+            "/avatar/emotion", json={"emotion": "angry", "is_speaking": False}
+        )
+        assert r.status_code == 200
+
+    def test_amplitude_over_cap_rejected(self):
+        # Übergroße amplitude-Liste → 422 (Memory-DoS-Schutz, Codex P2).
+        from elder_berry.robot.server import MAX_AMPLITUDE_SAMPLES
+
+        server, captured = self._server_with_capturing_avatar()
+        huge = [0.1] * (MAX_AMPLITUDE_SAMPLES + 1)
+        r = self._client(server).post(
+            "/avatar/emotion", json={"is_speaking": True, "amplitude": huge}
+        )
+        assert r.status_code == 422
+        assert "is_speaking" not in captured  # Avatar nie erreicht
 
 
 class TestServerMotors:

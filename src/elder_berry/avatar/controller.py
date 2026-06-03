@@ -35,12 +35,15 @@ from __future__ import annotations
 
 import logging
 import threading
+import time
 
 from elder_berry.avatar.base import AvatarRenderer
+from elder_berry.avatar.lip_sync import AmplitudeLipSyncDriver, LipSyncDriver
 from elder_berry.avatar.render_plan import RenderPlan, TransitionState
 from elder_berry.avatar.state_machine import AvatarStateMachine
 from elder_berry.character.base import Emotion
 from elder_berry.character.emotion_resolver import EmotionDecision
+from elder_berry.core.audio_analyzer import AmplitudeTrack
 from elder_berry.core.log_sanitize import safe_log
 from elder_berry.robot.server import AvatarDisplay
 
@@ -69,6 +72,10 @@ class AvatarController(AvatarDisplay):
         self._lock = threading.Lock()
         # Letzter über den Legacy-Pfad gesetzter Sprech-Zustand (Edge-Detection).
         self._legacy_speaking = False
+        # Aktiver Lip-Sync-Driver (83.4, nur Playback-Modus). Gesetzt auf der
+        # steigenden Sprech-Flanke, wenn ein nutzbarer AmplitudeTrack vorliegt;
+        # sonst ``None`` → der Renderer behält seinen Inline-Random (§4.4).
+        self._lip_sync: LipSyncDriver | None = None
 
     # -- AvatarDisplay-Interface (REST-kompatibel) ----------------------------
 
@@ -83,18 +90,25 @@ class AvatarController(AvatarDisplay):
             EmotionDecision(parsed, 1.0, _LEGACY_SOURCE, {})
         )
 
-    def set_speaking(self, is_speaking: bool) -> None:
+    def set_speaking(
+        self, is_speaking: bool, audio_meta: AmplitudeTrack | None = None
+    ) -> None:
         """Legacy-Pfad: Sprech-Zustand setzen (kantengetriggert).
 
         Pro Frame aufrufbar; nur ein echter Wechsel löst einen
         Sprech-Zähler-Übergang aus. Edge-Detection und Zähler-Mutation laufen
         atomar unter einem Lock (kein Race bei konkurrierenden Aufrufern).
+
+        ``audio_meta`` (83.4) ist nur auf der **steigenden** Flanke relevant:
+        liegt ein nutzbarer AmplitudeTrack vor, wird der
+        :class:`AmplitudeLipSyncDriver` aktiviert; sonst bleibt es beim
+        Renderer-Inline-Random (§4.4).
         """
         with self._lock:
             if is_speaking == self._legacy_speaking:
                 return
             self._legacy_speaking = is_speaking
-            self._apply_speech_delta_locked(is_speaking)
+            self._apply_speech_delta_locked(is_speaking, audio_meta)
 
     def get_state(self) -> dict:
         """Liefert den semantischen Zustand (Emotion, Speaking, Zähler)."""
@@ -119,28 +133,70 @@ class AvatarController(AvatarDisplay):
             self._state_machine.request_emotion(decision)
             self._renderer.show_emotion(decision.emotion)
 
-    def on_speech_started(self, audio_meta: object | None = None) -> None:
-        """Beginn einer Sprech-Sitzung (``audio_meta`` ist 83.4-Stub)."""
-        del audio_meta  # Amplitude-Spur erst 83.4 (nur Playback-Modus).
+    def on_speech_started(self, audio_meta: AmplitudeTrack | None = None) -> None:
+        """Beginn einer Sprech-Sitzung (semantischer Pfad).
+
+        ``audio_meta`` (83.4): liegt ein nutzbarer AmplitudeTrack vor, wird der
+        :class:`AmplitudeLipSyncDriver` aktiviert (nur Playback-Modus).
+        """
         with self._lock:
-            self._apply_speech_delta_locked(started=True)
+            self._apply_speech_delta_locked(started=True, audio_meta=audio_meta)
 
     def on_speech_ended(self) -> None:
         """Ende einer Sprech-Sitzung (Zähler -1, ab 0 endet das Sprechen)."""
         with self._lock:
             self._apply_speech_delta_locked(started=False)
 
-    def _apply_speech_delta_locked(self, started: bool) -> None:
+    def _apply_speech_delta_locked(
+        self, started: bool, audio_meta: AmplitudeTrack | None = None
+    ) -> None:
         """Mutiert den Sprech-Zähler und leitet den Zustand an den Renderer.
 
-        Caller **muss** ``self._lock`` halten – so bleiben Zähler-Übergang und
-        Renderer-Forwarding atomar und geordnet.
+        Caller **muss** ``self._lock`` halten – so bleiben Zähler-Übergang,
+        Lip-Sync-Driver-Wahl und Renderer-Forwarding atomar und geordnet.
         """
         if started:
             self._state_machine.speech_increment()
+            self._select_lip_sync_driver_locked(audio_meta)
         else:
             self._state_machine.speech_decrement()
+            if not self._state_machine.is_speaking():
+                self._lip_sync = None
         self._renderer.show_speaking(self._state_machine.is_speaking())
+
+    def _select_lip_sync_driver_locked(
+        self, audio_meta: AmplitudeTrack | None
+    ) -> None:
+        """Wählt den Lip-Sync-Driver für die beginnende Sprech-Sitzung (83.4).
+
+        AmplitudeTrack vorhanden und nicht leer → :class:`AmplitudeLipSyncDriver`
+        (mit Komponenten-Existenz-Guard aus ``renderer.component_keys``, §0.6);
+        sonst ``None`` → der Renderer behält seinen Inline-Random (§4.4). Caller
+        **muss** ``self._lock`` halten.
+        """
+        if audio_meta is None or audio_meta.is_empty():
+            self._lip_sync = None
+            return
+        driver = AmplitudeLipSyncDriver(
+            audio_meta,
+            available_components=self._renderer.component_keys,
+        )
+        driver.start(time.monotonic())
+        self._lip_sync = driver
+
+    def current_speaking_mouth(self, now: float) -> str | None:
+        """Liefert den Mund-Key des aktiven Lip-Sync-Drivers (oder ``None``).
+
+        Der Render-Loop liest hiermit **pro Frame** den Amplitude-Mund und reicht
+        ihn an ``renderer.update(speaking_mouth=...)``. ``None``, solange kein
+        Driver aktiv ist oder nicht gesprochen wird → der Renderer rendert
+        byte-identisch (Inline-Random / kein Lip-Sync). Lock-gewrappt, derselbe
+        Vertrag wie :meth:`current_transition`.
+        """
+        with self._lock:
+            if self._lip_sync is None or not self._state_machine.is_speaking():
+                return None
+            return self._lip_sync.mouth_at(now)
 
     def current_layers(self, now: float) -> RenderPlan:
         """Liefert den Einzel-Plan des aktuellen Zustands (unter Lock).
