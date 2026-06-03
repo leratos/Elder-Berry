@@ -1008,7 +1008,13 @@ class Assistant:
                 wav_path.unlink(missing_ok=True)
 
     def _generate_tts_wav(self, text: str, emotion: str | None) -> Path | None:
-        """Generiert das TTS-Audio einmal als temporäre WAV (für Agent + Analyse).
+        """Generiert das TTS-Audio einmal als Datei (für Agent-Playback + Analyse).
+
+        Gibt den **tatsächlich geschriebenen** Pfad zurück: ``generate_audio``
+        kann einen anderen Pfad liefern als den Platzhalter (z.B. schreibt der
+        ``TTSRouter``/ElevenLabs eine ``.mp3`` und gibt deren Pfad zurück). In
+        dem Fall wird der leere ``.wav``-Platzhalter aufgeräumt und der echte
+        Pfad genutzt – sonst spielte der Agent die leere Datei ab (Codex P2).
 
         Returns ``None``, wenn die Engine keine Dateigenerierung unterstützt
         (``NotImplementedError``) oder die Generierung scheitert → der Aufrufer
@@ -1018,8 +1024,12 @@ class Assistant:
         with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp:
             tmp_path = Path(tmp.name)
         try:
-            self._tts.generate_audio(text, tmp_path, emotion=emotion)
-            return tmp_path
+            actual = self._tts.generate_audio(text, tmp_path, emotion=emotion)
+            result = actual if actual else tmp_path
+            if result != tmp_path:
+                # Engine schrieb woanders (z.B. .mp3) → Platzhalter aufräumen.
+                tmp_path.unlink(missing_ok=True)
+            return result
         except NotImplementedError:
             logger.debug("TTS generate_audio nicht verfügbar, lokaler Fallback")
             tmp_path.unlink(missing_ok=True)

@@ -29,14 +29,16 @@ from pathlib import Path
 from typing import Any
 
 try:
-    import numpy as _numpy
-except ImportError:  # pragma: no cover - numpy ist optional (tts-neural/tower)
-    _numpy = None  # type: ignore[assignment]
+    import numpy as _numpy_mod
 
-# ``np`` bewusst als ``Any`` typisieren: hält die ``is None``-Guards unter
-# mypy-strict (warn_unreachable) erreichbar und erlaubt das Monkeypatchen in
-# Tests (``audio_analyzer.np = None``).
-np: Any = _numpy
+    # ``np`` bewusst als ``Any`` typisieren: hält die ``is None``-Guards unter
+    # mypy-strict (warn_unreachable) erreichbar, erlaubt das Monkeypatchen in
+    # Tests (``audio_analyzer.np = None``) und vermeidet einen env-abhängigen
+    # ``type: ignore`` (numpy fehlt im typecheck-CI; vgl. mypy-Override
+    # ``numpy.*`` = ignore_missing_imports).
+    np: Any = _numpy_mod
+except ImportError:  # pragma: no cover - numpy ist optional (tts-neural/tower)
+    np = None
 
 logger = logging.getLogger(__name__)
 
@@ -99,21 +101,20 @@ class AudioAnalyzer:
         Args:
             audio: WAV-Bytes oder Pfad zu einer WAV-Datei.
 
-        Ein nicht unterstützter ``audio``-Typ (außerhalb der Signatur) liefert
-        ``None`` (impliziter Fall-through) → RandomLipSyncDriver-Fallback.
-
         Returns:
             Ein :class:`AmplitudeTrack` oder ``None``, wenn numpy fehlt, das
             Format kein dekodierbares WAV ist oder das Audio leer ist – der
-            Aufrufer fällt dann auf den RandomLipSyncDriver zurück.
+            Aufrufer fällt dann auf den RandomLipSyncDriver zurück. Ein nicht
+            öffnbarer Pfad (auch ein versehentlich nicht-WAV/Nicht-Pfad-Wert,
+            der zu ``str`` wird) scheitert beim Öffnen → ebenfalls ``None``.
         """
         if np is None:
             return None
         if isinstance(audio, bytes):
             return self._open_and_profile(io.BytesIO(audio))
-        if isinstance(audio, (str, Path)):
-            return self._open_and_profile(str(audio))
-        # Nicht unterstützter Typ (außerhalb der Signatur) → impliziter None.
+        # str | Path (oder ein versehentlicher Fremdtyp) → als Pfad behandeln;
+        # ein nicht öffnbarer Pfad liefert in _open_and_profile sauber None.
+        return self._open_and_profile(str(audio))
 
     def _open_and_profile(
         self, source: io.BytesIO | str

@@ -17,16 +17,6 @@ from elder_berry.avatar.lip_sync import (
 )
 from elder_berry.core.audio_analyzer import AmplitudeTrack
 
-_MOUTH_KEYS = frozenset(
-    {
-        "mouth_neutral_close",
-        "mouth_tiny",
-        "mouth_halfopen",
-        "mouth_open",
-        "mouth_wide",
-    }
-)
-
 
 # ---------------------------------------------------------------------------
 # RandomLipSyncDriver – parametrisiertes Bestandsverhalten (§4.4)
