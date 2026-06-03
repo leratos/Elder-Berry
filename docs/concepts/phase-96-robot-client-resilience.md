@@ -319,3 +319,53 @@ die jeweils genannten Stellen weiter oben.
 **Aktualisierte Etappen-Liste**: 96-A (inkl. non-JSON-Härtung), 96-B, 96-C,
 96-D, **96-E → `scripts/start_rpi5.py` `--host`-Default + INSTALLATION.md-Fix +
 tokengesichertes Gate**.
+
+
+## Codex-Review PR #283 — Korrekturen #2 (2026-06-03)
+
+Zweite Codex-Runde nach Commit `7213002`: fünf weitere P2, alle am Code
+verifiziert. Erweitern/überschreiben die genannten Etappen.
+
+A. **96-D auch im Setup-Wizard.** `setup_wizard.py:164` führt im rpi5-Schritt
+   nur `["robot_host"]`; `:273/:288` verwerfen Keys außerhalb der Whitelist.
+   Nur die Registry zu ergänzen macht `robot_auth_token` bei der
+   Erstinstallation **nicht** setzbar. → **96-D ergänzt `robot_auth_token` in
+   der rpi5-Whitelist (optional_keys) + Wizard-Feld.**
+
+B. **96-B muss die Startup-Summary einbeziehen.** `start_saleria.py:1562-1565`
+   baut „RPi5 (Robot)" als `"ok" if robot else "warn"` /
+   `"verbunden" if robot else "nicht erreichbar"` — an der Objekt-Truthiness.
+   Da 96-B das Objekt behält, meldet die Summary sonst **immer** „verbunden",
+   auch bei 401/unreachable. → **96-B reicht den `probe()`-State in den
+   Summary-Block; Scope = Konstruktion ~1722-1762 UND Summary ~1562-1565.**
+
+C. **96-E: weitere LAN-Referenzen.** Zusätzlich zu `INSTALLATION.md:194`:
+   `rpi5_setup.md:176` (setzt robot_host=LAN) migrieren; und
+   `webapp/dashboard/index.html:59`
+   (`_isServer ? "/api/robot" : "http://192.168.50.220:8000"`). Im Server-Modus
+   nutzt das Dashboard `/api/robot` (robot_proxy→Tunnel, nach Bind ok) — der
+   LAN-Fallback greift nur bei Nicht-Server-/Dev-Zugriff. → **96-E entscheidet:
+   Fallback entfernen oder explizit als Dev-only/„nach Loopback-Bind tot"
+   deklarieren.** (Korrektur zu Korrektur-#2: „kein LAN-Konsument" galt nur
+   server-seitig; der Browser-Fallback war übersehen.)
+
+D. **96-A gilt für ALLE RobotClient-Methoden.** `client.py:220-352` — sämtliche
+   `harmony_*` (und voraussichtlich camera/turntable/avatar) fangen
+   `except (httpx.HTTPError, Exception)` und geben `False/{}/[]` (wie
+   `is_online():75`). 96-C an den Handlern nützt nichts, solange der Client den
+   401 vorher schluckt. → **96-A: naked-except entfernen/klassifizieren bzw.
+   `HTTPStatusError` zum Aufrufer durchreichen — repo-weiter Audit ALLER
+   `RobotClient`-Methoden, nicht nur `probe()`.**
+
+E. **D5 (entschieden: SecretStore-first + Shadow-WARN).**
+   `start_saleria.py:1733-1734` ist env-first
+   (`os.environ.get("ELDER_BERRY_ROBOT_TOKEN") or _secrets.get_or_none(...)`).
+   Eine alte/versehentliche Env beschattet damit den als kanonisch erklärten
+   SecretStore (D1) → Dashboard-Rotation wirkungslos, stilles 401. → **Präzedenz
+   auf SecretStore-first drehen** (Server hat keine Env; konsistent mit D1)
+   **plus WARN**, wenn Env gesetzt ist und vom SecretStore-Wert abweicht. Die
+   Token-Invariante (RPi=Env, Server=SecretStore, ein Wert) bleibt unberührt.
+
+**Etappen-Update**: 96-A (alle Client-Methoden), 96-B (+ Summary + D5-Präzedenz/
+WARN), 96-D (+ Wizard-Whitelist), 96-E (+ `rpi5_setup.md` + index.html-Fallback-
+Entscheidung).
