@@ -674,16 +674,46 @@ class LayeredSpriteRenderer(AvatarRenderer):
         self._apply_rotation()
 
     def _composite_full(self, old_plan: RenderPlan, new_plan: RenderPlan) -> None:
-        """Voller Crossfade: alter Plan opak unterlegt, neuer Plan gefadet drüber."""
+        """Voller Crossfade als echter linearer Cross-Dissolve (§5).
+
+        Ergebnis = ``alt*(1-t) + neu*t`` auf schwarzem BG. Beide Pläne werden
+        **komplementär** gewichtet (``alt_gewicht = 255 - neu.alpha``), sodass:
+
+        - **alt-only**-Pixel (Silhouetten-Differenz) verblassen mit ``(1-t)`` statt
+          opak stehen zu bleiben und am Ende zu poppen (Codex P2 #3),
+        - **geteilte** Pixel (z. B. ein Lip-Sync-Mund auf beiden Plänen) sich auf
+          den vollen Wert summieren – kein Doppel-Blit-Flackern (Codex P2 #4),
+        - nichts überstrahlt/clippt (Gewichte addieren sich zu 1).
+
+        Pepper's Ghost zeigt nur helle Pixel auf Schwarz → additives Licht ist
+        physikalisch korrekt. Kosten: zwei vorgewichtete Vollbild-Kompositionen
+        pro Frame (in der RPi5-FPS-Messung zu prüfen; sonst MOUTH_ONLY/540x960).
+        """
         self._screen.fill(BG_COLOR)
+        old_weight = OPAQUE_ALPHA - new_plan.alpha
+        self._add_weighted_plan(old_plan, old_weight)
+        self._add_weighted_plan(new_plan, new_plan.alpha)
 
-        old_surface = self._compose_plan_to_surface(old_plan)
-        self._screen.blit(old_surface, (0, 0))
+    def _add_weighted_plan(self, plan: RenderPlan, weight: int) -> None:
+        """Addiert einen mit ``weight/255`` skalierten Plan additiv auf den Screen.
 
-        new_surface = self._compose_plan_to_surface(new_plan)
-        if new_plan.alpha < OPAQUE_ALPHA:
-            self._fade_surface(new_surface, new_plan.alpha)
-        self._screen.blit(new_surface, (0, 0))
+        Der Plan wird zuerst über Schwarz „flachgeklopft" (per-Pixel-Alpha in die
+        RGB einmultipliziert), dann per ``BLEND_RGB_MULT`` auf ``weight`` skaliert
+        und per ``BLEND_RGB_ADD`` aufaddiert – so trägt jeder Layer formtreu sein
+        ``Licht * weight`` bei. ``weight <= 0`` ist ein No-op.
+        """
+        if weight <= 0:
+            return
+
+        flat = pygame.Surface((self._width, self._height))
+        flat.fill(BG_COLOR)
+        flat.blit(self._compose_plan_to_surface(plan), (0, 0))
+
+        if weight < OPAQUE_ALPHA:
+            flat.fill(
+                (weight, weight, weight), special_flags=pygame.BLEND_RGB_MULT
+            )
+        self._screen.blit(flat, (0, 0), special_flags=pygame.BLEND_RGB_ADD)
 
     def _composite_mouth_only(
         self, old_plan: RenderPlan, new_plan: RenderPlan

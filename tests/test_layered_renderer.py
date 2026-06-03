@@ -778,18 +778,39 @@ class TestCrossfadeUpdate:
         mock_pygame["pygame"].display.flip.assert_called()
         mock_pygame["clock"].tick.assert_called_with(30)
 
-    def test_in_transition_fades_only_new_plane(self, renderer, mock_pygame):
-        mock_pygame["pygame"].Surface.reset_mock()
-        offscreen = mock_pygame["pygame"].Surface.return_value
-        offscreen.fill.reset_mock()
+    def test_in_transition_weights_both_planes(self, renderer, mock_pygame):
+        """Cross-Dissolve: alt UND neu komplementär gewichtet + additiv addiert."""
+        surf = mock_pygame["pygame"].Surface.return_value
+        surf.fill.reset_mock()
+        mock_pygame["screen"].blit.reset_mock()
         renderer.update(transition=_transition(alpha=64))
-        # Genau ein Fade (der neue Plan); der alte (alpha=255) wird opak unterlegt.
-        fade_calls = [
+        # Beide Ebenen werden per BLEND_RGB_MULT gewichtet (alt 191, neu 64 < 255).
+        weight_fills = [
             c
-            for c in offscreen.fill.call_args_list
+            for c in surf.fill.call_args_list
             if c.kwargs.get("special_flags") is not None
         ]
-        assert len(fade_calls) == 1
+        assert len(weight_fills) == 2
+        # ... und beide additiv (special_flags) auf den Screen addiert.
+        add_blits = [
+            c
+            for c in mock_pygame["screen"].blit.call_args_list
+            if c.kwargs.get("special_flags") is not None
+        ]
+        assert len(add_blits) == 2
+
+    def test_transition_start_skips_zero_weight_new_plane(self, renderer, mock_pygame):
+        """Bei alpha=0 (t=0) trägt der neue Plan nichts bei (weight<=0 → no-op)."""
+        renderer._current_emotion = Emotion.ANGRY
+        # Nur der alte Plan (Gewicht 255) wird addiert → genau 1 additiver Blit.
+        mock_pygame["screen"].blit.reset_mock()
+        renderer.update(transition=_transition(alpha=0))
+        add_blits = [
+            c
+            for c in mock_pygame["screen"].blit.call_args_list
+            if c.kwargs.get("special_flags") is not None
+        ]
+        assert len(add_blits) == 1
 
     def test_not_in_transition_uses_opaque_path(self, renderer, mock_pygame):
         """in_transition=False → byte-identischer opaker Pfad, kein Offscreen."""
