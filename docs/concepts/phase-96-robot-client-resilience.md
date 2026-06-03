@@ -271,3 +271,51 @@ Ergänzt die obige Sektion; alle offenen Punkte sind damit entschieden.
 **Status: alle Entscheidungen (D1–D3) getroffen → Konzept branch-fertig.**
 Branch: `feature/phase-96-robot-client-resilience`. `PROJECT_ROADMAP.md`
 aktualisiert Lera selbst. Umsetzung via Claude Code.
+
+## Codex-Review PR #283 — Korrekturen (2026-06-03)
+
+Vier P2-Anmerkungen von Codex, alle berechtigt. Diese Punkte **überschreiben**
+die jeweils genannten Stellen weiter oben.
+
+1. **96-E zielte auf das falsche Modul.** War: `robot/server.py`. Verifiziert:
+   den Listen-Socket besitzt `scripts/start_rpi5.py` — `--host` mit
+   `default="0.0.0.0"` (Z. 130–133) und `uvicorn.run(host=args.host)`
+   (Z. 384–386); `RobotServer` bindet keinen Socket. **Neu: 96-E ändert
+   `scripts/start_rpi5.py`** — `--host`-Default `0.0.0.0` → `127.0.0.1` (bzw.
+   `--host 127.0.0.1` in der systemd-Unit). Der Launcher hat bereits
+   Host-Validierung (akzeptiert `127.0.0.0/8`) und einen Hinweis darauf.
+
+2. **`robot_host` muss vor 96-E auf dem Tunnel stehen.** Prod-Wert verifiziert
+   (SecretStore): `robot_host = http://127.0.0.1:12800` — bereits korrekt,
+   **kein Prod-Breakage durch 96-E**. Aber `docs/INSTALLATION.md:194` setzt
+   `robot_host = http://192.168.50.220:8000` (LAN-Direktadresse) → **muss auf
+   `http://127.0.0.1:12800` korrigiert werden** (Teil der Doku-Etappe), sonst
+   landet ein frisches Setup nach dem Loopback-Bind auf einer toten LAN-URL.
+   Die frühere Aussage „LAN-Direktzugriff nur hypothetisch" wird gestrichen —
+   die Install-Doku dokumentierte ihn.
+
+3. **96-E-Gate braucht den Token-Header.** `/health` ist token-geschützt → ein
+   bare `curl` liefert 401 (bzw. 429). **Neu: Gate =**
+   `curl -H "X-Saleria-Robot-Token: <TOKEN>" http://127.0.0.1:12800/health`
+   **→ 200.**
+
+4. **`probe()` gegen non-200/non-JSON härten (96-A).** Ein 502 (nginx/Tunnel-
+   HTML) o. Ä. ist weder 401/403 noch 429 → fällt auf `r.json()` durch;
+   `JSONDecodeError` ist **kein** `httpx.HTTPError` → leakt ungefangen. **Neu**,
+   Reihenfolge in `probe()`:
+
+   ```python
+   if r.status_code in (401, 403): return "auth"
+   if r.status_code == 429:        return "rate_limited"
+   if r.status_code != 200:        return "unreachable"
+   try:
+       return "ok" if r.json().get("status") == "ok" else "unreachable"
+   except ValueError:
+       return "unreachable"
+   ```
+
+   Test für 502 / HTML-Body / leeren Body → `unreachable` ergänzen.
+
+**Aktualisierte Etappen-Liste**: 96-A (inkl. non-JSON-Härtung), 96-B, 96-C,
+96-D, **96-E → `scripts/start_rpi5.py` `--host`-Default + INSTALLATION.md-Fix +
+tokengesichertes Gate**.
