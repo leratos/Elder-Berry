@@ -1,12 +1,11 @@
-"""Tests für den AudioAnalyzer (Phase 83.4): WAV → AmplitudeTrack.
+"""Tests für den AudioAnalyzer (Phase 83.4): WAV → AmplitudeTrack (stdlib).
 
 Enthält den Integrationstest §7-83.4: ein generiertes 1-Sekunden-WAV (Töne +
 Stille) ergibt ein Amplitude-Profil, das über den AmplitudeLipSyncDriver alle
 fünf Mund-Buckets sichtbar macht.
 
-Decoding ist numpy-abhängig; Tests, die ein echtes Profil erwarten, überspringen
-sauber, wenn numpy fehlt (dann liefert der Analyzer ``None`` → RandomLipSync).
-Die WAV-Erzeugung selbst nutzt nur die stdlib (``array``/``wave``).
+Der Analyzer nutzt nur die stdlib (``wave``/``array``/``math``) – keine
+numpy-Abhängigkeit, daher in jeder Umgebung verfügbar (kein Skip-Pfad).
 """
 
 from __future__ import annotations
@@ -19,7 +18,6 @@ import wave
 import pytest
 
 from elder_berry.avatar.lip_sync import AmplitudeLipSyncDriver
-from elder_berry.core import audio_analyzer as aa_module
 from elder_berry.core.audio_analyzer import AmplitudeTrack, AudioAnalyzer
 
 _MOUTH_KEYS = frozenset(
@@ -92,30 +90,19 @@ def _five_bucket_wav() -> bytes:
     )
 
 
-def _needs_numpy() -> None:
-    if not AudioAnalyzer.is_available():
-        pytest.skip("numpy nicht verfügbar – Analyzer liefert None (Fallback)")
-
-
 # ---------------------------------------------------------------------------
-# Verfügbarkeit / AmplitudeTrack
+# AmplitudeTrack / Konstruktion
 # ---------------------------------------------------------------------------
 
 
-class TestAvailabilityAndDto:
-    def test_amplitude_track_is_empty(self):
+class TestAmplitudeTrack:
+    def test_is_empty(self):
         assert AmplitudeTrack(samples=[], duration_ms=0).is_empty() is True
         assert AmplitudeTrack(samples=[0.1], duration_ms=50).is_empty() is False
 
     def test_invalid_bucket_ms_raises(self):
         with pytest.raises(ValueError):
             AudioAnalyzer(bucket_ms=0)
-
-    def test_unavailable_without_numpy(self, monkeypatch):
-        # numpy „entfernen" → Analyzer nicht verfügbar, profile() liefert None.
-        monkeypatch.setattr(aa_module, "np", None)
-        assert AudioAnalyzer.is_available() is False
-        assert AudioAnalyzer().profile(_wav_bytes([("sine", 0.5, 100)])) is None
 
 
 # ---------------------------------------------------------------------------
@@ -125,7 +112,6 @@ class TestAvailabilityAndDto:
 
 class TestOneSecondWavIntegration:
     def test_profile_shape(self):
-        _needs_numpy()
         track = AudioAnalyzer().profile(_five_bucket_wav())
         assert track is not None
         assert 950 <= track.duration_ms <= 1050
@@ -134,7 +120,6 @@ class TestOneSecondWavIntegration:
         assert all(0.0 <= s <= 1.0 for s in track.samples)
 
     def test_all_five_buckets_visible_via_driver(self):
-        _needs_numpy()
         track = AudioAnalyzer().profile(_five_bucket_wav())
         assert track is not None
         driver = AmplitudeLipSyncDriver(track)  # kein Guard
@@ -144,14 +129,12 @@ class TestOneSecondWavIntegration:
         assert seen == _MOUTH_KEYS  # alle 5 Buckets sichtbar
 
     def test_silence_segment_closes_mouth(self):
-        _needs_numpy()
         # Laut → Stille: die zweite Hälfte muss (nahezu) Null-RMS liefern.
         track = AudioAnalyzer().profile(
             _wav_bytes([("square", 0.9, 500), ("silence", 0.0, 500)])
         )
         assert track is not None
         half = len(track.samples) // 2
-        # Erste Hälfte laut, zweite Hälfte still.
         assert max(track.samples[:half]) > 0.5
         assert max(track.samples[half + 1 :]) < 0.05
 
@@ -163,7 +146,6 @@ class TestOneSecondWavIntegration:
 
 class TestInputVariants:
     def test_profile_from_file_path(self, tmp_path):
-        _needs_numpy()
         path = tmp_path / "tone.wav"
         path.write_bytes(_wav_bytes([("sine", 0.6, 300)]))
         track = AudioAnalyzer().profile(path)
@@ -171,22 +153,20 @@ class TestInputVariants:
         assert track.samples and max(track.samples) > 0.0
 
     def test_profile_from_str_path(self, tmp_path):
-        _needs_numpy()
         path = tmp_path / "tone.wav"
         path.write_bytes(_wav_bytes([("sine", 0.6, 300)]))
         assert AudioAnalyzer().profile(str(path)) is not None
 
     def test_stereo_is_mixed_to_mono(self):
-        _needs_numpy()
         track = AudioAnalyzer().profile(
             _wav_bytes([("sine", 0.7, 400)], n_channels=2)
         )
         assert track is not None
         assert 350 <= track.duration_ms <= 450  # Dauer pro Kanal, nicht ×2
+        assert max(track.samples) > 0.0
 
     def test_eight_bit_wav_supported(self):
-        _needs_numpy()
-        # 8-bit unsigned PCM (sampwidth=1) manuell bauen.
+        # 8-bit unsigned PCM (sampwidth=1, Mitte 128).
         rate = _RATE
         n = int(rate * 0.2)
         raw = bytes(
@@ -203,26 +183,52 @@ class TestInputVariants:
         assert track is not None
         assert max(track.samples) > 0.0
 
+    def test_custom_bucket_ms(self):
+        # Größere Buckets → weniger Samples.
+        track = AudioAnalyzer(bucket_ms=100).profile(_wav_bytes([("sine", 0.6, 1000)]))
+        assert track is not None
+        assert 9 <= len(track.samples) <= 11  # 1000ms / 100ms ≈ 10
+
 
 # ---------------------------------------------------------------------------
-# Robustheit: kein WAV → None (→ RandomLipSync-Fallback, §4.4)
+# Robustheit: kein/ungültiges WAV → None (→ RandomLipSync-Fallback, §4.4)
 # ---------------------------------------------------------------------------
 
 
 class TestRobustness:
     def test_empty_bytes_returns_none(self):
-        _needs_numpy()
         assert AudioAnalyzer().profile(b"") is None
 
     def test_mp3_like_bytes_returns_none(self):
-        _needs_numpy()
         # ElevenLabs-MP3 wird bewusst nicht decodiert (keine neue Dep) → None.
         assert AudioAnalyzer().profile(b"ID3\x03\x00\x00\x00fake mp3 payload") is None
 
     def test_garbage_bytes_returns_none(self):
-        _needs_numpy()
         assert AudioAnalyzer().profile(b"\x00\x01\x02\x03not a wav") is None
 
     def test_unsupported_type_returns_none(self):
-        _needs_numpy()
+        # Fremdtyp → str() → kein öffnbarer Pfad → None.
         assert AudioAnalyzer().profile(12345) is None  # type: ignore[arg-type]
+
+    def test_missing_file_returns_none(self, tmp_path):
+        assert AudioAnalyzer().profile(tmp_path / "does_not_exist.wav") is None
+
+    def test_unsupported_sampwidth_returns_none(self):
+        # 24-bit (sampwidth=3) hat keinen array-Typecode → None.
+        buf = io.BytesIO()
+        with wave.open(buf, "wb") as wf:
+            wf.setnchannels(1)
+            wf.setsampwidth(3)
+            wf.setframerate(_RATE)
+            wf.writeframes(b"\x00\x00\x00" * 100)
+        assert AudioAnalyzer().profile(buf.getvalue()) is None
+
+    def test_zero_frame_wav_returns_none(self):
+        # Gültiger Header, aber keine Frames → leeres raw → None.
+        buf = io.BytesIO()
+        with wave.open(buf, "wb") as wf:
+            wf.setnchannels(1)
+            wf.setsampwidth(2)
+            wf.setframerate(_RATE)
+            wf.writeframes(b"")
+        assert AudioAnalyzer().profile(buf.getvalue()) is None

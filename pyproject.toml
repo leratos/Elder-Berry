@@ -192,8 +192,6 @@ pretty = true
 module = [
     "pyautogui.*",
     "pygame.*",
-    "numpy",                # Phase 83.4: optional (tts-neural/tower/agent/stt);
-    "numpy.*",              # im typecheck-CI nicht installiert -> als Any behandeln.
     "coqui_tts.*",
     "faster_whisper.*",
     "mss.*",

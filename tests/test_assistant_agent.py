@@ -481,11 +481,8 @@ class TestAmplitudeLipSync:
     def test_amplitude_track_sent_to_robot(
         self, mock_llm, mock_db, mock_controller, character, mock_agent, mock_tts
     ):
-        from elder_berry.core.audio_analyzer import AmplitudeTrack, AudioAnalyzer
+        from elder_berry.core.audio_analyzer import AmplitudeTrack
         from elder_berry.robot.client import RobotClient
-
-        if not AudioAnalyzer.is_available():
-            pytest.skip("numpy nicht verfügbar – Analyzer liefert None (Fallback)")
 
         wav = self._wav_bytes()
 
@@ -553,3 +550,74 @@ class TestAmplitudeLipSync:
         ]
         assert start_calls
         assert start_calls[0].kwargs.get("audio_meta") is None
+
+    def _robot_assistant(self, mock_llm, mock_db, mock_controller, character,
+                         mock_agent, mock_tts, **kw):
+        from elder_berry.robot.client import RobotClient
+
+        mock_robot = MagicMock(spec=RobotClient)
+        assistant = Assistant(
+            llm=mock_llm,
+            actions_db=mock_db,
+            controller=mock_controller,
+            tts=mock_tts,
+            character=character,
+            agent=mock_agent,
+            robot=mock_robot,
+            **kw,
+        )
+        mock_llm.generate.return_value = json.dumps(
+            {"action": None, "params": {}, "response": "[neutral] Hallo"}
+        )
+        return assistant, mock_robot
+
+    def test_mp3_output_not_sent_to_wav_only_agent(
+        self, mock_llm, mock_db, mock_controller, character, mock_agent, mock_tts
+    ):
+        # TTSRouter/ElevenLabs gibt eine .mp3 zurück → NICHT an den WAV-Agent;
+        # stattdessen lokal via speak(), kein Amplitude-Track (Codex P2).
+        mock_tts.generate_audio.return_value = Path("/tmp/voice.mp3")
+        assistant, mock_robot = self._robot_assistant(
+            mock_llm, mock_db, mock_controller, character, mock_agent, mock_tts
+        )
+        with patch("elder_berry.core.assistant.Path.unlink"):
+            assistant.process("Hi")
+        mock_agent.play_audio_file.assert_not_called()
+        mock_tts.speak.assert_called_once_with("Hallo", emotion="neutral")
+        start = [
+            c for c in mock_robot.set_speaking.call_args_list
+            if c.args and c.args[0] is True
+        ]
+        assert start and start[0].kwargs.get("audio_meta") is None
+
+    def test_generate_audio_error_falls_back_to_speak(
+        self, mock_llm, mock_db, mock_controller, character, mock_agent, mock_tts
+    ):
+        mock_tts.generate_audio.side_effect = RuntimeError("GPU OOM")
+        assistant, _ = self._robot_assistant(
+            mock_llm, mock_db, mock_controller, character, mock_agent, mock_tts
+        )
+        with patch("elder_berry.core.assistant.Path.unlink"):
+            assistant.process("Hi")
+        mock_agent.play_audio_file.assert_not_called()
+        mock_tts.speak.assert_called_once_with("Hallo", emotion="neutral")
+
+    def test_amplitude_analysis_error_yields_no_track(
+        self, mock_llm, mock_db, mock_controller, character, mock_agent, mock_tts
+    ):
+        # WAV vorhanden, aber Analyse wirft → kein Track, Agent spielt trotzdem.
+        analyzer = MagicMock()
+        analyzer.profile.side_effect = ValueError("boom")
+        mock_tts.generate_audio.return_value = Path("/tmp/clip.wav")
+        assistant, mock_robot = self._robot_assistant(
+            mock_llm, mock_db, mock_controller, character, mock_agent, mock_tts,
+            audio_analyzer=analyzer,
+        )
+        with patch("elder_berry.core.assistant.Path.unlink"):
+            assistant.process("Hi")
+        mock_agent.play_audio_file.assert_called_once()
+        start = [
+            c for c in mock_robot.set_speaking.call_args_list
+            if c.args and c.args[0] is True
+        ]
+        assert start and start[0].kwargs.get("audio_meta") is None

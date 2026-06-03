@@ -364,6 +364,39 @@ class TestLipSyncOverride:
         assert new_plan.mouth == "mouth_wide"
 
 
+class TestComponentKeys:
+    """83.4: component_keys speist den Amplitude-Lip-Sync-Existenz-Guard (§0.6)."""
+
+    def test_renderer_exposes_loaded_keys(self, renderer):
+        keys = renderer.component_keys
+        assert "mouth_neutral_close" in keys
+
+    def test_abc_default_is_none(self):
+        from elder_berry.avatar.base import AvatarRenderer
+
+        class _StubRenderer(AvatarRenderer):
+            def initialize(self, width=512, height=512, fullscreen=False, rotation=0):
+                pass
+
+            def show_emotion(self, emotion):
+                pass
+
+            def show_speaking(self, is_speaking):
+                pass
+
+            def update(self):
+                pass
+
+            def shutdown(self):
+                pass
+
+            def is_running(self):
+                return False
+
+        # ABC-Default: keine Keys bekannt → kein Guard (None).
+        assert _StubRenderer().component_keys is None
+
+
 # ---------------------------------------------------------------------------
 # Breathing
 # ---------------------------------------------------------------------------

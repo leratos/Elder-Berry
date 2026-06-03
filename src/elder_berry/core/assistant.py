@@ -985,15 +985,24 @@ class Assistant:
         """
         assert self._tts is not None
         use_agent = bool(self._agent and self._is_agent_online())
-        wav_path = self._generate_tts_wav(text, emotion) if use_agent else None
-        track = self._build_amplitude_track(wav_path) if wav_path else None
+        audio_path = self._generate_tts_wav(text, emotion) if use_agent else None
+        # Der Laptop-Agent kann NUR WAV abspielen (AgentClient lädt als audio/wav
+        # hoch, AgentServer dekodiert via wave.open). Ein Nicht-WAV (z.B. eine
+        # ElevenLabs-.mp3 vom TTSRouter) darf nicht an den Agent gehen → dann
+        # lokal via speak() abspielen (Engine ist mp3-fähig), ohne Amplitude.
+        play_wav = (
+            audio_path
+            if audio_path is not None and audio_path.suffix.lower() == ".wav"
+            else None
+        )
+        track = self._build_amplitude_track(play_wav) if play_wav else None
 
         if self._avatar:
             self._avatar.show_speaking(True)
         self._robot_set_speaking(True, track)
         try:
-            if wav_path is not None and self._agent is not None:
-                self._agent.play_audio_file(wav_path, emotion=emotion or "neutral")
+            if play_wav is not None and self._agent is not None:
+                self._agent.play_audio_file(play_wav, emotion=emotion or "neutral")
             elif emotion:
                 self._tts.speak(text, emotion=emotion)
             else:
@@ -1004,8 +1013,8 @@ class Assistant:
             if self._avatar:
                 self._avatar.show_speaking(False)
             self._robot_set_speaking(False)
-            if wav_path is not None:
-                wav_path.unlink(missing_ok=True)
+            if audio_path is not None:
+                audio_path.unlink(missing_ok=True)
 
     def _generate_tts_wav(self, text: str, emotion: str | None) -> Path | None:
         """Generiert das TTS-Audio einmal als Datei (für Agent-Playback + Analyse).
@@ -1042,8 +1051,8 @@ class Assistant:
     def _build_amplitude_track(self, wav_path: Path) -> AmplitudeTrack | None:
         """Baut aus der WAV das Amplitude-Profil (83.4); ``None`` bei Problemen.
 
-        ``None`` (→ RandomLipSyncDriver, §4.4), wenn der AudioAnalyzer nicht
-        verfügbar ist (numpy fehlt) oder die Datei kein lesbares WAV ist.
+        ``None`` (→ RandomLipSyncDriver, §4.4), wenn die Datei kein lesbares WAV
+        ist (z.B. eine ElevenLabs-.mp3) oder die Analyse scheitert.
         """
         try:
             return self._audio_analyzer.profile(wav_path)

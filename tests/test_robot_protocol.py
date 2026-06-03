@@ -337,6 +337,18 @@ class TestServerAvatarAmplitude:
         )
         assert r.status_code == 200
 
+    def test_amplitude_over_cap_rejected(self):
+        # Übergroße amplitude-Liste → 422 (Memory-DoS-Schutz, Codex P2).
+        from elder_berry.robot.server import MAX_AMPLITUDE_SAMPLES
+
+        server, captured = self._server_with_capturing_avatar()
+        huge = [0.1] * (MAX_AMPLITUDE_SAMPLES + 1)
+        r = self._client(server).post(
+            "/avatar/emotion", json={"is_speaking": True, "amplitude": huge}
+        )
+        assert r.status_code == 422
+        assert "is_speaking" not in captured  # Avatar nie erreicht
+
 
 class TestServerMotors:
     def test_drive_forward(self, client):

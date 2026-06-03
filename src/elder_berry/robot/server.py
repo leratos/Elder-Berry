@@ -36,7 +36,7 @@ from typing import Literal
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from starlette.middleware.base import BaseHTTPMiddleware
 
 from elder_berry.core.audio_analyzer import DEFAULT_BUCKET_MS, AmplitudeTrack
@@ -73,6 +73,13 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 
 
+# Obergrenze für die Amplitude-Liste (§4.2: 50ms-Buckets). 6000 Buckets =
+# 5 Minuten Audio – weit über jedem realen TTS-Clip, deckelt aber den Speicher
+# bei tokenfreien Deployments (Pydantic weist Längere mit 422 ab, bevor
+# _build_amplitude_track die Liste kopiert). Codex P2.
+MAX_AMPLITUDE_SAMPLES = 6000
+
+
 class AvatarRequest(BaseModel):
     """Request: Emotion und/oder Sprechzustand setzen.
 
@@ -80,12 +87,14 @@ class AvatarRequest(BaseModel):
     Amplitude-Profil (RMS pro 50ms-Bucket, 0.0–1.0) des gesprochenen Audios,
     ``amplitude_duration_ms`` die Gesamtdauer. Beide nur im lokalen
     Playback-Modus gesetzt (§0.2/B1); fehlen sie, fällt der Avatar auf den
-    RandomLipSyncDriver zurück (§4.4).
+    RandomLipSyncDriver zurück (§4.4). ``amplitude`` ist längen-begrenzt
+    (:data:`MAX_AMPLITUDE_SAMPLES`), damit ein bösartiger/fehlerhafter Request
+    den (ggf. tokenfreien) RobotServer nicht über RAM lahmlegt.
     """
 
     emotion: str | None = None
     is_speaking: bool | None = None
-    amplitude: list[float] | None = None
+    amplitude: list[float] | None = Field(default=None, max_length=MAX_AMPLITUDE_SAMPLES)
     amplitude_duration_ms: int | None = None
 
 

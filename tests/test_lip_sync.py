@@ -175,3 +175,14 @@ class TestAmplitudeComponentGuard:
         # Renderer no-op't den fehlenden Blit; der Driver liefert den Key zurück.
         d = self._wide_driver(available={"something_else"})
         assert d.mouth_at(0.0) == "mouth_wide"
+
+    def test_rms_below_all_buckets_returns_fallback(self):
+        # Custom-Buckets ohne 0.0-Untergrenze + RMS darunter → Fallback.
+        track = AmplitudeTrack(samples=[0.1], duration_ms=50)
+        d = AmplitudeLipSyncDriver(
+            track,
+            buckets=((0.5, "mouth_open"),),
+            fallback_mouth="mouth_neutral_close",
+        )
+        d.start(0.0)
+        assert d.mouth_at(0.0) == "mouth_neutral_close"
