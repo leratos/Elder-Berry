@@ -182,17 +182,62 @@ def main() -> None:
     if args.benchmark_crossfade:
         from elder_berry.avatar.crossfade_benchmark import (
             format_result,
-            measure_crossfade_fps,
+            result_for,
+            sweep_crossfade_fps,
         )
 
-        result = measure_crossfade_fps(
+        # Sweep: FULL/MOUTH_ONLY x nativ/540x960 MIT rotation (§0.6), damit auf
+        # dem RPi5 in einem Lauf ablesbar ist, welche Kombination 30 FPS haelt.
+        results = sweep_crossfade_fps(
             width=args.width,
             height=args.height,
             rotation=args.rotation,
-            scope=crossfade_scope,
         )
-        logger.info("%s", format_result(result))
-        sys.exit(0 if result.holds_30fps else 1)
+        logger.info("Crossfade-FPS-Sweep (rotation=%d):", args.rotation)
+        for result in results:
+            logger.info("  %s", format_result(result))
+
+        # Empfehlung (informativ): schnellste Variante, die 30 FPS haelt.
+        holds = [r for r in results if r.holds_30fps]
+        if holds:
+            best = max(holds, key=lambda r: r.effective_fps)
+            logger.info(
+                "Empfehlung: scope=%s @ %dx%d haelt 30 FPS (~%.1f FPS).",
+                best.scope.value,
+                best.width,
+                best.height,
+                best.effective_fps,
+            )
+        else:
+            logger.warning(
+                "Keine Variante haelt 30 FPS -- weitere Massnahme noetig "
+                "(niedrigere Aufloesung / weniger Layer / HW-Beschleunigung)."
+            )
+
+        # Exit-Code = GATE fuer die tatsaechlich laufende Produktions-Konfig
+        # (gewaehlter Scope @ nativer Aufloesung), NICHT "irgendeine Variante".
+        # Sonst meldet das Gate gruen, obwohl z.B. FULL@720 unter 30 bleibt und
+        # der 540x960-Fallback im Normalstart nicht automatisch greift.
+        production = result_for(
+            results, crossfade_scope, args.width, args.height
+        )
+        production_holds = production is not None and production.holds_30fps
+        if production_holds:
+            logger.info(
+                "Produktions-Konfig (scope=%s @ %dx%d) haelt 30 FPS.",
+                crossfade_scope.value,
+                args.width,
+                args.height,
+            )
+        else:
+            logger.warning(
+                "Produktions-Konfig (scope=%s @ %dx%d) haelt 30 FPS NICHT "
+                "-- Scope/Aufloesung anpassen (siehe Empfehlung oben).",
+                crossfade_scope.value,
+                args.width,
+                args.height,
+            )
+        sys.exit(0 if production_holds else 1)
 
     # -- Imports (nach Logging-Setup) ------------------------------------------
     try:

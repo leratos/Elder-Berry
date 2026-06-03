@@ -40,6 +40,10 @@ logger = logging.getLogger(__name__)
 # 30-FPS-Budget pro Frame in Millisekunden (§6.1).
 FRAME_BUDGET_MS = 1000.0 / 30.0
 
+# Fallback-Auflösung für den Crossfade-Übergang (§5/§6.1), falls die native
+# Auflösung unter 30 FPS fällt.
+FALLBACK_SIZE = (540, 960)
+
 # Komponenten-Keys eines synthetischen Avatars (Body + 2 Augen + Mund pro Plan;
 # alt/neu unterscheiden sich in Body und Mund → 4 Layer je Ebene wie im realen
 # Pfad, §6.1: "8 Blits/Frame während Übergang").
@@ -207,6 +211,73 @@ def measure_crossfade_fps(
         effective_fps=(1000.0 / mean_ms) if mean_ms > 0 else float("inf"),
         holds_30fps=max_ms <= FRAME_BUDGET_MS,
     )
+
+
+def sweep_crossfade_fps(
+    width: int = 720,
+    height: int = 1280,
+    rotation: int = 180,
+    frames: int = 8,
+    clock: Callable[[], float] = time.perf_counter,
+) -> list[CrossfadeBenchmarkResult]:
+    """Misst alle relevanten Crossfade-Varianten in einem Lauf (§5/§6.1).
+
+    Deckt das Entscheidungsfeld ab: ``FULL`` und ``MOUTH_ONLY``, jeweils bei
+    nativer Auflösung und beim Fallback :data:`FALLBACK_SIZE` (540x960). So lässt
+    sich auf dem RPi5 in **einem** Durchlauf ablesen, welche Kombination 30 FPS
+    hält. Duplikate (falls nativ == Fallback) werden übersprungen.
+
+    Returns:
+        Eine Liste von :class:`CrossfadeBenchmarkResult` (Reihenfolge: FULL nativ,
+        MOUTH_ONLY nativ, FULL Fallback, MOUTH_ONLY Fallback).
+    """
+    configs: list[tuple[CrossfadeScope, int, int]] = [
+        (CrossfadeScope.FULL, width, height),
+        (CrossfadeScope.MOUTH_ONLY, width, height),
+        (CrossfadeScope.FULL, *FALLBACK_SIZE),
+        (CrossfadeScope.MOUTH_ONLY, *FALLBACK_SIZE),
+    ]
+    seen: set[tuple[CrossfadeScope, int, int]] = set()
+    results: list[CrossfadeBenchmarkResult] = []
+    for scope, w, h in configs:
+        if (scope, w, h) in seen:
+            continue
+        seen.add((scope, w, h))
+        results.append(
+            measure_crossfade_fps(
+                width=w,
+                height=h,
+                rotation=rotation,
+                frames=frames,
+                scope=scope,
+                clock=clock,
+            )
+        )
+    return results
+
+
+def result_for(
+    results: list[CrossfadeBenchmarkResult],
+    scope: CrossfadeScope,
+    width: int,
+    height: int,
+) -> CrossfadeBenchmarkResult | None:
+    """Findet im Sweep das Ergebnis einer konkreten (scope, width, height)-Konfig.
+
+    Dient dem **Gate**-Exit-Code: ob die tatsächlich laufende Produktions-Konfig
+    (gewählter Scope @ nativer Auflösung) 30 FPS hält – **nicht** ob irgendeine
+    Sweep-Variante (z. B. der 540x960-Fallback) hält. Sonst meldete das Gate
+    grün, obwohl der echte Lauf unter 30 bleibt und der Fallback nicht
+    automatisch greift.
+
+    Returns:
+        Das passende :class:`CrossfadeBenchmarkResult` oder ``None``, wenn die
+        Kombination nicht im Sweep enthalten ist.
+    """
+    for result in results:
+        if result.scope is scope and result.width == width and result.height == height:
+            return result
+    return None
 
 
 def format_result(result: CrossfadeBenchmarkResult) -> str:

@@ -770,13 +770,29 @@ class TestRenderAlpha:
 
 
 class TestCrossfadeUpdate:
-    def test_in_transition_composites_two_offscreen_planes(self, renderer, mock_pygame):
+    def test_in_transition_reuses_scratch_buffer(self, renderer, mock_pygame):
+        """Cross-Dissolve allokiert keine zwei Vollbild-Buffer/Frame mehr.
+
+        Beide Ebenen teilen sich EINEN wiederverwendeten Scratch (Performance,
+        §6.1) – also höchstens eine Surface-Allokation, nicht zwei.
+        """
+        # Scratch meldet die Renderer-Größe → Wiederverwendung greift.
+        mock_pygame["pygame"].Surface.return_value.get_size.return_value = (512, 1024)
         mock_pygame["pygame"].Surface.reset_mock()
         renderer.update(transition=_transition(alpha=128))
-        # Zwei Offscreen-Buffer (alt opak + neu gefadet).
-        assert mock_pygame["pygame"].Surface.call_count >= 2
+        assert mock_pygame["pygame"].Surface.call_count <= 1
         mock_pygame["pygame"].display.flip.assert_called()
         mock_pygame["clock"].tick.assert_called_with(30)
+
+    def test_scratch_reused_across_frames(self, renderer, mock_pygame):
+        """Über mehrere Crossfade-Frames wird derselbe Scratch wiederverwendet."""
+        mock_pygame["pygame"].Surface.return_value.get_size.return_value = (512, 1024)
+        mock_pygame["pygame"].Surface.reset_mock()
+        renderer.update(transition=_transition(alpha=64))
+        renderer.update(transition=_transition(alpha=128))
+        renderer.update(transition=_transition(alpha=191))
+        # Gleiche Auflösung → genau eine Scratch-Allokation über alle Frames.
+        assert mock_pygame["pygame"].Surface.call_count <= 1
 
     def test_in_transition_weights_both_planes(self, renderer, mock_pygame):
         """Cross-Dissolve: alt UND neu komplementär gewichtet + additiv addiert."""
@@ -905,7 +921,7 @@ class TestMouthOnlyFallback:
     def test_mouth_only_composite_draws_static_base_once(
         self, mock_pygame, layered_assets
     ):
-        """MOUTH_ONLY: statische Basis genau EINMAL komponiert (kein Doppel-Blit)."""
+        """MOUTH_ONLY: statische Basis EINMAL direkt + Mund als Einzel-Sprite."""
         from unittest.mock import patch
 
         from elder_berry.avatar.layered_renderer import (
@@ -919,35 +935,80 @@ class TestMouthOnlyFallback:
         r.initialize(512, 1024)
         r._current_emotion = Emotion.ANGRY  # can_blink=False → deterministisch
         with (
+            patch.object(r, "_blit_plan_to", wraps=r._blit_plan_to) as spy_static,
             patch.object(
-                r, "_compose_plan_to_surface", wraps=r._compose_plan_to_surface
-            ) as spy_plan,
-            patch.object(
-                r, "_compose_layer_to_surface", wraps=r._compose_layer_to_surface
-            ) as spy_layer,
+                r, "_blit_faded_component", wraps=r._blit_faded_component
+            ) as spy_mouth,
         ):
             r.update(transition=_transition(alpha=128))
-        # Genau EINE volle Plan-Komposition (statische Basis) + EIN Einzel-Mund.
-        assert spy_plan.call_count == 1
-        assert spy_layer.call_count == 1
+        # Statische Basis genau einmal (kein zweiter Voll-Plan), Mund als Sprite.
+        assert spy_static.call_count == 1
+        assert spy_mouth.call_count == 1
+
+    def test_mouth_only_missing_mouth_component_is_safe(
+        self, mock_pygame, layered_assets
+    ):
+        """Fehlender Mund-Key → _blit_faded_component no-op, kein Crash."""
+        from elder_berry.avatar.layered_renderer import (
+            CrossfadeScope,
+            LayeredSpriteRenderer,
+        )
+        from elder_berry.avatar.render_plan import RenderPlan, TransitionState
+
+        r = LayeredSpriteRenderer(
+            assets_dir=layered_assets, crossfade_scope=CrossfadeScope.MOUTH_ONLY
+        )
+        r.initialize(512, 1024)
+        r._current_emotion = Emotion.ANGRY
+        prev = _plan("relaxed")
+        curr = RenderPlan(
+            body="angry",
+            eye_left="eye_left_angry_open",
+            eye_right="eye_right_angry_open",
+            mouth="does_not_exist",  # nicht in den Komponenten
+            alpha=128,
+        )
+        ts = TransitionState(
+            in_transition=True, progress=0.5, previous=prev, current=curr
+        )
+        r.update(transition=ts)  # darf nicht crashen
+        mock_pygame["pygame"].display.flip.assert_called()
+
+    def test_mouth_only_opaque_mouth_uses_plain_blit(self, mock_pygame, layered_assets):
+        """alpha=255 (Mund voll da) → opaker Mund-Blit, kein Fade-Sprite."""
+        from unittest.mock import patch
+
+        from elder_berry.avatar.layered_renderer import (
+            CrossfadeScope,
+            LayeredSpriteRenderer,
+        )
+
+        r = LayeredSpriteRenderer(
+            assets_dir=layered_assets, crossfade_scope=CrossfadeScope.MOUTH_ONLY
+        )
+        r.initialize(512, 1024)
+        r._current_emotion = Emotion.ANGRY
+        with patch.object(
+            r, "_blit_faded_component", wraps=r._blit_faded_component
+        ) as spy_mouth:
+            r.update(transition=_transition(alpha=255))
+        assert spy_mouth.call_count == 0  # voll deckend → kein Fade nötig
 
     def test_full_scope_composes_two_full_planes(self, renderer):
-        """Kontrast: FULL komponiert zwei volle Pläne, keinen Einzel-Layer."""
+        """Kontrast: FULL legt zwei ganze Pläne (alt+neu), keinen Einzel-Mund."""
         from unittest.mock import patch
 
         renderer._current_emotion = Emotion.ANGRY
         with (
             patch.object(
-                renderer,
-                "_compose_plan_to_surface",
-                wraps=renderer._compose_plan_to_surface,
+                renderer, "_blit_plan_to", wraps=renderer._blit_plan_to
             ) as spy_plan,
             patch.object(
                 renderer,
-                "_compose_layer_to_surface",
-                wraps=renderer._compose_layer_to_surface,
-            ) as spy_layer,
+                "_blit_faded_component",
+                wraps=renderer._blit_faded_component,
+            ) as spy_mouth,
         ):
             renderer.update(transition=_transition(alpha=128))
-        assert spy_plan.call_count == 2
-        assert spy_layer.call_count == 0
+        assert spy_plan.call_count == 2  # alt + neu auf den Scratch
+        assert spy_mouth.call_count == 0
