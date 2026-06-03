@@ -207,6 +207,9 @@ class LayeredSpriteRenderer(AvatarRenderer):
         self._assets_dir = assets_dir or DEFAULT_ASSETS_DIR
         # Crossfade-Reichweite (FULL = alle Layer; MOUTH_ONLY = §5/§6.1-Fallback).
         self._crossfade_scope = crossfade_scope
+        # Wiederverwendeter opaker Scratch-Buffer für den Cross-Dissolve (statt
+        # pro Frame/Ebene zu allokieren – §6.1-Performance auf dem RPi5).
+        self._scratch: pygame.Surface | None = None
         self._components: dict[str, pygame.Surface] = {}
         self._screen: pygame.Surface | None = None
         self._clock: pygame.time.Clock | None = None
@@ -601,28 +604,53 @@ class LayeredSpriteRenderer(AvatarRenderer):
             y_offset=ov.breath_y,
         )
 
+    def _blit_plan_to(self, target: "pygame.Surface", plan: RenderPlan) -> None:
+        """Blittet alle Layer eines Plans (Body→Augen→Mund→Effekt) auf ``target``.
+
+        Auf einem **opaken** Ziel klopft das die per-Pixel-Alpha-Layer über den
+        Hintergrund flach; auf einem SRCALPHA-Ziel bleibt die Transparenz erhalten.
+        """
+        self._blit_to(target, plan.body, y_offset=plan.y_offset)
+        self._blit_to(target, plan.eye_left, y_offset=plan.y_offset)
+        self._blit_to(target, plan.eye_right, y_offset=plan.y_offset)
+        self._blit_to(target, plan.mouth, y_offset=plan.y_offset)
+        if plan.effect:
+            self._blit_to(target, plan.effect, y_offset=plan.y_offset)
+
     def _compose_plan_to_surface(self, plan: RenderPlan) -> "pygame.Surface":
         """Komponiert einen Plan auf einen transparenten Offscreen-Buffer (§5)."""
         surface = pygame.Surface((self._width, self._height), pygame.SRCALPHA)
-        self._blit_to(surface, plan.body, y_offset=plan.y_offset)
-        self._blit_to(surface, plan.eye_left, y_offset=plan.y_offset)
-        self._blit_to(surface, plan.eye_right, y_offset=plan.y_offset)
-        self._blit_to(surface, plan.mouth, y_offset=plan.y_offset)
-        if plan.effect:
-            self._blit_to(surface, plan.effect, y_offset=plan.y_offset)
+        self._blit_plan_to(surface, plan)
         return surface
 
-    def _compose_layer_to_surface(
-        self, component_key: str, y_offset: int
-    ) -> "pygame.Surface":
-        """Komponiert genau **einen** Layer auf einen transparenten Offscreen-Buffer.
+    def _scratch_surface(self) -> "pygame.Surface":
+        """Liefert den wiederverwendeten opaken Scratch-Buffer (lazy, größentreu).
 
-        Für den MOUTH_ONLY-Fallback: nur der Mund-Layer wird (gefadet) geblittet,
-        Body/Augen/Effekt bleiben unangetastet.
+        Allokiert nur beim ersten Aufruf bzw. bei geänderter Auflösung neu –
+        spart auf dem RPi5 die teure Vollbild-Allokation pro Frame.
         """
-        surface = pygame.Surface((self._width, self._height), pygame.SRCALPHA)
-        self._blit_to(surface, component_key, y_offset=y_offset)
-        return surface
+        size = (self._width, self._height)
+        if self._scratch is None or self._scratch.get_size() != size:
+            self._scratch = pygame.Surface(size)
+        return self._scratch
+
+    def _blit_faded_component(
+        self, component_key: str, alpha: int, y_offset: int
+    ) -> None:
+        """Blittet **eine** Komponente zentriert mit reduzierter Deckkraft.
+
+        Fadet eine **Kopie** des (kleinen) Komponenten-Sprites statt eines
+        Vollbild-Offscreens – deutlich billiger für den MOUTH_ONLY-Mund.
+        """
+        surface = self._components.get(component_key)
+        if surface is None:
+            return
+        sw, sh = surface.get_size()  # Kopie hat dieselbe Größe wie das Original
+        faded = surface.copy()
+        self._fade_surface(faded, alpha)
+        x = (self._width - sw) // 2
+        y = (self._height - sh) // 2 + y_offset
+        self._screen.blit(faded, (x, y))
 
     @staticmethod
     def _fade_surface(surface: "pygame.Surface", alpha: int) -> None:
@@ -697,23 +725,24 @@ class LayeredSpriteRenderer(AvatarRenderer):
     def _add_weighted_plan(self, plan: RenderPlan, weight: int) -> None:
         """Addiert einen mit ``weight/255`` skalierten Plan additiv auf den Screen.
 
-        Der Plan wird zuerst über Schwarz „flachgeklopft" (per-Pixel-Alpha in die
-        RGB einmultipliziert), dann per ``BLEND_RGB_MULT`` auf ``weight`` skaliert
-        und per ``BLEND_RGB_ADD`` aufaddiert – so trägt jeder Layer formtreu sein
-        ``Licht * weight`` bei. ``weight <= 0`` ist ein No-op.
+        Der Plan wird direkt auf den wiederverwendeten opaken Scratch über Schwarz
+        „flachgeklopft" (per-Pixel-Alpha in die RGB einmultipliziert), per
+        ``BLEND_RGB_MULT`` auf ``weight`` skaliert und per ``BLEND_RGB_ADD``
+        aufaddiert – so trägt jeder Layer formtreu sein ``Licht * weight`` bei.
+        ``weight <= 0`` ist ein No-op.
         """
         if weight <= 0:
             return
 
-        flat = pygame.Surface((self._width, self._height))
-        flat.fill(BG_COLOR)
-        flat.blit(self._compose_plan_to_surface(plan), (0, 0))
+        scratch = self._scratch_surface()
+        scratch.fill(BG_COLOR)
+        self._blit_plan_to(scratch, plan)
 
         if weight < OPAQUE_ALPHA:
-            flat.fill(
+            scratch.fill(
                 (weight, weight, weight), special_flags=pygame.BLEND_RGB_MULT
             )
-        self._screen.blit(flat, (0, 0), special_flags=pygame.BLEND_RGB_ADD)
+        self._screen.blit(scratch, (0, 0), special_flags=pygame.BLEND_RGB_ADD)
 
     def _composite_mouth_only(
         self, old_plan: RenderPlan, new_plan: RenderPlan
@@ -721,22 +750,22 @@ class LayeredSpriteRenderer(AvatarRenderer):
         """MOUTH_ONLY-Fallback: Body/Augen/Effekt hart auf neu, nur Mund fadet.
 
         Die statische Basis (neue Emotion + **alter** Mund darunter) wird **einmal**
-        opak gezeichnet; nur der **neue** Mund blendet darüber ein. So gibt es kein
-        Doppel-Zeichnen von Body/Augen/Effekt (Codex P2: saubere Kanten), und der
-        Benchmark misst über denselben Pfad die echten Fallback-Kosten.
+        opak direkt auf den Screen gezeichnet; nur der **neue** Mund blendet als
+        kleines Komponenten-Sprite darüber ein (kein Vollbild-Offscreen). So gibt
+        es kein Doppel-Zeichnen von Body/Augen/Effekt (Codex P2: saubere Kanten),
+        und der Benchmark misst über denselben Pfad die echten Fallback-Kosten.
         """
         static_plan, fade_mouth_key = self._mouth_only_layers(old_plan, new_plan)
 
         self._screen.fill(BG_COLOR)
-        static_surface = self._compose_plan_to_surface(static_plan)
-        self._screen.blit(static_surface, (0, 0))
+        self._blit_plan_to(self._screen, static_plan)
 
-        mouth_surface = self._compose_layer_to_surface(
-            fade_mouth_key, new_plan.y_offset
-        )
-        if new_plan.alpha < OPAQUE_ALPHA:
-            self._fade_surface(mouth_surface, new_plan.alpha)
-        self._screen.blit(mouth_surface, (0, 0))
+        if new_plan.alpha >= OPAQUE_ALPHA:
+            self._blit_to(self._screen, fade_mouth_key, y_offset=new_plan.y_offset)
+        else:
+            self._blit_faded_component(
+                fade_mouth_key, new_plan.alpha, new_plan.y_offset
+            )
 
     def _blit_centered(self, component_key: str, y_offset: int = 0) -> None:
         """Zeichnet eine Komponente zentriert auf den Screen."""
