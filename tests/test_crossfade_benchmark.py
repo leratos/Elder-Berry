@@ -22,6 +22,7 @@ from elder_berry.avatar.crossfade_benchmark import (
     CrossfadeBenchmarkResult,
     format_result,
     measure_crossfade_fps,
+    sweep_crossfade_fps,
 )
 from elder_berry.avatar.layered_renderer import CrossfadeScope
 
@@ -205,6 +206,31 @@ class TestPygameMissing:
         with patch("elder_berry.avatar.crossfade_benchmark.pygame", None):
             with pytest.raises(RuntimeError, match="pygame"):
                 measure_crossfade_fps(width=64, height=64, frames=2)
+
+
+# ---------------------------------------------------------------------------
+# Sweep: FULL/MOUTH_ONLY x nativ/Fallback in einem Lauf (RPi5-Entscheidung)
+# ---------------------------------------------------------------------------
+
+
+class TestSweep:
+    def test_covers_four_variants(self, mock_pg):
+        results = sweep_crossfade_fps(width=720, height=1280, frames=2)
+        assert len(results) == 4
+        combos = {(r.scope, r.width, r.height) for r in results}
+        assert (CrossfadeScope.FULL, 720, 1280) in combos
+        assert (CrossfadeScope.MOUTH_ONLY, 720, 1280) in combos
+        assert (CrossfadeScope.FULL, 540, 960) in combos
+        assert (CrossfadeScope.MOUTH_ONLY, 540, 960) in combos
+
+    def test_dedupes_when_native_equals_fallback(self, mock_pg):
+        # Native == Fallback (540x960) → nur die zwei Scopes, keine Duplikate.
+        results = sweep_crossfade_fps(width=540, height=960, frames=2)
+        assert len(results) == 2
+        assert {r.scope for r in results} == {
+            CrossfadeScope.FULL,
+            CrossfadeScope.MOUTH_ONLY,
+        }
 
 
 # ---------------------------------------------------------------------------
