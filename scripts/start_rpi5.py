@@ -144,6 +144,25 @@ def parse_args() -> argparse.Namespace:
             "display_lcd_rotate= im KMS-Modus."
         ),
     )
+    parser.add_argument(
+        "--crossfade-scope",
+        choices=["full", "mouth_only"],
+        default="full",
+        help=(
+            "Crossfade-Reichweite (Phase 83.3). 'full' = alle Layer (Default); "
+            "'mouth_only' = \u00a75/\u00a76.1-Fallback, falls der volle Crossfade "
+            "auf dem RPi5 unter 30 FPS f\u00e4llt (Body/Augen schneiden hart)."
+        ),
+    )
+    parser.add_argument(
+        "--benchmark-crossfade",
+        action="store_true",
+        help=(
+            "Misst die Crossfade-Kompositionszeit MIT rotation (\u00a70.6) und "
+            "beendet sich danach -- kein Display-/API-Start. Verbindlicher "
+            "30-FPS-Nachweis auf dem RPi5. Exit 0 = h\u00e4lt 30 FPS, sonst 1."
+        ),
+    )
     return parser.parse_args()
 
 
@@ -154,6 +173,26 @@ def main() -> None:
         level=logging.INFO,
         format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
     )
+
+    from elder_berry.avatar.layered_renderer import CrossfadeScope
+
+    crossfade_scope = CrossfadeScope(args.crossfade_scope)
+
+    # -- Crossfade-FPS-Messung (§0.6): misst und beendet, kein Display/API. -----
+    if args.benchmark_crossfade:
+        from elder_berry.avatar.crossfade_benchmark import (
+            format_result,
+            measure_crossfade_fps,
+        )
+
+        result = measure_crossfade_fps(
+            width=args.width,
+            height=args.height,
+            rotation=args.rotation,
+            scope=crossfade_scope,
+        )
+        logger.info("%s", format_result(result))
+        sys.exit(0 if result.holds_30fps else 1)
 
     # -- Imports (nach Logging-Setup) ------------------------------------------
     try:
@@ -179,6 +218,7 @@ def main() -> None:
         height=args.height,
         fullscreen=fullscreen,
         rotation=args.rotation,
+        crossfade_scope=crossfade_scope,
     )
 
     # -- Motoren + Sensoren (erstmal Simulator, echte Hardware kommt später) ----

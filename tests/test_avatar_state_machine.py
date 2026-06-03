@@ -191,3 +191,150 @@ class TestCurrentLayers:
         sm.request_emotion(_decision(Emotion.MOTIVATED))
         plan = sm.current_layers(now=0.0)
         assert plan.body == "relaxed"  # NEUTRAL-Fallback
+
+
+# ---------------------------------------------------------------------------
+# Crossfade-Transition (Phase 83.3)
+# ---------------------------------------------------------------------------
+
+
+def _sm_fast() -> AvatarStateMachine:
+    """SM mit duration = 10/10 = 1.0 s → exakte, float-stabile Progress-Punkte."""
+    return AvatarStateMachine(emotion_map=_emotion_map(), crossfade_frames=10, fps=10)
+
+
+def _start_transition(sm: AvatarStateMachine, emotion: Emotion) -> None:
+    """Startet einen Crossfade und pinnt die Zeitbasis deterministisch auf 0.0."""
+    sm.request_emotion(_decision(emotion))
+    sm.state.last_change = 0.0  # now == Fortschritt in Sekunden == Progress
+
+
+class TestTransitionStart:
+    def test_non_direct_cut_starts_transition(self):
+        sm = _sm_fast()
+        # NEUTRAL → CHEERFUL ist KEIN direct_cut-Paar.
+        _start_transition(sm, Emotion.CHEERFUL)
+        assert sm.is_in_transition(now=0.0) is True
+        assert sm.state.emotion is Emotion.CHEERFUL  # Ziel sofort gesetzt
+        assert sm.state.previous_emotion is Emotion.NEUTRAL  # Fade-Quelle
+
+    def test_transition_at_carries_both_bases(self):
+        sm = _sm_fast()
+        _start_transition(sm, Emotion.CHEERFUL)
+        ts = sm.transition_at(now=0.5)
+        assert ts.in_transition is True
+        assert ts.previous.body == "relaxed"  # NEUTRAL-Basis (opak)
+        assert ts.previous.alpha == 255
+        assert ts.current.body == "welcome"  # CHEERFUL-Basis (gefadet)
+
+
+class TestDirectCutActive:
+    def test_direct_cut_pair_is_hard(self):
+        sm = _sm_fast()
+        # NEUTRAL → ANGRY IST ein direct_cut-Paar → harter Schnitt.
+        sm.request_emotion(_decision(Emotion.ANGRY))
+        assert sm.is_in_transition(now=sm.state.last_change) is False
+        assert sm.state.emotion is Emotion.ANGRY
+        assert sm.state.previous_emotion is Emotion.ANGRY  # previous == emotion
+        ts = sm.transition_at(now=sm.state.last_change)
+        assert ts.in_transition is False
+        assert ts.current.body == "angry"
+        assert ts.previous.body == "angry"
+
+    def test_reverse_of_pair_crossfades(self):
+        sm = _sm_fast()
+        sm.request_emotion(_decision(Emotion.ANGRY))  # harter Schnitt nach ANGRY
+        # ANGRY → NEUTRAL ist NICHT als Paar gelistet → Crossfade.
+        sm.request_emotion(_decision(Emotion.NEUTRAL))
+        sm.state.last_change = 0.0
+        assert sm.is_in_transition(now=0.0) is True
+        assert sm.state.previous_emotion is Emotion.ANGRY
+
+
+class TestTransitionProgress:
+    def test_alpha_zero_at_start(self):
+        sm = _sm_fast()
+        _start_transition(sm, Emotion.CHEERFUL)
+        assert sm.transition_at(now=0.0).current.alpha == 0
+
+    def test_alpha_quarter(self):
+        sm = _sm_fast()
+        _start_transition(sm, Emotion.CHEERFUL)
+        assert sm.transition_at(now=0.25).current.alpha == 64  # round(255*0.25)
+
+    def test_alpha_half(self):
+        sm = _sm_fast()
+        _start_transition(sm, Emotion.CHEERFUL)
+        assert sm.transition_at(now=0.5).current.alpha == 128  # round(255*0.5)
+
+    def test_alpha_monotonic_non_decreasing(self):
+        sm = _sm_fast()
+        _start_transition(sm, Emotion.CHEERFUL)
+        alphas = [sm.transition_at(now=t / 10).current.alpha for t in range(11)]
+        assert alphas == sorted(alphas)
+        assert alphas[0] == 0
+
+    def test_transition_ends_at_full_progress(self):
+        sm = _sm_fast()
+        _start_transition(sm, Emotion.CHEERFUL)
+        ts = sm.transition_at(now=1.0)  # progress == 1.0
+        assert ts.in_transition is False
+        assert ts.current.alpha == 255  # opak, Transition vorbei
+        assert ts.current.body == "welcome"
+
+    def test_transition_clamped_after_end(self):
+        sm = _sm_fast()
+        _start_transition(sm, Emotion.CHEERFUL)
+        assert sm.is_in_transition(now=5.0) is False  # weit nach Ende
+
+    def test_zero_fps_disables_crossfade(self):
+        # fps <= 0 -> _progress liefert sofort 1.0 -> keine Transition (Guard).
+        sm = AvatarStateMachine(emotion_map=_emotion_map(), fps=0)
+        sm.request_emotion(_decision(Emotion.CHEERFUL))  # kein direct_cut-Paar
+        sm.state.last_change = 0.0
+        assert sm.is_in_transition(now=0.0) is False
+        assert sm.transition_at(now=0.0).in_transition is False
+
+    def test_zero_crossfade_frames_disables_crossfade(self):
+        sm = AvatarStateMachine(emotion_map=_emotion_map(), crossfade_frames=0)
+        sm.request_emotion(_decision(Emotion.CHEERFUL))
+        sm.state.last_change = 0.0
+        assert sm.is_in_transition(now=0.0) is False
+
+
+class TestSameEmotionNoTransition:
+    def test_same_emotion_no_transition(self):
+        sm = _sm_fast()
+        sm.request_emotion(_decision(Emotion.NEUTRAL))  # == aktuelle Emotion
+        assert sm.is_in_transition(now=0.0) is False
+
+    def test_same_emotion_keeps_previous_equal(self):
+        sm = _sm_fast()
+        sm.request_emotion(_decision(Emotion.NEUTRAL))
+        assert sm.state.previous_emotion is sm.state.emotion
+
+
+class TestCurrentLayersAlpha:
+    def test_alpha_reflects_progress_during_transition(self):
+        sm = _sm_fast()
+        _start_transition(sm, Emotion.CHEERFUL)
+        plan = sm.current_layers(now=0.5)
+        assert plan.body == "welcome"  # Ziel-Emotion
+        assert plan.alpha == 128
+
+    def test_opaque_outside_transition(self):
+        sm = _sm_fast()
+        sm.request_emotion(_decision(Emotion.ANGRY))  # harter Schnitt
+        plan = sm.current_layers(now=sm.state.last_change)
+        assert plan.alpha == 255
+
+
+class TestMidTransitionRequest:
+    def test_new_request_restarts_from_target(self):
+        sm = _sm_fast()
+        _start_transition(sm, Emotion.CHEERFUL)  # NEUTRAL → CHEERFUL
+        # Mitten im Fade (Progress 0.5) eine neue Decision: CHEERFUL → SAD
+        # (kein direct_cut-Paar) → frische Transition von CHEERFUL aus.
+        sm.request_emotion(_decision(Emotion.SAD))
+        assert sm.state.emotion is Emotion.SAD
+        assert sm.state.previous_emotion is Emotion.CHEERFUL

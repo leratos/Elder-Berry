@@ -10,10 +10,11 @@ from __future__ import annotations
 
 import logging
 import threading
+import time
 from pathlib import Path
 
 from elder_berry.avatar.controller import AvatarController
-from elder_berry.avatar.layered_renderer import LayeredSpriteRenderer
+from elder_berry.avatar.layered_renderer import CrossfadeScope, LayeredSpriteRenderer
 from elder_berry.avatar.state_machine import AvatarStateMachine
 from elder_berry.robot.server import AvatarDisplay
 
@@ -51,12 +52,16 @@ class RPi5AvatarDisplay(AvatarDisplay):
         fullscreen: bool = True,
         assets_dir: Path | None = None,
         rotation: int = DEFAULT_ROTATION,
+        crossfade_scope: CrossfadeScope = CrossfadeScope.FULL,
     ) -> None:
         self._width = width
         self._height = height
         self._fullscreen = fullscreen
         self._assets_dir = assets_dir
         self._rotation = rotation
+        # Crossfade-Reichweite (83.3): FULL = alle Layer; MOUTH_ONLY ist der
+        # §5/§6.1-Fallback, falls der volle Crossfade auf dem RPi5 < 30 FPS fällt.
+        self._crossfade_scope = crossfade_scope
 
         self._renderer: LayeredSpriteRenderer | None = None
         self._thread: threading.Thread | None = None
@@ -125,7 +130,10 @@ class RPi5AvatarDisplay(AvatarDisplay):
     def _render_loop(self) -> None:
         """Hauptschleife: PyGame init → render @ 30 FPS → shutdown."""
         try:
-            self._renderer = LayeredSpriteRenderer(assets_dir=self._assets_dir)
+            self._renderer = LayeredSpriteRenderer(
+                assets_dir=self._assets_dir,
+                crossfade_scope=self._crossfade_scope,
+            )
             self._renderer.initialize(
                 width=self._width,
                 height=self._height,
@@ -160,7 +168,11 @@ class RPi5AvatarDisplay(AvatarDisplay):
                     controller.set_emotion(emotion_str)
                     last_emotion = emotion_str
                 controller.set_speaking(speaking)
-                self._renderer.update()
+                # 83.3: Crossfade-Transition pro Frame (Lock-gewrappt) lesen und
+                # an den Renderer reichen. Außerhalb einer Transition meldet sie
+                # not in_transition → der Renderer rendert byte-identisch zu 83.2.
+                transition = controller.current_transition(time.monotonic())
+                self._renderer.update(transition=transition)
 
         except Exception:
             logger.exception("Fehler im Render-Loop")

@@ -4,7 +4,8 @@ import logging
 import math
 import random
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
+from enum import Enum
 from pathlib import Path
 
 try:
@@ -13,10 +14,41 @@ except ImportError:
     pygame = None  # type: ignore[assignment]
 
 from elder_berry.avatar.base import AvatarRenderer
-from elder_berry.avatar.render_plan import RenderPlan
+from elder_berry.avatar.render_plan import (
+    OPAQUE_ALPHA,
+    RenderPlan,
+    TransitionState,
+)
 from elder_berry.character.base import Emotion
 
 logger = logging.getLogger(__name__)
+
+
+class CrossfadeScope(Enum):
+    """Welche Layer beim Emotion-Crossfade geblendet werden (Performance-Weiche).
+
+    ``FULL`` blendet alle Layer (Default). ``MOUTH_ONLY`` ist der §5/§6.1-
+    Fallback, falls der volle Crossfade auf dem RPi5 unter 30 FPS drückt: nur der
+    Mund crossfadet, Body/Augen/Effekt schneiden hart auf die neue Emotion.
+    """
+
+    FULL = "full"
+    MOUTH_ONLY = "mouth_only"
+
+
+@dataclass(frozen=True)
+class _FrameOverrides:
+    """Die einmal pro Frame aufgelösten dynamischen Overrides (Idle/Blink/Lip-Sync).
+
+    Wird im Crossfade (83.3) deckungsgleich auf den alten **und** den neuen
+    Basis-Plan gelegt, damit beide Gesichter registriert bleiben.
+    """
+
+    blink_eyes: tuple[str, str] | None
+    idle_eyes: tuple[str, str] | None
+    speaking_mouth: str | None
+    idle_mouth: str | None
+    breath_y: int
 
 DEFAULT_ASSETS_DIR = Path(__file__).parent / "assets"
 WINDOW_TITLE = "Elder-Berry – Saleria Berry"
@@ -162,13 +194,19 @@ class LayeredSpriteRenderer(AvatarRenderer):
     Plattformhinweis: Läuft auf Windows und Linux.
     """
 
-    def __init__(self, assets_dir: Path | None = None) -> None:
+    def __init__(
+        self,
+        assets_dir: Path | None = None,
+        crossfade_scope: CrossfadeScope = CrossfadeScope.FULL,
+    ) -> None:
         if pygame is None:
             raise ImportError(
                 "pygame nicht installiert. Installiere mit: pip install pygame"
             )
 
         self._assets_dir = assets_dir or DEFAULT_ASSETS_DIR
+        # Crossfade-Reichweite (FULL = alle Layer; MOUTH_ONLY = §5/§6.1-Fallback).
+        self._crossfade_scope = crossfade_scope
         self._components: dict[str, pygame.Surface] = {}
         self._screen: pygame.Surface | None = None
         self._clock: pygame.time.Clock | None = None
@@ -364,37 +402,52 @@ class LayeredSpriteRenderer(AvatarRenderer):
         """
         return self._emotion_map
 
-    def update(self) -> None:
-        """Rendert ein Frame: Event-Pump → Plan bauen → :meth:`render`.
+    def update(self, transition: TransitionState | None = None) -> None:
+        """Rendert ein Frame: Event-Pump → (Crossfade oder Einzel-Plan).
 
-        Adapter über :meth:`render`. ``update`` löst weiterhin die dynamischen
-        Anteile (Idle, Blink, Lip-Sync, Breathing) auf – diese bleiben in 83.2
-        im Renderer – und kapselt das Ergebnis in einen :class:`RenderPlan`.
+        Args:
+            transition: Optionale Blend-Info der StateMachine (83.3). Ist sie
+                ``None`` oder ``not in_transition``, läuft der **byte-identische**
+                Bestandspfad (``_build_plan`` + opakes :meth:`render`). Läuft ein
+                Crossfade, werden die Overrides einmal aufgelöst und auf den alten
+                **und** neuen Basis-Plan gelegt; :meth:`_render_crossfade`
+                blendet beide.
         """
         if not self._running or self._screen is None:
             return
 
+        if not self._pump_events():
+            return
+
+        now = time.monotonic()
+        if transition is not None and transition.in_transition:
+            old_plan, new_plan = self._build_transition_plans(now, transition)
+            self._render_crossfade(old_plan, new_plan)
+        else:
+            plan = self._build_plan(now)
+            self.render(plan)
+
+    def _pump_events(self) -> bool:
+        """Verarbeitet die PyGame-Event-Queue.
+
+        Returns:
+            ``False``, wenn ein ``QUIT``-Event den Renderer gestoppt hat
+            (Caller bricht den Frame ab), sonst ``True``.
+        """
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 self._running = False
-                return
+                return False
+        return True
 
-        plan = self._build_plan(time.monotonic())
-        self.render(plan)
+    def _resolve_overrides(self, now: float, can_blink: bool) -> _FrameOverrides:
+        """Löst die dynamischen Overrides genau einmal pro Frame auf.
 
-    def _build_plan(self, now: float) -> RenderPlan:
-        """Löst Emotion + dynamische Overrides zu einem :class:`RenderPlan` auf.
-
-        Repliziert die bisherige ``update``-Logik 1:1 (gleiche Reihenfolge und
-        Bedingungen der Seiteneffekte ``_update_idle`` / ``_update_blink`` /
-        ``_get_lip_sync_mouth``), damit das Verhalten unverändert bleibt.
-        Prioritäten via :meth:`RenderPlan.compose`: Augen blink>idle>Emotion,
-        Mund speaking>idle>Emotion.
+        Repliziert die bisherige ``_build_plan``-Logik 1:1 (gleiche Reihenfolge
+        und Bedingungen der Seiteneffekte ``_update_idle`` / ``_update_blink`` /
+        ``_get_lip_sync_mouth``). ``can_blink`` ist das Flag der aktuellen
+        (im Crossfade: der einlaufenden = neuen) Emotion.
         """
-        layers = self._emotion_map.get(self._current_emotion)
-        if layers is None:
-            layers = self._emotion_map[Emotion.NEUTRAL]
-
         # Idle-Animation updaten (nur wenn nicht sprechend)
         if not self._is_speaking:
             self._update_idle(now)
@@ -413,7 +466,7 @@ class LayeredSpriteRenderer(AvatarRenderer):
 
         # Augen: Blink schlägt Idle (nur für can_blink-Emotionen)
         blink_eyes: tuple[str, str] | None = None
-        if layers.can_blink:
+        if can_blink:
             self._update_blink(now)
             if self._blink_active:
                 blink_eyes = ("eye_left_close", "eye_right_close")
@@ -426,49 +479,264 @@ class LayeredSpriteRenderer(AvatarRenderer):
             else None
         )
 
-        return RenderPlan.compose(
-            layers,
+        return _FrameOverrides(
             blink_eyes=blink_eyes,
             idle_eyes=idle_eyes,
             speaking_mouth=speaking_mouth,
             idle_mouth=idle_mouth,
-            y_offset=breath_y,
+            breath_y=breath_y,
+        )
+
+    def _build_plan(self, now: float) -> RenderPlan:
+        """Löst Emotion + dynamische Overrides zu einem :class:`RenderPlan` auf.
+
+        Nicht-Transition-Pfad – verhaltensidentisch zu 83.2. Prioritäten via
+        :meth:`RenderPlan.compose`: Augen blink>idle>Emotion, Mund
+        speaking>idle>Emotion.
+        """
+        layers = self._emotion_map.get(self._current_emotion)
+        if layers is None:
+            layers = self._emotion_map[Emotion.NEUTRAL]
+
+        ov = self._resolve_overrides(now, layers.can_blink)
+        return RenderPlan.compose(
+            layers,
+            blink_eyes=ov.blink_eyes,
+            idle_eyes=ov.idle_eyes,
+            speaking_mouth=ov.speaking_mouth,
+            idle_mouth=ov.idle_mouth,
+            y_offset=ov.breath_y,
         )
 
     def render(self, plan: RenderPlan) -> None:
         """Zeichnet genau einen :class:`RenderPlan` (fill → Layer → Flip).
 
-        Reiner Blitter: keine Verhaltens-Logik. ``plan.alpha`` wird in 83.2 noch
-        nicht ausgewertet (opakes Blitting); das Alpha-Blending kommt mit dem
-        Crossfade in 83.3.
+        Reiner Blitter ohne Verhaltens-Logik. Ist ``plan.alpha >= 255`` (opak),
+        läuft der **byte-identische** Bestandspfad (direkte zentrierte Blits).
+        Bei ``plan.alpha < 255`` wird der Plan offscreen komponiert und als
+        Einheit verblasst (Fade-from-Black) – die Basis des Crossfades (§5).
         """
         if self._screen is None:
             return
 
         self._screen.fill(BG_COLOR)
 
-        # Layer 1: Body
-        self._blit_centered(plan.body, y_offset=plan.y_offset)
-        # Layer 2: Augen
-        self._blit_centered(plan.eye_left, y_offset=plan.y_offset)
-        self._blit_centered(plan.eye_right, y_offset=plan.y_offset)
-        # Layer 3: Mund
-        self._blit_centered(plan.mouth, y_offset=plan.y_offset)
-        # Layer 4: Effekt (optional)
-        if plan.effect:
-            self._blit_centered(plan.effect, y_offset=plan.y_offset)
+        if plan.alpha >= OPAQUE_ALPHA:
+            # Opaker Bestandspfad (byte-identisch zu 83.2).
+            self._blit_centered(plan.body, y_offset=plan.y_offset)
+            self._blit_centered(plan.eye_left, y_offset=plan.y_offset)
+            self._blit_centered(plan.eye_right, y_offset=plan.y_offset)
+            self._blit_centered(plan.mouth, y_offset=plan.y_offset)
+            if plan.effect:
+                self._blit_centered(plan.effect, y_offset=plan.y_offset)
+        else:
+            surface = self._compose_plan_to_surface(plan)
+            self._fade_surface(surface, plan.alpha)
+            self._screen.blit(surface, (0, 0))
 
-        # Display-Rotation: vor flip() den Screen-Inhalt um 180° spiegeln.
-        # Hintergrund: RPi5 ignoriert display_lcd_rotate=. Wir machen
-        # die Drehung im Render. flip(True, True) = horizontal+vertikal
-        # = 180°, ohne Resampling.
+        self._finish_frame()
+
+    def _finish_frame(self) -> None:
+        """Display-Rotation (180°) + Present – Abschluss jedes Frames."""
+        self._apply_rotation()
+        self._present()
+
+    def _apply_rotation(self) -> None:
+        """Spiegelt den Screen-Inhalt um 180°, falls ``rotation == 180``.
+
+        RPi5 ignoriert ``display_lcd_rotate=`` im KMS-Modus; die Drehung läuft als
+        Vollbild-``flip(True, True)`` (kein Resampling) **vor** dem ``display.flip``.
+        Teil der pro-Frame-Render-Kosten – die FPS-Messung (§0.6) schließt ihn ein.
+        """
         if self._rotation == 180:
             rotated = pygame.transform.flip(self._screen, True, True)
             self._screen.blit(rotated, (0, 0))
 
+    def _present(self) -> None:
+        """Stellt den Frame dar (``display.flip``) und drosselt auf ``FPS``.
+
+        ``clock.tick`` ist die vsync-/throttle-Stelle und wird in der FPS-Messung
+        bewusst **ausgeschlossen** (sie verfälscht die reine Kompositionszeit).
+        """
         pygame.display.flip()
         if self._clock is not None:
             self._clock.tick(FPS)
+
+    # -- Crossfade (Phase 83.3) -----------------------------------------------
+
+    def _build_transition_plans(
+        self, now: float, transition: TransitionState
+    ) -> tuple[RenderPlan, RenderPlan]:
+        """Legt die Frame-Overrides deckungsgleich auf alten + neuen Basis-Plan.
+
+        Die Overrides (Idle/Blink/Lip-Sync/Breathing) werden **einmal** aufgelöst
+        und auf beide Basen gelegt – gleiches ``y_offset``, gleicher Blink/Idle/
+        Lip-Sync-Key –, damit beide Gesichter registriert bleiben. ``can_blink``
+        ist das Flag der einlaufenden (neuen) Emotion. Die Crossfade-Reichweite
+        (FULL vs. MOUTH_ONLY) entscheidet erst die Komposition
+        (:meth:`_composite_crossfade_to_screen`), nicht das Plan-Bauen.
+        """
+        layers = self._emotion_map.get(self._current_emotion)
+        can_blink = layers.can_blink if layers is not None else False
+        ov = self._resolve_overrides(now, can_blink)
+
+        old_plan = self._apply_overrides(transition.previous, ov, OPAQUE_ALPHA)
+        new_plan = self._apply_overrides(
+            transition.current, ov, transition.current.alpha
+        )
+        return old_plan, new_plan
+
+    @staticmethod
+    def _apply_overrides(
+        base: RenderPlan, ov: _FrameOverrides, alpha: int
+    ) -> RenderPlan:
+        """``compose`` der Overrides auf einen Basis-Plan (LayerSource) mit Alpha."""
+        return RenderPlan.compose(
+            base,
+            blink_eyes=ov.blink_eyes,
+            idle_eyes=ov.idle_eyes,
+            speaking_mouth=ov.speaking_mouth,
+            idle_mouth=ov.idle_mouth,
+            alpha=alpha,
+            y_offset=ov.breath_y,
+        )
+
+    def _compose_plan_to_surface(self, plan: RenderPlan) -> "pygame.Surface":
+        """Komponiert einen Plan auf einen transparenten Offscreen-Buffer (§5)."""
+        surface = pygame.Surface((self._width, self._height), pygame.SRCALPHA)
+        self._blit_to(surface, plan.body, y_offset=plan.y_offset)
+        self._blit_to(surface, plan.eye_left, y_offset=plan.y_offset)
+        self._blit_to(surface, plan.eye_right, y_offset=plan.y_offset)
+        self._blit_to(surface, plan.mouth, y_offset=plan.y_offset)
+        if plan.effect:
+            self._blit_to(surface, plan.effect, y_offset=plan.y_offset)
+        return surface
+
+    def _compose_layer_to_surface(
+        self, component_key: str, y_offset: int
+    ) -> "pygame.Surface":
+        """Komponiert genau **einen** Layer auf einen transparenten Offscreen-Buffer.
+
+        Für den MOUTH_ONLY-Fallback: nur der Mund-Layer wird (gefadet) geblittet,
+        Body/Augen/Effekt bleiben unangetastet.
+        """
+        surface = pygame.Surface((self._width, self._height), pygame.SRCALPHA)
+        self._blit_to(surface, component_key, y_offset=y_offset)
+        return surface
+
+    @staticmethod
+    def _fade_surface(surface: "pygame.Surface", alpha: int) -> None:
+        """Skaliert die per-Pixel-Deckkraft einer Surface auf ``alpha/255`` (§5).
+
+        ``BLEND_RGBA_MULT`` multipliziert jeden Kanal mit ``color/255``: RGB
+        bleiben (×255/255), der Alpha-Kanal wird auf ``alpha/255`` skaliert →
+        formtreues Verblassen einer per-Pixel-Alpha-Komposition.
+        """
+        surface.fill((255, 255, 255, alpha), special_flags=pygame.BLEND_RGBA_MULT)
+
+    @staticmethod
+    def _mouth_only_layers(
+        old_plan: RenderPlan, new_plan: RenderPlan
+    ) -> tuple[RenderPlan, str]:
+        """Zerlegt einen Crossfade in den MOUTH_ONLY-Fallback.
+
+        Returns:
+            ``(static_plan, fade_mouth_key)`` – ``static_plan`` trägt die **neue**
+            Basis (Body/Augen/Effekt, hart geschnitten) plus den **alten** Mund
+            darunter und ist opak; ``fade_mouth_key`` ist der **neue** Mund, der
+            als einziger Layer einblendet. So wird Body/Augen/Effekt genau einmal
+            gezeichnet (kein Doppel-Blend auf semi-transparenten Kanten).
+        """
+        static_plan = replace(new_plan, mouth=old_plan.mouth, alpha=OPAQUE_ALPHA)
+        return static_plan, new_plan.mouth
+
+    def _render_crossfade(self, old_plan: RenderPlan, new_plan: RenderPlan) -> None:
+        """Komponiert das Crossfade-Frame und stellt es dar (§5)."""
+        if self._screen is None:
+            return
+        self._composite_crossfade_to_screen(old_plan, new_plan)
+        self._present()
+
+    def _composite_crossfade_to_screen(
+        self, old_plan: RenderPlan, new_plan: RenderPlan
+    ) -> None:
+        """Komponiert ein Crossfade-Frame (+ 180°-Rotation) – **ohne** Present.
+
+        Genau diese Kosten misst der Crossfade-FPS-Stopwatch (§6.1/§0.6);
+        ``display.flip``/``clock.tick`` bleiben außen vor. Die Reichweite
+        (``self._crossfade_scope``) entscheidet hier – damit Renderer **und**
+        Benchmark denselben Pfad für den jeweiligen Modus exerzieren.
+        """
+        if self._crossfade_scope is CrossfadeScope.MOUTH_ONLY:
+            self._composite_mouth_only(old_plan, new_plan)
+        else:
+            self._composite_full(old_plan, new_plan)
+        self._apply_rotation()
+
+    def _composite_full(self, old_plan: RenderPlan, new_plan: RenderPlan) -> None:
+        """Voller Crossfade als echter linearer Cross-Dissolve (§5).
+
+        Ergebnis = ``alt*(1-t) + neu*t`` auf schwarzem BG. Beide Pläne werden
+        **komplementär** gewichtet (``alt_gewicht = 255 - neu.alpha``), sodass:
+
+        - **alt-only**-Pixel (Silhouetten-Differenz) verblassen mit ``(1-t)`` statt
+          opak stehen zu bleiben und am Ende zu poppen (Codex P2 #3),
+        - **geteilte** Pixel (z. B. ein Lip-Sync-Mund auf beiden Plänen) sich auf
+          den vollen Wert summieren – kein Doppel-Blit-Flackern (Codex P2 #4),
+        - nichts überstrahlt/clippt (Gewichte addieren sich zu 1).
+
+        Pepper's Ghost zeigt nur helle Pixel auf Schwarz → additives Licht ist
+        physikalisch korrekt. Kosten: zwei vorgewichtete Vollbild-Kompositionen
+        pro Frame (in der RPi5-FPS-Messung zu prüfen; sonst MOUTH_ONLY/540x960).
+        """
+        self._screen.fill(BG_COLOR)
+        old_weight = OPAQUE_ALPHA - new_plan.alpha
+        self._add_weighted_plan(old_plan, old_weight)
+        self._add_weighted_plan(new_plan, new_plan.alpha)
+
+    def _add_weighted_plan(self, plan: RenderPlan, weight: int) -> None:
+        """Addiert einen mit ``weight/255`` skalierten Plan additiv auf den Screen.
+
+        Der Plan wird zuerst über Schwarz „flachgeklopft" (per-Pixel-Alpha in die
+        RGB einmultipliziert), dann per ``BLEND_RGB_MULT`` auf ``weight`` skaliert
+        und per ``BLEND_RGB_ADD`` aufaddiert – so trägt jeder Layer formtreu sein
+        ``Licht * weight`` bei. ``weight <= 0`` ist ein No-op.
+        """
+        if weight <= 0:
+            return
+
+        flat = pygame.Surface((self._width, self._height))
+        flat.fill(BG_COLOR)
+        flat.blit(self._compose_plan_to_surface(plan), (0, 0))
+
+        if weight < OPAQUE_ALPHA:
+            flat.fill(
+                (weight, weight, weight), special_flags=pygame.BLEND_RGB_MULT
+            )
+        self._screen.blit(flat, (0, 0), special_flags=pygame.BLEND_RGB_ADD)
+
+    def _composite_mouth_only(
+        self, old_plan: RenderPlan, new_plan: RenderPlan
+    ) -> None:
+        """MOUTH_ONLY-Fallback: Body/Augen/Effekt hart auf neu, nur Mund fadet.
+
+        Die statische Basis (neue Emotion + **alter** Mund darunter) wird **einmal**
+        opak gezeichnet; nur der **neue** Mund blendet darüber ein. So gibt es kein
+        Doppel-Zeichnen von Body/Augen/Effekt (Codex P2: saubere Kanten), und der
+        Benchmark misst über denselben Pfad die echten Fallback-Kosten.
+        """
+        static_plan, fade_mouth_key = self._mouth_only_layers(old_plan, new_plan)
+
+        self._screen.fill(BG_COLOR)
+        static_surface = self._compose_plan_to_surface(static_plan)
+        self._screen.blit(static_surface, (0, 0))
+
+        mouth_surface = self._compose_layer_to_surface(
+            fade_mouth_key, new_plan.y_offset
+        )
+        if new_plan.alpha < OPAQUE_ALPHA:
+            self._fade_surface(mouth_surface, new_plan.alpha)
+        self._screen.blit(mouth_surface, (0, 0))
 
     def _blit_centered(self, component_key: str, y_offset: int = 0) -> None:
         """Zeichnet eine Komponente zentriert auf den Screen."""
@@ -618,14 +886,21 @@ class LayeredSpriteRenderer(AvatarRenderer):
         self._scale_components()
         logger.info("%d Komponenten geladen (headless)", total)
 
-    def _blit_to(self, target: "pygame.Surface", component_key: str) -> None:
-        """Zeichnet eine Komponente zentriert auf eine beliebige Surface."""
+    def _blit_to(
+        self, target: "pygame.Surface", component_key: str, y_offset: int = 0
+    ) -> None:
+        """Zeichnet eine Komponente zentriert auf eine beliebige Surface.
+
+        ``y_offset`` (Default 0) verschiebt vertikal – nötig, damit der
+        Crossfade-Offscreen-Buffer denselben Breathing-Versatz trägt wie der
+        opake Pfad. ``render_to_file`` ruft ohne Offset (Verhalten unverändert).
+        """
         surface = self._components.get(component_key)
         if surface is None:
             return
         sw, sh = surface.get_size()
         x = (self._width - sw) // 2
-        y = (self._height - sh) // 2
+        y = (self._height - sh) // 2 + y_offset
         target.blit(surface, (x, y))
 
     def reload_config(self) -> bool:

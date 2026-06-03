@@ -708,3 +708,246 @@ class TestRenderAndBuildPlan:
         renderer.render(plan)
         # body + eyeL + eyeR + mouth + effect = 5 Blits (rotation=0)
         assert mock_pygame["screen"].blit.call_count >= 5
+
+
+# ---------------------------------------------------------------------------
+# render(plan) alpha-aware + Crossfade-Komposition (Phase 83.3)
+# ---------------------------------------------------------------------------
+
+
+def _plan(body, alpha=255):
+    from elder_berry.avatar.render_plan import RenderPlan
+
+    eye = {"relaxed": "open", "angry": "angry_open"}.get(body, "open")
+    return RenderPlan(
+        body=body,
+        eye_left=f"eye_left_{eye}",
+        eye_right=f"eye_right_{eye}",
+        mouth=f"mouth_{'neutral_close' if body == 'relaxed' else 'angry_open'}",
+        alpha=alpha,
+    )
+
+
+def _transition(in_transition=True, progress=0.5, prev="relaxed", curr="angry", alpha=128):
+    from elder_berry.avatar.render_plan import TransitionState
+
+    return TransitionState(
+        in_transition=in_transition,
+        progress=progress,
+        previous=_plan(prev),
+        current=_plan(curr, alpha=alpha),
+    )
+
+
+class TestRenderAlpha:
+    def test_opaque_plan_uses_direct_blits_no_offscreen(self, renderer, mock_pygame):
+        """alpha=255 → byte-identischer opaker Pfad, kein Offscreen-Buffer."""
+        mock_pygame["pygame"].Surface.reset_mock()
+        renderer.render(_plan("relaxed", alpha=255))
+        mock_pygame["pygame"].Surface.assert_not_called()
+        # body + eyeL + eyeR + mouth = 4 direkte Blits auf den Screen.
+        assert mock_pygame["screen"].blit.call_count >= 4
+
+    def test_alpha_below_255_composes_offscreen_and_fades(self, renderer, mock_pygame):
+        """alpha<255 → Plan offscreen komponiert und als Einheit verblasst."""
+        mock_pygame["pygame"].Surface.reset_mock()
+        offscreen = mock_pygame["pygame"].Surface.return_value
+        offscreen.fill.reset_mock()
+        renderer.render(_plan("relaxed", alpha=100))
+        mock_pygame["pygame"].Surface.assert_called()  # Offscreen-Buffer angelegt
+        fade_calls = [
+            c
+            for c in offscreen.fill.call_args_list
+            if c.kwargs.get("special_flags") is not None
+        ]
+        assert fade_calls, "Fade (BLEND_RGBA_MULT) muss angewandt werden"
+        mock_pygame["screen"].blit.assert_called()
+
+    def test_alpha_below_255_still_flips_and_ticks(self, renderer, mock_pygame):
+        renderer.render(_plan("relaxed", alpha=100))
+        mock_pygame["pygame"].display.flip.assert_called()
+        mock_pygame["clock"].tick.assert_called_with(30)
+
+
+class TestCrossfadeUpdate:
+    def test_in_transition_composites_two_offscreen_planes(self, renderer, mock_pygame):
+        mock_pygame["pygame"].Surface.reset_mock()
+        renderer.update(transition=_transition(alpha=128))
+        # Zwei Offscreen-Buffer (alt opak + neu gefadet).
+        assert mock_pygame["pygame"].Surface.call_count >= 2
+        mock_pygame["pygame"].display.flip.assert_called()
+        mock_pygame["clock"].tick.assert_called_with(30)
+
+    def test_in_transition_weights_both_planes(self, renderer, mock_pygame):
+        """Cross-Dissolve: alt UND neu komplementär gewichtet + additiv addiert."""
+        surf = mock_pygame["pygame"].Surface.return_value
+        surf.fill.reset_mock()
+        mock_pygame["screen"].blit.reset_mock()
+        renderer.update(transition=_transition(alpha=64))
+        # Beide Ebenen werden per BLEND_RGB_MULT gewichtet (alt 191, neu 64 < 255).
+        weight_fills = [
+            c
+            for c in surf.fill.call_args_list
+            if c.kwargs.get("special_flags") is not None
+        ]
+        assert len(weight_fills) == 2
+        # ... und beide additiv (special_flags) auf den Screen addiert.
+        add_blits = [
+            c
+            for c in mock_pygame["screen"].blit.call_args_list
+            if c.kwargs.get("special_flags") is not None
+        ]
+        assert len(add_blits) == 2
+
+    def test_transition_start_skips_zero_weight_new_plane(self, renderer, mock_pygame):
+        """Bei alpha=0 (t=0) trägt der neue Plan nichts bei (weight<=0 → no-op)."""
+        renderer._current_emotion = Emotion.ANGRY
+        # Nur der alte Plan (Gewicht 255) wird addiert → genau 1 additiver Blit.
+        mock_pygame["screen"].blit.reset_mock()
+        renderer.update(transition=_transition(alpha=0))
+        add_blits = [
+            c
+            for c in mock_pygame["screen"].blit.call_args_list
+            if c.kwargs.get("special_flags") is not None
+        ]
+        assert len(add_blits) == 1
+
+    def test_not_in_transition_uses_opaque_path(self, renderer, mock_pygame):
+        """in_transition=False → byte-identischer opaker Pfad, kein Offscreen."""
+        mock_pygame["pygame"].Surface.reset_mock()
+        renderer.update(transition=_transition(in_transition=False))
+        mock_pygame["pygame"].Surface.assert_not_called()
+        assert mock_pygame["screen"].blit.call_count >= 4
+
+    def test_none_transition_is_opaque_path(self, renderer, mock_pygame):
+        mock_pygame["pygame"].Surface.reset_mock()
+        renderer.update()  # transition=None → Bestandspfad
+        mock_pygame["pygame"].Surface.assert_not_called()
+        mock_pygame["pygame"].display.flip.assert_called()
+
+    def test_crossfade_composes_effect_layer(self, renderer, mock_pygame):
+        """Crossfade-Pläne mit Effekt → Effekt-Zweig in _compose_plan_to_surface."""
+        from elder_berry.avatar.render_plan import RenderPlan, TransitionState
+
+        prev = RenderPlan(
+            body="relaxed",
+            eye_left="eye_left_open",
+            eye_right="eye_right_open",
+            mouth="mouth_neutral_close",
+            effect="mouth_open",  # existiert in layered_assets
+        )
+        curr = RenderPlan(
+            body="angry",
+            eye_left="eye_left_angry_open",
+            eye_right="eye_right_angry_open",
+            mouth="mouth_angry_open",
+            effect="mouth_open",
+        ).with_alpha(128)
+        renderer._current_emotion = Emotion.ANGRY
+        renderer.update(
+            transition=TransitionState(
+                in_transition=True, progress=0.5, previous=prev, current=curr
+            )
+        )
+        mock_pygame["pygame"].display.flip.assert_called()
+
+    def test_render_crossfade_screen_none_is_noop(self, mock_pygame, layered_assets):
+        """_render_crossfade ohne initialize() (Screen None) → no-op, kein Flip."""
+        from elder_berry.avatar.layered_renderer import LayeredSpriteRenderer
+
+        r = LayeredSpriteRenderer(assets_dir=layered_assets)
+        assert r._screen is None
+        r._render_crossfade(_plan("relaxed"), _plan("angry", alpha=128))
+        mock_pygame["pygame"].display.flip.assert_not_called()
+
+
+class TestCrossfadeOverridesOnBothPlanes:
+    def test_full_scope_keeps_both_emotion_bases(self, renderer):
+        """FULL: alte Basis bleibt erhalten, Overrides liegen auf beiden Ebenen."""
+        renderer._current_emotion = Emotion.ANGRY
+        old_plan, new_plan = renderer._build_transition_plans(
+            time.monotonic(), _transition(alpha=128)
+        )
+        assert old_plan.body == "relaxed"  # alte Emotion-Basis bleibt
+        assert new_plan.body == "angry"  # neue Emotion-Basis
+        assert old_plan.alpha == 255  # alt opak
+        assert new_plan.alpha == 128  # neu gefadet
+
+    def test_same_y_offset_on_both_planes(self, renderer):
+        """Beide Ebenen tragen denselben Breathing-Versatz (registriert)."""
+        renderer._current_emotion = Emotion.NEUTRAL
+        renderer._is_speaking = False
+        renderer._breathing_enabled = True
+        old_plan, new_plan = renderer._build_transition_plans(
+            time.monotonic(), _transition(alpha=128)
+        )
+        assert old_plan.y_offset == new_plan.y_offset
+
+
+class TestMouthOnlyFallback:
+    def test_mouth_only_layers_static_is_new_base_with_old_mouth(self):
+        """static_plan trägt die neue Basis (hart) + alten Mund darunter, opak."""
+        from elder_berry.avatar.layered_renderer import LayeredSpriteRenderer
+
+        old_plan = _plan("relaxed")  # mouth_neutral_close
+        new_plan = _plan("angry", alpha=128)  # mouth_angry_open
+        static_plan, fade_mouth = LayeredSpriteRenderer._mouth_only_layers(
+            old_plan, new_plan
+        )
+        assert static_plan.body == "angry"  # neue Basis, hart geschnitten
+        assert static_plan.eye_left == new_plan.eye_left
+        assert static_plan.eye_right == new_plan.eye_right
+        assert static_plan.effect == new_plan.effect
+        assert static_plan.mouth == old_plan.mouth  # alter Mund liegt drunter
+        assert static_plan.alpha == 255  # opak → kein Doppel-Blend der Basis
+        assert fade_mouth == new_plan.mouth  # nur der neue Mund blendet ein
+
+    def test_mouth_only_composite_draws_static_base_once(
+        self, mock_pygame, layered_assets
+    ):
+        """MOUTH_ONLY: statische Basis genau EINMAL komponiert (kein Doppel-Blit)."""
+        from unittest.mock import patch
+
+        from elder_berry.avatar.layered_renderer import (
+            CrossfadeScope,
+            LayeredSpriteRenderer,
+        )
+
+        r = LayeredSpriteRenderer(
+            assets_dir=layered_assets, crossfade_scope=CrossfadeScope.MOUTH_ONLY
+        )
+        r.initialize(512, 1024)
+        r._current_emotion = Emotion.ANGRY  # can_blink=False → deterministisch
+        with (
+            patch.object(
+                r, "_compose_plan_to_surface", wraps=r._compose_plan_to_surface
+            ) as spy_plan,
+            patch.object(
+                r, "_compose_layer_to_surface", wraps=r._compose_layer_to_surface
+            ) as spy_layer,
+        ):
+            r.update(transition=_transition(alpha=128))
+        # Genau EINE volle Plan-Komposition (statische Basis) + EIN Einzel-Mund.
+        assert spy_plan.call_count == 1
+        assert spy_layer.call_count == 1
+
+    def test_full_scope_composes_two_full_planes(self, renderer):
+        """Kontrast: FULL komponiert zwei volle Pläne, keinen Einzel-Layer."""
+        from unittest.mock import patch
+
+        renderer._current_emotion = Emotion.ANGRY
+        with (
+            patch.object(
+                renderer,
+                "_compose_plan_to_surface",
+                wraps=renderer._compose_plan_to_surface,
+            ) as spy_plan,
+            patch.object(
+                renderer,
+                "_compose_layer_to_surface",
+                wraps=renderer._compose_layer_to_surface,
+            ) as spy_layer,
+        ):
+            renderer.update(transition=_transition(alpha=128))
+        assert spy_plan.call_count == 2
+        assert spy_layer.call_count == 0
