@@ -164,3 +164,36 @@ class TestSemanticPath:
         controller.on_emotion_decision(EmotionDecision(Emotion.ANGRY, 0.9, "llm_tag", {}))
         plan = controller.current_layers(now=0.0)
         assert plan.body == "angry"
+
+
+# ---------------------------------------------------------------------------
+# current_transition (Phase 83.3, Lock-gewrappte Crossfade-Blend-Info)
+# ---------------------------------------------------------------------------
+
+
+class TestCurrentTransition:
+    def test_returns_transition_state(self, controller):
+        from elder_berry.avatar.render_plan import TransitionState
+
+        ts = controller.current_transition(now=0.0)
+        assert isinstance(ts, TransitionState)
+        assert ts.in_transition is False  # frischer Zustand
+
+    def test_reflects_running_crossfade(self, controller, state_machine):
+        # NEUTRAL → CHEERFUL ist kein direct_cut-Paar → Crossfade.
+        controller.on_emotion_decision(
+            EmotionDecision(Emotion.CHEERFUL, 0.9, "llm_tag", {})
+        )
+        state_machine.state.last_change = 0.0  # deterministische Zeitbasis
+        ts = controller.current_transition(now=0.0)
+        assert ts.in_transition is True
+        assert ts.current.body == "welcome"  # CHEERFUL-Basis
+        assert ts.previous.body == "relaxed"  # NEUTRAL-Basis (Fade-Quelle)
+
+    def test_direct_cut_reports_no_transition(self, controller):
+        # NEUTRAL → ANGRY IST ein direct_cut-Paar → harter Schnitt.
+        controller.on_emotion_decision(
+            EmotionDecision(Emotion.ANGRY, 1.0, "llm_tag", {})
+        )
+        ts = controller.current_transition(now=0.0)
+        assert ts.in_transition is False

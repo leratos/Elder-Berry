@@ -7,7 +7,12 @@ import dataclasses
 import pytest
 
 from elder_berry.avatar.avatar_config_loader import EmotionLayers
-from elder_berry.avatar.render_plan import RenderPlan
+from elder_berry.avatar.render_plan import (
+    OPAQUE_ALPHA,
+    RenderPlan,
+    TransitionState,
+    lerp_alpha,
+)
 
 
 def _base(
@@ -122,3 +127,98 @@ class TestMouthPriority:
     def test_mouth_unaffected_by_eye_overrides(self):
         plan = RenderPlan.compose(_base(), blink_eyes=("eye_left_close", "eye_right_close"))
         assert plan.mouth == "mouth_neutral_close"
+
+
+# ---------------------------------------------------------------------------
+# lerp_alpha (Crossfade-Fortschritt → Alpha, Phase 83.3)
+# ---------------------------------------------------------------------------
+
+
+class TestLerpAlpha:
+    def test_zero_progress_fully_transparent(self):
+        assert lerp_alpha(0.0) == 0
+
+    def test_full_progress_opaque(self):
+        assert lerp_alpha(1.0) == OPAQUE_ALPHA == 255
+
+    def test_half_progress(self):
+        assert lerp_alpha(0.5) == 128  # round(255 * 0.5) = 128
+
+    def test_clamped_below_zero(self):
+        assert lerp_alpha(-1.0) == 0
+
+    def test_clamped_above_one(self):
+        assert lerp_alpha(2.0) == 255
+
+    def test_monotonic_over_8_frames(self):
+        seq = [lerp_alpha(f / 8) for f in range(9)]
+        assert seq == sorted(seq)
+        assert seq[0] == 0
+        assert seq[-1] == 255
+        assert all(0 <= a <= 255 for a in seq)
+
+
+# ---------------------------------------------------------------------------
+# RenderPlan.with_alpha + LayerSource-Konformität (Phase 83.3)
+# ---------------------------------------------------------------------------
+
+
+class TestWithAlpha:
+    def test_with_alpha_changes_only_alpha(self):
+        plan = RenderPlan.compose(_base(effect="aura"), y_offset=4)
+        faded = plan.with_alpha(100)
+        assert faded.alpha == 100
+        assert faded.body == plan.body
+        assert faded.eye_left == plan.eye_left
+        assert faded.eye_right == plan.eye_right
+        assert faded.mouth == plan.mouth
+        assert faded.effect == plan.effect
+        assert faded.y_offset == plan.y_offset
+
+    def test_with_alpha_returns_new_instance(self):
+        plan = RenderPlan.compose(_base())
+        faded = plan.with_alpha(50)
+        assert faded is not plan
+        assert plan.alpha == 255  # Original unverändert
+
+    def test_render_plan_is_layer_source(self):
+        """Ein RenderPlan erfüllt LayerSource → compose() akzeptiert ihn als Basis."""
+        base_plan = RenderPlan.compose(_base(body="angry", effect="aura"))
+        # compose mit einem RenderPlan als Basis (der Renderer legt im Crossfade
+        # seine Overrides genau so auf die SM-Basis-Pläne).
+        composed = RenderPlan.compose(
+            base_plan,
+            blink_eyes=("eye_left_close", "eye_right_close"),
+            alpha=128,
+        )
+        assert composed.body == "angry"
+        assert composed.effect == "aura"
+        assert composed.eye_left == "eye_left_close"
+        assert composed.alpha == 128
+
+
+# ---------------------------------------------------------------------------
+# TransitionState (Phase 83.3)
+# ---------------------------------------------------------------------------
+
+
+class TestTransitionState:
+    def test_holds_previous_and_current_plans(self):
+        prev = RenderPlan.compose(_base(body="relaxed"))
+        curr = RenderPlan.compose(_base(body="angry")).with_alpha(64)
+        ts = TransitionState(
+            in_transition=True, progress=0.25, previous=prev, current=curr
+        )
+        assert ts.in_transition is True
+        assert ts.progress == 0.25
+        assert ts.previous.body == "relaxed"
+        assert ts.current.body == "angry"
+        assert ts.current.alpha == 64
+
+    def test_is_frozen(self):
+        plan = RenderPlan.compose(_base())
+        ts = TransitionState(
+            in_transition=False, progress=1.0, previous=plan, current=plan
+        )
+        with pytest.raises(dataclasses.FrozenInstanceError):
+            ts.in_transition = True  # type: ignore[misc]

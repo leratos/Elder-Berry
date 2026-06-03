@@ -8,6 +8,26 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+from elder_berry.avatar.render_plan import RenderPlan, TransitionState
+
+
+def _no_transition() -> TransitionState:
+    """Nicht-Transition-Snapshot für einen gemockten Controller.
+
+    Ohne diesen Rückgabewert liefert ein ``MagicMock``-Controller bei
+    ``current_transition`` einen MagicMock, dessen ``in_transition`` truthy ist –
+    der Renderer liefe dann fälschlich in den Crossfade-Pfad.
+    """
+    plan = RenderPlan(
+        body="relaxed",
+        eye_left="eye_left_open",
+        eye_right="eye_right_open",
+        mouth="mouth_neutral_close",
+    )
+    return TransitionState(
+        in_transition=False, progress=1.0, previous=plan, current=plan
+    )
+
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -517,6 +537,7 @@ class TestEmotionForwardingGating:
 
         with patch("elder_berry.robot.rpi5_avatar.AvatarController") as MockCtrl:
             controller = MagicMock()
+            controller.current_transition.return_value = _no_transition()
             MockCtrl.return_value = controller
 
             avatar = RPi5AvatarDisplay(fullscreen=False, assets_dir=layered_assets)
@@ -534,6 +555,7 @@ class TestEmotionForwardingGating:
 
         with patch("elder_berry.robot.rpi5_avatar.AvatarController") as MockCtrl:
             controller = MagicMock()
+            controller.current_transition.return_value = _no_transition()
             MockCtrl.return_value = controller
 
             avatar = RPi5AvatarDisplay(fullscreen=False, assets_dir=layered_assets)
@@ -546,3 +568,42 @@ class TestEmotionForwardingGating:
             forwarded = [c.args[0] for c in controller.set_emotion.call_args_list]
             assert "neutral" in forwarded
             assert "angry" in forwarded
+
+
+# ---------------------------------------------------------------------------
+# Crossfade-Transition-Forwarding (Phase 83.3)
+# ---------------------------------------------------------------------------
+
+
+class TestTransitionForwarding:
+    def test_loop_reads_transition_and_forwards_to_update(
+        self, mock_pygame, layered_assets
+    ):
+        """Der Render-Loop liest pro Frame controller.current_transition und
+        reicht das Ergebnis als transition= an renderer.update weiter.
+        """
+        from elder_berry.robot.rpi5_avatar import RPi5AvatarDisplay
+
+        ts = _no_transition()
+        with (
+            patch("elder_berry.robot.rpi5_avatar.AvatarController") as MockCtrl,
+            patch("elder_berry.robot.rpi5_avatar.LayeredSpriteRenderer") as MockR,
+        ):
+            controller = MagicMock()
+            controller.current_transition.return_value = ts
+            MockCtrl.return_value = controller
+
+            renderer = MagicMock()
+            renderer.is_running.return_value = True
+            MockR.return_value = renderer
+
+            avatar = RPi5AvatarDisplay(fullscreen=False, assets_dir=layered_assets)
+            avatar.start()
+            time.sleep(0.2)
+            avatar._stop_event.set()
+            avatar.stop()
+
+            assert controller.current_transition.called
+            update_calls = renderer.update.call_args_list
+            assert update_calls, "renderer.update muss pro Frame laufen"
+            assert any(c.kwargs.get("transition") is ts for c in update_calls)

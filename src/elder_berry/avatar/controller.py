@@ -37,7 +37,7 @@ import logging
 import threading
 
 from elder_berry.avatar.base import AvatarRenderer
-from elder_berry.avatar.render_plan import RenderPlan
+from elder_berry.avatar.render_plan import RenderPlan, TransitionState
 from elder_berry.avatar.state_machine import AvatarStateMachine
 from elder_berry.character.base import Emotion
 from elder_berry.character.emotion_resolver import EmotionDecision
@@ -143,10 +143,23 @@ class AvatarController(AvatarDisplay):
         self._renderer.show_speaking(self._state_machine.is_speaking())
 
     def current_layers(self, now: float) -> RenderPlan:
-        """Liefert den Layer-Plan des aktuellen Zustands (unter Lock).
+        """Liefert den Einzel-Plan des aktuellen Zustands (unter Lock).
 
-        In 83.2 noch nicht die autoritative Frame-Quelle (der Renderer baut sein
-        Frame in ``update()`` selbst); eingeführt für 83.3 (Crossfade).
+        Einzel-Plan-Sicht (neue/Ziel-Emotion, Alpha spiegelt den Crossfade-
+        Fortschritt). Die volle Zwei-Plan-Blend-Info liefert
+        :meth:`current_transition`.
         """
         with self._lock:
             return self._state_machine.current_layers(now)
+
+    def current_transition(self, now: float) -> TransitionState:
+        """Liefert die Crossfade-Blend-Info des aktuellen Zustands (unter Lock).
+
+        Der Render-Loop liest hiermit **pro Frame** die Transition und reicht sie
+        an ``renderer.update(transition=...)``. Lock-gewrappt, damit der Read mit
+        den StateMachine-Mutationen (``on_emotion_decision``/``set_emotion``)
+        geordnet bleibt – derselbe Vertrag wie der übrige Controller (§0.6/§6.5),
+        forward-looking für 83.5 (REST-Thread mutiert parallel).
+        """
+        with self._lock:
+            return self._state_machine.transition_at(now)

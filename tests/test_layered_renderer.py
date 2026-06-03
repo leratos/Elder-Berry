@@ -708,3 +708,143 @@ class TestRenderAndBuildPlan:
         renderer.render(plan)
         # body + eyeL + eyeR + mouth + effect = 5 Blits (rotation=0)
         assert mock_pygame["screen"].blit.call_count >= 5
+
+
+# ---------------------------------------------------------------------------
+# render(plan) alpha-aware + Crossfade-Komposition (Phase 83.3)
+# ---------------------------------------------------------------------------
+
+
+def _plan(body, alpha=255):
+    from elder_berry.avatar.render_plan import RenderPlan
+
+    eye = {"relaxed": "open", "angry": "angry_open"}.get(body, "open")
+    return RenderPlan(
+        body=body,
+        eye_left=f"eye_left_{eye}",
+        eye_right=f"eye_right_{eye}",
+        mouth=f"mouth_{'neutral_close' if body == 'relaxed' else 'angry_open'}",
+        alpha=alpha,
+    )
+
+
+def _transition(in_transition=True, progress=0.5, prev="relaxed", curr="angry", alpha=128):
+    from elder_berry.avatar.render_plan import TransitionState
+
+    return TransitionState(
+        in_transition=in_transition,
+        progress=progress,
+        previous=_plan(prev),
+        current=_plan(curr, alpha=alpha),
+    )
+
+
+class TestRenderAlpha:
+    def test_opaque_plan_uses_direct_blits_no_offscreen(self, renderer, mock_pygame):
+        """alpha=255 → byte-identischer opaker Pfad, kein Offscreen-Buffer."""
+        mock_pygame["pygame"].Surface.reset_mock()
+        renderer.render(_plan("relaxed", alpha=255))
+        mock_pygame["pygame"].Surface.assert_not_called()
+        # body + eyeL + eyeR + mouth = 4 direkte Blits auf den Screen.
+        assert mock_pygame["screen"].blit.call_count >= 4
+
+    def test_alpha_below_255_composes_offscreen_and_fades(self, renderer, mock_pygame):
+        """alpha<255 → Plan offscreen komponiert und als Einheit verblasst."""
+        mock_pygame["pygame"].Surface.reset_mock()
+        offscreen = mock_pygame["pygame"].Surface.return_value
+        offscreen.fill.reset_mock()
+        renderer.render(_plan("relaxed", alpha=100))
+        mock_pygame["pygame"].Surface.assert_called()  # Offscreen-Buffer angelegt
+        fade_calls = [
+            c
+            for c in offscreen.fill.call_args_list
+            if c.kwargs.get("special_flags") is not None
+        ]
+        assert fade_calls, "Fade (BLEND_RGBA_MULT) muss angewandt werden"
+        mock_pygame["screen"].blit.assert_called()
+
+    def test_alpha_below_255_still_flips_and_ticks(self, renderer, mock_pygame):
+        renderer.render(_plan("relaxed", alpha=100))
+        mock_pygame["pygame"].display.flip.assert_called()
+        mock_pygame["clock"].tick.assert_called_with(30)
+
+
+class TestCrossfadeUpdate:
+    def test_in_transition_composites_two_offscreen_planes(self, renderer, mock_pygame):
+        mock_pygame["pygame"].Surface.reset_mock()
+        renderer.update(transition=_transition(alpha=128))
+        # Zwei Offscreen-Buffer (alt opak + neu gefadet).
+        assert mock_pygame["pygame"].Surface.call_count >= 2
+        mock_pygame["pygame"].display.flip.assert_called()
+        mock_pygame["clock"].tick.assert_called_with(30)
+
+    def test_in_transition_fades_only_new_plane(self, renderer, mock_pygame):
+        mock_pygame["pygame"].Surface.reset_mock()
+        offscreen = mock_pygame["pygame"].Surface.return_value
+        offscreen.fill.reset_mock()
+        renderer.update(transition=_transition(alpha=64))
+        # Genau ein Fade (der neue Plan); der alte (alpha=255) wird opak unterlegt.
+        fade_calls = [
+            c
+            for c in offscreen.fill.call_args_list
+            if c.kwargs.get("special_flags") is not None
+        ]
+        assert len(fade_calls) == 1
+
+    def test_not_in_transition_uses_opaque_path(self, renderer, mock_pygame):
+        """in_transition=False → byte-identischer opaker Pfad, kein Offscreen."""
+        mock_pygame["pygame"].Surface.reset_mock()
+        renderer.update(transition=_transition(in_transition=False))
+        mock_pygame["pygame"].Surface.assert_not_called()
+        assert mock_pygame["screen"].blit.call_count >= 4
+
+    def test_none_transition_is_opaque_path(self, renderer, mock_pygame):
+        mock_pygame["pygame"].Surface.reset_mock()
+        renderer.update()  # transition=None → Bestandspfad
+        mock_pygame["pygame"].Surface.assert_not_called()
+        mock_pygame["pygame"].display.flip.assert_called()
+
+
+class TestCrossfadeOverridesOnBothPlanes:
+    def test_full_scope_keeps_both_emotion_bases(self, renderer):
+        """FULL: alte Basis bleibt erhalten, Overrides liegen auf beiden Ebenen."""
+        renderer._current_emotion = Emotion.ANGRY
+        old_plan, new_plan = renderer._build_transition_plans(
+            time.monotonic(), _transition(alpha=128)
+        )
+        assert old_plan.body == "relaxed"  # alte Emotion-Basis bleibt
+        assert new_plan.body == "angry"  # neue Emotion-Basis
+        assert old_plan.alpha == 255  # alt opak
+        assert new_plan.alpha == 128  # neu gefadet
+
+    def test_same_y_offset_on_both_planes(self, renderer):
+        """Beide Ebenen tragen denselben Breathing-Versatz (registriert)."""
+        renderer._current_emotion = Emotion.NEUTRAL
+        renderer._is_speaking = False
+        renderer._breathing_enabled = True
+        old_plan, new_plan = renderer._build_transition_plans(
+            time.monotonic(), _transition(alpha=128)
+        )
+        assert old_plan.y_offset == new_plan.y_offset
+
+
+class TestMouthOnlyFallback:
+    def test_mouth_only_hard_cuts_body_and_eyes(self, mock_pygame, layered_assets):
+        from elder_berry.avatar.layered_renderer import (
+            CrossfadeScope,
+            LayeredSpriteRenderer,
+        )
+
+        r = LayeredSpriteRenderer(
+            assets_dir=layered_assets, crossfade_scope=CrossfadeScope.MOUTH_ONLY
+        )
+        r.initialize(512, 1024)
+        r._current_emotion = Emotion.ANGRY
+        old_plan, new_plan = r._build_transition_plans(
+            time.monotonic(), _transition(alpha=128)
+        )
+        # Body/Augen hart auf neu geschnitten, nur der Mund crossfadet.
+        assert old_plan.body == new_plan.body == "angry"
+        assert old_plan.eye_left == new_plan.eye_left
+        assert old_plan.mouth != new_plan.mouth
+        assert old_plan.alpha == 255 and new_plan.alpha == 128
