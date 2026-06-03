@@ -6,6 +6,7 @@ import logging
 
 import httpx
 
+from elder_berry.core.audio_analyzer import AmplitudeTrack
 from elder_berry.robot.protocol import (
     ApiResponse,
     BatteryStatus,
@@ -19,6 +20,16 @@ DEFAULT_TIMEOUT = 5.0
 
 
 ROBOT_TOKEN_HEADER = "X-Saleria-Robot-Token"
+
+
+def _add_amplitude(payload: dict, audio_meta: AmplitudeTrack | None) -> None:
+    """Hängt das Amplitude-Profil additiv an das ``/avatar/emotion``-Payload.
+
+    No-op, wenn kein nutzbarer Track vorliegt (→ RandomLipSyncDriver, §4.4).
+    """
+    if audio_meta is not None and not audio_meta.is_empty():
+        payload["amplitude"] = audio_meta.samples
+        payload["amplitude_duration_ms"] = audio_meta.duration_ms
 
 
 class RobotClient:
@@ -94,24 +105,34 @@ class RobotClient:
         r.raise_for_status()
         return ApiResponse(**r.json())
 
-    def set_speaking(self, is_speaking: bool) -> ApiResponse:
-        """Aktiviert/deaktiviert Lip-Sync auf dem RPi5-Display."""
-        r = self._client.post(
-            "/avatar/emotion",
-            json={"is_speaking": is_speaking},
-        )
+    def set_speaking(
+        self, is_speaking: bool, audio_meta: AmplitudeTrack | None = None
+    ) -> ApiResponse:
+        """Aktiviert/deaktiviert Lip-Sync auf dem RPi5-Display.
+
+        Phase 83.4: ``audio_meta`` (nur Playback-Modus) wird additiv als
+        ``amplitude``/``amplitude_duration_ms`` mitgesendet, sodass der RPi5 den
+        AmplitudeLipSyncDriver nutzt; ohne Track → RandomLipSyncDriver (§4.4).
+        """
+        payload: dict = {"is_speaking": is_speaking}
+        _add_amplitude(payload, audio_meta)
+        r = self._client.post("/avatar/emotion", json=payload)
         r.raise_for_status()
         return ApiResponse(**r.json())
 
     def set_avatar(
-        self, emotion: str | None = None, is_speaking: bool | None = None
+        self,
+        emotion: str | None = None,
+        is_speaking: bool | None = None,
+        audio_meta: AmplitudeTrack | None = None,
     ) -> ApiResponse:
-        """Setzt Emotion und Sprechzustand gleichzeitig."""
-        payload = {}
+        """Setzt Emotion und Sprechzustand (optional mit Amplitude-Profil)."""
+        payload: dict = {}
         if emotion is not None:
             payload["emotion"] = emotion
         if is_speaking is not None:
             payload["is_speaking"] = is_speaking
+        _add_amplitude(payload, audio_meta)
 
         r = self._client.post("/avatar/emotion", json=payload)
         r.raise_for_status()

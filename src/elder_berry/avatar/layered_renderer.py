@@ -4,6 +4,7 @@ import logging
 import math
 import random
 import time
+from collections.abc import Collection
 from dataclasses import dataclass, replace
 from enum import Enum
 from pathlib import Path
@@ -405,7 +406,22 @@ class LayeredSpriteRenderer(AvatarRenderer):
         """
         return self._emotion_map
 
-    def update(self, transition: TransitionState | None = None) -> None:
+    @property
+    def component_keys(self) -> Collection[str]:
+        """Geladene Komponenten-Keys – Quelle für den Lip-Sync-Guard (§0.6).
+
+        Der :class:`AvatarController` reicht diese an den
+        ``AmplitudeLipSyncDriver`` weiter, damit ein nicht vorhandener Mund-Key
+        (z.B. fehlendes ``mouth_wide``) auf einen Fallback statt auf einen
+        leeren Blit fällt.
+        """
+        return self._components.keys()
+
+    def update(
+        self,
+        transition: TransitionState | None = None,
+        speaking_mouth: str | None = None,
+    ) -> None:
         """Rendert ein Frame: Event-Pump → (Crossfade oder Einzel-Plan).
 
         Args:
@@ -415,6 +431,10 @@ class LayeredSpriteRenderer(AvatarRenderer):
                 Crossfade, werden die Overrides einmal aufgelöst und auf den alten
                 **und** neuen Basis-Plan gelegt; :meth:`_render_crossfade`
                 blendet beide.
+            speaking_mouth: Optionaler Mund-Key vom ``LipSyncDriver`` (83.4,
+                Amplitude). Ist er gesetzt **und** der Avatar spricht, gewinnt er
+                über die renderer-interne Zufallsauswahl. ``None`` → byte-
+                identischer Bestandspfad (Inline-Random bleibt bis 83.6).
         """
         if not self._running or self._screen is None:
             return
@@ -424,10 +444,12 @@ class LayeredSpriteRenderer(AvatarRenderer):
 
         now = time.monotonic()
         if transition is not None and transition.in_transition:
-            old_plan, new_plan = self._build_transition_plans(now, transition)
+            old_plan, new_plan = self._build_transition_plans(
+                now, transition, speaking_mouth
+            )
             self._render_crossfade(old_plan, new_plan)
         else:
-            plan = self._build_plan(now)
+            plan = self._build_plan(now, speaking_mouth)
             self.render(plan)
 
     def _pump_events(self) -> bool:
@@ -443,13 +465,24 @@ class LayeredSpriteRenderer(AvatarRenderer):
                 return False
         return True
 
-    def _resolve_overrides(self, now: float, can_blink: bool) -> _FrameOverrides:
+    def _resolve_overrides(
+        self,
+        now: float,
+        can_blink: bool,
+        speaking_mouth: str | None = None,
+    ) -> _FrameOverrides:
         """Löst die dynamischen Overrides genau einmal pro Frame auf.
 
         Repliziert die bisherige ``_build_plan``-Logik 1:1 (gleiche Reihenfolge
         und Bedingungen der Seiteneffekte ``_update_idle`` / ``_update_blink`` /
         ``_get_lip_sync_mouth``). ``can_blink`` ist das Flag der aktuellen
         (im Crossfade: der einlaufenden = neuen) Emotion.
+
+        ``speaking_mouth`` ist der optionale Mund-Key vom ``LipSyncDriver``
+        (83.4, Amplitude). Ist er gesetzt **und** der Avatar spricht, gewinnt er
+        über die renderer-interne Zufallsauswahl (``_get_lip_sync_mouth`` wird
+        dann **nicht** ausgewertet). ``None`` → byte-identischer Bestandspfad
+        (Inline-Random; Umzug erst 83.6).
         """
         # Idle-Animation updaten (nur wenn nicht sprechend)
         if not self._is_speaking:
@@ -474,8 +507,17 @@ class LayeredSpriteRenderer(AvatarRenderer):
             if self._blink_active:
                 blink_eyes = ("eye_left_close", "eye_right_close")
 
-        # Mund: Lip-Sync (sprechend) schlägt Idle schlägt Emotion-Default
-        speaking_mouth = self._get_lip_sync_mouth(now) if self._is_speaking else None
+        # Mund: Lip-Sync (sprechend) schlägt Idle schlägt Emotion-Default.
+        # Liefert der LipSyncDriver (83.4) einen Mund-Key, gewinnt er; sonst die
+        # renderer-interne Zufallsauswahl (Bestand bis 83.6).
+        if self._is_speaking:
+            mouth_override = (
+                speaking_mouth
+                if speaking_mouth is not None
+                else self._get_lip_sync_mouth(now)
+            )
+        else:
+            mouth_override = None
         idle_mouth = (
             self._idle_mouth
             if (not self._is_speaking and self._idle_active and self._idle_mouth)
@@ -485,23 +527,25 @@ class LayeredSpriteRenderer(AvatarRenderer):
         return _FrameOverrides(
             blink_eyes=blink_eyes,
             idle_eyes=idle_eyes,
-            speaking_mouth=speaking_mouth,
+            speaking_mouth=mouth_override,
             idle_mouth=idle_mouth,
             breath_y=breath_y,
         )
 
-    def _build_plan(self, now: float) -> RenderPlan:
+    def _build_plan(
+        self, now: float, speaking_mouth: str | None = None
+    ) -> RenderPlan:
         """Löst Emotion + dynamische Overrides zu einem :class:`RenderPlan` auf.
 
-        Nicht-Transition-Pfad – verhaltensidentisch zu 83.2. Prioritäten via
-        :meth:`RenderPlan.compose`: Augen blink>idle>Emotion, Mund
-        speaking>idle>Emotion.
+        Nicht-Transition-Pfad – verhaltensidentisch zu 83.2 (``speaking_mouth``
+        ``None``). Prioritäten via :meth:`RenderPlan.compose`: Augen
+        blink>idle>Emotion, Mund speaking>idle>Emotion.
         """
         layers = self._emotion_map.get(self._current_emotion)
         if layers is None:
             layers = self._emotion_map[Emotion.NEUTRAL]
 
-        ov = self._resolve_overrides(now, layers.can_blink)
+        ov = self._resolve_overrides(now, layers.can_blink, speaking_mouth)
         return RenderPlan.compose(
             layers,
             blink_eyes=ov.blink_eyes,
@@ -568,20 +612,25 @@ class LayeredSpriteRenderer(AvatarRenderer):
     # -- Crossfade (Phase 83.3) -----------------------------------------------
 
     def _build_transition_plans(
-        self, now: float, transition: TransitionState
+        self,
+        now: float,
+        transition: TransitionState,
+        speaking_mouth: str | None = None,
     ) -> tuple[RenderPlan, RenderPlan]:
         """Legt die Frame-Overrides deckungsgleich auf alten + neuen Basis-Plan.
 
         Die Overrides (Idle/Blink/Lip-Sync/Breathing) werden **einmal** aufgelöst
         und auf beide Basen gelegt – gleiches ``y_offset``, gleicher Blink/Idle/
         Lip-Sync-Key –, damit beide Gesichter registriert bleiben. ``can_blink``
-        ist das Flag der einlaufenden (neuen) Emotion. Die Crossfade-Reichweite
-        (FULL vs. MOUTH_ONLY) entscheidet erst die Komposition
-        (:meth:`_composite_crossfade_to_screen`), nicht das Plan-Bauen.
+        ist das Flag der einlaufenden (neuen) Emotion. ``speaking_mouth`` (83.4)
+        wird – wie alle Overrides – deckungsgleich auf beide Basen gelegt. Die
+        Crossfade-Reichweite (FULL vs. MOUTH_ONLY) entscheidet erst die
+        Komposition (:meth:`_composite_crossfade_to_screen`), nicht das
+        Plan-Bauen.
         """
         layers = self._emotion_map.get(self._current_emotion)
         can_blink = layers.can_blink if layers is not None else False
-        ov = self._resolve_overrides(now, can_blink)
+        ov = self._resolve_overrides(now, can_blink, speaking_mouth)
 
         old_plan = self._apply_overrides(transition.previous, ov, OPAQUE_ALPHA)
         new_plan = self._apply_overrides(

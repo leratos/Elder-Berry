@@ -446,3 +446,110 @@ class TestBackwardsCompatibility:
         result = assistant_with_agent.process("Flieg zum Mond")
         # Agent gibt False zurück → Ergebnis ist False
         assert result.action_success is False
+
+
+# ---------------------------------------------------------------------------
+# Amplitude-Lip-Sync im Playback-Modus (Phase 83.4)
+# ---------------------------------------------------------------------------
+
+
+class TestAmplitudeLipSync:
+    """Im Agent-Playback baut der Bot aus dem TTS-WAV den AmplitudeTrack und
+    sendet ihn additiv an den RPi5 (§4.2/§7-83.4). Nur Playback-Modus (B1).
+    """
+
+    def _wav_bytes(self) -> bytes:
+        import array
+        import io
+        import math
+        import wave
+
+        rate = 16000
+        n = int(rate * 0.3)
+        pcm = array.array(
+            "h",
+            (int(0.8 * math.sin(2 * math.pi * 220 * i / rate) * 32767) for i in range(n)),
+        )
+        buf = io.BytesIO()
+        with wave.open(buf, "wb") as wf:
+            wf.setnchannels(1)
+            wf.setsampwidth(2)
+            wf.setframerate(rate)
+            wf.writeframes(pcm.tobytes())
+        return buf.getvalue()
+
+    def test_amplitude_track_sent_to_robot(
+        self, mock_llm, mock_db, mock_controller, character, mock_agent, mock_tts
+    ):
+        from elder_berry.core.audio_analyzer import AmplitudeTrack, AudioAnalyzer
+        from elder_berry.robot.client import RobotClient
+
+        if not AudioAnalyzer.is_available():
+            pytest.skip("numpy nicht verfügbar – Analyzer liefert None (Fallback)")
+
+        wav = self._wav_bytes()
+
+        def gen(text, out, emotion=None):
+            Path(out).write_bytes(wav)
+            return out
+
+        mock_tts.generate_audio.side_effect = gen
+        mock_robot = MagicMock(spec=RobotClient)
+        assistant = Assistant(
+            llm=mock_llm,
+            actions_db=mock_db,
+            controller=mock_controller,
+            tts=mock_tts,
+            character=character,
+            agent=mock_agent,
+            robot=mock_robot,
+        )
+        mock_llm.generate.return_value = json.dumps(
+            {"action": None, "params": {}, "response": "[neutral] Hallo"}
+        )
+        assistant.process("Hi")
+
+        start_calls = [
+            c
+            for c in mock_robot.set_speaking.call_args_list
+            if c.args and c.args[0] is True
+        ]
+        assert start_calls, "robot.set_speaking(True, ...) muss laufen"
+        track = start_calls[0].kwargs.get("audio_meta")
+        assert isinstance(track, AmplitudeTrack)
+        assert not track.is_empty()
+        # Audio wurde via Agent abgespielt (Datei-Pfad).
+        mock_agent.play_audio_file.assert_called_once()
+
+    def test_no_track_when_analyzer_unavailable(
+        self, mock_llm, mock_db, mock_controller, character, mock_agent, mock_tts
+    ):
+        from elder_berry.robot.client import RobotClient
+
+        # Analyzer liefert kein Profil (z.B. numpy fehlt / MP3) → kein Track.
+        analyzer = MagicMock()
+        analyzer.profile.return_value = None
+        mock_robot = MagicMock(spec=RobotClient)
+        assistant = Assistant(
+            llm=mock_llm,
+            actions_db=mock_db,
+            controller=mock_controller,
+            tts=mock_tts,
+            character=character,
+            agent=mock_agent,
+            robot=mock_robot,
+            audio_analyzer=analyzer,
+        )
+        mock_llm.generate.return_value = json.dumps(
+            {"action": None, "params": {}, "response": "[neutral] Hallo"}
+        )
+        with patch("elder_berry.core.assistant.Path.unlink"):
+            assistant.process("Hi")
+
+        start_calls = [
+            c
+            for c in mock_robot.set_speaking.call_args_list
+            if c.args and c.args[0] is True
+        ]
+        assert start_calls
+        assert start_calls[0].kwargs.get("audio_meta") is None

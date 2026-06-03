@@ -16,6 +16,7 @@ import logging
 import random
 import time
 
+from elder_berry.core.audio_analyzer import AmplitudeTrack
 from elder_berry.robot.camera_controller import CameraController
 from elder_berry.robot.protocol import BatteryStatus
 from elder_berry.robot.server import (
@@ -77,7 +78,11 @@ class SimulatedAvatar(AvatarDisplay):
         self._emotion = emotion
         logger.info("[SIM] Avatar Emotion: %s", emotion)
 
-    def set_speaking(self, is_speaking: bool) -> None:
+    def set_speaking(
+        self, is_speaking: bool, audio_meta: AmplitudeTrack | None = None
+    ) -> None:
+        # audio_meta (83.4): der Simulator hat keinen Lip-Sync → ignoriert.
+        del audio_meta
         self._speaking = is_speaking
         logger.info("[SIM] Avatar Speaking: %s", is_speaking)
 

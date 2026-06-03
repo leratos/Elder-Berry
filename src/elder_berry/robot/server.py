@@ -39,6 +39,7 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 from starlette.middleware.base import BaseHTTPMiddleware
 
+from elder_berry.core.audio_analyzer import DEFAULT_BUCKET_MS, AmplitudeTrack
 from elder_berry.core.log_sanitize import safe_log
 from elder_berry.web.rate_limiter import RateLimiter
 
@@ -73,10 +74,19 @@ logger = logging.getLogger(__name__)
 
 
 class AvatarRequest(BaseModel):
-    """Request: Emotion und/oder Sprechzustand setzen."""
+    """Request: Emotion und/oder Sprechzustand setzen.
+
+    Phase 83.4 (additiv, rückwärtskompatibel): ``amplitude`` trägt das
+    Amplitude-Profil (RMS pro 50ms-Bucket, 0.0–1.0) des gesprochenen Audios,
+    ``amplitude_duration_ms`` die Gesamtdauer. Beide nur im lokalen
+    Playback-Modus gesetzt (§0.2/B1); fehlen sie, fällt der Avatar auf den
+    RandomLipSyncDriver zurück (§4.4).
+    """
 
     emotion: str | None = None
     is_speaking: bool | None = None
+    amplitude: list[float] | None = None
+    amplitude_duration_ms: int | None = None
 
 
 class DriveRequest(BaseModel):
@@ -160,8 +170,18 @@ class AvatarDisplay(ABC):
         pass
 
     @abstractmethod
-    def set_speaking(self, is_speaking: bool) -> None:
-        """Aktiviert/deaktiviert Lip-Sync."""
+    def set_speaking(
+        self, is_speaking: bool, audio_meta: AmplitudeTrack | None = None
+    ) -> None:
+        """Aktiviert/deaktiviert Lip-Sync.
+
+        Args:
+            is_speaking: ``True`` während einer Sprech-Sitzung.
+            audio_meta: Phase 83.4 – optionales Amplitude-Profil für den
+                AmplitudeLipSyncDriver (nur Playback-Modus). ``None`` →
+                RandomLipSyncDriver-Fallback (§4.4). Implementierungen ohne
+                Lip-Sync (z.B. Simulator) ignorieren den Parameter.
+        """
         pass
 
     @abstractmethod
@@ -352,6 +372,23 @@ class RobotServer:
 
         logger.info("RobotServer initialisiert: %s", hostname)
 
+    @staticmethod
+    def _build_amplitude_track(request: AvatarRequest) -> AmplitudeTrack | None:
+        """Baut aus den additiven AvatarRequest-Feldern einen AmplitudeTrack (83.4).
+
+        ``None``, wenn keine Amplitude mitgesendet wurde → der Avatar fällt auf
+        den RandomLipSyncDriver zurück (§4.4). Fehlt ``amplitude_duration_ms``,
+        wird die Dauer aus der Bucket-Anzahl (50ms) abgeleitet.
+        """
+        if not request.amplitude:
+            return None
+        duration_ms = request.amplitude_duration_ms
+        if duration_ms is None or duration_ms <= 0:
+            duration_ms = len(request.amplitude) * DEFAULT_BUCKET_MS
+        return AmplitudeTrack(
+            samples=list(request.amplitude), duration_ms=duration_ms
+        )
+
     def _register_routes(self) -> None:
         """Registriert alle API-Endpoints."""
 
@@ -390,10 +427,14 @@ class RobotServer:
                 logger.info("Avatar Emotion: %s", safe_log(request.emotion))
 
             if request.is_speaking is not None:
-                self._avatar.set_speaking(request.is_speaking)
+                audio_meta = self._build_amplitude_track(request)
+                self._avatar.set_speaking(request.is_speaking, audio_meta=audio_meta)
                 logger.info(
-                    "Avatar Speaking: %s",
+                    "Avatar Speaking: %s%s",
                     safe_log(request.is_speaking),
+                    f" (amplitude: {len(audio_meta.samples)} Buckets)"
+                    if audio_meta is not None
+                    else "",
                 )
 
             resp = ApiResponse(success=True, message="Avatar aktualisiert")

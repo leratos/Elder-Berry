@@ -607,3 +607,78 @@ class TestTransitionForwarding:
             update_calls = renderer.update.call_args_list
             assert update_calls, "renderer.update muss pro Frame laufen"
             assert any(c.kwargs.get("transition") is ts for c in update_calls)
+
+
+# ---------------------------------------------------------------------------
+# Lip-Sync-Forwarding (Phase 83.4)
+# ---------------------------------------------------------------------------
+
+
+class TestLipSyncForwarding:
+    def test_loop_reads_speaking_mouth_and_forwards_to_update(
+        self, mock_pygame, layered_assets
+    ):
+        """Der Loop liest controller.current_speaking_mouth und reicht es als
+        speaking_mouth= an renderer.update (83.4 Override-Seam).
+        """
+        from elder_berry.robot.rpi5_avatar import RPi5AvatarDisplay
+
+        with (
+            patch("elder_berry.robot.rpi5_avatar.AvatarController") as MockCtrl,
+            patch("elder_berry.robot.rpi5_avatar.LayeredSpriteRenderer") as MockR,
+        ):
+            controller = MagicMock()
+            controller.current_transition.return_value = _no_transition()
+            controller.current_speaking_mouth.return_value = "mouth_wide"
+            MockCtrl.return_value = controller
+
+            renderer = MagicMock()
+            renderer.is_running.return_value = True
+            MockR.return_value = renderer
+
+            avatar = RPi5AvatarDisplay(fullscreen=False, assets_dir=layered_assets)
+            avatar.start()
+            time.sleep(0.2)
+            avatar._stop_event.set()
+            avatar.stop()
+
+            assert controller.current_speaking_mouth.called
+            update_calls = renderer.update.call_args_list
+            assert any(
+                c.kwargs.get("speaking_mouth") == "mouth_wide" for c in update_calls
+            )
+
+    def test_loop_forwards_audio_meta_to_controller(
+        self, mock_pygame, layered_assets
+    ):
+        """Ein per REST gesetzter AmplitudeTrack erreicht controller.set_speaking
+        als audio_meta (83.4 Datenfluss Snapshot → Controller).
+        """
+        from elder_berry.core.audio_analyzer import AmplitudeTrack
+        from elder_berry.robot.rpi5_avatar import RPi5AvatarDisplay
+
+        track = AmplitudeTrack(samples=[0.9], duration_ms=50)
+        with (
+            patch("elder_berry.robot.rpi5_avatar.AvatarController") as MockCtrl,
+            patch("elder_berry.robot.rpi5_avatar.LayeredSpriteRenderer") as MockR,
+        ):
+            controller = MagicMock()
+            controller.current_transition.return_value = _no_transition()
+            MockCtrl.return_value = controller
+
+            renderer = MagicMock()
+            renderer.is_running.return_value = True
+            MockR.return_value = renderer
+
+            avatar = RPi5AvatarDisplay(fullscreen=False, assets_dir=layered_assets)
+            avatar.start()
+            avatar.set_speaking(True, audio_meta=track)
+            time.sleep(0.2)
+            avatar._stop_event.set()
+            avatar.stop()
+
+            metas = [
+                c.kwargs.get("audio_meta")
+                for c in controller.set_speaking.call_args_list
+            ]
+            assert track in metas

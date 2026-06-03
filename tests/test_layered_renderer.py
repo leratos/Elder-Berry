@@ -327,6 +327,43 @@ class TestSpeaking:
         assert len(intervals) >= 2
 
 
+class TestLipSyncOverride:
+    """83.4 Override-Weiche: speaking_mouth vom LipSyncDriver schlägt Random."""
+
+    def test_override_wins_while_speaking(self, renderer):
+        renderer.show_speaking(True)
+        plan = renderer._build_plan(time.monotonic(), speaking_mouth="mouth_wide")
+        assert plan.mouth == "mouth_wide"
+
+    def test_no_override_uses_internal_random(self, renderer):
+        # speaking_mouth=None → Inline-Random (Bestand): Mund aus den Lip-Sync-Keys.
+        renderer.show_speaking(True)
+        plan = renderer._build_plan(time.monotonic(), speaking_mouth=None)
+        assert plan.mouth in renderer._lip_sync_keys
+
+    def test_override_ignored_when_not_speaking(self, renderer):
+        # Nicht sprechend → Override greift nicht; Emotion-Default-Mund bleibt.
+        default_mouth = renderer._emotion_map[renderer._current_emotion].mouth
+        plan = renderer._build_plan(time.monotonic(), speaking_mouth="mouth_wide")
+        assert plan.mouth == default_mouth
+
+    def test_override_applied_to_both_transition_planes(self, renderer):
+        # Crossfade: Override liegt deckungsgleich auf altem + neuem Basis-Plan.
+        from elder_berry.avatar.render_plan import RenderPlan, TransitionState
+
+        renderer.show_speaking(True)
+        prev = RenderPlan.compose(renderer._emotion_map[Emotion.NEUTRAL])
+        cur = RenderPlan.compose(renderer._emotion_map[Emotion.CHEERFUL])
+        ts = TransitionState(
+            in_transition=True, progress=0.5, previous=prev, current=cur
+        )
+        old_plan, new_plan = renderer._build_transition_plans(
+            time.monotonic(), ts, "mouth_wide"
+        )
+        assert old_plan.mouth == "mouth_wide"
+        assert new_plan.mouth == "mouth_wide"
+
+
 # ---------------------------------------------------------------------------
 # Breathing
 # ---------------------------------------------------------------------------

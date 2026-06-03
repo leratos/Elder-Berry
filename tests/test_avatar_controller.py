@@ -12,7 +12,19 @@ from elder_berry.avatar.controller import AvatarController
 from elder_berry.avatar.state_machine import AvatarStateMachine
 from elder_berry.character.base import Emotion
 from elder_berry.character.emotion_resolver import EmotionDecision
+from elder_berry.core.audio_analyzer import AmplitudeTrack
 from elder_berry.robot.server import AvatarDisplay
+
+# Die fünf Mund-Komponenten der Amplitude-Bucket-Tabelle (§4.2).
+_MOUTH_KEYS = frozenset(
+    {
+        "mouth_neutral_close",
+        "mouth_tiny",
+        "mouth_halfopen",
+        "mouth_open",
+        "mouth_wide",
+    }
+)
 
 
 def _layers(body: str) -> EmotionLayers:
@@ -155,10 +167,11 @@ class TestSemanticPath:
         assert controller.get_state()["speaking_count"] == 0
         assert controller.get_state()["speaking"] is False
 
-    def test_on_speech_started_accepts_audio_meta_stub(self, controller):
-        # 83.4-Stub: audio_meta wird in 83.2 ignoriert, darf aber übergeben werden.
-        controller.on_speech_started(audio_meta={"amplitude": [0.1, 0.2]})
+    def test_on_speech_started_accepts_none_audio_meta(self, controller):
+        # Ohne Track: spricht, aber kein Amplitude-Driver (Inline-Random, §4.4).
+        controller.on_speech_started(audio_meta=None)
         assert controller.get_state()["speaking"] is True
+        assert controller.current_speaking_mouth(now=0.0) is None
 
     def test_current_layers_reflects_emotion(self, controller):
         controller.on_emotion_decision(EmotionDecision(Emotion.ANGRY, 0.9, "llm_tag", {}))
@@ -197,3 +210,51 @@ class TestCurrentTransition:
         )
         ts = controller.current_transition(now=0.0)
         assert ts.in_transition is False
+
+
+# ---------------------------------------------------------------------------
+# Lip-Sync-Driver-Wahl (Phase 83.4, nur Playback-Modus)
+# ---------------------------------------------------------------------------
+
+
+class TestLipSyncSelection:
+    """Der Controller wählt auf der Sprech-Flanke Amplitude vs. kein Driver."""
+
+    def _wide_track(self) -> AmplitudeTrack:
+        # Alle Buckets > 0.75 → unabhängig vom Sample-Index immer mouth_wide.
+        return AmplitudeTrack(samples=[0.9, 0.9, 0.9], duration_ms=150)
+
+    def test_no_track_means_no_amplitude_driver(self, controller):
+        controller.set_speaking(True)  # ohne audio_meta
+        assert controller.current_speaking_mouth(now=0.0) is None
+
+    def test_track_activates_amplitude_driver(self, controller, renderer):
+        renderer.component_keys = _MOUTH_KEYS
+        controller.set_speaking(True, audio_meta=self._wide_track())
+        # Amplitude-Driver aktiv → liefert den Bucket-Mund (deterministisch wide).
+        assert controller.current_speaking_mouth(now=0.0) == "mouth_wide"
+
+    def test_empty_track_falls_back_to_random(self, controller, renderer):
+        renderer.component_keys = _MOUTH_KEYS
+        controller.set_speaking(True, audio_meta=AmplitudeTrack(samples=[], duration_ms=0))
+        assert controller.current_speaking_mouth(now=0.0) is None
+
+    def test_not_speaking_returns_none(self, controller, renderer):
+        renderer.component_keys = _MOUTH_KEYS
+        controller.set_speaking(True, audio_meta=self._wide_track())
+        controller.set_speaking(False)
+        assert controller.current_speaking_mouth(now=0.0) is None
+
+    def test_driver_cleared_after_speech_end(self, controller, renderer):
+        renderer.component_keys = _MOUTH_KEYS
+        controller.on_speech_started(audio_meta=self._wide_track())
+        controller.on_speech_ended()
+        # Folge-Sitzung ohne Track → kein gehaltener Amplitude-Driver mehr.
+        controller.on_speech_started(audio_meta=None)
+        assert controller.current_speaking_mouth(now=0.0) is None
+
+    def test_missing_component_guarded(self, controller, renderer):
+        # mouth_wide fehlt → Guard fällt auf mouth_neutral_close (§0.6).
+        renderer.component_keys = frozenset({"mouth_neutral_close"})
+        controller.set_speaking(True, audio_meta=self._wide_track())
+        assert controller.current_speaking_mouth(now=0.0) == "mouth_neutral_close"

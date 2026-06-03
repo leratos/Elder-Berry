@@ -13,6 +13,7 @@ from typing import TYPE_CHECKING, Any, cast
 
 from elder_berry.actions.base import ActionController
 from elder_berry.actions.db import ActionsDB
+from elder_berry.core.audio_analyzer import AmplitudeTrack, AudioAnalyzer
 from elder_berry.core.prompts import SYSTEM_PROMPT_TEMPLATE
 from elder_berry.llm.base import LLMClient
 from elder_berry.tts.base import TTSEngine
@@ -77,11 +78,16 @@ class Assistant:
         remote_commands: RemoteCommandHandler | None = None,
         smart_context: SmartContextProvider | None = None,
         proposal_store: ProposalStore | None = None,
+        audio_analyzer: AudioAnalyzer | None = None,
     ) -> None:
         self._llm = llm
         self._actions_db = actions_db
         self._controller = controller
         self._tts = tts
+        # Phase 83.4: baut im Playback-Modus das Amplitude-Profil fürs Lip-Sync.
+        # Default-Instanz ist billig + numpy-geguarded (liefert None ohne numpy),
+        # daher kein Pflicht-Wiring; injizierbar für Tests.
+        self._audio_analyzer = audio_analyzer or AudioAnalyzer()
         self._character = character
         self._avatar = avatar
         self._robot = robot
@@ -199,23 +205,8 @@ class Assistant:
                     emotion_str,
                 )
             else:
-                # Playback-Modus: Audio direkt abspielen
-                if self._avatar:
-                    self._avatar.show_speaking(True)
-                self._robot_set_speaking(True)
-                try:
-                    if self._agent and self._is_agent_online():
-                        self._tts_via_agent(response_text, emotion_str)
-                    elif emotion_str:
-                        self._tts.speak(response_text, emotion=emotion_str)
-                    else:
-                        self._tts.speak(response_text)
-                except Exception as e:
-                    logger.error("TTS fehlgeschlagen: %s", e)
-                finally:
-                    if self._avatar:
-                        self._avatar.show_speaking(False)
-                    self._robot_set_speaking(False)
+                # Playback-Modus: Audio direkt abspielen (lokal oder via Agent).
+                self._speak_with_lipsync(response_text, emotion_str)
 
         # Memory: Konversation speichern
         self._save_to_memory(user_input, response_text, emotion_str)
@@ -927,12 +918,18 @@ class Assistant:
         except Exception as e:
             logger.debug("Robot Emotion-Sync fehlgeschlagen: %s", e)
 
-    def _robot_set_speaking(self, is_speaking: bool) -> None:
-        """Synchronisiert Sprechzustand zum RPi5-Display (fire-and-forget)."""
+    def _robot_set_speaking(
+        self, is_speaking: bool, audio_meta: AmplitudeTrack | None = None
+    ) -> None:
+        """Synchronisiert Sprechzustand zum RPi5-Display (fire-and-forget).
+
+        Phase 83.4: ``audio_meta`` (nur Playback-Modus) wird additiv mitgesendet
+        → AmplitudeLipSyncDriver auf dem RPi5; ohne Track → RandomLipSync (§4.4).
+        """
         if not self._robot:
             return
         try:
-            self._robot.set_speaking(is_speaking)
+            self._robot.set_speaking(is_speaking, audio_meta=audio_meta)
         except Exception as e:
             logger.debug("Robot Speaking-Sync fehlgeschlagen: %s", e)
 
@@ -972,26 +969,74 @@ class Assistant:
             self._agent_online_cache = False
             return False
 
-    def _tts_via_agent(self, text: str, emotion: str | None) -> None:
-        """Generiert Audio auf dem Tower und sendet es an den Laptop-Agent.
+    def _speak_with_lipsync(self, text: str, emotion: str | None) -> None:
+        """Playback-Pfad mit optionalem Amplitude-Lip-Sync (Phase 83.4).
 
-        Vorbedingung: ``_tts is not None`` und ``_agent is not None`` --
-        beide gefiltert in ``process()`` (``if self._tts ...`` und
-        ``if self._agent and self._is_agent_online()``).
+        Nur hier (lokaler Playback-Modus) wird ein Speaking-Signal gesendet
+        (§0.2/B1). Spielt der Laptop-Agent ab, generiert der Bot das Audio
+        **einmal** als WAV, baut daraus den AmplitudeTrack (sofern der
+        AudioAnalyzer verfügbar ist) und sendet ihn additiv per
+        ``set_speaking(True, audio_meta=...)`` an den RPi5. Ohne Agent / ohne WAV
+        / ohne Analyzer → kein Track → RandomLipSyncDriver (§4.4). Die Speaking-
+        Flanken (show_speaking / robot.set_speaking) bleiben wie bisher um die
+        TTS-Wiedergabe gewickelt (inkl. ``finally``-Reset bei Fehlern).
+
+        Vorbedingung: ``_tts is not None`` – gefiltert in ``process()``.
         """
         assert self._tts is not None
-        assert self._agent is not None
+        use_agent = bool(self._agent and self._is_agent_online())
+        wav_path = self._generate_tts_wav(text, emotion) if use_agent else None
+        track = self._build_amplitude_track(wav_path) if wav_path else None
+
+        if self._avatar:
+            self._avatar.show_speaking(True)
+        self._robot_set_speaking(True, track)
+        try:
+            if wav_path is not None and self._agent is not None:
+                self._agent.play_audio_file(wav_path, emotion=emotion or "neutral")
+            elif emotion:
+                self._tts.speak(text, emotion=emotion)
+            else:
+                self._tts.speak(text)
+        except Exception as e:
+            logger.error("TTS fehlgeschlagen: %s", e)
+        finally:
+            if self._avatar:
+                self._avatar.show_speaking(False)
+            self._robot_set_speaking(False)
+            if wav_path is not None:
+                wav_path.unlink(missing_ok=True)
+
+    def _generate_tts_wav(self, text: str, emotion: str | None) -> Path | None:
+        """Generiert das TTS-Audio einmal als temporäre WAV (für Agent + Analyse).
+
+        Returns ``None``, wenn die Engine keine Dateigenerierung unterstützt
+        (``NotImplementedError``) oder die Generierung scheitert → der Aufrufer
+        spielt dann lokal via ``speak()`` ab (ohne Amplitude-Track).
+        """
+        assert self._tts is not None
         with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp:
             tmp_path = Path(tmp.name)
         try:
             self._tts.generate_audio(text, tmp_path, emotion=emotion)
-            self._agent.play_audio_file(tmp_path, emotion=emotion or "neutral")
+            return tmp_path
         except NotImplementedError:
-            # TTS-Engine hat kein generate_audio → Fallback auf lokale Wiedergabe
             logger.debug("TTS generate_audio nicht verfügbar, lokaler Fallback")
-            if emotion:
-                self._tts.speak(text, emotion=emotion)
-            else:
-                self._tts.speak(text)
-        finally:
             tmp_path.unlink(missing_ok=True)
+            return None
+        except Exception as e:
+            logger.error("TTS-Audio-Generierung fehlgeschlagen: %s", e)
+            tmp_path.unlink(missing_ok=True)
+            return None
+
+    def _build_amplitude_track(self, wav_path: Path) -> AmplitudeTrack | None:
+        """Baut aus der WAV das Amplitude-Profil (83.4); ``None`` bei Problemen.
+
+        ``None`` (→ RandomLipSyncDriver, §4.4), wenn der AudioAnalyzer nicht
+        verfügbar ist (numpy fehlt) oder die Datei kein lesbares WAV ist.
+        """
+        try:
+            return self._audio_analyzer.profile(wav_path)
+        except Exception as e:
+            logger.debug("Amplitude-Analyse fehlgeschlagen: %s", e)
+            return None
