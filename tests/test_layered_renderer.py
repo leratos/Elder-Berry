@@ -804,6 +804,41 @@ class TestCrossfadeUpdate:
         mock_pygame["pygame"].Surface.assert_not_called()
         mock_pygame["pygame"].display.flip.assert_called()
 
+    def test_crossfade_composes_effect_layer(self, renderer, mock_pygame):
+        """Crossfade-Pläne mit Effekt → Effekt-Zweig in _compose_plan_to_surface."""
+        from elder_berry.avatar.render_plan import RenderPlan, TransitionState
+
+        prev = RenderPlan(
+            body="relaxed",
+            eye_left="eye_left_open",
+            eye_right="eye_right_open",
+            mouth="mouth_neutral_close",
+            effect="mouth_open",  # existiert in layered_assets
+        )
+        curr = RenderPlan(
+            body="angry",
+            eye_left="eye_left_angry_open",
+            eye_right="eye_right_angry_open",
+            mouth="mouth_angry_open",
+            effect="mouth_open",
+        ).with_alpha(128)
+        renderer._current_emotion = Emotion.ANGRY
+        renderer.update(
+            transition=TransitionState(
+                in_transition=True, progress=0.5, previous=prev, current=curr
+            )
+        )
+        mock_pygame["pygame"].display.flip.assert_called()
+
+    def test_render_crossfade_screen_none_is_noop(self, mock_pygame, layered_assets):
+        """_render_crossfade ohne initialize() (Screen None) → no-op, kein Flip."""
+        from elder_berry.avatar.layered_renderer import LayeredSpriteRenderer
+
+        r = LayeredSpriteRenderer(assets_dir=layered_assets)
+        assert r._screen is None
+        r._render_crossfade(_plan("relaxed"), _plan("angry", alpha=128))
+        mock_pygame["pygame"].display.flip.assert_not_called()
+
 
 class TestCrossfadeOverridesOnBothPlanes:
     def test_full_scope_keeps_both_emotion_bases(self, renderer):
@@ -829,7 +864,29 @@ class TestCrossfadeOverridesOnBothPlanes:
 
 
 class TestMouthOnlyFallback:
-    def test_mouth_only_hard_cuts_body_and_eyes(self, mock_pygame, layered_assets):
+    def test_mouth_only_layers_static_is_new_base_with_old_mouth(self):
+        """static_plan trägt die neue Basis (hart) + alten Mund darunter, opak."""
+        from elder_berry.avatar.layered_renderer import LayeredSpriteRenderer
+
+        old_plan = _plan("relaxed")  # mouth_neutral_close
+        new_plan = _plan("angry", alpha=128)  # mouth_angry_open
+        static_plan, fade_mouth = LayeredSpriteRenderer._mouth_only_layers(
+            old_plan, new_plan
+        )
+        assert static_plan.body == "angry"  # neue Basis, hart geschnitten
+        assert static_plan.eye_left == new_plan.eye_left
+        assert static_plan.eye_right == new_plan.eye_right
+        assert static_plan.effect == new_plan.effect
+        assert static_plan.mouth == old_plan.mouth  # alter Mund liegt drunter
+        assert static_plan.alpha == 255  # opak → kein Doppel-Blend der Basis
+        assert fade_mouth == new_plan.mouth  # nur der neue Mund blendet ein
+
+    def test_mouth_only_composite_draws_static_base_once(
+        self, mock_pygame, layered_assets
+    ):
+        """MOUTH_ONLY: statische Basis genau EINMAL komponiert (kein Doppel-Blit)."""
+        from unittest.mock import patch
+
         from elder_berry.avatar.layered_renderer import (
             CrossfadeScope,
             LayeredSpriteRenderer,
@@ -839,12 +896,37 @@ class TestMouthOnlyFallback:
             assets_dir=layered_assets, crossfade_scope=CrossfadeScope.MOUTH_ONLY
         )
         r.initialize(512, 1024)
-        r._current_emotion = Emotion.ANGRY
-        old_plan, new_plan = r._build_transition_plans(
-            time.monotonic(), _transition(alpha=128)
-        )
-        # Body/Augen hart auf neu geschnitten, nur der Mund crossfadet.
-        assert old_plan.body == new_plan.body == "angry"
-        assert old_plan.eye_left == new_plan.eye_left
-        assert old_plan.mouth != new_plan.mouth
-        assert old_plan.alpha == 255 and new_plan.alpha == 128
+        r._current_emotion = Emotion.ANGRY  # can_blink=False → deterministisch
+        with (
+            patch.object(
+                r, "_compose_plan_to_surface", wraps=r._compose_plan_to_surface
+            ) as spy_plan,
+            patch.object(
+                r, "_compose_layer_to_surface", wraps=r._compose_layer_to_surface
+            ) as spy_layer,
+        ):
+            r.update(transition=_transition(alpha=128))
+        # Genau EINE volle Plan-Komposition (statische Basis) + EIN Einzel-Mund.
+        assert spy_plan.call_count == 1
+        assert spy_layer.call_count == 1
+
+    def test_full_scope_composes_two_full_planes(self, renderer):
+        """Kontrast: FULL komponiert zwei volle Pläne, keinen Einzel-Layer."""
+        from unittest.mock import patch
+
+        renderer._current_emotion = Emotion.ANGRY
+        with (
+            patch.object(
+                renderer,
+                "_compose_plan_to_surface",
+                wraps=renderer._compose_plan_to_surface,
+            ) as spy_plan,
+            patch.object(
+                renderer,
+                "_compose_layer_to_surface",
+                wraps=renderer._compose_layer_to_surface,
+            ) as spy_layer,
+        ):
+            renderer.update(transition=_transition(alpha=128))
+        assert spy_plan.call_count == 2
+        assert spy_layer.call_count == 0

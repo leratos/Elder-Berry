@@ -84,7 +84,7 @@ class CrossfadeBenchmarkResult:
 
 
 def _require_pygame() -> None:
-    if pygame is None:  # pragma: no cover - nur ohne pygame-Installation
+    if pygame is None:
         raise RuntimeError(
             "pygame nicht installiert – Crossfade-Benchmark nicht möglich."
         )

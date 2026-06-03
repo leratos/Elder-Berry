@@ -571,9 +571,10 @@ class LayeredSpriteRenderer(AvatarRenderer):
 
         Die Overrides (Idle/Blink/Lip-Sync/Breathing) werden **einmal** aufgelöst
         und auf beide Basen gelegt – gleiches ``y_offset``, gleicher Blink/Idle/
-        Lip-Sync-Key –, damit beide Gesichter registriert bleiben. Nur die
-        emotionsspezifischen Basis-Keys (Body, Default-Augen, Default-Mund) faden
-        alt→neu. ``can_blink`` ist das Flag der einlaufenden (neuen) Emotion.
+        Lip-Sync-Key –, damit beide Gesichter registriert bleiben. ``can_blink``
+        ist das Flag der einlaufenden (neuen) Emotion. Die Crossfade-Reichweite
+        (FULL vs. MOUTH_ONLY) entscheidet erst die Komposition
+        (:meth:`_composite_crossfade_to_screen`), nicht das Plan-Bauen.
         """
         layers = self._emotion_map.get(self._current_emotion)
         can_blink = layers.can_blink if layers is not None else False
@@ -583,17 +584,6 @@ class LayeredSpriteRenderer(AvatarRenderer):
         new_plan = self._apply_overrides(
             transition.current, ov, transition.current.alpha
         )
-
-        if self._crossfade_scope is CrossfadeScope.MOUTH_ONLY:
-            # Fallback (§5/§6.1): Body/Augen/Effekt hart auf neu, nur Mund fadet.
-            old_plan = replace(
-                old_plan,
-                body=new_plan.body,
-                eye_left=new_plan.eye_left,
-                eye_right=new_plan.eye_right,
-                effect=new_plan.effect,
-            )
-
         return old_plan, new_plan
 
     @staticmethod
@@ -622,6 +612,18 @@ class LayeredSpriteRenderer(AvatarRenderer):
             self._blit_to(surface, plan.effect, y_offset=plan.y_offset)
         return surface
 
+    def _compose_layer_to_surface(
+        self, component_key: str, y_offset: int
+    ) -> "pygame.Surface":
+        """Komponiert genau **einen** Layer auf einen transparenten Offscreen-Buffer.
+
+        Für den MOUTH_ONLY-Fallback: nur der Mund-Layer wird (gefadet) geblittet,
+        Body/Augen/Effekt bleiben unangetastet.
+        """
+        surface = pygame.Surface((self._width, self._height), pygame.SRCALPHA)
+        self._blit_to(surface, component_key, y_offset=y_offset)
+        return surface
+
     @staticmethod
     def _fade_surface(surface: "pygame.Surface", alpha: int) -> None:
         """Skaliert die per-Pixel-Deckkraft einer Surface auf ``alpha/255`` (§5).
@@ -632,11 +634,24 @@ class LayeredSpriteRenderer(AvatarRenderer):
         """
         surface.fill((255, 255, 255, alpha), special_flags=pygame.BLEND_RGBA_MULT)
 
-    def _render_crossfade(self, old_plan: RenderPlan, new_plan: RenderPlan) -> None:
-        """Blendet ``new_plan`` (Alpha) über ``old_plan`` (opak) in EIN Frame (§5).
+    @staticmethod
+    def _mouth_only_layers(
+        old_plan: RenderPlan, new_plan: RenderPlan
+    ) -> tuple[RenderPlan, str]:
+        """Zerlegt einen Crossfade in den MOUTH_ONLY-Fallback.
 
-        Komposition über :meth:`_composite_crossfade_to_screen`, danach Present.
+        Returns:
+            ``(static_plan, fade_mouth_key)`` – ``static_plan`` trägt die **neue**
+            Basis (Body/Augen/Effekt, hart geschnitten) plus den **alten** Mund
+            darunter und ist opak; ``fade_mouth_key`` ist der **neue** Mund, der
+            als einziger Layer einblendet. So wird Body/Augen/Effekt genau einmal
+            gezeichnet (kein Doppel-Blend auf semi-transparenten Kanten).
         """
+        static_plan = replace(new_plan, mouth=old_plan.mouth, alpha=OPAQUE_ALPHA)
+        return static_plan, new_plan.mouth
+
+    def _render_crossfade(self, old_plan: RenderPlan, new_plan: RenderPlan) -> None:
+        """Komponiert das Crossfade-Frame und stellt es dar (§5)."""
         if self._screen is None:
             return
         self._composite_crossfade_to_screen(old_plan, new_plan)
@@ -645,13 +660,21 @@ class LayeredSpriteRenderer(AvatarRenderer):
     def _composite_crossfade_to_screen(
         self, old_plan: RenderPlan, new_plan: RenderPlan
     ) -> None:
-        """Komponiert beide Pläne (+ 180°-Rotation) auf den Screen – **ohne** Present.
+        """Komponiert ein Crossfade-Frame (+ 180°-Rotation) – **ohne** Present.
 
-        Genau diese Kosten (fill + zwei Offscreen-Kompositionen + Alpha-Fade +
-        Rotation) misst der Crossfade-FPS-Stopwatch (§6.1/§0.6); ``display.flip``
-        und ``clock.tick`` bleiben außen vor. Der alte Plan wird opak unterlegt,
-        der neue per :meth:`_fade_surface` verblasst darübergeblittet.
+        Genau diese Kosten misst der Crossfade-FPS-Stopwatch (§6.1/§0.6);
+        ``display.flip``/``clock.tick`` bleiben außen vor. Die Reichweite
+        (``self._crossfade_scope``) entscheidet hier – damit Renderer **und**
+        Benchmark denselben Pfad für den jeweiligen Modus exerzieren.
         """
+        if self._crossfade_scope is CrossfadeScope.MOUTH_ONLY:
+            self._composite_mouth_only(old_plan, new_plan)
+        else:
+            self._composite_full(old_plan, new_plan)
+        self._apply_rotation()
+
+    def _composite_full(self, old_plan: RenderPlan, new_plan: RenderPlan) -> None:
+        """Voller Crossfade: alter Plan opak unterlegt, neuer Plan gefadet drüber."""
         self._screen.fill(BG_COLOR)
 
         old_surface = self._compose_plan_to_surface(old_plan)
@@ -662,7 +685,28 @@ class LayeredSpriteRenderer(AvatarRenderer):
             self._fade_surface(new_surface, new_plan.alpha)
         self._screen.blit(new_surface, (0, 0))
 
-        self._apply_rotation()
+    def _composite_mouth_only(
+        self, old_plan: RenderPlan, new_plan: RenderPlan
+    ) -> None:
+        """MOUTH_ONLY-Fallback: Body/Augen/Effekt hart auf neu, nur Mund fadet.
+
+        Die statische Basis (neue Emotion + **alter** Mund darunter) wird **einmal**
+        opak gezeichnet; nur der **neue** Mund blendet darüber ein. So gibt es kein
+        Doppel-Zeichnen von Body/Augen/Effekt (Codex P2: saubere Kanten), und der
+        Benchmark misst über denselben Pfad die echten Fallback-Kosten.
+        """
+        static_plan, fade_mouth_key = self._mouth_only_layers(old_plan, new_plan)
+
+        self._screen.fill(BG_COLOR)
+        static_surface = self._compose_plan_to_surface(static_plan)
+        self._screen.blit(static_surface, (0, 0))
+
+        mouth_surface = self._compose_layer_to_surface(
+            fade_mouth_key, new_plan.y_offset
+        )
+        if new_plan.alpha < OPAQUE_ALPHA:
+            self._fade_surface(mouth_surface, new_plan.alpha)
+        self._screen.blit(mouth_surface, (0, 0))
 
     def _blit_centered(self, component_key: str, y_offset: int = 0) -> None:
         """Zeichnet eine Komponente zentriert auf den Screen."""

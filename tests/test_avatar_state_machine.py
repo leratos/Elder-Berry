@@ -287,6 +287,20 @@ class TestTransitionProgress:
         _start_transition(sm, Emotion.CHEERFUL)
         assert sm.is_in_transition(now=5.0) is False  # weit nach Ende
 
+    def test_zero_fps_disables_crossfade(self):
+        # fps <= 0 -> _progress liefert sofort 1.0 -> keine Transition (Guard).
+        sm = AvatarStateMachine(emotion_map=_emotion_map(), fps=0)
+        sm.request_emotion(_decision(Emotion.CHEERFUL))  # kein direct_cut-Paar
+        sm.state.last_change = 0.0
+        assert sm.is_in_transition(now=0.0) is False
+        assert sm.transition_at(now=0.0).in_transition is False
+
+    def test_zero_crossfade_frames_disables_crossfade(self):
+        sm = AvatarStateMachine(emotion_map=_emotion_map(), crossfade_frames=0)
+        sm.request_emotion(_decision(Emotion.CHEERFUL))
+        sm.state.last_change = 0.0
+        assert sm.is_in_transition(now=0.0) is False
+
 
 class TestSameEmotionNoTransition:
     def test_same_emotion_no_transition(self):
