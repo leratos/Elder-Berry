@@ -97,14 +97,29 @@ Infrastruktur + Muster (§2), nicht der Routen-Pfad.
 ```python
 # tools/nearby_place_search.py
 @dataclass(frozen=True)
+class NearbyQueryDraft:
+    # Zwischenstand bis Disambiguierung fertig (Codex #4). location_text/travel_mode
+    # optional, weil sie per Rueckfrage nachkommen koennen. Behaelt subject/
+    # search_query/included_type/exclude_types, geht NICHT verloren.
+    subject: str
+    search_query: str
+    included_type: str | None
+    exclude_types: tuple[str, ...]
+    location_text: str | None
+    travel_mode: str | None
+    open_now: bool = True
+    def to_query(self) -> "NearbyQuery | None": ...  # None solange Pflichtfelder fehlen
+
+@dataclass(frozen=True)
 class NearbyQuery:
-    subject: str                    # Original vom User, fuer Echo: "Shisha-Kopf"/"Rockerbar"
-    search_query: str               # Freitext-Query fuer searchText: "Rockerbar"/"Shisha Zubehoer"
-    included_type: str | None       # sauberer Places-Typ, z.B. "bar"/"supermarket" — oder None
-    exclude_types: tuple[str, ...]  # Client-Blacklist (greift v.a. wenn included_type=None)
+    # Vollstaendig aufgeloest -> alle Felder Pflicht. search() nimmt NUR das.
+    subject: str
+    search_query: str
+    included_type: str | None
+    exclude_types: tuple[str, ...]
     location_text: str
     travel_mode: str                # driving|walking|bicycling|transit (-> Radius §4.2)
-    open_now: bool = True
+    open_now: bool = True           # CLIENT-Flag (NICHT als openNow an die API, Codex #1)
 
 @dataclass(frozen=True)
 class PlaceCandidate:
@@ -120,21 +135,29 @@ class PlaceCandidate:
 class NearbyPlaceSearch:
     def __init__(self, api_key: str, geocoder: GoogleGeocoder,
                  client: httpx.Client | None = None) -> None: ...
-    def search(self, query: NearbyQuery, *, max_results: int = 5) -> list[PlaceCandidate]:
+    def search(self, query: NearbyQuery, *, max_results: int = 20) -> list[PlaceCandidate]:
         # 1. geocoder.geocode(location_text) -> center (sonst leer + Hinweis)
-        # 2. radius = RADIUS_BY_MODE[travel_mode]
+        # 2. radius = RADIUS_BY_MODE[travel_mode]   (Cap/Weitung: §4.2)
         # 3. searchText:
         #      textQuery       = search_query
-        #      locationBias    = circle(center, radius)   # weich; Cap kommt clientseitig
+        #      pageSize        = 20                 # Puffer fuer Client-Filter (Codex #6)
+        #      locationBias    = circle(center, radius)   # weich; harter Cap clientseitig
         #      rankPreference  = DISTANCE
-        #      openNow         = open_now
+        #      KEIN openNow an die API (Codex #1: serverseitig wuerde es Laeden ohne
+        #        hinterlegte Zeiten ganz entfernen)
         #      if included_type: includedType=included_type, strictTypeFiltering=True
-        #      FieldMask incl. location, types, primaryType, regularOpeningHours, rating
+        #      FieldMask (vollstaendig, Codex #5):
+        #        places.id, places.displayName, places.formattedAddress,
+        #        places.location, places.types, places.primaryType,
+        #        places.currentOpeningHours, places.rating   # -> Enterprise-SKU (akzeptiert)
         # 4. clientseitig (PFLICHT, da Bias nur weich ist):
-        #      distance_m > radius                      -> raus  (Haversine)
-        #      primary_type/types in exclude_types      -> raus
+        #      distance_m > radius                          -> raus  (Haversine)
+        #      primary_type/types in exclude_types          -> raus
+        #      open_now=True UND Ort ist BEKANNT geschlossen -> raus
+        #        (unbekannte Oeffnungszeiten BLEIBEN, Codex #1)
         # 5. sort by distance_m, top max_results
 ```
+
 
 ```python
 # tools/google_geocoder.py
@@ -154,13 +177,16 @@ def is_nearby_candidate(text: str) -> bool: ...   # Pattern-Vorfilter
 
 class NearbyIntentParser:
     def __init__(self, anthropic_client: AnthropicClient) -> None: ...
-    def parse(self, text: str) -> NearbyQuery | None: ...
+    def parse(self, text: str) -> NearbyQueryDraft | None: ...
     # Tool "extract_nearby_search" liefert: subject, search_query,
-    # included_type|null, exclude_types[], location_text, travel_mode|null, open_now.
-    # location_text fehlt -> None (Handler fragt). travel_mode fehlt -> Handler
-    # fragt nach Modus. Fallback Ollama: ggf. included_type=null + schwaechere
-    # exclude_types (akzeptierte Degradierung; Freitext-Query traegt trotzdem).
+    # included_type|null, exclude_types[], location_text|null, travel_mode|null,
+    # open_now. Rueckgabe = NearbyQueryDraft (Codex #4): fehlt location_text/
+    # travel_mode -> Handler fragt EINE Rueckfrage, das schon Geparste bleibt
+    # erhalten. Nur wenn gar kein Nearby-Intent erkannt -> None.
+    # Fallback Ollama: ggf. included_type=null + schwaechere exclude_types
+    # (akzeptierte Degradierung; Freitext-Query traegt trotzdem).
 ```
+
 
 ## 4.1 Item -> Kategorie + Falsches ausklammern (Kernproblem 1)
 
@@ -203,6 +229,9 @@ RADIUS_BY_MODE: dict[str, int] = {  # Meter, Luftlinie
 ```
 
 Bei 0 Treffern innerhalb Radius: einmal weiten (Faktor ~2) + Retry, dann Hinweis.
+**Cap (Codex #2):** der `locationBias`-Kreis von `searchText` akzeptiert max.
+50.000 m. Die Weitung MUSS auf 50.000 geclampt werden — sonst wird aus Auto
+40 km -> 80 km ein INVALID_REQUEST. Praktisch weitet Auto also nur 40 -> 50 km.
 
 Ehrliche Grenze: Cap ist Luftlinie, „1 h" ist Fahrzeit -> am Rand leichte
 Ueberdeckung; OEPNV der wackligste Fall. Bewusst Pauschalschaetzung (Lera).
@@ -211,9 +240,10 @@ Praezise Fahrzeit -> Plan B (§8).
 ## 5. Ablauf (State)
 
 1. **Turn 1.** `is_nearby_candidate` -> sonst Fallthrough. Bei Treffer
-   `NearbyIntentParser.parse` -> `NearbyQuery`.
-   - `location_text` fehlt -> Rueckfrage „Wo bist du gerade?".
+   `NearbyIntentParser.parse` -> `NearbyQueryDraft` (Codex #4).
+   - `location_text` fehlt -> Rueckfrage „Wo bist du gerade?" (Draft bleibt erhalten).
    - `travel_mode` fehlt -> Rueckfrage „Wie willst du hin — zu Fuss, ÖPNV, Auto?".
+   - Erst wenn `draft.to_query()` vollstaendig ist -> `NearbyQuery` -> Suche.
    - Echo der verstandenen Absicht (korrigierbar).
 2. **Geocode + Suche.** `NearbyPlaceSearch.search(query)` (§4): Geocode -> Radius
    -> ein searchText (mit/ohne `includedType`) -> Client-Cap/Filter -> Distanz-Sort.
@@ -233,16 +263,22 @@ Place-Link, kein zweiter Routing-Call. Navigation mit echtem Origin = E5.
 - `test_nearby_place_search.py`:
   - searchText-Body: mit `included_type` -> `includedType`+`strictTypeFiltering`
     gesetzt; ohne -> nur `textQuery`; `locationBias`-Kreis + `rankPreference=DISTANCE`
-    immer; FieldMask enthaelt location/types/primaryType/openingHours/rating.
-  - Client-Radius-Cap (`distance_m > radius` -> raus), Client-Typ-Filter
-    (`primary_type="bar"` raus, `store` bleibt), `open_now` (unbekannt -> NICHT
-    raus), Distanz-Sort, Top-N, 0-Treffer-Weiten-Retry, leerer Geocode -> Guard,
-    429/403.
+    + `pageSize=20` immer; **KEIN `openNow` im Body** (Codex #1); FieldMask enthaelt
+    explizit `places.id`, `places.displayName`, `places.formattedAddress`,
+    `places.location`, `places.types`, `places.primaryType`,
+    `places.currentOpeningHours`, `places.rating` (Codex #5).
+  - Client-Radius-Cap (`distance_m > radius` -> raus), Weitung auf 50.000 geclampt
+    (Codex #2), Client-Typ-Filter (`primary_type="bar"` raus, `store` bleibt),
+    `open_now`-Client-Filter: **bekannt geschlossen -> raus, unbekannt -> BLEIBT**
+    (Codex #1), Distanz-Sort, Top-N, 0-Treffer-Weiten-Retry, leerer Geocode ->
+    Guard, 429/403.
 - `test_nearby_intent_parser.py`: Vorfilter true (Shisha/Rockerbar) / false
   (Routen-Text **muss** false), Schema liefert search_query/included_type/
-  exclude_types/travel_mode (gemockter LLM, KEIN echter Call), fehlender Ort/Modus
-  -> Rueckfrage. **Negativtest „mit Lisa"**: „ich bin mit Lisa in XY" -> „Lisa"
-  NICHT als Ziel/Kontakt. Qualitaet der LLM-Zuordnung nicht unit-testbar -> §9.
+  exclude_types/travel_mode (gemockter LLM, KEIN echter Call); Rueckgabe ist
+  `NearbyQueryDraft`; fehlender Ort/Modus -> Draft behaelt Geparstes,
+  `to_query()` -> None (Codex #4). **Negativtest „mit Lisa"**: „ich bin mit Lisa
+  in XY" -> „Lisa" NICHT als Ziel/Kontakt. Qualitaet der LLM-Zuordnung nicht
+  unit-testbar -> §9.
 - `test_nearby_place_commands.py`: Fallthrough, Turn 1 (+ Echo), Ask-Ort,
   Ask-Modus, 0-Treffer-Fallback, Pick -> Link, kein Key -> `_factory` None,
   Plugin-Manifest (priority, factory).
@@ -260,11 +296,18 @@ Place-Link, kein zweiter Routing-Call. Navigation mit echtem Origin = E5.
 - **LLM-Fehlklassifikation** (`included_type` falsch). -> Echo + korrigierbar;
   Freitext-Query traegt als Sicherheitsnetz mit.
 - **OEPNV-Radius = Luftlinie** schwaechster Proxy. Bewusst grob; Plan B = Fahrzeit.
-- **Geocode-Mehrdeutigkeit.** -> bei 0 Treffern Rueckfrage.
-- **Places (New) + Geocoding muessen auf dem Key freigeschaltet sein.**
-- **Kosten.** Pro Anfrage 1 Geocode (Essentials) + 1 searchText (Pro). Bei
-  ~104/Jahr (~9/Monat) komplett im monatlichen Frei-Kontingent (Essentials 10k,
-  Pro 5k) -> 0 EUR; voller Listenpreis ~3-4 EUR/Jahr.
+- **Geocode-Mehrdeutigkeit** (Straße/Stadt doppelt). -> bei 0 Treffern Rueckfrage.
+- **Vorbedingung Cloud:** Places API (New) + Geocoding API aktiviert UND auf der
+  API-Key-Restriction-Liste. (Lera-Check; Enterprise selbst = kein Schalter.)
+- **`open_now`-Serverfilter-Falle.** `openNow` NICHT an die API (entfernt Laeden
+  ohne hinterlegte Zeiten serverseitig, Codex #1) -> Client-Filter, unbekannt bleibt.
+- **Retry-Radius-Cap.** Weitung > 50.000 m = INVALID_REQUEST -> clampen (Codex #2).
+- **Kosten / SKU.** FieldMask enthaelt `rating` + `currentOpeningHours` ->
+  **Text Search Enterprise-SKU** (NICHT Pro — Korrektur, Codex #3). Pro Anfrage
+  1 Geocode (Essentials) + 1 searchText (Enterprise). Enterprise-Frei-Kontingent =
+  1.000/Monat; bei ~104/Jahr (~9/Monat) -> **0 EUR**. Hoeherer 1k-Preis greift erst
+  > 1.000/Monat (faellt nicht an). Enterprise ist KEIN Schalter — wird automatisch
+  per Field-Mask ausgeloest.
 - **Privacy.** Standort + Anliegen -> Google (US-Routing, EEA-Terms). Benannt.
 
 ## 8. Plan B
@@ -275,6 +318,12 @@ Place-Link, kein zweiter Routing-Call. Navigation mit echtem Origin = E5.
 - **Ausschluss zu lossy / harter Kreis noetig:** `searchNearby` bietet
   serverseitige `excludedTypes` + native Kreis-`locationRestriction`. Bewusst nur
   als Eskalation, falls der searchText-Client-Filter im Smoketest versagt.
+- **Erste Seite komplett ausgefiltert (Codex #6):** MVP loest das NICHT per
+  Pagination (jede Folgeseite = eigener billbarer Call, gegen YAGNI), sondern per
+  `pageSize=20`-Puffer. Falls der Smoketest beim typlosen Dichtefall
+  („Shisha-Zubehoer", erste Seite voll Bars) trotzdem „nichts gefunden" zeigt ->
+  genau diesen Fall auf `searchNearby` + `excludedTypes` eskalieren (loest es an
+  der Wurzel, da serverseitig vorgefiltert wird).
 
 ## 9. Abnahmekriterien
 
@@ -300,3 +349,27 @@ Place-Link, kein zweiter Routing-Call. Navigation mit echtem Origin = E5.
   `start_saleria`, `message_handlers`) + Ask-Ort/Modus-Flow + Tests + Registry.
 - **E5 (optional/spaeter)** — Matrix `m.location`/Geo-URI als Standort;
   Navigations-Link mit echtem Origin.
+
+## 11. Korrekturen (Codex Review PR #285)
+
+Sechs P2-Anmerkungen, alle gegen das Konzept verifiziert + valide; eingearbeitet
+(Lera-Entscheidungen: Enterprise-SKU akzeptiert; #6 ohne Pagination).
+
+1. **openNow nicht serverseitig.** `openNow` wurde aus dem searchText-Body
+   entfernt; Filter rein clientseitig (bekannt geschlossen raus, unbekannt bleibt).
+   Loest den Selbstwiderspruch zu §7 „unbekannt nicht hart filtern".
+2. **Retry-Radius geclampt** auf 50.000 m (searchText-Kreis-Max). Auto weitet nur
+   40 -> 50 km statt 40 -> 80 km (waere INVALID_REQUEST).
+3. **SKU-Korrektur:** `rating` + Oeffnungszeiten loesen die Text-Search-**Enterprise**-
+   SKU aus (nicht Pro). Akzeptiert; Kosten-Abschnitt entsprechend korrigiert
+   (Frei-Kontingent 1.000/Monat, bei ~9/Monat weiterhin 0 EUR).
+4. **NearbyQueryDraft** eingefuehrt (optionale location_text/travel_mode) fuer die
+   Disambiguierungs-Phase; `NearbyQuery` bleibt all-required; Parser gibt Draft
+   zurueck statt None -> Geparstes geht bei Rueckfrage nicht verloren, kein KeyError
+   in `RADIUS_BY_MODE`.
+5. **FieldMask vollstaendig** gemacht: `places.id`, `places.displayName`,
+   `places.formattedAddress`, `places.location`, `places.types`,
+   `places.primaryType`, `places.currentOpeningHours`, `places.rating`.
+6. **Erste-Seite-ausgefiltert:** keine Pagination (YAGNI/Kosten); stattdessen
+   `pageSize=20`-Puffer + Eskalation des typlosen Dichtefalls auf `searchNearby`
+   (Plan B), falls der Smoketest es zeigt.
