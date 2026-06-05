@@ -5,16 +5,16 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-_anthropic_installed = importlib.util.find_spec("anthropic") is not None
-requires_anthropic = pytest.mark.skipif(
-    not _anthropic_installed, reason="anthropic-Paket nicht installiert"
-)
-
 from elder_berry.llm.base import LLMClient
 from elder_berry.llm.anthropic_client import AnthropicClient, ComputerUseAction
 from elder_berry.llm.ollama_client import OllamaClient
 from elder_berry.llm.openrouter_client import OpenRouterClient
 from elder_berry.llm.router import LLMRouter
+
+_anthropic_installed = importlib.util.find_spec("anthropic") is not None
+requires_anthropic = pytest.mark.skipif(
+    not _anthropic_installed, reason="anthropic-Paket nicht installiert"
+)
 
 
 # ---------------------------------------------------------------------------

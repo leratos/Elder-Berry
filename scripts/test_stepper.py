@@ -167,7 +167,7 @@ def main() -> None:
     )
     args = parser.parse_args()
 
-    print(f"28BYJ-48 Stepper Test")
+    print("28BYJ-48 Stepper Test")
     print(
         f"  Pins: IN1=GPIO{PINS[0]}, IN2=GPIO{PINS[1]}, "
         f"IN3=GPIO{PINS[2]}, IN4=GPIO{PINS[3]}"

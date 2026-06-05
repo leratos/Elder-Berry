@@ -12,8 +12,10 @@ import pytest
 # vobject ist optionale Dependency – Tests überspringen wenn nicht installiert
 vobject = pytest.importorskip("vobject", reason="vobject nicht installiert")
 
-from elder_berry.tools.carddav_sync import CardDAVSyncClient, SyncResult
-from elder_berry.tools.contact_store import Contact, ContactStore
+# E402: Import bewusst NACH importorskip – carddav_sync importiert vobject; bei
+# fehlendem Paket soll der Test sauber skippen statt beim Collect zu crashen.
+from elder_berry.tools.carddav_sync import CardDAVSyncClient, SyncResult  # noqa: E402
+from elder_berry.tools.contact_store import Contact, ContactStore  # noqa: E402
 
 
 # ── Fixtures ───────────────────────────────────────────────────────────

@@ -4,10 +4,30 @@ Reine Pattern-Tests (keine Mocks, kein Netzwerk).
 Prueft sowohl neue Varianten als auch Rueckwaertskompatibilitaet.
 """
 
+from elder_berry.comms.commands.calendar_commands import TERMIN_CREATE_PATTERN
+from elder_berry.comms.commands.contact_commands import CONTACT_FIELD_QUERY_PATTERN
+from elder_berry.comms.commands.harmony_commands import (
+    ACTIVITY_ON_PATTERN,
+    ALL_OFF_PATTERN,
+    VOLUME_DOWN_PATTERN,
+    VOLUME_UP_PATTERN,
+)
+from elder_berry.comms.commands.mail_commands import MAIL_DELETE_PATTERN
+from elder_berry.comms.commands.note_commands import NOTE_GET_FACT_PATTERN
+from elder_berry.comms.commands.process_commands import (
+    KILL_PROCESS_PATTERN,
+    START_PROCESS_PATTERN,
+)
+from elder_berry.comms.commands.system_commands import VOLUME_PATTERN
+from elder_berry.comms.commands.todo_commands import TODO_COMPLETE_PATTERN
+from elder_berry.comms.commands.weather_commands import (
+    WEATHER_LOCATION_PATTERN,
+    WEATHER_PATTERN,
+)
+
 # ---------------------------------------------------------------------------
 # system_commands – VOLUME_PATTERN
 # ---------------------------------------------------------------------------
-from elder_berry.comms.commands.system_commands import VOLUME_PATTERN
 
 
 class TestVolumePattern:
@@ -54,7 +74,6 @@ class TestVolumePattern:
 # ---------------------------------------------------------------------------
 # mail_commands – MAIL_DELETE_PATTERN
 # ---------------------------------------------------------------------------
-from elder_berry.comms.commands.mail_commands import MAIL_DELETE_PATTERN
 
 
 class TestMailDeletePattern:
@@ -107,12 +126,6 @@ class TestMailDeletePattern:
 # ---------------------------------------------------------------------------
 # harmony_commands – ACTIVITY_ON, ALL_OFF, VOLUME
 # ---------------------------------------------------------------------------
-from elder_berry.comms.commands.harmony_commands import (
-    ACTIVITY_ON_PATTERN,
-    ALL_OFF_PATTERN,
-    VOLUME_DOWN_PATTERN,
-    VOLUME_UP_PATTERN,
-)
 
 
 class TestActivityOnPattern:
@@ -205,10 +218,6 @@ class TestHarmonyVolumePattern:
 # ---------------------------------------------------------------------------
 # weather_commands – WEATHER_PATTERN, WEATHER_LOCATION_PATTERN
 # ---------------------------------------------------------------------------
-from elder_berry.comms.commands.weather_commands import (
-    WEATHER_LOCATION_PATTERN,
-    WEATHER_PATTERN,
-)
 
 
 class TestWeatherPattern:
@@ -282,10 +291,6 @@ class TestWeatherLocationPattern:
 # ---------------------------------------------------------------------------
 # process_commands – START_PROCESS_PATTERN
 # ---------------------------------------------------------------------------
-from elder_berry.comms.commands.process_commands import (
-    KILL_PROCESS_PATTERN,
-    START_PROCESS_PATTERN,
-)
 
 
 class TestStartProcessPattern:
@@ -340,7 +345,6 @@ class TestKillProcessPattern:
 # ---------------------------------------------------------------------------
 # contact_commands – CONTACT_FIELD_QUERY_PATTERN
 # ---------------------------------------------------------------------------
-from elder_berry.comms.commands.contact_commands import CONTACT_FIELD_QUERY_PATTERN
 
 
 class TestContactFieldQueryPattern:
@@ -394,7 +398,6 @@ class TestContactFieldQueryPattern:
 # ---------------------------------------------------------------------------
 # calendar_commands – TERMIN_CREATE_PATTERN
 # ---------------------------------------------------------------------------
-from elder_berry.comms.commands.calendar_commands import TERMIN_CREATE_PATTERN
 
 
 class TestTerminCreatePattern:
@@ -424,7 +427,6 @@ class TestTerminCreatePattern:
 # ---------------------------------------------------------------------------
 # note_commands – NOTE_GET_FACT_PATTERN
 # ---------------------------------------------------------------------------
-from elder_berry.comms.commands.note_commands import NOTE_GET_FACT_PATTERN
 
 
 class TestNoteGetFactPattern:
@@ -479,7 +481,6 @@ class TestNoteGetFactPattern:
 # ---------------------------------------------------------------------------
 # todo_commands – TODO_COMPLETE_PATTERN
 # ---------------------------------------------------------------------------
-from elder_berry.comms.commands.todo_commands import TODO_COMPLETE_PATTERN
 
 
 class TestTodoCompletePattern:

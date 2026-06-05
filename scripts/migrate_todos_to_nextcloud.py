@@ -24,9 +24,10 @@ from pathlib import Path
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT / "src"))
 
-from elder_berry.core.secret_store import SecretStore
-from elder_berry.tools.caldav_tasks import CalDAVTaskClient
-from elder_berry.tools.todo_store import TodoStore
+# E402: Imports bewusst NACH dem sys.path-Setup (src/ muss erst im Path liegen).
+from elder_berry.core.secret_store import SecretStore  # noqa: E402
+from elder_berry.tools.caldav_tasks import CalDAVTaskClient  # noqa: E402
+from elder_berry.tools.todo_store import TodoStore  # noqa: E402
 
 logging.basicConfig(
     level=logging.INFO,
