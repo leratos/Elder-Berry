@@ -6,6 +6,7 @@ import logging
 
 import httpx
 
+from elder_berry.character.emotion_resolver import EmotionDecision
 from elder_berry.core.audio_analyzer import AmplitudeTrack
 from elder_berry.robot.protocol import (
     ApiResponse,
@@ -99,9 +100,24 @@ class RobotClient:
 
     # --- Avatar ---
 
-    def set_emotion(self, emotion: str) -> ApiResponse:
-        """Setzt die Avatar-Emotion auf dem RPi5-Display."""
-        r = self._client.post("/avatar/emotion", json={"emotion": emotion})
+    def set_emotion(
+        self, emotion: str, decision: EmotionDecision | None = None
+    ) -> ApiResponse:
+        """Setzt die Avatar-Emotion auf dem RPi5-Display.
+
+        Phase 83.5: ``decision`` (Resolver-Entscheidung) wird additiv als
+        ``decision``-Objekt (Emotion + Confidence + Source) mitgesendet – **nur
+        fürs Server-Logging/Debug**, ohne Verhaltensänderung am RPi5 (§6.3).
+        Ohne ``decision`` bleibt das Payload exakt rückwärtskompatibel.
+        """
+        payload: dict = {"emotion": emotion}
+        if decision is not None:
+            payload["decision"] = {
+                "emotion": decision.emotion.value,
+                "confidence": decision.confidence,
+                "source": decision.source,
+            }
+        r = self._client.post("/avatar/emotion", json=payload)
         r.raise_for_status()
         return ApiResponse(**r.json())
 

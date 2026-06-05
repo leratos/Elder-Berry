@@ -10,6 +10,8 @@ from unittest.mock import MagicMock
 
 import httpx
 
+from elder_berry.character.base import Emotion
+from elder_berry.character.emotion_resolver import EmotionDecision
 from elder_berry.core.audio_analyzer import AmplitudeTrack
 from elder_berry.robot.client import RobotClient
 
@@ -72,3 +74,31 @@ class TestSetAvatarPayload:
         client, posted = _client_with_capture()
         client.set_avatar(emotion="neutral")
         assert posted[0]["json"] == {"emotion": "neutral"}
+
+
+class TestSetEmotionPayload:
+    """Phase 83.5: additives decision-Objekt (emotion/confidence/source)."""
+
+    def test_without_decision_sends_emotion_only(self):
+        client, posted = _client_with_capture()
+        client.set_emotion("angry")
+        # Rückwärtskompatibel: exakt das alte 1-Feld-Payload.
+        assert posted[0]["json"] == {"emotion": "angry"}
+
+    def test_with_decision_sends_decision_object(self):
+        client, posted = _client_with_capture()
+        decision = EmotionDecision(
+            emotion=Emotion.CHEERFUL,
+            confidence=0.7,
+            source="llm_tag",
+            raw_signals={"llm_tag": 0.7},
+        )
+        client.set_emotion("cheerful", decision=decision)
+        body = posted[0]["json"]
+        assert body["emotion"] == "cheerful"
+        # raw_signals werden bewusst NICHT übertragen (nur Logging-Trias).
+        assert body["decision"] == {
+            "emotion": "cheerful",
+            "confidence": 0.7,
+            "source": "llm_tag",
+        }

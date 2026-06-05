@@ -22,6 +22,10 @@ if TYPE_CHECKING:
     from elder_berry.agent.client import AgentClient
     from elder_berry.avatar.base import AvatarRenderer
     from elder_berry.character.base import CharacterEngine
+    from elder_berry.character.emotion_resolver import (
+        EmotionDecision,
+        EmotionResolver,
+    )
     from elder_berry.comms.remote_commands import RemoteCommandHandler
     from elder_berry.core.smart_context import SmartContextProvider
     from elder_berry.memory.base import MemoryStore
@@ -79,6 +83,7 @@ class Assistant:
         smart_context: SmartContextProvider | None = None,
         proposal_store: ProposalStore | None = None,
         audio_analyzer: AudioAnalyzer | None = None,
+        emotion_resolver: EmotionResolver | None = None,
     ) -> None:
         self._llm = llm
         self._actions_db = actions_db
@@ -89,6 +94,11 @@ class Assistant:
         # daher kein Pflicht-Wiring; injizierbar für Tests.
         self._audio_analyzer = audio_analyzer or AudioAnalyzer()
         self._character = character
+        # Phase 83.5: opt-in. Gesetzt → process() leitet die Emotion über den
+        # EmotionResolver (resolve_from_llm) statt über character.extract_emotion
+        # ab und reicht die EmotionDecision an Avatar + Robot. None → heutiges
+        # Verhalten (extract_emotion-Adapter), bestehende Tests bleiben grün.
+        self._emotion_resolver = emotion_resolver
         self._avatar = avatar
         self._robot = robot
         self._agent = agent
@@ -155,7 +165,17 @@ class Assistant:
         # Emotion extrahieren und Text bereinigen (falls CharacterEngine vorhanden)
         emotion_str = None
         if self._character:
-            emotion = self._character.extract_emotion(response_text)
+            # Phase 83.5: Resolver (opt-in) ersetzt extract_emotion. Beide lesen
+            # das [tag] auf dem UN-bereinigten response_text; bei vorhandenem Tag
+            # setzt der Resolver dasselbe set_mood + tracker.record wie heute
+            # (B4 – aufgezeichnete Serie identisch). decision != None nur im
+            # Resolver-Pfad → wird additiv an den RPi5 geloggt.
+            decision: EmotionDecision | None = None
+            if self._emotion_resolver is not None:
+                decision = self._emotion_resolver.resolve_from_llm(response_text)
+                emotion = decision.emotion
+            else:
+                emotion = self._character.extract_emotion(response_text)
             emotion_str = emotion.value
             response_text = self._character.clean_response(response_text)
 
@@ -164,7 +184,7 @@ class Assistant:
                 self._avatar.show_emotion(emotion)
 
             # Avatar aktualisieren (Robot/RPi5)
-            self._robot_set_emotion(emotion_str)
+            self._robot_set_emotion(emotion_str, decision=decision)
 
         action_success = False
         if action_type:
@@ -909,12 +929,23 @@ class Assistant:
             logger.error("robot_stop fehlgeschlagen: %s", e)
             return False
 
-    def _robot_set_emotion(self, emotion: str | None) -> None:
-        """Synchronisiert Emotion zum RPi5-Display (fire-and-forget)."""
+    def _robot_set_emotion(
+        self, emotion: str | None, decision: EmotionDecision | None = None
+    ) -> None:
+        """Synchronisiert Emotion zum RPi5-Display (fire-and-forget).
+
+        Phase 83.5: ``decision`` (nur im Resolver-Pfad gesetzt) wird additiv
+        mitgesendet – rein fürs Server-Logging/Debug (§6.3). Ohne ``decision``
+        bleibt der Aufruf 1-armig (``set_emotion(emotion)``), damit der
+        Legacy-/extract_emotion-Pfad und dessen Tests unverändert bleiben.
+        """
         if not self._robot or not emotion:
             return
         try:
-            self._robot.set_emotion(emotion)
+            if decision is not None:
+                self._robot.set_emotion(emotion, decision=decision)
+            else:
+                self._robot.set_emotion(emotion)
         except Exception as e:
             logger.debug("Robot Emotion-Sync fehlgeschlagen: %s", e)
 

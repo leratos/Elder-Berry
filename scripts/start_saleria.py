@@ -1750,6 +1750,22 @@ def main():
 
     from elder_berry.core.assistant import Assistant
 
+    # Phase 83.5: EmotionResolver an den Assistant binden. Der Resolver teilt
+    # sich die EmotionTracker-Instanz des Characters (§0.7), damit Trend-Read
+    # und get_mood_context auf demselben Ringbuffer arbeiten. Opt-in: ohne
+    # Resolver liefe der heutige extract_emotion-Pfad.
+    emotion_resolver = None
+    try:
+        from elder_berry.character.emotion_resolver import EmotionResolver
+
+        emotion_resolver = EmotionResolver(
+            character=character,
+            emotion_tracker=character.emotion_tracker,
+        )
+        logger.info("EmotionResolver: aktiv (LLM-Tag + Tracker-Trend)")
+    except Exception as e:
+        logger.warning("EmotionResolver nicht verfügbar – extract_emotion-Pfad: %s", e)
+
     assistant = Assistant(
         llm=llm,
         actions_db=db,
@@ -1760,6 +1776,7 @@ def main():
         system_monitor=monitor,
         memory=memory,
         robot=robot,
+        emotion_resolver=emotion_resolver,
     )
 
     print()

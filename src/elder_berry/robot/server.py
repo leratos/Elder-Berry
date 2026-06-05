@@ -80,6 +80,21 @@ logger = logging.getLogger(__name__)
 MAX_AMPLITUDE_SAMPLES = 6000
 
 
+class AvatarDecision(BaseModel):
+    """Phase 83.5: Aggregierte Emotions-Entscheidung des Bot-seitigen Resolvers.
+
+    Rein additiv und **nur fürs Server-Logging/Debug** gedacht (§6.3): trägt
+    Confidence und Quelle der vom :class:`EmotionResolver` abgeleiteten Emotion
+    mit. Der RPi5-``AvatarDisplay`` konsumiert dieses Feld **nicht** – die
+    Emotion selbst kommt weiterhin über ``AvatarRequest.emotion`` als String,
+    sodass das Verhalten am RPi5 (inkl. matrix_only) unverändert bleibt.
+    """
+
+    emotion: str
+    confidence: float
+    source: str
+
+
 class AvatarRequest(BaseModel):
     """Request: Emotion und/oder Sprechzustand setzen.
 
@@ -90,12 +105,17 @@ class AvatarRequest(BaseModel):
     RandomLipSyncDriver zurück (§4.4). ``amplitude`` ist längen-begrenzt
     (:data:`MAX_AMPLITUDE_SAMPLES`), damit ein bösartiger/fehlerhafter Request
     den (ggf. tokenfreien) RobotServer nicht über RAM lahmlegt.
+
+    Phase 83.5 (additiv): ``decision`` trägt die Resolver-Entscheidung
+    (Emotion + Confidence + Source) **nur fürs Logging** mit – keine
+    Verhaltensänderung am RPi5 (§6.3).
     """
 
     emotion: str | None = None
     is_speaking: bool | None = None
     amplitude: list[float] | None = Field(default=None, max_length=MAX_AMPLITUDE_SAMPLES)
     amplitude_duration_ms: int | None = None
+    decision: AvatarDecision | None = None
 
 
 class DriveRequest(BaseModel):
@@ -432,8 +452,23 @@ class RobotServer:
         @self.app.post("/avatar/emotion")
         def set_avatar(request: AvatarRequest) -> dict:
             if request.emotion is not None:
+                # Phase 83.5: decision ist rein additives Logging/Debug – die
+                # Emotion selbst geht weiterhin als String an den AvatarDisplay,
+                # das RPi5-Verhalten (inkl. matrix_only) bleibt unverändert.
                 self._avatar.set_emotion(request.emotion)
-                logger.info("Avatar Emotion: %s", safe_log(request.emotion))
+                if request.decision is not None:
+                    # confidence ist ein float aus dem Request-Body; CodeQL
+                    # trackt request-Felder als getainted. safe_log auf den
+                    # formatierten Wert bricht den Taint-Flow (Sanitizer), wie
+                    # bei den anderen geloggten Request-Feldern.
+                    logger.info(
+                        "Avatar Emotion: %s (conf=%s, src=%s)",
+                        safe_log(request.emotion),
+                        safe_log(f"{request.decision.confidence:.2f}"),
+                        safe_log(request.decision.source),
+                    )
+                else:
+                    logger.info("Avatar Emotion: %s", safe_log(request.emotion))
 
             if request.is_speaking is not None:
                 audio_meta = self._build_amplitude_track(request)
