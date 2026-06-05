@@ -457,10 +457,14 @@ class RobotServer:
                 # das RPi5-Verhalten (inkl. matrix_only) bleibt unverändert.
                 self._avatar.set_emotion(request.emotion)
                 if request.decision is not None:
+                    # confidence ist ein float aus dem Request-Body; CodeQL
+                    # trackt request-Felder als getainted. safe_log auf den
+                    # formatierten Wert bricht den Taint-Flow (Sanitizer), wie
+                    # bei den anderen geloggten Request-Feldern.
                     logger.info(
-                        "Avatar Emotion: %s (conf=%.2f, src=%s)",
+                        "Avatar Emotion: %s (conf=%s, src=%s)",
                         safe_log(request.emotion),
-                        request.decision.confidence,
+                        safe_log(f"{request.decision.confidence:.2f}"),
                         safe_log(request.decision.source),
                     )
                 else:

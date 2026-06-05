@@ -265,6 +265,42 @@ class TestServerAvatar:
         assert status["avatar_emotion"] == "cheerful"
         assert status["avatar_speaking"] is True
 
+    def test_set_emotion_with_decision_logs_and_sets(self, client):
+        # Phase 83.5: additives decision-Feld – die Emotion wird normal gesetzt,
+        # die Decision dient nur dem Server-Logging (kein Verhaltenswechsel).
+        r = client.post(
+            "/avatar/emotion",
+            json={
+                "emotion": "cheerful",
+                "decision": {
+                    "emotion": "cheerful",
+                    "confidence": 0.7,
+                    "source": "llm_tag",
+                },
+            },
+        )
+        assert r.status_code == 200
+        assert r.json()["success"] is True
+        status = client.get("/status").json()
+        assert status["avatar_emotion"] == "cheerful"
+
+    def test_decision_without_emotion_is_ignored(self, client):
+        # Ohne emotion bleibt der Emotion-Block (inkl. decision-Logging) inaktiv.
+        r = client.post(
+            "/avatar/emotion",
+            json={
+                "is_speaking": True,
+                "decision": {
+                    "emotion": "angry",
+                    "confidence": 0.9,
+                    "source": "llm_tag",
+                },
+            },
+        )
+        assert r.status_code == 200
+        status = client.get("/status").json()
+        assert status["avatar_emotion"] == "neutral"
+
 
 class TestServerAvatarAmplitude:
     """Phase 83.4: additive amplitude-Felder werden zum AmplitudeTrack geroutet."""
