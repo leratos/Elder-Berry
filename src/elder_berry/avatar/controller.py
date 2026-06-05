@@ -38,6 +38,7 @@ import threading
 import time
 
 from elder_berry.avatar.base import AvatarRenderer
+from elder_berry.avatar.idle_policy import IdleBehaviorPolicy, IdleBlinkOverrides
 from elder_berry.avatar.lip_sync import AmplitudeLipSyncDriver, LipSyncDriver
 from elder_berry.avatar.render_plan import RenderPlan, TransitionState
 from elder_berry.avatar.state_machine import AvatarStateMachine
@@ -60,15 +61,22 @@ class AvatarController(AvatarDisplay):
         self,
         renderer: AvatarRenderer,
         state_machine: AvatarStateMachine,
+        idle_policy: IdleBehaviorPolicy | None = None,
     ) -> None:
         """
         Args:
             renderer: Aktiver Avatar-Renderer (treibt in 83.2 weiterhin das
                 Frame über ``show_emotion``/``show_speaking``/``update``).
             state_machine: Semantischer Zustand (Emotion + Sprech-Zähler).
+            idle_policy: Idle-/Blink-Logik (83.6). ``None`` → der Controller
+                liefert leere Idle/Blink-Overrides (Standalone/Tests; kein Idle,
+                kein Blink). Das Produktions-Wiring (``RPi5AvatarDisplay``) baut
+                die Policy aus der geladenen Avatar-Config + ``NoopAttentionProvider``
+                und injiziert sie, sodass sich am Verhalten nichts ändert.
         """
         self._renderer = renderer
         self._state_machine = state_machine
+        self._idle_policy = idle_policy
         self._lock = threading.Lock()
         # Letzter über den Legacy-Pfad gesetzter Sprech-Zustand (Edge-Detection).
         self._legacy_speaking = False
@@ -197,6 +205,23 @@ class AvatarController(AvatarDisplay):
             if self._lip_sync is None or not self._state_machine.is_speaking():
                 return None
             return self._lip_sync.mouth_at(now)
+
+    def current_idle_blink(self, now: float) -> IdleBlinkOverrides:
+        """Liefert die pro Frame aufgelösten Idle-/Blink-Overrides (unter Lock).
+
+        Der Render-Loop liest hiermit **pro Frame** Idle + Blink und reicht sie an
+        ``renderer.update(idle_blink=...)``. Die Policy bekommt die aktuelle
+        (Ziel-)Emotion und den Sprech-Zustand aus der StateMachine; ihre
+        Timer-Mutation läuft unter demselben Lock wie die übrigen ``current_*``-
+        Reads und die StateMachine-Mutationen (§0.6/§6.5). Ohne injizierte Policy
+        (``None``) sind die Overrides leer (kein Idle, kein Blink).
+        """
+        with self._lock:
+            if self._idle_policy is None:
+                return IdleBlinkOverrides()
+            mood = self._state_machine.state.emotion
+            is_speaking = self._state_machine.is_speaking()
+            return self._idle_policy.frame_overrides(now, mood, is_speaking)
 
     def current_layers(self, now: float) -> RenderPlan:
         """Liefert den Einzel-Plan des aktuellen Zustands (unter Lock).

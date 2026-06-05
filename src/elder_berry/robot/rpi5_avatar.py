@@ -13,7 +13,10 @@ import threading
 import time
 from pathlib import Path
 
+from elder_berry.avatar.attention import NoopAttentionProvider
+from elder_berry.avatar.briefing_mode import CasualBriefingModeProvider
 from elder_berry.avatar.controller import AvatarController
+from elder_berry.avatar.idle_policy import IdleAction, IdleBehaviorPolicy
 from elder_berry.avatar.layered_renderer import CrossfadeScope, LayeredSpriteRenderer
 from elder_berry.avatar.state_machine import AvatarStateMachine
 from elder_berry.core.audio_analyzer import AmplitudeTrack
@@ -154,11 +157,31 @@ class RPi5AvatarDisplay(AvatarDisplay):
             # Der Controller leitet weiterhin an den Renderer weiter (Verhalten
             # identisch); die StateMachine teilt sich die Emotion-Map des
             # Renderers, damit current_layers dieselben Keys auflöst.
+            # Phase 83.6: IdleBehaviorPolicy aus derselben geladenen Avatar-Config
+            # (idle_actions + can_blink) + Default-Stubs (NoopAttention → UNKNOWN,
+            # casual Briefing). Damit zieht nur die Idle/Blink-Logik um; das
+            # sichtbare Verhalten bleibt identisch.
+            idle_policy = IdleBehaviorPolicy(
+                idle_actions=[
+                    IdleAction(
+                        name=name, eye_left=eye_l, eye_right=eye_r, mouth=mouth
+                    )
+                    for name, eye_l, eye_r, mouth in self._renderer.idle_actions
+                ],
+                can_blink={
+                    emotion: layers.can_blink
+                    for emotion, layers in self._renderer.emotion_map.items()
+                },
+                attention_provider=NoopAttentionProvider(),
+                briefing_provider=CasualBriefingModeProvider(),
+                available_components=self._renderer.component_keys,
+            )
             controller = AvatarController(
                 renderer=self._renderer,
                 state_machine=AvatarStateMachine(
                     emotion_map=self._renderer.emotion_map
                 ),
+                idle_policy=idle_policy,
             )
             logger.info("Render-Loop gestartet")
 
@@ -187,8 +210,14 @@ class RPi5AvatarDisplay(AvatarDisplay):
                 transition = controller.current_transition(now)
                 # 83.4: Amplitude-Mund (oder None → Inline-Random) pro Frame.
                 speaking_mouth = controller.current_speaking_mouth(now)
+                # 83.6: Idle/Blink-Overrides (Lock-gewrappt) pro Frame aus der
+                # IdleBehaviorPolicy; ersetzt die ehem. Renderer-internen
+                # _update_idle/_update_blink.
+                idle_blink = controller.current_idle_blink(now)
                 self._renderer.update(
-                    transition=transition, speaking_mouth=speaking_mouth
+                    transition=transition,
+                    speaking_mouth=speaking_mouth,
+                    idle_blink=idle_blink,
                 )
 
         except Exception:

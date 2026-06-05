@@ -8,6 +8,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+from elder_berry.avatar.idle_policy import IdleBlinkOverrides
 from elder_berry.avatar.render_plan import RenderPlan, TransitionState
 
 
@@ -328,59 +329,10 @@ class TestLipSyncFix:
 
 
 # ---------------------------------------------------------------------------
-# Idle-Animationen
+# Idle/Blink: Logik + Tests leben seit 83.6 in der IdleBehaviorPolicy
+# (tests/test_idle_behavior_policy.py). Das Render-Loop-Forwarding wird unten
+# in TestIdleBlinkForwarding geprüft.
 # ---------------------------------------------------------------------------
-
-
-class TestIdleAnimations:
-    def test_idle_state_initial(self, mock_pygame, layered_assets):
-        from elder_berry.avatar.layered_renderer import LayeredSpriteRenderer
-
-        r = LayeredSpriteRenderer(assets_dir=layered_assets)
-        r.initialize(720, 1280)
-        assert r._idle_active is False
-        assert r._idle_eye_left is None
-
-    def test_idle_triggers_after_interval(self, mock_pygame, layered_assets):
-        from elder_berry.avatar.layered_renderer import LayeredSpriteRenderer
-        import time as _time
-
-        r = LayeredSpriteRenderer(assets_dir=layered_assets)
-        r.initialize(720, 1280)
-
-        # Forciere nächste Idle sofort
-        r._next_idle_time = _time.monotonic() - 1.0
-        r._update_idle(_time.monotonic())
-        assert r._idle_active is True
-
-    def test_idle_ends_after_duration(self, mock_pygame, layered_assets):
-        from elder_berry.avatar.layered_renderer import LayeredSpriteRenderer
-        import time as _time
-
-        r = LayeredSpriteRenderer(assets_dir=layered_assets)
-        r.initialize(720, 1280)
-
-        # Starte und beende Idle
-        r._next_idle_time = _time.monotonic() - 1.0
-        r._update_idle(_time.monotonic())
-        assert r._idle_active is True
-
-        r._idle_end_time = _time.monotonic() - 1.0  # Force Ende
-        r._update_idle(_time.monotonic())
-        assert r._idle_active is False
-
-    def test_idle_disabled_while_speaking(self, mock_pygame, layered_assets):
-        from elder_berry.avatar.layered_renderer import LayeredSpriteRenderer
-        import time as _time
-
-        r = LayeredSpriteRenderer(assets_dir=layered_assets)
-        r.initialize(720, 1280)
-
-        r.show_speaking(True)
-        r._next_idle_time = _time.monotonic() - 1.0
-        # update() prueft is_speaking -> kein idle_update
-        r.update()
-        assert r._idle_active is False
 
 
 # ---------------------------------------------------------------------------
@@ -537,6 +489,7 @@ class TestEmotionForwardingGating:
 
         with patch("elder_berry.robot.rpi5_avatar.AvatarController") as MockCtrl:
             controller = MagicMock()
+            controller.current_idle_blink.return_value = IdleBlinkOverrides()
             controller.current_transition.return_value = _no_transition()
             MockCtrl.return_value = controller
 
@@ -555,6 +508,7 @@ class TestEmotionForwardingGating:
 
         with patch("elder_berry.robot.rpi5_avatar.AvatarController") as MockCtrl:
             controller = MagicMock()
+            controller.current_idle_blink.return_value = IdleBlinkOverrides()
             controller.current_transition.return_value = _no_transition()
             MockCtrl.return_value = controller
 
@@ -590,6 +544,7 @@ class TestTransitionForwarding:
             patch("elder_berry.robot.rpi5_avatar.LayeredSpriteRenderer") as MockR,
         ):
             controller = MagicMock()
+            controller.current_idle_blink.return_value = IdleBlinkOverrides()
             controller.current_transition.return_value = ts
             MockCtrl.return_value = controller
 
@@ -628,6 +583,7 @@ class TestLipSyncForwarding:
             patch("elder_berry.robot.rpi5_avatar.LayeredSpriteRenderer") as MockR,
         ):
             controller = MagicMock()
+            controller.current_idle_blink.return_value = IdleBlinkOverrides()
             controller.current_transition.return_value = _no_transition()
             controller.current_speaking_mouth.return_value = "mouth_wide"
             MockCtrl.return_value = controller
@@ -663,6 +619,7 @@ class TestLipSyncForwarding:
             patch("elder_berry.robot.rpi5_avatar.LayeredSpriteRenderer") as MockR,
         ):
             controller = MagicMock()
+            controller.current_idle_blink.return_value = IdleBlinkOverrides()
             controller.current_transition.return_value = _no_transition()
             MockCtrl.return_value = controller
 
@@ -682,3 +639,44 @@ class TestLipSyncForwarding:
                 for c in controller.set_speaking.call_args_list
             ]
             assert track in metas
+
+
+# ---------------------------------------------------------------------------
+# Idle/Blink-Forwarding (Phase 83.6)
+# ---------------------------------------------------------------------------
+
+
+class TestIdleBlinkForwarding:
+    def test_loop_reads_idle_blink_and_forwards_to_update(
+        self, mock_pygame, layered_assets
+    ):
+        """Der Loop liest controller.current_idle_blink und reicht es als
+        idle_blink= an renderer.update (83.6 Override-Seam).
+        """
+        from elder_berry.robot.rpi5_avatar import RPi5AvatarDisplay
+
+        overrides = IdleBlinkOverrides(
+            blink_eyes=("eye_left_close", "eye_right_close")
+        )
+        with (
+            patch("elder_berry.robot.rpi5_avatar.AvatarController") as MockCtrl,
+            patch("elder_berry.robot.rpi5_avatar.LayeredSpriteRenderer") as MockR,
+        ):
+            controller = MagicMock()
+            controller.current_transition.return_value = _no_transition()
+            controller.current_idle_blink.return_value = overrides
+            MockCtrl.return_value = controller
+
+            renderer = MagicMock()
+            renderer.is_running.return_value = True
+            MockR.return_value = renderer
+
+            avatar = RPi5AvatarDisplay(fullscreen=False, assets_dir=layered_assets)
+            avatar.start()
+            time.sleep(0.2)
+            avatar._stop_event.set()
+            avatar.stop()
+
+            assert controller.current_idle_blink.called
+            update_calls = renderer.update.call_args_list
+            assert any(c.kwargs.get("idle_blink") is overrides for c in update_calls)

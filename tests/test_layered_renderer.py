@@ -431,33 +431,10 @@ class TestBreathing:
 
 
 # ---------------------------------------------------------------------------
-# Blink
+# Blink/Idle: Die Logik lebt seit 83.6 in der IdleBehaviorPolicy
+# (tests/test_idle_behavior_policy.py). Der Renderer wendet die Overrides nur
+# noch an – siehe TestRenderAndBuildPlan unten.
 # ---------------------------------------------------------------------------
-
-
-class TestBlink:
-    def test_blink_not_active_initially(self, renderer):
-        assert not renderer._blink_active
-
-    def test_blink_activates_after_interval(self, renderer):
-        renderer._next_blink_time = 0
-        renderer._update_blink(time.monotonic())
-        assert renderer._blink_active
-
-    def test_blink_deactivates_after_duration(self, renderer):
-        renderer._blink_active = True
-        renderer._blink_end_time = 0
-        renderer._update_blink(time.monotonic())
-        assert not renderer._blink_active
-
-    def test_blink_schedules_next(self, renderer):
-        from elder_berry.avatar.layered_renderer import BLINK_MIN_INTERVAL
-
-        renderer._blink_active = True
-        renderer._blink_end_time = 0
-        now = time.monotonic()
-        renderer._update_blink(now)
-        assert renderer._next_blink_time >= now + BLINK_MIN_INTERVAL
 
 
 # ---------------------------------------------------------------------------
@@ -741,26 +718,29 @@ class TestRenderAndBuildPlan:
         plan = renderer._build_plan(time.monotonic())
         assert plan.body == neutral.body
 
-    def test_build_plan_applies_idle_eye_and_mouth_override(self, renderer):
-        """Aktive Idle-Aktion überschreibt Augen- und Mund-Default."""
+    def test_build_plan_applies_idle_override(self, renderer):
+        """Idle-Overrides (von der Policy) überschreiben Augen- und Mund-Default."""
+        from elder_berry.avatar.idle_policy import IdleBlinkOverrides
+
         renderer._is_speaking = False
-        renderer._idle_active = True
-        renderer._idle_eye_left = "eye_left_side_open"
-        renderer._idle_eye_right = "eye_right_side_open"
-        renderer._idle_mouth = "mouth_halfopen"
-        renderer._idle_end_time = time.monotonic() + 100  # Idle bleibt aktiv
-        plan = renderer._build_plan(time.monotonic())
+        idle_blink = IdleBlinkOverrides(
+            idle_eyes=("eye_left_side_open", "eye_right_side_open"),
+            idle_mouth="mouth_halfopen",
+        )
+        plan = renderer._build_plan(time.monotonic(), idle_blink=idle_blink)
         assert plan.eye_left == "eye_left_side_open"
         assert plan.eye_right == "eye_right_side_open"
         assert plan.mouth == "mouth_halfopen"
 
     def test_build_plan_applies_blink_override(self, renderer):
-        """can_blink-Emotion mit fälligem Blink → geschlossene Augen."""
-        renderer._current_emotion = Emotion.NEUTRAL  # can_blink=True
+        """Blink-Override (von der Policy) → geschlossene Augen."""
+        from elder_berry.avatar.idle_policy import BLINK_EYES, IdleBlinkOverrides
+
+        renderer._current_emotion = Emotion.NEUTRAL
         renderer._is_speaking = False
-        renderer._blink_active = False
-        renderer._next_blink_time = 0.0  # sofort fällig
-        plan = renderer._build_plan(time.monotonic())
+        plan = renderer._build_plan(
+            time.monotonic(), idle_blink=IdleBlinkOverrides(blink_eyes=BLINK_EYES)
+        )
         assert plan.eye_left == "eye_left_close"
         assert plan.eye_right == "eye_right_close"
 
