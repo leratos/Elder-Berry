@@ -225,7 +225,7 @@ def run_automated_tests(assistant: Assistant, robot: RobotClient) -> None:
             )
             ok = False
         if expected_action and not result.action_success:
-            print(f"  FEHLER: Aktion nicht erfolgreich")
+            print("  FEHLER: Aktion nicht erfolgreich")
             ok = False
 
         if ok:

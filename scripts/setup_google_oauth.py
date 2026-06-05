@@ -77,7 +77,7 @@ def main() -> None:
 
     print()
     print("OAuth2-Setup erfolgreich!")
-    print(f"  Refresh-Token gespeichert im SecretStore (verschlüsselt)")
+    print("  Refresh-Token gespeichert im SecretStore (verschlüsselt)")
     print(f"  Account: {credentials.token[:20]}...")
     print()
     print("Du kannst client_secret.json jetzt löschen (optional).")

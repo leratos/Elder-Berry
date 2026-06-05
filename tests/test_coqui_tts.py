@@ -323,7 +323,8 @@ class TestSplitSentences:
 
     def test_long_text_also_no_split(self, engine, mock_tts_module, tmp_path):
         """Langer Text → split_sentences=False (eigenes Splitting)."""
-        import wave, struct
+        import wave
+        import struct
 
         output = tmp_path / "output.wav"
         long_text = "Dies ist ein sehr langer Text. " * 5

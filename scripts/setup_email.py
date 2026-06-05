@@ -55,7 +55,7 @@ def main() -> None:
     print("Bekannte Provider:")
     for i, (name, (imap_h, _ip, smtp_h, _sp)) in enumerate(PROVIDERS.items(), 1):
         print(f"  {i}. {name:15s} (IMAP: {imap_h}, SMTP: {smtp_h})")
-    print(f"  0. Andere (manuell eingeben)")
+    print("  0. Andere (manuell eingeben)")
     print()
 
     choice = input("Provider wählen (Nummer oder 0): ").strip()
@@ -111,7 +111,7 @@ def main() -> None:
 
         conn.logout()
 
-        print(f"  Verbindung erfolgreich!")
+        print("  Verbindung erfolgreich!")
         print(f"  Posteingang: {total} Mails ({unseen} ungelesen)")
 
     except imaplib.IMAP4.error as e:

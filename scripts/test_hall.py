@@ -39,10 +39,10 @@ def main() -> None:
     args = parser.parse_args()
 
     pin = args.pin
-    print(f"A3144 Hall-Sensor Test")
+    print("A3144 Hall-Sensor Test")
     print(f"  GPIO: {pin} (Pin {pin})")
-    print(f"  HIGH = kein Magnet, LOW = Magnet erkannt")
-    print(f"  Strg+C zum Beenden\n")
+    print("  HIGH = kein Magnet, LOW = Magnet erkannt")
+    print("  Strg+C zum Beenden\n")
 
     chip = lgpio.gpiochip_open(0)
     lgpio.gpio_claim_input(chip, pin, lgpio.SET_PULL_UP)

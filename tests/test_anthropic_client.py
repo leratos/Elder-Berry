@@ -7,12 +7,12 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+from elder_berry.llm.anthropic_client import AnthropicClient, ComputerUseAction
+
 _anthropic_installed = importlib.util.find_spec("anthropic") is not None
 requires_anthropic = pytest.mark.skipif(
     not _anthropic_installed, reason="anthropic-Paket nicht installiert"
 )
-
-from elder_berry.llm.anthropic_client import AnthropicClient, ComputerUseAction
 
 
 # ---------------------------------------------------------------------------

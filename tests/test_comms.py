@@ -1590,7 +1590,8 @@ class TestBridgeAudioRouting:
         from unittest.mock import MagicMock, patch as _patch
         from elder_berry.stt.base import TranscriptionResult
         from elder_berry.core.assistant import AssistantResult
-        import tempfile, os
+        import tempfile
+        import os
 
         channel = MockChannel()
         channel._connected = True
@@ -1645,7 +1646,8 @@ class TestBridgeAudioRouting:
     def test_audio_message_stt_exception_sends_error(self):
         """STT wirft Exception → Fehlermeldung senden."""
         from unittest.mock import MagicMock, patch as _patch
-        import tempfile, os
+        import tempfile
+        import os
 
         channel = MockChannel()
         channel._connected = True
