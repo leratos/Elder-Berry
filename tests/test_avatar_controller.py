@@ -6,9 +6,15 @@ from unittest.mock import MagicMock
 
 import pytest
 
+from elder_berry.avatar.attention import NoopAttentionProvider
 from elder_berry.avatar.avatar_config_loader import EmotionLayers
 from elder_berry.avatar.base import AvatarRenderer
 from elder_berry.avatar.controller import AvatarController
+from elder_berry.avatar.idle_policy import (
+    IdleAction,
+    IdleBehaviorPolicy,
+    IdleBlinkOverrides,
+)
 from elder_berry.avatar.state_machine import AvatarStateMachine
 from elder_berry.character.base import Emotion
 from elder_berry.character.emotion_resolver import EmotionDecision
@@ -258,3 +264,47 @@ class TestLipSyncSelection:
         renderer.component_keys = frozenset({"mouth_neutral_close"})
         controller.set_speaking(True, audio_meta=self._wide_track())
         assert controller.current_speaking_mouth(now=0.0) == "mouth_neutral_close"
+
+
+# ---------------------------------------------------------------------------
+# current_idle_blink (Phase 83.6, Lock-gewrappte Idle/Blink-Overrides)
+# ---------------------------------------------------------------------------
+
+
+def _idle_policy() -> IdleBehaviorPolicy:
+    """Deterministische Policy (min == max → kein Flake)."""
+    return IdleBehaviorPolicy(
+        idle_actions=[
+            IdleAction("glance_left", "eye_left_side_open", "eye_right_side_open", None)
+        ],
+        can_blink={Emotion.NEUTRAL: True},
+        attention_provider=NoopAttentionProvider(),
+        idle_min=5.0,
+        idle_max=5.0,
+        idle_duration=2.0,
+    )
+
+
+class TestCurrentIdleBlink:
+    def test_empty_without_policy(self, controller):
+        """Ohne injizierte Policy → leere Overrides (kein Idle, kein Blink)."""
+        assert controller.current_idle_blink(now=0.0) == IdleBlinkOverrides()
+
+    def test_uses_injected_policy(self, renderer, state_machine):
+        """Mit Policy liefert current_idle_blink deren frame_overrides."""
+        ctrl = AvatarController(
+            renderer=renderer, state_machine=state_machine, idle_policy=_idle_policy()
+        )
+        ctrl.current_idle_blink(now=0.0)  # lazy: plant Idle @5.0 (Mood NEUTRAL)
+        ov = ctrl.current_idle_blink(now=5.0)
+        assert ov.idle_eyes == ("eye_left_side_open", "eye_right_side_open")
+
+    def test_idle_suppressed_while_speaking(self, renderer, state_machine):
+        """Spricht der Avatar, liefert current_idle_blink kein Idle-Override."""
+        ctrl = AvatarController(
+            renderer=renderer, state_machine=state_machine, idle_policy=_idle_policy()
+        )
+        ctrl.on_speech_started()  # speaking_count > 0
+        ctrl.current_idle_blink(now=0.0)
+        ov = ctrl.current_idle_blink(now=5.0)
+        assert ov.idle_eyes is None

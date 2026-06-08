@@ -15,6 +15,7 @@ except ImportError:
     pygame = None  # type: ignore[assignment]
 
 from elder_berry.avatar.base import AvatarRenderer
+from elder_berry.avatar.idle_policy import IdleBlinkOverrides
 from elder_berry.avatar.render_plan import (
     OPAQUE_ALPHA,
     RenderPlan,
@@ -56,11 +57,6 @@ WINDOW_TITLE = "Elder-Berry – Saleria Berry"
 BG_COLOR = (0, 0, 0)  # Schwarz für Pepper's Ghost
 FPS = 30
 
-# Blink-Timing
-BLINK_MIN_INTERVAL = 2.0  # Sekunden
-BLINK_MAX_INTERVAL = 6.0
-BLINK_DURATION = 0.15  # Sekunden
-
 # Lip-Sync: gewichtete Mund-Zustände (Mouth-Key → Gewicht)
 LIP_SYNC_WEIGHTS: dict[str, float] = {
     "mouth_neutral_close": 0.15,
@@ -75,11 +71,6 @@ LIP_SYNC_JITTER = 0.03  # ±Jitter auf das Intervall
 # Breathing-Animation
 BREATH_SPEED = 1.2  # Frequenz (Zyklen/Sekunde)
 BREATH_AMPLITUDE = 2.0  # Pixel Auslenkung (±)
-
-# Idle-Animationen
-IDLE_MIN_INTERVAL = 5.0  # Sekunden zwischen Idle-Aktionen
-IDLE_MAX_INTERVAL = 15.0
-IDLE_ACTION_DURATION = 2.0  # Sekunden die eine Idle-Aktion dauert
 
 # Display-Rotation: erlaubte Werte (0 oder 180).
 # Hintergrund: RPi5 ignoriert die Legacy-Firmware-Rotation
@@ -225,24 +216,11 @@ class LayeredSpriteRenderer(AvatarRenderer):
         # YAML-Config laden (Fallback auf hardcoded Defaults)
         self._load_yaml_config()
 
-        # Blink-State
-        self._blink_active = False
-        self._next_blink_time = 0.0
-        self._blink_end_time = 0.0
-
-        # Lip-Sync-State (gewichtete Zufallsauswahl)
+        # Lip-Sync-State (gewichtete Zufallsauswahl) – bleibt im Renderer (83.6
+        # zieht nur Idle/Blink in die IdleBehaviorPolicy; Random-Lip-Sync nicht).
         self._lip_sync_mouth: str = self._lip_sync_keys[0]
         self._last_lip_switch = 0.0
         self._next_lip_interval = self._lip_sync_interval
-
-        # Idle-Animation-State
-        self._idle_active = False
-        self._idle_action: str | None = None
-        self._idle_eye_left: str | None = None
-        self._idle_eye_right: str | None = None
-        self._idle_mouth: str | None = None
-        self._next_idle_time = 0.0
-        self._idle_end_time = 0.0
 
     def _load_yaml_config(self) -> None:
         """Lädt die Avatar-Config aus YAML, Fallback auf hardcoded Defaults.
@@ -366,8 +344,6 @@ class LayeredSpriteRenderer(AvatarRenderer):
 
         self._load_components()
         self._scale_components()
-        self._schedule_next_blink()
-        self._schedule_next_idle()
 
         logger.info(
             "LayeredSpriteRenderer initialisiert: %dx%d%s rotation=%d\u00b0, %d Komponenten",
@@ -417,10 +393,22 @@ class LayeredSpriteRenderer(AvatarRenderer):
         """
         return self._components.keys()
 
+    @property
+    def idle_actions(self) -> list[tuple[str, str | None, str | None, str | None]]:
+        """Geladene Idle-Action-Specs ``(name, eye_left, eye_right, mouth)``.
+
+        Quelle für die :class:`~elder_berry.avatar.idle_policy.IdleBehaviorPolicy`
+        (83.6). Stammt aus **derselben** geladenen Config wie :attr:`emotion_map`
+        (YAML oder Hardcode-Fallback) – kein zweiter Lade-Pfad, damit Policy und
+        Renderer nicht auseinanderlaufen (§2.3 #2).
+        """
+        return self._idle_actions_config
+
     def update(
         self,
         transition: TransitionState | None = None,
         speaking_mouth: str | None = None,
+        idle_blink: IdleBlinkOverrides | None = None,
     ) -> None:
         """Rendert ein Frame: Event-Pump → (Crossfade oder Einzel-Plan).
 
@@ -434,7 +422,11 @@ class LayeredSpriteRenderer(AvatarRenderer):
             speaking_mouth: Optionaler Mund-Key vom ``LipSyncDriver`` (83.4,
                 Amplitude). Ist er gesetzt **und** der Avatar spricht, gewinnt er
                 über die renderer-interne Zufallsauswahl. ``None`` → byte-
-                identischer Bestandspfad (Inline-Random bleibt bis 83.6).
+                identischer Bestandspfad (Inline-Random-Lip-Sync bleibt im Renderer).
+            idle_blink: Pro Frame von der ``IdleBehaviorPolicy`` aufgelöste Idle-/
+                Blink-Overrides (83.6). ``None`` → keine Idle/Blink-Overrides (der
+                Renderer treibt Idle/Blink nicht mehr selbst). Im Produktionspfad
+                reicht der Render-Loop ``controller.current_idle_blink(now)`` durch.
         """
         if not self._running or self._screen is None:
             return
@@ -445,11 +437,11 @@ class LayeredSpriteRenderer(AvatarRenderer):
         now = time.monotonic()
         if transition is not None and transition.in_transition:
             old_plan, new_plan = self._build_transition_plans(
-                now, transition, speaking_mouth
+                now, transition, speaking_mouth, idle_blink
             )
             self._render_crossfade(old_plan, new_plan)
         else:
-            plan = self._build_plan(now, speaking_mouth)
+            plan = self._build_plan(now, speaking_mouth, idle_blink)
             self.render(plan)
 
     def _pump_events(self) -> bool:
@@ -468,25 +460,24 @@ class LayeredSpriteRenderer(AvatarRenderer):
     def _resolve_overrides(
         self,
         now: float,
-        can_blink: bool,
         speaking_mouth: str | None = None,
+        idle_blink: IdleBlinkOverrides | None = None,
     ) -> _FrameOverrides:
         """Löst die dynamischen Overrides genau einmal pro Frame auf.
 
-        Repliziert die bisherige ``_build_plan``-Logik 1:1 (gleiche Reihenfolge
-        und Bedingungen der Seiteneffekte ``_update_idle`` / ``_update_blink`` /
-        ``_get_lip_sync_mouth``). ``can_blink`` ist das Flag der aktuellen
-        (im Crossfade: der einlaufenden = neuen) Emotion.
+        Idle und Blink kommen ab 83.6 fertig aufgelöst von der
+        ``IdleBehaviorPolicy`` (über ``idle_blink`` – inkl. ``can_blink``-Gate und
+        Idle-Unterdrückung beim Sprechen). Der Renderer wendet sie nur noch an.
+        Breathing-Offset und der Inline-Random-Lip-Sync (Fallback, §4.4) bleiben
+        renderer-intern.
 
         ``speaking_mouth`` ist der optionale Mund-Key vom ``LipSyncDriver``
         (83.4, Amplitude). Ist er gesetzt **und** der Avatar spricht, gewinnt er
         über die renderer-interne Zufallsauswahl (``_get_lip_sync_mouth`` wird
-        dann **nicht** ausgewertet). ``None`` → byte-identischer Bestandspfad
-        (Inline-Random; Umzug erst 83.6).
+        dann **nicht** ausgewertet). ``idle_blink`` ``None`` → keine Idle/Blink-
+        Overrides (Standalone/Tests).
         """
-        # Idle-Animation updaten (nur wenn nicht sprechend)
-        if not self._is_speaking:
-            self._update_idle(now)
+        ov = idle_blink if idle_blink is not None else IdleBlinkOverrides()
 
         # Breathing-Offset (subtile Y-Verschiebung, nur wenn nicht sprechend)
         breath_y = 0
@@ -495,21 +486,9 @@ class LayeredSpriteRenderer(AvatarRenderer):
                 math.sin(now * self._breathing_speed) * self._breathing_amplitude
             )
 
-        # Augen: Idle-Override (wenn aktiv und Idle-Augen gesetzt)
-        idle_eyes: tuple[str, str] | None = None
-        if self._idle_active and self._idle_eye_left:
-            idle_eyes = (self._idle_eye_left, self._idle_eye_right or "")
-
-        # Augen: Blink schlägt Idle (nur für can_blink-Emotionen)
-        blink_eyes: tuple[str, str] | None = None
-        if can_blink:
-            self._update_blink(now)
-            if self._blink_active:
-                blink_eyes = ("eye_left_close", "eye_right_close")
-
         # Mund: Lip-Sync (sprechend) schlägt Idle schlägt Emotion-Default.
         # Liefert der LipSyncDriver (83.4) einen Mund-Key, gewinnt er; sonst die
-        # renderer-interne Zufallsauswahl (Bestand bis 83.6).
+        # renderer-interne Zufallsauswahl (Fallback, §4.4).
         if self._is_speaking:
             mouth_override = (
                 speaking_mouth
@@ -518,34 +497,32 @@ class LayeredSpriteRenderer(AvatarRenderer):
             )
         else:
             mouth_override = None
-        idle_mouth = (
-            self._idle_mouth
-            if (not self._is_speaking and self._idle_active and self._idle_mouth)
-            else None
-        )
 
         return _FrameOverrides(
-            blink_eyes=blink_eyes,
-            idle_eyes=idle_eyes,
+            blink_eyes=ov.blink_eyes,
+            idle_eyes=ov.idle_eyes,
             speaking_mouth=mouth_override,
-            idle_mouth=idle_mouth,
+            idle_mouth=ov.idle_mouth,
             breath_y=breath_y,
         )
 
     def _build_plan(
-        self, now: float, speaking_mouth: str | None = None
+        self,
+        now: float,
+        speaking_mouth: str | None = None,
+        idle_blink: IdleBlinkOverrides | None = None,
     ) -> RenderPlan:
         """Löst Emotion + dynamische Overrides zu einem :class:`RenderPlan` auf.
 
-        Nicht-Transition-Pfad – verhaltensidentisch zu 83.2 (``speaking_mouth``
-        ``None``). Prioritäten via :meth:`RenderPlan.compose`: Augen
-        blink>idle>Emotion, Mund speaking>idle>Emotion.
+        Nicht-Transition-Pfad. Prioritäten via :meth:`RenderPlan.compose`: Augen
+        blink>idle>Emotion, Mund speaking>idle>Emotion. Idle/Blink stammen aus
+        ``idle_blink`` (IdleBehaviorPolicy, 83.6).
         """
         layers = self._emotion_map.get(self._current_emotion)
         if layers is None:
             layers = self._emotion_map[Emotion.NEUTRAL]
 
-        ov = self._resolve_overrides(now, layers.can_blink, speaking_mouth)
+        ov = self._resolve_overrides(now, speaking_mouth, idle_blink)
         return RenderPlan.compose(
             layers,
             blink_eyes=ov.blink_eyes,
@@ -616,21 +593,20 @@ class LayeredSpriteRenderer(AvatarRenderer):
         now: float,
         transition: TransitionState,
         speaking_mouth: str | None = None,
+        idle_blink: IdleBlinkOverrides | None = None,
     ) -> tuple[RenderPlan, RenderPlan]:
         """Legt die Frame-Overrides deckungsgleich auf alten + neuen Basis-Plan.
 
         Die Overrides (Idle/Blink/Lip-Sync/Breathing) werden **einmal** aufgelöst
         und auf beide Basen gelegt – gleiches ``y_offset``, gleicher Blink/Idle/
-        Lip-Sync-Key –, damit beide Gesichter registriert bleiben. ``can_blink``
-        ist das Flag der einlaufenden (neuen) Emotion. ``speaking_mouth`` (83.4)
-        wird – wie alle Overrides – deckungsgleich auf beide Basen gelegt. Die
-        Crossfade-Reichweite (FULL vs. MOUTH_ONLY) entscheidet erst die
+        Lip-Sync-Key –, damit beide Gesichter registriert bleiben. Idle/Blink
+        kommen aus ``idle_blink`` (IdleBehaviorPolicy, 83.6); ``speaking_mouth``
+        (83.4) wird – wie alle Overrides – deckungsgleich auf beide Basen gelegt.
+        Die Crossfade-Reichweite (FULL vs. MOUTH_ONLY) entscheidet erst die
         Komposition (:meth:`_composite_crossfade_to_screen`), nicht das
         Plan-Bauen.
         """
-        layers = self._emotion_map.get(self._current_emotion)
-        can_blink = layers.can_blink if layers is not None else False
-        ov = self._resolve_overrides(now, can_blink, speaking_mouth)
+        ov = self._resolve_overrides(now, speaking_mouth, idle_blink)
 
         old_plan = self._apply_overrides(transition.previous, ov, OPAQUE_ALPHA)
         new_plan = self._apply_overrides(
@@ -827,21 +803,6 @@ class LayeredSpriteRenderer(AvatarRenderer):
         y = (self._height - sh) // 2 + y_offset
         self._screen.blit(surface, (x, y))
 
-    def _schedule_next_blink(self) -> None:
-        """Plant den nächsten Blink-Zeitpunkt."""
-        delay = random.uniform(BLINK_MIN_INTERVAL, BLINK_MAX_INTERVAL)
-        self._next_blink_time = time.monotonic() + delay
-
-    def _update_blink(self, now: float) -> None:
-        """Aktualisiert den Blink-Zustand."""
-        if self._blink_active:
-            if now >= self._blink_end_time:
-                self._blink_active = False
-                self._schedule_next_blink()
-        elif now >= self._next_blink_time:
-            self._blink_active = True
-            self._blink_end_time = now + BLINK_DURATION
-
     def _get_lip_sync_mouth(self, now: float) -> str:
         """Gibt den aktuellen Lip-Sync-Mund zurück (gewichtete Zufallsauswahl)."""
         if now - self._last_lip_switch >= self._next_lip_interval:
@@ -858,10 +819,12 @@ class LayeredSpriteRenderer(AvatarRenderer):
             )
         return self._lip_sync_mouth
 
-    # -- Idle-Animationen ------------------------------------------------------
+    # -- Idle-Aktionen (Config-Fallback) ---------------------------------------
 
-    # Verfügbare Idle-Aktionen: (eye_left, eye_right, mouth)
-    # None = behalte Emotion-Default
+    # Hardcoded Idle-Aktionen-Fallback: ``(name, eye_left, eye_right, mouth)``;
+    # ``None`` = behalte Emotion-Default. Wird in ``_load_yaml_config`` genutzt,
+    # wenn keine YAML-Config vorliegt, und über :attr:`idle_actions` an die
+    # ``IdleBehaviorPolicy`` gereicht (83.6 – die Idle-Logik selbst lebt dort).
     _IDLE_ACTIONS = [
         # Zur Seite schauen
         ("glance_left", "eye_left_side_open", "eye_right_side_open", None),
@@ -873,42 +836,6 @@ class LayeredSpriteRenderer(AvatarRenderer):
         # Kurz überrascht schauen
         ("surprise", "eye_left_surprise_open", "eye_right_surprise_open", "mouth_open"),
     ]
-
-    def _schedule_next_idle(self) -> None:
-        """Plant die nächste Idle-Aktion."""
-        delay = random.uniform(IDLE_MIN_INTERVAL, IDLE_MAX_INTERVAL)
-        self._next_idle_time = time.monotonic() + delay
-
-    def _update_idle(self, now: float) -> None:
-        """Aktualisiert den Idle-Animations-Zustand."""
-        if self._idle_active:
-            if now >= self._idle_end_time:
-                self._idle_active = False
-                self._idle_eye_left = None
-                self._idle_eye_right = None
-                self._idle_mouth = None
-                self._schedule_next_idle()
-        elif now >= self._next_idle_time:
-            self._start_idle_action()
-
-    def _start_idle_action(self) -> None:
-        """Startet eine zufällige Idle-Aktion."""
-        action_name, eye_l, eye_r, mouth = random.choice(self._idle_actions_config)
-
-        # Prüfe ob die benötigten Komponenten existieren
-        if eye_l and eye_l not in self._components:
-            self._schedule_next_idle()
-            return
-        if mouth and mouth not in self._components:
-            self._schedule_next_idle()
-            return
-
-        self._idle_active = True
-        self._idle_action = action_name
-        self._idle_eye_left = eye_l
-        self._idle_eye_right = eye_r
-        self._idle_mouth = mouth
-        self._idle_end_time = time.monotonic() + IDLE_ACTION_DURATION
 
     def render_to_file(
         self,
