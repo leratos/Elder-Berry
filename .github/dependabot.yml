@@ -18,6 +18,14 @@ updates:
     open-pull-requests-limit: 5
     labels:
       - "dependencies"
+    ignore:
+      # aiofiles ist transitiv durch matrix-nio gedeckelt: matrix-nio
+      # 0.25.2 (neueste, kein Update verfuegbar) verlangt aiofiles~=24.1
+      # (>=24.1,<25). Ein Bump auf >=25 ist daher unaufloesbar
+      # (pip ResolutionImpossible in den Extras matrix/tower/server).
+      # Ignore entfernen, sobald matrix-nio aiofiles 25.x erlaubt.
+      - dependency-name: "aiofiles"
+        versions: [">=25.0.0"]
     groups:
       # Security-kritische Libs: individuelle PRs (schnelles Review).
       security:
