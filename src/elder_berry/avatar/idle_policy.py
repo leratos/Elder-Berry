@@ -211,9 +211,10 @@ class IdleBehaviorPolicy:
 
         Nicht-blinzelnde Moods (``can_blink: false``) blinzeln **nie**; ihr Timer
         läuft – wie im Bestand – nicht weiter (eingefroren). Unabhängig vom
-        Sprechen (wie Bestand).
+        Sprechen (wie Bestand). Eine in der Config fehlende Emotion fällt – wie der
+        Layer-Fallback in Renderer/StateMachine – auf NEUTRAL zurück.
         """
-        if not self._can_blink.get(mood, False):
+        if not self._can_blink_for(mood):
             return None
         if self._next_blink_time is None:
             self._schedule_next_blink(now, mood)
@@ -226,6 +227,18 @@ class IdleBehaviorPolicy:
             self._blink_active = True
             self._blink_end_time = now + self._blink_duration
         return BLINK_EYES if self._blink_active else None
+
+    def _can_blink_for(self, mood: Emotion) -> bool:
+        """``can_blink`` der Emotion, mit NEUTRAL-Fallback für unbekannte Moods.
+
+        Eine in der (Custom-)Config fehlende Emotion wird im Renderer/in der
+        StateMachine als **NEUTRAL** gerendert (Layer-Fallback). Damit das gezeigte
+        Neutral-Gesicht nicht stumm einfriert, folgt der Blink demselben Fallback:
+        unbekannte Emotion ⇒ ``can_blink`` von NEUTRAL (sonst ``False``).
+        """
+        if mood in self._can_blink:
+            return self._can_blink[mood]
+        return self._can_blink.get(Emotion.NEUTRAL, False)
 
     def _schedule_next_blink(self, now: float, mood: Emotion) -> None:
         self._next_blink_time = now + self.blink_interval(mood)

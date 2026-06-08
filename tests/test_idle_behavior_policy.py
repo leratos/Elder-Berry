@@ -100,11 +100,21 @@ class TestCanBlink:
         for now in range(0, 100):
             assert policy.update_blink(float(now), Emotion.ANGRY) is None
 
-    def test_unmapped_mood_never_blinks(self):
-        """Unbekannte Emotion (nicht in can_blink) → kein Blink (Fallback False)."""
-        policy = _policy(can_blink={}, blink_interval=0.5)
+    def test_unmapped_mood_uses_neutral_blink_fallback(self):
+        """Fehlende Emotion folgt dem NEUTRAL-Fallback (gezeigtes Neutral-Gesicht
+        blinzelt) – statt stumm einzufrieren (Codex P2)."""
+        policy = _policy(
+            can_blink={Emotion.NEUTRAL: True}, blink_interval=3.0, blink_duration=0.5
+        )
+        m = Emotion.SARCASTIC  # nicht in can_blink → NEUTRAL-Fallback (True)
+        assert policy.update_blink(0.0, m) is None
+        assert policy.update_blink(3.0, m) == BLINK_EYES
+
+    def test_unmapped_mood_no_blink_when_neutral_cannot_blink(self):
+        """Kann NEUTRAL nicht blinzeln, blinzelt auch die fehlende Emotion nie."""
+        policy = _policy(can_blink={Emotion.NEUTRAL: False}, blink_interval=0.5)
         for now in range(0, 20):
-            assert policy.update_blink(float(now), Emotion.NEUTRAL) is None
+            assert policy.update_blink(float(now), Emotion.SARCASTIC) is None
 
     def test_can_blink_true_blinks_on_global_schedule(self):
         """can_blink=true: Blink nach Intervall, schließt nach Dauer, plant neu."""
@@ -229,6 +239,16 @@ class TestComponentGuard:
         policy.next_action(0.0, m)
         assert policy.next_action(5.0, m) is None  # mouth_open fehlt → übersprungen
         assert policy.next_action(10.0, m) is None  # neu geplant, weiterhin fehlend
+
+    def test_missing_eye_component_skips_action(self):
+        """Fehlt der Augen-Key, greift der eye_left-Zweig des Guards."""
+        # soft_close braucht eye_left_close; nur mouth_open ist verfügbar.
+        policy = _policy(
+            idle_actions=(_SOFT_CLOSE,), available={"mouth_open"}, idle_interval=5.0
+        )
+        m = Emotion.NEUTRAL
+        policy.next_action(0.0, m)
+        assert policy.next_action(5.0, m) is None
 
     def test_present_components_allow_action(self):
         available = {
