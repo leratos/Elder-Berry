@@ -14,7 +14,7 @@ dependencies = [
     "python-dotenv>=1.2.2",
     "PyYAML>=6.0.3",
     "cryptography>=48.0.0",
-    "anthropic>=0.40",
+    "anthropic>=0.107.1",
     "tzdata>=2024.1",
     # 0.136.3 ausgeschlossen: MAL-2026-4750 -- diese Version fuegte den
     # undokumentierten Typosquat-Dep ``fastar>=0.9.0`` in die ``[standard]``-
@@ -33,7 +33,7 @@ windows = [
     "pyautogui>=0.9.54",
     "PyGetWindow>=0.0.9",
     "pycaw>=20251023",
-    "comtypes>=1.2",
+    "comtypes>=1.4.16",
     "pyttsx3>=2.99",
 ]
 tts-neural = [
@@ -123,7 +123,7 @@ tower = [
     "pyautogui>=0.9.54",
     "PyGetWindow>=0.0.9",
     "pycaw>=20251023",
-    "comtypes>=1.2",
+    "comtypes>=1.4.16",
     "mss>=10.2.0",
     # Phase 85: HtmlEmailSanitizer fuer IMAPEmailClient -- robustes
     # HTML-Stripping mit Hidden-Text-Filter statt naiver Regex.
