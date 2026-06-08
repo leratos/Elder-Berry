@@ -331,7 +331,12 @@ class HtmlEmailSanitizer:
         # Phase 87.B-3: strip via _strip_hidden_color_tag (Unwrap
         # visible Dark-bg-Islands), nicht via direktem decompose.
         to_remove: list[Tag] = []
-        for tag in soup.find_all(attrs={"color": _COLOR_ATTR_HIDDEN}):
+        # bs4 >=4.15 typt find_all() ueber @overload: ein Dict-attrs
+        # verlangt ein explizit uebergebenes ``name`` (Overload 3/4),
+        # sonst greift keine Variante. Der Keyword-Filter ist in bs4
+        # semantisch identisch zu attrs={"color": ...} und matcht den
+        # **kwargs-Overload sauber (Pattern[str] ist erlaubt).
+        for tag in soup.find_all(color=_COLOR_ATTR_HIDDEN):
             if getattr(tag, "attrs", None) is None:
                 continue
             if self._color_is_hidden_in_context(tag):
