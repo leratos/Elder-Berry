@@ -82,7 +82,7 @@ stt = [
 tools = [
     "google-api-python-client>=2.197.0",
     "google-auth-oauthlib>=1.4.0",
-    "google-auth-httplib2>=0.3.1",
+    "google-auth-httplib2>=0.4.0",
 ]
 documents = [
     "pymupdf>=1.27.2.3",
@@ -138,7 +138,7 @@ server = [
     "chromadb>=1.5.9",
     "google-api-python-client>=2.197.0",
     "google-auth-oauthlib>=1.4.0",
-    "google-auth-httplib2>=0.3.1",
+    "google-auth-httplib2>=0.4.0",
     "pymupdf>=1.27.2.3",
     "trafilatura>=2.0.0",
     "beautifulsoup4>=4.14.3",
