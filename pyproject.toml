@@ -80,7 +80,7 @@ stt = [
     "numpy>=2.4.6",
 ]
 tools = [
-    "google-api-python-client>=2.194.0",
+    "google-api-python-client>=2.197.0",
     "google-auth-oauthlib>=1.4.0",
     "google-auth-httplib2>=0.3.1",
 ]
@@ -136,7 +136,7 @@ server = [
     "matrix-nio>=0.25.2",
     "aiofiles>=23.0",
     "chromadb>=1.5.9",
-    "google-api-python-client>=2.194.0",
+    "google-api-python-client>=2.197.0",
     "google-auth-oauthlib>=1.4.0",
     "google-auth-httplib2>=0.3.1",
     "pymupdf>=1.27.2.3",
