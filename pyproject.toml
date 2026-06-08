@@ -21,7 +21,7 @@ dependencies = [
     # Extras-Liste ein. Lockfile pinnt schon auf 0.136.1, der CI-Audit
     # (`pip install -e .` ohne Lock) wuerde sonst aber 0.136.3 ziehen.
     "fastapi>=0.136.1,!=0.136.3",
-    "uvicorn[standard]>=0.48.0",
+    "uvicorn[standard]>=0.49.0",
     "bcrypt>=5.0.0",    # Phase 58: Dashboard-Login (PW-Hash, Tower + CI)
     "keyring>=25.7.0",  # Phase 65 (M-1): Fernet-Masterkey im OS-Keyring
                       # (Windows DPAPI / macOS Keychain / Linux Secret Service).
@@ -46,7 +46,7 @@ avatar = [
 ]
 robot = []
 agent = [
-    "python-multipart>=0.0.29",
+    "python-multipart>=0.0.32",
     "sounddevice>=0.5.5",
     "numpy>=2.4.6",
 ]
@@ -80,7 +80,7 @@ stt = [
     "numpy>=2.4.6",
 ]
 tools = [
-    "google-api-python-client>=2.194.0",
+    "google-api-python-client>=2.197.0",
     "google-auth-oauthlib>=1.4.0",
     "google-auth-httplib2>=0.3.1",
 ]
@@ -97,7 +97,7 @@ web = [
     # Phase 78 Etappe 3: Plugin-Vorschlaege im Dashboard. Saleria-
     # generierte Markdown-Specs werden server-side gerendert + ueber
     # bleach.clean() gegen eine enge Allowlist gesaeubert (Konzept R3).
-    "markdown-it-py>=3.0",
+    "markdown-it-py>=4.2.0",
     "bleach>=6.3.0",
     # Phase 86.1: css_decl_resolver fuer html_email_sanitizer
     # (geplant 86.2). Web-Gruppe zieht trafilatura/bs4 fuer
@@ -115,7 +115,7 @@ harmony = [
 tower = [
     "matrix-nio>=0.25.2",
     "aiofiles>=23.0",
-    "python-multipart>=0.0.29",
+    "python-multipart>=0.0.32",
     "coqui-tts>=0.27.5",
     "sounddevice>=0.5.5",
     "numpy>=2.4.6",
@@ -136,7 +136,7 @@ server = [
     "matrix-nio>=0.25.2",
     "aiofiles>=23.0",
     "chromadb>=1.5.9",
-    "google-api-python-client>=2.194.0",
+    "google-api-python-client>=2.197.0",
     "google-auth-oauthlib>=1.4.0",
     "google-auth-httplib2>=0.3.1",
     "pymupdf>=1.27.2.3",
