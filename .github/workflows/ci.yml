@@ -49,7 +49,7 @@ jobs:
         # einen zweiten Report mit identischem Stand und doppelt sich
         # in der Codecov-UI.
         if: runner.os == 'Linux'
-        uses: codecov/codecov-action@v6
+        uses: codecov/codecov-action@v7
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
           files: ./coverage.xml
