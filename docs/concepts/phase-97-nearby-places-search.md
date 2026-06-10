@@ -452,3 +452,57 @@ Store). Alle eingearbeitet.
 6. **Listen-Typ dem LLM beibringen (R2-C6).** `saleria.yaml` nennt nur search/
    mail_inbox/note_search -> „Treffer 2" nach Nearby-Liste wuerde falsch geroutet.
    `nearby_place_pick` in den Character-Prompt + Prompt-Level-Test.
+
+## 13. Befunde aus dem Code-Abgleich (Claude Code, vor Umsetzung)
+
+Die Codex-Runden 1+2 reviewten das Konzept-Doc gegen sich selbst. Dieser
+Abschnitt ist der Abgleich gegen den **realen Code** (`message_handlers.py`,
+`maps_link_builder.py`, `route_session_store.py`, `google_maps_route_planner.py`,
+`saleria.yaml`, `tests/`). Such-Kern (E0/E1) ist gegen den Code sauber; die
+Risiken clustern in E4 (Wiring/Draft/Prompt). Reihenfolge nach Schwere.
+
+1. **[Hoch] Session-Key der `NearbyDraftStore` festnageln (B1).** §5.2/E4 sagt nur
+   „Draft pro User". Der reale Multi-Stop-Pfad dokumentiert in
+   `message_handlers.py:1170-1176` eine teuer erkaufte Lektion: Turn 1 schreibt
+   unter `default_user_id` (NICHT `msg.sender`); Turn N muss unter demselben Key
+   lesen, sonst bricht die Disambig wenn `default_user_id != msg.sender`. Phase 97
+   hat dieselbe Turn-1/Folge-Turn-Asymmetrie. ENTSCHEIDUNG fuer E4: `NearbyDraftStore`
+   wird unter demselben Key wie der Phase-92-Pfad geschluesselt (`default_user_id`),
+   nicht unter `msg.sender`. Test MUSS den Fall `default_user_id != msg.sender`
+   abdecken, nicht nur generisch „pro User".
+
+2. **[Hoch] R2-C6-Mechanismus vor E4 tracen (B2).** `saleria.yaml:87` nennt statisch
+   nur search/mail_inbox/note_search — `route_contact_pick`/`route_poi_pick` stehen
+   dort NICHT, sind aber in `message_handlers.py:899` verdrahtet und laufen produktiv
+   (Phase 92). Es gibt also einen Mechanismus, der Route-Picks auf den richtigen
+   `list_type` bringt OHNE statische Prompt-Nennung (vermutlich Laufzeit-Injektion
+   des aktiven Listentyps). Folge: die R2-C6-Massnahme „nur Zeile in `saleria.yaml`"
+   ist evtl. unnoetig (dynamische Injektion) ODER unzureichend (Route-Picks haengen
+   an etwas anderem). VOR E4: realen Pfad tracen, wie `route_contact_pick` heute den
+   LLM-`list_pick` trifft, und `nearby_place_pick` an DASSELBE Mittel haengen statt
+   blind eine Prompt-Zeile zu addieren.
+
+3. **[Mittel] „Single source of truth" Reisemodus ist vom Design widerlegt (B3).**
+   §1 verspricht: Vokabular = `MapsLinkBuilder`-Whitelist. Real ist
+   `_VALID_TRAVEL_MODES` (`maps_link_builder.py:27`) ein modul-PRIVATES `frozenset`.
+   `RADIUS_BY_MODE` (§4.2) dupliziert dieselben vier Modi als Keys (neben Schema-Enum
+   + `normalize_travel_mode`-Map = drei Kopien, Drift-Risiko). FIX: `_VALID_TRAVEL_MODES`
+   exportierbar machen, `place_types.normalize_travel_mode()` + `RADIUS_BY_MODE`
+   dagegen pruefen; Test `set(RADIUS_BY_MODE) == VALID_TRAVEL_MODES`.
+
+4. **[Mittel] Pattern-Conflict-Gate fehlt in §3/§6 (B4).** `tests/test_plugin_pattern_conflicts.py`
+   hat eine `EXPECTED_ROUTING_CONFLICTS`-Allowlist. Die breiten Phase-97-Trigger
+   („wo kaufe ich", „nenne mir", „wo gibt es") werden dort gegen Route-/andere
+   Handler kollidieren -> Test rot, bis Konflikte als gewollt dokumentiert sind.
+   In §3/§6 aufnehmen und als Gate fahren — es ist der Fruehwarner fuer das
+   §7-Risiko „Prefilter-Kollision".
+
+5. **[Niedrig] Geocoder-Wahl dokumentieren (B5).** `weather_client.py:181` hat schon
+   `geocode()` via Open-Meteo (kostenlos), aber nur STADT-granular. Google Geocoding
+   ist richtig gewaehlt (§0.1 „ich bin Strasse XY" braucht Strassen-Granularitaet),
+   aber die Alternative ist nicht benannt. Ein Satz in §3, damit niemand spaeter „zur
+   freien Geocoding-Funktion optimiert" und die Distanz-Genauigkeit still zerstoert.
+
+6. **[Niedrig] Kosten-Wording (B6).** Der 0-Treffer-Weitungs-Retry (§4.2) = ein
+   ZWEITER Enterprise-`searchText`. §7 sagt „pro Anfrage 1 searchText" -> real 1-2.
+   Bei ~9/Monat weiterhin 0 EUR (weit unter 1.000), nur Text-Ungenauigkeit.
