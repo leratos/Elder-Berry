@@ -24,7 +24,12 @@ from urllib.parse import quote_plus
 
 
 _BASE = "https://www.google.com/maps/dir/?api=1"
-_VALID_TRAVEL_MODES = frozenset({"driving", "walking", "bicycling", "transit"})
+
+# Single source of truth fuer das Reisemodus-Vokabular (Phase 97, B3).
+# Bewusst OEFFENTLICH (kein Unterstrich), damit place_types.normalize_travel_mode()
+# und RADIUS_BY_MODE (NearbyPlaceSearch) hiergegen validieren, statt das Vokabular
+# zu duplizieren. Aenderung hier ist die einzige Stelle.
+VALID_TRAVEL_MODES = frozenset({"driving", "walking", "bicycling", "transit"})
 
 
 @dataclass(frozen=True)
@@ -75,10 +80,10 @@ class MapsLinkBuilder:
             raise ValueError("origin.address darf nicht leer sein")
         if not destination.address.strip():
             raise ValueError("destination.address darf nicht leer sein")
-        if travel_mode not in _VALID_TRAVEL_MODES:
+        if travel_mode not in VALID_TRAVEL_MODES:
             raise ValueError(
                 f"Unbekannter travel_mode '{travel_mode}'. "
-                f"Erlaubt: {sorted(_VALID_TRAVEL_MODES)}",
+                f"Erlaubt: {sorted(VALID_TRAVEL_MODES)}",
             )
         # Reihenfolge: origin, destination, waypoints, travelmode --
         # Google ignoriert Reihenfolge, aber lesbar bleibt's so.
