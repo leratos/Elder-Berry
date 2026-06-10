@@ -24,6 +24,11 @@ from urllib.parse import quote_plus
 
 
 _BASE = "https://www.google.com/maps/dir/?api=1"
+# Such-/Place-Endpoint (Phase 97): oeffnet EINEN Ort, keine Route. ``query``
+# ist Pflicht (Google nutzt es als Anzeige-/Fallback-Text), ``query_place_id``
+# pinnt den exakten Ort. Maps routet ab "Dein Standort" -- daher kein
+# zweiter Routing-Call noetig (Konzept §5, YAGNI).
+_PLACE_BASE = "https://www.google.com/maps/search/?api=1"
 
 # Single source of truth fuer das Reisemodus-Vokabular (Phase 97, B3).
 # Bewusst OEFFENTLICH (kein Unterstrich), damit place_types.normalize_travel_mode()
@@ -99,3 +104,36 @@ class MapsLinkBuilder:
                 params.append("waypoints=" + "|".join(encoded))
         params.append(f"travelmode={travel_mode}")
         return _BASE + "&" + "&".join(params)
+
+    def build_place_link(self, name: str, place_id: str) -> str:
+        """Baut einen Google-Maps-Link, der EINEN Ort oeffnet (Phase 97).
+
+        Format:
+            https://www.google.com/maps/search/?api=1
+              &query=<encoded name>
+              &query_place_id=<place_id>
+
+        ``query_place_id`` pinnt den exakten Ort; ``query`` (der Name) ist
+        Pflicht und dient Google als Anzeige-/Fallback-Text. Der Nutzer ist
+        vor Ort -- Maps routet ab "Dein Standort", daher kein Routing-Link.
+
+        Args:
+            name: Anzeigename des Orts (wird URL-encodet).
+            place_id: Google-Place-ID. Wird NICHT encodet -- Place-IDs sind
+                bereits URL-sicher (``[A-Za-z0-9_-]``).
+
+        Returns:
+            Vollstaendige Google-Maps-URL.
+
+        Raises:
+            ValueError: leerer ``name`` oder leere ``place_id``.
+        """
+        if not name.strip():
+            raise ValueError("name darf nicht leer sein")
+        if not place_id.strip():
+            raise ValueError("place_id darf nicht leer sein")
+        return (
+            f"{_PLACE_BASE}"
+            f"&query={quote_plus(name)}"
+            f"&query_place_id={place_id}"
+        )

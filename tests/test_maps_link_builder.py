@@ -185,3 +185,32 @@ class TestStop:
         s = Stop("A")
         with pytest.raises(AttributeError):
             s.address = "B"  # type: ignore[misc]
+
+
+class TestBuildPlaceLink:
+    def test_basic_place_link(self, builder: MapsLinkBuilder) -> None:
+        url = builder.build_place_link("Kaufland Gruenau", "ChIJ_abc123")
+        assert url.startswith("https://www.google.com/maps/search/?api=1")
+        params = _params(url)
+        assert params["query"] == ["Kaufland Gruenau"]
+        assert params["query_place_id"] == ["ChIJ_abc123"]
+
+    def test_name_is_url_encoded(self, builder: MapsLinkBuilder) -> None:
+        # Leerzeichen + Sonderzeichen muessen encodet sein (parse_qs dekodiert
+        # zurueck -> wir pruefen sowohl roh als auch dekodiert).
+        url = builder.build_place_link("Bar & Grill, Süd", "ChIJxyz")
+        assert "Bar+%26+Grill" in url
+        assert _params(url)["query"] == ["Bar & Grill, Süd"]
+
+    def test_place_id_not_encoded(self, builder: MapsLinkBuilder) -> None:
+        # Place-IDs sind bereits URL-sicher und sollen literal bleiben.
+        url = builder.build_place_link("X", "ChIJN1t_tDeuEmsRUsoyG83frY4")
+        assert "query_place_id=ChIJN1t_tDeuEmsRUsoyG83frY4" in url
+
+    def test_empty_name_raises(self, builder: MapsLinkBuilder) -> None:
+        with pytest.raises(ValueError, match="name"):
+            builder.build_place_link("   ", "ChIJabc")
+
+    def test_empty_place_id_raises(self, builder: MapsLinkBuilder) -> None:
+        with pytest.raises(ValueError, match="place_id"):
+            builder.build_place_link("Kaufland", "")
