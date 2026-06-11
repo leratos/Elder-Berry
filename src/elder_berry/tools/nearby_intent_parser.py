@@ -209,6 +209,16 @@ NEARBY_EXTRACT_TOOL: dict[str, Any] = {
                 "type": "boolean",
                 "description": "Ob nur aktuell geoeffnete Orte zaehlen.",
             },
+            "fallback_query": {
+                "type": "string",
+                "description": (
+                    "Breiterer Oberbegriff als Rueckfall-Suche, falls die"
+                    " spezifische search_query nichts Nahes findet (z.B."
+                    " 'Rockerbar' -> 'Bar Kneipe', 'Shisha-Kopf' ->"
+                    " 'Shisha Shop Tabakladen'). Null, wenn search_query"
+                    " schon generisch ist."
+                ),
+            },
         },
         "required": ["subject", "search_query"],
     },
@@ -223,7 +233,9 @@ _SYSTEM_PROMPT = (
     " null und nutze ggf. exclude_types. location_text ist der STANDORT"
     " des Nutzers -- ein Kontaktname wie 'Lisa' ist KEIN Standort."
     " Felder, die der Nutzer nicht nennt (location_text, travel_mode),"
-    " weglassen oder null."
+    " weglassen oder null. Gib bei spezifischen Begriffen zusaetzlich"
+    " fallback_query als breiteren Oberbegriff an (Sicherheitsnetz, falls"
+    " die spezifische Suche nichts Nahes findet)."
 )
 
 
@@ -302,6 +314,11 @@ class NearbyIntentParser:
         open_now_raw = raw.get("open_now", True)
         open_now = bool(open_now_raw) if isinstance(open_now_raw, bool) else True
 
+        fallback = raw.get("fallback_query")
+        fallback_query = str(fallback).strip() if fallback else None
+        if fallback_query == "":
+            fallback_query = None
+
         return NearbyQueryDraft(
             subject=subject,
             search_query=search_query,
@@ -310,6 +327,7 @@ class NearbyIntentParser:
             location_text=location_text,
             travel_mode=travel_mode,
             open_now=open_now,
+            fallback_query=fallback_query,
         )
 
     # ------------------------------------------------------------------

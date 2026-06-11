@@ -111,6 +111,11 @@ class NearbyQuery:
     """``driving``|``walking``|``bicycling``|``transit`` -> Radius."""
     open_now: bool = True
     """CLIENT-Flag (NICHT als ``openNow`` an die API, Codex #1)."""
+    fallback_query: str | None = None
+    """Breiterer Oberbegriff fuer die Retry-Stufe (Live-Smoketest 2026-06-11:
+    textQuery 'Rockerbar' fand google-seitig nur einen 210-km-Treffer; die
+    breite Query lieferte die echten nahen Bars). Vom LLM beurteilt, vom
+    Code als Stufe-2-Suche angewandt (§4.1-Knopf)."""
 
 
 @dataclass(frozen=True)
@@ -129,6 +134,7 @@ class NearbyQueryDraft:
     location_text: str | None
     travel_mode: str | None
     open_now: bool = True
+    fallback_query: str | None = None
 
     def to_query(self) -> NearbyQuery | None:
         """Vollstaendige + valide ``NearbyQuery`` oder ``None`` (-> Rueckfrage).
@@ -153,6 +159,7 @@ class NearbyQueryDraft:
             location_text=self.location_text,
             travel_mode=mode,
             open_now=self.open_now,
+            fallback_query=self.fallback_query,
         )
 
 
@@ -228,22 +235,57 @@ class NearbyPlaceSearch:
         # 2. travel_mode ist durch to_query() Whitelist-validiert -> kein KeyError.
         radius = RADIUS_BY_MODE[query.travel_mode]
 
-        # 3. + 4. Suche + Client-Filter.
-        results = self._search_filtered(query, center, radius)
+        # 3. + 4. Retry-Ladder (Live-Smoketest 2026-06-11: textQuery
+        # "Rockerbar" fand google-seitig NUR einen 210-km-Treffer in Hannover
+        # -- der Distanz-Cap warf ihn korrekt raus, aber ohne breitere
+        # Folge-Query blieb die Liste leer, obwohl Leipzig voller Bars ist).
+        #
+        # Stufe 1: spezifische Query (+ ggf. includedType+strict).
+        # Stufe 2: breitere Query (fallback_query vom LLM, sonst der
+        #          included_type als Freitext), OHNE strict (§4.1-Knopf).
+        # Stufe 3: Weitung (x2, geclampt 50 km) mit der breitesten Query.
+        #
+        # BEWUSSTE GRENZE (Codex-Review PR #302, Konzept §8/§11.6): KEINE
+        # nextPageToken-Pagination (jede Folgeseite = eigener billbarer
+        # Call); pageSize=20-Puffer + diese Ladder. Reicht das im Smoketest
+        # nicht -> Eskalation auf searchNearby+excludedTypes (Plan B).
+        results = self._search_filtered(
+            query, center, radius,
+            text_query=query.search_query,
+            included_type=query.included_type,
+        )
 
-        # 0-Treffer: einmal weiten (Faktor 2, geclampt auf 50 km) + Retry.
-        # BEWUSSTE GRENZE (Codex-Review PR #302, Konzept §8/§11.6): wenn die
-        # ERSTE Seite vollstaendig wegfiltert (typloser Dichtefall, z.B.
-        # "Shisha-Zubehoer" mit lauter bar-Treffern), paginieren wir NICHT
-        # ueber nextPageToken (jede Folgeseite = eigener billbarer Call,
-        # YAGNI/Kosten). Stattdessen pageSize=20-Puffer + Weitung; wenn das im
-        # Smoketest nicht reicht -> Eskalation auf searchNearby+excludedTypes
-        # (Plan B), das serverseitig vorfiltert.
+        broad = (query.fallback_query or "").strip()
+        if not broad and query.included_type:
+            # Typ als Freitext ("hardware_store" -> "hardware store").
+            broad = query.included_type.replace("_", " ")
+        has_broader = bool(broad) and broad.lower() != query.search_query.lower()
+
+        if not results and has_broader:
+            logger.info(
+                "Nearby: 0 Treffer fuer '%s' -> breitere Query '%s' (Stufe 2)",
+                query.search_query,
+                broad,
+            )
+            results = self._search_filtered(
+                query, center, radius, text_query=broad, included_type=None,
+            )
+
         if not results:
             widened = min(radius * 2, _MAX_BIAS_RADIUS_M)
             if widened > radius:
-                logger.info("Nearby: 0 Treffer in %d m -> weiten auf %d m", radius, widened)
-                results = self._search_filtered(query, center, widened)
+                widen_query = broad if has_broader else query.search_query
+                logger.info(
+                    "Nearby: 0 Treffer in %d m -> weiten auf %d m ('%s')",
+                    radius,
+                    widened,
+                    widen_query,
+                )
+                results = self._search_filtered(
+                    query, center, widened,
+                    text_query=widen_query,
+                    included_type=None if has_broader else query.included_type,
+                )
 
         # 5. Sort + Top-N.
         results.sort(key=lambda c: c.distance_m)
@@ -263,10 +305,18 @@ class NearbyPlaceSearch:
         query: NearbyQuery,
         center: LatLng,
         radius: int,
+        *,
+        text_query: str,
+        included_type: str | None,
     ) -> list[PlaceCandidate]:
         """Ein searchText-Call + clientseitige PFLICHT-Filter (Bias ist weich)."""
-        raw_places = self._call_search_text(query, center, radius)
+        raw_places = self._call_search_text(
+            text_query, included_type, center, radius,
+        )
         kept: list[PlaceCandidate] = []
+        # Diagnose-Zaehler: damit das Log beim Live-Smoketest zeigt, WO die
+        # Treffer verloren gehen (Distanz-Cap vs. Typ vs. geschlossen).
+        dropped_far = dropped_type = dropped_closed = 0
         # Ausschluss um bekannte Unter-/Geschwistertypen erweitern (z.B.
         # bar -> hookah_bar), damit der Kategorie-Filter nicht an exakten
         # Type-Strings vorbeilaeuft (Codex-Review PR #302).
@@ -276,15 +326,30 @@ class NearbyPlaceSearch:
             if candidate is None:
                 continue
             if candidate.distance_m > radius:  # harter Cap (Haversine)
+                dropped_far += 1
                 continue
             if self._is_excluded(candidate, exclude):
+                dropped_type += 1
                 continue
             if self._is_dead_listing(candidate, query.open_now):
+                dropped_closed += 1
                 continue
             if query.open_now and candidate.open_now is False:
                 # bekannt geschlossen raus; unbekannt (None) BLEIBT (Codex #1).
+                dropped_closed += 1
                 continue
             kept.append(candidate)
+        logger.info(
+            "Nearby: '%s' (r=%dm): %d roh -> %d behalten "
+            "(%d zu weit, %d Typ-Ausschluss, %d geschlossen/tot)",
+            text_query,
+            radius,
+            len(raw_places),
+            len(kept),
+            dropped_far,
+            dropped_type,
+            dropped_closed,
+        )
         return kept
 
     @staticmethod
@@ -304,7 +369,8 @@ class NearbyPlaceSearch:
 
     def _call_search_text(
         self,
-        query: NearbyQuery,
+        text_query: str,
+        included_type: str | None,
         center: LatLng,
         radius: int,
     ) -> list[dict[str, Any]]:
@@ -315,10 +381,9 @@ class NearbyPlaceSearch:
             "Content-Type": "application/json",
         }
         body: dict[str, Any] = {
-            "textQuery": query.search_query,
-            # Hinweis: places:searchText (New) nutzt pageSize (Konzept §4,
-            # Codex #6). Der aeltere GoogleMapsRoutePlanner verwendet noch
-            # maxResultCount -- der Live-Smoketest (Lera) bestaetigt das Feld.
+            "textQuery": text_query,
+            # pageSize ist live bestaetigt (Lera-Smoketest 2026-06-11 mit
+            # genau diesem Body-Format gegen die echte API).
             "pageSize": _PAGE_SIZE,
             "rankPreference": "DISTANCE",
             "locationBias": {
@@ -329,8 +394,8 @@ class NearbyPlaceSearch:
             },
             # KEIN openNow an die API (Codex #1) -- Client-Filter, unbekannt bleibt.
         }
-        if query.included_type:  # bereits Table-A-validiert (R2-C1)
-            body["includedType"] = query.included_type
+        if included_type:  # bereits Table-A-validiert (R2-C1)
+            body["includedType"] = included_type
             body["strictTypeFiltering"] = True
 
         resp = self._client.post(PLACES_URL, json=body, headers=headers)

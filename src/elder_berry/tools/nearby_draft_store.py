@@ -42,6 +42,7 @@ def _draft_to_dict(draft: NearbyQueryDraft) -> dict[str, Any]:
         "location_text": draft.location_text,
         "travel_mode": draft.travel_mode,
         "open_now": draft.open_now,
+        "fallback_query": draft.fallback_query,
     }
 
 
@@ -55,6 +56,7 @@ def _draft_from_dict(data: dict[str, Any]) -> NearbyQueryDraft:
         location_text=data.get("location_text"),
         travel_mode=data.get("travel_mode"),
         open_now=bool(data.get("open_now", True)),
+        fallback_query=data.get("fallback_query"),
     )
 
 

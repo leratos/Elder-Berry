@@ -135,6 +135,7 @@ def _query(
     exclude_types: tuple[str, ...] = (),
     travel_mode: str = "driving",
     open_now: bool = True,
+    fallback_query: str | None = None,
 ) -> NearbyQuery:
     return NearbyQuery(
         subject="Rockerbar",
@@ -144,6 +145,7 @@ def _query(
         location_text="Karl-Liebknecht-Str. 12, Leipzig",
         travel_mode=travel_mode,
         open_now=open_now,
+        fallback_query=fallback_query,
     )
 
 
@@ -278,6 +280,87 @@ class TestRadiusCapAndWiden:
         results = search.search(_query(travel_mode="driving"))
         assert [c.name for c in results] == ["Fast"]
         assert _sent_json(client, 1)["locationBias"]["circle"]["radius"] == 50000.0
+
+
+class TestBroadenLadder:
+    """Live-Smoketest-Befund 2026-06-11 (Hannover-Fall): textQuery
+    'Rockerbar' liefert google-seitig nur einen 210-km-Treffer -> Cap wirft
+    ihn raus -> ohne breitere Folge-Query bleibt die Liste leer, obwohl die
+    Stadt voller Bars ist. Stufe 2 = breite Query ohne strict (§4.1-Knopf)."""
+
+    def test_stage2_uses_included_type_as_broad_text(self) -> None:
+        # Stufe 1 (Rockerbar+bar/strict): nur Fern-Treffer -> 0 kept.
+        # Stufe 2: textQuery="bar", KEIN includedType/strict -> naher Treffer.
+        far_only = _body(_place("Rocker Hannover", *_FAR_60KM, place_id="h"))
+        near = _body(_place("Flowerpower Leipzig", *_NEAR, place_id="n"))
+        client = _make_client((200, far_only), (200, near))
+        search = NearbyPlaceSearch(API_KEY, _FakeGeocoder(), client=client)
+
+        results = search.search(_query(included_type="bar"))
+
+        assert [c.name for c in results] == ["Flowerpower Leipzig"]
+        assert client.post.call_count == 2
+        body1 = _sent_json(client, 0)
+        assert body1["textQuery"] == "Rockerbar"
+        assert body1["includedType"] == "bar"
+        assert body1["strictTypeFiltering"] is True
+        body2 = _sent_json(client, 1)
+        assert body2["textQuery"] == "bar"
+        assert "includedType" not in body2
+        assert "strictTypeFiltering" not in body2
+        # Stufe 2 laeuft im ORIGINAL-Radius (weiten ist erst Stufe 3).
+        assert body2["locationBias"]["circle"]["radius"] == 40000.0
+
+    def test_stage2_prefers_llm_fallback_query(self) -> None:
+        client = _make_client(
+            (200, _body()),  # Stufe 1 leer
+            (200, _body(_place("Tabakladen", *_NEAR))),
+        )
+        search = NearbyPlaceSearch(API_KEY, _FakeGeocoder(), client=client)
+        results = search.search(
+            _query(search_query="Shisha-Kopf", fallback_query="Shisha Shop Tabakladen"),
+        )
+        assert [c.name for c in results] == ["Tabakladen"]
+        assert _sent_json(client, 1)["textQuery"] == "Shisha Shop Tabakladen"
+
+    def test_underscore_type_becomes_spaced_text(self) -> None:
+        client = _make_client(
+            (200, _body()),
+            (200, _body(_place("Baumarkt", *_NEAR))),
+        )
+        search = NearbyPlaceSearch(API_KEY, _FakeGeocoder(), client=client)
+        search.search(_query(search_query="Duebel", included_type="hardware_store"))
+        assert _sent_json(client, 1)["textQuery"] == "hardware store"
+
+    def test_stage3_widens_with_broad_query(self) -> None:
+        # Alle drei Stufen: 1 leer, 2 leer, 3 (geweitet, breite Query) trifft.
+        client = _make_client(
+            (200, _body()),
+            (200, _body()),
+            (200, _body(_place("Fast", *_FAR_45KM))),
+        )
+        search = NearbyPlaceSearch(API_KEY, _FakeGeocoder(), client=client)
+        results = search.search(_query(included_type="bar", travel_mode="driving"))
+        assert [c.name for c in results] == ["Fast"]
+        assert client.post.call_count == 3
+        body3 = _sent_json(client, 2)
+        assert body3["textQuery"] == "bar"
+        assert "includedType" not in body3
+        assert body3["locationBias"]["circle"]["radius"] == 50000.0
+
+    def test_no_broader_query_skips_stage2(self) -> None:
+        # Ohne included_type/fallback bleibt es bei Original + Weitung (2 Calls).
+        client = _make_client((200, _body()), (200, _body()))
+        search = NearbyPlaceSearch(API_KEY, _FakeGeocoder(), client=client)
+        assert search.search(_query()) == []
+        assert client.post.call_count == 2
+
+    def test_broad_equal_to_query_skips_stage2(self) -> None:
+        # fallback identisch zur Query (case-insensitiv) -> kein sinnloser Retry.
+        client = _make_client((200, _body()), (200, _body()))
+        search = NearbyPlaceSearch(API_KEY, _FakeGeocoder(), client=client)
+        search.search(_query(search_query="Bar", fallback_query="bar"))
+        assert client.post.call_count == 2  # Original + Weitung, KEINE Stufe 2
 
 
 # ---------------------------------------------------------------------------
