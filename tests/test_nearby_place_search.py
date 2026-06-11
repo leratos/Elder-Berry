@@ -20,6 +20,7 @@ import pytest
 from elder_berry.tools.google_geocoder import GeocoderConfigError, LatLng
 from elder_berry.tools.nearby_place_search import (
     PLACES_URL,
+    LocationNotFoundError,
     NearbyPlaceError,
     NearbyPlaceSearch,
     NearbyQuery,
@@ -420,11 +421,14 @@ class TestParsingAndSort:
 
 
 class TestGeocoderPaths:
-    def test_zero_results_geocode_returns_empty(self) -> None:
+    def test_zero_results_geocode_raises_location_not_found(self) -> None:
+        # Codex PR #302: NICHT mit leerem Ergebnis verwechseln.
         client = _make_client((200, _body(_place("Bar", *_NEAR))))
         geocoder = _FakeGeocoder(result=None)  # ZERO_RESULTS
         search = NearbyPlaceSearch(API_KEY, geocoder, client=client)
-        assert search.search(_query()) == []
+        with pytest.raises(LocationNotFoundError) as exc:
+            search.search(_query())
+        assert exc.value.location_text == "Karl-Liebknecht-Str. 12, Leipzig"
         client.post.assert_not_called()  # ohne Center kein Places-Call
 
     def test_geocoder_config_error_propagates(self) -> None:

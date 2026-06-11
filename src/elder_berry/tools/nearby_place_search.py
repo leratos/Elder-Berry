@@ -71,6 +71,19 @@ class NearbyPlaceError(Exception):
     """Fehler der Umkreissuche (Places-API-Status, HTTP-Fehler)."""
 
 
+class LocationNotFoundError(Exception):
+    """Der Standort-Freitext war nicht geocodebar (Geocoder ZERO_RESULTS).
+
+    Bewusst getrennt vom leeren Ergebnis: ohne Geocode-Zentrum gibt es nichts
+    zu weiten/zu zeigen -- der Handler fragt nach einem korrigierten Ort,
+    statt "nichts in der Naehe gefunden" zu melden (Codex-Review PR #302).
+    """
+
+    def __init__(self, location_text: str) -> None:
+        super().__init__(f"Ort nicht gefunden: {location_text}")
+        self.location_text = location_text
+
+
 # ---------------------------------------------------------------------------
 # DTOs
 # ---------------------------------------------------------------------------
@@ -193,15 +206,17 @@ class NearbyPlaceSearch:
             im (geweiteten) Radius liegt.
 
         Raises:
+            LocationNotFoundError: Standort nicht geocodebar (ZERO_RESULTS).
             GeocoderConfigError: Geocoder-Auth/Quota (durchgereicht, R2-C3).
             NearbyPlaceError: Places-API-/HTTP-Fehler.
         """
-        # 1. Geocode. None (ZERO_RESULTS) -> leer; GeocoderConfigError
-        #    NICHT fangen -> als Dienstfehler durchreichen (R2-C3).
+        # 1. Geocode. None (ZERO_RESULTS) -> LocationNotFoundError (KEIN
+        #    leeres Ergebnis: ohne Zentrum hilft Weiten/Anzeigen nicht);
+        #    GeocoderConfigError NICHT fangen -> Dienstfehler (R2-C3).
         center = self._geocoder.geocode(query.location_text)
         if center is None:
             logger.info("Nearby: Ort '%s' nicht geocodebar", query.location_text)
-            return []
+            raise LocationNotFoundError(query.location_text)
 
         # 2. travel_mode ist durch to_query() Whitelist-validiert -> kein KeyError.
         radius = RADIUS_BY_MODE[query.travel_mode]

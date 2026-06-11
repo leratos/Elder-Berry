@@ -118,6 +118,29 @@ def is_nearby_candidate(text: str) -> bool:
     return True
 
 
+# Patterns fuer die Handler-Registry (CommandHandler.patterns). PRAEZISE --
+# generische Phrasen ("was kannst du", "gibt es neue mails") duerfen KEINEN
+# Routing-Kandidaten erzeugen, sonst schlagen sie (pattern-search-Konfidenz
+# 70) etablierte Keyword-Commands wie Hilfe/Mail (Konfidenz 45) und brechen
+# sie, sobald die Umkreissuche aktiv ist (Codex-Review PR #302). Deshalb NICHT
+# die generischen Verben allein, sondern dieselben Signale wie
+# ``is_nearby_candidate``: ``_NEARBY_INTENT`` (Venue-Verb verlangt Ortsnomen,
+# wo-Kauf-Fragen, "in der Naehe") + Item-Kauf MIT Standort-/Modus-Kontext.
+# Die Route-Suppression bleibt in ``is_nearby_candidate`` (execute()-Gate).
+NEARBY_TRIGGER_PATTERNS: tuple[re.Pattern[str], ...] = (
+    _NEARBY_INTENT,
+    re.compile(
+        # Item-Kauf + Kontext, reihenfolgeunabhaengig (Kontext darf VOR dem
+        # Kaufverb stehen: "ich bin X und brauche eine Tomatensauce").
+        r"(?=.*\b(?:brauche?|such\w*)\s+(?:noch\s+)?(?:einen|eine|ein|nen|ne)\b)"
+        r"(?=.*(?:\bich\s+bin\b|\bhier\b|\bin\s+(?:der|meiner)\s+n(?:ä|ae)he\b|"
+        r"\bzu\s+fu(?:ß|ss)\b|\bmit\s+dem\s+(?:auto|rad|fahrrad|bus|wagen)\b|"
+        r"(?:ö|oe)pnv))",
+        re.IGNORECASE | re.DOTALL,
+    ),
+)
+
+
 # ---------------------------------------------------------------------------
 # Sonnet-Tool-Schema
 # ---------------------------------------------------------------------------

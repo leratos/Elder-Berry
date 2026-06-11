@@ -19,6 +19,7 @@ from elder_berry.comms.commands.nearby_place_commands import (
 )
 from elder_berry.tools.google_geocoder import GeocoderConfigError
 from elder_berry.tools.nearby_place_search import (
+    LocationNotFoundError,
     NearbyPlaceError,
     NearbyQueryDraft,
     PlaceCandidate,
@@ -205,6 +206,16 @@ class TestTurn1:
         assert res.list_items is None
         assert "nichts" in (res.text or "").lower()
 
+    def test_complete_turn1_clears_stale_draft(self) -> None:
+        # Codex PR #302: vollstaendige neue Suche raeumt den alten Draft,
+        # sonst kapert der Intercept das naechste "Treffer N".
+        store = _FakeStore()
+        store.set(USER, _draft(location=None, mode=None, subject="Altes"))
+        h = _handler(_FakeParser(draft=_draft()), _FakeSearch(candidates=[_cand()]), store)
+        res = h.execute("nearby_place", _NEARBY_TEXT)
+        assert res.list_type == "nearby_place_pick"
+        assert store.get(USER) is None  # Draft geraeumt
+
 
 # ---------------------------------------------------------------------------
 # Fehlerpfade
@@ -221,6 +232,16 @@ class TestErrors:
         text = (res.text or "").lower()
         assert "konfig" in text or "verfuegbar" in text or "verfügbar" in text
         assert "nicht gefunden" not in text or "kein" in text
+
+    def test_location_not_found_asks_for_corrected_location(self) -> None:
+        # Codex PR #302: distinkt von "keine Orte gefunden".
+        search = _FakeSearch(raise_exc=LocationNotFoundError("Quatschhausen"))
+        h = _handler(_FakeParser(draft=_draft()), search)
+        res = h.execute("nearby_place", _NEARBY_TEXT)
+        assert res.success is True
+        text = (res.text or "").lower()
+        assert "quatschhausen" in text
+        assert "nicht finden" in text or "nochmal" in text
 
     def test_places_error_is_reported(self) -> None:
         search = _FakeSearch(raise_exc=NearbyPlaceError("rate limit"))

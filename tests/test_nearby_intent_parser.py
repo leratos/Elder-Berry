@@ -14,6 +14,7 @@ import pytest
 
 from elder_berry.tools.nearby_intent_parser import (
     NEARBY_EXTRACT_TOOL,
+    NEARBY_TRIGGER_PATTERNS,
     NearbyIntentParser,
     is_nearby_candidate,
 )
@@ -102,6 +103,41 @@ class TestIsNearbyCandidate:
     )
     def test_positive_item_buy_with_context(self, text: str) -> None:
         assert is_nearby_candidate(text) is True
+
+
+def _trigger_matches(text: str) -> bool:
+    return any(p.search(text) for p in NEARBY_TRIGGER_PATTERNS)
+
+
+class TestRegistryTriggerPatterns:
+    """Codex PR #302: die Registry-Patterns duerfen KEINEN Kandidaten fuer
+    generische Phrasen erzeugen (sonst schlagen sie Keyword-Commands)."""
+
+    @pytest.mark.parametrize(
+        "text",
+        [
+            "was kannst du",
+            "gibt es neue mails",
+            "kannst du das licht anschalten",
+            "ich brauche eine Pause",
+            "nenne mir die Termine fuer morgen",
+        ],
+    )
+    def test_generic_phrases_do_not_trigger(self, text: str) -> None:
+        assert _trigger_matches(text) is False
+
+    @pytest.mark.parametrize(
+        "text",
+        [
+            "wo kann ich Tomatensauce kaufen?",
+            "kannst du mir eine Rockerbar nennen?",
+            "gibt es hier einen Baumarkt?",
+            "nenne mir eine Apotheke in der Naehe",
+            "ich bin in Connewitz und brauche eine Tomatensauce, zu Fuss",
+        ],
+    )
+    def test_real_nearby_phrases_trigger(self, text: str) -> None:
+        assert _trigger_matches(text) is True
 
 
 # ---------------------------------------------------------------------------

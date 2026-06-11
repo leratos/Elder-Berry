@@ -34,10 +34,12 @@ from elder_berry.comms.commands.base import (
 )
 from elder_berry.tools.google_geocoder import GeocoderConfigError
 from elder_berry.tools.nearby_intent_parser import (
+    NEARBY_TRIGGER_PATTERNS,
     NearbyIntentParser,
     is_nearby_candidate,
 )
 from elder_berry.tools.nearby_place_search import (
+    LocationNotFoundError,
     NearbyPlaceError,
     NearbyQuery,
     NearbyQueryDraft,
@@ -51,16 +53,6 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-
-# Catch-All-Trigger; die PRAEZISE Pruefung macht ``is_nearby_candidate`` im
-# ``execute`` (sonst Fallthrough). Bewusst breit, damit der Vorfilter greift.
-_NEARBY_TRIGGER = re.compile(
-    r"\b(wo\s+(?:kann|kaufe?|gibt|bekomme?|finde|krieg\w*|besorge?)|"
-    r"in\s+(?:der|meiner)\s+n(?:ä|ae)he|"
-    r"nenn\w*|empfiehl\w*|empfehle\w*|kennst\s+du|kannst\s+du|"
-    r"brauche?|suche?|gibt\s+es)\b",
-    re.IGNORECASE,
-)
 
 # Folge-Turn-Heuristik: sieht die Antwort eher nach einer NEUEN Frage/Command
 # aus, nicht nach einem Ort? Dann nicht als Standort hijacken (Early-Intercept).
@@ -98,7 +90,10 @@ class NearbyPlaceCommandHandler(CommandHandler):
 
     @property
     def patterns(self) -> list[tuple[re.Pattern[str], str, bool, bool]]:
-        return [(_NEARBY_TRIGGER, "nearby_place", False, True)]
+        # Praezise Patterns (NICHT die generischen Verben allein) -- sonst
+        # schlaegt der Catch-All Keyword-Commands wie Hilfe/Mail (Codex
+        # PR #302). is_nearby_candidate macht im execute() die Endpruefung.
+        return [(p, "nearby_place", False, True) for p in NEARBY_TRIGGER_PATTERNS]
 
     @property
     def keywords(self) -> dict[str, list[str]]:
@@ -197,6 +192,11 @@ class NearbyPlaceCommandHandler(CommandHandler):
         query = draft.to_query()
         if query is None:
             return self._ask_missing(draft)
+        # Komplette neue Suche -> evtl. alten Pending-Draft raeumen, sonst
+        # kapert der Early-Intercept das naechste "Treffer N" als Antwort auf
+        # den veralteten Draft statt als Pick aus der neuen Liste (Codex
+        # PR #302).
+        self._drafts.clear(self._user_id)
         return self._run_search(query, draft.subject)
 
     # ------------------------------------------------------------------
@@ -230,6 +230,19 @@ class NearbyPlaceCommandHandler(CommandHandler):
     def _run_search(self, query: NearbyQuery, subject: str) -> CommandResult:
         try:
             candidates = self._search.search(query)
+        except LocationNotFoundError as exc:
+            # Standort selbst nicht geocodebar -- NICHT mit "keine Orte
+            # gefunden" verwechseln (kein Zentrum -> Weiten hilft nicht,
+            # Codex PR #302). Nach korrigiertem Ort fragen.
+            logger.info("Nearby: Standort nicht gefunden: %s", exc)
+            return CommandResult(
+                command="nearby_place",
+                success=True,
+                text=(
+                    f"Ich konnte den Ort '{exc.location_text}' nicht finden. "
+                    f"Sag ihn mir nochmal genauer (Strasse + Stadt)."
+                ),
+            )
         except GeocoderConfigError as exc:
             logger.error("Nearby: Geocoder-Config/-Quota: %s", exc)
             return CommandResult(
