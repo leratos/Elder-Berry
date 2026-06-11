@@ -62,9 +62,9 @@ _UNRELATED_ANSWER = re.compile(
     re.IGNORECASE,
 )
 
-HELP_SECTION_NEARBY_PLACE = """Umkreissuche (Orte in der Naehe):
-  "Ich bin <Strasse, Stadt> und brauche <X> -- wo kaufe ich das hier?"
-  "Kannst du mir eine <Venue> in der Naehe nennen?"
+HELP_SECTION_NEARBY_PLACE = """Umkreissuche (Orte in der Nähe):
+  "Ich bin <Straße, Stadt> und brauche <X> -- wo kaufe ich das hier?"
+  "Kannst du mir eine <Venue> in der Nähe nennen?"
     -- nahe Treffer zuerst, gefiltert; dann Pick aus Liste -> Maps-Link.
   Fehlt Standort oder Reisemodus, frage ich einmal nach."""
 
@@ -109,8 +109,8 @@ class NearbyPlaceCommandHandler(CommandHandler):
     @property
     def command_descriptions(self) -> list[str]:
         return [
-            "wo kaufe ich <X> hier: naheliegende Laeden, distanzsortiert",
-            "nenne mir eine <Venue> in der Naehe: nahe Orte + Maps-Link",
+            "wo kaufe ich <X> hier: naheliegende Läden, distanzsortiert",
+            "nenne mir eine <Venue> in der Nähe: nahe Orte + Maps-Link",
         ]
 
     def execute(self, command: str, raw_text: str) -> CommandResult:
@@ -217,13 +217,13 @@ class NearbyPlaceCommandHandler(CommandHandler):
         self._drafts.set(self._user_id, draft)
         if self._missing_field(draft) == "location":
             text = (
-                f"Ich suche {draft.subject} in der Naehe. Wo bist du gerade "
-                f"ungefaehr? (Strasse + Stadt)"
+                f"Ich suche {draft.subject} in der Nähe. Wo bist du gerade "
+                f"ungefähr? (Straße + Stadt)"
             )
         else:
             text = (
-                f"Womit bist du unterwegs -- zu Fuss, Rad, Auto oder OEPNV? "
-                f"(fuer {draft.subject})"
+                f"Womit bist du unterwegs -- zu Fuß, Rad, Auto oder ÖPNV? "
+                f"(für {draft.subject})"
             )
         return CommandResult(command="nearby_place", success=True, text=text)
 
@@ -240,7 +240,7 @@ class NearbyPlaceCommandHandler(CommandHandler):
                 success=True,
                 text=(
                     f"Ich konnte den Ort '{exc.location_text}' nicht finden. "
-                    f"Sag ihn mir nochmal genauer (Strasse + Stadt)."
+                    f"Sag ihn mir nochmal genauer (Straße + Stadt)."
                 ),
             )
         except GeocoderConfigError as exc:
@@ -250,7 +250,7 @@ class NearbyPlaceCommandHandler(CommandHandler):
                 success=True,
                 text=(
                     "Der Standort-Dienst (Geocoding) ist gerade nicht "
-                    "verfuegbar oder falsch konfiguriert -- das ist KEIN "
+                    "verfügbar oder falsch konfiguriert -- das ist KEIN "
                     "'Ort nicht gefunden'. Schau bitte den API-Key/Quota an."
                 ),
             )
@@ -270,10 +270,10 @@ class NearbyPlaceCommandHandler(CommandHandler):
                 command="nearby_place",
                 success=True,
                 text=(
-                    f"Ich hab nichts fuer {subject} in der Naehe von "
+                    f"Ich hab nichts für {subject} in der Nähe von "
                     f"{query.location_text} gefunden. Frag nochmal mit einem "
-                    f"anderen Suchbegriff oder groesserem Radius (z.B. mit dem "
-                    f"Auto statt zu Fuss)."
+                    f"anderen Suchbegriff oder größerem Radius (z.B. mit dem "
+                    f"Auto statt zu Fuß)."
                 ),
             )
         return self._present_candidates(query, subject, candidates)
@@ -285,7 +285,7 @@ class NearbyPlaceCommandHandler(CommandHandler):
         candidates: list[PlaceCandidate],
     ) -> CommandResult:
         """Baut die Pick-Liste + list_items (name/place_id) + Attribution."""
-        lines = [f"Ich suche {subject} in der Naehe von {query.location_text}:"]
+        lines = [f"Ich suche {subject} in der Nähe von {query.location_text}:"]
         items: list[dict[str, Any]] = []
         attributions: set[str] = set()
         for idx, cand in enumerate(candidates, start=1):

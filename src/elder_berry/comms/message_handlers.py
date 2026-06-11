@@ -995,7 +995,7 @@ class BridgeMessageHandler:
             logger.warning("list_pick search-Item ohne url: %r", item)
             await self._channel.send_text(
                 msg.room_id,
-                "Der gewaehlte Treffer hat keine URL -- such nochmal.",
+                "Der gewählte Treffer hat keine URL -- such nochmal.",
             )
             return
         if self._remote_commands is None:
@@ -1146,7 +1146,7 @@ class BridgeMessageHandler:
             logger.warning("list_pick mail-Item ohne msg_id: %r", item)
             await self._channel.send_text(
                 msg.room_id,
-                "Die gewaehlte Mail hat keine ID -- ruf die Inbox nochmal ab.",
+                "Die gewählte Mail hat keine ID -- ruf die Inbox nochmal ab.",
             )
             return
         if self._remote_commands is None:
@@ -1264,7 +1264,7 @@ class BridgeMessageHandler:
             logger.warning("nearby_place_pick-Item ohne name/place_id: %r", item)
             await self._channel.send_text(
                 msg.room_id,
-                "Der gewaehlte Ort hat keine gueltige ID mehr. "
+                "Der gewählte Ort hat keine gültige ID mehr. "
                 "Mach nochmal eine Suche.",
             )
             return
