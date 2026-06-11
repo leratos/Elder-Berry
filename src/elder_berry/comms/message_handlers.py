@@ -899,6 +899,9 @@ class BridgeMessageHandler:
         if list_type in ("route_contact_pick", "route_poi_pick"):
             await self._dispatch_route_pick(msg, list_type, item)
             return
+        if list_type == "nearby_place_pick":
+            await self._dispatch_nearby_pick(msg, item)
+            return
 
         # Unbekannter list_type (z.B. zukuenftige Phase-80.x-Typen wie
         # 'termine'): klar zurueckmelden statt zu raten.
@@ -1083,6 +1086,49 @@ class BridgeMessageHandler:
         await self._dispatch_mail_pick(msg, item)
         return True
 
+    async def _maybe_continue_nearby_draft(self, msg: IncomingMessage) -> bool:
+        """Phase 97: Folge-Turn der Umkreissuche (Early-Intercept).
+
+        Liegt ein offener Nearby-Draft (Key = default_user_id im Handler),
+        wird ``msg.body`` als Antwort auf die Rueckfrage gedeutet. Der Handler
+        entscheidet selbst, ob die Antwort passt (sonst ``fallthrough`` ->
+        normaler LLM-Flow, der Draft bleibt erhalten).
+
+        Returns:
+            True wenn die Antwort verarbeitet wurde (Caller returnt early).
+        """
+        if self._remote_commands is None:
+            return False
+        handler = self._remote_commands.get_handler("nearby_place")
+        if handler is None:
+            return False
+        has_pending = getattr(handler, "has_pending_draft", None)
+        continue_with = getattr(handler, "continue_with_answer", None)
+        if not callable(has_pending) or not callable(continue_with):
+            return False
+        if not has_pending():
+            return False
+
+        loop = asyncio.get_running_loop()
+        try:
+            result = await loop.run_in_executor(None, continue_with, msg.body)
+        except Exception as exc:  # noqa: BLE001
+            logger.error("Nearby continue_with_answer crashed: %s", exc)
+            return False
+
+        if result.fallthrough:
+            # Antwort passte nicht (z.B. unrelated) -> normaler LLM-Flow.
+            return False
+        if result.text:
+            await self._channel.send_text(msg.room_id, result.text)
+        # Folge-Liste (Pick) registrieren, damit "Treffer N" funktioniert.
+        self._maybe_register_command_list(msg, result)
+        if result.success and result.text:
+            history = result.history_text or result.text
+            self._chat_history.add(msg.sender, "user", msg.body)
+            self._chat_history.add(msg.sender, "assistant", history)
+        return True
+
     async def _dispatch_mail_pick(
         self,
         msg: IncomingMessage,
@@ -1201,6 +1247,43 @@ class BridgeMessageHandler:
             self._chat_history.add(msg.sender, "user", msg.body)
             self._chat_history.add(msg.sender, "assistant", history)
 
+    async def _dispatch_nearby_pick(
+        self,
+        msg: IncomingMessage,
+        item: dict[str, Any],
+    ) -> None:
+        """Phase 97: Nearby-Pick -> Google-Maps-Place-Link (terminal).
+
+        Anders als route_*_pick einstufig: das Item traegt name + place_id,
+        der Link wird direkt gebaut (kein Folge-Command). Maps routet ab
+        'Dein Standort', daher Place-Link statt Route (Konzept §5).
+        """
+        name = str(item.get("name", "")).strip()
+        place_id = str(item.get("place_id", "")).strip()
+        if not name or not place_id:
+            logger.warning("nearby_place_pick-Item ohne name/place_id: %r", item)
+            await self._channel.send_text(
+                msg.room_id,
+                "Der gewaehlte Ort hat keine gueltige ID mehr. "
+                "Mach nochmal eine Suche.",
+            )
+            return
+        from elder_berry.tools.maps_link_builder import MapsLinkBuilder
+
+        try:
+            link = MapsLinkBuilder().build_place_link(name, place_id)
+        except ValueError as exc:
+            logger.warning("nearby build_place_link: %s", exc)
+            await self._channel.send_text(
+                msg.room_id,
+                "Konnte keinen Karten-Link bauen.",
+            )
+            return
+        text = f"{name}:\n-> {link}"
+        await self._channel.send_text(msg.room_id, text)
+        self._chat_history.add(msg.sender, "user", msg.body)
+        self._chat_history.add(msg.sender, "assistant", text)
+
     async def _dispatch_note_pick(
         self,
         msg: IncomingMessage,
@@ -1238,6 +1321,12 @@ class BridgeMessageHandler:
 
     async def handle_assistant_message(self, msg: IncomingMessage) -> None:
         """Delegiert an Assistant.process() (Standard-LLM-Flow)."""
+        # Phase 97: Nearby-Rueckfrage-Folgeturn. Liegt ein offener Draft
+        # (default_user_id), wird die Freitext-Antwort ("zu Fuss"/"Leipzig")
+        # als fehlendes Feld gedeutet -- VOR dem LLM (Early-Intercept).
+        if await self._maybe_continue_nearby_draft(msg):
+            return
+
         tmp_wav: Path | None = None
 
         try:

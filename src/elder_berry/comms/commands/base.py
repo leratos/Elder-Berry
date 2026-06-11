@@ -46,6 +46,8 @@ if TYPE_CHECKING:
     from elder_berry.tools.google_maps_route_planner import (
         GoogleMapsRoutePlanner,
     )
+    from elder_berry.tools.nearby_draft_store import NearbyDraftStore
+    from elder_berry.tools.nearby_place_search import NearbyPlaceSearch
     from elder_berry.tools.route_planner import RoutePlanner
     from elder_berry.tools.route_session_store import RouteSessionStore
     from elder_berry.tools.stirling_pdf import StirlingPDFClient
@@ -364,6 +366,11 @@ class HandlerContext:
     route_planner: RoutePlanner | None = None
     multi_stop_route_planner: GoogleMapsRoutePlanner | None = None
     route_session_store: RouteSessionStore | None = None
+    # Phase 97 (Umkreissuche). Beide werden in start_saleria bei vorhandenem
+    # google_maps_api_key gebaut; der NearbyIntentParser entsteht in der
+    # Handler-Factory aus anthropic_client (wie RouteIntentParser).
+    nearby_place_search: NearbyPlaceSearch | None = None
+    nearby_draft_store: NearbyDraftStore | None = None
     web_fetcher: WebFetcher | None = None
     search_client: BraveSearchClient | None = None
     document_reader: DocumentReader | None = None

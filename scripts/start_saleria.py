@@ -1029,6 +1029,25 @@ def _init_productivity_services(secrets, default_user_id):
         except Exception as e:
             logger.warning("Multi-Stop-Routing nicht verfügbar: %s", e)
 
+        # Phase 97: Umkreissuche (Geocoding + Places searchText). Eigener
+        # Geocoder als Distanz-Bezugspunkt + per-User-Draft-Store fuer die
+        # Rueckfrage-Persistenz (Key = default_user_id, B1).
+        try:
+            from elder_berry.tools.google_geocoder import GoogleGeocoder
+            from elder_berry.tools.nearby_draft_store import NearbyDraftStore
+            from elder_berry.tools.nearby_place_search import NearbyPlaceSearch
+
+            svc["nearby_place_search"] = NearbyPlaceSearch(
+                api_key=secrets.get("google_maps_api_key"),
+                geocoder=GoogleGeocoder(
+                    api_key=secrets.get("google_maps_api_key"),
+                ),
+            )
+            svc["nearby_draft_store"] = NearbyDraftStore()
+            logger.info("Umkreissuche: aktiv (Geocoding + Places searchText)")
+        except Exception as e:
+            logger.warning("Umkreissuche nicht verfügbar: %s", e)
+
     # Daily Briefing
     try:
         from elder_berry.comms.briefing_scheduler import BriefingScheduler
@@ -1299,6 +1318,8 @@ def run_matrix(assistant, stt=None, avatar=None, audio_converter=None, robot=Non
         route_planner=svc.get("route_planner"),
         multi_stop_route_planner=svc.get("multi_stop_route_planner"),
         route_session_store=svc.get("route_session_store"),
+        nearby_place_search=svc.get("nearby_place_search"),
+        nearby_draft_store=svc.get("nearby_draft_store"),
         default_user_id=default_user_id,
         tower_agent=tower_agent,
     )

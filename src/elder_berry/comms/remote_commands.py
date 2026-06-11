@@ -92,6 +92,8 @@ if TYPE_CHECKING:
     from elder_berry.tools.google_maps_route_planner import (
         GoogleMapsRoutePlanner,
     )
+    from elder_berry.tools.nearby_draft_store import NearbyDraftStore
+    from elder_berry.tools.nearby_place_search import NearbyPlaceSearch
     from elder_berry.tools.route_planner import RoutePlanner
     from elder_berry.tools.route_session_store import RouteSessionStore
     from elder_berry.tools.web_fetcher import WebFetcher
@@ -299,6 +301,8 @@ class RemoteCommandHandler:
         route_planner: RoutePlanner | None = None,
         multi_stop_route_planner: GoogleMapsRoutePlanner | None = None,
         route_session_store: RouteSessionStore | None = None,
+        nearby_place_search: NearbyPlaceSearch | None = None,
+        nearby_draft_store: NearbyDraftStore | None = None,
         pending_store: PendingConfirmationStore | None = None,
         default_user_id: str = "",
         tower_agent: TowerAgent | None = None,
@@ -338,6 +342,8 @@ class RemoteCommandHandler:
                 route_planner=route_planner,
                 multi_stop_route_planner=multi_stop_route_planner,
                 route_session_store=route_session_store,
+                nearby_place_search=nearby_place_search,
+                nearby_draft_store=nearby_draft_store,
                 web_fetcher=web_fetcher,
                 search_client=search_client,
                 document_reader=document_reader,
