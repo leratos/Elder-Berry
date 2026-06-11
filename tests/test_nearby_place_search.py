@@ -293,6 +293,21 @@ class TestClientFilters:
         names = [c.name for c in results]
         assert names == ["Ein Laden"]  # bar raus, store bleibt
 
+    def test_exclude_bar_also_drops_hookah_bar(self) -> None:
+        # Codex-Review PR #302: hookah_bar OHNE generischen bar-Typ -> via
+        # expand_exclude_types trotzdem raus.
+        client = _make_client(
+            (200, _body(
+                _place("Shisha Lounge", *_NEAR, place_id="h",
+                       primary="hookah_bar", types=("hookah_bar",)),
+                _place("Tabakladen", *_NEAR, place_id="t",
+                       primary="store", types=("store",)),
+            )),
+        )
+        search = NearbyPlaceSearch(API_KEY, _FakeGeocoder(), client=client)
+        results = search.search(_query(exclude_types=("bar",)))
+        assert [c.name for c in results] == ["Tabakladen"]
+
     def test_exclude_matches_secondary_type(self) -> None:
         client = _make_client(
             (200, _body(
@@ -330,6 +345,21 @@ class TestClientFilters:
 # ---------------------------------------------------------------------------
 # Parsing / Sort / Top-N / Attribution
 # ---------------------------------------------------------------------------
+
+
+class TestMisc:
+    def test_close_owned_client_no_error(self) -> None:
+        NearbyPlaceSearch(API_KEY, _FakeGeocoder()).close()
+
+    def test_displayname_as_string_is_dropped(self) -> None:
+        bad = {
+            "id": "x",
+            "displayName": "Roh-String statt Objekt",
+            "location": {"latitude": 51.35, "longitude": 12.38},
+        }
+        client = _make_client((200, _body(bad)), (200, _body(bad)))
+        search = NearbyPlaceSearch(API_KEY, _FakeGeocoder(), client=client)
+        assert search.search(_query()) == []
 
 
 class TestParsingAndSort:

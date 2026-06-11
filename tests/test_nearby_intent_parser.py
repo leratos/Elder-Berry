@@ -18,6 +18,7 @@ from elder_berry.tools.nearby_intent_parser import (
     is_nearby_candidate,
 )
 from elder_berry.tools.nearby_place_search import NearbyQueryDraft
+from elder_berry.tools.place_types import normalize_travel_mode
 
 
 class _FakeAnthropic:
@@ -56,10 +57,14 @@ class TestIsNearbyCandidate:
     @pytest.mark.parametrize(
         "text",
         [
-            "ich bin Karl-Liebknecht-Str 12 in Leipzig und brauche einen "
-            "Shisha-Kopf — wo kaufe ich den hier?",
-            "ich bin mit Lisa in der Suedvorstadt, kannst du mir eine "
-            "Rockerbar nennen?",
+            (
+                "ich bin Karl-Liebknecht-Str 12 in Leipzig und brauche einen "
+                "Shisha-Kopf — wo kaufe ich den hier?"
+            ),
+            (
+                "ich bin mit Lisa in der Suedvorstadt, kannst du mir eine "
+                "Rockerbar nennen?"
+            ),
             "wo gibt es hier einen Baumarkt?",
             "nenne mir eine Apotheke in der Naehe",
             "ich brauche eine Apotheke",
@@ -79,10 +84,24 @@ class TestIsNearbyCandidate:
             "fahr mich zu der Bar",  # Navigation zu bekannter Bar -> Route
             "lies meine mails und trag den termin ein",
             "wie spaet ist es?",
+            "ich brauche eine Pause",  # Kauf-Verb ohne Standort-Kontext
+            "ich bin zuhause und brauche eine Route nach Berlin",  # Route gewinnt
         ],
     )
     def test_negative(self, text: str) -> None:
         assert is_nearby_candidate(text) is False
+
+    @pytest.mark.parametrize(
+        "text",
+        [
+            # Codex-Review PR #302: Item-Kauf ohne Venue-Nomen, aber mit
+            # Standort-/Modus-Kontext (Kern-Flow §0.1/§9 "Tomatensauce").
+            "ich bin in Connewitz und brauche eine Tomatensauce, zu Fuss",
+            "ich bin Hauptstr 3 und brauche eine Tomatensauce — wo zu Fuß?",
+        ],
+    )
+    def test_positive_item_buy_with_context(self, text: str) -> None:
+        assert is_nearby_candidate(text) is True
 
 
 # ---------------------------------------------------------------------------
@@ -218,6 +237,24 @@ class TestHeuristicFallback:
         assert query is not None
         assert query.travel_mode == "walking"
 
+    def test_heuristic_handles_wo_kann_ich_kaufen(self) -> None:
+        # Codex-Review PR #302: der Vorfilter akzeptiert "wo kann ich ...
+        # kaufen", also muss der Ollama-Fallback es auch parsen (nicht None).
+        parser = NearbyIntentParser(None)
+        draft = parser.parse("wo kann ich Tomatensauce kaufen?")
+        assert draft is not None
+        assert "tomatensauce" in draft.subject.lower()
+
+    def test_heuristic_mode_eszett(self) -> None:
+        parser = NearbyIntentParser(None)
+        draft = parser.parse(
+            "ich brauche eine Apotheke in der Naehe von Connewitz, zu Fuß"
+        )
+        assert draft is not None
+        query = draft.to_query()
+        assert query is not None
+        assert query.travel_mode == "walking"
+
     def test_heuristic_without_subject_returns_none(self) -> None:
         parser = NearbyIntentParser(None)
         assert parser.parse("hallo wie geht es dir?") is None
@@ -225,3 +262,45 @@ class TestHeuristicFallback:
     def test_heuristic_empty_text_returns_none(self) -> None:
         parser = NearbyIntentParser(None)
         assert parser.parse("   ") is None
+
+    def test_heuristic_location_from_ich_bin(self) -> None:
+        parser = NearbyIntentParser(None)
+        draft = parser.parse("ich bin Hauptstr 3 Leipzig und brauche eine Apotheke")
+        assert draft is not None
+        assert draft.location_text is not None
+        assert "Hauptstr" in draft.location_text
+
+    @pytest.mark.parametrize(
+        ("text", "expected_mode"),
+        [
+            ("ich brauche eine Apotheke hier mit dem Fahrrad", "bicycling"),
+            ("ich brauche eine Apotheke hier mit dem Auto", "driving"),
+            ("ich brauche eine Apotheke hier, oepnv", "transit"),
+        ],
+    )
+    def test_heuristic_mode_variants(self, text: str, expected_mode: str) -> None:
+        parser = NearbyIntentParser(None)
+        draft = parser.parse(text)
+        assert draft is not None
+        assert normalize_travel_mode(draft.travel_mode) == expected_mode
+
+
+class TestRawToDraftEdges:
+    def test_subject_empty_uses_search_query(self) -> None:
+        client = _FakeAnthropic(
+            tool_result={"subject": "", "search_query": "Brot"},
+        )
+        draft = NearbyIntentParser(client).parse("wo gibt es Brot?")
+        assert draft is not None
+        assert draft.subject == "Brot"
+
+    def test_blank_location_text_becomes_none(self) -> None:
+        # Whitespace-Ort -> None (nicht leerer String) -> Rueckfrage.
+        client = _FakeAnthropic(
+            tool_result={
+                "subject": "Bar", "search_query": "Bar", "location_text": "   ",
+            },
+        )
+        draft = NearbyIntentParser(client).parse("nenne mir eine Bar")
+        assert draft is not None
+        assert draft.location_text is None

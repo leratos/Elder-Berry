@@ -71,6 +71,34 @@ SUPPORTED_INCLUDED_TYPES: frozenset[str] = frozenset(
 )
 
 
+# Bekannte Unter-/Geschwistertypen, die ein generischer Ausschluss MIT-meinen
+# sollte. Places liefert z.B. Shisha-Lokale teils als spezifisches
+# ``hookah_bar`` OHNE den generischen ``bar``-Typ -- ein exakter String-
+# Vergleich auf ``exclude_types=("bar",)`` wuerde sie sonst durchlassen
+# (Codex-Review PR #302). Bewusst kuratiert, erweiterbar.
+_EXCLUDE_EXPANSIONS: dict[str, tuple[str, ...]] = {
+    "bar": ("hookah_bar", "wine_bar", "pub", "bar_and_grill"),
+    "restaurant": ("fine_dining_restaurant", "fast_food_restaurant"),
+}
+
+
+def expand_exclude_types(types: tuple[str, ...]) -> frozenset[str]:
+    """Erweitert eine Ausschlussliste um bekannte Unter-/Geschwistertypen.
+
+    Lowercase-normalisiert. Garantiert clientseitig (kein LLM-Verlass), dass
+    z.B. ``bar`` auch ``hookah_bar`` faengt -- der Kern-Wert des Kategorie-
+    Filters (Konzept §4.1).
+    """
+    out: set[str] = set()
+    for raw in types:
+        base = raw.strip().lower()
+        if not base:
+            continue
+        out.add(base)
+        out.update(_EXCLUDE_EXPANSIONS.get(base, ()))
+    return frozenset(out)
+
+
 def normalize_included_type(value: str | None) -> str | None:
     """``includedType``-Vorschlag gegen die Table-A-Whitelist pruefen.
 
@@ -147,7 +175,16 @@ def normalize_travel_mode(value: str | None) -> str | None:
     """
     if not value:
         return None
-    key = value.strip().lower().replace(" ", "_").replace("-", "_")
+    # ``ß`` -> ``ss`` normalisieren, damit die normale deutsche Schreibung
+    # "zu Fuß" denselben Key wie "zu fuss" ergibt (sonst bliebe to_query()
+    # in der Rueckfrage haengen).
+    key = (
+        value.strip()
+        .lower()
+        .replace("ß", "ss")
+        .replace(" ", "_")
+        .replace("-", "_")
+    )
     mapped = _TRAVEL_MODE_SYNONYMS.get(key)
     if mapped is not None and mapped in VALID_TRAVEL_MODES:
         return mapped

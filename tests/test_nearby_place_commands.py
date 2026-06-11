@@ -348,3 +348,63 @@ class TestFactoryAndPlugin:
         h = _handler(_FakeParser(draft=_draft()), _FakeSearch(candidates=[_cand()]))
         res = h.execute("nearby_place", _NEARBY_TEXT)
         assert isinstance(res, CommandResult)
+
+
+class TestCoverageBranches:
+    def test_handler_interface_props(self) -> None:
+        h = _handler(_FakeParser(), _FakeSearch())
+        assert h.patterns
+        assert h.keywords["nearby_place"]
+        assert h.command_descriptions
+
+    def test_continue_without_draft_falls_through(self) -> None:
+        # Keine offene Anfrage + Antwort ist kein Nearby-Intent -> Fallthrough.
+        h = _handler(_FakeParser(), _FakeSearch(), _FakeStore())
+        res = h.continue_with_answer("zu Fuss")
+        assert res.fallthrough is True
+
+    def test_location_unrelated_answer_falls_through(self) -> None:
+        store = _FakeStore()
+        store.set(USER, _draft(location=None, mode="walking"))  # Ort fehlt
+        h = _handler(_FakeParser(), _FakeSearch(), store)
+        res = h.continue_with_answer("wie spaet ist es?")
+        assert res.fallthrough is True
+        assert store.get(USER) is not None
+
+    def test_partial_fill_reasks_remaining_field(self) -> None:
+        # Beide Felder fehlen: erst Ort fuellen -> Modus weiterhin offen -> Ask.
+        store = _FakeStore()
+        store.set(USER, _draft(location=None, mode=None))
+        h = _handler(_FakeParser(), _FakeSearch(), store)
+        res = h.continue_with_answer("Leipzig Hbf")
+        assert res.list_items is None
+        assert "unterwegs" in (res.text or "").lower()  # fragt jetzt Modus
+        assert store.get(USER) is not None
+
+    def test_continue_with_complete_draft_searches(self) -> None:
+        # Vollstaendiger Draft im Store + nicht-Nearby-Antwort -> _missing_field
+        # None -> direkt Suche (deckt den "nichts fehlt"-Pfad).
+        store = _FakeStore()
+        store.set(USER, _draft(location="Leipzig", mode="driving"))
+        search = _FakeSearch(candidates=[_cand()])
+        h = _handler(_FakeParser(), search, store)
+        res = h.continue_with_answer("ok")
+        assert res.list_type == "nearby_place_pick"
+        assert len(search.calls) == 1
+
+    def test_closed_place_shown_with_label(self) -> None:
+        # open_now=False im Draft -> Filter aus -> geschlossener Ort bleibt
+        # und bekommt das "geschlossen"-Label im Text.
+        closed = PlaceCandidate(
+            name="Zu", address="Adr", place_id="z", rating=None,
+            open_now=False, distance_m=500, types=("bar",),
+            primary_type="bar", attributions=(),
+        )
+        draft = NearbyQueryDraft(
+            subject="Bar", search_query="Bar", included_type=None,
+            exclude_types=(), location_text="Leipzig", travel_mode="driving",
+            open_now=False,
+        )
+        h = _handler(_FakeParser(draft=draft), _FakeSearch(candidates=[closed]))
+        res = h.execute("nearby_place", _NEARBY_TEXT)
+        assert "geschlossen" in (res.text or "")

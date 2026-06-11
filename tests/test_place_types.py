@@ -13,6 +13,7 @@ from elder_berry.tools.maps_link_builder import VALID_TRAVEL_MODES
 from elder_berry.tools.nearby_place_search import RADIUS_BY_MODE
 from elder_berry.tools.place_types import (
     SUPPORTED_INCLUDED_TYPES,
+    expand_exclude_types,
     normalize_included_type,
     normalize_travel_mode,
 )
@@ -69,6 +70,12 @@ class TestNormalizeTravelMode:
     def test_case_insensitive(self) -> None:
         assert normalize_travel_mode("Auto") == "driving"
 
+    def test_eszett_spelling_maps_to_walking(self) -> None:
+        # Codex-Review PR #302: normale deutsche Schreibung "zu Fuß".
+        assert normalize_travel_mode("zu Fuß") == "walking"
+        assert normalize_travel_mode("zu FUSS") == "walking"
+        assert normalize_travel_mode("Fuß") == "walking"
+
     def test_unknown_returns_none(self) -> None:
         # Unbekanntes -> None (Rueckfrage), KEIN KeyError im Radius-Lookup.
         assert normalize_travel_mode("teleport") is None
@@ -96,3 +103,23 @@ class TestSingleSourceOfTruth:
 
     def test_included_types_nonempty(self) -> None:
         assert len(SUPPORTED_INCLUDED_TYPES) > 0
+
+
+class TestExpandExcludeTypes:
+    def test_bar_expands_to_hookah_and_siblings(self) -> None:
+        # Codex-Review PR #302: bar muss hookah_bar mitfangen.
+        expanded = expand_exclude_types(("bar",))
+        assert "bar" in expanded
+        assert "hookah_bar" in expanded
+
+    def test_unknown_type_passes_through(self) -> None:
+        assert expand_exclude_types(("supermarket",)) == frozenset({"supermarket"})
+
+    def test_skips_blank_entries(self) -> None:
+        assert expand_exclude_types(("", "  ", "bar")) == expand_exclude_types(("bar",))
+
+    def test_empty_is_empty(self) -> None:
+        assert expand_exclude_types(()) == frozenset()
+
+    def test_lowercases_and_dedups(self) -> None:
+        assert expand_exclude_types(("BAR", "bar")) == expand_exclude_types(("bar",))

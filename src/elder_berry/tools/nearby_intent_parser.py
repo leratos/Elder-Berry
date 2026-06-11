@@ -70,6 +70,21 @@ _NEARBY_INTENT = re.compile(
     re.IGNORECASE,
 )
 
+# Item-Kauf-Wunsch OHNE Venue-Nomen ("brauche eine Tomatensauce"). Allein
+# zu schwach (auch "brauche eine Pause"), daher nur in Kombination mit einem
+# Standort-/Reisemodus-Kontext (siehe _CONTEXT_SIGNAL) ein Nearby-Signal --
+# deckt den Kern-Kauf-Flow aus Konzept §0.1/§9 ab (Codex-Review PR #302).
+_ITEM_BUY = re.compile(
+    r"\b(?:brauche?|such\w*)\s+(?:noch\s+)?(?:einen|eine|ein|nen|ne)\b",
+    re.IGNORECASE,
+)
+_CONTEXT_SIGNAL = re.compile(
+    r"\bich\s+bin\b|\bhier\b|\bin\s+(?:der|meiner)\s+n(?:ä|ae)he\b|"
+    r"\bzu\s+fu(?:ß|ss)\b|\bmit\s+dem\s+(?:auto|rad|fahrrad|bus|wagen)\b|"
+    r"\b(?:ö|oe)pnv\b",
+    re.IGNORECASE,
+)
+
 # Harte Routen-Signale: wenn der Text klar eine Navigation IST (und kein
 # Nearby-Nomen traegt), bleibt der Vorfilter aus -- der Route-Handler
 # besitzt den Fall. "mit <Name>" ist KEIN Adress-/Ortssignal (Phase 92).
@@ -89,10 +104,15 @@ def is_nearby_candidate(text: str) -> bool:
     drin, gewinnt Nearby (der Handler-Priority-Konflikt wird in E4/B4
     final gegen die Registry verifiziert).
     """
-    if not _NEARBY_INTENT.search(text):
+    hit = bool(_NEARBY_INTENT.search(text)) or (
+        # Item-Kauf ohne Venue-Nomen, aber mit Standort-/Modus-Kontext.
+        bool(_ITEM_BUY.search(text)) and bool(_CONTEXT_SIGNAL.search(text))
+    )
+    if not hit:
         return False
     # Nearby-Signal vorhanden. Nur unterdruecken, wenn es ein klarer
-    # Routen-Satz OHNE Ortsnomen ist (z.B. "navigier mich zu Lisa").
+    # Routen-Satz OHNE Ortsnomen ist (z.B. "navigier mich zu Lisa",
+    # "... brauche eine Route nach Berlin").
     if _ROUTE_ONLY.search(text) and not _HAS_PLACE_NOUN.search(text):
         return False
     return True
@@ -300,14 +320,23 @@ class NearbyIntentParser:
         )
 
     # Beendet eine grobe Subjekt-/Ortsextraktion am naechsten Trenner
-    # (Komma, Satzzeichen, typisches Folgewort oder Textende).
-    _STOP = r"(?=[,.?!]|\s+(?:hier|wo|in|zu|mit|und)\b|$)"
+    # (Komma, Satzzeichen, typisches Folge-/Kaufverb oder Textende).
+    _STOP = (
+        r"(?=[,.?!]|\s+(?:hier|wo|in|zu|mit|und|kaufen|kaufe|finden|"
+        r"besorgen|her)\b|$)"
+    )
 
     @staticmethod
     def _heuristic_subject(text: str) -> str:
         """Grobes Subjekt nach typischen Triggern."""
         stop = NearbyIntentParser._STOP
         patterns = [
+            # "wo kann ich <X> kaufen / wo gibt es <X>" (Codex-Review PR #302:
+            # der Fallback muss die vom Vorfilter akzeptierten Kauf-Fragen
+            # auch ohne Anthropic verarbeiten).
+            r"\bwo\s+(?:kann\s+ich|kaufe?\s+ich|gibt\s+es|bekomme?\s+ich|"
+            r"finde\s+ich|krieg\w*\s+ich|besorge?\s+ich)\s+(?:noch\s+)?"
+            r"(?:einen|eine|ein|den|die|das)?\s*(?P<s>[\wäöüß\- ]+?)" + stop,
             r"\bkaufe?\s+ich\s+(?:den|die|das|einen|eine|ein)?\s*(?P<s>[\wäöüß\- ]+?)" + stop,
             r"\bbrauche?\s+(?:noch\s+)?(?:einen|eine|ein|nen|ne)?\s*(?P<s>[\wäöüß\- ]+?)" + stop,
             r"\b(?:nenn\w*|empfiehl\w*|finde\s+mir|such\w*\s+mir)\s+(?:mir\s+)?"

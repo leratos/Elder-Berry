@@ -154,6 +154,20 @@ class TestTtl:
         assert store.get("user-a") is None
 
 
+class TestClose:
+    def test_close_no_error(self, store: NearbyDraftStore) -> None:
+        store.set("u", _draft())
+        store.close()
+
+    def test_close_swallows_sqlite_error(self, store: NearbyDraftStore) -> None:
+        import sqlite3
+        from unittest.mock import MagicMock
+
+        store._conn = MagicMock()
+        store._conn.close.side_effect = sqlite3.Error("boom")
+        store.close()  # darf NICHT propagieren
+
+
 class TestCorruptRow:
     def test_corrupt_json_is_discarded(self, store: NearbyDraftStore) -> None:
         store.set("user-a", _draft())

@@ -79,6 +79,10 @@ class TestConstructor:
         with pytest.raises(ValueError, match="api_key"):
             GoogleGeocoder(api_key="")
 
+    def test_close_owned_client_no_error(self) -> None:
+        # Eigener (nicht injizierter) Client -> close() schliesst ihn ohne Fehler.
+        GoogleGeocoder(api_key=API_KEY).close()
+
     def test_close_only_closes_owned_client(self) -> None:
         injected = MagicMock(spec=httpx.Client)
         geocoder = GoogleGeocoder(api_key=API_KEY, client=injected)

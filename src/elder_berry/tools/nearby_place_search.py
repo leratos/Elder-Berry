@@ -29,6 +29,7 @@ import httpx
 
 from elder_berry.tools.google_geocoder import GoogleGeocoder, LatLng
 from elder_berry.tools.place_types import (
+    expand_exclude_types,
     normalize_included_type,
     normalize_travel_mode,
 )
@@ -209,6 +210,13 @@ class NearbyPlaceSearch:
         results = self._search_filtered(query, center, radius)
 
         # 0-Treffer: einmal weiten (Faktor 2, geclampt auf 50 km) + Retry.
+        # BEWUSSTE GRENZE (Codex-Review PR #302, Konzept §8/§11.6): wenn die
+        # ERSTE Seite vollstaendig wegfiltert (typloser Dichtefall, z.B.
+        # "Shisha-Zubehoer" mit lauter bar-Treffern), paginieren wir NICHT
+        # ueber nextPageToken (jede Folgeseite = eigener billbarer Call,
+        # YAGNI/Kosten). Stattdessen pageSize=20-Puffer + Weitung; wenn das im
+        # Smoketest nicht reicht -> Eskalation auf searchNearby+excludedTypes
+        # (Plan B), das serverseitig vorfiltert.
         if not results:
             widened = min(radius * 2, _MAX_BIAS_RADIUS_M)
             if widened > radius:
@@ -237,7 +245,10 @@ class NearbyPlaceSearch:
         """Ein searchText-Call + clientseitige PFLICHT-Filter (Bias ist weich)."""
         raw_places = self._call_search_text(query, center, radius)
         kept: list[PlaceCandidate] = []
-        exclude = {t.lower() for t in query.exclude_types}
+        # Ausschluss um bekannte Unter-/Geschwistertypen erweitern (z.B.
+        # bar -> hookah_bar), damit der Kategorie-Filter nicht an exakten
+        # Type-Strings vorbeilaeuft (Codex-Review PR #302).
+        exclude = set(expand_exclude_types(query.exclude_types))
         for place in raw_places:
             candidate = self._to_candidate(place, center)
             if candidate is None:
