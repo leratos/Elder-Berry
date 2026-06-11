@@ -2140,3 +2140,112 @@ class TestDispatchRoutePick:
             assert "Fehler" in joined and "RuntimeError" in joined
 
         run_async(_test())
+
+
+# ---------------------------------------------------------------------------
+# Phase 97: nearby_place_pick -> Maps-Link + Rueckfrage-Early-Intercept
+# ---------------------------------------------------------------------------
+
+
+class TestNearbyPickAndIntercept:
+    """``_dispatch_nearby_pick`` baut den Place-Link; der Early-Intercept
+    reicht Folge-Antworten an den Nearby-Handler durch."""
+
+    @staticmethod
+    def _pick_result(list_type: str, index: int) -> MagicMock:
+        result = MagicMock()
+        result.response = ""
+        result.action_executed = "list_pick"
+        result.action_success = True
+        result.audio_path = None
+        result.plugin_candidate = None
+        result.action_params = {"list_type": list_type, "index": index}
+        return result
+
+    def test_nearby_pick_builds_maps_link(
+        self, handler_with_lists, channel, assistant, remote_commands,
+        conversation_lists,
+    ):
+        async def _test():
+            sender = "@lera:matrix.org"
+            conversation_lists.register(
+                user_id=sender,
+                list_type="nearby_place_pick",
+                items=[
+                    {"name": "Bar A", "place_id": "ChIJ_a", "address": "Adr A"},
+                    {"name": "Bar B", "place_id": "ChIJ_b", "address": "Adr B"},
+                ],
+            )
+            assistant.process.return_value = self._pick_result(
+                "nearby_place_pick", 2
+            )
+            # Intercept aus: kein offener Draft-Handler.
+            remote_commands.get_handler.return_value = None
+
+            msg = _make_msg("den zweiten", sender=sender)
+            await handler_with_lists.handle_assistant_message(msg)
+
+            joined = "\n".join(c[0][1] for c in channel.send_text.call_args_list)
+            assert "Bar B" in joined
+            assert "query_place_id=ChIJ_b" in joined
+
+        run_async(_test())
+
+    def test_intercept_continues_pending_draft(
+        self, handler_with_lists, channel, assistant, remote_commands,
+    ):
+        async def _test():
+            from elder_berry.comms.commands.base import CommandResult
+
+            sender = "@lera:matrix.org"
+            nearby = MagicMock()
+            nearby.has_pending_draft.return_value = True
+            nearby.continue_with_answer.return_value = CommandResult(
+                command="nearby_place",
+                success=True,
+                text="Ich suche Rockerbar ...\n  1. Bar X",
+                list_items=[{"name": "Bar X", "place_id": "p", "address": "a"}],
+                list_type="nearby_place_pick",
+            )
+            remote_commands.get_handler.return_value = nearby
+
+            msg = _make_msg("zu Fuss", sender=sender)
+            await handler_with_lists.handle_assistant_message(msg)
+
+            nearby.continue_with_answer.assert_called_once_with("zu Fuss")
+            assistant.process.assert_not_called()  # LLM uebersprungen
+            joined = "\n".join(c[0][1] for c in channel.send_text.call_args_list)
+            assert "Bar X" in joined
+
+        run_async(_test())
+
+    def test_intercept_fallthrough_runs_llm(
+        self, handler_with_lists, assistant, remote_commands,
+    ):
+        async def _test():
+            from elder_berry.comms.commands.base import CommandResult
+
+            sender = "@lera:matrix.org"
+            nearby = MagicMock()
+            nearby.has_pending_draft.return_value = True
+            nearby.continue_with_answer.return_value = CommandResult(
+                command="nearby_place", success=False, fallthrough=True,
+            )
+            remote_commands.get_handler.return_value = nearby
+
+            chat = MagicMock()
+            chat.response = "Es ist 12 Uhr."
+            chat.action_executed = "chat"
+            chat.action_success = False
+            chat.audio_path = None
+            chat.plugin_candidate = None
+            chat.action_params = {}
+            assistant.process.return_value = chat
+
+            msg = _make_msg("wie spaet ist es?", sender=sender)
+            await handler_with_lists.handle_assistant_message(msg)
+
+            # Antwort passte nicht -> normaler LLM-Flow lief.
+            assistant.process.assert_called_once()
+
+        run_async(_test())

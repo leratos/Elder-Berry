@@ -171,6 +171,13 @@ class TestSaleriaEnginePrompt:
         assert '"action"' in prompt
         assert '"response"' in prompt
 
+    def test_prompt_teaches_nearby_place_pick(self):
+        # Phase 97 (R2-C6): ohne diesen Listentyp im Prompt wuerde "Treffer 2"
+        # nach einer Orts-Liste falsch geroutet.
+        engine = SaleriaEngine()
+        prompt = engine.build_system_prompt()
+        assert "nearby_place_pick" in prompt
+
     def test_remote_command_prompt_contains_announce_rule(self):
         # Phase 90-B: response muss ANKUENDIGUNG sein, kein Vollzugs-Statement.
         engine = SaleriaEngine()

@@ -57,6 +57,7 @@ EXPECTED_PLUGIN_NAMES = {
     "todo",
     "route",
     "multi_stop_route",
+    "nearby_place",
     "plugins",
     "advanced",
 }
