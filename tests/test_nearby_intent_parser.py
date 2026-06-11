@@ -291,6 +291,34 @@ class TestHeuristicFallback:
         assert query is not None
         assert query.travel_mode == "walking"
 
+    @pytest.mark.parametrize(
+        ("text", "expected_subject"),
+        [
+            # Codex PR #302: Venue-Fragen mit Verb am Satzende / "gibt es".
+            ("kannst du mir eine Bar in der Naehe nennen?", "Bar"),
+            ("gibt es eine Apotheke in der Naehe?", "Apotheke"),
+        ],
+    )
+    def test_heuristic_venue_questions(self, text: str, expected_subject: str) -> None:
+        parser = NearbyIntentParser(None)
+        draft = parser.parse(text)
+        assert draft is not None
+        assert expected_subject.lower() in draft.subject.lower()
+
+    def test_heuristic_location_stops_before_mode(self) -> None:
+        # Codex PR #302: "... von Leipzig Hbf zu Fuß kaufen" -> Ort NICHT
+        # "Leipzig Hbf zu Fuß kaufen".
+        parser = NearbyIntentParser(None)
+        draft = parser.parse(
+            "wo kann ich Tomatensauce in der Naehe von Leipzig Hbf zu Fuss kaufen?"
+        )
+        assert draft is not None
+        assert draft.location_text == "Leipzig Hbf"
+        query = draft.to_query()
+        assert query is not None
+        assert query.travel_mode == "walking"
+        assert "tomatensauce" in query.subject.lower()
+
     def test_heuristic_without_subject_returns_none(self) -> None:
         parser = NearbyIntentParser(None)
         assert parser.parse("hallo wie geht es dir?") is None

@@ -64,6 +64,7 @@ def _place(
     types: tuple[str, ...] = (),
     primary: str | None = None,
     attributions: list[Any] | None = None,
+    business_status: str | None = None,
 ) -> dict[str, Any]:
     place: dict[str, Any] = {
         "id": place_id,
@@ -80,6 +81,8 @@ def _place(
         place["currentOpeningHours"] = {"openNow": open_now}
     if attributions is not None:
         place["attributions"] = attributions
+    if business_status is not None:
+        place["businessStatus"] = business_status
     return place
 
 
@@ -207,6 +210,7 @@ class TestRequestBody:
             "places.currentOpeningHours",
             "places.rating",
             "places.attributions",
+            "places.businessStatus",
         ):
             assert field in mask
 
@@ -334,6 +338,33 @@ class TestClientFilters:
         assert "Auf" in names
         assert "Unklar" in names         # unbekannt BLEIBT (Codex #1)
 
+    def test_permanently_closed_always_dropped(self) -> None:
+        # Codex PR #302: CLOSED_PERMANENTLY ist tot -- auch bei open_now=False.
+        client = _make_client(
+            (200, _body(
+                _place("Tot", *_NEAR, place_id="d", business_status="CLOSED_PERMANENTLY"),
+                _place("Lebt", *_NEAR, place_id="l", business_status="OPERATIONAL"),
+            )),
+            (200, _body(
+                _place("Tot", *_NEAR, place_id="d", business_status="CLOSED_PERMANENTLY"),
+                _place("Lebt", *_NEAR, place_id="l", business_status="OPERATIONAL"),
+            )),
+        )
+        search = NearbyPlaceSearch(API_KEY, _FakeGeocoder(), client=client)
+        results = search.search(_query(open_now=False))
+        assert [c.name for c in results] == ["Lebt"]
+
+    def test_temporarily_closed_dropped_only_when_open_now(self) -> None:
+        place = _place("Pause", *_NEAR, business_status="CLOSED_TEMPORARILY")
+        # open_now=True -> raus
+        client1 = _make_client((200, _body(place)), (200, _body(place)))
+        s1 = NearbyPlaceSearch(API_KEY, _FakeGeocoder(), client=client1)
+        assert s1.search(_query(open_now=True)) == []
+        # open_now=False -> bleibt (koennte wieder aufmachen)
+        client2 = _make_client((200, _body(place)))
+        s2 = NearbyPlaceSearch(API_KEY, _FakeGeocoder(), client=client2)
+        assert [c.name for c in s2.search(_query(open_now=False))] == ["Pause"]
+
     def test_open_now_false_disables_filter(self) -> None:
         client = _make_client(
             (200, _body(_place("Zu", *_NEAR, open_now=False))),
@@ -445,17 +476,13 @@ class TestGeocoderPaths:
 
 
 class TestApiErrors:
-    @pytest.mark.parametrize("status", [401, 403, 429, 400])
-    def test_api_error_status_raises(self, status: int) -> None:
+    @pytest.mark.parametrize("status", [401, 403, 429, 400, 500, 502, 503])
+    def test_api_error_status_raises_nearby_error(self, status: int) -> None:
+        # Codex PR #302: auch 500/502/503 als NearbyPlaceError (nicht roher
+        # httpx-Fehler) -- der Handler faengt nur NearbyPlaceError.
         client = _make_client((status, {}))
         search = NearbyPlaceSearch(API_KEY, _FakeGeocoder(), client=client)
         with pytest.raises(NearbyPlaceError):
-            search.search(_query())
-
-    def test_http_500_propagates(self) -> None:
-        client = _make_client((500, {}))
-        search = NearbyPlaceSearch(API_KEY, _FakeGeocoder(), client=client)
-        with pytest.raises(httpx.HTTPStatusError):
             search.search(_query())
 
 

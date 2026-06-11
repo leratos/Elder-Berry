@@ -263,13 +263,17 @@ class NearbyPlaceCommandHandler(CommandHandler):
             )
 
         if not candidates:
+            # Kein interaktives Retry versprechen -- _run_search haelt keinen
+            # State, und der Folge-Intercept kennt nur Missing-Field-Drafts
+            # (Codex PR #302). Stattdessen konkret zum Neu-Formulieren leiten.
             return CommandResult(
                 command="nearby_place",
                 success=True,
                 text=(
                     f"Ich hab nichts fuer {subject} in der Naehe von "
-                    f"{query.location_text} gefunden. Soll ich weiter weg "
-                    f"suchen oder auch geschlossene Orte zeigen?"
+                    f"{query.location_text} gefunden. Frag nochmal mit einem "
+                    f"anderen Suchbegriff oder groesserem Radius (z.B. mit dem "
+                    f"Auto statt zu Fuss)."
                 ),
             )
         return self._present_candidates(query, subject, candidates)

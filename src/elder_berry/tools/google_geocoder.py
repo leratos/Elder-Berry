@@ -109,7 +109,13 @@ class GoogleGeocoder:
             raise GeocoderConfigError(
                 f"Geocoding API: HTTP {resp.status_code}",
             )
-        resp.raise_for_status()
+        if resp.status_code >= 400:
+            # Auch 400/500/502/503 als Dienstfehler durchreichen, NICHT als
+            # rohen httpx.HTTPStatusError (der Handler kennt nur
+            # GeocoderConfigError -> sonst generischer "Command-Fehler",
+            # Codex-Review PR #302).
+            logger.error("Geocoding API HTTP %s (Dienstfehler)", resp.status_code)
+            raise GeocoderConfigError(f"Geocoding API: HTTP {resp.status_code}")
 
         data = resp.json()
         status = data.get("status", "UNKNOWN")

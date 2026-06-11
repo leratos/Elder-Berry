@@ -364,6 +364,11 @@ class NearbyIntentParser:
             r"\bbrauche?\s+(?:noch\s+)?(?:einen|eine|ein|nen|ne)?\s*(?P<s>[\wäöüß\- ]+?)" + stop,
             r"\b(?:nenn\w*|empfiehl\w*|finde\s+mir|such\w*\s+mir)\s+(?:mir\s+)?"
             r"(?:einen|eine|ein)?\s*(?P<s>[\wäöüß\- ]+?)" + stop,
+            # "Gibt es eine <X> ..." (ohne fuehrendes "wo") (Codex PR #302).
+            r"\bgibt\s+es\s+(?:noch\s+)?(?:einen|eine|ein)\s+(?P<s>[\wäöüß\- ]+?)" + stop,
+            # "Kannst/Kennst du mir eine <X> ... nennen" (Verb am Satzende).
+            r"\b(?:kannst|kennst)\s+du\s+(?:mir\s+)?(?:einen|eine|ein)\s+"
+            r"(?P<s>[\wäöüß\- ]+?)" + stop,
         ]
         for pattern in patterns:
             match = re.search(pattern, text, re.IGNORECASE)
@@ -377,7 +382,11 @@ class NearbyIntentParser:
     def _heuristic_location(text: str) -> str | None:
         """Standort nach 'in der Naehe von X' oder 'ich bin <X> und'."""
         near = re.search(
-            r"\bin\s+der\s+n(?:ä|ae)he\s+von\s+(?P<loc>[\wäöüß\-. ]+?)(?=[,.?!]|$)",
+            # Vor Reisemodus-/Aktionswoertern stoppen, sonst kapert der Ort
+            # "... Leipzig Hbf zu Fuß kaufen" (Codex PR #302).
+            r"\bin\s+der\s+n(?:ä|ae)he\s+von\s+(?P<loc>[\wäöüß\-. ]+?)"
+            r"(?=[,.?!]|\s+(?:zu\s+fu(?:ß|ss)|mit\s+dem|kaufen|kaufe|finden|"
+            r"besorgen|her|(?:ö|oe)pnv)\b|$)",
             text,
             re.IGNORECASE,
         )

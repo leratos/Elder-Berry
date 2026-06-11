@@ -192,10 +192,10 @@ class TestConfigErrors:
         with pytest.raises(GeocoderConfigError, match="429"):
             geocoder.geocode("Leipzig")
 
-    def test_http_500_propagates_as_httpx_error(self) -> None:
-        # Andere HTTP-Fehler bleiben rohe httpx-Fehler (raise_for_status),
-        # gleiche Linie wie GoogleMapsRoutePlanner.
+    def test_http_500_raises_config_error(self) -> None:
+        # Codex PR #302: 500/502/503 als Dienstfehler durchreichen, nicht als
+        # roher httpx-Fehler (Handler kennt nur GeocoderConfigError).
         client = _make_client(json_body={}, status_code=500)
         geocoder = GoogleGeocoder(api_key=API_KEY, client=client)
-        with pytest.raises(httpx.HTTPStatusError):
+        with pytest.raises(GeocoderConfigError, match="500"):
             geocoder.geocode("Leipzig")

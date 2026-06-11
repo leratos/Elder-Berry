@@ -61,8 +61,12 @@ _PAGE_SIZE = 20
 _FIELD_MASK = (
     "places.id,places.displayName,places.formattedAddress,places.location,"
     "places.types,places.primaryType,places.currentOpeningHours,"
-    "places.rating,places.attributions"
+    "places.rating,places.attributions,places.businessStatus"
 )
+
+# Places-businessStatus-Werte, die ein totes/geschlossenes Listing markieren.
+_CLOSED_PERMANENTLY = "CLOSED_PERMANENTLY"
+_CLOSED_TEMPORARILY = "CLOSED_TEMPORARILY"
 
 _EARTH_RADIUS_M = 6_371_000.0
 
@@ -168,6 +172,9 @@ class PlaceCandidate:
     primary_type: str | None
     attributions: tuple[str, ...]
     """Zurueckgegebene Places-Attributionen (R2-C4, Pflicht-Anzeige)."""
+    business_status: str | None = None
+    """``OPERATIONAL`` / ``CLOSED_TEMPORARILY`` / ``CLOSED_PERMANENTLY`` /
+    ``None`` (unbekannt). Tote Listings werden gefiltert (Codex PR #302)."""
 
 
 # ---------------------------------------------------------------------------
@@ -272,11 +279,28 @@ class NearbyPlaceSearch:
                 continue
             if self._is_excluded(candidate, exclude):
                 continue
+            if self._is_dead_listing(candidate, query.open_now):
+                continue
             if query.open_now and candidate.open_now is False:
                 # bekannt geschlossen raus; unbekannt (None) BLEIBT (Codex #1).
                 continue
             kept.append(candidate)
         return kept
+
+    @staticmethod
+    def _is_dead_listing(candidate: PlaceCandidate, open_now: bool) -> bool:
+        """Permanent/temporaer geschlossene Listings (Codex PR #302).
+
+        ``CLOSED_PERMANENTLY`` ist immer tot (raus). ``CLOSED_TEMPORARILY``
+        nur raus, wenn der Nutzer aktuell Geoeffnetes will (``open_now``) --
+        sonst koennte es wieder aufmachen. So rutschen tote Eintraege nicht
+        durch, obwohl ``currentOpeningHours`` fehlt (= open_now unbekannt).
+        """
+        if candidate.business_status == _CLOSED_PERMANENTLY:
+            return True
+        if open_now and candidate.business_status == _CLOSED_TEMPORARILY:
+            return True
+        return False
 
     def _call_search_text(
         self,
@@ -318,7 +342,11 @@ class NearbyPlaceSearch:
             )
         if resp.status_code == 400:
             raise NearbyPlaceError("Places API: ungueltige Anfrage (400)")
-        resp.raise_for_status()
+        if resp.status_code >= 400:
+            # 500/502/503 als NearbyPlaceError, NICHT als roher
+            # httpx.HTTPStatusError -- sonst generischer Bridge-Fehler bzw.
+            # vom Intercept geschluckt (Codex-Review PR #302).
+            raise NearbyPlaceError(f"Places API: HTTP {resp.status_code}")
         data = resp.json()
         places = data.get("places") or []
         return [p for p in places if isinstance(p, dict)]
@@ -351,6 +379,9 @@ class NearbyPlaceSearch:
         primary = place.get("primaryType")
         primary_type = str(primary) if primary else None
 
+        status = place.get("businessStatus")
+        business_status = str(status) if status else None
+
         return PlaceCandidate(
             name=name,
             address=str(place.get("formattedAddress", "")),
@@ -361,6 +392,7 @@ class NearbyPlaceSearch:
             types=types,
             primary_type=primary_type,
             attributions=self._attributions(place),
+            business_status=business_status,
         )
 
     @staticmethod
