@@ -73,6 +73,23 @@ class TestRoundTrip:
         assert loaded.travel_mode is None
         assert loaded.open_now is True
 
+    def test_fallback_query_roundtrip(self, store: NearbyDraftStore) -> None:
+        # Smoketest-Befund 2026-06-11: fallback_query muss den Folge-Turn
+        # ueberleben (Store-Serialisierung).
+        draft = NearbyQueryDraft(
+            subject="Rockerbar",
+            search_query="Rockerbar",
+            included_type="bar",
+            exclude_types=(),
+            location_text=None,
+            travel_mode=None,
+            fallback_query="Bar Kneipe",
+        )
+        store.set("user-a", draft)
+        loaded = store.get("user-a")
+        assert loaded is not None
+        assert loaded.fallback_query == "Bar Kneipe"
+
     def test_get_unknown_user_returns_none(self, store: NearbyDraftStore) -> None:
         assert store.get("niemand") is None
 

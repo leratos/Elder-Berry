@@ -239,6 +239,41 @@ class TestParseWithLLM:
         assert draft is not None
         assert draft.search_query == "Apotheke"
 
+    def test_fallback_query_carried_into_draft(self) -> None:
+        # Smoketest-Befund 2026-06-11 (Hannover-Fall): der LLM liefert die
+        # breitere Rueckfall-Query, der Code wendet sie in Stufe 2 an.
+        client = _FakeAnthropic(
+            tool_result={
+                "subject": "Rockerbar",
+                "search_query": "Rockerbar",
+                "fallback_query": "Bar Kneipe",
+                "location_text": "Leipzig",
+                "travel_mode": "transit",
+            },
+        )
+        draft = NearbyIntentParser(client).parse("eine Rockerbar in Leipzig")
+        assert draft is not None
+        assert draft.fallback_query == "Bar Kneipe"
+        query = draft.to_query()
+        assert query is not None
+        assert query.fallback_query == "Bar Kneipe"  # durchgereicht
+
+    def test_blank_fallback_query_becomes_none(self) -> None:
+        client = _FakeAnthropic(
+            tool_result={
+                "subject": "Bar", "search_query": "Bar", "fallback_query": "  ",
+            },
+        )
+        draft = NearbyIntentParser(client).parse("nenne mir eine Bar")
+        assert draft is not None
+        assert draft.fallback_query is None
+
+    def test_heuristic_has_no_fallback_query(self) -> None:
+        parser = NearbyIntentParser(None)
+        draft = parser.parse("ich brauche eine Apotheke")
+        assert draft is not None
+        assert draft.fallback_query is None
+
 
 # ---------------------------------------------------------------------------
 # Heuristik-Fallback (kein/unavailable Anthropic)
