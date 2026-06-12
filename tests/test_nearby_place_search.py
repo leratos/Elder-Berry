@@ -552,6 +552,43 @@ class TestGeocoderPaths:
         with pytest.raises(GeocoderConfigError):
             search.search(_query())
 
+    def test_known_center_skips_geocode(self) -> None:
+        # E5: Standort-Share liefert Koordinaten -> KEIN Geocode-Call,
+        # center geht direkt als locationBias-Zentrum raus.
+        client = _make_client((200, _body(_place("Bar", *_NEAR))))
+        geocoder = _FakeGeocoder(error=AssertionError("darf nicht aufgerufen werden"))
+        search = NearbyPlaceSearch(API_KEY, geocoder, client=client)
+        query = NearbyQuery(
+            subject="Rockerbar",
+            search_query="Rockerbar",
+            included_type=None,
+            exclude_types=(),
+            location_text="deinem Standort",
+            travel_mode="driving",
+            center=CENTER,
+        )
+        results = search.search(query)
+        assert geocoder.calls == []
+        assert [c.name for c in results] == ["Bar"]
+        sent_center = _sent_json(client)["locationBias"]["circle"]["center"]
+        assert sent_center == {"latitude": CENTER.lat, "longitude": CENTER.lng}
+
+    def test_known_center_geocoder_error_irrelevant(self) -> None:
+        # Selbst ein kaputter Geocoder stoert nicht, wenn center bekannt ist.
+        client = _make_client((200, _body(_place("Bar", *_NEAR))))
+        geocoder = _FakeGeocoder(error=GeocoderConfigError("denied"))
+        search = NearbyPlaceSearch(API_KEY, geocoder, client=client)
+        query = NearbyQuery(
+            subject="Bar",
+            search_query="Bar",
+            included_type=None,
+            exclude_types=(),
+            location_text="deinem Standort",
+            travel_mode="walking",
+            center=CENTER,
+        )
+        assert len(search.search(query)) == 1
+
 
 # ---------------------------------------------------------------------------
 # Places-API-Fehler
@@ -630,3 +667,31 @@ class TestDraftToQuery:
         ).to_query()
         assert q is not None
         assert q.exclude_types == ("bar", "restaurant")
+
+    def test_center_carried_into_query(self) -> None:
+        # E5: center uebersteht to_query() (Standort-Share als Suchzentrum).
+        draft = NearbyQueryDraft(
+            subject="Apotheke",
+            search_query="Apotheke",
+            included_type=None,
+            exclude_types=(),
+            location_text="deinem Standort",
+            travel_mode="walking",
+            center=CENTER,
+        )
+        q = draft.to_query()
+        assert q is not None
+        assert q.center == CENTER
+
+    def test_center_alone_without_mode_still_none(self) -> None:
+        # Standort geteilt, Modus fehlt noch -> weiterhin Rueckfrage.
+        draft = NearbyQueryDraft(
+            subject="Apotheke",
+            search_query="Apotheke",
+            included_type=None,
+            exclude_types=(),
+            location_text="deinem Standort",
+            travel_mode=None,
+            center=CENTER,
+        )
+        assert draft.to_query() is None

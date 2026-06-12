@@ -116,6 +116,11 @@ class NearbyQuery:
     textQuery 'Rockerbar' fand google-seitig nur einen 210-km-Treffer; die
     breite Query lieferte die echten nahen Bars). Vom LLM beurteilt, vom
     Code als Stufe-2-Suche angewandt (§4.1-Knopf)."""
+    center: LatLng | None = None
+    """Bekannte Koordinaten als Suchzentrum (Matrix-Standort-Share, E5).
+    Gesetzt entfaellt der Geocode-Call; ``location_text`` ist dann nur noch
+    das Anzeige-Label ("deinem Standort"). Echtes LatLng-Feld, KEIN
+    "lat,lng"-String-Trick -- die Geocoding-API nimmt das nicht als address."""
 
 
 @dataclass(frozen=True)
@@ -135,6 +140,10 @@ class NearbyQueryDraft:
     travel_mode: str | None
     open_now: bool = True
     fallback_query: str | None = None
+    center: LatLng | None = None
+    """Koordinaten aus einem Standort-Share (E5); ``location_text`` traegt
+    dann das Anzeige-Label. Muss den Rueckfrage-Roundtrip ueberleben
+    (Serialisierung im ``NearbyDraftStore``)."""
 
     def to_query(self) -> NearbyQuery | None:
         """Vollstaendige + valide ``NearbyQuery`` oder ``None`` (-> Rueckfrage).
@@ -160,6 +169,7 @@ class NearbyQueryDraft:
             travel_mode=mode,
             open_now=self.open_now,
             fallback_query=self.fallback_query,
+            center=self.center,
         )
 
 
@@ -224,13 +234,19 @@ class NearbyPlaceSearch:
             GeocoderConfigError: Geocoder-Auth/Quota (durchgereicht, R2-C3).
             NearbyPlaceError: Places-API-/HTTP-Fehler.
         """
-        # 1. Geocode. None (ZERO_RESULTS) -> LocationNotFoundError (KEIN
+        # 1. Zentrum bestimmen. Bekannte Koordinaten (Standort-Share, E5)
+        #    gewinnen -- der Geocode-Call entfaellt dann komplett. Sonst
+        #    Geocode; None (ZERO_RESULTS) -> LocationNotFoundError (KEIN
         #    leeres Ergebnis: ohne Zentrum hilft Weiten/Anzeigen nicht);
         #    GeocoderConfigError NICHT fangen -> Dienstfehler (R2-C3).
-        center = self._geocoder.geocode(query.location_text)
+        center = query.center
         if center is None:
-            logger.info("Nearby: Ort '%s' nicht geocodebar", query.location_text)
-            raise LocationNotFoundError(query.location_text)
+            center = self._geocoder.geocode(query.location_text)
+            if center is None:
+                logger.info(
+                    "Nearby: Ort '%s' nicht geocodebar", query.location_text
+                )
+                raise LocationNotFoundError(query.location_text)
 
         # 2. travel_mode ist durch to_query() Whitelist-validiert -> kein KeyError.
         radius = RADIUS_BY_MODE[query.travel_mode]
