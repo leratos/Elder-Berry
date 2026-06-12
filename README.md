@@ -41,11 +41,13 @@ Hologramm-Display in einem 3D-gedruckten Holunder-Baumstamm-Gehäuse.
 - **Notizen & Fakten**: Fakten lokal im `FactStore` (SQLite), Freitext-Notizen über Nextcloud Notes (inkl. Suche/Kategorien)
 - **Web-Suche**: Brave Search API + LLM-Aufbereitung der Ergebnisse
 - **Dokumente**: PDF/TXT zusammenfassen, Dokument-Ablage mit Auto-Klassifikation (Nextcloud)
-- **Routenplanung**: Google Maps Directions API, Kontakt-Adressen, Abfahrtszeit-Berechnung
+- **Routenplanung**: Google Maps Directions API, Kontakt-Adressen, Abfahrtszeit-Berechnung; Multi-Stop-Routen mit Disambiguierung und Along-Route-POIs
+- **Umkreissuche**: "Wo kaufe ich X hier?" – Places API (New), distanzsortiert + gefiltert, Pick-Liste mit Maps-Link; Standort per Freitext oder Matrix-Standort-Share (Element-Ortsfreigabe)
+- **Rezepte**: Nextcloud Cookbook lesen/suchen, neue Rezepte per LLM generieren und nach Bestätigung speichern
 - **Nextcloud**: Datei-Hub (Upload + Share-Links), CalDAV, CardDAV, Inhaltssuche
 
 ### Fernsteuerung (via Matrix / Element)
-- 50+ direkte Commands ohne LLM, aufgeteilt in 24 Plugin-Handler (Status, Screenshot, Medien, Clipboard, Dateien, ...)
+- 50+ direkte Commands ohne LLM, aufgeteilt in 27 Plugin-Handler (Status, Screenshot, Medien, Clipboard, Dateien, ...)
 - PC-Steuerung via Anthropic Vision (Computer Use)
 - Git, Docker, Wake-on-LAN, Self-Update (Tower + RPi5)
 - Sprachnachrichten: Whisper transkribiert, Saleria antwortet mit Text + Sprache
@@ -238,6 +240,8 @@ Gates: `test` (Ubuntu+Windows, inkl. Coverage), `lint` (ruff), `typecheck`
 | 93 | Nextcloud Cookbook-Integration (Rezepte, API-Matching, Kategorie-Suche) | ✅ Fertig |
 | 94 | LibreSign-Integration (PDF-Signierung via Nextcloud, manuell – bewusst keine Saleria-Anbindung) | ✅ Fertig (Install-only) |
 | 95 | Comms-Pattern-Stabilisierung (PatternSpec, Routing-Confidence, Handler-Gates) | ✅ Fertig |
+| 96 | RobotClient-Resilienz & RPi-Token-Provisionierung | ✅ Fertig |
+| 97 | Umkreissuche (Places API New, Pick → Maps-Link, Matrix-Standort-Share) | ✅ Fertig |
 
 Vollständige Roadmap mit Details: **[PROJECT_ROADMAP.md](docs/PROJECT_ROADMAP.md)**
 Phasenchronik mit Beschreibungen: **[CHANGELOG.md](docs/CHANGELOG.md)**
