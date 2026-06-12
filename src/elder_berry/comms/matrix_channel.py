@@ -31,10 +31,12 @@ from nio import (
     RoomMessageAudio,
     RoomMessageFile,
     RoomMessageText,
+    RoomMessageUnknown,
     RoomSendError,
     UploadError,
 )
 
+from elder_berry.comms.geo_uri import location_from_content
 from elder_berry.comms.message_channel import (
     IncomingMessage,
     MessageCallback,
@@ -128,6 +130,10 @@ class MatrixChannel(MessageChannel):
         self._client.add_event_callback(self._on_room_message, RoomMessageText)
         self._client.add_event_callback(self._on_room_audio, RoomMessageAudio)
         self._client.add_event_callback(self._on_room_file, RoomMessageFile)
+        # m.location hat in matrix-nio keine eigene Eventklasse -- die
+        # Ortssendefunktion (Element) landet als RoomMessageUnknown und wird
+        # im Callback per msgtype gefiltert (Phase 97 E5).
+        self._client.add_event_callback(self._on_room_unknown, RoomMessageUnknown)
 
         self._connected = True
 
@@ -606,6 +612,69 @@ class MatrixChannel(MessageChannel):
             except Exception as e:
                 logger.error(
                     "Callback-Fehler für Datei-Nachricht von %s: %s",
+                    msg.sender,
+                    e,
+                )
+
+    async def _on_room_unknown(self, room: Any, event: RoomMessageUnknown) -> None:
+        """nio-Callback fuer msgtypes ohne eigene nio-Eventklasse.
+
+        Verarbeitet NUR ``m.location`` (Ortssendefunktion, Phase 97 E5):
+        Geo-URI parsen und als IncomingMessage mit ``location`` an die
+        Callbacks reichen. Alle anderen unbekannten msgtypes werden wie
+        bisher still ignoriert.
+        """
+        if event.msgtype != "m.location":
+            return
+
+        # Eigene Nachrichten ignorieren
+        if event.sender == self._user_id:
+            return
+
+        # Duplikat-Schutz
+        if self._is_duplicate_event(event.event_id):
+            return
+
+        # Room-Whitelist prüfen
+        if self._allowed_rooms and room.room_id not in self._allowed_rooms:
+            logger.debug(
+                "Standort-Nachricht aus nicht erlaubtem Raum ignoriert: %s",
+                room.room_id,
+            )
+            return
+
+        location = location_from_content(event.content or {})
+        if location is None:
+            logger.warning(
+                "m.location ohne parsbare Geo-URI ignoriert (von %s)",
+                event.sender,
+            )
+            return
+
+        logger.debug(
+            "Standort empfangen von %s: %.5f,%.5f",
+            event.sender,
+            location.lat,
+            location.lng,
+        )
+
+        msg = IncomingMessage(
+            sender=event.sender,
+            room_id=room.room_id,
+            # body bewusst neutral (Element schickt "Location" o.ae.) --
+            # die Bridge/History formuliert nutzersichtbar selbst.
+            body="[Standort geteilt]",
+            timestamp=event.server_timestamp / 1000.0,
+            raw=event,
+            location=location,
+        )
+
+        for callback in self._callbacks:
+            try:
+                await callback(msg)
+            except Exception as e:
+                logger.error(
+                    "Callback-Fehler für Standort-Nachricht von %s: %s",
                     msg.sender,
                     e,
                 )

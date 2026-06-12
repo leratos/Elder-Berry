@@ -988,3 +988,227 @@ class TestOnRoomAudio:
             assert registered_callbacks[RoomMessageAudio] == channel._on_room_audio
 
         run_async(_test())
+
+
+# ---------------------------------------------------------------------------
+# _on_room_unknown – Eingehende Standort-Nachrichten (m.location, Phase 97 E5)
+# ---------------------------------------------------------------------------
+
+
+def make_location_event(
+    sender: str = "@user:test.com",
+    msgtype: str = "m.location",
+    geo_uri: str | None = "geo:51.3397,12.3731;u=35",
+    timestamp_ms: int = 1710000000000,
+) -> MagicMock:
+    """Erstellt ein Mock-RoomMessageUnknown-Event (m.location)."""
+    event = MagicMock()
+    event.sender = sender
+    event.msgtype = msgtype
+    event.body = "Location"
+    event.server_timestamp = timestamp_ms
+    content = {"msgtype": msgtype, "body": "Location"}
+    if geo_uri is not None:
+        content["geo_uri"] = geo_uri
+    event.content = content
+    return event
+
+
+class TestOnRoomUnknown:
+    def test_location_dispatched_with_coordinates(self):
+        """m.location mit Geo-URI -> IncomingMessage.location gefüllt."""
+
+        async def _test():
+            channel = make_channel(user_id="@bot:test.com")
+            received = []
+
+            async def cb(msg):
+                received.append(msg)
+
+            channel.on_message(cb)
+
+            room = MagicMock()
+            room.room_id = "!room:test.com"
+            event = make_location_event()
+
+            await channel._on_room_unknown(room, event)
+
+            assert len(received) == 1
+            msg = received[0]
+            assert isinstance(msg, IncomingMessage)
+            assert msg.location is not None
+            assert msg.location.lat == pytest.approx(51.3397)
+            assert msg.location.lng == pytest.approx(12.3731)
+            assert msg.sender == "@user:test.com"
+            assert msg.body == "[Standort geteilt]"
+            assert msg.audio_data is None
+            assert msg.file_data is None
+
+        run_async(_test())
+
+    def test_other_unknown_msgtype_ignored(self):
+        """Fremde unbekannte msgtypes werden weiterhin still ignoriert."""
+
+        async def _test():
+            channel = make_channel()
+            received = []
+            channel.on_message(lambda msg: received.append(msg))
+
+            room = MagicMock()
+            room.room_id = "!room:test.com"
+            event = make_location_event(msgtype="com.example.custom")
+
+            await channel._on_room_unknown(room, event)
+            assert len(received) == 0
+
+        run_async(_test())
+
+    def test_location_own_message_ignored(self):
+        """Eigene Standort-Nachrichten werden ignoriert."""
+
+        async def _test():
+            channel = make_channel(user_id="@bot:test.com")
+            received = []
+            channel.on_message(lambda msg: received.append(msg))
+
+            room = MagicMock()
+            room.room_id = "!room:test.com"
+            event = make_location_event(sender="@bot:test.com")
+
+            await channel._on_room_unknown(room, event)
+            assert len(received) == 0
+
+        run_async(_test())
+
+    def test_location_room_whitelist_blocked(self):
+        """Standorte aus nicht erlaubten Räumen werden ignoriert."""
+
+        async def _test():
+            channel = make_channel(allowed_rooms=["!allowed:test.com"])
+            received = []
+            channel.on_message(lambda msg: received.append(msg))
+
+            room = MagicMock()
+            room.room_id = "!other:test.com"
+            event = make_location_event()
+
+            await channel._on_room_unknown(room, event)
+            assert len(received) == 0
+
+        run_async(_test())
+
+    def test_location_without_geo_uri_ignored(self):
+        """m.location ohne parsbare Geo-URI -> kein Callback."""
+
+        async def _test():
+            channel = make_channel()
+            received = []
+            channel.on_message(lambda msg: received.append(msg))
+
+            room = MagicMock()
+            room.room_id = "!room:test.com"
+            event = make_location_event(geo_uri=None)
+
+            await channel._on_room_unknown(room, event)
+            assert len(received) == 0
+
+        run_async(_test())
+
+    def test_location_msc3488_fallback(self):
+        """Ohne Legacy-geo_uri greift der MSC3488-uri-Fallback."""
+
+        async def _test():
+            channel = make_channel()
+            received = []
+
+            async def cb(msg):
+                received.append(msg)
+
+            channel.on_message(cb)
+
+            room = MagicMock()
+            room.room_id = "!room:test.com"
+            event = make_location_event(geo_uri=None)
+            event.content["org.matrix.msc3488.location"] = {
+                "uri": "geo:48.1,11.5",
+            }
+
+            await channel._on_room_unknown(room, event)
+
+            assert len(received) == 1
+            assert received[0].location.lat == pytest.approx(48.1)
+            assert received[0].location.lng == pytest.approx(11.5)
+
+        run_async(_test())
+
+    def test_location_duplicate_event_ignored(self):
+        """Dasselbe Event zweimal -> nur ein Callback (Dedup)."""
+
+        async def _test():
+            channel = make_channel()
+            received = []
+
+            async def cb(msg):
+                received.append(msg)
+
+            channel.on_message(cb)
+
+            room = MagicMock()
+            room.room_id = "!room:test.com"
+            event = make_location_event()
+            event.event_id = "$loc-event-1"
+
+            await channel._on_room_unknown(room, event)
+            await channel._on_room_unknown(room, event)
+            assert len(received) == 1
+
+        run_async(_test())
+
+    def test_location_callback_error_no_crash(self):
+        """Crashender Callback wird gefangen (kein Abbruch)."""
+
+        async def _test():
+            channel = make_channel()
+
+            async def bad_cb(msg):
+                raise RuntimeError("kaputt")
+
+            channel.on_message(bad_cb)
+
+            room = MagicMock()
+            room.room_id = "!room:test.com"
+            event = make_location_event()
+
+            await channel._on_room_unknown(room, event)  # darf nicht raisen
+
+        run_async(_test())
+
+    def test_unknown_registered_in_connect(self):
+        """_on_room_unknown wird in connect() als Callback registriert."""
+
+        async def _test():
+            from nio import RoomMessageUnknown
+
+            channel = make_channel()
+            login_resp = make_login_response()
+
+            channel._client.login = AsyncMock(return_value=login_resp)
+            channel._client.sync = AsyncMock(return_value=MagicMock())
+            channel._client.invited_rooms = {}
+
+            registered_callbacks = {}
+
+            def fake_add_callback(cb, event_type):
+                registered_callbacks[event_type] = cb
+
+            channel._client.add_event_callback = fake_add_callback
+
+            await channel.connect()
+
+            assert RoomMessageUnknown in registered_callbacks
+            assert (
+                registered_callbacks[RoomMessageUnknown]
+                == channel._on_room_unknown
+            )
+
+        run_async(_test())
