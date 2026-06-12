@@ -85,12 +85,29 @@ class TestLocationFromContent:
         }
         assert location_from_content(content) == GeoLocation(lat=51.34, lng=12.37)
 
-    def test_legacy_wins_over_msc3488(self) -> None:
+    def test_stable_m_location_key(self) -> None:
+        # Codex PR #305: stabiler Key nach MSC3488-Stabilisierung.
+        content = {
+            "msgtype": "m.location",
+            "m.location": {"uri": "geo:51.34,12.37"},
+        }
+        assert location_from_content(content) == GeoLocation(lat=51.34, lng=12.37)
+
+    def test_msc3488_wins_over_legacy(self) -> None:
+        # Codex PR #305: der extensible Block ist kanonisch, geo_uri ist
+        # nur das Abwaertskompat-Feld.
         content = {
             "geo_uri": "geo:1,2",
             "org.matrix.msc3488.location": {"uri": "geo:3,4"},
         }
-        assert location_from_content(content) == GeoLocation(lat=1.0, lng=2.0)
+        assert location_from_content(content) == GeoLocation(lat=3.0, lng=4.0)
+
+    def test_unstable_key_wins_over_stable(self) -> None:
+        content = {
+            "org.matrix.msc3488.location": {"uri": "geo:3,4"},
+            "m.location": {"uri": "geo:5,6"},
+        }
+        assert location_from_content(content) == GeoLocation(lat=3.0, lng=4.0)
 
     def test_broken_legacy_falls_back_to_msc3488(self) -> None:
         content = {
@@ -98,6 +115,13 @@ class TestLocationFromContent:
             "org.matrix.msc3488.location": {"uri": "geo:3,4"},
         }
         assert location_from_content(content) == GeoLocation(lat=3.0, lng=4.0)
+
+    def test_broken_msc3488_falls_back_to_legacy(self) -> None:
+        content = {
+            "geo_uri": "geo:1,2",
+            "org.matrix.msc3488.location": {"uri": "kaputt"},
+        }
+        assert location_from_content(content) == GeoLocation(lat=1.0, lng=2.0)
 
     @pytest.mark.parametrize(
         "content",

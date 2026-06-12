@@ -114,6 +114,16 @@ class TestRoundTrip:
         assert loaded is not None
         assert loaded.center is None
 
+    def test_center_with_missing_coordinate_discarded(self) -> None:
+        # Defensiv-Pfad: korruptes center-Dict (lat ohne lng) -> None,
+        # kein KeyError/TypeError (Codecov PR #305).
+        from elder_berry.tools.nearby_draft_store import _center_from_dict
+
+        assert _center_from_dict({"center": {"lat": 51.34}}) is None
+        assert _center_from_dict({"center": {"lng": 12.37}}) is None
+        assert _center_from_dict({"center": "quatsch"}) is None
+        assert _center_from_dict({}) is None
+
     def test_get_unknown_user_returns_none(self, store: NearbyDraftStore) -> None:
         assert store.get("niemand") is None
 

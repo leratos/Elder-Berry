@@ -17,9 +17,10 @@ from typing import Any
 
 _GEO_SCHEME = "geo:"
 
-# MSC3488: stable-Prefix fuer extensible location events (Element legt das
-# zusaetzlich zum Legacy-geo_uri bei).
-_MSC3488_LOCATION_KEY = "org.matrix.msc3488.location"
+# MSC3488: extensible-location-Block (Element legt das zusaetzlich zum
+# Legacy-geo_uri bei). Unstable-Prefix zuerst (heute im Feld), "m.location"
+# als stabiler Key fuer den Tag der MSC-Stabilisierung (Codex PR #305).
+_LOCATION_BLOCK_KEYS = ("org.matrix.msc3488.location", "m.location")
 
 
 @dataclass(frozen=True)
@@ -59,18 +60,21 @@ def parse_geo_uri(uri: str) -> GeoLocation | None:
 def location_from_content(content: dict[str, Any]) -> GeoLocation | None:
     """Zieht den Standort aus dem Content eines ``m.location``-Events.
 
-    Reihenfolge: Legacy-``geo_uri`` (Spec-Pflichtfeld), dann MSC3488-``uri``
-    als Fallback fuer Clients, die nur das extensible Format senden.
+    Reihenfolge (Codex PR #305): erst der extensible MSC3488-Block (er ist
+    laut MSC die kanonische Repraesentation; ``geo_uri`` ist das
+    Abwaertskompat-Feld), dann Legacy-``geo_uri`` als Fallback fuer
+    Clients, die nur das alte Format senden.
     """
+    for key in _LOCATION_BLOCK_KEYS:
+        block = content.get(key)
+        if isinstance(block, dict):
+            uri = block.get("uri")
+            if isinstance(uri, str):
+                location = parse_geo_uri(uri)
+                if location is not None:
+                    return location
+
     geo_uri = content.get("geo_uri")
     if isinstance(geo_uri, str):
-        location = parse_geo_uri(geo_uri)
-        if location is not None:
-            return location
-
-    msc3488 = content.get(_MSC3488_LOCATION_KEY)
-    if isinstance(msc3488, dict):
-        uri = msc3488.get("uri")
-        if isinstance(uri, str):
-            return parse_geo_uri(uri)
+        return parse_geo_uri(geo_uri)
     return None
