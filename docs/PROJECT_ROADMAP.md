@@ -1713,11 +1713,22 @@ Repo-Hygiene, Audit-Tools und Doku.
 - Notiz-Commands auf Nextcloud Notes ausgerichtet; Fakten bleiben lokal in SQLite.
 - Notiz-Listen-Vorschau nutzt Content statt Platzhalter-Titel („Neue Notiz“).
 
-## Phase 92 – Multi-Stop-Routing 🗺️ KONZEPT
+## Phase 92 – Multi-Stop-Routing 🗺️ ✅ ABGESCHLOSSEN
 
-- Konzept für Routen mit mehreren Stops, Disambiguierung und Along-Route-POIs.
+- Routen mit mehreren Stops, Kontakt-Disambiguierung und Along-Route-POIs.
+- Neu: `GoogleMapsRoutePlanner` (Multi-Waypoint + Optimierung), `MapsLinkBuilder`,
+  `RouteIntentParser` (Pattern + Sonnet-Tool-Call), `MultiStopRouteCommandHandler`
+  + `RouteSessionStore` (SQLite); Listen-Picks `route_contact_pick`/`route_poi_pick`.
 - Phase 43 (Single-Stop) bleibt bewusst unangetastet.
 - Siehe `docs/concepts/phase-92-multi-stop-routing.md`.
+
+## Phase 93 – Nextcloud-Cookbook-Integration 🍳 ✅ ABGESCHLOSSEN
+
+- Rezepte aus Nextcloud Cookbook lesen/suchen + neue Rezepte speichern (PR #252).
+- `NextcloudCookbookClient` (REST lesen, WebDAV schreiben + Reindex),
+  `RecipeCommandHandler` mit semantischer ChromaDB-Suche vor LLM-Fallback;
+  generierte Rezepte werden vor dem Speichern bestätigt (PendingConfirmation).
+- Siehe `docs/concepts/phase-93-nextcloudcookbook-integration-md`.
 
 ## Phase 94 – LibreSign (PDF-Signatur) ✍️ ✅ ABGESCHLOSSEN (Install-only)
 
@@ -1734,3 +1745,45 @@ Repo-Hygiene, Audit-Tools und Doku.
 - Offen (nicht funktional): `notifications`-App bleibt als NC-33-Workaround
   deaktiviert; Plan B (PDF24 + PyMuPDF) dokumentiert, falls die UX langfristig
   nicht trägt.
+
+## Phase 95 – Comms-Pattern-Stabilisierung 🧭 ✅ ABGESCHLOSSEN
+
+- Routing-Stabilisierung der Command-Patterns: Corpus + Keyword-Audit (E0),
+  Candidate/Confidence-Router, Handler-Gates für riskante Familien
+  (Delete/Note/Contact/Calendar), Conflict-Tests + Advanced PatternSpec
+  (PRs #255–#266).
+- Siehe `docs/concepts/phase-95-comms-pattern-stabilisierung.md`.
+
+## Phase 96 – RobotClient-Resilienz & RPi-Token-Provisionierung 🤖 ✅ ABGESCHLOSSEN
+
+- Ein einmaliger Verbindungs-/Auth-Fehler beim Bot-Start legt die
+  RPi5-Funktionen nicht mehr dauerhaft lahm; 401 (Auth) wird klar von
+  Netzfehlern unterschieden (Auslöser: realer Incident 2026-06-03, PR #283).
+- Siehe `docs/concepts/phase-96-robot-client-resilience.md`.
+
+## Phase 97 – Umkreissuche (Nearby Places) 📍 ✅ ABGESCHLOSSEN
+
+"Wo kaufe ich X hier?" / "Nenn mir eine Rockerbar in der Nähe" →
+distanz-korrekte, gefilterte Umkreissuche mit Pick-Liste und Maps-Link.
+
+- ✅ **GoogleGeocoder** (E0): Freitext-Standort → `LatLng` (Google Geocoding API);
+  Auth-/Quota-Fehler werden als Dienstfehler gemeldet, nicht als „Ort nicht gefunden"
+- ✅ **NearbyPlaceSearch** (E1): Places API (New) `searchText`,
+  `rankPreference=DISTANCE` + harter Haversine-Radius-Cap (Reisemodus → Radius),
+  Kategorie-Filter (includedType + clientseitige exclude_types),
+  Retry-Ladder (breitere Query → Radius-Weitung) bei 0 Treffern
+- ✅ **NearbyIntentParser** (E2): LLM beurteilt (Subject/Query/Typ/Modus),
+  der Code erzwingt (Whitelist-Validierung, Radius, Filter)
+- ✅ **MapsLinkBuilder.build_place_link** (E3): Pick → Google-Maps-Link
+- ✅ **NearbyPlaceCommandHandler** (E4): Draft-Flow mit EINER Rückfrage
+  (Standort/Reisemodus), persistenter `NearbyDraftStore` (SQLite, TTL 1h),
+  Early-Intercept für die Folge-Antwort, Pick-Liste `nearby_place_pick`,
+  Pflicht-Attribution „Orte via Google Maps"
+- ✅ **Matrix-Standort-Share** (E5): `m.location`/Geo-URI (Element-Ortsfreigabe)
+  als Antwort auf die „Wo bist du gerade?"-Rückfrage – Koordinaten werden
+  direkt Suchzentrum, der Geocode-Call entfällt; MSC3488-Block kanonisch,
+  Legacy-`geo_uri` als Fallback. Freitext + Geocoding bleibt der Normalweg.
+  Teil 2 (Navigations-Link mit echtem Origin) bewusst gestrichen (YAGNI).
+- ✅ Live-Smoketest bestanden (distanzsortierte nahe Treffer, Rückfrage-Flow)
+- Konzept: `docs/concepts/phase-97-nearby-places-search.md`,
+  Smoketest: `docs/concepts/phase-97-smoketest.md` (PRs #302–#305)
