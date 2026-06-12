@@ -390,6 +390,13 @@ class MatrixBridge:
             await self._audio.handle_file_message(msg)
             return
 
+        # Standort-Share (m.location, Phase 97 E5) → Nearby-Draft-Antwort.
+        # VOR den Pending-Intercepts: ein geteilter Standort ist nie eine
+        # Ja/Nein-Antwort auf eine offene Bestaetigung.
+        if msg.location is not None:
+            await self._handler.handle_location_message(msg)
+            return
+
         # Pending Confirmation Intercept (Phase 28)
         response_type, action = self._pending.check_response(
             msg.sender,

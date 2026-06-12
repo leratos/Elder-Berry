@@ -1129,6 +1129,64 @@ class BridgeMessageHandler:
             self._chat_history.add(msg.sender, "assistant", history)
         return True
 
+    async def handle_location_message(self, msg: IncomingMessage) -> None:
+        """Phase 97 E5: Matrix-Standort-Share (m.location) verarbeiten.
+
+        Liegt ein offener Nearby-Draft, fuellen die Koordinaten den
+        Standort (``continue_with_location``) -- der Geocode-Call entfaellt.
+        Ohne offenen Draft gibt es einen kurzen Hinweis (Lera-Entscheidung
+        E5: kein TTL-Vormerken, Freitext+Geocoding bleibt der Normalweg).
+        """
+        location = msg.location
+        if location is None:
+            logger.warning("handle_location_message ohne location -- ignoriert")
+            return
+
+        no_search_hint = (
+            "Ich habe deinen Standort bekommen -- gerade läuft aber keine "
+            "Ortssuche. Frag mich z.B. 'Wo ist die nächste Apotheke?' und "
+            "teil ihn dann nochmal."
+        )
+
+        handler = None
+        if self._remote_commands is not None:
+            handler = self._remote_commands.get_handler("nearby_place")
+        has_pending = getattr(handler, "has_pending_draft", None)
+        continue_with = getattr(handler, "continue_with_location", None)
+        if not callable(has_pending) or not callable(continue_with):
+            await self._channel.send_text(msg.room_id, no_search_hint)
+            return
+        if not has_pending():
+            await self._channel.send_text(msg.room_id, no_search_hint)
+            return
+
+        loop = asyncio.get_running_loop()
+        try:
+            result = await loop.run_in_executor(
+                None, continue_with, location.lat, location.lng
+            )
+        except Exception as exc:  # noqa: BLE001
+            logger.error("Nearby continue_with_location crashed: %s", exc)
+            await self._channel.send_text(
+                msg.room_id,
+                "Dein Standort kam an, aber die Ortssuche hat gerade ein "
+                "Problem. Versuch es nochmal oder nenn mir den Ort als Text.",
+            )
+            return
+
+        if result.fallthrough:
+            # Draft zwischen has_pending() und Aufruf verschwunden (TTL).
+            await self._channel.send_text(msg.room_id, no_search_hint)
+            return
+        if result.text:
+            await self._channel.send_text(msg.room_id, result.text)
+        # Folge-Liste (Pick) registrieren, damit "Treffer N" funktioniert.
+        self._maybe_register_command_list(msg, result)
+        if result.success and result.text:
+            history = result.history_text or result.text
+            self._chat_history.add(msg.sender, "user", "[Standort geteilt]")
+            self._chat_history.add(msg.sender, "assistant", history)
+
     async def _dispatch_mail_pick(
         self,
         msg: IncomingMessage,

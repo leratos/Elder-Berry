@@ -12,6 +12,7 @@ from pathlib import Path
 
 import pytest
 
+from elder_berry.tools.google_geocoder import LatLng
 from elder_berry.tools.nearby_draft_store import NearbyDraftStore
 from elder_berry.tools.nearby_place_search import NearbyQueryDraft
 
@@ -89,6 +90,39 @@ class TestRoundTrip:
         loaded = store.get("user-a")
         assert loaded is not None
         assert loaded.fallback_query == "Bar Kneipe"
+
+    def test_center_roundtrip(self, store: NearbyDraftStore) -> None:
+        # E5: geteilter Standort (center) muss den Rueckfrage-Roundtrip
+        # ueberleben (z.B. Standort da, Reisemodus fehlt noch).
+        draft = NearbyQueryDraft(
+            subject="Apotheke",
+            search_query="Apotheke",
+            included_type=None,
+            exclude_types=(),
+            location_text="deinem Standort",
+            travel_mode=None,
+            center=LatLng(lat=51.3397, lng=12.3731),
+        )
+        store.set("user-a", draft)
+        loaded = store.get("user-a")
+        assert loaded is not None
+        assert loaded.center == LatLng(lat=51.3397, lng=12.3731)
+
+    def test_center_none_roundtrip(self, store: NearbyDraftStore) -> None:
+        store.set("user-a", _draft(location_text=None))
+        loaded = store.get("user-a")
+        assert loaded is not None
+        assert loaded.center is None
+
+    def test_center_with_missing_coordinate_discarded(self) -> None:
+        # Defensiv-Pfad: korruptes center-Dict (lat ohne lng) -> None,
+        # kein KeyError/TypeError (Codecov PR #305).
+        from elder_berry.tools.nearby_draft_store import _center_from_dict
+
+        assert _center_from_dict({"center": {"lat": 51.34}}) is None
+        assert _center_from_dict({"center": {"lng": 12.37}}) is None
+        assert _center_from_dict({"center": "quatsch"}) is None
+        assert _center_from_dict({}) is None
 
     def test_get_unknown_user_returns_none(self, store: NearbyDraftStore) -> None:
         assert store.get("niemand") is None

@@ -2249,3 +2249,129 @@ class TestNearbyPickAndIntercept:
             assistant.process.assert_called_once()
 
         run_async(_test())
+
+
+# ---------------------------------------------------------------------------
+# Phase 97 E5: handle_location_message (Matrix-Standort-Share)
+# ---------------------------------------------------------------------------
+
+
+def _make_location_msg(lat=51.34, lng=12.37, sender="@lera:matrix.org"):
+    from elder_berry.comms.geo_uri import GeoLocation
+
+    msg = _make_msg("[Standort geteilt]", sender=sender)
+    msg.location = GeoLocation(lat=lat, lng=lng)
+    return msg
+
+
+class TestHandleLocationMessage:
+    """Standort-Share fuellt den offenen Nearby-Draft; ohne Draft Hinweis."""
+
+    def test_pending_draft_continues_with_coordinates(
+        self, handler_with_lists, channel, assistant, remote_commands,
+    ):
+        async def _test():
+            from elder_berry.comms.commands.base import CommandResult
+
+            nearby = MagicMock()
+            nearby.has_pending_draft.return_value = True
+            nearby.continue_with_location.return_value = CommandResult(
+                command="nearby_place",
+                success=True,
+                text="Ich suche Apotheke in der Nähe von deinem Standort:\n"
+                "  1. Apotheke X",
+                list_items=[{"name": "Apotheke X", "place_id": "p", "address": "a"}],
+                list_type="nearby_place_pick",
+            )
+            remote_commands.get_handler.return_value = nearby
+
+            msg = _make_location_msg(lat=51.34, lng=12.37)
+            await handler_with_lists.handle_location_message(msg)
+
+            nearby.continue_with_location.assert_called_once_with(51.34, 12.37)
+            assistant.process.assert_not_called()
+            joined = "\n".join(c[0][1] for c in channel.send_text.call_args_list)
+            assert "Apotheke X" in joined
+
+        run_async(_test())
+
+    def test_no_pending_draft_sends_hint(
+        self, handler_with_lists, channel, remote_commands,
+    ):
+        async def _test():
+            nearby = MagicMock()
+            nearby.has_pending_draft.return_value = False
+            remote_commands.get_handler.return_value = nearby
+
+            msg = _make_location_msg()
+            await handler_with_lists.handle_location_message(msg)
+
+            nearby.continue_with_location.assert_not_called()
+            joined = "\n".join(c[0][1] for c in channel.send_text.call_args_list)
+            assert "keine" in joined and "Ortssuche" in joined
+
+        run_async(_test())
+
+    def test_no_nearby_handler_sends_hint(
+        self, handler_with_lists, channel, remote_commands,
+    ):
+        async def _test():
+            remote_commands.get_handler.return_value = None
+
+            msg = _make_location_msg()
+            await handler_with_lists.handle_location_message(msg)
+
+            joined = "\n".join(c[0][1] for c in channel.send_text.call_args_list)
+            assert "Ortssuche" in joined
+
+        run_async(_test())
+
+    def test_fallthrough_result_sends_hint(
+        self, handler_with_lists, channel, remote_commands,
+    ):
+        async def _test():
+            from elder_berry.comms.commands.base import CommandResult
+
+            # Draft zwischen has_pending() und Aufruf verschwunden (TTL).
+            nearby = MagicMock()
+            nearby.has_pending_draft.return_value = True
+            nearby.continue_with_location.return_value = CommandResult(
+                command="nearby_place", success=False, fallthrough=True,
+            )
+            remote_commands.get_handler.return_value = nearby
+
+            msg = _make_location_msg()
+            await handler_with_lists.handle_location_message(msg)
+
+            joined = "\n".join(c[0][1] for c in channel.send_text.call_args_list)
+            assert "Ortssuche" in joined
+
+        run_async(_test())
+
+    def test_crash_sends_error_text(
+        self, handler_with_lists, channel, remote_commands,
+    ):
+        async def _test():
+            nearby = MagicMock()
+            nearby.has_pending_draft.return_value = True
+            nearby.continue_with_location.side_effect = RuntimeError("boom")
+            remote_commands.get_handler.return_value = nearby
+
+            msg = _make_location_msg()
+            await handler_with_lists.handle_location_message(msg)
+
+            joined = "\n".join(c[0][1] for c in channel.send_text.call_args_list)
+            assert "Problem" in joined
+
+        run_async(_test())
+
+    def test_message_without_location_ignored(
+        self, handler_with_lists, channel, remote_commands,
+    ):
+        async def _test():
+            msg = _make_msg("hallo")
+            msg.location = None
+            await handler_with_lists.handle_location_message(msg)
+            channel.send_text.assert_not_called()
+
+        run_async(_test())

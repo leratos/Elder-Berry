@@ -11,6 +11,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable, Coroutine
 
+from elder_berry.comms.geo_uri import GeoLocation
+
 
 @dataclass(frozen=True)
 class IncomingMessage:
@@ -39,6 +41,9 @@ class IncomingMessage:
 
     file_name: str | None = None
     """Original-Dateiname des Anhangs (z.B. 'report.pdf')."""
+
+    location: GeoLocation | None = None
+    """Geteilter Standort (m.location/Geo-URI, Phase 97 E5) oder None."""
 
 
 # Typ-Alias für den Callback: empfängt IncomingMessage, gibt None zurück (async).

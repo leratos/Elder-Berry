@@ -32,7 +32,7 @@ from elder_berry.comms.commands.base import (
     HandlerContext,
     user_friendly_error,
 )
-from elder_berry.tools.google_geocoder import GeocoderConfigError
+from elder_berry.tools.google_geocoder import GeocoderConfigError, LatLng
 from elder_berry.tools.nearby_intent_parser import (
     NEARBY_TRIGGER_PATTERNS,
     NearbyIntentParser,
@@ -62,11 +62,18 @@ _UNRELATED_ANSWER = re.compile(
     re.IGNORECASE,
 )
 
+# Anzeige-Label, wenn das Suchzentrum aus einem Matrix-Standort-Share kommt
+# (E5): location_text traegt dann keinen geocodebaren Text mehr, sondern nur
+# noch die nutzersichtbare Formulierung ("in der Naehe von deinem Standort").
+_SHARED_LOCATION_LABEL = "deinem Standort"
+
 HELP_SECTION_NEARBY_PLACE = """Umkreissuche (Orte in der Nähe):
   "Ich bin <Straße, Stadt> und brauche <X> -- wo kaufe ich das hier?"
   "Kannst du mir eine <Venue> in der Nähe nennen?"
     -- nahe Treffer zuerst, gefiltert; dann Pick aus Liste -> Maps-Link.
-  Fehlt Standort oder Reisemodus, frage ich einmal nach."""
+  Fehlt Standort oder Reisemodus, frage ich einmal nach.
+  Statt einer Adresse kannst du auch deinen Standort teilen
+  (Element: Anhang -> Standort)."""
 
 
 class NearbyPlaceCommandHandler(CommandHandler):
@@ -165,6 +172,30 @@ class NearbyPlaceCommandHandler(CommandHandler):
         self._drafts.clear(self._user_id)
         return self._run_search(query, draft.subject)
 
+    def continue_with_location(self, lat: float, lng: float) -> CommandResult:
+        """Folge-Turn: Matrix-Standort-Share als Antwort auf die Rueckfrage.
+
+        Geteilte Koordinaten sind eindeutig (kein Hijack-Risiko wie bei
+        Freitext) -> sie fuellen den Standort IMMER, auch wenn gerade der
+        Reisemodus gefragt war. Fehlt danach noch der Modus, kommt wie
+        gehabt die Modus-Rueckfrage (Draft inkl. center persistiert).
+        """
+        draft = self._drafts.get(self._user_id)
+        if draft is None:
+            return CommandResult(
+                command="nearby_place", success=False, fallthrough=True
+            )
+        draft = replace(
+            draft,
+            center=LatLng(lat=lat, lng=lng),
+            location_text=_SHARED_LOCATION_LABEL,
+        )
+        query = draft.to_query()
+        if query is None:
+            return self._ask_missing(draft)
+        self._drafts.clear(self._user_id)
+        return self._run_search(query, draft.subject)
+
     # ------------------------------------------------------------------
     # Turn 1
     # ------------------------------------------------------------------
@@ -218,7 +249,8 @@ class NearbyPlaceCommandHandler(CommandHandler):
         if self._missing_field(draft) == "location":
             text = (
                 f"Ich suche {draft.subject} in der Nähe. Wo bist du gerade "
-                f"ungefähr? (Straße + Stadt)"
+                f"ungefähr? (Straße + Stadt -- oder teil mir deinen Standort "
+                f"über Element)"
             )
         else:
             text = (

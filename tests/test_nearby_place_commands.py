@@ -17,7 +17,7 @@ from elder_berry.comms.commands.nearby_place_commands import (
     NearbyPlaceCommandHandler,
     _factory,
 )
-from elder_berry.tools.google_geocoder import GeocoderConfigError
+from elder_berry.tools.google_geocoder import GeocoderConfigError, LatLng
 from elder_berry.tools.nearby_place_search import (
     LocationNotFoundError,
     NearbyPlaceError,
@@ -329,6 +329,79 @@ class TestFollowUpTurn:
         assert res.list_type == "nearby_place_pick"
         assert "Neues" in (res.text or "")
         assert parser.calls == ["kannst du mir eine Rockerbar nennen?"]
+
+
+# ---------------------------------------------------------------------------
+# Standort-Share (E5) via continue_with_location
+# ---------------------------------------------------------------------------
+
+
+class TestLocationShare:
+    def test_no_draft_falls_through(self) -> None:
+        h = _handler(_FakeParser(), _FakeSearch())
+        res = h.continue_with_location(51.34, 12.37)
+        assert res.fallthrough is True
+
+    def test_location_share_fills_missing_location_and_searches(self) -> None:
+        store = _FakeStore()
+        store.set(USER, _draft(location=None, mode="walking"))  # Ort fehlt
+        search = _FakeSearch(candidates=[_cand()])
+        h = _handler(_FakeParser(), search, store)
+
+        res = h.continue_with_location(51.34, 12.37)
+
+        assert res.list_type == "nearby_place_pick"
+        assert "deinem Standort" in (res.text or "")
+        query = search.calls[0]
+        assert query.center == LatLng(lat=51.34, lng=12.37)  # type: ignore[attr-defined]
+        assert query.location_text == "deinem Standort"      # type: ignore[attr-defined]
+        assert store.get(USER) is None  # Draft geraeumt
+
+    def test_location_share_overrides_even_when_mode_asked(self) -> None:
+        # Koordinaten sind eindeutig -> auch bei Modus-Rueckfrage als
+        # Standort uebernehmen (kein Hijack-Risiko wie bei Freitext).
+        store = _FakeStore()
+        store.set(USER, _draft(location="Leipzig", mode=None))  # Modus fehlt
+        search = _FakeSearch(candidates=[_cand()])
+        h = _handler(_FakeParser(), search, store)
+
+        res = h.continue_with_location(51.34, 12.37)
+
+        # Modus fehlt weiterhin -> Rueckfrage, Draft inkl. center persistiert.
+        assert res.success is True
+        assert res.list_type is None
+        assert "unterwegs" in (res.text or "")
+        pending = store.get(USER)
+        assert pending is not None
+        assert pending.center == LatLng(lat=51.34, lng=12.37)
+        assert pending.location_text == "deinem Standort"
+        assert search.calls == []
+
+    def test_mode_answer_after_location_share_keeps_center(self) -> None:
+        # Voller Zwei-Schritt-Flow: Standort geteilt (Modus fehlt), dann
+        # "zu Fuss" -> Suche mit den geteilten Koordinaten.
+        store = _FakeStore()
+        store.set(USER, _draft(location=None, mode=None))
+        search = _FakeSearch(candidates=[_cand()])
+        h = _handler(_FakeParser(), search, store)
+
+        first = h.continue_with_location(51.34, 12.37)
+        assert first.list_type is None  # erst noch Modus-Rueckfrage
+
+        res = h.continue_with_answer("zu Fuss")
+        assert res.list_type == "nearby_place_pick"
+        query = search.calls[0]
+        assert query.center == LatLng(lat=51.34, lng=12.37)  # type: ignore[attr-defined]
+        assert query.travel_mode == "walking"                # type: ignore[attr-defined]
+        assert store.get(USER) is None
+
+    def test_location_ask_mentions_share_option(self) -> None:
+        # Die Standort-Rueckfrage nennt die Teilen-Option (E5-Einbau).
+        store = _FakeStore()
+        h = _handler(_FakeParser(draft=_draft(location=None)), _FakeSearch(), store)
+        res = h.execute("nearby_place", _NEARBY_TEXT)
+        assert "Standort" in (res.text or "")
+        assert "teil" in (res.text or "").lower()
 
 
 # ---------------------------------------------------------------------------

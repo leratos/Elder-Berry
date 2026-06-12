@@ -375,6 +375,79 @@ class TestFileDispatch:
 
 
 # ---------------------------------------------------------------------------
+# Location-Dispatch (m.location, Phase 97 E5)
+# ---------------------------------------------------------------------------
+
+
+class TestLocationDispatch:
+    @staticmethod
+    def _location_msg() -> IncomingMessage:
+        from elder_berry.comms.geo_uri import GeoLocation
+
+        return IncomingMessage(
+            sender="@user:x",
+            room_id="!r:x",
+            body="[Standort geteilt]",
+            timestamp=time.time(),
+            location=GeoLocation(lat=51.34, lng=12.37),
+        )
+
+    def test_location_message_dispatched_to_handler(self):
+        """Nachrichten mit location gehen an handle_location_message."""
+
+        async def _test():
+            ch, bridge = _make_bridge()
+            bridge._start_time = 0.0
+            bridge._handler.handle_location_message = AsyncMock()
+
+            msg = self._location_msg()
+            await bridge._handle_message(msg)
+
+            bridge._handler.handle_location_message.assert_called_once_with(msg)
+
+        run_async(_test())
+
+    def test_location_message_not_sent_to_assistant(self):
+        """Standort-Nachrichten werden NICHT an den Assistant delegiert."""
+
+        async def _test():
+            assistant = _make_assistant()
+            ch, bridge = _make_bridge(assistant=assistant)
+            bridge._start_time = 0.0
+            bridge._handler.handle_location_message = AsyncMock()
+
+            msg = self._location_msg()
+            await bridge._handle_message(msg)
+
+            assistant.process.assert_not_called()
+
+        run_async(_test())
+
+    def test_location_from_unknown_sender_blocked(self):
+        """Sender-Whitelist greift auch fuer Standort-Nachrichten."""
+
+        async def _test():
+            from elder_berry.comms.geo_uri import GeoLocation
+
+            ch, bridge = _make_bridge()
+            bridge._start_time = 0.0
+            bridge._handler.handle_location_message = AsyncMock()
+
+            msg = IncomingMessage(
+                sender="@fremd:x",
+                room_id="!r:x",
+                body="[Standort geteilt]",
+                timestamp=time.time(),
+                location=GeoLocation(lat=51.34, lng=12.37),
+            )
+            await bridge._handle_message(msg)
+
+            bridge._handler.handle_location_message.assert_not_called()
+
+        run_async(_test())
+
+
+# ---------------------------------------------------------------------------
 # Pending-Confirmation-Intercept
 # ---------------------------------------------------------------------------
 

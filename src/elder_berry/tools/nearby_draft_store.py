@@ -25,6 +25,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Callable
 
+from elder_berry.tools.google_geocoder import LatLng
 from elder_berry.tools.nearby_place_search import NearbyQueryDraft
 
 logger = logging.getLogger(__name__)
@@ -34,6 +35,9 @@ _DEFAULT_TTL = timedelta(hours=1)
 
 
 def _draft_to_dict(draft: NearbyQueryDraft) -> dict[str, Any]:
+    center = None
+    if draft.center is not None:
+        center = {"lat": draft.center.lat, "lng": draft.center.lng}
     return {
         "subject": draft.subject,
         "search_query": draft.search_query,
@@ -43,7 +47,20 @@ def _draft_to_dict(draft: NearbyQueryDraft) -> dict[str, Any]:
         "travel_mode": draft.travel_mode,
         "open_now": draft.open_now,
         "fallback_query": draft.fallback_query,
+        "center": center,
     }
+
+
+def _center_from_dict(data: dict[str, Any]) -> LatLng | None:
+    """Liest das optionale ``center`` (E5-Standort-Share) defensiv zurueck."""
+    raw = data.get("center")
+    if not isinstance(raw, dict):
+        return None
+    lat = raw.get("lat")
+    lng = raw.get("lng")
+    if lat is None or lng is None:
+        return None
+    return LatLng(lat=float(lat), lng=float(lng))
 
 
 def _draft_from_dict(data: dict[str, Any]) -> NearbyQueryDraft:
@@ -57,6 +74,7 @@ def _draft_from_dict(data: dict[str, Any]) -> NearbyQueryDraft:
         travel_mode=data.get("travel_mode"),
         open_now=bool(data.get("open_now", True)),
         fallback_query=data.get("fallback_query"),
+        center=_center_from_dict(data),
     )
 
 
