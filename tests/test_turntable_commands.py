@@ -2,6 +2,7 @@
 
 from unittest.mock import MagicMock
 
+import httpx
 
 from elder_berry.comms.commands.turntable_commands import (
     DEFAULT_ROTATION_DEGREES,
@@ -102,10 +103,7 @@ class TestExecution:
         h = TurntableCommandHandler(robot_client=None)
         result = h.execute("drehteller home", "drehteller home")
         assert result.success is False
-        assert (
-            "nicht verfügbar" in result.text.lower()
-            or "nicht verbunden" in result.text.lower()
-        )
+        assert "nicht konfiguriert" in result.text.lower()
 
     def test_home_execute(self):
         robot = MagicMock()
@@ -183,3 +181,33 @@ class TestCommandDescriptions:
     def test_descriptions_not_empty(self):
         h = _make_handler()
         assert len(h.command_descriptions) > 0
+
+
+# -- Phase 96-C: differenzierte Live-Fehlermeldungen ----------------------- #
+
+
+def _http_status_error(code: int) -> httpx.HTTPStatusError:
+    req = httpx.Request("POST", "http://rpi/turntable/home")
+    resp = httpx.Response(code, request=req)
+    return httpx.HTTPStatusError(f"HTTP {code}", request=req, response=resp)
+
+
+class TestTurntableLiveErrors:
+    """Drehteller-Calls reichen HTTP-/Netzfehler durch; der Handler meldet
+    sie differenziert statt zu crashen (Phase 96-C)."""
+
+    def test_auth_error_shows_token_hint(self):
+        robot = MagicMock()
+        robot.home_turntable.side_effect = _http_status_error(401)
+        h = TurntableCommandHandler(robot_client=robot)
+        result = h.execute("drehteller home", "drehteller home")
+        assert result.success is False
+        assert "Token" in result.text
+
+    def test_conn_error_shows_unreachable(self):
+        robot = MagicMock()
+        robot.home_turntable.side_effect = httpx.ConnectError("boom")
+        h = TurntableCommandHandler(robot_client=robot)
+        result = h.execute("drehteller home", "drehteller home")
+        assert result.success is False
+        assert "nicht erreichbar" in result.text

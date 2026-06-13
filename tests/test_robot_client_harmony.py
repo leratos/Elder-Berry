@@ -96,10 +96,10 @@ class TestHarmonyStatus:
         assert result["connected"] is False
 
     def test_harmony_status_connection_error(self):
+        # Phase 96: kein Self-Swallow mehr -> Fehler wird durchgereicht.
         client = _make_client({})  # Kein Response = ConnectError
-        result = client.harmony_status()
-        assert result["connected"] is False
-        assert result["current_activity"] is None
+        with pytest.raises(httpx.HTTPError):
+            client.harmony_status()
 
 
 class TestHarmonyConfig:
@@ -120,8 +120,8 @@ class TestHarmonyConfig:
 
     def test_harmony_config_connection_error(self):
         client = _make_client({})
-        result = client.harmony_config()
-        assert result == {"activities": [], "devices": []}
+        with pytest.raises(httpx.HTTPError):
+            client.harmony_config()
 
 
 class TestHarmonyConfigDetailed:
@@ -160,8 +160,8 @@ class TestHarmonyConfigDetailed:
 
     def test_harmony_config_detailed_connection_error(self):
         client = _make_client({})
-        result = client.harmony_config_detailed()
-        assert result == {"activities": [], "devices": []}
+        with pytest.raises(httpx.HTTPError):
+            client.harmony_config_detailed()
 
 
 class TestHarmonyLayouts:
@@ -181,8 +181,8 @@ class TestHarmonyLayouts:
 
     def test_harmony_layouts_connection_error(self):
         client = _make_client({})
-        result = client.harmony_layouts()
-        assert result == {"activities": {}, "devices": {}}
+        with pytest.raises(httpx.HTTPError):
+            client.harmony_layouts()
 
     def test_harmony_save_layouts_success(self):
         client = _make_client(
@@ -194,7 +194,8 @@ class TestHarmonyLayouts:
 
     def test_harmony_save_layouts_connection_error(self):
         client = _make_client({})
-        assert client.harmony_save_layouts({}) is False
+        with pytest.raises(httpx.HTTPError):
+            client.harmony_save_layouts({})
 
 
 class TestHarmonyScenes:
@@ -214,7 +215,8 @@ class TestHarmonyScenes:
 
     def test_harmony_scenes_connection_error(self):
         client = _make_client({})
-        assert client.harmony_scenes() == []
+        with pytest.raises(httpx.HTTPError):
+            client.harmony_scenes()
 
     def test_harmony_save_scene_success(self):
         client = _make_client(
@@ -226,7 +228,8 @@ class TestHarmonyScenes:
 
     def test_harmony_save_scene_connection_error(self):
         client = _make_client({})
-        assert client.harmony_save_scene({}) is False
+        with pytest.raises(httpx.HTTPError):
+            client.harmony_save_scene({})
 
     def test_harmony_start_scene_success(self):
         client = _make_client(
@@ -246,8 +249,8 @@ class TestHarmonyScenes:
 
     def test_harmony_start_scene_connection_error(self):
         client = _make_client({})
-        result = client.harmony_start_scene("Gaming")
-        assert result["success"] is False
+        with pytest.raises(httpx.HTTPError):
+            client.harmony_start_scene("Gaming")
 
     def test_harmony_delete_scene_success(self):
         client = _make_client(
@@ -261,7 +264,8 @@ class TestHarmonyScenes:
 
     def test_harmony_delete_scene_connection_error(self):
         client = _make_client({})
-        assert client.harmony_delete_scene("Gaming") is False
+        with pytest.raises(httpx.HTTPError):
+            client.harmony_delete_scene("Gaming")
 
 
 class TestHarmonyStartActivity:
@@ -293,7 +297,8 @@ class TestHarmonyStartActivity:
 
     def test_harmony_start_activity_connection_error(self):
         client = _make_client({})
-        assert client.harmony_start_activity("Fernsehen") is False
+        with pytest.raises(httpx.HTTPError):
+            client.harmony_start_activity("Fernsehen")
 
 
 class TestHarmonySendCommand:
@@ -315,7 +320,8 @@ class TestHarmonySendCommand:
 
     def test_harmony_send_command_connection_error(self):
         client = _make_client({})
-        assert client.harmony_send_command("Receiver", "VolumeUp") is False
+        with pytest.raises(httpx.HTTPError):
+            client.harmony_send_command("Receiver", "VolumeUp")
 
 
 class TestHarmonyPowerOff:
@@ -337,4 +343,5 @@ class TestHarmonyPowerOff:
 
     def test_harmony_power_off_connection_error(self):
         client = _make_client({})
-        assert client.harmony_power_off() is False
+        with pytest.raises(httpx.HTTPError):
+            client.harmony_power_off()

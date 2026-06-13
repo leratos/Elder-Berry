@@ -1258,7 +1258,14 @@ def _init_context_and_tools(secrets, assistant, svc, tower_agent=None):
     return tools
 
 
-def run_matrix(assistant, stt=None, avatar=None, audio_converter=None, robot=None):
+def run_matrix(
+    assistant,
+    stt=None,
+    avatar=None,
+    audio_converter=None,
+    robot=None,
+    robot_state="not_configured",
+):
     """Matrix-Modus: MatrixBridge startet bidirektionalen Chat über Matrix."""
     from elder_berry.core.secret_store import SecretStore
     from elder_berry.comms.bridge import MatrixBridge
@@ -1482,6 +1489,7 @@ def run_matrix(assistant, stt=None, avatar=None, audio_converter=None, robot=Non
         assistant=assistant,
         stt=stt,
         robot=robot,
+        robot_state=robot_state,
         secrets=secrets,
         svc=svc,
         tools=tools,
@@ -1515,6 +1523,119 @@ def run_matrix(assistant, stt=None, avatar=None, audio_converter=None, robot=Non
 
 
 # ---------------------------------------------------------------------------
+# Phase 96 – RobotClient-Init (kein robot=None-Latch) + Token-Auflösung
+# ---------------------------------------------------------------------------
+
+
+def _resolve_robot_token(secrets):
+    """Löst den Robot-Token auf (Phase 96, D5: SecretStore-first).
+
+    Kanonische Ablage Bot-Seite ist der SecretStore-Key ``robot_auth_token``
+    (D1). Die Env ``ELDER_BERRY_ROBOT_TOKEN`` ist auf dem Server normalerweise
+    NICHT gesetzt; existiert sie doch und WEICHT sie vom Store ab, beschattete
+    sie früher (env-first) den Store und machte die Dashboard-Rotation
+    wirkungslos -> jetzt gewinnt der Store, mit WARN.
+    """
+    store_token = secrets.get_or_none("robot_auth_token")
+    env_token = os.environ.get("ELDER_BERRY_ROBOT_TOKEN")
+    if store_token:
+        if env_token and env_token != store_token:
+            logger.warning(
+                "RobotClient: ELDER_BERRY_ROBOT_TOKEN (Env) weicht vom "
+                "SecretStore robot_auth_token ab – der SecretStore-Wert gilt "
+                "(D5). Env entfernen oder angleichen.",
+            )
+        return store_token
+    return env_token
+
+
+def _init_robot():
+    """Baut den optionalen RobotClient (Tower → RPi5-Display).
+
+    Phase 96: KEIN ``robot=None``-Latch mehr. Bei gesetztem ``robot_host`` wird
+    der Client IMMER zurückgegeben; die Boot-Probe dient nur der
+    Startup-Summary/Logs, nicht der Deaktivierung. Recovery passiert pro Call
+    (kein Bot-Neustart nötig).
+
+    Returns:
+        ``(robot, robot_state)`` mit ``robot_state`` ∈ {``"not_configured"``,
+        ``"no_token"``, ``"ok"``, ``"auth"``, ``"rate_limited"``,
+        ``"unreachable"``}.
+    """
+    try:
+        from elder_berry.core.secret_store import SecretStore
+        from elder_berry.robot.client import RobotClient
+    except Exception as e:
+        logger.warning("RobotClient-Import fehlgeschlagen: %s", e)
+        return None, "not_configured"
+
+    secrets = SecretStore()
+    robot_host = secrets.get_or_none("robot_host")
+    if not robot_host:
+        return None, "not_configured"
+
+    robot_token = _resolve_robot_token(secrets)
+    if not robot_token:
+        logger.warning(
+            "RobotClient: kein Robot-Token konfiguriert – Requests werden mit "
+            "401 abgelehnt, falls der RobotServer einen Token erwartet. Setze "
+            "robot_auth_token im SecretStore (Dashboard) oder "
+            "ELDER_BERRY_ROBOT_TOKEN als Env.",
+        )
+
+    try:
+        robot = RobotClient(base_url=robot_host, robot_token=robot_token)
+    except Exception as e:
+        logger.warning("RobotClient: Konstruktion fehlgeschlagen: %s", e)
+        return None, "not_configured"
+
+    if not robot_token:
+        # Token fehlt lokal -> eine Probe lieferte sowieso 401. Call sparen.
+        return robot, "no_token"
+
+    try:
+        state = robot.probe()
+    except Exception as e:
+        # Der optionale RobotClient darf den Bot-Start nie killen. probe()
+        # fängt httpx-Fehler selbst; nur ein unerwarteter (Programmier-)Fehler
+        # landet hier. robot bleibt gesetzt -> Recovery erfolgt pro Call.
+        logger.warning("RobotClient: probe() unerwartet fehlgeschlagen: %s", e)
+        return robot, "unreachable"
+    if state == "ok":
+        logger.info("RobotClient: verbunden mit %s", robot_host)
+    elif state == "auth":
+        logger.warning(
+            "RobotClient: %s lehnt den Token ab (401/403) – Token prüfen "
+            "(RPi-Env == SecretStore robot_auth_token?).",
+            robot_host,
+        )
+    elif state == "rate_limited":
+        logger.warning(
+            "RobotClient: %s meldet Rate-Limit (429) – kurz warten.",
+            robot_host,
+        )
+    else:  # unreachable
+        logger.warning(
+            "RobotClient: %s nicht erreichbar (Netz/Tunnel) – Recovery erfolgt "
+            "pro Call, kein Neustart nötig.",
+            robot_host,
+        )
+    return robot, state
+
+
+def _robot_summary_status(robot_state: str) -> tuple[str, str]:
+    """Mappt den Boot-Probe-State auf (Status, Detail) für die Summary."""
+    return {
+        "ok": ("ok", "verbunden"),
+        "auth": ("warn", "Auth-Fehler – Token prüfen"),
+        "rate_limited": ("warn", "Rate-Limit aktiv – kurz warten"),
+        "unreachable": ("warn", "nicht erreichbar (Netz/Tunnel)"),
+        "no_token": ("warn", "Token fehlt – robot_auth_token setzen"),
+        "not_configured": ("warn", "nicht konfiguriert"),
+    }.get(robot_state, ("warn", "unbekannt"))
+
+
+# ---------------------------------------------------------------------------
 # Phase 52.2 – Startup Summary Helpers
 # ---------------------------------------------------------------------------
 
@@ -1524,6 +1645,7 @@ def _build_startup_summary(
     assistant,
     stt,
     robot,
+    robot_state,
     secrets,
     svc,
     tools,
@@ -1580,11 +1702,7 @@ def _build_startup_summary(
         "ok" if tower_agent else "warn",
         "verbunden" if tower_agent else "nicht konfiguriert",
     )
-    summary.add(
-        "RPi5 (Robot)",
-        "ok" if robot else "warn",
-        "verbunden" if robot else "nicht erreichbar",
-    )
+    summary.add("RPi5 (Robot)", *_robot_summary_status(robot_state))
 
     # Optionale Services aus svc/tools
     _add_service(summary, "Kalender", svc.get("calendar"))
@@ -1740,34 +1858,9 @@ def main():
     audio_converter = init_audio_converter()
     stt = init_stt(args.mode, args.whisper_model)
 
-    # RobotClient (optional – verbindet Tower mit RPi5-Display)
-    robot = None
-    try:
-        from elder_berry.core.secret_store import SecretStore
-        from elder_berry.robot.client import RobotClient
-
-        _secrets = SecretStore()
-        robot_host = _secrets.get_or_none("robot_host")
-        if robot_host:
-            # Phase 59: Robot-Token analog zu Tower-Token – erst Env, dann Store.
-            robot_token = os.environ.get(
-                "ELDER_BERRY_ROBOT_TOKEN"
-            ) or _secrets.get_or_none("robot_auth_token")
-            if not robot_token:
-                logger.warning(
-                    "RobotClient: kein Robot-Token konfiguriert – Requests "
-                    "werden mit 401 abgelehnt, falls der RobotServer einen "
-                    "Token erwartet. Setze robot_auth_token im SecretStore "
-                    "oder ELDER_BERRY_ROBOT_TOKEN als Env.",
-                )
-            robot = RobotClient(base_url=robot_host, robot_token=robot_token)
-            if robot.is_online():
-                logger.info("RobotClient: verbunden mit %s", robot_host)
-            else:
-                logger.warning("RobotClient: %s nicht erreichbar", robot_host)
-                robot = None
-    except Exception as e:
-        logger.debug("RobotClient nicht verfügbar: %s", e)
+    # RobotClient (optional – verbindet Tower mit RPi5-Display).
+    # Phase 96: kein robot=None-Latch mehr; Recovery erfolgt pro Call.
+    robot, robot_state = _init_robot()
 
     from elder_berry.core.assistant import Assistant
 
@@ -1812,6 +1905,7 @@ def main():
             avatar=avatar,
             audio_converter=audio_converter,
             robot=robot,
+            robot_state=robot_state,
         )
 
 

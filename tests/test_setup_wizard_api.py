@@ -197,6 +197,25 @@ class TestStepSave:
         assert r.status_code == 200
         assert fresh_store.get("nextcloud_url") == "https://cloud.example.com"
 
+    def test_save_robot_auth_token_step7(self, fresh_store):
+        """Phase 96-D: robot_auth_token ist ueber Step 7 setzbar."""
+        client = _make_client(fresh_store)
+        r = client.post(
+            "/api/setup/step/7",
+            json={"robot_auth_token": "secret-rpi-tok"},
+        )
+        assert r.status_code == 200
+        assert fresh_store.get_or_none("robot_auth_token") == "secret-rpi-tok"
+
+    def test_robot_auth_token_masked_on_get(self):
+        """Phase 96-D: der Token wird nie im Klartext per GET zurueckgegeben."""
+        store = FakeSecretStore({"robot_auth_token": "secret-rpi-tok"})
+        client = _make_client(store)
+        r = client.get("/api/setup/step/7")
+        entry = r.json()["values"]["robot_auth_token"]
+        assert entry["is_set"] is True
+        assert entry.get("value") != "secret-rpi-tok"
+
     def test_ignores_unknown_keys(self, fresh_store):
         """Unbekannte Keys werden ignoriert."""
         client = _make_client(fresh_store)

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from unittest.mock import MagicMock
 
+import httpx
 import pytest
 
 from elder_berry.comms.commands.harmony_commands import (
@@ -232,7 +233,7 @@ class TestExecution:
     def test_no_robot_client(self, handler_no_robot):
         result = handler_no_robot.execute("harmony_all_off", "alles aus")
         assert not result.success
-        assert "RobotClient" in result.text
+        assert "nicht konfiguriert" in result.text
 
     def test_robot_client_error_graceful(self, handler, mock_robot):
         mock_robot.harmony_power_off.side_effect = Exception("Connection lost")
@@ -352,4 +353,53 @@ class TestSceneCommands:
             "szene Gaming",
         )
         assert not result.success
-        assert "RobotClient" in result.text
+        assert "nicht konfiguriert" in result.text
+
+
+# -- Phase 96-C: differenzierte Live-Fehlermeldungen ----------------------- #
+
+
+def _http_status_error(code: int) -> httpx.HTTPStatusError:
+    """Baut einen httpx.HTTPStatusError mit dem gegebenen Statuscode."""
+    req = httpx.Request("GET", "http://rpi/harmony")
+    resp = httpx.Response(code, request=req)
+    return httpx.HTTPStatusError(f"HTTP {code}", request=req, response=resp)
+
+
+class TestHarmonyLiveErrors:
+    """Nach 96-A reicht der Client HTTP-/Netzfehler durch; der Handler muss
+    sie graceful in differenzierte Meldungen uebersetzen (kein Crash)."""
+
+    def test_auth_error_shows_token_hint(self, handler, mock_robot):
+        mock_robot.harmony_power_off.side_effect = _http_status_error(401)
+        result = handler.execute("harmony_all_off", "alles aus")
+        assert not result.success
+        assert "Token" in result.text
+        assert "nicht erreichbar" not in result.text
+
+    def test_conn_error_shows_unreachable(self, handler, mock_robot):
+        mock_robot.harmony_power_off.side_effect = httpx.ConnectError("boom")
+        result = handler.execute("harmony_all_off", "alles aus")
+        assert not result.success
+        assert "nicht erreichbar" in result.text
+        assert "Token" not in result.text
+
+    def test_list_commands_conn_error_no_crash(self, handler, mock_robot):
+        # harmony_config() wird in _cmd_list_commands seit 96-C explizit
+        # gewrappt (war vorher der einzige ungeschuetzte robot-Call).
+        mock_robot.harmony_config.side_effect = httpx.ConnectError("boom")
+        result = handler.execute(
+            "harmony_list_commands",
+            "harmony befehle Samsung TV",
+        )
+        assert not result.success
+        assert "nicht erreichbar" in result.text
+
+    def test_list_commands_auth_error_token_hint(self, handler, mock_robot):
+        mock_robot.harmony_config.side_effect = _http_status_error(403)
+        result = handler.execute(
+            "harmony_list_commands",
+            "harmony befehle Samsung TV",
+        )
+        assert not result.success
+        assert "Token" in result.text

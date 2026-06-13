@@ -18,6 +18,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal
 
+import httpx
+
 if TYPE_CHECKING:
     from elder_berry.actions.base import ActionController
     from elder_berry.actions.computer_use import ComputerUseController
@@ -314,6 +316,52 @@ def user_friendly_error(exc: Exception, context: str = "") -> str:
     short = exc_str if len(exc_str) <= 120 else exc_str[:117] + "..."
     logger.debug("user_friendly_error fallback für %s: %s", exc_type, exc_str)
     return f"❌ {prefix}Fehler: {short}"
+
+
+# ---------------------------------------------------------------------------
+# Phase 96: RPi5/Robot-spezifische, differenzierte Fehlermeldungen
+# ---------------------------------------------------------------------------
+
+ROBOT_NOT_CONFIGURED_TEXT = (
+    "⚠ RPi5 nicht konfiguriert (kein robot_host gesetzt). "
+    "Einrichten unter http://localhost:8090/setup (Schritt 7)."
+)
+"""Antwort, wenn gar kein RobotClient existiert (``robot_host`` fehlt).
+
+Bewusst getrennt von den Live-Fehlern in :func:`robot_error_message`: ein
+fehlender ``robot_host`` ist ein Konfigurations-, kein Laufzeitproblem. Das
+alte pauschale „RPi5 nicht verbunden" wurde beim Incident 2026-06-03 als
+irreführend identifiziert (Auth-Fehler sahen wie Nichtverbunden aus)."""
+
+
+def robot_error_message(exc: Exception) -> str:
+    """Übersetzt einen Live-Fehler eines RobotClient-Calls in Nutzertext.
+
+    Trennt Auth (401/403) und Rate-Limit (429) klar von Netz-/Timeout-Fehlern,
+    damit ein fehlender/ungültiger Robot-Token nicht mehr als „nicht
+    verbunden" fehlinterpretiert wird (Phase 96-C, Incident 2026-06-03).
+    Nicht-``httpx``-Fehler (z.B. Programmierfehler) laufen über
+    :func:`user_friendly_error`.
+
+    Args:
+        exc: Die beim RobotClient-Call aufgetretene Exception.
+
+    Returns:
+        Differenzierter, nutzerfreundlicher Fehlertext.
+    """
+    if isinstance(exc, httpx.HTTPStatusError):
+        code = exc.response.status_code
+        if code in (401, 403):
+            return "❌ RPi-Token ungültig – Konfiguration prüfen."
+        if code == 429:
+            return "❌ RPi gerade überlastet (Rate-Limit), versuch's gleich nochmal."
+        if code >= 500:
+            return "❌ RPi gerade nicht erreichbar, versuch's gleich nochmal."
+        return user_friendly_error(exc, "RPi5")
+    if isinstance(exc, httpx.HTTPError):
+        # ConnectError / Timeout / ReadError / ... = Netz/Transport.
+        return "❌ RPi gerade nicht erreichbar, versuch's gleich nochmal."
+    return user_friendly_error(exc, "RPi5")
 
 
 # ---------------------------------------------------------------------------

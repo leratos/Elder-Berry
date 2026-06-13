@@ -77,7 +77,10 @@
         );
         const _isServer = location.hostname.includes(_serverHost);
         window.DASHBOARD_CONFIG = {
-            rpi5_url:  _isServer ? "/api/robot" : "http://192.168.50.220:8000",
+            // Phase 96-E: LAN-Fallback entfernt. Nach dem Loopback-Bind
+            // (start_rpi5 --host 127.0.0.1) ist die RPi-LAN-IP tot; der
+            // Zugriff laeuft immer ueber den robot_proxy (/api/robot -> Tunnel).
+            rpi5_url:  "/api/robot",
             tower_url: _isServer ? "" : "http://192.168.50.100:8090",
             views: {
                 remote:   ["harmony"],

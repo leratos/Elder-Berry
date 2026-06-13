@@ -104,6 +104,7 @@ WIZARD_STEPS: list[dict[str, Any]] = [
             "berry_gym_api_token",
             "google_maps_api_key",
             "robot_host",
+            "robot_auth_token",
         ],
     },
     {
@@ -132,6 +133,7 @@ _SENSITIVE_KEYS: set[str] = {
     "groq_api_key",
     "berry_gym_api_token",
     "google_maps_api_key",
+    "robot_auth_token",
 }
 
 SETUP_COMPLETE_KEY = "setup_wizard_completed"

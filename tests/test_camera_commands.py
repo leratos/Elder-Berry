@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from unittest.mock import MagicMock
 
+import httpx
 import pytest
 
 from elder_berry.comms.commands.camera_commands import (
@@ -128,10 +129,10 @@ class TestCameraKeywordParsing:
 
 class TestCameraCommandExecution:
     def test_foto_no_robot(self, handler):
-        """15. robot_client=None -> Fehler 'RobotClient nicht verfügbar'."""
+        """15. robot_client=None -> Fehler 'RPi5 nicht konfiguriert' (Phase 96)."""
         result = handler.execute("foto", "foto")
         assert result.success is False
-        assert "RobotClient nicht verfügbar" in result.text
+        assert "nicht konfiguriert" in result.text
 
     def test_foto_capture_returns_none(self):
         """16. capture_image() gibt None -> Fehler."""
@@ -222,3 +223,35 @@ class TestCameraNoCollision:
         assert cmd != "foto"
         assert cmd != "kamera"
         assert cmd != "camera_describe"
+
+
+# ---------------------------------------------------------------------------
+# Phase 96-C: differenzierte Live-Fehlermeldungen
+# ---------------------------------------------------------------------------
+
+
+def _http_status_error(code: int) -> httpx.HTTPStatusError:
+    req = httpx.Request("GET", "http://rpi/camera/capture")
+    resp = httpx.Response(code, request=req)
+    return httpx.HTTPStatusError(f"HTTP {code}", request=req, response=resp)
+
+
+class TestCameraLiveErrors:
+    """capture_image() reicht HTTP-/Netzfehler durch; der Handler meldet sie
+    differenziert statt zu crashen (Phase 96-C)."""
+
+    def test_auth_error_shows_token_hint(self):
+        robot = MagicMock()
+        robot.capture_image.side_effect = _http_status_error(401)
+        h = CameraCommandHandler(robot_client=robot)
+        result = h.execute("foto", "foto")
+        assert result.success is False
+        assert "Token" in result.text
+
+    def test_conn_error_shows_unreachable(self):
+        robot = MagicMock()
+        robot.capture_image.side_effect = httpx.ConnectError("boom")
+        h = CameraCommandHandler(robot_client=robot)
+        result = h.execute("foto", "foto")
+        assert result.success is False
+        assert "nicht erreichbar" in result.text

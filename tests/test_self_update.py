@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 from unittest.mock import MagicMock, patch
 
+import httpx
 import pytest
 
 from elder_berry.comms.commands.update_commands import (
@@ -961,10 +962,7 @@ class TestUpdateRpiExecute:
     def test_no_robot_client(self, handler):
         result = handler.execute("update_rpi", "update rpi")
         assert result.success is False
-        assert (
-            "nicht verfügbar" in result.text.lower()
-            or "nicht verbunden" in result.text.lower()
-        )
+        assert "nicht konfiguriert" in result.text.lower()
 
     def test_rpi_update_success(self, tmp_path):
         robot = MagicMock()
@@ -995,6 +993,27 @@ class TestUpdateRpiExecute:
         result = h.execute("update_rpi", "update rpi")
         assert result.success is False
         assert "❌" in result.text
+
+    def test_rpi_update_auth_error_token_hint(self, tmp_path):
+        # Phase 96-C: 401 -> Token-Hinweis, NICHT "nicht erreichbar".
+        req = httpx.Request("POST", "http://rpi/system/update")
+        resp = httpx.Response(401, request=req)
+        robot = MagicMock()
+        robot.update_rpi.side_effect = httpx.HTTPStatusError(
+            "401", request=req, response=resp
+        )
+        h = UpdateCommandHandler(project_root=tmp_path, robot_client=robot)
+        result = h.execute("update_rpi", "update rpi")
+        assert result.success is False
+        assert "Token" in result.text
+
+    def test_rpi_update_net_error_unreachable(self, tmp_path):
+        robot = MagicMock()
+        robot.update_rpi.side_effect = httpx.ConnectError("boom")
+        h = UpdateCommandHandler(project_root=tmp_path, robot_client=robot)
+        result = h.execute("update_rpi", "update rpi")
+        assert result.success is False
+        assert "nicht erreichbar" in result.text
 
 
 class TestUpdateAllExecute:
@@ -1028,10 +1047,7 @@ class TestUpdateAllExecute:
         )
         h = UpdateCommandHandler(project_root=tmp_path, robot_client=None)
         result = h.execute("update_all", "update alles")
-        assert (
-            "uebersprungen" in result.text.lower()
-            or "nicht verbunden" in result.text.lower()
-        )
+        assert "nicht konfiguriert" in result.text.lower()
 
 
 # ---------------------------------------------------------------------------

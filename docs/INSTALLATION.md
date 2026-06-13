@@ -190,8 +190,12 @@ store.set("berry_gym_api_token", "<token>")
 # Wake-on-LAN
 store.set("tower_mac_address", "AA:BB:CC:DD:EE:FF")
 
-# RPi5 Avatar-Display
-store.set("robot_host", "http://192.168.50.220:8000")
+# RPi5 Avatar-Display (Zugriff via SSH-Reverse-Tunnel, NICHT LAN-IP:
+# der RobotServer bindet seit Phase 96-E auf 127.0.0.1)
+store.set("robot_host", "http://127.0.0.1:12800")
+# Robot-Token: MUSS identisch zu ELDER_BERRY_ROBOT_TOKEN auf dem RPi sein
+# (Token-Invariante). Sonst lehnt der RPi alle Requests mit 401 ab.
+store.set("robot_auth_token", "<gleicher-token-wie-auf-dem-rpi>")
 ```
 
 ### 7. Starten
