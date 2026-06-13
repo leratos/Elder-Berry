@@ -1,4 +1,6 @@
-const CACHE = "saleria-dashboard-v11";
+// Phase 96-E: Bump bei jeder index.html-Aenderung, sonst behaelt ein
+// installierter Service-Worker das alte HTML (hier: tote LAN-rpi5_url) cache-first.
+const CACHE = "saleria-dashboard-v12";
 const STATIC = [
     "/",
     "/index.html",

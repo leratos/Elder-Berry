@@ -1601,24 +1601,23 @@ def _init_robot():
         # landet hier. robot bleibt gesetzt -> Recovery erfolgt pro Call.
         logger.warning("RobotClient: probe() unerwartet fehlgeschlagen: %s", e)
         return robot, "unreachable"
+    # Hinweis: robot_host wird bewusst NICHT mitgeloggt – es stammt aus dem
+    # SecretStore (CodeQL py/clear-text-logging-sensitive-data) und koennte
+    # theoretisch Userinfo enthalten. Den Host loggt der RobotClient-Konstruktor
+    # bereits einmalig; hier reicht der Zustand.
     if state == "ok":
-        logger.info("RobotClient: verbunden mit %s", robot_host)
+        logger.info("RobotClient: verbunden (RPi5 erreichbar)")
     elif state == "auth":
         logger.warning(
-            "RobotClient: %s lehnt den Token ab (401/403) – Token prüfen "
-            "(RPi-Env == SecretStore robot_auth_token?).",
-            robot_host,
+            "RobotClient: RPi5 lehnt den Token ab (401/403) – Token prüfen "
+            "(RPi-Env == SecretStore robot_auth_token?)."
         )
     elif state == "rate_limited":
-        logger.warning(
-            "RobotClient: %s meldet Rate-Limit (429) – kurz warten.",
-            robot_host,
-        )
+        logger.warning("RobotClient: RPi5 meldet Rate-Limit (429) – kurz warten.")
     else:  # unreachable
         logger.warning(
-            "RobotClient: %s nicht erreichbar (Netz/Tunnel) – Recovery erfolgt "
-            "pro Call, kein Neustart nötig.",
-            robot_host,
+            "RobotClient: RPi5 nicht erreichbar (Netz/Tunnel) – Recovery erfolgt "
+            "pro Call, kein Neustart nötig."
         )
     return robot, state
 
