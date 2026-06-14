@@ -90,9 +90,13 @@ class TestSynthesize:
         assert result == tower_audio
         tower.tts.assert_awaited_once_with("Test", "cheerful")
 
-    async def test_tower_offline_raises(self):
-        """ElevenLabs down + Tower offline → TTSUnavailableError."""
-        tower = _make_tower(online=False)
+    async def test_tower_unreachable_raises(self):
+        """ElevenLabs down + Tower unerreichbar → TTSUnavailableError.
+
+        #766: Tower wird versucht (nicht mehr am toten is_online gegatet) und
+        scheitert erst am HTTP-Fehler.
+        """
+        tower = _make_tower(online=False, fail=True)
         router = _make_router(
             elevenlabs=_make_elevenlabs(fail=True),
             tower=tower,
@@ -101,7 +105,19 @@ class TestSynthesize:
         with pytest.raises(TTSUnavailableError, match="Kein TTS verfügbar"):
             await router.synthesize("Test")
 
-        tower.tts.assert_not_awaited()
+        tower.tts.assert_awaited_once()
+
+    async def test_uses_tower_when_cloud_fails_despite_stale_is_online(self):
+        """#766: Kern-Regression – der Tower-Fallback feuert bei
+        ElevenLabs-Ausfall auch im Nicht-Privacy-Pfad, obwohl is_online
+        (mangels Heartbeat) False ist."""
+        tower = _make_tower(online=False, audio=b"\x33" * 120)
+        router = _make_router(elevenlabs=_make_elevenlabs(fail=True), tower=tower)
+
+        audio = await router.synthesize("Test")
+
+        assert audio == b"\x33" * 120
+        tower.tts.assert_awaited_once()
 
     async def test_no_tower_raises(self):
         """ElevenLabs down + kein Tower → TTSUnavailableError."""

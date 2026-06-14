@@ -81,9 +81,13 @@ class TestTranscribeAsync:
         assert result.text == "Tower erkannt"
         tower.stt.assert_awaited_once()
 
-    async def test_tower_offline_raises(self):
-        """Cloud down + Tower offline → STTUnavailableError."""
-        tower = _make_tower(online=False)
+    async def test_tower_unreachable_raises(self):
+        """Cloud down + Tower unerreichbar → STTUnavailableError.
+
+        #766: Tower wird versucht (nicht mehr am toten is_online gegatet) und
+        scheitert erst am HTTP-Fehler.
+        """
+        tower = _make_tower(online=False, fail=True)
         router = _make_router(
             cloud=_make_cloud(fail=True),
             tower=tower,
@@ -92,7 +96,19 @@ class TestTranscribeAsync:
         with pytest.raises(STTUnavailableError, match="Kein STT verfügbar"):
             await router.transcribe_async(b"\x00" * 100)
 
-        tower.stt.assert_not_awaited()
+        tower.stt.assert_awaited_once()
+
+    async def test_uses_tower_when_cloud_fails_despite_stale_is_online(self):
+        """#766: Kern-Regression – der Tower-Fallback feuert bei Cloud-Ausfall
+        auch im Nicht-Privacy-Pfad, obwohl is_online (mangels Heartbeat) False
+        ist."""
+        tower = _make_tower(online=False, text="Tower lokal")
+        router = _make_router(cloud=_make_cloud(fail=True), tower=tower)
+
+        result = await router.transcribe_async(b"\x00" * 100)
+
+        assert result.text == "Tower lokal"
+        tower.stt.assert_awaited_once()
 
     async def test_no_tower_raises(self):
         """Cloud down + kein Tower → STTUnavailableError."""
@@ -279,17 +295,6 @@ class TestPrivacyMode:
         assert result.text == "Tower lokal"
         cloud.transcribe.assert_not_awaited()
         tower.stt.assert_awaited_once()
-
-    async def test_non_privacy_keeps_is_online_gate(self):
-        # Nicht-Privacy: bestehendes Verhalten unveraendert (Tower nur bei
-        # is_online; pre-existing toter Fallback bleibt out-of-scope).
-        cloud = _make_cloud(fail=True)
-        tower = _make_tower(online=False, text="Tower lokal")
-        router = STTRouter(cloud_stt=cloud, tower=tower)
-
-        with pytest.raises(STTUnavailableError):
-            await router.transcribe_async(b"\x00" * 100)
-        tower.stt.assert_not_awaited()
 
     async def test_privacy_off_uses_cloud(self):
         cloud = _make_cloud(text="Cloud OK")
