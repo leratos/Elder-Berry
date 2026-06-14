@@ -560,6 +560,16 @@ class TestRuntimeFallback:
         assert fallback.calls == 0
         assert router.degraded is False
 
+    def test_active_backend_reflects_served_after_generate(self):
+        # active_backend liefert nach generate() das tatsaechlich bedienende
+        # Backend (nicht nur die theoretische Auswahl).
+        primary = _FakeClient("anthropic", error=RuntimeError("429"))
+        fallback = _FakeClient("ollama", response="[ollama]")
+        router = LLMRouter(primary=primary, fallback=fallback)
+
+        router.generate("hi")
+        assert router.active_backend == "ollama"
+
     def test_all_backends_fail_raises(self):
         primary = _FakeClient("anthropic", error=RuntimeError("down"))
         fallback = _FakeClient("ollama", error=RuntimeError("down"))

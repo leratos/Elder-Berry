@@ -62,6 +62,39 @@ def assistant_no_tts(mock_llm, mock_db, mock_controller):
 # ---------------------------------------------------------------------------
 
 
+class TestBackendNotice:
+    """Phase 98: Backend-Wechsel-Hinweis wird an die Chat-Antwort angehaengt."""
+
+    def test_process_appends_backend_notice(self, mock_db, mock_controller):
+        llm = MagicMock()  # kein spec -> pop_backend_notice verfuegbar
+        llm.generate.return_value = json.dumps(
+            {"response": "Hallo!", "action": None, "params": {}}
+        )
+        llm.pop_backend_notice.return_value = "_(Hinweis: lokal über ollama.)_"
+        assistant = Assistant(
+            llm=llm, actions_db=mock_db, controller=mock_controller, tts=None
+        )
+
+        result = assistant.process("hi")
+
+        assert "Hallo!" in result.response
+        assert "Hinweis" in result.response
+
+    def test_process_no_notice_when_none(self, mock_db, mock_controller):
+        llm = MagicMock()
+        llm.generate.return_value = json.dumps(
+            {"response": "Hallo!", "action": None, "params": {}}
+        )
+        llm.pop_backend_notice.return_value = None
+        assistant = Assistant(
+            llm=llm, actions_db=mock_db, controller=mock_controller, tts=None
+        )
+
+        result = assistant.process("hi")
+
+        assert result.response == "Hallo!"
+
+
 class TestEmptyInput:
     def test_empty_input_returns_message(self, assistant):
         result = assistant.process("")

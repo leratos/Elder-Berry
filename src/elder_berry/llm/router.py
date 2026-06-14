@@ -36,7 +36,8 @@ class PrivacyLike(Protocol):
     """
 
     @property
-    def is_enabled(self) -> bool: ...
+    def is_enabled(self) -> bool:
+        """True, wenn der Privacy-Modus aktiv ist (lokal-only)."""
 
 
 class LLMRouter(LLMClient):

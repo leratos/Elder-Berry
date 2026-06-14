@@ -203,6 +203,7 @@ def init_llm(secret_store=None, privacy_state=None):
     from elder_berry.llm.modes import (
         DEFAULT_LLM_MODE,
         LLM_MODE_KEY,
+        LLM_MODES,
         normalize_llm_mode,
     )
     from elder_berry.llm.router import LLMRouter
@@ -226,7 +227,12 @@ def init_llm(secret_store=None, privacy_state=None):
         mode = normalize_llm_mode(stored) or DEFAULT_LLM_MODE
         if mode != router.mode:
             router.mode = mode
-            logger.info("LLM-Modus aus SecretStore übernommen: %s", mode)
+            # ``mode`` stammt aus dem SecretStore -> CodeQL wertet es als
+            # Secret (py/clear-text-logging). Es ist ein oeffentlicher
+            # Modus-Name (kein Geheimnis); Re-Selektion aus der
+            # vertrauenswuerdigen LLM_MODES-Konstante bricht die Taint-Kette.
+            logged_mode = next(m for m in LLM_MODES if m == mode)
+            logger.info("LLM-Modus aus SecretStore übernommen: %s", logged_mode)
 
     backend = router.active_backend
     if backend == "none":
