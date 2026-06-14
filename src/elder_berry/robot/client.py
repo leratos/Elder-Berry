@@ -110,6 +110,11 @@ class RobotClient:
             data = r.json()
         except ValueError:
             return "unreachable"
+        # 200 mit gueltigem aber Nicht-Objekt-JSON (z.B. [] oder null von einem
+        # fehlkonfigurierten Proxy) darf nicht via data.get() durchschlagen –
+        # is_online() faengt seit Phase 96 nicht mehr breit ab.
+        if not isinstance(data, dict):
+            return "unreachable"
         return "ok" if data.get("status") == "ok" else "unreachable"
 
     def is_online(self) -> bool:

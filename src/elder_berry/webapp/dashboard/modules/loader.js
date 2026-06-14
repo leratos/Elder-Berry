@@ -70,7 +70,8 @@ async function loadModules() {
         }
     }
 
-    // Default-View aktivieren (Fernbedienung – kein Login nötig)
+    // Default-View aktivieren (Fernbedienung – seit Phase 96 login-pflichtig,
+    // siehe AUTH_TABS in auth.js)
     switchView(config.defaultView || Object.keys(config.views)[0]);
     initNav();
 }
@@ -79,11 +80,14 @@ async function switchView(viewName) {
     // Phase 58: Login-Gate
     const ok = await authInstance.ensureAuthForView(viewName);
     if (!ok) {
-        // Nutzer hat Login abgebrochen → bleibe auf der Default-View
         const def = window.DASHBOARD_CONFIG.defaultView || "remote";
         if (viewName !== def) {
+            // Login abgebrochen → zurueck auf die Default-View
             return switchView(def);
         }
+        // Phase 96: auch die Default-View (remote) ist login-pflichtig. Login
+        // abgebrochen → nichts rendern; der Login-Button bleibt sichtbar.
+        return;
     }
 
     const config = window.DASHBOARD_CONFIG;

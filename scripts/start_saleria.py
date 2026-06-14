@@ -1528,25 +1528,34 @@ def run_matrix(
 
 
 def _resolve_robot_token(secrets):
-    """Löst den Robot-Token auf (Phase 96, D5: SecretStore-first).
+    """Löst den Robot-Token auf (Phase 96, D5: SecretStore ist autoritativ).
 
-    Kanonische Ablage Bot-Seite ist der SecretStore-Key ``robot_auth_token``
-    (D1). Die Env ``ELDER_BERRY_ROBOT_TOKEN`` ist auf dem Server normalerweise
-    NICHT gesetzt; existiert sie doch und WEICHT sie vom Store ab, beschattete
-    sie früher (env-first) den Store und machte die Dashboard-Rotation
-    wirkungslos -> jetzt gewinnt der Store, mit WARN.
+    Auf dem Bot/Rootserver ist der SecretStore-Key ``robot_auth_token`` die
+    KANONISCHE und EINZIGE Quelle (Token-Invariante: der Server hat kein
+    Env-Gegenstück). Der ``robot_proxy`` liest denselben Key – RobotClient
+    (Matrix-Pfad) und Dashboard-Proxy (``/api/robot``) nutzen damit garantiert
+    denselben Token. Wuerde hier die Env als Wert einspringen, koennte ein
+    env-only-Bot Matrix-Commands bedienen, waehrend der Dashboard-Proxy mangels
+    Token 401 liefert. Eine gesetzte Env ``ELDER_BERRY_ROBOT_TOKEN`` wird daher
+    NICHT als Wert genutzt, sondern nur erkannt und gewarnt.
     """
     store_token = secrets.get_or_none("robot_auth_token")
     env_token = os.environ.get("ELDER_BERRY_ROBOT_TOKEN")
-    if store_token:
-        if env_token and env_token != store_token:
+    if env_token and env_token != store_token:
+        if store_token:
             logger.warning(
                 "RobotClient: ELDER_BERRY_ROBOT_TOKEN (Env) weicht vom "
                 "SecretStore robot_auth_token ab – der SecretStore-Wert gilt "
-                "(D5). Env entfernen oder angleichen.",
+                "(D5, auch für den Dashboard-Proxy). Env entfernen/angleichen."
             )
-        return store_token
-    return env_token
+        else:
+            logger.warning(
+                "RobotClient: nur ELDER_BERRY_ROBOT_TOKEN (Env) gesetzt – der "
+                "Bot nutzt robot_auth_token aus dem SecretStore (wie der "
+                "Dashboard-Proxy). Setze robot_auth_token im SecretStore, sonst "
+                "bleiben Remote-Calls 401."
+            )
+    return store_token
 
 
 def _init_robot():

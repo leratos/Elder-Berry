@@ -86,6 +86,20 @@ class TestProbeClassification:
 
         assert _client_with_handler(handler).probe() == "unreachable"
 
+    def test_200_json_list_body_is_unreachable(self):
+        # 200 + gueltiges aber Nicht-Objekt-JSON ([]): data.get darf nicht
+        # mit AttributeError durchschlagen.
+        def handler(request: httpx.Request) -> httpx.Response:
+            return httpx.Response(200, json=[])
+
+        assert _client_with_handler(handler).probe() == "unreachable"
+
+    def test_200_json_null_body_is_unreachable(self):
+        def handler(request: httpx.Request) -> httpx.Response:
+            return httpx.Response(200, json=None)
+
+        assert _client_with_handler(handler).probe() == "unreachable"
+
     def test_connect_error_is_unreachable(self):
         def handler(request: httpx.Request) -> httpx.Response:
             raise httpx.ConnectError("no route")

@@ -226,8 +226,10 @@ Phase 96 in der Startup-Summary „RPi5 (Robot): Auth-Fehler – Token prüfen"
 Beide Seiten **im Gleichschritt** ändern: neuen Token auf dem RPi (Env +
 restart) **und** im Bot-SecretStore setzen, dann Bot neu starten.
 **Anti-Scope:** kein `ELDER_BERRY_ROBOT_TOKEN` auf dem Bot nachrüsten — der Bot
-liest SecretStore-first (D5); eine abweichende Env beschattet den Store zwar
-nicht mehr, würde aber nur eine WARN stiften.
+liest den Token **ausschließlich** aus dem SecretStore (D5, identisch zum
+Dashboard-Proxy `/api/robot`). Eine gesetzte Env wird nur erkannt und gewarnt,
+nie als Wert genutzt (sonst funktionierte der Matrix-Pfad, aber der
+Dashboard-Proxy liefe mangels Token ins 401).
 
 ### Verifikation (tokengesichertes Gate)
 
@@ -236,6 +238,16 @@ nicht mehr, würde aber nur eine WARN stiften.
 curl -H "X-Saleria-Robot-Token: <token>" http://127.0.0.1:12800/health
 # Erwartet: {"status": "ok", ...}
 ```
+
+> **Achtung Alexa-Skill:** Ein gesetzter Robot-Token gilt für **alle**
+> RobotServer-Routen inkl. des Alexa-Endpoints `/saleria` — Amazon sendet den
+> `X-Saleria-Robot-Token`-Header nicht, der Request wird also schon von der
+> `RobotTokenMiddleware` mit 401 abgelehnt, bevor der `AlexaRequestVerifier`
+> läuft. Wer die Alexa-Skill nutzt, fährt entweder **ohne** Robot-Token (der
+> Loopback-Default aus 96-E macht ihn optional) oder nimmt `/saleria` am
+> Reverse-Proxy bzw. in der Middleware von der Token-Pflicht aus (dann greift
+> nur die Alexa-Signatur-Verifikation). Eine saubere Lösung (Alexa-Endpoint-Auth)
+> ist eine eigene Mini-Phase, bewusst out of scope für Phase 96.
 
 ## SSH Reverse Tunnel (RPi → Rootserver)
 

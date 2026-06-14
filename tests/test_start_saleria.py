@@ -336,12 +336,20 @@ class TestResolveRobotToken:
         with patch.dict(os.environ, {"ELDER_BERRY_ROBOT_TOKEN": "env-tok"}):
             assert _resolve_robot_token(secrets) == "store-tok"
 
-    def test_env_fallback_when_store_empty(self):
+    def test_env_only_not_used_and_warns(self, caplog):
+        # Phase 96/PR#307: env-only wird NICHT als Wert genutzt (sonst koennte
+        # der env-only-Bot Matrix bedienen, waehrend der Dashboard-Proxy --
+        # der nur den SecretStore liest -- 401 liefert).
+        import logging
+
         from start_saleria import _resolve_robot_token
 
         secrets = self._secrets(None)
         with patch.dict(os.environ, {"ELDER_BERRY_ROBOT_TOKEN": "env-tok"}):
-            assert _resolve_robot_token(secrets) == "env-tok"
+            with caplog.at_level(logging.WARNING):
+                result = _resolve_robot_token(secrets)
+        assert result is None
+        assert any("SecretStore" in r.message for r in caplog.records)
 
     def test_none_when_both_empty(self):
         from start_saleria import _resolve_robot_token
