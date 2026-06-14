@@ -107,12 +107,13 @@ class STTRouter(STTEngine):
                 logger.warning("Cloud-STT fehlgeschlagen: %s", e)
 
         # Fallback (im Privacy-Modus: einziger Pfad): Tower (FasterWhisper).
-        # Phase 98 (PR #308): Im Privacy-Modus NICHT auf is_online gaten --
-        # der Flag wird nirgends aktiv geheartbeatet (bleibt False), Tower
-        # waere sonst auch bei Erreichbarkeit gesperrt. Direkt versuchen;
-        # try/except faengt Unerreichbarkeit ab. Nicht-Privacy: bestehendes
-        # is_online-Gate beibehalten.
-        if self._tower is not None and (privacy or self._tower.is_online):
+        # Folgephase zu PR #308 (#766): Tower wird direkt versucht, NICHT auf
+        # ``TowerAgent.is_online`` gegatet. Der Flag wird nirgends aktiv
+        # geheartbeatet (bleibt prozessweit False) -- ein is_online-Gate hatte
+        # den Tower-Fallback faktisch tot gemacht. ``try/except`` faengt
+        # Unerreichbarkeit ab. Im Nicht-Privacy-Pfad wurde Cloud zuvor schon
+        # versucht; Tower ist also der Cloud-Ausfall-Fall.
+        if self._tower is not None:
             try:
                 text = await self._tower.stt(audio_bytes)
                 logger.info("STT via Tower-Fallback: '%s'", text[:60])
