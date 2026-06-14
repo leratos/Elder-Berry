@@ -19,10 +19,12 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, cast
 
 from elder_berry.comms.commands.base import (
+    ROBOT_NOT_CONFIGURED_TEXT,
     CommandHandler,
     CommandPlugin,
     CommandResult,
     HandlerContext,
+    robot_error_message,
     user_friendly_error,
 )
 from elder_berry.comms.commands.cmd_utils import CmdResult, run_cmd
@@ -357,7 +359,7 @@ class UpdateCommandHandler(CommandHandler):
             return CommandResult(
                 command="update_rpi",
                 success=False,
-                text="RobotClient nicht verfügbar (RPi5 nicht verbunden).",
+                text=ROBOT_NOT_CONFIGURED_TEXT,
             )
         try:
             resp = self._robot.update_rpi()
@@ -371,7 +373,7 @@ class UpdateCommandHandler(CommandHandler):
             return CommandResult(
                 command="update_rpi",
                 success=False,
-                text=user_friendly_error(e, "RPi5 Update"),
+                text=robot_error_message(e),
             )
 
     # ------------------------------------------------------------------
@@ -455,7 +457,7 @@ class UpdateCommandHandler(CommandHandler):
             rpi_result = self._cmd_update_rpi()
             steps.append(f"RPi5: {rpi_result.text}")
         else:
-            steps.append("RPi5: nicht verbunden, übersprungen")
+            steps.append("RPi5: nicht konfiguriert, übersprungen")
 
         if self._tower:
             tower_result = self._cmd_update_tower()

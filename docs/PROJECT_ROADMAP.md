@@ -1660,10 +1660,15 @@ Repo-Hygiene, Audit-Tools und Doku.
 - Ein einzelner Step kann mehrere valide Zeilen-Commands enthalten.
 - Multi-Line-Validierung mit Guardrails in der Sequenz-Ausführung.
 
-## Phase 83 – Reactive AvatarEngine 🎭 🔬 KONZEPT
+## Phase 83 – Reactive AvatarEngine 🎭 ✅ ABGESCHLOSSEN
 
-- Konzept dokumentiert, aber noch nicht produktiv umgesetzt.
-- Siehe `docs/concepts/phase-83-reactive-avatar-engine.md`.
+- Etappen 83.x umgesetzt und gemerged (u.a. PRs #282/#284/#286/#301):
+  Crossfade-Übergänge inkl. FPS-Gate + Hologramm-Smoketest (83.3),
+  LipSyncDriver + AudioAnalyzer (83.4), EmotionResolver aus LLM-Tag +
+  Tracker-Trend (83.5), Attention-/Sensorik-Gate (83.6).
+- Offene **echte** Sensorik-Hardware (Temperatur/Luftdruck/Näherung) ist
+  separat als Backlog im Journal geführt (#739), nicht Teil von Phase 83.
+- Konzept: `docs/concepts/phase-83-reactive-avatar-engine.md`.
 
 ## Phase 85 – HTML-Email-Sanitizer 🛡️ ✅ ABGESCHLOSSEN
 
@@ -1756,10 +1761,26 @@ Repo-Hygiene, Audit-Tools und Doku.
 
 ## Phase 96 – RobotClient-Resilienz & RPi-Token-Provisionierung 🤖 ✅ ABGESCHLOSSEN
 
-- Ein einmaliger Verbindungs-/Auth-Fehler beim Bot-Start legt die
-  RPi5-Funktionen nicht mehr dauerhaft lahm; 401 (Auth) wird klar von
-  Netzfehlern unterschieden (Auslöser: realer Incident 2026-06-03, PR #283).
-- Siehe `docs/concepts/phase-96-robot-client-resilience.md`.
+Ein einmaliger Verbindungs-/Auth-Fehler beim Bot-Start legt die RPi5-Funktionen
+nicht mehr dauerhaft lahm; 401 (Auth) wird klar von Netzfehlern unterschieden
+(Auslöser: realer Incident 2026-06-03, #708).
+
+- ✅ **96-A** `RobotClient.probe()` klassifiziert ok/auth/rate_limited/unreachable
+  (gehärtet gegen non-200/non-JSON); `is_online()` darauf zurückgeführt; die
+  naked `except (httpx.HTTPError, Exception)` aus allen `harmony_*`-Methoden
+  entfernt (Fehler werden durchgereicht statt verschluckt).
+- ✅ **96-B** kein `robot=None`-Latch mehr in `start_saleria` (Recovery pro
+  Call); Startup-Summary zeigt den `probe()`-Grund; Token-Auflösung
+  SecretStore-first mit WARN bei abweichender Env (D5).
+- ✅ **96-C** RPi-Command-Handler (camera/harmony/turntable/update) melden
+  Live-Fehler differenziert (Auth vs. Netz) über `robot_error_message`; kein
+  Crash, kein Latch nötig.
+- ✅ **96-D** `robot_auth_token` als first-class Dashboard-Key
+  (`secrets_registry`) + Setup-Wizard-Whitelist (Schritt 7, sensitiv).
+- ✅ **96-E** `start_rpi5 --host`-Default auf `127.0.0.1` (Loopback/Tunnel);
+  Dashboard-LAN-Fallback entfernt; Setup-Doku auf die Tunnel-URL korrigiert +
+  Token-Provisionierungs-/Rotations-Runbook.
+- Konzept: `docs/concepts/phase-96-robot-client-resilience.md`.
 
 ## Phase 97 – Umkreissuche (Nearby Places) 📍 ✅ ABGESCHLOSSEN
 

@@ -129,8 +129,13 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--host",
         type=str,
-        default="0.0.0.0",
-        help="API-Host (default: 0.0.0.0)",
+        # Phase 96-E (D3): Loopback-Default. Der RobotServer wird nur ueber den
+        # SSH-Reverse-Tunnel (Bot 127.0.0.1:12800 -> RPi 127.0.0.1:8000)
+        # erreicht; kein LAN-Direktzugriff noetig. Fuer LAN-Betrieb explizit
+        # --host 0.0.0.0 setzen (dann ist ein Robot-Token Pflicht, s.
+        # _enforce_robot_token_policy).
+        default="127.0.0.1",
+        help="API-Host (default: 127.0.0.1, Loopback/Tunnel)",
     )
     parser.add_argument(
         "--rotation",

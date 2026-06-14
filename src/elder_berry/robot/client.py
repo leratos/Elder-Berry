@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+from typing import Literal
 
 import httpx
 
@@ -79,13 +80,51 @@ class RobotClient:
         data = r.json()
         return HealthResponse(**data)
 
-    def is_online(self) -> bool:
-        """Gibt True zurück wenn der RPi5-Server erreichbar ist."""
+    def probe(self) -> Literal["ok", "auth", "rate_limited", "unreachable"]:
+        """Klassifiziert die Erreichbarkeit des RPi5-Servers (Phase 96).
+
+        Trennt Auth-Fehler (401/403) und Rate-Limit (429) von echten
+        Netz-/Transportfehlern, damit der Aufrufer eine differenzierte Meldung
+        ausgeben kann. Härtung gegen non-200/non-JSON-Antworten (z.B. 502 mit
+        nginx-/Tunnel-HTML): ein ``JSONDecodeError`` ist **kein**
+        ``httpx.HTTPError`` und würde sonst ungefangen durchschlagen.
+
+        Returns:
+            ``"ok"`` – ``/health`` liefert 200 mit ``{"status": "ok"}``.
+            ``"auth"`` – 401/403 (Token fehlt/ungültig).
+            ``"rate_limited"`` – 429 (Lockout der RobotTokenMiddleware).
+            ``"unreachable"`` – ConnError/Timeout, anderer Status-Code, oder
+            unlesbarer/abweichender Body.
+        """
         try:
-            resp = self.health()
-            return resp.status == "ok"
-        except (httpx.HTTPError, Exception):
-            return False
+            r = self._client.get("/health")
+        except httpx.HTTPError:
+            return "unreachable"
+        if r.status_code in (401, 403):
+            return "auth"
+        if r.status_code == 429:
+            return "rate_limited"
+        if r.status_code != 200:
+            return "unreachable"
+        try:
+            data = r.json()
+        except ValueError:
+            return "unreachable"
+        # 200 mit gueltigem aber Nicht-Objekt-JSON (z.B. [] oder null von einem
+        # fehlkonfigurierten Proxy) darf nicht via data.get() durchschlagen –
+        # is_online() faengt seit Phase 96 nicht mehr breit ab.
+        if not isinstance(data, dict):
+            return "unreachable"
+        return "ok" if data.get("status") == "ok" else "unreachable"
+
+    def is_online(self) -> bool:
+        """Gibt True zurück wenn der RPi5-Server erreichbar ist.
+
+        Phase 96: zurückgeführt auf :meth:`probe`. Backwards-kompatibel als
+        ``bool``; nur ``probe() == "ok"`` gilt als online. Nicht-``httpx``-Fehler
+        (z.B. Programmierfehler) werden bewusst NICHT mehr verschluckt.
+        """
+        return self.probe() == "ok"
 
     # --- Status ---
 
@@ -255,67 +294,48 @@ class RobotClient:
     # --- Harmony Hub ---
 
     def harmony_status(self) -> dict:
-        """GET /harmony/status → {"connected": bool, "current_activity": str|null}"""
-        try:
-            r = self._client.get("/harmony/status")
-            r.raise_for_status()
-            return r.json()
-        except (httpx.HTTPError, Exception) as e:
-            logger.error("harmony_status fehlgeschlagen: %s", e)
-            return {"connected": False, "current_activity": None}
+        """GET /harmony/status → {"connected": bool, "current_activity": str|null}
+
+        Phase 96: HTTP-/Transportfehler werden NICHT mehr verschluckt, sondern
+        an den Aufrufer (Command-Handler) durchgereicht, damit 401 (Auth) von
+        ConnError (Netz) unterscheidbar bleibt. Gilt für alle ``harmony_*``.
+        """
+        r = self._client.get("/harmony/status")
+        r.raise_for_status()
+        return r.json()
 
     def harmony_config(self) -> dict:
         """GET /harmony/config → {"activities": [...], "devices": [...]}"""
-        try:
-            r = self._client.get("/harmony/config")
-            r.raise_for_status()
-            return r.json()
-        except (httpx.HTTPError, Exception) as e:
-            logger.error("harmony_config fehlgeschlagen: %s", e)
-            return {"activities": [], "devices": []}
+        r = self._client.get("/harmony/config")
+        r.raise_for_status()
+        return r.json()
 
     def harmony_config_detailed(self) -> dict:
         """GET /harmony/config/detailed → Devices mit ControlGroups + Commands."""
-        try:
-            r = self._client.get("/harmony/config/detailed")
-            r.raise_for_status()
-            return r.json()
-        except (httpx.HTTPError, Exception) as e:
-            logger.error("harmony_config_detailed fehlgeschlagen: %s", e)
-            return {"activities": [], "devices": []}
+        r = self._client.get("/harmony/config/detailed")
+        r.raise_for_status()
+        return r.json()
 
     def harmony_layouts(self) -> dict:
         """GET /harmony/layouts → Fernbedienungs-Layouts."""
-        try:
-            r = self._client.get("/harmony/layouts")
-            r.raise_for_status()
-            return r.json()
-        except (httpx.HTTPError, Exception) as e:
-            logger.error("harmony_layouts fehlgeschlagen: %s", e)
-            return {"activities": {}, "devices": {}}
+        r = self._client.get("/harmony/layouts")
+        r.raise_for_status()
+        return r.json()
 
     def harmony_save_layouts(self, layouts: dict) -> bool:
         """POST /harmony/layouts → Layouts speichern."""
-        try:
-            r = self._client.post("/harmony/layouts", json=layouts)
-            r.raise_for_status()
-            return r.json().get("success", False)
-        except (httpx.HTTPError, Exception) as e:
-            logger.error("harmony_save_layouts fehlgeschlagen: %s", e)
-            return False
+        r = self._client.post("/harmony/layouts", json=layouts)
+        r.raise_for_status()
+        return r.json().get("success", False)
 
     def harmony_start_activity(self, activity: str) -> bool:
         """POST /harmony/activity"""
-        try:
-            r = self._client.post(
-                "/harmony/activity",
-                json={"activity": activity},
-            )
-            r.raise_for_status()
-            return r.json().get("success", False)
-        except (httpx.HTTPError, Exception) as e:
-            logger.error("harmony_start_activity fehlgeschlagen: %s", e)
-            return False
+        r = self._client.post(
+            "/harmony/activity",
+            json={"activity": activity},
+        )
+        r.raise_for_status()
+        return r.json().get("success", False)
 
     def harmony_send_command(
         self,
@@ -324,71 +344,47 @@ class RobotClient:
         repeat: int = 1,
     ) -> bool:
         """POST /harmony/command"""
-        try:
-            r = self._client.post(
-                "/harmony/command",
-                json={"device": device, "command": command, "repeat": repeat},
-            )
-            r.raise_for_status()
-            return r.json().get("success", False)
-        except (httpx.HTTPError, Exception) as e:
-            logger.error("harmony_send_command fehlgeschlagen: %s", e)
-            return False
+        r = self._client.post(
+            "/harmony/command",
+            json={"device": device, "command": command, "repeat": repeat},
+        )
+        r.raise_for_status()
+        return r.json().get("success", False)
 
     # --- Harmony Szenen ---
 
     def harmony_scenes(self) -> list[dict]:
         """GET /harmony/scenes → Liste aller Szenen."""
-        try:
-            r = self._client.get("/harmony/scenes")
-            r.raise_for_status()
-            return r.json().get("scenes", [])
-        except (httpx.HTTPError, Exception) as e:
-            logger.error("harmony_scenes fehlgeschlagen: %s", e)
-            return []
+        r = self._client.get("/harmony/scenes")
+        r.raise_for_status()
+        return r.json().get("scenes", [])
 
     def harmony_save_scene(self, scene: dict) -> bool:
         """POST /harmony/scenes → Szene erstellen/aktualisieren."""
-        try:
-            r = self._client.post("/harmony/scenes", json=scene)
-            r.raise_for_status()
-            return r.json().get("success", False)
-        except (httpx.HTTPError, Exception) as e:
-            logger.error("harmony_save_scene fehlgeschlagen: %s", e)
-            return False
+        r = self._client.post("/harmony/scenes", json=scene)
+        r.raise_for_status()
+        return r.json().get("success", False)
 
     def harmony_start_scene(self, name: str) -> dict:
         """POST /harmony/scene/start → Szene starten."""
-        try:
-            r = self._client.post(
-                "/harmony/scene/start",
-                json={"name": name},
-            )
-            r.raise_for_status()
-            return r.json()
-        except (httpx.HTTPError, Exception) as e:
-            logger.error("harmony_start_scene fehlgeschlagen: %s", e)
-            return {"success": False, "error": str(e)}
+        r = self._client.post(
+            "/harmony/scene/start",
+            json={"name": name},
+        )
+        r.raise_for_status()
+        return r.json()
 
     def harmony_delete_scene(self, name: str) -> bool:
         """DELETE /harmony/scene/{name} → Szene löschen."""
-        try:
-            r = self._client.delete(f"/harmony/scene/{name}")
-            r.raise_for_status()
-            return r.json().get("success", False)
-        except (httpx.HTTPError, Exception) as e:
-            logger.error("harmony_delete_scene fehlgeschlagen: %s", e)
-            return False
+        r = self._client.delete(f"/harmony/scene/{name}")
+        r.raise_for_status()
+        return r.json().get("success", False)
 
     def harmony_power_off(self) -> bool:
         """POST /harmony/off"""
-        try:
-            r = self._client.post("/harmony/off")
-            r.raise_for_status()
-            return r.json().get("success", False)
-        except (httpx.HTTPError, Exception) as e:
-            logger.error("harmony_power_off fehlgeschlagen: %s", e)
-            return False
+        r = self._client.post("/harmony/off")
+        r.raise_for_status()
+        return r.json().get("success", False)
 
     # --- System ---
 

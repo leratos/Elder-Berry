@@ -152,6 +152,11 @@ Restart=on-failure
 RestartSec=5
 Environment=SDL_VIDEODRIVER=kmsdrm
 Environment=DISPLAY=:0
+# Phase 96: Robot-Token. start_rpi5 bindet per Default auf 127.0.0.1
+# (Phase 96-E) -- fuer LAN-Betrieb zusaetzlich `--host 0.0.0.0` an ExecStart
+# anhaengen, dann ist der Token Pflicht (_enforce_robot_token_policy).
+# Der Wert MUSS identisch zum SecretStore-Key robot_auth_token auf dem Bot sein.
+Environment=ELDER_BERRY_ROBOT_TOKEN=<dein-robot-token>
 
 [Install]
 WantedBy=multi-user.target
@@ -173,7 +178,13 @@ Auf dem Tower den RPi5 im SecretStore registrieren:
 
 ```python
 from elder_berry.core.secret_store import SecretStore
-SecretStore().set("robot_host", "http://192.168.50.220:8000")
+
+# Zugriff via SSH-Reverse-Tunnel (Bot 127.0.0.1:12800 -> RPi 127.0.0.1:8000),
+# NICHT ueber die LAN-IP -- seit Phase 96-E bindet start_rpi5 auf 127.0.0.1.
+SecretStore().set("robot_host", "http://127.0.0.1:12800")
+
+# Robot-Token MUSS == ELDER_BERRY_ROBOT_TOKEN auf dem RPi sein (Invariante).
+SecretStore().set("robot_auth_token", "<gleicher-token-wie-auf-dem-rpi>")
 ```
 
 Der Tower steuert den Avatar dann automatisch via `RobotClient`:
@@ -181,6 +192,62 @@ Der Tower steuert den Avatar dann automatisch via `RobotClient`:
 - LLM-Emotion → `POST /avatar/emotion` → Display wechselt Ausdruck
 - TTS-Sprechen → Lip-Sync auf dem Display
 - Health-Check → `GET /health`
+
+## Robot-Token: Provisionierung & Rotation (Phase 96)
+
+Der RobotServer auf dem RPi ist tokengeschützt (`RobotTokenMiddleware`, Header
+`X-Saleria-Robot-Token`). Der Token liegt **bewusst asymmetrisch** an zwei
+Orten mit **identischem Wert**:
+
+| Seite | Speicherort |
+|---|---|
+| RPi | Env `ELDER_BERRY_ROBOT_TOKEN` (in der systemd-Unit) |
+| Bot/Rootserver | SecretStore-Key `robot_auth_token` (Dashboard/Setup-Wizard, kein Env) |
+
+**Invariante:** RPi-Env-Wert == Bot-SecretStore-Wert. Stimmen sie nicht
+überein, lehnt der RPi alle Requests mit **401** ab — und der Bot meldet seit
+Phase 96 in der Startup-Summary „RPi5 (Robot): Auth-Fehler – Token prüfen"
+(früher fälschlich „nicht erreichbar", Incident 2026-06-03).
+
+### Erst-Provisionierung
+
+1. Token erzeugen, z.B.
+   `python -c "import secrets; print(secrets.token_urlsafe(32))"`.
+2. RPi: `ELDER_BERRY_ROBOT_TOKEN=<token>` in die systemd-Unit (s.o.), dann
+   `sudo systemctl daemon-reload && sudo systemctl restart elder-berry`.
+3. Bot: denselben Wert als `robot_auth_token` setzen — im Dashboard
+   (Einstellungen → Infrastruktur → RPi5-Token), im Setup-Wizard (Schritt 7)
+   oder per `SecretStore().set("robot_auth_token", "<token>")`.
+4. Bot neu starten (`requires_restart`: der Token wird beim Start in den
+   `RobotClient` gebacken).
+
+### Rotation
+
+Beide Seiten **im Gleichschritt** ändern: neuen Token auf dem RPi (Env +
+restart) **und** im Bot-SecretStore setzen, dann Bot neu starten.
+**Anti-Scope:** kein `ELDER_BERRY_ROBOT_TOKEN` auf dem Bot nachrüsten — der Bot
+liest den Token **ausschließlich** aus dem SecretStore (D5, identisch zum
+Dashboard-Proxy `/api/robot`). Eine gesetzte Env wird nur erkannt und gewarnt,
+nie als Wert genutzt (sonst funktionierte der Matrix-Pfad, aber der
+Dashboard-Proxy liefe mangels Token ins 401).
+
+### Verifikation (tokengesichertes Gate)
+
+```bash
+# Auf dem Bot/Rootserver -- MIT Token-Header (ein bare curl liefert 401):
+curl -H "X-Saleria-Robot-Token: <token>" http://127.0.0.1:12800/health
+# Erwartet: {"status": "ok", ...}
+```
+
+> **Achtung Alexa-Skill:** Ein gesetzter Robot-Token gilt für **alle**
+> RobotServer-Routen inkl. des Alexa-Endpoints `/saleria` — Amazon sendet den
+> `X-Saleria-Robot-Token`-Header nicht, der Request wird also schon von der
+> `RobotTokenMiddleware` mit 401 abgelehnt, bevor der `AlexaRequestVerifier`
+> läuft. Wer die Alexa-Skill nutzt, fährt entweder **ohne** Robot-Token (der
+> Loopback-Default aus 96-E macht ihn optional) oder nimmt `/saleria` am
+> Reverse-Proxy bzw. in der Middleware von der Token-Pflicht aus (dann greift
+> nur die Alexa-Signatur-Verifikation). Eine saubere Lösung (Alexa-Endpoint-Auth)
+> ist eine eigene Mini-Phase, bewusst out of scope für Phase 96.
 
 ## SSH Reverse Tunnel (RPi → Rootserver)
 

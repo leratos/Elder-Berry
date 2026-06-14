@@ -12,7 +12,11 @@
  *   - on401Handler()  → wird global als window.__dashboardOn401 gesetzt
  */
 
-const AUTH_TABS = ["settings", "proposals", "avatar"];
+// Phase 96: "remote" (Fernbedienung) ist jetzt login-pflichtig. Der einzige
+// Datenpfad /api/robot liegt hinter der DashboardAuthMiddleware, und der
+// frueher offene LAN-Direktzugriff ist nach dem Loopback-Bind (96-E) tot --
+// eine offene Remote-View wuerde nur 401s zeigen ("offline").
+const AUTH_TABS = ["remote", "settings", "proposals", "avatar"];
 
 export class DashboardAuth {
     constructor() {
@@ -154,6 +158,11 @@ export class DashboardAuth {
                     const r = this._pendingResolve;
                     this._pendingResolve = null;
                     r(true);
+                } else if (window.__dashboardSwitchView) {
+                    // Login ueber den Header-Button (kein pending View-Wechsel):
+                    // Default-View laden, sonst bliebe sie nach Phase-96-Gating leer.
+                    const def = window.DASHBOARD_CONFIG?.defaultView || "remote";
+                    window.__dashboardSwitchView(def);
                 }
                 return;
             }

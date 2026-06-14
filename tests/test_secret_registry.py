@@ -111,6 +111,15 @@ class TestDashboardConsumption:
         assert entry.get("risk_level") == "high"
         assert entry.get("type") == "textarea"
 
+    def test_robot_auth_token_registered_first_class(self):
+        # Phase 96-D: ohne diesen Eintrag war der Token im Dashboard
+        # weder sichtbar noch editierbar (Incident #708).
+        entry = _REGISTRY_BY_KEY["robot_auth_token"]
+        assert entry["category"] == "Infrastruktur"
+        assert entry["sensitive"] is True
+        assert entry["requires_restart"] is True
+        assert entry["risk_level"] == "high"
+
 
 class TestRegistryToSettingDefinition:
     """Konvertierung Registry → SettingDefinition."""

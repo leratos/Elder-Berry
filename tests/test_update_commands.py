@@ -265,7 +265,7 @@ class TestUpdateRpi:
     def test_no_robot(self, handler):
         result = handler.execute("update_rpi", "update rpi")
         assert result.success is False
-        assert "RobotClient" in result.text
+        assert "nicht konfiguriert" in result.text
 
     def test_rpi_success(self, handler_with_robot):
         result = handler_with_robot.execute("update_rpi", "update rpi")

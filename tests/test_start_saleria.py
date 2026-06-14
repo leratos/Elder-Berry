@@ -268,3 +268,106 @@ class TestServiceFiles:
         content = (_PROJECT_ROOT / "server" / "elder-berry.service").read_text()
         assert "NoNewPrivileges=true" in content
         assert "PrivateTmp=true" in content
+
+
+# ===========================================================================
+# Phase 96 – RobotClient-Init + Startup-Summary-Mapping
+# ===========================================================================
+
+
+class TestRobotSummaryStatus:
+    """_robot_summary_status mappt den probe()-State auf (Status, Detail)."""
+
+    def test_ok_is_connected(self):
+        from start_saleria import _robot_summary_status
+
+        assert _robot_summary_status("ok") == ("ok", "verbunden")
+
+    def test_auth_is_warn_with_token_hint(self):
+        from start_saleria import _robot_summary_status
+
+        status, detail = _robot_summary_status("auth")
+        assert status == "warn"
+        assert "Token" in detail
+
+    def test_no_token_is_warn_with_token_hint(self):
+        from start_saleria import _robot_summary_status
+
+        status, detail = _robot_summary_status("no_token")
+        assert status == "warn"
+        assert "Token" in detail
+
+    def test_not_configured_is_warn(self):
+        from start_saleria import _robot_summary_status
+
+        status, detail = _robot_summary_status("not_configured")
+        assert status == "warn"
+        assert "nicht konfiguriert" in detail
+
+    def test_unreachable_is_warn(self):
+        from start_saleria import _robot_summary_status
+
+        assert _robot_summary_status("unreachable")[0] == "warn"
+
+    def test_rate_limited_is_warn(self):
+        from start_saleria import _robot_summary_status
+
+        assert _robot_summary_status("rate_limited")[0] == "warn"
+
+    def test_unknown_falls_back_to_warn(self):
+        from start_saleria import _robot_summary_status
+
+        assert _robot_summary_status("weird")[0] == "warn"
+
+
+class TestResolveRobotToken:
+    """D5: SecretStore-first; Env nur Fallback; WARN wenn Env den Store
+    beschattet (sonst wäre die Dashboard-Rotation wirkungslos)."""
+
+    def _secrets(self, store_value):
+        s = MagicMock()
+        s.get_or_none.return_value = store_value
+        return s
+
+    def test_store_wins_when_both_set(self):
+        from start_saleria import _resolve_robot_token
+
+        secrets = self._secrets("store-tok")
+        with patch.dict(os.environ, {"ELDER_BERRY_ROBOT_TOKEN": "env-tok"}):
+            assert _resolve_robot_token(secrets) == "store-tok"
+
+    def test_env_only_not_used_and_warns(self, caplog):
+        # Phase 96/PR#307: env-only wird NICHT als Wert genutzt (sonst koennte
+        # der env-only-Bot Matrix bedienen, waehrend der Dashboard-Proxy --
+        # der nur den SecretStore liest -- 401 liefert).
+        import logging
+
+        from start_saleria import _resolve_robot_token
+
+        secrets = self._secrets(None)
+        with patch.dict(os.environ, {"ELDER_BERRY_ROBOT_TOKEN": "env-tok"}):
+            with caplog.at_level(logging.WARNING):
+                result = _resolve_robot_token(secrets)
+        assert result is None
+        assert any("SecretStore" in r.message for r in caplog.records)
+
+    def test_none_when_both_empty(self):
+        from start_saleria import _resolve_robot_token
+
+        secrets = self._secrets(None)
+        env = os.environ.copy()
+        env.pop("ELDER_BERRY_ROBOT_TOKEN", None)
+        with patch.dict(os.environ, env, clear=True):
+            assert _resolve_robot_token(secrets) is None
+
+    def test_store_wins_and_warns_on_shadow(self, caplog):
+        import logging
+
+        from start_saleria import _resolve_robot_token
+
+        secrets = self._secrets("store-tok")
+        with patch.dict(os.environ, {"ELDER_BERRY_ROBOT_TOKEN": "different"}):
+            with caplog.at_level(logging.WARNING):
+                result = _resolve_robot_token(secrets)
+        assert result == "store-tok"
+        assert any("weicht" in r.message.lower() for r in caplog.records)

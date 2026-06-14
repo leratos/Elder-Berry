@@ -7,11 +7,12 @@ import re
 from typing import TYPE_CHECKING
 
 from elder_berry.comms.commands.base import (
+    ROBOT_NOT_CONFIGURED_TEXT,
     CommandHandler,
     CommandPlugin,
     CommandResult,
     HandlerContext,
-    user_friendly_error,
+    robot_error_message,
 )
 
 if TYPE_CHECKING:
@@ -113,7 +114,7 @@ class TurntableCommandHandler(CommandHandler):
             return CommandResult(
                 command=command,
                 success=False,
-                text="RobotClient nicht verfügbar (RPi5 nicht verbunden).",
+                text=ROBOT_NOT_CONFIGURED_TEXT,
             )
         if command == "drehteller home":
             return self._cmd_home()
@@ -148,7 +149,7 @@ class TurntableCommandHandler(CommandHandler):
             return CommandResult(
                 command="drehteller home",
                 success=False,
-                text=user_friendly_error(e, "Drehteller-Homing"),
+                text=robot_error_message(e),
             )
 
     def _cmd_stop(self) -> CommandResult:
@@ -164,7 +165,7 @@ class TurntableCommandHandler(CommandHandler):
             return CommandResult(
                 command="drehteller stopp",
                 success=False,
-                text=user_friendly_error(e, "Drehteller-Stopp"),
+                text=robot_error_message(e),
             )
 
     def _cmd_status(self) -> CommandResult:
@@ -196,7 +197,7 @@ class TurntableCommandHandler(CommandHandler):
             return CommandResult(
                 command="drehteller status",
                 success=False,
-                text=user_friendly_error(e, "Drehteller-Status"),
+                text=robot_error_message(e),
             )
 
     def _cmd_rotate(self, command: str, raw_text: str) -> CommandResult:
@@ -265,7 +266,7 @@ class TurntableCommandHandler(CommandHandler):
             return CommandResult(
                 command="turntable_rotate",
                 success=False,
-                text=user_friendly_error(e, "Drehteller"),
+                text=robot_error_message(e),
             )
 
     def _execute_rotate_to(self, degrees: float) -> CommandResult:
@@ -281,7 +282,7 @@ class TurntableCommandHandler(CommandHandler):
             return CommandResult(
                 command="turntable_rotate",
                 success=False,
-                text=user_friendly_error(e, "Drehteller"),
+                text=robot_error_message(e),
             )
 
 

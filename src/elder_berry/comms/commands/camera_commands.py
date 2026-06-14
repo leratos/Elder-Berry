@@ -10,10 +10,12 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from elder_berry.comms.commands.base import (
+    ROBOT_NOT_CONFIGURED_TEXT,
     CommandHandler,
     CommandPlugin,
     CommandResult,
     HandlerContext,
+    robot_error_message,
     user_friendly_error,
 )
 
@@ -102,13 +104,13 @@ class CameraCommandHandler(CommandHandler):
     def _capture_image(self) -> tuple[bytes | None, str | None]:
         """Nimmt ein Bild auf. Gibt (jpeg_bytes, error_text) zurück."""
         if not self._robot:
-            return None, "RobotClient nicht verfügbar (RPi5 nicht verbunden)."
+            return None, ROBOT_NOT_CONFIGURED_TEXT
 
         try:
             jpeg_bytes = self._robot.capture_image()
         except Exception as e:
             logger.error("Kamera-Capture fehlgeschlagen: %s", e)
-            return None, f"Kamera-Fehler: {e}"
+            return None, robot_error_message(e)
 
         if jpeg_bytes is None:
             return None, "Kamera nicht verfügbar oder Capture fehlgeschlagen."

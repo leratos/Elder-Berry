@@ -300,8 +300,11 @@
 
             <div class="form-group">
                 <label>RPi5 (Roboter-Hardware)</label>
-                <input type="text" id="robot_host" placeholder="192.168.50.220">
-                <p class="hint">Nur wenn RPi5 mit Elder-Berry Server läuft.</p>
+                <input type="text" id="robot_host" placeholder="http://127.0.0.1:12800">
+                <input type="password" id="robot_auth_token" placeholder="RPi5-Token (X-Saleria-Robot-Token)">
+                <p class="hint">Nur wenn RPi5 mit Elder-Berry Server läuft. Host via
+                    SSH-Tunnel (127.0.0.1:12800), nicht LAN-IP. Token muss identisch zu
+                    ELDER_BERRY_ROBOT_TOKEN auf dem RPi sein.</p>
             </div>
 
             <div class="btn-row">

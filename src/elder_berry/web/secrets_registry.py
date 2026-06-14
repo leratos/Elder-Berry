@@ -299,6 +299,20 @@ SECRET_REGISTRY: list[SecretRegistryEntry] = [
         "description": "Auth-Token für den Tower-Server (Header X-Saleria-Tower-Token). "
         "Wird beim ersten Agent-Start automatisch generiert.",
     },
+    {
+        # Phase 96-D: ohne diesen Eintrag war der Token im Dashboard weder
+        # sichtbar noch editierbar (robot_proxy las ihn, aber niemand konnte
+        # ihn setzen). Wert muss == ELDER_BERRY_ROBOT_TOKEN auf dem RPi sein.
+        "key": "robot_auth_token",
+        "label": "RPi5-Token",
+        "category": "Infrastruktur",
+        "sensitive": True,
+        "requires_restart": True,
+        "risk_level": "high",
+        "description": "Auth-Token für den RPi5-RobotServer (Header "
+        "X-Saleria-Robot-Token). Muss identisch zu ELDER_BERRY_ROBOT_TOKEN "
+        "auf dem RPi sein; bei Rotation beide Seiten gleichschalten.",
+    },
     # --- Wetter & Standort ---
     {
         "key": "weather_city",
