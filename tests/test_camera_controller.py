@@ -66,7 +66,7 @@ class TestSimulatedCamera:
 
 def _make_picamera2_mock():
     """Create a minimal picamera2 mock."""
-    import numpy as np
+    np = pytest.importorskip("numpy", reason="numpy nicht installiert")
 
     mock_cam_instance = MagicMock()
     # create_still_configuration returns a config dict
