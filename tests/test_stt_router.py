@@ -263,6 +263,34 @@ class TestPrivacyMode:
 
         cloud.transcribe.assert_not_awaited()
 
+    async def test_privacy_uses_tower_despite_stale_is_online(self):
+        # PR #308 B: is_online wird nie geheartbeatet (bleibt False). Im
+        # Privacy-Modus muss Tower trotzdem versucht werden.
+        cloud = _make_cloud(text="Cloud OK")
+        tower = _make_tower(online=False, text="Tower lokal")
+        router = STTRouter(
+            cloud_stt=cloud,
+            tower=tower,
+            privacy_state=PrivacyState(enabled=True),
+        )
+
+        result = await router.transcribe_async(b"\x00" * 100)
+
+        assert result.text == "Tower lokal"
+        cloud.transcribe.assert_not_awaited()
+        tower.stt.assert_awaited_once()
+
+    async def test_non_privacy_keeps_is_online_gate(self):
+        # Nicht-Privacy: bestehendes Verhalten unveraendert (Tower nur bei
+        # is_online; pre-existing toter Fallback bleibt out-of-scope).
+        cloud = _make_cloud(fail=True)
+        tower = _make_tower(online=False, text="Tower lokal")
+        router = STTRouter(cloud_stt=cloud, tower=tower)
+
+        with pytest.raises(STTUnavailableError):
+            await router.transcribe_async(b"\x00" * 100)
+        tower.stt.assert_not_awaited()
+
     async def test_privacy_off_uses_cloud(self):
         cloud = _make_cloud(text="Cloud OK")
         router = STTRouter(

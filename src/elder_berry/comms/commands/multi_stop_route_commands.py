@@ -30,6 +30,7 @@ from elder_berry.comms.commands.base import (
     CommandPlugin,
     CommandResult,
     HandlerContext,
+    privacy_refusal,
     user_friendly_error,
 )
 from elder_berry.comms.commands.route_commands import parse_arrival_time
@@ -62,6 +63,7 @@ if TYPE_CHECKING:
     from elder_berry.tools.google_maps_route_planner import (
         GoogleMapsRoutePlanner,
     )
+    from elder_berry.core.privacy_state import PrivacyState
     from elder_berry.tools.maps_link_builder import MapsLinkBuilder
     from elder_berry.tools.route_intent_parser import RouteIntentParser
     from elder_berry.tools.route_session_store import RouteSessionStore
@@ -118,6 +120,7 @@ class MultiStopRouteCommandHandler(CommandHandler):
         link_builder: MapsLinkBuilder,
         default_user_id: str = "",
         max_detour_seconds: int = _DEFAULT_MAX_DETOUR_SECONDS,
+        privacy_state: PrivacyState | None = None,
     ) -> None:
         self._parser = intent_parser
         self._planner = route_planner
@@ -125,6 +128,7 @@ class MultiStopRouteCommandHandler(CommandHandler):
         self._sessions = session_store
         self._link = link_builder
         self._user_id = default_user_id
+        self._privacy_state = privacy_state
         self._max_detour = max_detour_seconds
 
     # ------------------------------------------------------------------
@@ -181,6 +185,11 @@ class MultiStopRouteCommandHandler(CommandHandler):
                 success=False,
                 fallthrough=True,
             )
+
+        # Phase 98: Das Intent-Parsing schickt den Freitext an Anthropic ->
+        # im Privacy-Modus hart aussetzen.
+        if self._privacy_state is not None and self._privacy_state.is_enabled:
+            return privacy_refusal("multi_stop_route", "Routen-Planung")
 
         try:
             intent = self._parser.parse(raw_text)
@@ -754,6 +763,7 @@ def _factory(ctx: HandlerContext) -> CommandHandler | None:
         session_store=ctx.route_session_store,
         link_builder=MapsLinkBuilder(),
         default_user_id=ctx.default_user_id,
+        privacy_state=ctx.privacy_state,
     )
 
 

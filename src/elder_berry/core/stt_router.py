@@ -106,8 +106,13 @@ class STTRouter(STTEngine):
             except Exception as e:
                 logger.warning("Cloud-STT fehlgeschlagen: %s", e)
 
-        # Fallback (im Privacy-Modus: einziger Pfad): Tower (FasterWhisper)
-        if self._tower and self._tower.is_online:
+        # Fallback (im Privacy-Modus: einziger Pfad): Tower (FasterWhisper).
+        # Phase 98 (PR #308): Im Privacy-Modus NICHT auf is_online gaten --
+        # der Flag wird nirgends aktiv geheartbeatet (bleibt False), Tower
+        # waere sonst auch bei Erreichbarkeit gesperrt. Direkt versuchen;
+        # try/except faengt Unerreichbarkeit ab. Nicht-Privacy: bestehendes
+        # is_online-Gate beibehalten.
+        if self._tower is not None and (privacy or self._tower.is_online):
             try:
                 text = await self._tower.stt(audio_bytes)
                 logger.info("STT via Tower-Fallback: '%s'", text[:60])

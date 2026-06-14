@@ -109,8 +109,13 @@ class TTSRouter(TTSEngine):
             except Exception as e:
                 logger.warning("ElevenLabs TTS fehlgeschlagen: %s", e)
 
-        # Fallback 1 (im Privacy-Modus: bevorzugter Pfad): Tower (XTTS v2)
-        if self._tower and self._tower.is_online:
+        # Fallback 1 (im Privacy-Modus: bevorzugter Pfad): Tower (XTTS v2).
+        # Phase 98 (PR #308): Im Privacy-Modus NICHT auf is_online gaten --
+        # der Flag wird nirgends aktiv geheartbeatet (bleibt False), Tower
+        # waere sonst auch bei Erreichbarkeit gesperrt. Direkt versuchen;
+        # try/except faengt Unerreichbarkeit ab. Nicht-Privacy: bestehendes
+        # is_online-Gate beibehalten.
+        if self._tower is not None and (privacy or self._tower.is_online):
             try:
                 audio = await self._tower.tts(text, emotion)
                 logger.info("TTS via Tower-Fallback (%d bytes)", len(audio))

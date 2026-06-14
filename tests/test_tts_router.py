@@ -458,6 +458,23 @@ class TestPrivacyMode:
 
         elevenlabs.synthesize.assert_not_awaited()
 
+    async def test_privacy_uses_tower_despite_stale_is_online(self):
+        # PR #308 B: is_online bleibt mangels Heartbeat False -> im
+        # Privacy-Modus Tower trotzdem versuchen.
+        elevenlabs = _make_elevenlabs(audio=b"\xff" * 100)
+        tower = _make_tower(online=False, audio=b"\x22" * 150)
+        router = TTSRouter(
+            elevenlabs=elevenlabs,
+            tower=tower,
+            privacy_state=PrivacyState(enabled=True),
+        )
+
+        audio = await router.synthesize("Hallo")
+
+        assert audio == b"\x22" * 150
+        elevenlabs.synthesize.assert_not_awaited()
+        tower.tts.assert_awaited_once()
+
     async def test_privacy_off_uses_elevenlabs(self):
         elevenlabs = _make_elevenlabs(audio=b"\xff" * 100)
         router = TTSRouter(

@@ -204,6 +204,20 @@ Router `pop_backend_notice()` einen Hinweis liefert, wird er knapp an
 - **Command**: Toggle in `comms/commands/system_commands.py`
   („lokaler modus an/aus", „privatmodus", Status) mit sichtbarer Rückmeldung;
   setzt `PrivacyState`.
+- **Anthropic-Command-Pfade (PR #308 A)**: Der `anthropic_client` wird auch
+  direkt in Command-Handler injiziert (Bildbeschreibung `camera`, Mail-Entwurf
+  `mail`, Rezept-Generierung `recipe`, Intent-Parser von `route`/`nearby`).
+  Diese Pfade umgehen den `LLMRouter`. Im Privacy-Modus prüfen sie
+  `privacy_state` und lehnen hart ab (`base.privacy_refusal(...)` bzw. ein
+  handler-spezifischer Hinweis), statt still die Cloud zu rufen. Neue
+  Anthropic-nutzende Handler **müssen** denselben Guard ziehen.
+- **Tower-`is_online` (PR #308 B)**: Im Privacy-Modus wird der Tower-Pfad
+  **nicht** auf `TowerAgent.is_online` gegatet. Der Flag wird heute nirgends
+  aktiv geheartbeatet (bleibt `False`); im Privacy-Modus ist Tower der einzige
+  Pfad → direkt versuchen, `try/except` fängt Unerreichbarkeit. Der
+  Nicht-Privacy-Pfad behält das `is_online`-Gate (der pre-existing tote
+  Tower-Fallback ohne Heartbeat bleibt bewusst out-of-scope, eigener
+  Follow-up).
 
 **Scope-Festlegung (Privacy):** `PrivacyState` ist ein **geräteweiter
 Laufzeit-Schalter**, nicht pro Matrix-Raum. Begründung: Saleria hat **ein**
