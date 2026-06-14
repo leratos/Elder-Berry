@@ -169,6 +169,17 @@ dev = [
 where = ["src"]
 
 [tool.ruff.lint]
+# Phase 99 (CI-Ehrlichkeit): Single Source of Truth fuer das Lint-Ruleset.
+# CI (.github/workflows/ci.yml, lint-Job) und .pre-commit-config.yaml lesen
+# diese Konfiguration, statt die Flags inline zu duplizieren.
+#   E9:   Syntaxfehler – immer blockierend.
+#   F:    volle Pyflakes-Familie (vorher nur F401) – ueber src/tests/scripts/
+#         tower verifiziert clean.
+#   W605: ungueltige Escape-Sequences (\n in r-Strings etc.).
+#   B:    Bugbear-Regeln.
+# Volles E (z.B. E501 Zeilenlaenge) bewusst NICHT aktiviert -- das waere ein
+# Reformat-Schnitt, nicht Teil der CI-Ehrlichkeit.
+select = ["E9", "F", "W605", "B"]
 # B008: FastAPI nutzt File(...)/Form(...)/Body(...) als Argument-Default –
 # das ist das offizielle FastAPI-Pattern, kein echter Bug.
 ignore = ["B008"]
