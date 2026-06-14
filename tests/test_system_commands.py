@@ -8,9 +8,11 @@ import pytest
 from elder_berry.comms.commands.system_commands import (
     AVATAR_EMOTION_PATTERN,
     MEDIA_KEYS,
+    PRIVACY_PATTERN,
     VOLUME_PATTERN,
     SystemCommandHandler,
 )
+from elder_berry.core.privacy_state import PrivacyState
 
 
 # ---------------------------------------------------------------------------
@@ -534,3 +536,66 @@ class TestUnknownCommand:
         result = handler.execute("nonexistent", "nonexistent")
         assert result.success is False
         assert "Unbekannt" in result.text
+
+
+# ---------------------------------------------------------------------------
+# Phase 98: Privacy-/Lokaler-Modus-Command
+# ---------------------------------------------------------------------------
+
+
+class TestPrivacyPattern:
+    @pytest.mark.parametrize(
+        "text,verb",
+        [
+            ("privatmodus", None),
+            ("lokaler modus an", "an"),
+            ("privatmodus aus", "aus"),
+            ("privacy status", "status"),
+            ("privacy modus on", "on"),
+        ],
+    )
+    def test_matches(self, text, verb):
+        m = PRIVACY_PATTERN.match(text)
+        assert m is not None
+        assert m.group(1) == verb
+
+    def test_does_not_match_unrelated(self):
+        assert PRIVACY_PATTERN.match("audio lokal an") is None
+
+
+class TestPrivacyCommand:
+    def _handler(self, state):
+        return SystemCommandHandler(privacy_state=state)
+
+    def test_enable(self):
+        state = PrivacyState()
+        result = self._handler(state).execute("privacy", "privatmodus an")
+        assert result.success is True
+        assert state.is_enabled is True
+        assert "AN" in result.text
+
+    def test_disable(self):
+        state = PrivacyState(enabled=True)
+        result = self._handler(state).execute("privacy", "privatmodus aus")
+        assert result.success is True
+        assert state.is_enabled is False
+        assert "AUS" in result.text
+
+    def test_toggle_without_verb(self):
+        state = PrivacyState()
+        handler = self._handler(state)
+        handler.execute("privacy", "privatmodus")
+        assert state.is_enabled is True
+        handler.execute("privacy", "privatmodus")
+        assert state.is_enabled is False
+
+    def test_status_does_not_change_state(self):
+        state = PrivacyState(enabled=True)
+        result = self._handler(state).execute("privacy", "privacy status")
+        assert state.is_enabled is True
+        assert "AN" in result.text
+
+    def test_unavailable_without_state(self):
+        result = SystemCommandHandler().execute("privacy", "privatmodus")
+        assert result.success is False
+        assert "nicht verfügbar" in result.text

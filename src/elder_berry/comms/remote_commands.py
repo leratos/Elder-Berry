@@ -88,6 +88,7 @@ if TYPE_CHECKING:
     from elder_berry.comms.pending_confirmation import PendingConfirmationStore
     from elder_berry.tools.document_classifier import DocumentClassifier
     from elder_berry.tools.stirling_pdf import StirlingPDFClient
+    from elder_berry.core.privacy_state import PrivacyState
     from elder_berry.core.tower_agent import TowerAgent
     from elder_berry.tools.google_maps_route_planner import (
         GoogleMapsRoutePlanner,
@@ -306,6 +307,7 @@ class RemoteCommandHandler:
         pending_store: PendingConfirmationStore | None = None,
         default_user_id: str = "",
         tower_agent: TowerAgent | None = None,
+        privacy_state: PrivacyState | None = None,
     ) -> None:
         # Phase 77 Etappe 2: HandlerContext aus Kwargs aufbauen, falls nicht
         # explizit uebergeben (Backwards-Compat-Shim laut Konzept §8). Aufrufer
@@ -326,6 +328,7 @@ class RemoteCommandHandler:
                 robot_client=robot_client,
                 tower_agent=tower_agent,
                 anthropic_client=anthropic_client,
+                privacy_state=privacy_state,
                 weather=weather,
                 reminder_store=reminder_store,
                 briefing_scheduler=briefing_scheduler,

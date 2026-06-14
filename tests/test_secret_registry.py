@@ -88,7 +88,8 @@ class TestBehaviorEntries:
         assert llm.get("type") == "select"
         options = llm.get("select_options") or []
         values = {opt["value"] for opt in options}
-        assert {"api_preferred", "local_preferred", "fallback_only"} == values
+        # Phase 98: kanonische Menge (fallback_only -> local_only).
+        assert {"api_preferred", "local_preferred", "local_only"} == values
 
 
 class TestDashboardConsumption:
@@ -150,8 +151,10 @@ class TestRegistryToSettingDefinition:
         llm = defs["llm_mode"]
         assert llm.type == "select"
         values = {opt["value"] for opt in llm.options}
-        assert {"api_preferred", "local_preferred", "fallback_only"} == values
-        assert llm.restart_required is True
+        # Phase 98: kanonische Menge (fallback_only -> local_only).
+        assert {"api_preferred", "local_preferred", "local_only"} == values
+        # Phase 98: live anwendbar → kein Neustart mehr.
+        assert llm.restart_required is False
 
     def test_stt_timeout_has_min_max(self):
         dashboard = self._dashboard()

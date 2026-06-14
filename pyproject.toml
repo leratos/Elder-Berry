@@ -278,6 +278,15 @@ module = [
     "elder_berry.core.tower_agent",
     "elder_berry.core.assistant",
     "elder_berry.core.audio_analyzer",
+    "elder_berry.core.privacy_state",
+]
+strict = true
+
+# --- Phase 98 strict: LLM-Routing-Module (modes + router) ---
+[[tool.mypy.overrides]]
+module = [
+    "elder_berry.llm.modes",
+    "elder_berry.llm.router",
 ]
 strict = true
 

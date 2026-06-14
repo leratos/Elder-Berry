@@ -12,10 +12,14 @@ from typing import TYPE_CHECKING, Any, Protocol
 from fastapi import Body, Request
 from fastapi.responses import JSONResponse
 
+from elder_berry.llm.modes import LLM_MODES, normalize_llm_mode
+
 if TYPE_CHECKING:
     from fastapi import FastAPI
 
 logger = logging.getLogger(__name__)
+
+_ALLOWED_MODES = ", ".join(LLM_MODES)
 
 
 class _DashboardLike(Protocol):
@@ -50,6 +54,7 @@ def register_llm_routes(app: FastAPI, dashboard: _DashboardLike) -> None:
                 "available": True,
                 "mode": dashboard._llm_router.mode,
                 "active_backend": dashboard._llm_router.active_backend,
+                "degraded": dashboard._llm_router.degraded,
                 "primary": {
                     "name": dashboard._llm_router.primary_name,
                     "available": dashboard._llm_router.primary_available,
@@ -70,12 +75,13 @@ def register_llm_routes(app: FastAPI, dashboard: _DashboardLike) -> None:
                 {"error": "LLMRouter nicht verfügbar."},
                 status_code=503,
             )
-        new_mode = body.get("mode")
-        if new_mode not in ("api_preferred", "local_only"):
+        raw_mode = body.get("mode")
+        new_mode = normalize_llm_mode(raw_mode if isinstance(raw_mode, str) else None)
+        if new_mode is None:
             return JSONResponse(
                 {
-                    "error": f"Ungültiger Modus: {new_mode}. "
-                    "Erlaubt: api_preferred, local_only"
+                    "error": f"Ungültiger Modus: {raw_mode}. "
+                    f"Erlaubt: {_ALLOWED_MODES}"
                 },
                 status_code=400,
             )

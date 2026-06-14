@@ -18,6 +18,7 @@ from typing import TYPE_CHECKING, Any
 from elder_berry.stt.base import STTEngine, TranscriptionResult
 
 if TYPE_CHECKING:
+    from elder_berry.core.privacy_state import PrivacyState
     from elder_berry.core.tower_agent import TowerAgent
     from elder_berry.tools.cloud_stt_client import CloudSTTClient
 
@@ -38,6 +39,9 @@ class STTRouter(STTEngine):
         cloud_stt: CloudSTTClient für Groq Whisper API.
         tower: TowerAgent für FasterWhisper Fallback (optional).
         event_loop: Optionaler Event-Loop für synchrone Aufrufe.
+        privacy_state: Optionaler Privacy-Schalter. Wenn aktiv, wird Groq
+            (Cloud) übersprungen und hart nur Tower genutzt – kein
+            Cloud-Fallback (Phase 98).
     """
 
     def __init__(
@@ -45,11 +49,16 @@ class STTRouter(STTEngine):
         cloud_stt: CloudSTTClient,
         tower: TowerAgent | None = None,
         event_loop: asyncio.AbstractEventLoop | None = None,
+        privacy_state: PrivacyState | None = None,
     ) -> None:
         self._cloud = cloud_stt
         self._tower = tower
         self._loop = event_loop
+        self._privacy_state = privacy_state
         self._loaded = True  # Cloud-STT braucht kein explizites Laden
+
+    def _privacy_active(self) -> bool:
+        return self._privacy_state is not None and self._privacy_state.is_enabled
 
     def _run_async[T](self, coro: Coroutine[Any, Any, T]) -> T:
         """Führt eine Coroutine synchron aus (für STTEngine-Interface).
@@ -86,15 +95,18 @@ class STTRouter(STTEngine):
         Raises:
             STTUnavailableError: Wenn kein Backend verfügbar ist.
         """
-        # Primär: Cloud-STT (Groq)
-        try:
-            text = await self._cloud.transcribe(audio_bytes, filename=filename)
-            logger.info("STT via Cloud/Groq: '%s'", text[:60])
-            return TranscriptionResult(text=text, language="de")
-        except Exception as e:
-            logger.warning("Cloud-STT fehlgeschlagen: %s", e)
+        privacy = self._privacy_active()
 
-        # Fallback: Tower (FasterWhisper)
+        # Primär: Cloud-STT (Groq) – im Privacy-Modus hart übersprungen.
+        if not privacy:
+            try:
+                text = await self._cloud.transcribe(audio_bytes, filename=filename)
+                logger.info("STT via Cloud/Groq: '%s'", text[:60])
+                return TranscriptionResult(text=text, language="de")
+            except Exception as e:
+                logger.warning("Cloud-STT fehlgeschlagen: %s", e)
+
+        # Fallback (im Privacy-Modus: einziger Pfad): Tower (FasterWhisper)
         if self._tower and self._tower.is_online:
             try:
                 text = await self._tower.stt(audio_bytes)
@@ -103,6 +115,10 @@ class STTRouter(STTEngine):
             except Exception as e:
                 logger.warning("Tower STT Fallback fehlgeschlagen: %s", e)
 
+        if privacy:
+            raise STTUnavailableError(
+                "Privacy-Modus: Tower-STT nicht verfügbar – kein Cloud-Fallback erlaubt."
+            )
         raise STTUnavailableError("Kein STT verfügbar (Cloud + Tower down)")
 
     # -- STTEngine Interface --------------------------------------------------

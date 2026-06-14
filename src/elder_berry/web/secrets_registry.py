@@ -16,6 +16,10 @@ from __future__ import annotations
 import re
 from typing import NotRequired, TypedDict
 
+# Leaf bleibt Leaf: ``elder_berry.llm.modes`` ist ein reines Konstanten-Modul
+# (kein web-Import), daher kein neuer Zyklus.
+from elder_berry.llm.modes import llm_mode_options
+
 # ---------------------------------------------------------------------------
 # Konstanten für Validierung
 # ---------------------------------------------------------------------------
@@ -372,14 +376,13 @@ SECRET_REGISTRY: list[SecretRegistryEntry] = [
         "category": "Verhalten",
         "sensitive": False,
         "behavior": True,
-        "requires_restart": True,
+        # Phase 98: live anwendbar (Dashboard setzt den Router direkt) – kein
+        # Neustart mehr nötig.
+        "requires_restart": False,
         "type": "select",
         "risk_level": "medium",
-        "select_options": [
-            {"value": "api_preferred", "label": "API bevorzugt"},
-            {"value": "local_preferred", "label": "Lokal bevorzugt"},
-            {"value": "fallback_only", "label": "Nur Fallback/Lokal"},
-        ],
+        # Phase 98: Optionen aus der kanonischen Quelle (llm/modes.py).
+        "select_options": llm_mode_options(),
         "description": "Steuert, ob API-Modelle oder lokale Modelle bevorzugt verwendet werden.",
     },
 ]
@@ -433,6 +436,14 @@ def validate_secret(key: str, value: str) -> None:
         if not value.startswith(("http://", "https://")):
             raise ValueError(
                 f"Wert für '{key}' muss mit http:// oder https:// beginnen."
+            )
+    elif entry_type == "select":
+        # Phase 98: Select-Werte gegen die Registry-Optionen erzwingen
+        # (vorher ungeprüft – die Optionsmenge war nirgends zentral validiert).
+        valid_values = {opt["value"] for opt in entry.get("select_options", [])}
+        if valid_values and value not in valid_values:
+            raise ValueError(
+                f"Wert für '{key}' ist keine der erlaubten Optionen."
             )
     if "pattern" in entry:
         if not re.match(entry["pattern"], value):

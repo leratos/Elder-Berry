@@ -18,6 +18,7 @@ from typing import TYPE_CHECKING, Any
 from elder_berry.tts.base import TTSEngine, VoiceInfo
 
 if TYPE_CHECKING:
+    from elder_berry.core.privacy_state import PrivacyState
     from elder_berry.core.tower_agent import TowerAgent
     from elder_berry.tools.elevenlabs_client import ElevenLabsClient
 
@@ -42,6 +43,9 @@ class TTSRouter(TTSEngine):
         local_tts: Lokale TTSEngine als letzter Fallback (optional).
         event_loop: Optionaler Event-Loop für synchrone Aufrufe aus
             Assistant.process() heraus.
+        privacy_state: Optionaler Privacy-Schalter. Wenn aktiv, wird ElevenLabs
+            (Cloud) übersprungen; nur Tower-XTTS bzw. die lokale on-device
+            Engine kommen zum Einsatz (Phase 98).
     """
 
     def __init__(
@@ -50,13 +54,18 @@ class TTSRouter(TTSEngine):
         tower: TowerAgent | None = None,
         local_tts: TTSEngine | None = None,
         event_loop: asyncio.AbstractEventLoop | None = None,
+        privacy_state: PrivacyState | None = None,
     ) -> None:
         self._elevenlabs = elevenlabs
         self._tower = tower
         self._local_tts = local_tts
         self._loop = event_loop
+        self._privacy_state = privacy_state
         self._rate = 200
         self._volume = 1.0
+
+    def _privacy_active(self) -> bool:
+        return self._privacy_state is not None and self._privacy_state.is_enabled
 
     def _run_async[T](self, coro: Coroutine[Any, Any, T]) -> T:
         """Führt eine Coroutine synchron aus (für TTSEngine-Interface).
@@ -89,15 +98,18 @@ class TTSRouter(TTSEngine):
         Raises:
             TTSUnavailableError: Wenn kein Backend verfügbar ist.
         """
-        # Primär: ElevenLabs
-        try:
-            audio = await self._elevenlabs.synthesize(text)
-            logger.info("TTS via ElevenLabs (%d bytes)", len(audio))
-            return audio
-        except Exception as e:
-            logger.warning("ElevenLabs TTS fehlgeschlagen: %s", e)
+        privacy = self._privacy_active()
 
-        # Fallback 1: Tower (XTTS v2)
+        # Primär: ElevenLabs (Cloud) – im Privacy-Modus hart übersprungen.
+        if not privacy:
+            try:
+                audio = await self._elevenlabs.synthesize(text)
+                logger.info("TTS via ElevenLabs (%d bytes)", len(audio))
+                return audio
+            except Exception as e:
+                logger.warning("ElevenLabs TTS fehlgeschlagen: %s", e)
+
+        # Fallback 1 (im Privacy-Modus: bevorzugter Pfad): Tower (XTTS v2)
         if self._tower and self._tower.is_online:
             try:
                 audio = await self._tower.tts(text, emotion)
@@ -106,6 +118,12 @@ class TTSRouter(TTSEngine):
             except Exception as e:
                 logger.warning("Tower TTS Fallback fehlgeschlagen: %s", e)
 
+        if privacy:
+            # generate_audio() fängt das und nutzt die lokale (on-device)
+            # Engine – die ist ebenfalls Cloud-frei und damit privacy-konform.
+            raise TTSUnavailableError(
+                "Privacy-Modus: Tower-TTS nicht verfügbar – kein ElevenLabs erlaubt."
+            )
         raise TTSUnavailableError("Kein TTS verfügbar (ElevenLabs + Tower down)")
 
     # -- TTSEngine Interface --------------------------------------------------

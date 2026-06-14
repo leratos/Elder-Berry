@@ -22,6 +22,7 @@ from elder_berry.comms.commands.base import (
 if TYPE_CHECKING:
     from elder_berry.actions.base import ActionController
     from elder_berry.avatar.base import AvatarRenderer
+    from elder_berry.core.privacy_state import PrivacyState
     from elder_berry.core.tower_agent import TowerAgent
     from elder_berry.system.info import SystemMonitor
 
@@ -51,6 +52,14 @@ AVATAR_EMOTION_PATTERN = re.compile(
     re.IGNORECASE,
 )
 
+# Phase 98: Privacy-/Lokaler-Modus, optional mit Verb (an/aus/status).
+# "privatmodus", "lokaler modus an", "privacy aus", "privacy status".
+PRIVACY_PATTERN = re.compile(
+    r"^(?:privat(?:er)?\s*modus|lokal(?:er)?\s+modus|privacy(?:[\s-]?mod[eu]s?)?)"
+    r"(?:\s+(an|ein|on|aus|off|status))?$",
+    re.IGNORECASE,
+)
+
 # Gueltige Emotionen fuer Avatar-Rendering (lowercase -> Emotion-Name)
 AVATAR_EMOTIONS = {
     "neutral",
@@ -75,11 +84,13 @@ class SystemCommandHandler(CommandHandler):
         controller: ActionController | None = None,
         avatar_renderer: AvatarRenderer | None = None,
         tower_agent: TowerAgent | None = None,
+        privacy_state: PrivacyState | None = None,
     ) -> None:
         self._monitor = system_monitor
         self._controller = controller
         self._avatar_renderer = avatar_renderer
         self._tower_agent = tower_agent
+        self._privacy_state = privacy_state
 
     @property
     def simple_commands(self) -> set[str]:
@@ -99,6 +110,7 @@ class SystemCommandHandler(CommandHandler):
         return [
             (VOLUME_PATTERN, "volume", False, False),
             (AVATAR_EMOTION_PATTERN, "avatar", False, False),
+            (PRIVACY_PATTERN, "privacy", False, False),
         ]
 
     @property
@@ -110,6 +122,7 @@ class SystemCommandHandler(CommandHandler):
             "skip / prev: Nächster / vorheriger Track",
             "volume <0-100>: Lautstärke setzen",
             "selfie [emotion]: Bild von Saleria senden",
+            "privatmodus [an/aus]: Lokalen Modus (STT/TTS/LLM nur lokal) schalten",
             "restart: Bot neu starten",
         ]
 
@@ -191,6 +204,13 @@ class SystemCommandHandler(CommandHandler):
                 "bitte neustarten",
                 "starte dich neu",
             ],
+            "privacy": [
+                "privatmodus",
+                "privater modus",
+                "lokaler modus",
+                "privacy modus",
+                "lokal modus",
+            ],
         }
 
     def execute(self, command: str, raw_text: str) -> CommandResult:
@@ -211,6 +231,9 @@ class SystemCommandHandler(CommandHandler):
 
         if command in ("restart", "neustart"):
             return self._cmd_restart()
+
+        if command == "privacy":
+            return self._cmd_privacy(raw_text)
 
         return CommandResult(
             command=command,
@@ -782,6 +805,46 @@ class SystemCommandHandler(CommandHandler):
             logger.error("Tower-Avatar fehlgeschlagen: %s", e)
             return None
 
+    def _cmd_privacy(self, raw_text: str) -> CommandResult:
+        """Privacy-/Lokaler-Modus schalten (Phase 98).
+
+        ``privatmodus an``/``aus`` schaltet explizit, ``status`` liest nur,
+        ohne Verb wird umgeschaltet. Wirkt geräteweit auf STT/TTS/LLM.
+        """
+        if self._privacy_state is None:
+            return CommandResult(
+                command="privacy",
+                success=False,
+                text="Privacy-Modus ist in dieser Konfiguration nicht verfügbar.",
+            )
+
+        verb = ""
+        match = PRIVACY_PATTERN.match(raw_text.strip())
+        if match and match.group(1):
+            verb = match.group(1).lower()
+
+        if verb in ("an", "ein", "on"):
+            self._privacy_state.enable()
+        elif verb in ("aus", "off"):
+            self._privacy_state.disable()
+        elif verb == "status":
+            pass  # nur den aktuellen Zustand zurückmelden
+        else:
+            self._privacy_state.toggle()
+
+        if self._privacy_state.is_enabled:
+            text = (
+                "🔒 Privacy-Modus AN – Spracherkennung, Sprachausgabe und "
+                "Sprachmodell laufen nur noch lokal (Tower/Ollama). "
+                "Cloud-Dienste (Groq/ElevenLabs/Anthropic) werden nicht genutzt."
+            )
+        else:
+            text = (
+                "🔓 Privacy-Modus AUS – Cloud-Backends "
+                "(Groq/ElevenLabs/Anthropic) sind wieder erlaubt."
+            )
+        return CommandResult(command="privacy", success=True, text=text)
+
     @staticmethod
     def _cmd_restart() -> CommandResult:
         """Fragt vor dem Neustart nach Bestätigung."""
@@ -812,6 +875,7 @@ Avatar:
   selfie <emotion> -- Mit Emotion (angry, cheerful, sad, ...)
 
 System:
+  privatmodus / lokaler modus [an/aus] -- STT/TTS/LLM nur lokal (kein Cloud)
   restart / neustart -- Bot neu starten"""
 
 
@@ -821,6 +885,7 @@ def _factory(ctx: HandlerContext) -> CommandHandler | None:
         controller=ctx.controller,
         avatar_renderer=ctx.avatar_renderer,
         tower_agent=ctx.tower_agent,
+        privacy_state=ctx.privacy_state,
     )
 
 

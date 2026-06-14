@@ -27,6 +27,7 @@ if TYPE_CHECKING:
     from elder_berry.comms.briefing_scheduler import BriefingScheduler
     from elder_berry.comms.pending_confirmation import PendingConfirmationStore
     from elder_berry.core.audio_router import AudioRouter
+    from elder_berry.core.privacy_state import PrivacyState
     from elder_berry.core.secret_store import SecretStore
     from elder_berry.core.tower_agent import TowerAgent
     from elder_berry.llm.anthropic_client import AnthropicClient
@@ -396,6 +397,8 @@ class HandlerContext:
     robot_client: RobotClient | None = None
     tower_agent: TowerAgent | None = None
     anthropic_client: AnthropicClient | None = None
+    # Phase 98: geräteweiter Privacy-Schalter (lokaler Modus).
+    privacy_state: PrivacyState | None = None
 
     # --- Tools ---
     weather: WeatherClient | None = None

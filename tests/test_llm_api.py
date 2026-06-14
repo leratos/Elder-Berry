@@ -208,6 +208,12 @@ class TestLLMStatusEndpoint:
         assert data["available"] is False
         assert data["active_backend"] == "none"
 
+    def test_status_includes_degraded_field(self):
+        # Phase 98: Status meldet, ob das bevorzugte Backend bedient.
+        client, _, _ = _make_client()
+        data = client.get("/api/llm/status").json()
+        assert data["degraded"] is False
+
 
 class TestLLMModeEndpoint:
     """POST /api/llm/mode"""
@@ -250,3 +256,19 @@ class TestLLMModeEndpoint:
         client, _, store = _make_client(mode="local_only")
         client.post("/api/llm/mode", json={"mode": "api_preferred"})
         assert store.get("llm_mode") == "api_preferred"
+
+    def test_switch_to_local_preferred(self):
+        # Phase 98: neuer kanonischer Modus wird akzeptiert.
+        client, router, store = _make_client()
+        r = client.post("/api/llm/mode", json={"mode": "local_preferred"})
+        assert r.status_code == 200
+        assert router.mode == "local_preferred"
+        assert store.get("llm_mode") == "local_preferred"
+
+    def test_legacy_fallback_only_normalized_on_post(self):
+        # Phase 98: Legacy-Wert wird auf local_only normalisiert statt abgelehnt.
+        client, router, store = _make_client()
+        r = client.post("/api/llm/mode", json={"mode": "fallback_only"})
+        assert r.status_code == 200
+        assert router.mode == "local_only"
+        assert store.get("llm_mode") == "local_only"
