@@ -20,6 +20,7 @@ from elder_berry.comms.commands.base import (
 )
 
 if TYPE_CHECKING:
+    from elder_berry.core.privacy_state import PrivacyState
     from elder_berry.llm.anthropic_client import AnthropicClient
     from elder_berry.robot.client import RobotClient
 
@@ -41,9 +42,11 @@ class CameraCommandHandler(CommandHandler):
         self,
         robot_client: RobotClient | None = None,
         anthropic_client: AnthropicClient | None = None,
+        privacy_state: PrivacyState | None = None,
     ) -> None:
         self._robot = robot_client
         self._anthropic = anthropic_client
+        self._privacy_state = privacy_state
 
     @property
     def simple_commands(self) -> set[str]:
@@ -163,6 +166,17 @@ class CameraCommandHandler(CommandHandler):
 
         tmp_path = self._save_temp_jpeg(jpeg_bytes)
 
+        # Phase 98: Im Privacy-Modus das (lokale) Foto senden, aber die
+        # Cloud-Vision-Analyse (Anthropic) hart aussetzen.
+        if self._privacy_state is not None and self._privacy_state.is_enabled:
+            return CommandResult(
+                command="camera_describe",
+                success=True,
+                text="Foto aufgenommen. (Bildbeschreibung im Privacy-Modus "
+                "deaktiviert – nutzt die Cloud/Anthropic.)",
+                image_path=tmp_path,
+            )
+
         # Ohne Vision-API: nur Bild senden
         if not self._anthropic or not self._anthropic.is_available():
             return CommandResult(
@@ -232,6 +246,7 @@ def _factory(ctx: HandlerContext) -> CommandHandler | None:
     return CameraCommandHandler(
         robot_client=ctx.robot_client,
         anthropic_client=ctx.anthropic_client,
+        privacy_state=ctx.privacy_state,
     )
 
 

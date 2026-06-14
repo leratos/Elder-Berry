@@ -5,6 +5,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import httpx
 import pytest
 
+from elder_berry.core.privacy_state import PrivacyState
 from elder_berry.core.tts_router import TTSRouter, TTSUnavailableError
 from elder_berry.tts.base import TTSEngine
 from elder_berry.tools.elevenlabs_client import ElevenLabsError
@@ -421,3 +422,67 @@ class TestTowerAgent:
 
         payload = mock_http.post.call_args.kwargs["json"]
         assert "emotion" not in payload
+
+
+# ---------------------------------------------------------------------------
+# Phase 98: Privacy-Modus (hart lokal, kein ElevenLabs)
+# ---------------------------------------------------------------------------
+
+
+class TestPrivacyMode:
+    async def test_privacy_skips_elevenlabs_uses_tower(self):
+        elevenlabs = _make_elevenlabs(audio=b"\xff" * 100)
+        tower = _make_tower(online=True, audio=b"\x11" * 200)
+        router = TTSRouter(
+            elevenlabs=elevenlabs,
+            tower=tower,
+            privacy_state=PrivacyState(enabled=True),
+        )
+
+        audio = await router.synthesize("Hallo")
+
+        assert audio == b"\x11" * 200
+        elevenlabs.synthesize.assert_not_awaited()
+        tower.tts.assert_awaited_once()
+
+    async def test_privacy_hard_fails_without_tower(self):
+        elevenlabs = _make_elevenlabs(audio=b"\xff" * 100)
+        router = TTSRouter(
+            elevenlabs=elevenlabs,
+            tower=None,
+            privacy_state=PrivacyState(enabled=True),
+        )
+
+        with pytest.raises(TTSUnavailableError, match="Privacy-Modus"):
+            await router.synthesize("Hallo")
+
+        elevenlabs.synthesize.assert_not_awaited()
+
+    async def test_privacy_uses_tower_despite_stale_is_online(self):
+        # PR #308 B: is_online bleibt mangels Heartbeat False -> im
+        # Privacy-Modus Tower trotzdem versuchen.
+        elevenlabs = _make_elevenlabs(audio=b"\xff" * 100)
+        tower = _make_tower(online=False, audio=b"\x22" * 150)
+        router = TTSRouter(
+            elevenlabs=elevenlabs,
+            tower=tower,
+            privacy_state=PrivacyState(enabled=True),
+        )
+
+        audio = await router.synthesize("Hallo")
+
+        assert audio == b"\x22" * 150
+        elevenlabs.synthesize.assert_not_awaited()
+        tower.tts.assert_awaited_once()
+
+    async def test_privacy_off_uses_elevenlabs(self):
+        elevenlabs = _make_elevenlabs(audio=b"\xff" * 100)
+        router = TTSRouter(
+            elevenlabs=elevenlabs,
+            tower=_make_tower(),
+            privacy_state=PrivacyState(enabled=False),
+        )
+
+        audio = await router.synthesize("Hallo")
+
+        assert audio == b"\xff" * 100

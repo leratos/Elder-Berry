@@ -192,10 +192,48 @@ from elder_berry.comms.allowed_senders import load_allowed_senders  # noqa: E402
 # ---------------------------------------------------------------------------
 
 
-def init_llm():
+def init_llm(secret_store=None, privacy_state=None):
+    """LLMRouter erstellen + persistierten Modus zurücklesen (Phase 98).
+
+    Args:
+        secret_store: Optionaler SecretStore für den Mode-Read-Back. Wenn None,
+            wird einer erstellt (für Tests injizierbar).
+        privacy_state: Optionaler Privacy-Schalter (hart lokal).
+    """
+    from elder_berry.llm.modes import (
+        DEFAULT_LLM_MODE,
+        LLM_MODE_KEY,
+        LLM_MODES,
+        normalize_llm_mode,
+    )
     from elder_berry.llm.router import LLMRouter
 
-    router = LLMRouter.create_default()
+    router = LLMRouter.create_default(privacy_state=privacy_state)
+
+    # Phase 98 (Bug 2): in /api/llm/mode bzw. im Settings-Dashboard gesetzter
+    # Modus wird im SecretStore persistiert, aber bisher beim Start nie
+    # zurückgelesen → nach Restart immer api_preferred. Hier nachgezogen.
+    store = secret_store
+    if store is None:
+        try:
+            from elder_berry.core.secret_store import SecretStore
+
+            store = SecretStore()
+        except Exception as e:  # pragma: no cover - defensiv
+            logger.debug("SecretStore für LLM-Mode-Read-Back nicht verfügbar: %s", e)
+            store = None
+    if store is not None:
+        stored = store.get_or_none(LLM_MODE_KEY)
+        mode = normalize_llm_mode(stored) or DEFAULT_LLM_MODE
+        if mode != router.mode:
+            router.mode = mode
+            # ``mode`` stammt aus dem SecretStore -> CodeQL wertet es als
+            # Secret (py/clear-text-logging). Es ist ein oeffentlicher
+            # Modus-Name (kein Geheimnis); Re-Selektion aus der
+            # vertrauenswuerdigen LLM_MODES-Konstante bricht die Taint-Kette.
+            logged_mode = next(m for m in LLM_MODES if m == mode)
+            logger.info("LLM-Modus aus SecretStore übernommen: %s", logged_mode)
+
     backend = router.active_backend
     if backend == "none":
         logger.error(
@@ -253,7 +291,7 @@ def init_character():
     return engine
 
 
-def init_tts(no_tts: bool, character=None, event_loop=None):
+def init_tts(no_tts: bool, character=None, event_loop=None, privacy_state=None):
     """TTS-Engine – TTSRouter (ElevenLabs) wenn Keys vorhanden, sonst lokal.
 
     Reihenfolge:
@@ -269,7 +307,9 @@ def init_tts(no_tts: bool, character=None, event_loop=None):
     local_tts = _init_local_tts(character)
 
     # Option 1: TTSRouter (ElevenLabs + Tower + lokaler Fallback)
-    tts_router = _init_tts_router(event_loop, local_tts=local_tts)
+    tts_router = _init_tts_router(
+        event_loop, local_tts=local_tts, privacy_state=privacy_state
+    )
     if tts_router:
         return tts_router
 
@@ -327,7 +367,7 @@ def _init_local_tts(character=None):
     return None
 
 
-def _init_tts_router(event_loop=None, local_tts=None):
+def _init_tts_router(event_loop=None, local_tts=None, privacy_state=None):
     """Versucht TTSRouter mit ElevenLabs + Fallback-Kette zu erstellen.
 
     Fallback: Tower (XTTS v2) → lokale TTSEngine (CoquiTTS/WindowsTTS).
@@ -358,6 +398,7 @@ def _init_tts_router(event_loop=None, local_tts=None):
             tower=tower,
             local_tts=local_tts,
             event_loop=event_loop,
+            privacy_state=privacy_state,
         )
         fallbacks = []
         if tower:
@@ -507,7 +548,7 @@ def init_audio_converter():
         return None
 
 
-def init_stt(mode: str, whisper_model: str, event_loop=None):
+def init_stt(mode: str, whisper_model: str, event_loop=None, privacy_state=None):
     """STT-Engine – STTRouter (Cloud) wenn Keys vorhanden, sonst lokal.
 
     Reihenfolge:
@@ -518,7 +559,7 @@ def init_stt(mode: str, whisper_model: str, event_loop=None):
         return None
 
     # Option 1: STTRouter (Cloud-STT + Tower-Fallback)
-    stt_router = _init_stt_router(event_loop)
+    stt_router = _init_stt_router(event_loop, privacy_state=privacy_state)
     if stt_router:
         return stt_router
 
@@ -542,7 +583,7 @@ def init_stt(mode: str, whisper_model: str, event_loop=None):
             return None
 
 
-def _init_stt_router(event_loop=None):
+def _init_stt_router(event_loop=None, privacy_state=None):
     """Versucht STTRouter mit Cloud-STT + optionalem Tower-Fallback zu erstellen.
 
     Returns:
@@ -569,6 +610,7 @@ def _init_stt_router(event_loop=None):
             cloud_stt=cloud_stt,
             tower=tower,
             event_loop=event_loop,
+            privacy_state=privacy_state,
         )
         logger.info(
             "STT: STTRouter (Groq Cloud%s)",
@@ -1265,6 +1307,8 @@ def run_matrix(
     audio_converter=None,
     robot=None,
     robot_state="not_configured",
+    llm=None,
+    privacy_state=None,
 ):
     """Matrix-Modus: MatrixBridge startet bidirektionalen Chat über Matrix."""
     from elder_berry.core.secret_store import SecretStore
@@ -1329,6 +1373,7 @@ def run_matrix(
         nearby_draft_store=svc.get("nearby_draft_store"),
         default_user_id=default_user_id,
         tower_agent=tower_agent,
+        privacy_state=privacy_state,
     )
     assistant._remote_commands = remote
     if tools.get("smart_context_provider"):
@@ -1470,6 +1515,9 @@ def run_matrix(
             secret_store=secrets,
             audio_pipeline=bridge.audio_pipeline,
             tower_agent=tower_agent,
+            # Phase 98: Router verdrahten, damit /api/llm/* und der
+            # Settings-Mode-Schreibpfad live wirken (vorher None -> 503).
+            llm_router=llm,
             host=settings_bind,
             port=8090,
             require_settings_token=True,
@@ -1855,16 +1903,22 @@ def main():
         # Nach dem Wizard Secrets neu laden
         load_secrets_to_env()
 
-    llm = init_llm()
+    # Phase 98: geräteweiter Privacy-Schalter (Default aus). Wird in LLM-, TTS-
+    # und STT-Router injiziert und vom Privacy-Command umgeschaltet.
+    from elder_berry.core.privacy_state import PrivacyState
+
+    privacy_state = PrivacyState()
+
+    llm = init_llm(privacy_state=privacy_state)
     db = init_actions_db()
     controller = init_controller()
     character = init_character()
-    tts = init_tts(args.no_tts, character=character)
+    tts = init_tts(args.no_tts, character=character, privacy_state=privacy_state)
     memory = init_memory(args.no_memory)
     avatar = init_avatar(args.no_avatar)
     monitor = init_system_monitor()
     audio_converter = init_audio_converter()
-    stt = init_stt(args.mode, args.whisper_model)
+    stt = init_stt(args.mode, args.whisper_model, privacy_state=privacy_state)
 
     # RobotClient (optional – verbindet Tower mit RPi5-Display).
     # Phase 96: kein robot=None-Latch mehr; Recovery erfolgt pro Call.
@@ -1914,6 +1968,8 @@ def main():
             audio_converter=audio_converter,
             robot=robot,
             robot_state=robot_state,
+            llm=llm,
+            privacy_state=privacy_state,
         )
 
 

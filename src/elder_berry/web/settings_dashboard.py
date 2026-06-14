@@ -40,6 +40,12 @@ from fastapi.staticfiles import StaticFiles
 # Annotationen aufgebrochen ist.
 from elder_berry.core.log_sanitize import safe_log
 from elder_berry.core.secret_store import SecretNotFoundError
+from elder_berry.llm.modes import (
+    DEFAULT_LLM_MODE as _DEFAULT_LLM_MODE,
+    LLM_MODE_KEY as _LLM_MODE_KEY,
+    LLM_MODES,
+    normalize_llm_mode,
+)
 from elder_berry.web.llm_api import register_llm_routes
 from elder_berry.web.plugins_api import register_plugins_routes
 from elder_berry.web.secrets_api import register_secrets_routes
@@ -131,8 +137,8 @@ class SettingsDashboard:
     TIMEZONE_KEY = "user_timezone"
     STT_TIMEOUT_KEY = "stt_timeout"
     DEFAULT_STT_TIMEOUT = 120.0
-    LLM_MODE_KEY = "llm_mode"
-    DEFAULT_LLM_MODE = "api_preferred"
+    LLM_MODE_KEY = _LLM_MODE_KEY
+    DEFAULT_LLM_MODE = _DEFAULT_LLM_MODE
     DEFAULT_TIMEZONE = "Europe/Berlin"
 
     # Gängige Zeitzonen für das Dashboard-Dropdown
@@ -445,8 +451,11 @@ class SettingsDashboard:
         if key == self.LLM_MODE_KEY:
             if self._secret_store:
                 stored = self._secret_store.get_or_none(key)
-                if stored in {"api_preferred", "local_preferred", "fallback_only"}:
-                    return stored
+                # Phase 98: kanonisieren (Legacy ``fallback_only`` ->
+                # ``local_only``); Unbekanntes -> Default.
+                normalized = normalize_llm_mode(stored)
+                if normalized is not None:
+                    return normalized
             return self.DEFAULT_LLM_MODE
         raise KeyError(key)
 
@@ -479,9 +488,14 @@ class SettingsDashboard:
                 raise ValueError(f"STT-Timeout muss <= {definition.max_value} sein.")
             return numeric
         if definition.key == self.LLM_MODE_KEY:
-            if value not in {"api_preferred", "local_preferred", "fallback_only"}:
-                raise ValueError("Ungültiger LLM-Modus.")
-            return str(value)
+            # Phase 98: gegen die kanonische Menge validieren (Legacy-Aliase
+            # werden dabei auf den kanonischen Wert normalisiert).
+            normalized = normalize_llm_mode(value if isinstance(value, str) else None)
+            if normalized is None:
+                raise ValueError(
+                    f"Ungültiger LLM-Modus. Erlaubt: {', '.join(LLM_MODES)}."
+                )
+            return normalized
         raise ValueError("Unbekanntes Setting.")
 
     def _store_setting_value(
@@ -494,6 +508,11 @@ class SettingsDashboard:
             self._secret_store.set(definition.key, ",".join(senders))
             return
         self._secret_store.set(definition.key, str(value))
+        # Phase 98: LLM-Modus live auf den laufenden Router anwenden, damit der
+        # generische Settings-Pfad denselben Effekt wie POST /api/llm/mode hat
+        # (beide Schreibpfade konvergieren – kein Neustart nötig).
+        if definition.key == self.LLM_MODE_KEY and self._llm_router is not None:
+            self._llm_router.mode = str(value)
 
     # ------------------------------------------------------------------
     # Monitor-Status

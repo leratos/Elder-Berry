@@ -31,6 +31,7 @@ from elder_berry.tools.nextcloud_cookbook_client import (
 
 if TYPE_CHECKING:
     from elder_berry.comms.pending_confirmation import PendingAction
+    from elder_berry.core.privacy_state import PrivacyState
     from elder_berry.llm.anthropic_client import AnthropicClient
 
 logger = logging.getLogger(__name__)
@@ -249,10 +250,12 @@ class RecipeCommandHandler(CommandHandler):
         cookbook: NextcloudCookbookClient | None,
         anthropic_client: AnthropicClient | None,
         index: RecipeSemanticIndex | None = None,
+        privacy_state: PrivacyState | None = None,
     ) -> None:
         self._cookbook = cookbook
         self._anthropic = anthropic_client
         self._index = index or RecipeSemanticIndex()
+        self._privacy_state = privacy_state
 
     @property
     def patterns(self) -> list[tuple[re.Pattern[str], str, bool, bool]]:
@@ -410,6 +413,18 @@ class RecipeCommandHandler(CommandHandler):
                 pass
             except Exception as exc:
                 logger.warning("semantic hit could not be loaded: %s", exc)
+
+        # Phase 98: lokaler Cookbook-Treffer lief schon oben; die LLM-Generierung
+        # (Anthropic) ist im Privacy-Modus hart deaktiviert.
+        if self._privacy_state is not None and self._privacy_state.is_enabled:
+            return CommandResult(
+                command="recipe_lookup",
+                success=False,
+                text=(
+                    "Kein Rezept im lokalen Cookbook gefunden. Die LLM-Generierung "
+                    "ist im Privacy-Modus deaktiviert (nutzt die Cloud/Anthropic)."
+                ),
+            )
 
         generated = self._generate_recipe_json(query)
         if generated is None:
@@ -981,6 +996,7 @@ def _factory(ctx: HandlerContext) -> CommandHandler | None:
     return RecipeCommandHandler(
         cookbook=cookbook,
         anthropic_client=ctx.anthropic_client,
+        privacy_state=ctx.privacy_state,
     )
 
 

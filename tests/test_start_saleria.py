@@ -159,10 +159,10 @@ class TestRunAgent:
         from start_saleria import main
 
         source = inspect.getsource(main)
-        # Agent-Modus returned vor init_llm()
+        # Agent-Modus returned vor init_llm(...)
         agent_block_idx = source.index('mode == "agent"')
         return_idx = source.index("return", agent_block_idx)
-        init_llm_idx = source.index("init_llm()")
+        init_llm_idx = source.index("init_llm(")
         assert return_idx < init_llm_idx, "Agent-Modus muss vor init_llm() returnen"
 
 
@@ -371,3 +371,73 @@ class TestResolveRobotToken:
                 result = _resolve_robot_token(secrets)
         assert result == "store-tok"
         assert any("weicht" in r.message.lower() for r in caplog.records)
+
+
+# ===========================================================================
+# Phase 98: init_llm() liest persistierten LLM-Modus zurück (Bug 2)
+# ===========================================================================
+
+
+class _AvailClient:
+    """Minimaler immer-verfügbarer LLM-Client (kein Netzwerk im Test)."""
+
+    def __init__(self, name: str) -> None:
+        self.name = name
+        self.model = f"{name}-model"
+
+    def is_available(self) -> bool:
+        return True
+
+    def generate(self, prompt: str, system: str = "") -> str:
+        return f"[{self.name}]"
+
+
+class _FakeStore:
+    def __init__(self, data: dict[str, str] | None = None) -> None:
+        self._data = dict(data) if data else {}
+
+    def get_or_none(self, key: str):
+        return self._data.get(key)
+
+
+class TestInitLlmReadBack:
+    """init_llm() muss den im SecretStore persistierten Modus übernehmen."""
+
+    def _patch_router(self, monkeypatch):
+        from elder_berry.llm.router import LLMRouter
+
+        def _fake_default(cls, *a, **kw):
+            return LLMRouter(
+                primary=_AvailClient("anthropic"),
+                fallback=_AvailClient("ollama"),
+            )
+
+        monkeypatch.setattr(LLMRouter, "create_default", classmethod(_fake_default))
+
+    def test_reads_back_persisted_mode(self, monkeypatch):
+        from start_saleria import init_llm
+
+        self._patch_router(monkeypatch)
+        router = init_llm(secret_store=_FakeStore({"llm_mode": "local_preferred"}))
+        assert router.mode == "local_preferred"
+
+    def test_legacy_fallback_only_normalized(self, monkeypatch):
+        from start_saleria import init_llm
+
+        self._patch_router(monkeypatch)
+        router = init_llm(secret_store=_FakeStore({"llm_mode": "fallback_only"}))
+        assert router.mode == "local_only"
+
+    def test_unknown_mode_falls_back_to_default(self, monkeypatch):
+        from start_saleria import init_llm
+
+        self._patch_router(monkeypatch)
+        router = init_llm(secret_store=_FakeStore({"llm_mode": "turbo"}))
+        assert router.mode == "api_preferred"
+
+    def test_no_persisted_mode_keeps_default(self, monkeypatch):
+        from start_saleria import init_llm
+
+        self._patch_router(monkeypatch)
+        router = init_llm(secret_store=_FakeStore({}))
+        assert router.mode == "api_preferred"

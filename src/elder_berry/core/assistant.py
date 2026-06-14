@@ -150,6 +150,12 @@ class Assistant:
         raw_response = self._llm.generate(user_input, system=system_prompt)
         logger.debug("LLM-Antwort: %s", raw_response[:200])
 
+        # Phase 98: Bei einem Backend-Wechsel (Cloud-Störung → lokal) liefert
+        # der Router einmalig einen Hinweis. Wird nur an die Chat-Antwort
+        # angehängt – nicht an TTS/Memory (kein gesprochener Meta-Text, kein
+        # Verschmutzen des Gedächtnisses).
+        backend_notice = self._pop_backend_notice()
+
         # Phase 78: Plugin-Candidate VOR _parse_llm_response extrahieren.
         # Sonst greift der Parser-Fallback (rfind '}') ueber Action-JSON-
         # Envelope UND Candidate-JSON, was das Action-Routing zerstoert
@@ -228,11 +234,19 @@ class Assistant:
                 # Playback-Modus: Audio direkt abspielen (lokal oder via Agent).
                 self._speak_with_lipsync(response_text, emotion_str)
 
-        # Memory: Konversation speichern
+        # Memory: Konversation speichern (ohne Backend-Hinweis)
         self._save_to_memory(user_input, response_text, emotion_str)
 
+        chat_response = response_text
+        if backend_notice:
+            chat_response = (
+                f"{response_text}\n\n{backend_notice}"
+                if response_text
+                else backend_notice
+            )
+
         return AssistantResult(
-            response=response_text,
+            response=chat_response,
             action_executed=action_type,
             action_params=params if action_type else None,
             action_success=action_success,
@@ -240,6 +254,22 @@ class Assistant:
             audio_path=generated_audio,
             plugin_candidate=plugin_candidate,
         )
+
+    def _pop_backend_notice(self) -> str | None:
+        """Holt einen einmaligen Backend-Wechsel-Hinweis vom LLM-Router.
+
+        Defensiv: Nicht jedes ``LLMClient`` ist ein ``LLMRouter`` (z. B. ein
+        direkter Client in Tests) – darum per ``getattr`` geprüft.
+        """
+        pop = getattr(self._llm, "pop_backend_notice", None)
+        if not callable(pop):
+            return None
+        try:
+            notice = pop()
+        except Exception as exc:  # pragma: no cover - defensiv
+            logger.debug("pop_backend_notice fehlgeschlagen: %s", exc)
+            return None
+        return notice if isinstance(notice, str) and notice else None
 
     def _get_system_status(self) -> str | None:
         """Ruft Systemdaten ab und formatiert sie als lesbaren Text.

@@ -27,6 +27,7 @@ if TYPE_CHECKING:
     from elder_berry.comms.briefing_scheduler import BriefingScheduler
     from elder_berry.comms.pending_confirmation import PendingConfirmationStore
     from elder_berry.core.audio_router import AudioRouter
+    from elder_berry.core.privacy_state import PrivacyState
     from elder_berry.core.secret_store import SecretStore
     from elder_berry.core.tower_agent import TowerAgent
     from elder_berry.llm.anthropic_client import AnthropicClient
@@ -364,6 +365,24 @@ def robot_error_message(exc: Exception) -> str:
     return user_friendly_error(exc, "RPi5")
 
 
+def privacy_refusal(command: str, feature: str) -> "CommandResult":
+    """Standard-Ablehnung für Cloud-Funktionen im Privacy-Modus (Phase 98).
+
+    Die Anthropic-gestützten Command-Pfade (Bildbeschreibung, Mail-Entwurf,
+    Rezept-Generierung, Routen-/Umkreis-Intent-Parsing) würden Daten an die
+    Cloud senden. Im Privacy-Modus wird hart abgelehnt statt still zu rufen –
+    konsistent zur lokal-only-Semantik von STT/TTS/LLM.
+    """
+    return CommandResult(
+        command=command,
+        success=False,
+        text=(
+            f"🔒 Privacy-Modus aktiv – {feature} nutzt die Cloud (Anthropic) "
+            "und ist deaktiviert. Mit „privatmodus aus“ wieder freigeben."
+        ),
+    )
+
+
 # ---------------------------------------------------------------------------
 # Phase 77: Plugin-Registry
 # ---------------------------------------------------------------------------
@@ -396,6 +415,8 @@ class HandlerContext:
     robot_client: RobotClient | None = None
     tower_agent: TowerAgent | None = None
     anthropic_client: AnthropicClient | None = None
+    # Phase 98: geräteweiter Privacy-Schalter (lokaler Modus).
+    privacy_state: PrivacyState | None = None
 
     # --- Tools ---
     weather: WeatherClient | None = None

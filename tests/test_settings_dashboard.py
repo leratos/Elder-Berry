@@ -546,3 +546,59 @@ def test_settings_update_persists_llm_mode(router_local):
     assert r.status_code == 200
     assert r.json()["value"] == "local_preferred"
     mock_store.set.assert_called_with("llm_mode", "local_preferred")
+
+
+# ---------------------------------------------------------------------------
+# Phase 98: LLM-Modus-Schreibpfad wendet live auf den Router an
+# ---------------------------------------------------------------------------
+
+
+class _AvailClient:
+    def __init__(self, name: str) -> None:
+        self.name = name
+        self.model = f"{name}-model"
+
+    def is_available(self) -> bool:
+        return True
+
+    def generate(self, prompt: str, system: str = "") -> str:
+        return f"[{self.name}]"
+
+
+def test_settings_update_llm_mode_live_applies_to_router(router_local):
+    from unittest.mock import MagicMock
+
+    from elder_berry.llm.router import LLMRouter
+
+    router = LLMRouter(
+        primary=_AvailClient("anthropic"),
+        fallback=_AvailClient("ollama"),
+        mode="api_preferred",
+    )
+    mock_store = MagicMock()
+    mock_store.get_or_none.return_value = None
+    dashboard = SettingsDashboard(
+        audio_router=router_local,
+        secret_store=mock_store,
+        llm_router=router,
+    )
+    client = TestClient(dashboard.app)
+
+    r = client.post(
+        "/api/settings/update", json={"key": "llm_mode", "value": "local_only"}
+    )
+    assert r.status_code == 200
+    # Live angewandt – nicht erst nach Neustart.
+    assert router.mode == "local_only"
+
+
+def test_settings_update_llm_mode_rejects_invalid(router_local):
+    from unittest.mock import MagicMock
+
+    mock_store = MagicMock()
+    mock_store.get_or_none.return_value = None
+    dashboard = SettingsDashboard(audio_router=router_local, secret_store=mock_store)
+    client = TestClient(dashboard.app)
+
+    r = client.post("/api/settings/update", json={"key": "llm_mode", "value": "turbo"})
+    assert r.status_code == 400

@@ -21,10 +21,12 @@ from elder_berry.comms.commands.base import (
     CommandPlugin,
     CommandResult,
     HandlerContext,
+    privacy_refusal,
     user_friendly_error,
 )
 
 if TYPE_CHECKING:
+    from elder_berry.core.privacy_state import PrivacyState
     from elder_berry.llm.anthropic_client import AnthropicClient
     from elder_berry.tools.contact_store import ContactStore
     from elder_berry.tools.email_client import EmailMessage, IMAPEmailClient
@@ -125,11 +127,13 @@ class MailCommandHandler(CommandHandler):
         anthropic_client: AnthropicClient | None = None,
         contact_store: ContactStore | None = None,
         default_user_id: str = "",
+        privacy_state: PrivacyState | None = None,
     ) -> None:
         self._email_client = email_client
         self._anthropic = anthropic_client
         self._contacts = contact_store
         self._default_user_id = default_user_id
+        self._privacy_state = privacy_state
         self._last_mails: list[EmailMessage] = []
 
     # -- CommandHandler interface ------------------------------------------
@@ -542,6 +546,8 @@ class MailCommandHandler(CommandHandler):
         Gibt CommandResult mit pending_confirmation=True zurück.
         Die Bridge zeigt den Draft und wartet auf Bestätigung.
         """
+        if self._privacy_state is not None and self._privacy_state.is_enabled:
+            return privacy_refusal("mail_reply", "Antwort-Entwürfe")
         if not self._email_client:
             return self.not_configured("mail_reply", "E-Mail", setup_step=5)
         if not self._anthropic:
@@ -621,6 +627,8 @@ class MailCommandHandler(CommandHandler):
 
         raw_text kommt von der Bridge als "#<id> <neue anweisung>".
         """
+        if self._privacy_state is not None and self._privacy_state.is_enabled:
+            return privacy_refusal("mail_reply_modify", "Antwort-Entwürfe")
         if not self._email_client:
             return self.not_configured("mail_reply_modify", "E-Mail", setup_step=5)
         if not self._anthropic:
@@ -810,6 +818,7 @@ def _factory(ctx: HandlerContext) -> CommandHandler | None:
         anthropic_client=ctx.anthropic_client,
         contact_store=ctx.contact_store,
         default_user_id=ctx.default_user_id,
+        privacy_state=ctx.privacy_state,
     )
 
 

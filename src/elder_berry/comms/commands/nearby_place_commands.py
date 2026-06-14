@@ -30,6 +30,7 @@ from elder_berry.comms.commands.base import (
     CommandPlugin,
     CommandResult,
     HandlerContext,
+    privacy_refusal,
     user_friendly_error,
 )
 from elder_berry.tools.google_geocoder import GeocoderConfigError, LatLng
@@ -48,6 +49,7 @@ from elder_berry.tools.nearby_place_search import (
 from elder_berry.tools.place_types import normalize_travel_mode
 
 if TYPE_CHECKING:
+    from elder_berry.core.privacy_state import PrivacyState
     from elder_berry.tools.nearby_draft_store import NearbyDraftStore
     from elder_berry.tools.nearby_place_search import NearbyPlaceSearch
 
@@ -85,11 +87,13 @@ class NearbyPlaceCommandHandler(CommandHandler):
         place_search: NearbyPlaceSearch,
         draft_store: NearbyDraftStore,
         default_user_id: str = "",
+        privacy_state: PrivacyState | None = None,
     ) -> None:
         self._parser = intent_parser
         self._search = place_search
         self._drafts = draft_store
         self._user_id = default_user_id
+        self._privacy_state = privacy_state
 
     # ------------------------------------------------------------------
     # CommandHandler-Schnittstelle
@@ -205,6 +209,10 @@ class NearbyPlaceCommandHandler(CommandHandler):
             return CommandResult(
                 command="nearby_place", success=False, fallthrough=True
             )
+        # Phase 98: Das Intent-Parsing schickt den Freitext an Anthropic ->
+        # im Privacy-Modus hart aussetzen.
+        if self._privacy_state is not None and self._privacy_state.is_enabled:
+            return privacy_refusal("nearby_place", "Umkreissuche")
         try:
             draft = self._parser.parse(raw_text)
         except RuntimeError as exc:
@@ -377,6 +385,7 @@ def _factory(ctx: HandlerContext) -> CommandHandler | None:
         place_search=ctx.nearby_place_search,
         draft_store=ctx.nearby_draft_store,
         default_user_id=ctx.default_user_id,
+        privacy_state=ctx.privacy_state,
     )
 
 

@@ -5,6 +5,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+from elder_berry.core.privacy_state import PrivacyState
 from elder_berry.llm.base import LLMClient
 from elder_berry.llm.anthropic_client import AnthropicClient, ComputerUseAction
 from elder_berry.llm.ollama_client import OllamaClient
@@ -501,3 +502,214 @@ class TestLLMRouter:
         )
         assert router._primary.model == "claude-opus-4-6"
         assert router._fallback.model == "llama3.2:3b"
+
+
+# ---------------------------------------------------------------------------
+# Phase 98: Runtime-Fallback, Circuit-Breaker, local_preferred, Notice, Privacy
+# ---------------------------------------------------------------------------
+
+
+class _FakeClient(LLMClient):
+    """Konfigurierbarer Fake-Client mit Aufruf-Zähler und Fehler-Injektion."""
+
+    def __init__(self, name, available=True, response=None, error=None):
+        self.name = name
+        self.model = f"{name}-model"
+        self._available = available
+        self._response = response if response is not None else f"[{name}]"
+        self._error = error
+        self.calls = 0
+
+    def is_available(self) -> bool:
+        return self._available
+
+    def generate(self, prompt: str, system: str = "") -> str:
+        self.calls += 1
+        if self._error is not None:
+            raise self._error
+        return self._response
+
+
+class _Clock:
+    """Injizierbare monotone Uhr für deterministische Cooldown-Tests."""
+
+    def __init__(self) -> None:
+        self.t = 0.0
+
+    def __call__(self) -> float:
+        return self.t
+
+
+class TestRuntimeFallback:
+    def test_primary_runtime_error_falls_back_to_ollama(self):
+        primary = _FakeClient("anthropic", available=True, error=RuntimeError("429"))
+        fallback = _FakeClient("ollama", available=True, response="[ollama]")
+        router = LLMRouter(primary=primary, fallback=fallback)
+
+        assert router.generate("hi") == "[ollama]"
+        assert primary.calls == 1
+        assert fallback.calls == 1
+        assert router.degraded is True
+
+    def test_primary_success_no_degradation(self):
+        primary = _FakeClient("anthropic", response="[anthropic]")
+        fallback = _FakeClient("ollama")
+        router = LLMRouter(primary=primary, fallback=fallback)
+
+        assert router.generate("hi") == "[anthropic]"
+        assert fallback.calls == 0
+        assert router.degraded is False
+
+    def test_active_backend_reflects_served_after_generate(self):
+        # active_backend liefert nach generate() das tatsaechlich bedienende
+        # Backend (nicht nur die theoretische Auswahl).
+        primary = _FakeClient("anthropic", error=RuntimeError("429"))
+        fallback = _FakeClient("ollama", response="[ollama]")
+        router = LLMRouter(primary=primary, fallback=fallback)
+
+        router.generate("hi")
+        assert router.active_backend == "ollama"
+
+    def test_all_backends_fail_raises(self):
+        primary = _FakeClient("anthropic", error=RuntimeError("down"))
+        fallback = _FakeClient("ollama", error=RuntimeError("down"))
+        router = LLMRouter(primary=primary, fallback=fallback)
+
+        with pytest.raises(RuntimeError, match="Kein LLM-Backend"):
+            router.generate("hi")
+
+
+class TestCircuitBreaker:
+    def test_tripped_primary_is_skipped_during_cooldown(self):
+        clock = _Clock()
+        primary = _FakeClient("anthropic", error=RuntimeError("429"))
+        fallback = _FakeClient("ollama", response="[ollama]")
+        router = LLMRouter(
+            primary=primary,
+            fallback=fallback,
+            cooldown_seconds=60.0,
+            time_func=clock,
+        )
+
+        # 1. Aufruf: primär wirft → getrippt, fallback bedient.
+        router.generate("a")
+        assert primary.calls == 1
+
+        # 2. Aufruf 10s später: primär im Cooldown → übersprungen.
+        clock.t = 10.0
+        router.generate("b")
+        assert primary.calls == 1  # nicht erneut versucht
+        assert fallback.calls == 2
+
+    def test_primary_retried_after_cooldown(self):
+        clock = _Clock()
+        primary = _FakeClient("anthropic", error=RuntimeError("429"))
+        fallback = _FakeClient("ollama", response="[ollama]")
+        router = LLMRouter(
+            primary=primary,
+            fallback=fallback,
+            cooldown_seconds=60.0,
+            time_func=clock,
+        )
+
+        router.generate("a")
+        assert primary.calls == 1
+
+        # Cooldown abgelaufen → primär wird erneut versucht.
+        clock.t = 61.0
+        # primär jetzt gesund machen
+        primary._error = None
+        primary._response = "[anthropic]"
+        assert router.generate("b") == "[anthropic]"
+        assert primary.calls == 2
+
+
+class TestLocalPreferred:
+    def test_local_preferred_uses_ollama_first(self):
+        primary = _FakeClient("anthropic", response="[anthropic]")
+        fallback = _FakeClient("ollama", response="[ollama]")
+        router = LLMRouter(primary=primary, fallback=fallback, mode="local_preferred")
+
+        assert router.generate("hi") == "[ollama]"
+        assert primary.calls == 0
+        assert router.degraded is False  # ollama IST das bevorzugte Backend
+
+    def test_local_preferred_falls_back_to_cloud(self):
+        primary = _FakeClient("anthropic", response="[anthropic]")
+        fallback = _FakeClient("ollama", error=RuntimeError("ollama down"))
+        router = LLMRouter(primary=primary, fallback=fallback, mode="local_preferred")
+
+        assert router.generate("hi") == "[anthropic]"
+        assert router.degraded is True
+
+
+class TestBackendNotice:
+    def test_notice_fires_once_per_transition(self):
+        primary = _FakeClient("anthropic", error=RuntimeError("429"))
+        fallback = _FakeClient("ollama", response="[ollama]")
+        clock = _Clock()
+        router = LLMRouter(
+            primary=primary, fallback=fallback, cooldown_seconds=60.0, time_func=clock
+        )
+
+        # Degradation
+        router.generate("a")
+        notice = router.pop_backend_notice()
+        assert notice is not None
+        assert "ollama" in notice
+        # Kein zweiter Hinweis ohne erneute Transition
+        router.generate("b")
+        assert router.pop_backend_notice() is None
+
+        # Recovery: primär nach Cooldown wieder gesund
+        clock.t = 61.0
+        primary._error = None
+        primary._response = "[anthropic]"
+        router.generate("c")
+        recover = router.pop_backend_notice()
+        assert recover is not None
+        assert "anthropic" in recover
+        assert router.pop_backend_notice() is None
+
+    def test_no_notice_on_normal_operation(self):
+        primary = _FakeClient("anthropic", response="[anthropic]")
+        fallback = _FakeClient("ollama")
+        router = LLMRouter(primary=primary, fallback=fallback)
+        router.generate("hi")
+        assert router.pop_backend_notice() is None
+
+
+class TestPrivacyMode:
+    def test_privacy_forces_local_even_in_api_preferred(self):
+        primary = _FakeClient("anthropic", response="[anthropic]")
+        fallback = _FakeClient("ollama", response="[ollama]")
+        router = LLMRouter(
+            primary=primary,
+            fallback=fallback,
+            mode="api_preferred",
+            privacy_state=PrivacyState(enabled=True),
+        )
+
+        assert router.generate("hi") == "[ollama]"
+        assert primary.calls == 0
+
+    def test_privacy_hard_fails_without_cloud_fallback(self):
+        primary = _FakeClient("anthropic", response="[anthropic]")
+        fallback = _FakeClient("ollama", error=RuntimeError("ollama down"))
+        router = LLMRouter(
+            primary=primary,
+            fallback=fallback,
+            privacy_state=PrivacyState(enabled=True),
+        )
+
+        with pytest.raises(RuntimeError, match="Privacy-Modus"):
+            router.generate("hi")
+        assert primary.calls == 0  # Cloud nie versucht
+
+    def test_privacy_off_uses_normal_routing(self):
+        primary = _FakeClient("anthropic", response="[anthropic]")
+        fallback = _FakeClient("ollama", response="[ollama]")
+        state = PrivacyState(enabled=False)
+        router = LLMRouter(primary=primary, fallback=fallback, privacy_state=state)
+
+        assert router.generate("hi") == "[anthropic]"
