@@ -217,6 +217,29 @@ SECRET_REGISTRY: list[SecretRegistryEntry] = [
         "min": 1,
         "max": 65535,
     },
+    {
+        # Phase 100-C: Anzeigename im From-Header (Default "Saleria").
+        "key": "email_sender_name",
+        "label": "Absender-Anzeigename",
+        "category": "E-Mail",
+        "sensitive": False,
+        "behavior": True,
+        "requires_restart": True,
+        "placeholder": "Saleria",
+        "description": "Name, der als Absender erscheint (From-Header).",
+    },
+    {
+        # Phase 100-C: Signatur, die unter gesendete Antworten gehaengt wird.
+        "key": "email_signature",
+        "label": "E-Mail-Signatur",
+        "category": "E-Mail",
+        "sensitive": False,
+        "behavior": True,
+        "requires_restart": True,
+        "type": "textarea",
+        "placeholder": "Viele Gruesse\nSaleria",
+        "description": "Wird unter gesendete Antworten gehaengt (optional).",
+    },
     # --- Nextcloud ---
     {
         "key": "nextcloud_url",

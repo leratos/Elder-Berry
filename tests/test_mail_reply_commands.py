@@ -155,6 +155,50 @@ class TestExtractEmailAddress:
 
 
 # ---------------------------------------------------------------------------
+# _is_valid_email (Phase 100-B / D3)
+# ---------------------------------------------------------------------------
+
+
+class TestIsValidEmail:
+    @pytest.mark.parametrize(
+        "addr",
+        ["max@example.com", "a.b-c+x@sub.domain.de"],
+    )
+    def test_valid(self, addr):
+        assert MailCommandHandler._is_valid_email(addr) is True
+
+    @pytest.mark.parametrize(
+        "addr",
+        [
+            "",
+            "   ",
+            "garbage",
+            "no-at-sign.de",
+            "a@b@c.de",  # zwei @
+            "a@localhost",  # keine Domain mit Punkt
+            "a b@example.com",  # Whitespace
+            "a@x, b@y.de",  # Mehrfachadresse
+        ],
+    )
+    def test_invalid(self, addr):
+        assert MailCommandHandler._is_valid_email(addr) is False
+
+
+class TestReplyRejectsInvalidRecipient:
+    def test_invalid_sender_rejected_before_api(self, handler):
+        """Phase 100-B (D3): kaputter From-Header -> Ablehnung, und KEIN
+        (kostenpflichtiger) Draft-Call ausgeloest."""
+        handler._email_client.get_by_uid.return_value = _make_email(
+            sender="Kein gueltiger Absender",
+        )
+        r = handler.execute("mail_reply", "antworte auf #4523 positiv")
+        assert r.success is False
+        assert "gueltige Absenderadresse" in r.text
+        assert r.pending_confirmation is False
+        handler._anthropic.generate.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
 # _cmd_mail_reply
 # ---------------------------------------------------------------------------
 

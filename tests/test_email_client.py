@@ -102,6 +102,19 @@ class TestIMAPInit:
         client = IMAPEmailClient.from_secret_store(store)
         assert client._port == 993
 
+    @patch("elder_berry.tools.email_client.imaplib.IMAP4_SSL")
+    def test_connect_sets_socket_timeout(self, mock_ssl):
+        """Phase 100-A (D2): IMAP-Connect MUSS ein Socket-Timeout setzen,
+        sonst blockiert ein haengender Server unbegrenzt (SMTP hatte das
+        schon)."""
+        client = IMAPEmailClient(
+            host="imap.example.com",
+            user="u@example.com",
+            password="pw",
+        )
+        client._connect()
+        mock_ssl.assert_called_once_with("imap.example.com", 993, timeout=30)
+
 
 # ---------------------------------------------------------------------------
 # Header-Dekodierung
@@ -372,6 +385,20 @@ class TestParseEmail:
         raw = self._make_raw_email(subject="", body="Text")
         result = IMAPEmailClient._parse_email(raw, HtmlEmailSanitizer())
         assert result.subject == "(Kein Betreff)"
+
+    def test_parse_malformed_date_returns_none(self):
+        """Phase 100-E: ein kaputter Date-Header degradiert zu date=None
+        (und wird jetzt geloggt statt still verschluckt)."""
+        raw = (
+            b"From: a@b.com\r\n"
+            b"Subject: X\r\n"
+            b"Date: total kaputt kein datum\r\n"
+            b"\r\n"
+            b"Body"
+        )
+        result = IMAPEmailClient._parse_email(raw, HtmlEmailSanitizer())
+        assert result.date is None
+        assert result.subject == "X"
 
 
 # ---------------------------------------------------------------------------
@@ -654,6 +681,23 @@ class TestSearch:
         assert "SINCE" in criteria
         assert call_args.kwargs["max_results"] == 5
 
+    def test_search_escapes_double_quote(self):
+        """Phase 100-B (D3): ein ``"`` im Suchbegriff darf das IMAP-Kriterium
+        nicht brechen -- er muss als \\\" escaped werden."""
+        client = IMAPEmailClient("host", "user", "pass")
+
+        with patch.object(client, "_fetch_mails", return_value=[]) as mock_fetch:
+            client.search('foo"bar', max_results=5, days=30)
+
+        criteria = mock_fetch.call_args[0][0]
+        # Escaped: das innere Quote ist als \" enthalten, nicht als blankes "
+        assert '\\"' in criteria
+        assert 'foo\\"bar' in criteria
+
+    def test_escape_imap_quoted_helper(self):
+        assert IMAPEmailClient._escape_imap_quoted('a"b') == 'a\\"b'
+        assert IMAPEmailClient._escape_imap_quoted("a\\b") == "a\\\\b"
+
 
 class TestFormat:
     def test_format_mails_empty(self):
@@ -765,3 +809,83 @@ class TestGetByUid:
             result = client.get_by_uid("99")
 
         assert result is None
+
+
+# ---------------------------------------------------------------------------
+# \Seen-Flag (Phase 100-D)
+# ---------------------------------------------------------------------------
+
+
+class TestSeenFlag:
+    def test_is_seen_true(self):
+        data = [(b"1 (FLAGS (\\Seen) RFC822 {3}", b"abc"), b")"]
+        assert IMAPEmailClient._is_seen(data) is True
+
+    def test_is_seen_false(self):
+        data = [(b"1 (FLAGS () RFC822 {3}", b"abc"), b")"]
+        assert IMAPEmailClient._is_seen(data) is False
+
+    def test_is_seen_unknown_without_flags(self):
+        data = [(b"1 (RFC822 {3}", b"abc"), b")"]
+        assert IMAPEmailClient._is_seen(data) is None
+
+    def test_is_seen_distributed_segments(self):
+        """FLAGS und RFC822 in getrennten Antwort-Segmenten."""
+        data = [(b"1 (RFC822 {3}", b"abc"), b" FLAGS (\\Seen))"]
+        assert IMAPEmailClient._is_seen(data) is True
+
+    def _raw(self) -> bytes:
+        return (
+            b"From: sender@test.de\r\n"
+            b"Subject: Test\r\n"
+            b"Date: Mon, 17 Mar 2026 10:00:00 +0100\r\n"
+            b"\r\n"
+            b"Body."
+        )
+
+    def test_get_by_uid_seen_marks_read(self):
+        """Phase 100-D: \\Seen in der Antwort → is_unread False."""
+        client = IMAPEmailClient("host", "user", "pass")
+        mock_conn = MagicMock()
+        mock_conn.uid.return_value = (
+            "OK",
+            [(b"1 (FLAGS (\\Seen) RFC822 {5}", self._raw()), b")"],
+        )
+        mock_conn.select.return_value = ("OK", [b"1"])
+        with patch.object(client, "_connect", return_value=mock_conn):
+            result = client.get_by_uid("99")
+        assert result is not None
+        assert result.is_unread is False
+
+    def test_get_by_uid_unseen_marks_unread(self):
+        """Phase 100-D: kein \\Seen → is_unread True (ehrlich, nicht Literal)."""
+        client = IMAPEmailClient("host", "user", "pass")
+        mock_conn = MagicMock()
+        mock_conn.uid.return_value = (
+            "OK",
+            [(b"1 (FLAGS () RFC822 {5}", self._raw()), b")"],
+        )
+        mock_conn.select.return_value = ("OK", [b"1"])
+        with patch.object(client, "_connect", return_value=mock_conn):
+            result = client.get_by_uid("99")
+        assert result is not None
+        assert result.is_unread is True
+
+
+# ---------------------------------------------------------------------------
+# Fehler-/Degradationspfade (Phase 100-E)
+# ---------------------------------------------------------------------------
+
+
+class TestErrorPaths:
+    def test_get_unread_connection_error_returns_empty(self):
+        """_fetch_mails fängt IMAP-Fehler und liefert [] (nicht Crash)."""
+        client = IMAPEmailClient("host", "user", "pass")
+        with patch.object(client, "_connect", side_effect=Exception("down")):
+            assert client.get_unread() == []
+
+    def test_get_unread_count_error_returns_minus_one(self):
+        """get_unread_count liefert -1 als Fehler-Sentinel."""
+        client = IMAPEmailClient("host", "user", "pass")
+        with patch.object(client, "_connect", side_effect=Exception("down")):
+            assert client.get_unread_count() == -1
