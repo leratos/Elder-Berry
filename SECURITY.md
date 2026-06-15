@@ -64,7 +64,13 @@ keine Tagged-Releases mit Long-Term-Support.
 Aus früheren internen Audits adressiert (siehe [CHANGELOG.md](docs/CHANGELOG.md)):
 
 - ✅ CSRF-Schutz auf state-changing Dashboard-Routen (Phase 64)
-- ✅ SSRF-Blockade für private/loopback/metadata-IPs (Phase 64)
+- ✅ SSRF-Blockade im Setup-Wizard gegen Loopback-, Link-Local-,
+  Metadata- und Unspecified-Adressen (z. B. `127.0.0.1`, `0.0.0.0`,
+  Cloud-Metadata `169.254.169.254`). Greift auf Nextcloud-URL **und**
+  IMAP/SMTP-Hosts. Private LAN-/VPN-Ranges (RFC 1918, CGNAT) bleiben für
+  selbstgehostete Nextcloud-/Mail-Server **bewusst erlaubt**. Implementierung:
+  `_assert_host_allowed` in
+  [setup_tests.py](src/elder_berry/web/setup_tests.py).
 - ✅ Robot-Token Hard-Fail bei non-loopback-Bind (Phase 64)
 - ✅ Fernet-Masterkey im OS-Keyring (Phase 65)
 - ✅ Globales Logout / Session-Secret-Rotation (Phase 65)

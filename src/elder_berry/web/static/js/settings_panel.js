@@ -196,9 +196,18 @@ function renderSecretField(item) {
 
     const row = document.createElement("div");
     row.className = "field-row";
-    const input = document.createElement("input");
-    input.type = item.sensitive === false ? "text" : "password";
-    input.placeholder = item.is_set ? "•••• (gesetzt)" : "leer";
+    // PR #311 Codex P2: registry-Typ "textarea" (z.B. email_signature) als
+    // mehrzeiliges Feld rendern statt single-line <input>.
+    let input;
+    if (item.type === "textarea") {
+        input = document.createElement("textarea");
+        input.rows = 4;
+        input.placeholder = item.placeholder || (item.is_set ? "•••• (gesetzt)" : "leer");
+    } else {
+        input = document.createElement("input");
+        input.type = item.sensitive === false ? "text" : "password";
+        input.placeholder = item.is_set ? "•••• (gesetzt)" : "leer";
+    }
     row.appendChild(input);
 
     const saveBtn = document.createElement("button");
