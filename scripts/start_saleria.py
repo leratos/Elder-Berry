@@ -1950,6 +1950,14 @@ def main():
     # Phase 96: kein robot=None-Latch mehr; Recovery erfolgt pro Call.
     robot, robot_state = _init_robot()
 
+    # Phase 102 (#739 Schritt 1): Akku-Anzeige ist eine optionale Capability,
+    # Default aus -> kein simulierter Akku-Stand im System-Prompt.
+    from elder_berry.core.secret_store import SecretStore
+
+    robot_battery_enabled = (
+        SecretStore().get_or_none("robot_battery_enabled") or "false"
+    ) == "true"
+
     from elder_berry.core.assistant import Assistant
 
     # Phase 83.5: EmotionResolver an den Assistant binden. Der Resolver teilt
@@ -1979,6 +1987,7 @@ def main():
         memory=memory,
         robot=robot,
         emotion_resolver=emotion_resolver,
+        robot_battery_enabled=robot_battery_enabled,
     )
 
     print()

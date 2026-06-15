@@ -83,6 +83,27 @@ def assistant_with_robot(
 
 
 @pytest.fixture
+def assistant_with_battery(
+    mock_llm,
+    mock_db,
+    mock_controller,
+    mock_tts,
+    character,
+    mock_robot,
+):
+    """Assistant mit RobotClient UND aktiver Akku-Capability (Phase 102)."""
+    return Assistant(
+        llm=mock_llm,
+        actions_db=mock_db,
+        controller=mock_controller,
+        tts=mock_tts,
+        character=character,
+        robot=mock_robot,
+        robot_battery_enabled=True,
+    )
+
+
+@pytest.fixture
 def assistant_no_robot(mock_llm, mock_db, mock_controller, mock_tts, character):
     """Assistant ohne RobotClient."""
     return Assistant(
@@ -311,7 +332,7 @@ class TestSpeakingSync:
 class TestRobotStatusInPrompt:
     def test_prompt_contains_battery_status(
         self,
-        assistant_with_robot,
+        assistant_with_battery,
         mock_llm,
         mock_robot,
     ):
@@ -322,7 +343,7 @@ class TestRobotStatusInPrompt:
                 "response": "[neutral] ok",
             }
         )
-        assistant_with_robot.process("Status?")
+        assistant_with_battery.process("Status?")
         system_prompt = mock_llm.generate.call_args.kwargs.get(
             "system",
             mock_llm.generate.call_args[1].get("system", ""),
@@ -333,7 +354,7 @@ class TestRobotStatusInPrompt:
 
     def test_prompt_battery_low_warning(
         self,
-        assistant_with_robot,
+        assistant_with_battery,
         mock_llm,
         mock_robot,
     ):
@@ -349,13 +370,55 @@ class TestRobotStatusInPrompt:
                 "response": "[neutral] ok",
             }
         )
-        assistant_with_robot.process("Status?")
+        assistant_with_battery.process("Status?")
         system_prompt = mock_llm.generate.call_args.kwargs.get(
             "system",
             mock_llm.generate.call_args[1].get("system", ""),
         )
         assert "WARNUNG" in system_prompt
         assert "Ladestation" in system_prompt
+
+    def test_prompt_battery_charging(
+        self,
+        assistant_with_battery,
+        mock_llm,
+        mock_robot,
+    ):
+        mock_robot.get_battery.return_value = BatteryStatus(
+            voltage=7.0,
+            percentage=50,
+            is_charging=True,
+        )
+        mock_llm.generate.return_value = json.dumps(
+            {"action": None, "params": {}, "response": "[neutral] ok"}
+        )
+        assistant_with_battery.process("Status?")
+        system_prompt = mock_llm.generate.call_args.kwargs.get(
+            "system",
+            mock_llm.generate.call_args[1].get("system", ""),
+        )
+        assert "wird geladen" in system_prompt
+
+    def test_prompt_battery_hidden_by_default(
+        self,
+        assistant_with_robot,
+        mock_llm,
+        mock_robot,
+    ):
+        """Phase 102 (#739): ohne aktive Akku-Capability (Default) keine
+        (simulierte) Akku-Zeile im System-Prompt -- und kein get_battery()-Call.
+        Roboter-Status bleibt sonst ONLINE."""
+        mock_llm.generate.return_value = json.dumps(
+            {"action": None, "params": {}, "response": "[neutral] ok"}
+        )
+        assistant_with_robot.process("Status?")
+        system_prompt = mock_llm.generate.call_args.kwargs.get(
+            "system",
+            mock_llm.generate.call_args[1].get("system", ""),
+        )
+        assert "ONLINE" in system_prompt
+        assert "Akku" not in system_prompt
+        mock_robot.get_battery.assert_not_called()
 
     def test_prompt_robot_offline(
         self,

@@ -84,6 +84,7 @@ class Assistant:
         proposal_store: ProposalStore | None = None,
         audio_analyzer: AudioAnalyzer | None = None,
         emotion_resolver: EmotionResolver | None = None,
+        robot_battery_enabled: bool = False,
     ) -> None:
         self._llm = llm
         self._actions_db = actions_db
@@ -101,6 +102,10 @@ class Assistant:
         self._emotion_resolver = emotion_resolver
         self._avatar = avatar
         self._robot = robot
+        # Phase 102 (#739 Schritt 1): Akku ist eine optionale Sensor-Capability
+        # (heute Sim). Default aus -> kein simulierter Akku-Stand im System-
+        # Prompt. Pro-Sensor-Flag, KEIN globaler sim/real-Schalter.
+        self._robot_battery_enabled = robot_battery_enabled
         self._agent = agent
         self._system_monitor = system_monitor
         self._memory = memory
@@ -1001,15 +1006,17 @@ class Assistant:
         try:
             if not self._robot.is_online():
                 return "Roboter-Status: OFFLINE (nicht erreichbar)"
-            battery = self._robot.get_battery()
-            parts = [
-                "Roboter-Status: ONLINE",
-                f"  Akku: {battery.percentage}% ({battery.voltage}V)",
-            ]
-            if battery.is_low:
-                parts.append("  WARNUNG: Akku niedrig! Zur Ladestation fahren.")
-            if battery.is_charging:
-                parts.append("  Akku wird geladen.")
+            parts = ["Roboter-Status: ONLINE"]
+            # Phase 102 (#739): Akku-Zeile nur bei aktiver Capability-Flag. Aus
+            # (Default) -> kein get_battery()-Call und kein (simulierter)
+            # Akku-Stand im System-Prompt.
+            if self._robot_battery_enabled:
+                battery = self._robot.get_battery()
+                parts.append(f"  Akku: {battery.percentage}% ({battery.voltage}V)")
+                if battery.is_low:
+                    parts.append("  WARNUNG: Akku niedrig! Zur Ladestation fahren.")
+                if battery.is_charging:
+                    parts.append("  Akku wird geladen.")
             return "\n".join(parts)
         except Exception as e:
             logger.debug("Robot-Status Abfrage fehlgeschlagen: %s", e)

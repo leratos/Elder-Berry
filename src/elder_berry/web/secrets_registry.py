@@ -377,6 +377,24 @@ SECRET_REGISTRY: list[SecretRegistryEntry] = [
         "X-Saleria-Robot-Token). Muss identisch zu ELDER_BERRY_ROBOT_TOKEN "
         "auf dem RPi sein; bei Rotation beide Seiten gleichschalten.",
     },
+    {
+        # Phase 102 (#739): Akku ist eine optionale Sensor-Capability (heute
+        # simuliert). Default 'Aus' -> kein simulierter Akku-Stand im System-
+        # Prompt. 'Aus' zuerst, damit die UI ohne gesetzten Wert den Default
+        # zeigt. 'select' (kein bool-Zweig in validate_secret).
+        "key": "robot_battery_enabled",
+        "label": "Roboter-Akkuanzeige",
+        "category": "Infrastruktur",
+        "sensitive": False,
+        "requires_restart": True,
+        "type": "select",
+        "select_options": [
+            {"value": "false", "label": "Aus"},
+            {"value": "true", "label": "Ein"},
+        ],
+        "description": "Akku-Stand im Roboter-Status zeigen. Aus lassen, solange "
+        "der Akku nur simuliert ist (Default).",
+    },
     # --- Wetter & Standort ---
     {
         "key": "weather_city",
