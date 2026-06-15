@@ -108,6 +108,28 @@ class TestFromSecretStore:
         assert s._sender_name == "Saleria"
         assert s._signature == ""
 
+    @staticmethod
+    def _store_with_port(port_value):
+        store = MagicMock()
+        store.get.side_effect = lambda key: {
+            "email_user": "me@example.com",
+            "email_password": "pw",
+        }[key]
+        store.get_or_none.side_effect = lambda key: {"smtp_port": port_value}.get(key)
+        return store
+
+    def test_use_ssl_derived_from_port(self):
+        """PR #311 Codex P2: 465 -> implizit SSL, 587/25 -> STARTTLS.
+
+        Nach dem D1-Fix greift der echte Port; ohne diese Ableitung wuerde
+        ein 587-Setup SMTP_SSL(587) versuchen und beim Senden scheitern.
+        """
+        assert EmailSender.from_secret_store(self._store_with_port("465"))._use_ssl is True
+        assert EmailSender.from_secret_store(self._store_with_port("587"))._use_ssl is False
+        assert EmailSender.from_secret_store(self._store_with_port("25"))._use_ssl is False
+        # Default (kein smtp_port) = 465 = SSL
+        assert EmailSender.from_secret_store(self._store_with_port(None))._use_ssl is True
+
 
 # ---------------------------------------------------------------------------
 # _build_reply_message
@@ -221,6 +243,30 @@ class TestBuildReplyMessage:
             cc="",
         )
         assert msg["From"] == "Saleria Mailbot <me@example.com>"
+
+    def test_sender_name_with_comma_is_quoted(self):
+        """PR #311 Codex P2: Anzeigename mit Komma wird via formataddr gequotet,
+        sodass die Login-Adresse der Envelope-Sender bleibt (send_message
+        parst den From-Header sonst als Adressliste)."""
+        from email.utils import parseaddr
+
+        s = EmailSender(
+            host="h",
+            user="me@example.com",
+            password="pw",
+            sender_name="Saleria, Bot",
+        )
+        msg = s._build_reply_message(
+            to="a@b.com",
+            subject="Re: X",
+            body="Hi",
+            in_reply_to="",
+            references="",
+            cc="",
+        )
+        name, addr = parseaddr(msg["From"])
+        assert addr == "me@example.com"
+        assert name == "Saleria, Bot"
 
     def test_subject_crlf_scrubbed(self, sender):
         """Phase 100-B (D3): CR/LF im (angreiferkontrollierten) Betreff darf
