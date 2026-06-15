@@ -115,6 +115,19 @@ class TestIMAPInit:
         client._connect()
         mock_ssl.assert_called_once_with("imap.example.com", 993, timeout=30)
 
+    @patch("elder_berry.tools.email_client.imaplib.IMAP4")
+    def test_connect_non_ssl_sets_socket_timeout(self, mock_imap):
+        """Phase 100-A (D2): auch der Non-SSL-Pfad setzt das Timeout."""
+        client = IMAPEmailClient(
+            host="imap.example.com",
+            user="u@example.com",
+            password="pw",
+            port=143,
+            use_ssl=False,
+        )
+        client._connect()
+        mock_imap.assert_called_once_with("imap.example.com", 143, timeout=30)
+
 
 # ---------------------------------------------------------------------------
 # Header-Dekodierung
@@ -698,6 +711,25 @@ class TestSearch:
         assert IMAPEmailClient._escape_imap_quoted('a"b') == 'a\\"b'
         assert IMAPEmailClient._escape_imap_quoted("a\\b") == "a\\\\b"
 
+    def test_search_multi_word_criteria(self):
+        """Mehr-Wort-Suche baut je Wort einen OR-Block (UND-Verknuepfung)."""
+        client = IMAPEmailClient("host", "user", "pass")
+        with patch.object(client, "_fetch_mails", return_value=[]) as mock_fetch:
+            client.search("RK Bedachung", max_results=5, days=30)
+        criteria = mock_fetch.call_args[0][0]
+        assert criteria.count("SUBJECT") == 2
+        assert "RK" in criteria
+        assert "Bedachung" in criteria
+        assert "SINCE" in criteria
+
+    def test_search_multi_word_escapes_quotes(self):
+        """Auch in der Mehr-Wort-Suche werden Quotes escaped."""
+        client = IMAPEmailClient("host", "user", "pass")
+        with patch.object(client, "_fetch_mails", return_value=[]) as mock_fetch:
+            client.search('foo "bar', max_results=5, days=30)
+        criteria = mock_fetch.call_args[0][0]
+        assert '\\"bar' in criteria
+
 
 class TestFormat:
     def test_format_mails_empty(self):
@@ -889,3 +921,48 @@ class TestErrorPaths:
         client = IMAPEmailClient("host", "user", "pass")
         with patch.object(client, "_connect", side_effect=Exception("down")):
             assert client.get_unread_count() == -1
+
+
+# ---------------------------------------------------------------------------
+# _fetch_mails End-to-End (Phase 100-D: FLAGS -> is_unread)
+# ---------------------------------------------------------------------------
+
+
+class TestFetchMailsLoop:
+    _RAW = (
+        b"From: a@b.com\r\n"
+        b"Subject: Hallo\r\n"
+        b"Date: Mon, 16 Mar 2026 10:00:00 +0100\r\n"
+        b"\r\n"
+        b"Body"
+    )
+
+    def _conn(self, fetch_data):
+        def uid_side_effect(command, *args):
+            if command == "search":
+                return ("OK", [b"7"])
+            return ("OK", fetch_data)
+
+        conn = MagicMock()
+        conn.uid.side_effect = uid_side_effect
+        conn.select.return_value = ("OK", [b"1"])
+        return conn
+
+    def test_fetch_uses_flags_seen_marks_read(self):
+        """\\Seen in der FETCH-Antwort -> is_unread False (auch via get_unread)."""
+        client = IMAPEmailClient("host", "user", "pass")
+        conn = self._conn([(b"7 (FLAGS (\\Seen) RFC822 {4}", self._RAW), b")"])
+        with patch.object(client, "_connect", return_value=conn):
+            mails = client.get_unread()
+        assert len(mails) == 1
+        assert mails[0].subject == "Hallo"
+        assert mails[0].is_unread is False
+
+    def test_fetch_without_flags_falls_back_to_literal(self):
+        """Keine FLAGS -> Fallback auf das Caller-Literal (get_unread=True)."""
+        client = IMAPEmailClient("host", "user", "pass")
+        conn = self._conn([(b"7 (RFC822 {4}", self._RAW), b")"])
+        with patch.object(client, "_connect", return_value=conn):
+            mails = client.get_unread()
+        assert len(mails) == 1
+        assert mails[0].is_unread is True

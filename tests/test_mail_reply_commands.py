@@ -197,6 +197,17 @@ class TestReplyRejectsInvalidRecipient:
         assert r.pending_confirmation is False
         handler._anthropic.generate.assert_not_called()
 
+    def test_modify_invalid_sender_rejected(self, handler):
+        """Phase 100-B (D3): auch der Modify-Pfad lehnt einen ungueltigen
+        Absender ab, ohne einen Draft zu generieren."""
+        handler._email_client.get_by_uid.return_value = _make_email(
+            sender="kein gueltiger absender",
+        )
+        r = handler.execute("mail_reply_modify", "#4523 förmlicher")
+        assert r.success is False
+        assert "gueltige Absenderadresse" in r.text
+        handler._anthropic.generate.assert_not_called()
+
 
 # ---------------------------------------------------------------------------
 # _cmd_mail_reply
