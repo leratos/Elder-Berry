@@ -130,6 +130,21 @@ class TestSecretsStatus:
         assert data["available"] is False
         assert data["categories"] == []
 
+    def test_type_serialized_for_textarea(self, client):
+        """PR #311 Codex P2: registry-Typ wird mitgegeben, damit die UI z.B.
+        email_signature als textarea (mehrzeilig) rendern kann."""
+        r = client.get("/api/secrets/status")
+        data = r.json()
+        by_key = {
+            entry["key"]: entry
+            for cat in data["categories"]
+            for entry in cat["keys"]
+        }
+        assert by_key["email_signature"]["type"] == "textarea"
+        assert by_key["email_signature"]["placeholder"]  # placeholder mitgegeben
+        # Nicht-textarea-Key behaelt den Default-Typ
+        assert by_key["email_sender_name"]["type"] == "str"
+
     def test_entry_has_metadata(self, client):
         """Einträge enthalten sensitive + requires_restart Flags."""
         r = client.get("/api/secrets/status")

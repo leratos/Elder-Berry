@@ -62,6 +62,11 @@ def _uid(
 # zweiter Cap-Pfad im _parse_email noetig ist.
 MAX_BODY_CHARS = 8020
 
+# Phase 100-A (D2): Socket-Timeout fuer IMAP-Verbindungen (Sekunden).
+# Spiegelt das bereits vorhandene SMTP-Timeout (email_sender.py) -- ohne
+# Timeout kann ein haengender IMAP-Server einen Aufruf unbegrenzt blockieren.
+_IMAP_TIMEOUT = 30
+
 
 @dataclass(frozen=True)
 class EmailMessage:
@@ -211,15 +216,15 @@ class IMAPEmailClient:
 
         if len(words) == 1:
             # Ein Wort: einfache OR-Suche über alle Felder
-            criteria = (
-                f'(OR OR SUBJECT "{query}" FROM "{query}" BODY "{query}") SINCE {since}'
-            )
+            q = self._escape_imap_quoted(query)
+            criteria = f'(OR OR SUBJECT "{q}" FROM "{q}" BODY "{q}") SINCE {since}'
         else:
             # Mehrere Wörter: jedes Wort muss irgendwo vorkommen (OR über Felder)
             # "RK Bedachung" → Mails die "RK" UND "Bedachung" irgendwo enthalten
             word_criteria = []
             for w in words:
-                word_criteria.append(f'(OR OR SUBJECT "{w}" FROM "{w}" BODY "{w}")')
+                ew = self._escape_imap_quoted(w)
+                word_criteria.append(f'(OR OR SUBJECT "{ew}" FROM "{ew}" BODY "{ew}")')
             criteria = " ".join(word_criteria) + f" SINCE {since}"
 
         return self._fetch_mails(criteria, max_results=max_results, is_unread=False)
@@ -335,19 +340,24 @@ class IMAPEmailClient:
             conn.select(self._mailbox, readonly=True)
 
             uid_bytes = msg_id.encode() if isinstance(msg_id, str) else msg_id
-            _, msg_data = _uid(conn, "fetch", uid_bytes, "(RFC822)")
+            # Phase 100-D: FLAGS mitholen fuer ehrlichen is_unread-Status.
+            _, msg_data = _uid(conn, "fetch", uid_bytes, "(FLAGS RFC822)")
 
             if not msg_data or not msg_data[0]:
                 conn.logout()
                 return None
 
-            raw = msg_data[0][1]
+            raw = self._extract_raw(msg_data)
+            if raw is None:
+                conn.logout()
+                return None
+            seen = self._is_seen(msg_data)
             conn.logout()
 
             return self._parse_email(
                 raw,
                 self._sanitizer,
-                is_unread=False,
+                is_unread=(not seen) if seen is not None else False,
                 msg_id=msg_id,
             )
 
@@ -501,7 +511,10 @@ class IMAPEmailClient:
                 if result == "OK":
                     conn.close()
                     return candidate
-            except Exception:
+            except Exception as e:
+                # Phase 100-E: Silent-Swallow aufgehoben -- Kandidat existiert
+                # nicht/nicht waehlbar, naechsten probieren (jetzt geloggt).
+                logger.debug("Sent-Ordner-Kandidat %r nicht waehlbar: %s", candidate, e)
                 continue
 
         return ""
@@ -510,13 +523,82 @@ class IMAPEmailClient:
     # Interne Methoden
     # ------------------------------------------------------------------
 
+    @staticmethod
+    def _escape_imap_quoted(value: str) -> str:
+        """Phase 100-B (D3): macht einen Suchbegriff sicher fuer IMAP
+        quoted-strings (RFC 3501 4.3).
+
+        - CR/LF werden durch Space ersetzt (PR #311 Codex P2): IMAP-Befehle
+          sind zeilenbegrenzt, ein eingebettetes CR/LF wuerde den SEARCH-Befehl
+          trotz Quote-Escape terminieren/korrumpieren (Command-Injection).
+          quoted-strings duerfen ohnehin kein CR/LF enthalten.
+        - Backslash + Double-Quote werden escaped, sonst bricht ein ``"`` das
+          per f-String in ``... SUBJECT "{query}" ...`` interpolierte Kriterium.
+        """
+        value = value.replace("\r", " ").replace("\n", " ")
+        return value.replace("\\", "\\\\").replace('"', '\\"')
+
+    @staticmethod
+    def _is_seen(msg_data: list[Any]) -> bool | None:
+        """Phase 100-D: liest das echte ``\\Seen``-Flag aus einer
+        FETCH-Antwort mit ``(FLAGS RFC822)``.
+
+        Robust gegen die Server-Variante, in der FLAGS und RFC822 in
+        unterschiedlichen Antwort-Segmenten landen: es werden alle
+        Descriptor-Bytes eingesammelt und ``imaplib.ParseFlags`` darueber
+        laufen gelassen.
+
+        Returns:
+            ``True``  = ``\\Seen`` gesetzt (gelesen),
+            ``False`` = nicht gesetzt (ungelesen),
+            ``None``  = keine FLAGS in der Antwort gefunden (unbekannt) ->
+            der Aufrufer behaelt seinen Default.
+        """
+        descriptor = b""
+        for part in msg_data:
+            if isinstance(part, tuple) and part and isinstance(part[0], (bytes, bytearray)):
+                descriptor += bytes(part[0]) + b" "
+            elif isinstance(part, (bytes, bytearray)):
+                descriptor += bytes(part) + b" "
+        if b"FLAGS" not in descriptor.upper():
+            return None
+        flags = imaplib.ParseFlags(descriptor)
+        return any(f.upper() == b"\\SEEN" for f in flags)
+
+    @staticmethod
+    def _extract_raw(msg_data: list[Any]) -> bytes | None:
+        """Phase 100-D Folge (PR #311 Codex P2): findet den RFC822-Payload in
+        einer FETCH-Antwort robust.
+
+        Bei ``(FLAGS RFC822)`` koennen FLAGS und der (descriptor, literal)-Body
+        je nach Server in getrennten Segmenten kommen -- dieselbe Form, die
+        ``_is_seen`` schon beruecksichtigt. ``msg_data[0]`` ist dann evtl. ein
+        nackter Bytes-Descriptor statt des Body-Tupels, und ``msg_data[0][1]``
+        wuerde ein Metadaten-Byte statt der Mail liefern (Mail faellt durch).
+        Daher das erste Tupel mit Bytes-Payload suchen.
+        """
+        for part in msg_data:
+            if (
+                isinstance(part, tuple)
+                and len(part) >= 2
+                and isinstance(part[1], (bytes, bytearray))
+            ):
+                return bytes(part[1])
+        return None
+
     def _connect(self) -> imaplib.IMAP4_SSL | imaplib.IMAP4:
-        """Erstellt IMAP-Verbindung und loggt ein."""
+        """Erstellt IMAP-Verbindung und loggt ein.
+
+        Phase 100-A (D2): Socket-Timeout (analog SMTP, das schon 30s nutzt).
+        Ohne Timeout blockiert ein haengender/halb-toter IMAP-Server jeden
+        Aufruf unbegrenzt -- besonders kritisch fuer den Dauer-Poller des
+        Mail-Watchers (Phase 101).
+        """
         conn: imaplib.IMAP4_SSL | imaplib.IMAP4
         if self._use_ssl:
-            conn = imaplib.IMAP4_SSL(self._host, self._port)
+            conn = imaplib.IMAP4_SSL(self._host, self._port, timeout=_IMAP_TIMEOUT)
         else:
-            conn = imaplib.IMAP4(self._host, self._port)
+            conn = imaplib.IMAP4(self._host, self._port, timeout=_IMAP_TIMEOUT)
         conn.login(self._user, self._password)
         return conn
 
@@ -564,15 +646,21 @@ class IMAPEmailClient:
             mails = []
             for uid in uids:
                 try:
-                    _, msg_data = _uid(conn, "fetch", uid, "(RFC822)")
+                    # Phase 100-D: FLAGS mitholen, um is_unread aus dem echten
+                    # \Seen-Flag zu setzen statt aus einem Caller-Literal.
+                    _, msg_data = _uid(conn, "fetch", uid, "(FLAGS RFC822)")
                     if not msg_data or not msg_data[0]:
                         continue
-                    raw = msg_data[0][1]
+                    raw = self._extract_raw(msg_data)
+                    if raw is None:
+                        continue
+                    seen = self._is_seen(msg_data)
+                    actual_unread = (not seen) if seen is not None else is_unread
                     uid_str = uid.decode() if isinstance(uid, bytes) else str(uid)
                     parsed = self._parse_email(
                         raw,
                         self._sanitizer,
-                        is_unread=is_unread,
+                        is_unread=actual_unread,
                         msg_id=uid_str,
                     )
                     if parsed:
@@ -614,8 +702,10 @@ class IMAPEmailClient:
             try:
                 parsed = email.utils.parsedate_to_datetime(date_str)
                 date = parsed
-            except Exception:
-                pass
+            except Exception as e:
+                # Phase 100-E: Silent-Swallow aufgehoben -- degradiert weiter
+                # zu date=None, aber sichtbar im Log (Diagnose).
+                logger.debug("Date-Header nicht parsebar (%r): %s", date_str, e)
 
         # Body extrahieren (Text/Plain bevorzugt)
         body = IMAPEmailClient._extract_body(msg, sanitizer)

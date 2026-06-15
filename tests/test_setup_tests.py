@@ -1,6 +1,7 @@
 """Tests: SetupTests – Verbindungstests für den Setup-Wizard."""
 
 import asyncio
+import socket
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import httpx
@@ -10,6 +11,7 @@ from elder_berry.web.setup_tests import (
     EMAIL_PROVIDERS,
     InvalidExternalURLError,
     SetupTests,
+    _assert_host_allowed,
     _validate_external_url,
 )
 
@@ -434,6 +436,70 @@ class TestValidateExternalURL:
         # Underscore ist im Hostname laut RFC 1035 nicht zulaessig
         with pytest.raises(InvalidExternalURLError):
             _validate_external_url("https://bad_host.example.com")
+
+    @pytest.mark.parametrize(
+        "url",
+        [
+            "http://127.0.0.1:8080/x",  # Loopback
+            "http://169.254.169.254/latest/meta-data/",  # Cloud-Metadata (Link-Local)
+            "http://0.0.0.0/",  # Unspecified
+        ],
+    )
+    def test_rejects_internal_ip_literals(self, url):
+        # SSRF-Schutz: Loopback/Link-Local/Metadata/Unspecified sind tabu.
+        with pytest.raises(InvalidExternalURLError):
+            _validate_external_url(url)
+
+    @pytest.mark.parametrize(
+        "url",
+        [
+            "https://192.168.1.10",  # privates LAN (RFC 1918)
+            "http://10.0.0.5:8443/sub",  # privates LAN (RFC 1918)
+            "https://100.100.10.20",  # CGNAT/Tailscale (RFC 6598)
+        ],
+    )
+    def test_allows_private_lan_for_self_hosting(self, url):
+        # Bewusst erlaubt: Elder-Berry-Nutzer hosten Nextcloud/Mail im LAN/VPN.
+        # Ein Block waere ein Funktionsverlust, kein Sicherheitsgewinn.
+        assert _validate_external_url(url) == url.strip()
+
+
+class TestAssertHostAllowed:
+    """Async-Host-Check: DNS-Aufloesung off-loop + interne Ziele blocken."""
+
+    def test_blocks_ipv6_metadata_literal(self):
+        # AWS IPv6-IMDS-ULA: nicht is_link_local, aber explizit geblockt.
+        with pytest.raises(InvalidExternalURLError):
+            _run(_assert_host_allowed("fd00:ec2::254"))
+
+    def test_rejects_non_string_host(self):
+        # JSON-Liste statt Host -> sauberer Reject statt getaddrinfo-TypeError.
+        with pytest.raises(InvalidExternalURLError):
+            _run(_assert_host_allowed([]))  # type: ignore[arg-type]
+
+    def test_blocks_dns_name_resolving_internal(self):
+        # Hostname, der auf Loopback aufloest, wird geblockt.
+        with patch(
+            "elder_berry.web.setup_tests.socket.getaddrinfo",
+            return_value=[(2, 1, 6, "", ("127.0.0.1", 0))],
+        ):
+            with pytest.raises(InvalidExternalURLError):
+                _run(_assert_host_allowed("rebind.attacker.test"))
+
+    def test_allows_dns_name_resolving_public(self):
+        with patch(
+            "elder_berry.web.setup_tests.socket.getaddrinfo",
+            return_value=[(2, 1, 6, "", ("93.184.216.34", 0))],
+        ):
+            _run(_assert_host_allowed("example.com"))  # kein Fehler
+
+    def test_allows_unresolvable_name(self):
+        # DNS-Fehler ist kein SSRF-Gewinn -> durchlassen.
+        with patch(
+            "elder_berry.web.setup_tests.socket.getaddrinfo",
+            side_effect=socket.gaierror("nope"),
+        ):
+            _run(_assert_host_allowed("does-not-resolve.invalid"))  # kein Fehler
 
 
 class TestNextcloudRejectsBadURL:
