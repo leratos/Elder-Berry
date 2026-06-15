@@ -6,12 +6,15 @@ Jede Methode testet einen externen Dienst und gibt ein dict zurück:
 
 from __future__ import annotations
 
+import asyncio
 import imaplib
+import ipaddress
 import logging
 import platform
 import re
 import shutil
 import smtplib
+import socket
 import ssl
 import subprocess
 from typing import Any
@@ -55,7 +58,99 @@ _URL_ERROR_MESSAGES: dict[str, str] = {
     "userinfo": "Ungültige Nextcloud-URL: Userinfo (user:pw@) ist nicht erlaubt.",
     "no_host": "Ungültige Nextcloud-URL: kein Hostname.",
     "bad_host": "Ungültige Nextcloud-URL: ungültiges Hostname-Format.",
+    "blocked": "Ungültige Nextcloud-URL: interne/Loopback-/Metadata-Adresse "
+    "ist nicht erlaubt.",
 }
+
+
+# Bekannte Cloud-Metadata-Adressen, die in KEINE der is_*-Kategorien fallen.
+# IPv4-Link-Local 169.254.169.254 ist bereits via ``is_link_local`` abgedeckt;
+# die IPv6-IMDS-ULA (AWS) dagegen ist ``is_private`` und wuerde sonst -- wie
+# das fuers LAN bewusst erlaubte RFC-4193 -- durchrutschen.
+_BLOCKED_METADATA_IPS = frozenset(
+    {
+        ipaddress.ip_address("fd00:ec2::254"),  # AWS IPv6 Instance Metadata
+    }
+)
+
+
+def _ip_is_blocked(ip: ipaddress.IPv4Address | ipaddress.IPv6Address) -> bool:
+    """True, wenn die IP eine SSRF-gefaehrliche interne Adresse ist.
+
+    Blockiert Loopback, Link-Local (169.254/16 inkl. Cloud-Metadata
+    169.254.169.254), Unspecified (0.0.0.0/::), Multicast, Reserved sowie
+    bekannte IPv6-Metadata-Endpunkte (:data:`_BLOCKED_METADATA_IPS`).
+
+    Bewusst NICHT blockiert: private RFC-1918-/CGNAT-Ranges (10/8, 172.16/12,
+    192.168/16, 100.64/10). Elder-Berry-Nutzer hosten Nextcloud/Mail legitim
+    im LAN oder via VPN (Tailscale) -- ein Block dort waere ein Funktions-
+    verlust (vgl. Test ``test_accepts_valid_http_urls`` mit 192.168.1.10).
+    """
+    mapped = getattr(ip, "ipv4_mapped", None)
+    if mapped is not None:
+        ip = mapped
+    if ip in _BLOCKED_METADATA_IPS:
+        return True
+    return (
+        ip.is_loopback
+        or ip.is_link_local
+        or ip.is_unspecified
+        or ip.is_multicast
+        or ip.is_reserved
+    )
+
+
+def _literal_host_blocked(host: str) -> bool:
+    """Sync, non-blocking: True, wenn ``host`` ein IP-Literal aus einer
+    blockierten Range ist. Macht KEIN DNS und ist damit event-loop-sicher."""
+    try:
+        return _ip_is_blocked(ipaddress.ip_address(host))
+    except ValueError:
+        return False
+
+
+async def _assert_host_allowed(host: str) -> None:
+    """Wirft :class:`InvalidExternalURLError`, wenn ``host`` intern aufloest.
+
+    IP-Literale werden sofort (sync, non-blocking) geprueft. DNS-Namen werden
+    via ``getaddrinfo`` in einem Worker-Thread aufgeloest -- NICHT auf dem
+    Event-Loop, damit ein langsamer/haengender Resolver die Server-Coroutinen
+    nicht blockiert -- und jede Adresse wird geprueft (faengt z. B.
+    ``metadata.google.internal`` -> 169.254.169.254). Nicht aufloesbare Namen
+    werden durchgelassen -- ein DNS-Fehler ist kein SSRF-Gewinn, und der
+    eigentliche Verbindungsversuch laeuft dann ohnehin ins Leere.
+
+    Limit: Validierungs-Zeitpunkt-Check; ein spaeteres DNS-Rebinding (andere
+    Antwort beim eigentlichen connect) kann theoretisch abweichen (bekannte
+    TOCTOU-Schwaeche, ``follow_redirects`` ist am httpx-Client zusaetzlich
+    deaktiviert).
+    """
+    if not isinstance(host, str) or not host:
+        raise InvalidExternalURLError("Ungueltiger Hostname.", code="bad_host")
+    if _literal_host_blocked(host):
+        raise InvalidExternalURLError(
+            "Interne/Loopback-/Metadata-Adresse ist nicht erlaubt.",
+            code="blocked",
+        )
+    try:
+        ipaddress.ip_address(host)
+        return  # war ein (erlaubtes) IP-Literal -> kein DNS noetig
+    except ValueError:
+        pass
+    try:
+        infos = await asyncio.to_thread(socket.getaddrinfo, host, None)
+    except socket.gaierror:
+        return
+    for info in infos:
+        try:
+            resolved = ipaddress.ip_address(info[4][0])
+        except ValueError:
+            continue
+        if _ip_is_blocked(resolved):
+            raise InvalidExternalURLError(
+                "Hostname zeigt auf eine interne/Metadata-Adresse.",
+                code="blocked",
+            )
 
 
 def _validate_external_url(url: str) -> str:
@@ -86,6 +181,13 @@ def _validate_external_url(url: str) -> str:
         raise InvalidExternalURLError(
             f"Hostname {host!r} hat ein ungueltiges Format.",
             code="bad_host",
+        )
+    # Sync: IP-Literale sofort blocken (kein DNS -> event-loop-sicher). Die
+    # DNS-Namen-Aufloesung macht der async-Aufrufer via _assert_host_allowed.
+    if _literal_host_blocked(host):
+        raise InvalidExternalURLError(
+            "Interne/Loopback-/Metadata-Adresse ist nicht erlaubt.",
+            code="blocked",
         )
     return url.strip()
 
@@ -164,6 +266,9 @@ class SetupTests:
         }
         try:
             safe_url = _validate_external_url(url)
+            # DNS-Namen zusaetzlich off-loop aufloesen + gegen interne Ziele
+            # pruefen (IP-Literale hat _validate_external_url schon geblockt).
+            await _assert_host_allowed(urlparse(safe_url).hostname or "")
         except InvalidExternalURLError as exc:
             logger.warning("Nextcloud-URL-Validierung fehlgeschlagen: %s", exc)
             return {
@@ -221,6 +326,26 @@ class SetupTests:
     ) -> dict[str, Any]:
         """Testet IMAP- und SMTP-Verbindung."""
         result: dict[str, Any] = {"imap": False, "smtp": False, "unread": 0}
+        # SSRF-Schutz: Mail-Hosts duerfen nicht auf interne/Loopback-/Metadata-
+        # Adressen zeigen (gleiche Policy wie Nextcloud, privates LAN bleibt
+        # erlaubt). Greift, weil imap/smtp_host aus dem unauthentifizierten
+        # First-Run-Wizard-Body stammen.
+        for mail_host in (imap_host, smtp_host):
+            try:
+                await _assert_host_allowed(mail_host)
+            except InvalidExternalURLError:
+                # Host bewusst NICHT mitloggen: CodeQL stuft aus dem SecretStore
+                # gelesene Werte pauschal als "secret" ein (clear-text-logging),
+                # und der konkrete Host ist fuer das Audit-Log unerheblich.
+                # Faengt zugleich nicht-String-Hosts (z. B. JSON-Liste) ab,
+                # bevor getaddrinfo() mit einem TypeError abbricht.
+                logger.warning("Mail-Host abgelehnt: ungueltig oder intern.")
+                result["success"] = False
+                result["error"] = (
+                    "Mail-Host ungültig oder interne/Loopback-Adresse "
+                    "(nicht erlaubt)."
+                )
+                return result
         # IMAP
         try:
             mail = imaplib.IMAP4_SSL(imap_host, imap_port)
@@ -231,7 +356,10 @@ class SetupTests:
             result["imap"] = True
             mail.logout()
         except Exception as e:
-            logger.error("IMAP-Test fehlgeschlagen (%s): %s", imap_host, e)
+            # Host nicht mitloggen (SecretStore-Wert -> CodeQL clear-text-logging);
+            # safe_log(e) strippt CR/LF gegen Log-Injection (Host kann in der
+            # Exception-Message stecken).
+            logger.error("IMAP-Test fehlgeschlagen: %s", safe_log(e))
         # SMTP
         try:
             ctx = ssl.create_default_context()
@@ -245,7 +373,8 @@ class SetupTests:
             srv.quit()
             result["smtp"] = True
         except Exception as e:
-            logger.error("SMTP-Test fehlgeschlagen (%s): %s", smtp_host, e)
+            # Siehe IMAP-Zweig: Host nicht loggen, Exception via safe_log.
+            logger.error("SMTP-Test fehlgeschlagen: %s", safe_log(e))
         result["success"] = result["imap"] and result["smtp"]
         return result
 
