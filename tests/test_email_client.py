@@ -963,6 +963,58 @@ class TestErrorPaths:
 
 
 # ---------------------------------------------------------------------------
+# get_unread_uids() (Phase 101-N: vollstaendige Unread-UID-Menge)
+# ---------------------------------------------------------------------------
+
+
+class TestGetUnreadUids:
+    def _client_with_search(self, search_result):
+        client = IMAPEmailClient("host", "user", "pass")
+        mock_conn = MagicMock()
+        mock_conn.uid.return_value = ("OK", search_result)
+        mock_conn.select.return_value = ("OK", [b"1"])
+        return client, mock_conn
+
+    def test_returns_sorted_uids(self):
+        client, conn = self._client_with_search([b"3 1 2"])
+        with patch.object(client, "_connect", return_value=conn):
+            assert client.get_unread_uids() == [1, 2, 3]
+
+    def test_empty_inbox_returns_empty_list(self):
+        client, conn = self._client_with_search([b""])
+        with patch.object(client, "_connect", return_value=conn):
+            assert client.get_unread_uids() == []
+
+    def test_non_numeric_tokens_skipped(self):
+        client, conn = self._client_with_search([b"1 x 3"])
+        with patch.object(client, "_connect", return_value=conn):
+            assert client.get_unread_uids() == [1, 3]
+
+    def test_error_returns_none(self):
+        """None (nicht []) bei Fehler -> unterscheidbar vom leeren Posteingang."""
+        client = IMAPEmailClient("host", "user", "pass")
+        with patch.object(client, "_connect", side_effect=Exception("down")):
+            assert client.get_unread_uids() is None
+
+    def test_select_not_ok_returns_none(self):
+        """PR #318 Codex P2: SELECT 'NO'/'BAD' (ohne Exception) -> None."""
+        client = IMAPEmailClient("host", "user", "pass")
+        conn = MagicMock()
+        conn.select.return_value = ("NO", [b"no access"])
+        with patch.object(client, "_connect", return_value=conn):
+            assert client.get_unread_uids() is None
+
+    def test_search_not_ok_returns_none(self):
+        """PR #318 Codex P2: UID SEARCH 'NO'/'BAD' -> None (nicht leeres Postfach)."""
+        client = IMAPEmailClient("host", "user", "pass")
+        conn = MagicMock()
+        conn.select.return_value = ("OK", [b"1"])
+        conn.uid.return_value = ("NO", [b""])
+        with patch.object(client, "_connect", return_value=conn):
+            assert client.get_unread_uids() is None
+
+
+# ---------------------------------------------------------------------------
 # _fetch_mails End-to-End (Phase 100-D: FLAGS -> is_unread)
 # ---------------------------------------------------------------------------
 

@@ -14,7 +14,7 @@ dependencies = [
     "python-dotenv>=1.2.2",
     "PyYAML>=6.0.3",
     "cryptography>=49.0.0",
-    "anthropic>=0.107.1",
+    "anthropic>=0.109.1",
     "tzdata>=2026.2",
     # 0.136.3 ausgeschlossen: MAL-2026-4750 -- diese Version fuegte den
     # undokumentierten Typosquat-Dep ``fastar>=0.9.0`` in die ``[standard]``-
@@ -98,7 +98,7 @@ web = [
     # generierte Markdown-Specs werden server-side gerendert + ueber
     # bleach.clean() gegen eine enge Allowlist gesaeubert (Konzept R3).
     "markdown-it-py>=4.2.0",
-    "bleach>=6.3.0",
+    "bleach>=6.4.0",
     # Phase 86.1: css_decl_resolver fuer html_email_sanitizer
     # (geplant 86.2). Web-Gruppe zieht trafilatura/bs4 fuer
     # Article-Extraktion -- gleicher Pipeline-Pfad wie der spaetere
