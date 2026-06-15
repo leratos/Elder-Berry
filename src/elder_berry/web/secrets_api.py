@@ -81,7 +81,13 @@ def register_secrets_routes(app: FastAPI, dashboard: _DashboardLike) -> None:
                 "is_set": is_set,
                 "sensitive": entry.get("sensitive", True),
                 "requires_restart": entry.get("requires_restart", False),
+                # PR #311 Codex P2: type/placeholder mitgeben, damit die
+                # Secrets-UI registry-Typen (z.B. "textarea" fuer
+                # email_signature) ehrlich rendern statt alles als single-line.
+                "type": entry.get("type", "str"),
             }
+            if entry.get("placeholder"):
+                item["placeholder"] = entry["placeholder"]
             if entry.get("description"):
                 item["description"] = entry["description"]
             if entry.get("link"):

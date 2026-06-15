@@ -13,6 +13,7 @@ from __future__ import annotations
 import logging
 import re
 import tempfile
+from email.utils import parseaddr
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -87,7 +88,7 @@ Regeln:
 - Schreibe auf Deutsch, es sei denn die Original-Mail ist auf Englisch
 - Passe den Formalitätsgrad an die Original-Mail an
   (förmlich → förmlich, locker → locker)
-- Keine Signatur einfügen (wird vom Mail-Client ergänzt)
+- Keine Signatur einfügen (die konfigurierte Saleria-Signatur wird beim Versand automatisch angehängt)
 - Keine Betreffzeile generieren (wird automatisch gesetzt)
 - Halte die Antwort knapp und auf den Punkt
 - Beginne NICHT mit "Betreff:" oder "An:" – nur den reinen Antworttext
@@ -579,6 +580,18 @@ class MailCommandHandler(CommandHandler):
                 text=f"Mail #{msg_id} nicht gefunden.",
             )
 
+        # Phase 100-B (D3): Empfaenger VOR der (kostenpflichtigen) Draft-
+        # Generierung validieren -- ein kaputter From-Header soll keinen
+        # API-Call ausloesen und nie ungeprueft an SMTP gehen.
+        reply_to = self._extract_email_address(original.sender)
+        if not self._is_valid_email(reply_to):
+            return CommandResult(
+                command="mail_reply",
+                success=False,
+                text=f"Mail #{msg_id} hat keine gueltige Absenderadresse "
+                "-- darauf kann ich nicht antworten.",
+            )
+
         try:
             draft = self._generate_draft(original, instruction)
         except Exception as e:
@@ -592,8 +605,6 @@ class MailCommandHandler(CommandHandler):
         subject = original.subject
         if not subject.lower().startswith("re:"):
             subject = f"Re: {subject}"
-
-        reply_to = self._extract_email_address(original.sender)
 
         display_text = (
             f"\U0001f4e7 Entwurf für Antwort auf #{msg_id}:\n"
@@ -662,6 +673,16 @@ class MailCommandHandler(CommandHandler):
                 text=f"Mail #{msg_id} nicht gefunden.",
             )
 
+        # Phase 100-B (D3): Empfaenger vor der Draft-Generierung validieren.
+        reply_to = self._extract_email_address(original.sender)
+        if not self._is_valid_email(reply_to):
+            return CommandResult(
+                command="mail_reply_modify",
+                success=False,
+                text=f"Mail #{msg_id} hat keine gueltige Absenderadresse "
+                "-- darauf kann ich nicht antworten.",
+            )
+
         try:
             draft = self._generate_draft(original, new_instruction)
         except Exception as e:
@@ -675,8 +696,6 @@ class MailCommandHandler(CommandHandler):
         subject = original.subject
         if not subject.lower().startswith("re:"):
             subject = f"Re: {subject}"
-
-        reply_to = self._extract_email_address(original.sender)
 
         display_text = (
             f"\U0001f4e7 Geänderter Entwurf für #{msg_id}:\n"
@@ -769,11 +788,31 @@ class MailCommandHandler(CommandHandler):
 
         "Max Mustermann <max@example.com>" → "max@example.com"
         "max@example.com" → "max@example.com"
+
+        Phase 100-B (D3): nutzt ``email.utils.parseaddr`` statt einer nackten
+        ``<...>``-Regex -- robuster bei Quoted-Names/Kommentaren. Fallback auf
+        den getrimmten Rohstring, wenn parseaddr keine Adresse findet (die
+        Validierung in ``_is_valid_email`` faengt den dann ab).
         """
-        match = re.search(r"<([^>]+)>", sender)
-        if match:
-            return match.group(1)
-        return sender.strip()
+        _, addr = parseaddr(sender)
+        return addr or sender.strip()
+
+    @staticmethod
+    def _is_valid_email(addr: str) -> bool:
+        """Phase 100-B (D3): minimale Empfaenger-Validierung vor dem SMTP-Send.
+
+        Verhindert, dass ein kaputter/leerer ``From``-Header (oder eine
+        mehradressige Angabe wie ``a@x, b@y``) ungeprueft als Empfaenger an
+        smtplib geht. Bewusst konservativ: genau ein ``@``, nicht-leerer
+        Local- und Domain-Teil, kein Whitespace/Komma.
+        """
+        addr = addr.strip()
+        if not addr or addr.count("@") != 1:
+            return False
+        if any(c.isspace() for c in addr) or "," in addr:
+            return False
+        local, _, domain = addr.partition("@")
+        return bool(local) and bool(domain) and "." in domain
 
 
 # ---------------------------------------------------------------------------
