@@ -347,7 +347,10 @@ class IMAPEmailClient:
                 conn.logout()
                 return None
 
-            raw = msg_data[0][1]
+            raw = self._extract_raw(msg_data)
+            if raw is None:
+                conn.logout()
+                return None
             seen = self._is_seen(msg_data)
             conn.logout()
 
@@ -522,13 +525,17 @@ class IMAPEmailClient:
 
     @staticmethod
     def _escape_imap_quoted(value: str) -> str:
-        """Phase 100-B (D3): escaped Backslash + Double-Quote fuer IMAP
+        """Phase 100-B (D3): macht einen Suchbegriff sicher fuer IMAP
         quoted-strings (RFC 3501 4.3).
 
-        Ohne das bricht ein ``"`` im Suchbegriff das SEARCH-Kriterium
-        (Breakage/Injection), weil der Begriff per f-String in
-        ``... SUBJECT "{query}" ...`` interpoliert wird.
+        - CR/LF werden durch Space ersetzt (PR #311 Codex P2): IMAP-Befehle
+          sind zeilenbegrenzt, ein eingebettetes CR/LF wuerde den SEARCH-Befehl
+          trotz Quote-Escape terminieren/korrumpieren (Command-Injection).
+          quoted-strings duerfen ohnehin kein CR/LF enthalten.
+        - Backslash + Double-Quote werden escaped, sonst bricht ein ``"`` das
+          per f-String in ``... SUBJECT "{query}" ...`` interpolierte Kriterium.
         """
+        value = value.replace("\r", " ").replace("\n", " ")
         return value.replace("\\", "\\\\").replace('"', '\\"')
 
     @staticmethod
@@ -557,6 +564,27 @@ class IMAPEmailClient:
             return None
         flags = imaplib.ParseFlags(descriptor)
         return any(f.upper() == b"\\SEEN" for f in flags)
+
+    @staticmethod
+    def _extract_raw(msg_data: list[Any]) -> bytes | None:
+        """Phase 100-D Folge (PR #311 Codex P2): findet den RFC822-Payload in
+        einer FETCH-Antwort robust.
+
+        Bei ``(FLAGS RFC822)`` koennen FLAGS und der (descriptor, literal)-Body
+        je nach Server in getrennten Segmenten kommen -- dieselbe Form, die
+        ``_is_seen`` schon beruecksichtigt. ``msg_data[0]`` ist dann evtl. ein
+        nackter Bytes-Descriptor statt des Body-Tupels, und ``msg_data[0][1]``
+        wuerde ein Metadaten-Byte statt der Mail liefern (Mail faellt durch).
+        Daher das erste Tupel mit Bytes-Payload suchen.
+        """
+        for part in msg_data:
+            if (
+                isinstance(part, tuple)
+                and len(part) >= 2
+                and isinstance(part[1], (bytes, bytearray))
+            ):
+                return bytes(part[1])
+        return None
 
     def _connect(self) -> imaplib.IMAP4_SSL | imaplib.IMAP4:
         """Erstellt IMAP-Verbindung und loggt ein.
@@ -623,7 +651,9 @@ class IMAPEmailClient:
                     _, msg_data = _uid(conn, "fetch", uid, "(FLAGS RFC822)")
                     if not msg_data or not msg_data[0]:
                         continue
-                    raw = msg_data[0][1]
+                    raw = self._extract_raw(msg_data)
+                    if raw is None:
+                        continue
                     seen = self._is_seen(msg_data)
                     actual_unread = (not seen) if seen is not None else is_unread
                     uid_str = uid.decode() if isinstance(uid, bytes) else str(uid)

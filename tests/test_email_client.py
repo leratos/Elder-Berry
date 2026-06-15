@@ -711,6 +711,15 @@ class TestSearch:
         assert IMAPEmailClient._escape_imap_quoted('a"b') == 'a\\"b'
         assert IMAPEmailClient._escape_imap_quoted("a\\b") == "a\\\\b"
 
+    def test_escape_imap_quoted_strips_crlf(self):
+        """PR #311 Codex P2: CR/LF darf den zeilenbasierten IMAP-SEARCH nicht
+        terminieren -- wird durch Space ersetzt."""
+        assert "\r" not in IMAPEmailClient._escape_imap_quoted("a\rb")
+        assert "\n" not in IMAPEmailClient._escape_imap_quoted("a\nb")
+        out = IMAPEmailClient._escape_imap_quoted('a\n"b')
+        assert "\n" not in out
+        assert '\\"' in out
+
     def test_search_multi_word_criteria(self):
         """Mehr-Wort-Suche baut je Wort einen OR-Block (UND-Verknuepfung)."""
         client = IMAPEmailClient("host", "user", "pass")
@@ -902,6 +911,36 @@ class TestSeenFlag:
             result = client.get_by_uid("99")
         assert result is not None
         assert result.is_unread is True
+
+    # -- _extract_raw (PR #311 Codex P2) -----------------------------------
+
+    def test_extract_raw_finds_payload_tuple(self):
+        data = [(b"1 (FLAGS (\\Seen) RFC822 {3}", b"abc"), b")"]
+        assert IMAPEmailClient._extract_raw(data) == b"abc"
+
+    def test_extract_raw_skips_leading_bytes_descriptor(self):
+        """FLAGS als fuehrendes Bytes-Segment, Body-Tupel erst danach."""
+        data = [b"1 (FLAGS (\\Seen)", (b"1 (RFC822 {3}", b"abc"), b")"]
+        assert IMAPEmailClient._extract_raw(data) == b"abc"
+
+    def test_extract_raw_none_when_no_payload(self):
+        assert IMAPEmailClient._extract_raw([b"1 (FLAGS (\\Seen))"]) is None
+
+    def test_get_by_uid_split_flags_segment(self):
+        """PR #311 Codex P2: FLAGS als eigenes Segment VOR dem RFC822-Tupel ->
+        Mail wird trotzdem korrekt geparst (nicht verworfen)."""
+        client = IMAPEmailClient("host", "user", "pass")
+        mock_conn = MagicMock()
+        mock_conn.uid.return_value = (
+            "OK",
+            [b"1 (FLAGS (\\Seen)", (b"1 (RFC822 {5}", self._raw()), b")"],
+        )
+        mock_conn.select.return_value = ("OK", [b"1"])
+        with patch.object(client, "_connect", return_value=mock_conn):
+            result = client.get_by_uid("99")
+        assert result is not None
+        assert result.subject == "Test"
+        assert result.is_unread is False
 
 
 # ---------------------------------------------------------------------------
