@@ -50,6 +50,7 @@ if TYPE_CHECKING:
     from elder_berry.comms.alert_monitor import AlertMonitor
     from elder_berry.comms.audio_converter import AudioConverter
     from elder_berry.comms.calendar_watcher import CalendarWatcher
+    from elder_berry.comms.mail_watcher import MailWatcher
     from elder_berry.comms.claude_agent import ClaudeAgent
     from elder_berry.comms.briefing_scheduler import BriefingScheduler
     from elder_berry.comms.reminder_scheduler import ReminderScheduler
@@ -94,6 +95,7 @@ class MatrixBridge:
         reminder_scheduler: ReminderScheduler | None = None,
         briefing_scheduler: BriefingScheduler | None = None,
         calendar_watcher: CalendarWatcher | None = None,
+        mail_watcher: MailWatcher | None = None,
         document_reader: DocumentReader | None = None,
         audio_router: AudioRouter | None = None,
         task_chain: TaskChainRunner | None = None,
@@ -117,6 +119,7 @@ class MatrixBridge:
         self._reminder_scheduler = reminder_scheduler
         self._briefing_scheduler = briefing_scheduler
         self._calendar_watcher = calendar_watcher
+        self._mail_watcher = mail_watcher
 
         self._loop: asyncio.AbstractEventLoop | None = None
         self._thread: threading.Thread | None = None
@@ -330,6 +333,14 @@ class MatrixBridge:
                 "CalendarWatcher",
                 self._calendar_watcher,
                 "_send_alert",
+            )
+
+        if self._mail_watcher:
+            self._scheduler_mgr.register(
+                "MailWatcher",
+                self._mail_watcher,
+                "_send_alert",
+                prefix="\U0001f4e7",
             )
 
         self._scheduler_mgr.start_all()
