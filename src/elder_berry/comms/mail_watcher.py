@@ -45,8 +45,12 @@ class MailWatcher:
         self._poll_seconds = max(_MIN_POLL_SECONDS, int(poll_minutes) * 60)
         self._running = False
         self._thread: threading.Thread | None = None
-        # UID-Set der zuletzt gesehenen ungelesenen Mails (Dedup über Polls).
-        self._seen: set[str] = set()
+        # High-Water-Mark der hoechsten bereits gesehenen IMAP-UID. IMAP-UIDs
+        # sind streng monoton steigend (RFC 3501) -> nur Mails mit groesserer
+        # UID sind wirklich neu. Robust gegen (a) >max_results Unread + Seiten-
+        # verschiebung und (b) transiente get_unread()-Fehler (liefert []), die
+        # bei einem Seen-Set sonst den ganzen Posteingang als "neu" melden.
+        self._high_water = 0
         # Erster Poll seedet nur die Baseline (bestehende Unread sind nicht neu).
         self._first_poll = True
         # Wird vom SchedulerManager.register überschrieben (thread-sicher,
@@ -112,17 +116,33 @@ class MailWatcher:
             self._send_alert(self._format(mail))
 
     def _collect_new(self, mails: list[EmailMessage]) -> list[EmailMessage]:
-        """Aktualisiert das Seen-Set und gibt die seit dem letzten Poll neu
-        aufgetauchten Mails zurueck. Der erste Aufruf seedet nur die Baseline
-        (gibt ``[]`` zurueck) -- bestehende Unread sind nicht "neu".
+        """Gibt die seit dem letzten Poll neu eingetroffenen Mails zurueck.
+
+        Nutzt die High-Water-Mark auf der IMAP-UID: neu = UID groesser als die
+        hoechste je gesehene. Der erste Aufruf seedet nur die Baseline (gibt
+        ``[]`` zurueck) -- bestehende Unread sind nicht "neu". Ein leerer Poll
+        (transienter Fehler oder leerer Posteingang) laesst die Mark unangetastet
+        und meldet daher nichts faelschlich.
         """
-        current = {m.msg_id for m in mails if m.msg_id}
+        numbered: list[tuple[int, EmailMessage]] = []
+        for m in mails:
+            if not m.msg_id:
+                continue
+            try:
+                numbered.append((int(m.msg_id), m))
+            except ValueError:
+                continue
+
         if self._first_poll:
-            self._seen = current
+            self._high_water = max(
+                (uid for uid, _ in numbered), default=self._high_water
+            )
             self._first_poll = False
             return []
-        new = [m for m in mails if m.msg_id and m.msg_id not in self._seen]
-        self._seen = current
+
+        new = [m for uid, m in numbered if uid > self._high_water]
+        if numbered:
+            self._high_water = max(self._high_water, max(uid for uid, _ in numbered))
         return new
 
     @staticmethod

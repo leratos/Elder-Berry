@@ -34,34 +34,64 @@ class TestCollectNew:
         w = _watcher()
         new = w._collect_new([_mail("1"), _mail("2")])
         assert new == []  # Baseline -> nichts ist "neu"
-        assert w._seen == {"1", "2"}
+        assert w._high_water == 2
 
-    def test_second_poll_returns_only_new(self):
+    def test_second_poll_returns_only_higher_uids(self):
         w = _watcher()
-        w._collect_new([_mail("1")])  # Baseline
+        w._collect_new([_mail("1")])  # Baseline -> hw=1
         new = w._collect_new([_mail("1"), _mail("2"), _mail("3")])
         assert sorted(m.msg_id for m in new) == ["2", "3"]
-        assert w._seen == {"1", "2", "3"}
+        assert w._high_water == 3
 
-    def test_seen_not_reannounced(self):
+    def test_not_reannounced(self):
         w = _watcher()
         w._collect_new([_mail("1")])  # Baseline
-        w._collect_new([_mail("1"), _mail("2")])  # 2 ist neu
-        new = w._collect_new([_mail("1"), _mail("2")])  # nichts neu
-        assert new == []
+        assert [m.msg_id for m in w._collect_new([_mail("1"), _mail("2")])] == ["2"]
+        assert w._collect_new([_mail("1"), _mail("2")]) == []  # nichts neu
 
-    def test_read_mail_drops_from_seen(self):
-        """Verschwindet eine Mail aus get_unread (gelesen), schrumpft _seen."""
+    def test_read_mail_does_not_reannounce(self):
+        """Wird eine der neuesten Mails gelesen (faellt aus dem Poll), darf
+        keine aeltere faelschlich als neu gemeldet werden."""
         w = _watcher()
-        w._collect_new([_mail("1"), _mail("2")])  # Baseline
-        w._collect_new([_mail("1")])  # 2 gelesen -> raus
-        assert w._seen == {"1"}
+        w._collect_new([_mail("1"), _mail("2")])  # Baseline hw=2
+        assert w._collect_new([_mail("1")]) == []  # 2 gelesen -> nichts neu
 
     def test_ignores_mails_without_uid(self):
         w = _watcher()
-        w._collect_new([])  # Baseline leer
+        w._collect_new([])  # Baseline leer -> hw=0
         new = w._collect_new([_mail(""), _mail("5")])
         assert [m.msg_id for m in new] == ["5"]
+
+    def test_transient_empty_poll_no_false_alert(self):
+        """PR #318 Codex P2: ein leerer Poll (IMAP-Fehler -> []) darf die Mark
+        nicht zuruecksetzen, sonst wird der ganze Posteingang neu gemeldet."""
+        w = _watcher()
+        w._collect_new([_mail("100"), _mail("101")])  # Baseline hw=101
+        assert w._collect_new([]) == []  # transienter Fehler
+        assert w._high_water == 101  # Mark unangetastet
+        # Naechster erfolgreicher Poll mit denselben Mails -> nichts neu
+        assert w._collect_new([_mail("100"), _mail("101")]) == []
+
+    def test_page_churn_old_uid_not_new(self):
+        """Eine aeltere UID, die wieder in die (begrenzte) Seite rutscht, ist
+        nicht neu (UID < High-Water)."""
+        w = _watcher()
+        w._collect_new([_mail("105"), _mail("104")])  # Baseline hw=105
+        new = w._collect_new([_mail("104"), _mail("90")])  # 90 rutscht rein
+        assert new == []
+
+    def test_new_higher_uid_announced(self):
+        w = _watcher()
+        w._collect_new([_mail("100")])  # Baseline hw=100
+        new = w._collect_new([_mail("101"), _mail("100")])
+        assert [m.msg_id for m in new] == ["101"]
+        assert w._high_water == 101
+
+    def test_non_numeric_uid_skipped(self):
+        w = _watcher()
+        w._collect_new([])  # Baseline
+        new = w._collect_new([_mail("abc"), _mail("7")])
+        assert [m.msg_id for m in new] == ["7"]
 
 
 # ---------------------------------------------------------------------------

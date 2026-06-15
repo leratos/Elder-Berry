@@ -119,10 +119,11 @@ MAIL_ID_PATTERN = re.compile(
     re.IGNORECASE,
 )
 
-# Regex fuer Mail-Triage (Phase 101-T): "mails priorität", "mails priorisieren",
-# "mails wichtig", "mails wichtigkeit"
+# Regex fuer Mail-Triage (Phase 101-T): "mails priorität"/"mails prioritaet"
+# (ASCII, wie in der Hilfe dokumentiert), "mails priorisieren", "mails wichtig",
+# "mails wichtigkeit"
 MAIL_TRIAGE_PATTERN = re.compile(
-    r"^mails?\s+(?:priorit[aä]t|priorisier(?:e|en)?|wichtig(?:e|keit)?)$",
+    r"^mails?\s+(?:priorit(?:ae|ä|a)t|priorisier(?:e|en)?|wichtig(?:e|keit)?)$",
     re.IGNORECASE,
 )
 
