@@ -1,9 +1,11 @@
 """MailWatcher – proaktive Benachrichtigung bei neuen ungelesenen Mails.
 
-Phase 101-N. Pollt periodisch ``IMAPEmailClient.get_unread`` und meldet neu
-aufgetauchte Mails einmalig per Absender/Betreff in den Matrix-Raum. Modelliert
-auf ``BriefingScheduler``/``CalendarWatcher`` (Daemon-Thread, ``Schedulable``-
-Protokoll für den ``SchedulerManager``).
+Phase 101-N. Pollt periodisch die UNSEEN-UIDs
+(``IMAPEmailClient.get_unread_uids``) und meldet neu aufgetauchte Mails einmalig
+per Absender/Betreff in den Matrix-Raum. Details (Body-Fetch) werden nur fuer
+die tatsaechlich neuen Mails geholt -- guenstig und ohne Seitenlimit, daher
+robust gegen Bursts. Modelliert auf ``BriefingScheduler``/``CalendarWatcher``
+(Daemon-Thread, ``Schedulable``-Protokoll für den ``SchedulerManager``).
 
 Bewusst LLM-frei: die Hintergrund-Schleife ruft KEIN LLM auf (vermeidet
 Dauer-Last und eine zusätzliche Prompt-Injection-Fläche). Priorisierung bleibt
@@ -30,10 +32,10 @@ logger = logging.getLogger(__name__)
 # Untergrenze für das Poll-Intervall, damit der IMAP-Server nicht gehämmert
 # wird (jeder Poll öffnet eine frische Verbindung).
 _MIN_POLL_SECONDS = 60
-# Seitengroesse pro Poll. Bewusst hoch, damit ein Burst zwischen zwei Polls
-# nur in Ausnahmefaellen die Seite ueberschreitet (PR #318 Codex P2); echte
-# Trunkierung wird zusaetzlich geloggt statt still ausgelassen.
-_MAX_UNREAD_PER_POLL = 50
+# Max. einzeln gemeldete neue Mails pro Poll. Bei mehr (Burst/Flood) eine
+# Sammel-Meldung mit Anzahl -- so wird weder gespammt noch etwas still
+# ausgelassen (PR #318 Codex P2).
+_MAX_ANNOUNCE = 10
 # Cap fuer den (angreiferkontrollierten) Betreff in der Benachrichtigung.
 _SUBJECT_CAP = 120
 
@@ -52,9 +54,8 @@ class MailWatcher:
         self._thread: threading.Thread | None = None
         # High-Water-Mark der hoechsten bereits gesehenen IMAP-UID. IMAP-UIDs
         # sind streng monoton steigend (RFC 3501) -> nur Mails mit groesserer
-        # UID sind wirklich neu. Robust gegen (a) >max_results Unread + Seiten-
-        # verschiebung und (b) transiente get_unread()-Fehler (liefert []), die
-        # bei einem Seen-Set sonst den ganzen Posteingang als "neu" melden.
+        # UID sind wirklich neu. Gespeist aus der vollstaendigen UNSEEN-UID-
+        # Menge (get_unread_uids, kein Seitenlimit) -> keine Burst-Trunkierung.
         self._high_water = 0
         # Erster Poll seedet nur die Baseline (bestehende Unread sind nicht neu).
         self._first_poll = True
@@ -111,66 +112,46 @@ class MailWatcher:
                 time.sleep(1)
 
     def _poll_and_notify(self) -> None:
-        """Ein Poll-Durchlauf: neue ungelesene Mails ermitteln und melden."""
+        """Ein Poll-Durchlauf: neue UNSEEN-UIDs ermitteln und melden."""
         if not self._email_client:
             return
-        mails = self._email_client.get_unread(max_results=_MAX_UNREAD_PER_POLL)
-        # PR #318 Codex P2: Erststart-Baseline nur finalisieren, wenn der Abruf
-        # WIRKLICH erfolgreich war. get_unread() liefert [] sowohl bei einem
-        # transienten IMAP-Fehler als auch bei leerem Posteingang; sonst wuerde
-        # ein Fehler beim Erststart die Mark auf 0 setzen und der naechste
-        # erfolgreiche Poll den ganzen Posteingang als neu melden.
-        # get_unread_count() (-1 = Fehler) unterscheidet beide Faelle.
-        if (
-            not mails
-            and self._first_poll
-            and self._email_client.get_unread_count() < 0
-        ):
-            return  # transienter Fehler beim Erststart -> Baseline aufschieben
-        for mail in self._collect_new(mails):
-            self._send_alert(self._format(mail))
+        # Nur die UIDs holen (guenstig, vollstaendig, kein Body-Fetch, kein
+        # Seitenlimit). None = IMAP-Fehler -> nichts tun: Baseline NICHT
+        # finalisieren und keine Fehlalarme. So ist ein Fehler eindeutig vom
+        # leeren Posteingang ([]) unterscheidbar (PR #318 Codex P2).
+        uids = self._email_client.get_unread_uids()
+        if uids is None:
+            return
+        new_uids = self._collect_new(uids)
+        if not new_uids:
+            return
+        # PR #318 Codex P2: ein Burst darf weder spammen noch still verloren
+        # gehen -> ueber dem Cap eine Sammel-Meldung mit Anzahl statt Einzel-
+        # benachrichtigungen. (UID-Erkennung ist vollstaendig, also exakt.)
+        if len(new_uids) > _MAX_ANNOUNCE:
+            self._send_alert(f"{len(new_uids)} neue ungelesene Mails")
+            return
+        # Details (Body-Fetch) nur fuer die tatsaechlich neuen Mails.
+        for uid in new_uids:
+            mail = self._email_client.get_by_uid(str(uid))
+            if mail is not None:
+                self._send_alert(self._format(mail))
 
-    def _collect_new(self, mails: list[EmailMessage]) -> list[EmailMessage]:
-        """Gibt die seit dem letzten Poll neu eingetroffenen Mails zurueck.
+    def _collect_new(self, uids: list[int]) -> list[int]:
+        """Gibt die neuen UIDs (groesser als die High-Water-Mark) zurueck und
+        zieht die Mark nach.
 
-        Nutzt die High-Water-Mark auf der IMAP-UID: neu = UID groesser als die
-        hoechste je gesehene. Der erste Aufruf seedet nur die Baseline (gibt
-        ``[]`` zurueck) -- bestehende Unread sind nicht "neu". Ein leerer Poll
-        (transienter Fehler oder leerer Posteingang) laesst die Mark unangetastet
-        und meldet daher nichts faelschlich.
+        ``uids`` ist die VOLLSTAENDIGE Unread-Menge (kein Seitenlimit), daher
+        gibt es keine Burst-Trunkierung. Der erste Aufruf seedet nur die
+        Baseline (gibt ``[]`` zurueck) -- bestehende Unread sind nicht "neu".
         """
-        numbered: list[tuple[int, EmailMessage]] = []
-        for m in mails:
-            if not m.msg_id:
-                continue
-            try:
-                numbered.append((int(m.msg_id), m))
-            except ValueError:
-                continue
-
         if self._first_poll:
-            self._high_water = max(
-                (uid for uid, _ in numbered), default=self._high_water
-            )
+            self._high_water = max(uids, default=0)
             self._first_poll = False
             return []
-
-        prev_hw = self._high_water
-        new = [m for uid, m in numbered if uid > prev_hw]
-        if numbered:
-            uids = [uid for uid, _ in numbered]
-            self._high_water = max(prev_hw, max(uids))
-            # PR #318 Codex P2: volle Seite UND selbst die aelteste gefetchte
-            # Mail ist neu -> es koennen aeltere neue Mails unterhalb der Seite
-            # liegen, die nie gemeldet werden. Nicht still auslassen, sondern
-            # warnen (volle Pagination waere fuer ein Personen-Postfach
-            # ueberdimensioniert).
-            if len(numbered) >= _MAX_UNREAD_PER_POLL and min(uids) > prev_hw:
-                logger.warning(
-                    "MailWatcher: Posteingang-Burst > %d zwischen Polls -- "
-                    "aeltere neue Mails koennen in der Benachrichtigung fehlen.",
-                    _MAX_UNREAD_PER_POLL,
-                )
+        new = sorted(u for u in uids if u > self._high_water)
+        if uids:
+            self._high_water = max(self._high_water, max(uids))
         return new
 
     @staticmethod
