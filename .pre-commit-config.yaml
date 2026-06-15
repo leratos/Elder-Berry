@@ -12,16 +12,15 @@
 #   git commit --no-verify
 repos:
   # ---------------------------------------------------------------
-  # Ruff: Lint + Format. Identische Regeln wie CI (.github/workflows/
-  # ci.yml, lint-Job). Bricht den Commit, wenn Verstoss vorliegt.
+  # Ruff: Lint + Format. Ruleset kommt seit Phase 99 (CI-Ehrlichkeit)
+  # zentral aus pyproject.toml ([tool.ruff.lint]) -- identische Regeln
+  # wie der CI-lint-Job, ohne Flag-Duplikation. Bricht den Commit, wenn
+  # Verstoss vorliegt.
   # ---------------------------------------------------------------
   - repo: https://github.com/astral-sh/ruff-pre-commit
     rev: v0.13.0
     hooks:
       - id: ruff
-        args:
-          - --select=E9,W605,F401,B
-          - --ignore=B008
         types_or: [python]
       # Phase 75b (2026-05-01): ruff-format-Sweep ueber 300 Dateien
       # gelaufen, Codebase ist jetzt format-konsistent. Hook laeuft

@@ -33,7 +33,17 @@ jobs:
           # die der MarkdownRenderer fuer das Vorschlaege-Dashboard
           # importiert. Ohne web-Gruppe scheitern test_markdown_renderer
           # und test_proposals_api beim Sammeln.
-          pip install -e ".[robot,agent,web]"
+          #
+          # Phase 99 (CI-Ehrlichkeit): matrix/documents/nextcloud/memory
+          # ergaenzt, damit die bisher per importorskip/skipif uebersprungenen
+          # Tests (matrix_channel, carddav, document_reader, memory_store; ~172)
+          # real laufen. matrix_channel.py importiert nio top-level -> ohne die
+          # matrix-Gruppe hatte der PRIMAERE Nutzerkanal strukturell 0%
+          # Patch-Coverage. Der security-Job installiert dieselben Gruppen
+          # bereits auf Linux -> Installierbarkeit ist belegt. avatar/stt/
+          # tts-neural/tower bleiben absichtlich aussen vor (Display/System-
+          # Abhaengigkeiten); jene Tests bleiben gewollt geskippt.
+          pip install -e ".[robot,agent,web,matrix,documents,nextcloud,memory]"
 
       - name: Install Windows dependencies
         if: runner.os == 'Windows'
@@ -72,11 +82,14 @@ jobs:
         run: pip install ruff
 
       - name: Lint with ruff (blockierende Rules)
-        # E9:   Syntaxfehler – immer blockierend
-        # W605: Ungültige Escape-Sequences (\n in r-Strings etc.)
-        # F401: Unused imports (bereinigt in Phase CI-Qualität)
-        # B:    Bugbear-Regeln; B008 ignoriert (FastAPI File/Form/Body-Pattern)
-        run: ruff check src/ tests/ --select E9,W605,F401,B --ignore B008
+        # Phase 99 (CI-Ehrlichkeit): Ruleset + Scope leben jetzt zentral in
+        # pyproject.toml ([tool.ruff.lint]) -- keine Flag-Duplikation mehr
+        # zwischen CI, pre-commit und pyproject. Regeln: E9 (Syntax), F (volle
+        # Pyflakes-Familie, vorher nur F401), W605 (ungueltige Escapes),
+        # B (Bugbear; B008 ignoriert fuer FastAPI File/Form/Body). Scope um
+        # scripts/ + tower/ erweitert (verifiziert clean). server/ enthaelt
+        # keine .py-Dateien.
+        run: ruff check src/ tests/ scripts/ tower/
 
   typecheck:
     # Phase 76 + 76c: hartes Gate. Alle core/-, tools/- und web/-Module
