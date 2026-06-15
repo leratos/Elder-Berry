@@ -36,6 +36,14 @@ def _llm(response: str) -> MagicMock:
 # ---------------------------------------------------------------------------
 
 
+def test_mail_triage_is_long_running_command():
+    """PR #318 Codex P2: Triage (lokales Ollama bis 120s) braucht mehr als den
+    Default-60s-Command-Timeout."""
+    from elder_berry.comms.message_handlers import BridgeMessageHandler
+
+    assert "mail_triage" in BridgeMessageHandler._LONG_RUNNING_COMMANDS
+
+
 class TestTriagePattern:
     def test_matches(self):
         assert MAIL_TRIAGE_PATTERN.match("mails priorität")
@@ -182,9 +190,10 @@ class TestMailTriageClassifier:
 
 
 class TestMailTriageCommand:
-    def _handler(self, mails, triage_results=None):
+    def _handler(self, mails, triage_results=None, total=None):
         ec = MagicMock()
         ec.get_unread.return_value = mails
+        ec.get_unread_count.return_value = len(mails) if total is None else total
         triage = MagicMock()
         triage.triage.return_value = triage_results or []
         return MailCommandHandler(email_client=ec, mail_triage_classifier=triage)
@@ -244,3 +253,15 @@ class TestMailTriageCommand:
         r = h.execute("mail_triage", "mails priorität")
         # Header-Zeile + genau EINE Mail-Zeile
         assert len(r.text.split("\n")) == 2
+
+    def test_header_surfaces_cap_when_more_unread(self):
+        """PR #318 Codex P2: bei > gefetchten ungelesenen Mails zeigt der Header
+        das echte Total (Liste ist nicht der ganze Posteingang)."""
+        mails = [_mail(str(i)) for i in range(1, 16)]  # 15 (Fetch-Cap)
+        results = [
+            TriageResult(msg_id=str(i), prioritaet="mittel", kategorie="", grund="")
+            for i in range(1, 16)
+        ]
+        h = self._handler(mails, results, total=42)
+        r = h.execute("mail_triage", "mails priorität")
+        assert "neueste 15 von 42" in r.text

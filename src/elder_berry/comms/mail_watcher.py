@@ -141,9 +141,15 @@ class MailWatcher:
         # Poll erneut versucht statt verloren (PR #318 Codex P2).
         for uid in new_uids:
             mail = self._email_client.get_by_uid(str(uid))
-            if mail is not None:
-                self._send_alert(self._format(mail))
-                self._seen.add(uid)
+            if mail is None:
+                continue  # transienter Fetch-Fehler -> naechsten Poll erneut
+            # PR #318 Codex P2: zwischen UID-Suche und Detail-Fetch koennte die
+            # Mail in einem anderen Client gelesen worden sein (get_by_uid liest
+            # das echte \Seen-Flag) -> dann KEINE "Neue Mail"-Falschmeldung.
+            if not mail.is_unread:
+                continue
+            self._send_alert(self._format(mail))
+            self._seen.add(uid)
 
     def _collect_new(self, uids: list[int]) -> list[int]:
         """Gibt die neuen (noch nicht gemeldeten) UNSEEN-UIDs sortiert zurueck.

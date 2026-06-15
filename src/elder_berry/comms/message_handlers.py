@@ -119,6 +119,11 @@ class BridgeMessageHandler:
         "contact_sync",
         "system_update",
         "git_pull",
+        # Phase 101-T (PR #318 Codex P2): LLM-Triage laeuft synchron im Executor;
+        # im Privacy-Modus ueber lokales Ollama (bis 120s HTTP-Timeout) -> der
+        # Default-60s-Command-Timeout wuerde dem Nutzer einen Timeout zeigen,
+        # waehrend der Thread noch klassifiziert.
+        "mail_triage",
     }
 
     async def handle_remote_command(

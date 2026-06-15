@@ -363,7 +363,15 @@ class MailCommandHandler(CommandHandler):
             key=lambda pair: pair[1].rank,
         )
 
-        lines = [f"\U0001f4e7 Triage ({len(mails)} ungelesen):"]
+        # PR #318 Codex P2: get_unread holt nur die neuesten N -- den Cap
+        # sichtbar machen, damit der Nutzer eine evtl. unvollstaendige Liste
+        # nicht fuer den ganzen Posteingang haelt.
+        total = self._email_client.get_unread_count()
+        if total > len(mails):
+            header = f"\U0001f4e7 Triage (neueste {len(mails)} von {total} ungelesen):"
+        else:
+            header = f"\U0001f4e7 Triage ({len(mails)} ungelesen):"
+        lines = [header]
         for mail, res in paired:
             # Phase 101-T Folge (PR #318 Codex P2): angreiferkontrollierte
             # Header (From/Subject) + LLM-Kategorie CR/LF-scrubben und cappen,

@@ -174,6 +174,27 @@ class TestPollAndNotify:
         w._poll_and_notify()
         assert sent == []  # kein Crash, keine Meldung
 
+    def test_mail_read_during_fetch_not_announced(self):
+        """PR #318 Codex P2: zwischen UID-Suche und Detail-Fetch in anderem
+        Client gelesen -> get_by_uid liefert is_unread=False -> keine
+        Falschmeldung."""
+        ec = MagicMock()
+        ec.get_unread_uids.side_effect = [[1], [1, 2]]
+        ec.get_by_uid.return_value = EmailMessage(
+            subject="X",
+            sender="A <a@b.com>",
+            date=None,
+            body_preview="",
+            is_unread=False,  # zwischenzeitlich gelesen
+            msg_id="2",
+        )
+        w = MailWatcher(email_client=ec, poll_minutes=5)
+        sent: list[str] = []
+        w._send_alert = sent.append
+        w._poll_and_notify()  # Baseline
+        w._poll_and_notify()  # 2 "neu", aber bereits gelesen -> nichts
+        assert sent == []
+
     def test_no_email_client_is_noop(self):
         w = MailWatcher(email_client=None, poll_minutes=5)
         sent: list[str] = []
