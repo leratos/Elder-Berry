@@ -378,6 +378,27 @@ class TestRobotStatusInPrompt:
         assert "WARNUNG" in system_prompt
         assert "Ladestation" in system_prompt
 
+    def test_prompt_battery_charging(
+        self,
+        assistant_with_battery,
+        mock_llm,
+        mock_robot,
+    ):
+        mock_robot.get_battery.return_value = BatteryStatus(
+            voltage=7.0,
+            percentage=50,
+            is_charging=True,
+        )
+        mock_llm.generate.return_value = json.dumps(
+            {"action": None, "params": {}, "response": "[neutral] ok"}
+        )
+        assistant_with_battery.process("Status?")
+        system_prompt = mock_llm.generate.call_args.kwargs.get(
+            "system",
+            mock_llm.generate.call_args[1].get("system", ""),
+        )
+        assert "wird geladen" in system_prompt
+
     def test_prompt_battery_hidden_by_default(
         self,
         assistant_with_robot,
