@@ -435,6 +435,32 @@ class TestValidateExternalURL:
         with pytest.raises(InvalidExternalURLError):
             _validate_external_url("https://bad_host.example.com")
 
+    @pytest.mark.parametrize(
+        "url",
+        [
+            "http://127.0.0.1:8080/x",  # Loopback
+            "http://169.254.169.254/latest/meta-data/",  # Cloud-Metadata (Link-Local)
+            "http://0.0.0.0/",  # Unspecified
+        ],
+    )
+    def test_rejects_internal_ip_literals(self, url):
+        # SSRF-Schutz: Loopback/Link-Local/Metadata/Unspecified sind tabu.
+        with pytest.raises(InvalidExternalURLError):
+            _validate_external_url(url)
+
+    @pytest.mark.parametrize(
+        "url",
+        [
+            "https://192.168.1.10",  # privates LAN (RFC 1918)
+            "http://10.0.0.5:8443/sub",  # privates LAN (RFC 1918)
+            "https://100.100.10.20",  # CGNAT/Tailscale (RFC 6598)
+        ],
+    )
+    def test_allows_private_lan_for_self_hosting(self, url):
+        # Bewusst erlaubt: Elder-Berry-Nutzer hosten Nextcloud/Mail im LAN/VPN.
+        # Ein Block waere ein Funktionsverlust, kein Sicherheitsgewinn.
+        assert _validate_external_url(url) == url.strip()
+
 
 class TestNextcloudRejectsBadURL:
     """test_nextcloud darf bei boesartigen URLs gar keinen Request machen."""

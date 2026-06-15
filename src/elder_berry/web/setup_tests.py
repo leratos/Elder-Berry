@@ -7,11 +7,13 @@ Jede Methode testet einen externen Dienst und gibt ein dict zurück:
 from __future__ import annotations
 
 import imaplib
+import ipaddress
 import logging
 import platform
 import re
 import shutil
 import smtplib
+import socket
 import ssl
 import subprocess
 from typing import Any
@@ -55,7 +57,72 @@ _URL_ERROR_MESSAGES: dict[str, str] = {
     "userinfo": "Ungültige Nextcloud-URL: Userinfo (user:pw@) ist nicht erlaubt.",
     "no_host": "Ungültige Nextcloud-URL: kein Hostname.",
     "bad_host": "Ungültige Nextcloud-URL: ungültiges Hostname-Format.",
+    "blocked": "Ungültige Nextcloud-URL: interne/Loopback-/Metadata-Adresse "
+    "ist nicht erlaubt.",
 }
+
+
+def _ip_is_blocked(ip: ipaddress.IPv4Address | ipaddress.IPv6Address) -> bool:
+    """True, wenn die IP eine SSRF-gefaehrliche interne Adresse ist.
+
+    Blockiert Loopback, Link-Local (169.254/16 inkl. Cloud-Metadata
+    169.254.169.254), Unspecified (0.0.0.0/::), Multicast und Reserved.
+
+    Bewusst NICHT blockiert: private RFC-1918-/CGNAT-Ranges (10/8, 172.16/12,
+    192.168/16, 100.64/10). Elder-Berry-Nutzer hosten Nextcloud/Mail legitim
+    im LAN oder via VPN (Tailscale) -- ein Block dort waere ein Funktions-
+    verlust (vgl. Test ``test_accepts_valid_http_urls`` mit 192.168.1.10).
+    """
+    mapped = getattr(ip, "ipv4_mapped", None)
+    if mapped is not None:
+        ip = mapped
+    return (
+        ip.is_loopback
+        or ip.is_link_local
+        or ip.is_unspecified
+        or ip.is_multicast
+        or ip.is_reserved
+    )
+
+
+def _assert_host_allowed(host: str) -> None:
+    """Wirft :class:`InvalidExternalURLError`, wenn ``host`` intern aufloest.
+
+    IP-Literale werden direkt geprueft. DNS-Namen werden via ``getaddrinfo``
+    aufgeloest und jede Adresse geprueft (faengt z. B.
+    ``metadata.google.internal`` -> 169.254.169.254). Nicht aufloesbare Namen
+    werden durchgelassen -- ein DNS-Fehler ist kein SSRF-Gewinn, und der
+    eigentliche Verbindungsversuch laeuft dann ohnehin ins Leere.
+
+    Limit: Validierungs-Zeitpunkt-Check; spaeteres DNS-Rebinding kann
+    theoretisch abweichen (bekannte TOCTOU-Schwaeche, ``follow_redirects`` ist
+    am httpx-Client zusaetzlich deaktiviert).
+    """
+    try:
+        literal = ipaddress.ip_address(host)
+    except ValueError:
+        literal = None
+    if literal is not None:
+        if _ip_is_blocked(literal):
+            raise InvalidExternalURLError(
+                "Interne/Loopback-/Metadata-Adresse ist nicht erlaubt.",
+                code="blocked",
+            )
+        return
+    try:
+        infos = socket.getaddrinfo(host, None)
+    except socket.gaierror:
+        return
+    for info in infos:
+        try:
+            resolved = ipaddress.ip_address(info[4][0])
+        except ValueError:
+            continue
+        if _ip_is_blocked(resolved):
+            raise InvalidExternalURLError(
+                "Hostname zeigt auf eine interne/Metadata-Adresse.",
+                code="blocked",
+            )
 
 
 def _validate_external_url(url: str) -> str:
@@ -87,6 +154,7 @@ def _validate_external_url(url: str) -> str:
             f"Hostname {host!r} hat ein ungueltiges Format.",
             code="bad_host",
         )
+    _assert_host_allowed(host)
     return url.strip()
 
 
@@ -221,6 +289,22 @@ class SetupTests:
     ) -> dict[str, Any]:
         """Testet IMAP- und SMTP-Verbindung."""
         result: dict[str, Any] = {"imap": False, "smtp": False, "unread": 0}
+        # SSRF-Schutz: Mail-Hosts duerfen nicht auf interne/Loopback-/Metadata-
+        # Adressen zeigen (gleiche Policy wie Nextcloud, privates LAN bleibt
+        # erlaubt). Greift, weil imap/smtp_host aus dem unauthentifizierten
+        # First-Run-Wizard-Body stammen.
+        for mail_host in (imap_host, smtp_host):
+            try:
+                _assert_host_allowed(mail_host)
+            except InvalidExternalURLError:
+                logger.warning(
+                    "Mail-Host abgelehnt (interne Adresse): %s", safe_log(mail_host)
+                )
+                result["success"] = False
+                result["error"] = (
+                    "Interne/Loopback-Adressen sind als Mail-Server nicht erlaubt."
+                )
+                return result
         # IMAP
         try:
             mail = imaplib.IMAP4_SSL(imap_host, imap_port)
@@ -231,7 +315,9 @@ class SetupTests:
             result["imap"] = True
             mail.logout()
         except Exception as e:
-            logger.error("IMAP-Test fehlgeschlagen (%s): %s", imap_host, e)
+            logger.error(
+                "IMAP-Test fehlgeschlagen (%s): %s", safe_log(imap_host), safe_log(e)
+            )
         # SMTP
         try:
             ctx = ssl.create_default_context()
@@ -245,7 +331,9 @@ class SetupTests:
             srv.quit()
             result["smtp"] = True
         except Exception as e:
-            logger.error("SMTP-Test fehlgeschlagen (%s): %s", smtp_host, e)
+            logger.error(
+                "SMTP-Test fehlgeschlagen (%s): %s", safe_log(smtp_host), safe_log(e)
+            )
         result["success"] = result["imap"] and result["smtp"]
         return result
 
