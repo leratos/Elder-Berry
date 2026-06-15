@@ -31,6 +31,7 @@ if TYPE_CHECKING:
     from elder_berry.llm.anthropic_client import AnthropicClient
     from elder_berry.tools.contact_store import ContactStore
     from elder_berry.tools.email_client import EmailMessage, IMAPEmailClient
+    from elder_berry.tools.mail_triage import MailTriageClassifier
 
 logger = logging.getLogger(__name__)
 
@@ -118,6 +119,14 @@ MAIL_ID_PATTERN = re.compile(
     re.IGNORECASE,
 )
 
+# Regex fuer Mail-Triage (Phase 101-T): "mails priorität"/"mails prioritaet"
+# (ASCII, wie in der Hilfe dokumentiert), "mails priorisieren", "mails wichtig",
+# "mails wichtigkeit"
+MAIL_TRIAGE_PATTERN = re.compile(
+    r"^mails?\s+(?:priorit(?:ae|ä|a)t|priorisier(?:e|en)?|wichtig(?:e|keit)?)$",
+    re.IGNORECASE,
+)
+
 
 class MailCommandHandler(CommandHandler):
     """Handler fuer E-Mail-Commands (IMAP)."""
@@ -129,12 +138,15 @@ class MailCommandHandler(CommandHandler):
         contact_store: ContactStore | None = None,
         default_user_id: str = "",
         privacy_state: PrivacyState | None = None,
+        mail_triage_classifier: MailTriageClassifier | None = None,
     ) -> None:
         self._email_client = email_client
         self._anthropic = anthropic_client
         self._contacts = contact_store
         self._default_user_id = default_user_id
         self._privacy_state = privacy_state
+        # Phase 101-T: LLM-Triage (laeuft ueber den Router -> Privacy-safe).
+        self._triage = mail_triage_classifier
         self._last_mails: list[EmailMessage] = []
 
     # -- CommandHandler interface ------------------------------------------
@@ -151,6 +163,8 @@ class MailCommandHandler(CommandHandler):
             (MAIL_REPLY_PATTERN, "mail_reply", False, True),
             (MAIL_REPLY_MODIFY_PATTERN, "mail_reply_modify", False, False),
             (MAIL_DELETE_PATTERN, "mail_delete", False, False),
+            # Triage vor Suche/MAILS_DAYS (eindeutiges ^mails priorität$).
+            (MAIL_TRIAGE_PATTERN, "mail_triage", False, False),
             (MAIL_ID_PATTERN, "mail_by_id", False, False),
             (MAIL_ATTACHMENT_PATTERN, "mail_attachment", False, True),
             (MAIL_SEARCH_PATTERN, "mail_search", False, True),
@@ -166,6 +180,7 @@ class MailCommandHandler(CommandHandler):
             "mail <ID>: Einzelne Mail anzeigen (z.B. mail 99)",
             "mail anhang <ID>: Anhänge einer Mail senden",
             "mail zusammenfassung: LLM-Zusammenfassung ungelesener Mails",
+            "mails priorität: Ungelesene Mails nach Wichtigkeit einordnen",
             "antworte auf #<ID> <Anweisung>: Email-Antwort generieren",
             "lösche mail #<ID>: Mail löschen (oder: lösche die mail → letzte abgerufene)",
         ]
@@ -203,6 +218,13 @@ class MailCommandHandler(CommandHandler):
                 "mail finden",
                 "mails durchsuchen",
             ],
+            "mail_triage": [
+                "mails priorisieren",
+                "wichtige mails",
+                "welche mails sind wichtig",
+                "mails nach wichtigkeit",
+                "priorisiere meine mails",
+            ],
             "mail_reply": [
                 "antworte auf mail",
                 "beantworte mail",
@@ -236,6 +258,8 @@ class MailCommandHandler(CommandHandler):
             return self._cmd_mail_reply(raw_text)
         if command == "mail_reply_modify":
             return self._cmd_mail_reply_modify(raw_text)
+        if command == "mail_triage":
+            return self._cmd_mail_triage(raw_text)
 
         return CommandResult(
             command=command,
@@ -299,6 +323,76 @@ class MailCommandHandler(CommandHandler):
                 success=False,
                 text=user_friendly_error(e, "E-Mail"),
             )
+
+    def _cmd_mail_triage(self, raw_text: str) -> CommandResult:
+        """Ungelesene Mails per LLM nach Wichtigkeit einordnen (Phase 101-T).
+
+        Laeuft ueber den injizierten LLMRouter -> im Privacy-Modus automatisch
+        lokal (Ollama), daher KEIN hartes privacy_refusal wie beim Reply-Draft.
+        """
+        if not self._email_client:
+            return self.not_configured("mail_triage", "E-Mail", setup_step=5)
+        if not self._triage:
+            return self.not_configured("mail_triage", "Claude API", setup_step=2)
+
+        try:
+            mails = self._email_client.get_unread(max_results=15)
+        except Exception as e:
+            logger.error("Mail-Triage Abruf fehlgeschlagen: %s", e)
+            return CommandResult(
+                command="mail_triage",
+                success=False,
+                text=user_friendly_error(e, "E-Mail"),
+            )
+
+        if not mails:
+            return CommandResult(
+                command="mail_triage",
+                success=True,
+                text="Keine ungelesenen E-Mails.",
+            )
+
+        self._last_mails = mails
+        # Narrowing ueber den get_unread-Call hinweg wiederherstellen (Caller
+        # filtert "if not self._triage" oben).
+        assert self._triage is not None
+        results = self._triage.triage(mails)
+        # Mails + Triage paaren und nach Prioritaet sortieren (stabil).
+        paired = sorted(
+            zip(mails, results, strict=False),
+            key=lambda pair: pair[1].rank,
+        )
+
+        # PR #318 Codex P2: get_unread holt nur die neuesten N -- den Cap
+        # sichtbar machen, damit der Nutzer eine evtl. unvollstaendige Liste
+        # nicht fuer den ganzen Posteingang haelt.
+        total = self._email_client.get_unread_count()
+        if total > len(mails):
+            header = f"\U0001f4e7 Triage (neueste {len(mails)} von {total} ungelesen):"
+        else:
+            header = f"\U0001f4e7 Triage ({len(mails)} ungelesen):"
+        lines = [header]
+        for mail, res in paired:
+            # Phase 101-T Folge (PR #318 Codex P2): angreiferkontrollierte
+            # Header (From/Subject) + LLM-Kategorie CR/LF-scrubben und cappen,
+            # damit eingehende Mail keine Fake-[HOCH]-Zeilen in die Liste
+            # schmuggeln oder die echte UID verdraengen kann.
+            sender_raw = mail.sender.split("<")[0].strip().strip('"') or mail.sender
+            sender_short = _oneline(sender_raw, 25)
+            subject = _oneline(mail.subject, 120)
+            label = res.prioritaet.upper() if res.prioritaet != "unbekannt" else "?"
+            cat = f" [{_oneline(res.kategorie, 30)}]" if res.kategorie else ""
+            id_suffix = f" (#{mail.msg_id})" if mail.msg_id else ""
+            lines.append(f"  [{label}]{cat} {sender_short}: {subject}{id_suffix}")
+        text = "\n".join(lines)
+
+        return CommandResult(
+            command="mail_triage",
+            success=True,
+            text=text,
+            list_items=_mails_to_list_items([m for m, _ in paired]),
+            list_type="mail_inbox",
+        )
 
     def _cmd_mail_search(self, raw_text: str) -> CommandResult:
         """E-Mails nach Betreff/Absender durchsuchen."""
@@ -820,6 +914,19 @@ class MailCommandHandler(CommandHandler):
 # ---------------------------------------------------------------------------
 
 
+def _oneline(text: str, cap: int) -> str:
+    """Phase 101-T (PR #318 Codex P2): CR/LF entfernen + auf ``cap`` kuerzen.
+
+    Fuer angreiferkontrollierte Header-Felder in der Triage-Ausgabe -- eine
+    eingehende Mail soll keine zusaetzlichen Zeilen in die Matrix-Liste
+    schmuggeln koennen.
+    """
+    cleaned = text.replace("\r", " ").replace("\n", " ").strip()
+    if len(cleaned) > cap:
+        cleaned = cleaned[: cap - 1] + "…"
+    return cleaned
+
+
 def _mails_to_list_items(mails: list[EmailMessage]) -> list[dict[str, Any]]:
     """Wandelt EmailMessages in list_items fuer den ConversationListStore.
 
@@ -847,6 +954,7 @@ HELP_SECTION_MAIL = """E-Mail:
   mail <ID> / mail #<ID> -- Mail anzeigen
   mail anhang <ID> -- Anhaenge senden
   mail zusammenfassung -- LLM-Zusammenfassung
+  mails prioritaet -- Mails nach Wichtigkeit einordnen
   antworte auf #<ID> <Anweisung> -- Email-Antwort generieren
   loesche mail #<ID> / loesche die mail"""
 
@@ -858,6 +966,7 @@ def _factory(ctx: HandlerContext) -> CommandHandler | None:
         contact_store=ctx.contact_store,
         default_user_id=ctx.default_user_id,
         privacy_state=ctx.privacy_state,
+        mail_triage_classifier=ctx.mail_triage_classifier,
     )
 
 

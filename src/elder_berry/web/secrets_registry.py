@@ -240,6 +240,43 @@ SECRET_REGISTRY: list[SecretRegistryEntry] = [
         "placeholder": "Viele Gruesse\nSaleria",
         "description": "Wird unter gesendete Antworten gehaengt (optional).",
     },
+    {
+        # Phase 101-N: proaktive Benachrichtigung bei neuen ungelesenen Mails.
+        # Normale E-Mail-Config (wie smtp_host/email_imap_port), KEIN
+        # 'behavior'-Runtime-Schalter -- gehoert in die E-Mail-Secrets-UI, nicht
+        # in den Behavior-Tab (PR #318 Codex P2: behavior-Keys ohne
+        # DASHBOARD_SETTING_KEYS-Eintrag werden dort nicht bedient). Als
+        # 'select' modelliert -- validate_secret hat keinen bool-Zweig; select
+        # erzwingt true/false-Membership.
+        "key": "mail_notify_enabled",
+        "label": "Mail-Benachrichtigung",
+        "category": "E-Mail",
+        "sensitive": False,
+        "requires_restart": True,
+        "type": "select",
+        # "Aus" zuerst: ohne gesetzten Wert zeigt die UI die erste Option an;
+        # das muss dem Runtime-Default (aus) entsprechen, sonst sieht dieser
+        # Opt-in-Watcher faelschlich aktiviert aus (PR #318 Codex P2).
+        "select_options": [
+            {"value": "false", "label": "Aus"},
+            {"value": "true", "label": "Ein"},
+        ],
+        "description": "Proaktiv melden, wenn neue ungelesene Mail eintrifft.",
+    },
+    {
+        # Phase 101-N: Poll-Intervall des MailWatchers (Minuten). Normale
+        # E-Mail-Config (wie email_imap_port), kein 'behavior'-Schalter.
+        "key": "mail_poll_interval_min",
+        "label": "Mail-Abfrageintervall (Min.)",
+        "category": "E-Mail",
+        "sensitive": False,
+        "requires_restart": True,
+        "type": "int",
+        "min": 1,
+        "max": 1440,
+        "placeholder": "5",
+        "description": "Wie oft der Posteingang auf neue Mail geprueft wird.",
+    },
     # --- Nextcloud ---
     {
         "key": "nextcloud_url",
