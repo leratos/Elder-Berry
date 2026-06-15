@@ -1,0 +1,135 @@
+"""MailWatcher – proaktive Benachrichtigung bei neuen ungelesenen Mails.
+
+Phase 101-N. Pollt periodisch ``IMAPEmailClient.get_unread`` und meldet neu
+aufgetauchte Mails einmalig per Absender/Betreff in den Matrix-Raum. Modelliert
+auf ``BriefingScheduler``/``CalendarWatcher`` (Daemon-Thread, ``Schedulable``-
+Protokoll für den ``SchedulerManager``).
+
+Bewusst LLM-frei: die Hintergrund-Schleife ruft KEIN LLM auf (vermeidet
+Dauer-Last und eine zusätzliche Prompt-Injection-Fläche). Priorisierung bleibt
+der user-initiierten ``mails priorität`` (Triage, Phase 101-T) vorbehalten.
+
+Der Versand läuft nicht direkt über den Matrix-Channel, sondern über den
+thread-sicheren Callback ``_send_alert``, den der ``SchedulerManager`` per
+``register(..., '_send_alert', prefix='📧')`` injiziert.
+"""
+
+from __future__ import annotations
+
+import logging
+import threading
+import time
+from collections.abc import Callable
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from elder_berry.tools.email_client import EmailMessage, IMAPEmailClient
+
+logger = logging.getLogger(__name__)
+
+# Untergrenze für das Poll-Intervall, damit der IMAP-Server nicht gehämmert
+# wird (jeder Poll öffnet eine frische Verbindung).
+_MIN_POLL_SECONDS = 60
+_MAX_UNREAD_PER_POLL = 20
+
+
+class MailWatcher:
+    """Daemon-Thread, der neue ungelesene Mails proaktiv meldet."""
+
+    def __init__(
+        self,
+        email_client: IMAPEmailClient | None = None,
+        poll_minutes: int = 5,
+    ) -> None:
+        self._email_client = email_client
+        self._poll_seconds = max(_MIN_POLL_SECONDS, int(poll_minutes) * 60)
+        self._running = False
+        self._thread: threading.Thread | None = None
+        # UID-Set der zuletzt gesehenen ungelesenen Mails (Dedup über Polls).
+        self._seen: set[str] = set()
+        # Erster Poll seedet nur die Baseline (bestehende Unread sind nicht neu).
+        self._first_poll = True
+        # Wird vom SchedulerManager.register überschrieben (thread-sicher,
+        # raumgebunden). Default = stiller No-op.
+        self._send_alert: Callable[[str], None] = lambda *_: None
+
+    @property
+    def is_running(self) -> bool:
+        """True wenn der Watcher-Thread aktiv ist."""
+        return self._running
+
+    def start(self) -> None:
+        """Startet den Watcher-Thread (nicht-blockierend)."""
+        if self._running:
+            logger.warning("MailWatcher läuft bereits")
+            return
+        self._running = True
+        self._thread = threading.Thread(
+            target=self._run,
+            name="mail-watcher",
+            daemon=True,
+        )
+        self._thread.start()
+        logger.info(
+            "MailWatcher gestartet (Intervall: %ds)",
+            self._poll_seconds,
+        )
+
+    def stop(self) -> None:
+        """Stoppt den Watcher-Thread."""
+        if not self._running:
+            return
+        self._running = False
+        if self._thread and self._thread.is_alive():
+            self._thread.join(timeout=35)
+        self._thread = None
+        logger.info("MailWatcher gestoppt")
+
+    # ------------------------------------------------------------------
+    # Intern
+    # ------------------------------------------------------------------
+
+    def _run(self) -> None:
+        while self._running:
+            try:
+                self._poll_and_notify()
+            except Exception as e:  # pragma: no cover - defensiv, Thread am Leben halten
+                logger.warning("MailWatcher Poll fehlgeschlagen: %s", e)
+
+            for _ in range(self._poll_seconds):
+                if not self._running:
+                    break  # type: ignore[unreachable]
+                time.sleep(1)
+
+    def _poll_and_notify(self) -> None:
+        """Ein Poll-Durchlauf: neue ungelesene Mails ermitteln und melden."""
+        mails = (
+            self._email_client.get_unread(max_results=_MAX_UNREAD_PER_POLL)
+            if self._email_client
+            else []
+        )
+        for mail in self._collect_new(mails):
+            self._send_alert(self._format(mail))
+
+    def _collect_new(self, mails: list[EmailMessage]) -> list[EmailMessage]:
+        """Aktualisiert das Seen-Set und gibt die seit dem letzten Poll neu
+        aufgetauchten Mails zurueck. Der erste Aufruf seedet nur die Baseline
+        (gibt ``[]`` zurueck) -- bestehende Unread sind nicht "neu".
+        """
+        current = {m.msg_id for m in mails if m.msg_id}
+        if self._first_poll:
+            self._seen = current
+            self._first_poll = False
+            return []
+        new = [m for m in mails if m.msg_id and m.msg_id not in self._seen]
+        self._seen = current
+        return new
+
+    @staticmethod
+    def _format(mail: EmailMessage) -> str:
+        """Einzeilige Benachrichtigung 'Neue Mail von X: Betreff' (CR/LF-frei)."""
+        sender_short = mail.sender.split("<")[0].strip().strip('"') or mail.sender
+        if len(sender_short) > 40:
+            sender_short = sender_short[:37] + "..."
+        text = f"Neue Mail von {sender_short}: {mail.subject}"
+        return text.replace("\r", " ").replace("\n", " ")

@@ -240,6 +240,37 @@ SECRET_REGISTRY: list[SecretRegistryEntry] = [
         "placeholder": "Viele Gruesse\nSaleria",
         "description": "Wird unter gesendete Antworten gehaengt (optional).",
     },
+    {
+        # Phase 101-N: proaktive Benachrichtigung bei neuen ungelesenen Mails.
+        # Als 'select' modelliert -- validate_secret hat keinen bool-Zweig;
+        # select erzwingt true/false-Membership und rendert als Dropdown.
+        "key": "mail_notify_enabled",
+        "label": "Mail-Benachrichtigung",
+        "category": "E-Mail",
+        "sensitive": False,
+        "behavior": True,
+        "requires_restart": True,
+        "type": "select",
+        "select_options": [
+            {"value": "true", "label": "Ein"},
+            {"value": "false", "label": "Aus"},
+        ],
+        "description": "Proaktiv melden, wenn neue ungelesene Mail eintrifft.",
+    },
+    {
+        # Phase 101-N: Poll-Intervall des MailWatchers (Minuten).
+        "key": "mail_poll_interval_min",
+        "label": "Mail-Abfrageintervall (Min.)",
+        "category": "E-Mail",
+        "sensitive": False,
+        "behavior": True,
+        "requires_restart": True,
+        "type": "int",
+        "min": 1,
+        "max": 1440,
+        "placeholder": "5",
+        "description": "Wie oft der Posteingang auf neue Mail geprueft wird.",
+    },
     # --- Nextcloud ---
     {
         "key": "nextcloud_url",

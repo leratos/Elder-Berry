@@ -105,6 +105,7 @@ PDF-Verarbeitung (Stirling-PDF):
   mail <ID> / mail #<ID> – Mail anzeigen
   mail anhang <ID> – Anhänge einer Mail senden
   mail zusammenfassung – LLM-Zusammenfassung ungelesener Mails
+  mails priorität – Ungelesene Mails nach Wichtigkeit einordnen
   antworte auf #<ID> <Anweisung> – Email-Antwort generieren
     Beispiele: antworte auf #4523 positiv, bedanke dich
     → Saleria zeigt Entwurf, du bestätigst mit 'ja'
