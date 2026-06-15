@@ -297,9 +297,10 @@ class SetupTests:
             try:
                 _assert_host_allowed(mail_host)
             except InvalidExternalURLError:
-                logger.warning(
-                    "Mail-Host abgelehnt (interne Adresse): %s", safe_log(mail_host)
-                )
+                # Host bewusst NICHT mitloggen: CodeQL stuft aus dem SecretStore
+                # gelesene Werte pauschal als "secret" ein (clear-text-logging),
+                # und der konkrete Host ist fuer das Audit-Log unerheblich.
+                logger.warning("Mail-Host abgelehnt: interne/Loopback-Adresse.")
                 result["success"] = False
                 result["error"] = (
                     "Interne/Loopback-Adressen sind als Mail-Server nicht erlaubt."
@@ -315,9 +316,10 @@ class SetupTests:
             result["imap"] = True
             mail.logout()
         except Exception as e:
-            logger.error(
-                "IMAP-Test fehlgeschlagen (%s): %s", safe_log(imap_host), safe_log(e)
-            )
+            # Host nicht mitloggen (SecretStore-Wert -> CodeQL clear-text-logging);
+            # safe_log(e) strippt CR/LF gegen Log-Injection (Host kann in der
+            # Exception-Message stecken).
+            logger.error("IMAP-Test fehlgeschlagen: %s", safe_log(e))
         # SMTP
         try:
             ctx = ssl.create_default_context()
@@ -331,9 +333,8 @@ class SetupTests:
             srv.quit()
             result["smtp"] = True
         except Exception as e:
-            logger.error(
-                "SMTP-Test fehlgeschlagen (%s): %s", safe_log(smtp_host), safe_log(e)
-            )
+            # Siehe IMAP-Zweig: Host nicht loggen, Exception via safe_log.
+            logger.error("SMTP-Test fehlgeschlagen: %s", safe_log(e))
         result["success"] = result["imap"] and result["smtp"]
         return result
 
