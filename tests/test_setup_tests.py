@@ -1,6 +1,7 @@
 """Tests: SetupTests – Verbindungstests für den Setup-Wizard."""
 
 import asyncio
+import socket
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import httpx
@@ -10,6 +11,7 @@ from elder_berry.web.setup_tests import (
     EMAIL_PROVIDERS,
     InvalidExternalURLError,
     SetupTests,
+    _assert_host_allowed,
     _validate_external_url,
 )
 
@@ -460,6 +462,44 @@ class TestValidateExternalURL:
         # Bewusst erlaubt: Elder-Berry-Nutzer hosten Nextcloud/Mail im LAN/VPN.
         # Ein Block waere ein Funktionsverlust, kein Sicherheitsgewinn.
         assert _validate_external_url(url) == url.strip()
+
+
+class TestAssertHostAllowed:
+    """Async-Host-Check: DNS-Aufloesung off-loop + interne Ziele blocken."""
+
+    def test_blocks_ipv6_metadata_literal(self):
+        # AWS IPv6-IMDS-ULA: nicht is_link_local, aber explizit geblockt.
+        with pytest.raises(InvalidExternalURLError):
+            _run(_assert_host_allowed("fd00:ec2::254"))
+
+    def test_rejects_non_string_host(self):
+        # JSON-Liste statt Host -> sauberer Reject statt getaddrinfo-TypeError.
+        with pytest.raises(InvalidExternalURLError):
+            _run(_assert_host_allowed([]))  # type: ignore[arg-type]
+
+    def test_blocks_dns_name_resolving_internal(self):
+        # Hostname, der auf Loopback aufloest, wird geblockt.
+        with patch(
+            "elder_berry.web.setup_tests.socket.getaddrinfo",
+            return_value=[(2, 1, 6, "", ("127.0.0.1", 0))],
+        ):
+            with pytest.raises(InvalidExternalURLError):
+                _run(_assert_host_allowed("rebind.attacker.test"))
+
+    def test_allows_dns_name_resolving_public(self):
+        with patch(
+            "elder_berry.web.setup_tests.socket.getaddrinfo",
+            return_value=[(2, 1, 6, "", ("93.184.216.34", 0))],
+        ):
+            _run(_assert_host_allowed("example.com"))  # kein Fehler
+
+    def test_allows_unresolvable_name(self):
+        # DNS-Fehler ist kein SSRF-Gewinn -> durchlassen.
+        with patch(
+            "elder_berry.web.setup_tests.socket.getaddrinfo",
+            side_effect=socket.gaierror("nope"),
+        ):
+            _run(_assert_host_allowed("does-not-resolve.invalid"))  # kein Fehler
 
 
 class TestNextcloudRejectsBadURL:
