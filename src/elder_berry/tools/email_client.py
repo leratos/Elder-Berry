@@ -254,9 +254,19 @@ class IMAPEmailClient:
         """
         try:
             conn = self._connect()
-            conn.select(self._mailbox, readonly=True)
-            _, data = _uid(conn, "search", None, "UNSEEN")
+            # PR #318 Codex P2: SELECT und SEARCH koennen 'NO'/'BAD' liefern OHNE
+            # Exception. Status pruefen und None zurueckgeben, damit der Watcher
+            # einen transienten Fehler nicht als leeren Posteingang missdeutet.
+            sel_status, _ = conn.select(self._mailbox, readonly=True)
+            if sel_status != "OK":
+                conn.logout()
+                logger.error("IMAP SELECT (UID-Suche) -> %s", sel_status)
+                return None
+            status, data = _uid(conn, "search", None, "UNSEEN")
             conn.logout()
+            if status != "OK":
+                logger.error("IMAP UID SEARCH (UNSEEN) -> %s", status)
+                return None
             raw = data[0].split() if data and data[0] else []
             uids: list[int] = []
             for token in raw:

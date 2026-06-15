@@ -36,38 +36,35 @@ class TestCollectNew:
     def test_first_poll_seeds_baseline_no_new(self):
         w = _watcher()
         assert w._collect_new([1, 2]) == []
-        assert w._high_water == 2
+        assert w._seen == {1, 2}
 
-    def test_second_poll_returns_only_higher(self):
+    def test_new_computed_against_seen_not_marked(self):
+        """_collect_new markiert NICHT (das macht der Aufrufer nach Versand)."""
         w = _watcher()
-        w._collect_new([1])  # Baseline hw=1
+        w._seen = {1}
+        w._first_poll = False
         assert w._collect_new([1, 2, 3]) == [2, 3]
-        assert w._high_water == 3
-
-    def test_not_reannounced(self):
-        w = _watcher()
-        w._collect_new([1])  # Baseline
-        assert w._collect_new([1, 2]) == [2]
-        assert w._collect_new([1, 2]) == []
+        # 2,3 noch NICHT in _seen (nur auf current beschnitten)
+        assert w._seen == {1}
 
     def test_empty_baseline_then_first_mail_is_new(self):
         w = _watcher()
-        w._collect_new([])  # leerer Posteingang -> hw=0
+        w._collect_new([])  # leerer Posteingang -> seen leer
         assert w._collect_new([101]) == [101]
 
-    def test_read_mail_does_not_reannounce(self):
+    def test_prunes_read_uids_from_seen(self):
         w = _watcher()
-        w._collect_new([1, 2])  # Baseline hw=2
-        assert w._collect_new([1]) == []  # 2 gelesen -> nichts neu
+        w._seen = {1, 2, 3}
+        w._first_poll = False
+        assert w._collect_new([1, 2]) == []  # 1,2 schon gesehen
+        assert w._seen == {1, 2}  # 3 (gelesen) entfernt -> bounded
 
     def test_no_burst_truncation_in_detection(self):
         """Vollstaendige UID-Menge -> auch grosse Bursts werden komplett als
         neu erkannt (Cap greift erst beim Melden, nicht beim Erkennen)."""
         w = _watcher()
-        w._collect_new([1])  # Baseline hw=1
-        new = w._collect_new(list(range(2, 101)))  # 99 neue
-        assert new == list(range(2, 101))
-        assert w._high_water == 100
+        w._collect_new([1])  # Baseline -> seen={1}
+        assert w._collect_new(list(range(2, 101))) == list(range(2, 101))
 
 
 # ---------------------------------------------------------------------------
@@ -98,6 +95,35 @@ class TestPollAndNotify:
         assert len(sent) == 1
         assert "Firma" in sent[0] and "Rechnung" in sent[0]
         ec.get_by_uid.assert_called_once_with("2")
+
+    def test_announced_mail_not_reannounced(self):
+        ec = MagicMock()
+        ec.get_unread_uids.side_effect = [[1], [1, 2], [1, 2]]
+        ec.get_by_uid.return_value = _mail("2")
+        w = MailWatcher(email_client=ec, poll_minutes=5)
+        sent: list[str] = []
+        w._send_alert = sent.append
+        w._poll_and_notify()  # Baseline
+        w._poll_and_notify()  # 2 neu -> gemeldet + gesehen
+        w._poll_and_notify()  # 2 schon gesehen -> nichts
+        assert len(sent) == 1
+
+    def test_failed_detail_fetch_retried_next_poll(self):
+        """PR #318 Codex P2: get_by_uid()==None (transienter Fetch-Fehler) ->
+        UID NICHT als gesehen markieren -> naechster Poll versucht erneut."""
+        ec = MagicMock()
+        ec.get_unread_uids.side_effect = [[1], [1, 2], [1, 2]]
+        ec.get_by_uid.side_effect = [None, _mail("2", subject="Endlich")]
+        w = MailWatcher(email_client=ec, poll_minutes=5)
+        sent: list[str] = []
+        w._send_alert = sent.append
+        w._poll_and_notify()  # Baseline
+        w._poll_and_notify()  # 2 neu, Fetch schlaegt fehl -> nicht gemeldet
+        assert sent == []
+        w._poll_and_notify()  # erneuter Versuch -> Erfolg
+        assert len(sent) == 1
+        assert "Endlich" in sent[0]
+        assert ec.get_by_uid.call_count == 2
 
     def test_imap_error_none_is_noop_and_defers_baseline(self):
         """PR #318 Codex P2: get_unread_uids()==None (Fehler) -> nichts tun,

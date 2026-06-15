@@ -52,11 +52,14 @@ class MailWatcher:
         self._poll_seconds = max(_MIN_POLL_SECONDS, int(poll_minutes) * 60)
         self._running = False
         self._thread: threading.Thread | None = None
-        # High-Water-Mark der hoechsten bereits gesehenen IMAP-UID. IMAP-UIDs
-        # sind streng monoton steigend (RFC 3501) -> nur Mails mit groesserer
-        # UID sind wirklich neu. Gespeist aus der vollstaendigen UNSEEN-UID-
-        # Menge (get_unread_uids, kein Seitenlimit) -> keine Burst-Trunkierung.
-        self._high_water = 0
+        # Set der bereits gemeldeten UNSEEN-UIDs. Sicher (kein Burst-Bug wie
+        # mit einer Seite), weil get_unread_uids() die VOLLSTAENDIGE Menge
+        # liefert und bei Fehlern None statt [] -> keine Trunkierung, kein
+        # falsches "leer". Wird je Poll auf die aktuell-ungelesenen beschnitten
+        # (bounded) und eine UID erst NACH erfolgreichem Versand aufgenommen
+        # (PR #318 Codex P2: ein fehlgeschlagener Detail-Fetch wird so naechsten
+        # Poll erneut versucht statt verloren).
+        self._seen: set[int] = set()
         # Erster Poll seedet nur die Baseline (bestehende Unread sind nicht neu).
         self._first_poll = True
         # Wird vom SchedulerManager.register überschrieben (thread-sicher,
@@ -126,32 +129,39 @@ class MailWatcher:
         if not new_uids:
             return
         # PR #318 Codex P2: ein Burst darf weder spammen noch still verloren
-        # gehen -> ueber dem Cap eine Sammel-Meldung mit Anzahl statt Einzel-
-        # benachrichtigungen. (UID-Erkennung ist vollstaendig, also exakt.)
+        # gehen -> ueber dem Cap eine Sammel-Meldung mit Anzahl. Alle als
+        # gesehen markieren (gemeinsam gemeldet).
         if len(new_uids) > _MAX_ANNOUNCE:
             self._send_alert(f"{len(new_uids)} neue ungelesene Mails")
+            self._seen.update(new_uids)
             return
-        # Details (Body-Fetch) nur fuer die tatsaechlich neuen Mails.
+        # Details (Body-Fetch) nur fuer die tatsaechlich neuen Mails. Eine UID
+        # erst NACH erfolgreichem Versand als gesehen markieren -- schlaegt der
+        # Detail-Fetch transient fehl (get_by_uid -> None), wird sie naechsten
+        # Poll erneut versucht statt verloren (PR #318 Codex P2).
         for uid in new_uids:
             mail = self._email_client.get_by_uid(str(uid))
             if mail is not None:
                 self._send_alert(self._format(mail))
+                self._seen.add(uid)
 
     def _collect_new(self, uids: list[int]) -> list[int]:
-        """Gibt die neuen UIDs (groesser als die High-Water-Mark) zurueck und
-        zieht die Mark nach.
+        """Gibt die neuen (noch nicht gemeldeten) UNSEEN-UIDs sortiert zurueck.
 
-        ``uids`` ist die VOLLSTAENDIGE Unread-Menge (kein Seitenlimit), daher
-        gibt es keine Burst-Trunkierung. Der erste Aufruf seedet nur die
-        Baseline (gibt ``[]`` zurueck) -- bestehende Unread sind nicht "neu".
+        ``uids`` ist die VOLLSTAENDIGE Unread-Menge (kein Seitenlimit) -> keine
+        Burst-Trunkierung. Der erste Aufruf seedet nur die Baseline (gibt ``[]``
+        zurueck) -- bestehende Unread sind nicht "neu". Das Seen-Set wird auf die
+        aktuell ungelesenen UIDs beschnitten (bounded). Die zurueckgegebenen
+        UIDs werden hier NICHT als gesehen markiert -- das macht der Aufrufer
+        erst nach erfolgreichem Versand.
         """
+        current = set(uids)
         if self._first_poll:
-            self._high_water = max(uids, default=0)
+            self._seen = current
             self._first_poll = False
             return []
-        new = sorted(u for u in uids if u > self._high_water)
-        if uids:
-            self._high_water = max(self._high_water, max(uids))
+        new = sorted(current - self._seen)
+        self._seen &= current  # gelesene Mails aus dem Set entfernen (bounded)
         return new
 
     @staticmethod

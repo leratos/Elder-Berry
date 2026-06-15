@@ -996,6 +996,23 @@ class TestGetUnreadUids:
         with patch.object(client, "_connect", side_effect=Exception("down")):
             assert client.get_unread_uids() is None
 
+    def test_select_not_ok_returns_none(self):
+        """PR #318 Codex P2: SELECT 'NO'/'BAD' (ohne Exception) -> None."""
+        client = IMAPEmailClient("host", "user", "pass")
+        conn = MagicMock()
+        conn.select.return_value = ("NO", [b"no access"])
+        with patch.object(client, "_connect", return_value=conn):
+            assert client.get_unread_uids() is None
+
+    def test_search_not_ok_returns_none(self):
+        """PR #318 Codex P2: UID SEARCH 'NO'/'BAD' -> None (nicht leeres Postfach)."""
+        client = IMAPEmailClient("host", "user", "pass")
+        conn = MagicMock()
+        conn.select.return_value = ("OK", [b"1"])
+        conn.uid.return_value = ("NO", [b""])
+        with patch.object(client, "_connect", return_value=conn):
+            assert client.get_unread_uids() is None
+
 
 # ---------------------------------------------------------------------------
 # _fetch_mails End-to-End (Phase 100-D: FLAGS -> is_unread)
