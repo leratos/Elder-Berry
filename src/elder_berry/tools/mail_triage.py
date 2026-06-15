@@ -160,7 +160,7 @@ class MailTriageClassifier:
             data = json.loads(match.group(0))
         except (ValueError, TypeError):
             return None
-        if not isinstance(data, list):
+        if not isinstance(data, list):  # pragma: no cover - Regex garantiert [..]
             return None
 
         out: dict[int, dict[str, str]] = {}

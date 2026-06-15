@@ -122,6 +122,33 @@ class TestMailTriageClassifier:
         assert TriageResult("1", "hoch", "", "").rank < TriageResult("2", "niedrig", "", "").rank
         assert TriageResult("3", "unbekannt", "", "").rank > TriageResult("4", "niedrig", "", "").rank
 
+    def test_long_body_truncated_in_prompt(self):
+        m = _llm("[]")
+        long_body = "x" * 600
+        MailTriageClassifier(m).triage([_mail("1", body=long_body)])
+        prompt = m.generate.call_args[0][0]
+        assert "[…]" in prompt  # Body wurde gekuerzt
+
+    def test_malformed_json_in_brackets_falls_back(self):
+        # Hat [..], aber kein gueltiges JSON darin -> json.loads wirft.
+        out = MailTriageClassifier(_llm("[das ist kein json]")).triage([_mail("1")])
+        assert out[0].prioritaet == "unbekannt"
+
+    def test_non_dict_item_skipped(self):
+        resp = '[1, {"index": 0, "prioritaet": "hoch", "kategorie": "", "grund": ""}]'
+        out = MailTriageClassifier(_llm(resp)).triage([_mail("1")])
+        assert out[0].prioritaet == "hoch"
+
+    def test_item_without_index_skipped(self):
+        resp = '[{"prioritaet": "hoch", "kategorie": "", "grund": ""}]'
+        out = MailTriageClassifier(_llm(resp)).triage([_mail("1")])
+        assert out[0].prioritaet == "unbekannt"
+
+    def test_out_of_range_index_skipped(self):
+        resp = '[{"index": 99, "prioritaet": "hoch", "kategorie": "", "grund": ""}]'
+        out = MailTriageClassifier(_llm(resp)).triage([_mail("1")])
+        assert out[0].prioritaet == "unbekannt"
+
 
 # ---------------------------------------------------------------------------
 # _cmd_mail_triage (über MailCommandHandler)
@@ -172,3 +199,12 @@ class TestMailTriageCommand:
         h = MailCommandHandler(email_client=ec, mail_triage_classifier=MagicMock())
         r = h.execute("mail_triage", "mails priorität")
         assert r.success is False
+
+    def test_long_sender_truncated(self):
+        long_name = "Ein wirklich sehr langer Absendername GmbH & Co KG"
+        mails = [_mail("1", subject="Betreff", sender=f"{long_name} <x@y.de>")]
+        results = [TriageResult(msg_id="1", prioritaet="hoch", kategorie="", grund="")]
+        h = self._handler(mails, results)
+        r = h.execute("mail_triage", "mails priorität")
+        assert r.success is True
+        assert "..." in r.text  # Absender wurde gekuerzt

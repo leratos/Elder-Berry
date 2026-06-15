@@ -151,3 +151,19 @@ class TestLifecycle:
     def test_poll_interval_from_minutes(self):
         w = MailWatcher(email_client=MagicMock(), poll_minutes=10)
         assert w._poll_seconds == 600
+
+    def test_double_start_is_noop(self):
+        ec = MagicMock()
+        ec.get_unread.return_value = []
+        w = MailWatcher(email_client=ec, poll_minutes=5)
+        w.start()
+        first_thread = w._thread
+        w.start()  # zweiter Start -> Warnung, kein neuer Thread
+        assert w._thread is first_thread
+        assert w.is_running is True
+        w.stop()
+
+    def test_stop_when_not_running_is_noop(self):
+        w = MailWatcher(email_client=MagicMock(), poll_minutes=5)
+        w.stop()  # darf nicht crashen
+        assert w.is_running is False
