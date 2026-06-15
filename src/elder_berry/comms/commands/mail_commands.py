@@ -365,13 +365,17 @@ class MailCommandHandler(CommandHandler):
 
         lines = [f"\U0001f4e7 Triage ({len(mails)} ungelesen):"]
         for mail, res in paired:
-            sender_short = mail.sender.split("<")[0].strip().strip('"') or mail.sender
-            if len(sender_short) > 25:
-                sender_short = sender_short[:22] + "..."
+            # Phase 101-T Folge (PR #318 Codex P2): angreiferkontrollierte
+            # Header (From/Subject) + LLM-Kategorie CR/LF-scrubben und cappen,
+            # damit eingehende Mail keine Fake-[HOCH]-Zeilen in die Liste
+            # schmuggeln oder die echte UID verdraengen kann.
+            sender_raw = mail.sender.split("<")[0].strip().strip('"') or mail.sender
+            sender_short = _oneline(sender_raw, 25)
+            subject = _oneline(mail.subject, 120)
             label = res.prioritaet.upper() if res.prioritaet != "unbekannt" else "?"
-            cat = f" [{res.kategorie}]" if res.kategorie else ""
+            cat = f" [{_oneline(res.kategorie, 30)}]" if res.kategorie else ""
             id_suffix = f" (#{mail.msg_id})" if mail.msg_id else ""
-            lines.append(f"  [{label}]{cat} {sender_short}: {mail.subject}{id_suffix}")
+            lines.append(f"  [{label}]{cat} {sender_short}: {subject}{id_suffix}")
         text = "\n".join(lines)
 
         return CommandResult(
@@ -900,6 +904,19 @@ class MailCommandHandler(CommandHandler):
 # ---------------------------------------------------------------------------
 # Phase 80 Etappe 3: list_items fuer ConversationListStore
 # ---------------------------------------------------------------------------
+
+
+def _oneline(text: str, cap: int) -> str:
+    """Phase 101-T (PR #318 Codex P2): CR/LF entfernen + auf ``cap`` kuerzen.
+
+    Fuer angreiferkontrollierte Header-Felder in der Triage-Ausgabe -- eine
+    eingehende Mail soll keine zusaetzlichen Zeilen in die Matrix-Liste
+    schmuggeln koennen.
+    """
+    cleaned = text.replace("\r", " ").replace("\n", " ").strip()
+    if len(cleaned) > cap:
+        cleaned = cleaned[: cap - 1] + "…"
+    return cleaned
 
 
 def _mails_to_list_items(mails: list[EmailMessage]) -> list[dict[str, Any]]:

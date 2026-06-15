@@ -251,9 +251,12 @@ SECRET_REGISTRY: list[SecretRegistryEntry] = [
         "behavior": True,
         "requires_restart": True,
         "type": "select",
+        # "Aus" zuerst: ohne gesetzten Wert zeigt die UI die erste Option an;
+        # das muss dem Runtime-Default (aus) entsprechen, sonst sieht dieser
+        # Opt-in-Watcher faelschlich aktiviert aus (PR #318 Codex P2).
         "select_options": [
-            {"value": "true", "label": "Ein"},
             {"value": "false", "label": "Aus"},
+            {"value": "true", "label": "Ein"},
         ],
         "description": "Proaktiv melden, wenn neue ungelesene Mail eintrifft.",
     },

@@ -34,6 +34,10 @@ _FALLBACK_PRIORITY = "unbekannt"
 # body_preview ist bereits HTML-sanitisiert und auf 8020 Zeichen gecappt).
 _BODY_SNIPPET_CHARS = 400
 
+# Cap fuer angreiferkontrollierte Header (From/Subject) im Prompt, damit ein
+# ueberlanger/gefalteter Header bei bis zu 15 Mails den Prompt nicht aufblaeht.
+_HEADER_FIELD_CHARS = 200
+
 # Anti-Injection-Envelope. Die Marker-Phrasen werden in jedem interpolierten
 # Mail-Feld neutralisiert, damit ein Absender den Block nicht per
 # "--- ENDE EXTERNER INHALT ---" im Betreff/Body vorzeitig schliessen und
@@ -143,8 +147,8 @@ class MailTriageClassifier:
         """Baut den User-Prompt mit Anti-Injection-Envelope."""
         lines: list[str] = []
         for i, m in enumerate(mails):
-            sender = cls._neutralize(m.sender)
-            subject = cls._neutralize(m.subject)
+            sender = cls._neutralize(m.sender)[:_HEADER_FIELD_CHARS]
+            subject = cls._neutralize(m.subject)[:_HEADER_FIELD_CHARS]
             body = cls._neutralize(m.body_preview or "").strip()
             if len(body) > _BODY_SNIPPET_CHARS:
                 body = body[:_BODY_SNIPPET_CHARS] + " […]"

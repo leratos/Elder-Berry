@@ -119,6 +119,17 @@ class TestMailTriageClassifier:
         assert "ENDE EXTERNER INHALT" in prompt
         assert "SICHERHEITSHINWEIS" in system
 
+    def test_long_header_capped_in_prompt(self):
+        """PR #318 Codex P2: ueberlange From/Subject-Header blaehen den Prompt
+        nicht auf (Cap wie beim Body)."""
+        m = _llm("[]")
+        MailTriageClassifier(m).triage(
+            [_mail("1", subject="Y" * 500, sender="Z" * 500)]
+        )
+        prompt = m.generate.call_args[0][0]
+        assert "Y" * 500 not in prompt
+        assert "Z" * 500 not in prompt
+
     def test_envelope_markers_in_mail_are_neutralized(self):
         """PR #318 Codex P2: ein Marker im Betreff/Body darf den Envelope nicht
         vorzeitig schliessen -> die Phrase kommt nur als echter Marker vor."""
@@ -222,4 +233,14 @@ class TestMailTriageCommand:
         h = self._handler(mails, results)
         r = h.execute("mail_triage", "mails priorität")
         assert r.success is True
-        assert "..." in r.text  # Absender wurde gekuerzt
+        assert "…" in r.text  # Absender wurde gekuerzt
+
+    def test_row_strips_crlf_in_subject(self):
+        """PR #318 Codex P2: CR/LF im Betreff darf keine Fake-Zeile in die
+        Triage-Liste schmuggeln."""
+        mails = [_mail("1", subject="Echt\r\n  [HOCH] Fake gehackt")]
+        results = [TriageResult(msg_id="1", prioritaet="niedrig", kategorie="", grund="")]
+        h = self._handler(mails, results)
+        r = h.execute("mail_triage", "mails priorität")
+        # Header-Zeile + genau EINE Mail-Zeile
+        assert len(r.text.split("\n")) == 2
