@@ -40,6 +40,7 @@ if TYPE_CHECKING:
     from elder_berry.tools.document_classifier import DocumentClassifier
     from elder_berry.tools.document_reader import DocumentReader
     from elder_berry.tools.email_client import IMAPEmailClient
+    from elder_berry.tools.mail_triage import MailTriageClassifier
     from elder_berry.tools.google_calendar import GoogleCalendarClient
     from elder_berry.tools.gym_data import GymDataClient
     from elder_berry.tools.fact_store import FactStore
@@ -423,6 +424,8 @@ class HandlerContext:
     reminder_store: ReminderStore | None = None
     briefing_scheduler: BriefingScheduler | None = None
     email_client: IMAPEmailClient | None = None
+    # Phase 101-T: LLM-Mail-Triage (in start_saleria aus dem LLMRouter gebaut).
+    mail_triage_classifier: MailTriageClassifier | None = None
     calendar: GoogleCalendarClient | None = None
     fact_store: FactStore | None = None
     contact_store: ContactStore | None = None

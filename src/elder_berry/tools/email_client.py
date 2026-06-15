@@ -242,6 +242,43 @@ class IMAPEmailClient:
             logger.error("IMAP unread count fehlgeschlagen: %s", e)
             return -1
 
+    def get_unread_uids(self) -> list[int] | None:
+        """Gibt die IMAP-UIDs aller ungelesenen Mails zurueck (nur SEARCH,
+        KEIN Body-Fetch -- guenstig, vollstaendig, ohne Seitenlimit).
+
+        Phase 101-N: Basis fuer die Neuerkennung im MailWatcher. Liefert die
+        VOLLSTAENDIGE Unread-Menge (kein max_results-Cap), sodass ein Burst die
+        Erkennung nicht trunkiert. Rueckgabe ``None`` bei Verbindungs-/IMAP-
+        Fehler -- damit unterscheidbar vom leeren Posteingang (``[]``), was der
+        Watcher fuer eine korrekte Baseline braucht.
+        """
+        try:
+            conn = self._connect()
+            # PR #318 Codex P2: SELECT und SEARCH koennen 'NO'/'BAD' liefern OHNE
+            # Exception. Status pruefen und None zurueckgeben, damit der Watcher
+            # einen transienten Fehler nicht als leeren Posteingang missdeutet.
+            sel_status, _ = conn.select(self._mailbox, readonly=True)
+            if sel_status != "OK":
+                conn.logout()
+                logger.error("IMAP SELECT (UID-Suche) -> %s", sel_status)
+                return None
+            status, data = _uid(conn, "search", None, "UNSEEN")
+            conn.logout()
+            if status != "OK":
+                logger.error("IMAP UID SEARCH (UNSEEN) -> %s", status)
+                return None
+            raw = data[0].split() if data and data[0] else []
+            uids: list[int] = []
+            for token in raw:
+                try:
+                    uids.append(int(token))
+                except (ValueError, TypeError):
+                    continue
+            return sorted(uids)
+        except Exception as e:
+            logger.error("IMAP UID-Suche (UNSEEN) fehlgeschlagen: %s", e)
+            return None
+
     def format_mails(self, mails: list[EmailMessage]) -> str:
         """Formatiert eine Liste von Mails als Text."""
         if not mails:

@@ -74,6 +74,7 @@ if TYPE_CHECKING:
     from elder_berry.tools.brave_search_client import BraveSearchClient
     from elder_berry.tools.document_reader import DocumentReader
     from elder_berry.tools.email_client import IMAPEmailClient
+    from elder_berry.tools.mail_triage import MailTriageClassifier
     from elder_berry.tools.google_calendar import GoogleCalendarClient
     from elder_berry.tools.gym_data import GymDataClient
     from elder_berry.comms.briefing_scheduler import BriefingScheduler
@@ -280,6 +281,7 @@ class RemoteCommandHandler:
         send_file_allowed_roots: tuple[Path, ...] | None = None,
         calendar: GoogleCalendarClient | None = None,
         email_client: IMAPEmailClient | None = None,
+        mail_triage_classifier: MailTriageClassifier | None = None,
         gym_client: GymDataClient | None = None,
         weather: WeatherClient | None = None,
         reminder_store: ReminderStore | None = None,
@@ -333,6 +335,7 @@ class RemoteCommandHandler:
                 reminder_store=reminder_store,
                 briefing_scheduler=briefing_scheduler,
                 email_client=email_client,
+                mail_triage_classifier=mail_triage_classifier,
                 calendar=calendar,
                 fact_store=fact_store,
                 contact_store=contact_store,

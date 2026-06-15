@@ -910,6 +910,22 @@ def _init_productivity_services(secrets, default_user_id):
         except Exception as e:
             logger.warning("EmailSender nicht verfügbar: %s", e)
 
+    # Phase 101-N: MailWatcher (proaktive Neue-Mail-Benachrichtigung, opt-in).
+    if svc.get("email_client") and (
+        secrets.get_or_none("mail_notify_enabled") or "false"
+    ) == "true":
+        try:
+            from elder_berry.comms.mail_watcher import MailWatcher
+
+            poll_minutes = int(secrets.get_or_none("mail_poll_interval_min") or "5")
+            svc["mail_watcher"] = MailWatcher(
+                email_client=svc["email_client"],
+                poll_minutes=poll_minutes,
+            )
+            logger.info("Mail-Benachrichtigung aktiv (alle %d Min.)", poll_minutes)
+        except Exception as e:
+            logger.warning("MailWatcher nicht verfügbar: %s", e)
+
     # ContactStore
     try:
         from elder_berry.tools.contact_store import ContactStore
@@ -1339,6 +1355,14 @@ def run_matrix(
     tools = _init_context_and_tools(secrets, assistant, svc, tower_agent=tower_agent)
 
     # --- 4. RemoteCommandHandler ---
+    # Phase 101-T: Mail-Triage ueber den LLMRouter (assistant._llm) -> im
+    # Privacy-Modus automatisch lokal (Ollama). Bewusst der Router, NICHT der
+    # rohe anthropic_client (der wuerde Privacy umgehen).
+    from elder_berry.tools.mail_triage import MailTriageClassifier
+
+    mail_triage = (
+        MailTriageClassifier(assistant._llm) if assistant._llm is not None else None
+    )
     remote = RemoteCommandHandler(
         system_monitor=SystemMonitor(),
         controller=assistant._controller,
@@ -1347,6 +1371,7 @@ def run_matrix(
         avatar_renderer=avatar,
         calendar=svc.get("calendar"),
         email_client=svc.get("email_client"),
+        mail_triage_classifier=mail_triage,
         gym_client=svc.get("gym_client"),
         weather=svc.get("weather"),
         reminder_store=svc.get("reminder_store"),
@@ -1486,6 +1511,7 @@ def run_matrix(
         reminder_scheduler=svc.get("reminder_scheduler"),
         briefing_scheduler=svc.get("briefing_scheduler"),
         calendar_watcher=tools.get("calendar_watcher"),
+        mail_watcher=svc.get("mail_watcher"),
         document_reader=tools.get("document_reader"),
         audio_router=tools.get("audio_router"),
         summarizer=summarizer,
