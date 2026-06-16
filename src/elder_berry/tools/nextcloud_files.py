@@ -1,7 +1,8 @@
 """NextcloudFilesClient – WebDAV-Client for Nextcloud file operations.
 
 Supports upload, download, directory listing, search and share-link creation.
-Uses httpx for HTTP and xml.etree.ElementTree for WebDAV XML parsing.
+Uses httpx for HTTP and defusedxml (gehaertet gegen XXE/Entity-Expansion/DTD)
+fuer das Parsen der WebDAV-XML-Antworten.
 
 Credentials are read from SecretStore:
     nextcloud_url, nextcloud_user, nextcloud_app_password
@@ -18,6 +19,13 @@ from typing import TYPE_CHECKING, Any
 from urllib.parse import unquote
 
 import httpx
+
+# Phase 103 (S2): externe WebDAV-Antworten werden ueber den gehaerteten
+# safe_fromstring (defusedxml, forbid_dtd=True) gelesen. stdlib-ET bleibt fuer
+# die getypte Element-/ParseError-API importiert.
+from defusedxml.common import DefusedXmlException
+
+from elder_berry.tools.safe_xml import safe_fromstring
 
 if TYPE_CHECKING:
     from elder_berry.core.secret_store import SecretStore
@@ -367,8 +375,17 @@ class NextcloudFilesClient:
         return local_path
 
     def _parse_propfind(self, xml_text: str) -> list[NextcloudFile]:
-        """Parse a PROPFIND XML response into NextcloudFile objects."""
-        root = ET.fromstring(xml_text)
+        """Parse a PROPFIND XML response into NextcloudFile objects.
+
+        Phase 103 (S2): gehaertet via safe_fromstring. Boesartiges XML
+        (Entity-Expansion / externe Entity / DTD) wird abgewehrt und als
+        ``NextcloudError`` gemeldet -- fail-closed, statt zu expandieren oder
+        eine rohe defusedxml-Exception nach oben zu reichen.
+        """
+        try:
+            root = safe_fromstring(xml_text)
+        except (ET.ParseError, DefusedXmlException) as exc:
+            raise NextcloudError(f"XML-Parsing fehlgeschlagen: {exc}") from exc
         results: list[NextcloudFile] = []
 
         for response in root.findall(f"{_DAV}response"):
@@ -582,12 +599,14 @@ class NextcloudFilesClient:
 
         # Parse fileid aus XML
         try:
-            root = ET.fromstring(resp.text)
+            root = safe_fromstring(resp.text)
             oc_ns = "http://owncloud.org/ns"
             fileid_el = root.find(f".//{{{oc_ns}}}fileid")
             if fileid_el is not None and fileid_el.text:
                 return fileid_el.text
-        except ET.ParseError as exc:
+        except (ET.ParseError, DefusedXmlException) as exc:
+            # DefusedXmlException = gehaertete Abwehr boesartiger Server-XML
+            # (EntitiesForbidden/DTDForbidden) -> saubere NextcloudError.
             raise NextcloudError(f"XML-Parsing fehlgeschlagen: {exc}") from exc
 
         raise NextcloudError(

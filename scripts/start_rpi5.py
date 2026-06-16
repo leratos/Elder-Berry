@@ -16,13 +16,14 @@ Kann zum Testen auch auf Windows laufen (--windowed).
 from __future__ import annotations
 
 import argparse
-import ipaddress
 import logging
 import os
 import signal
 import sys
 import threading
 from pathlib import Path
+
+from elder_berry.core import bind_policy
 
 logger = logging.getLogger("elder_berry.rpi5")
 
@@ -47,56 +48,27 @@ def _resolve_robot_token() -> str | None:
 # Token lief (Warning im Systemd-Log wurde uebersehen). Jetzt: Hard-Fail,
 # wenn der Server auf einem nicht-Loopback-Interface binden soll UND kein
 # Token gesetzt ist.
-_LOOPBACK_NAMES = frozenset({"localhost"})
-
-
+#
+# Phase 103 (S1): Die Policy lebt jetzt zentral in
+# ``elder_berry.core.bind_policy`` (damit auch Simulator + AgentServer sie
+# wiederverwenden). Diese duennen Wrapper bleiben erhalten, weil
+# ``tests/test_start_rpi5_token.py`` sie als Modul-Attribute laedt und die
+# caplog-Assertions am Logger ``elder_berry.rpi5`` haengen -- der wird hier
+# in den geteilten Helper injiziert.
 def _is_loopback_host(host: str) -> bool:
-    """True wenn ``host`` nur ueber Loopback erreichbar ist.
-
-    Akzeptiert ``localhost``, ``127.0.0.0/8``, ``::1``. ``0.0.0.0`` und
-    ``::`` gelten NICHT als Loopback (binden auf alle Interfaces).
-    """
-    stripped = host.strip().lower().strip("[]")
-    if stripped in _LOOPBACK_NAMES:
-        return True
-    try:
-        return ipaddress.ip_address(stripped).is_loopback
-    except ValueError:
-        return False
+    """Re-Export von :func:`elder_berry.core.bind_policy.is_loopback_host`."""
+    return bind_policy.is_loopback_host(host)
 
 
 def _enforce_robot_token_policy(token: str | None, host: str) -> None:
-    """Bricht den Start ab, wenn Token fehlt UND Bind nicht Loopback ist.
-
-    Raises:
-        SystemExit(2): wenn kein Token gesetzt UND Host auf nicht-Loopback-
-        Interface bindet. Exit-Code 2, damit systemd den Unterschied zu
-        regulaeren Fehlern (1) sieht.
-    """
-    if token:
-        return
-    if _is_loopback_host(host):
-        logger.warning(
-            "Robot-Token NICHT konfiguriert -- Server bindet nur auf "
-            "Loopback (%s). Fuer Dev/Tests OK, fuer Produktion bitte "
-            "ELDER_BERRY_ROBOT_TOKEN setzen.",
-            host,
-        )
-        return
-    logger.error(
-        "Robot-Token NICHT konfiguriert, aber Server soll auf %s "
-        "(nicht-Loopback) binden.",
+    """Re-Export der Robot-Token-Policy (Logger ``elder_berry.rpi5``)."""
+    bind_policy.enforce_token_policy(
+        token,
         host,
+        token_env_name="ELDER_BERRY_ROBOT_TOKEN",
+        server_label="Robot",
+        logger=logger,
     )
-    logger.error(
-        "Alle Endpoints (inkl. /system/update = RCE, /harmony/*, "
-        "/drive) waeren im LAN ungeprueft erreichbar. Abbruch.",
-    )
-    logger.error(
-        "Fix: ELDER_BERRY_ROBOT_TOKEN in der systemd-Unit setzen, oder "
-        "explizit mit '--host 127.0.0.1' starten.",
-    )
-    sys.exit(2)
 
 
 def parse_args() -> argparse.Namespace:

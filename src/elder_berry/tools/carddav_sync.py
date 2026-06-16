@@ -26,6 +26,14 @@ import re
 
 import httpx
 
+# Phase 103 (S2): externe CardDAV-Antworten werden ueber den gehaerteten
+# safe_fromstring (defusedxml, forbid_dtd=True) gelesen -- XXE / Entity-
+# Expansion / DTD geblockt. stdlib-ET bleibt fuer die getypte Element-/
+# ParseError-API importiert.
+from defusedxml.common import DefusedXmlException
+
+from elder_berry.tools.safe_xml import safe_fromstring
+
 if TYPE_CHECKING:
     import vobject
 
@@ -761,14 +769,16 @@ class CardDAVSyncClient:
 
         hrefs = []
         try:
-            root = ET.fromstring(resp.text)
+            root = safe_fromstring(resp.text)
             for response in root.findall(f"{_DAV}response"):
                 href_el = response.find(f"{_DAV}href")
                 if href_el is not None and href_el.text:
                     href = href_el.text
                     if href.endswith(".vcf"):
                         hrefs.append(href)
-        except ET.ParseError as exc:
+        except (ET.ParseError, DefusedXmlException) as exc:
+            # DefusedXmlException = gehaertete Abwehr (EntitiesForbidden/
+            # DTDForbidden) bei boesartiger Server-Antwort -> fail-closed.
             logger.warning("CardDAV XML parse error: %s", exc)
 
         return hrefs

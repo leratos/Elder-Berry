@@ -212,13 +212,19 @@ class SimulatedCamera(CameraController):
 def create_simulator(
     host: str = "127.0.0.1",
     port: int = 8000,
+    robot_token: str | None = None,
 ) -> RobotServer:
     """Erstellt einen RobotServer mit simulierter Hardware.
 
     Phase 64 (H-2): Default-Host auf ``127.0.0.1`` geaendert. Der
     Simulator laeuft per Default OHNE Robot-Token-Auth, also darf er
-    nicht auf allen Interfaces binden. Fuer LAN-Zugriff (manuelle Tests
-    vom Laptop) explizit ``--bind 0.0.0.0`` setzen.
+    nicht auf allen Interfaces binden.
+
+    Phase 103 (S1): ``robot_token`` wird jetzt an den ``RobotServer``
+    durchgereicht (vorher landete die RobotTokenMiddleware dauerhaft im
+    Bypass). Mit gesetztem Token darf der Simulator bewusst auch auf
+    ``0.0.0.0`` laufen; ohne Token erzwingt der ``__main__``-Guard
+    Loopback (siehe :func:`elder_berry.core.bind_policy.enforce_token_policy`).
     """
     server = RobotServer(
         motors=SimulatedMotors(),
@@ -226,6 +232,7 @@ def create_simulator(
         sensors=SimulatedSensors(),
         turntable=SimulatedTurntable(),
         hostname="elder-berry-simulator",
+        robot_token=robot_token,
     )
     logger.info("Simulator bereit auf %s:%d", host, port)
     return server
@@ -233,8 +240,11 @@ def create_simulator(
 
 if __name__ == "__main__":
     import argparse
+    import os
 
     import uvicorn
+
+    from elder_berry.core.bind_policy import enforce_token_policy
 
     logging.basicConfig(
         level=logging.INFO,
@@ -248,23 +258,28 @@ if __name__ == "__main__":
         "--bind",
         default="127.0.0.1",
         help="Bind-Host (default: 127.0.0.1 = Loopback). "
-        "Fuer LAN-Zugriff explizit '--bind 0.0.0.0' -- der Simulator "
-        "hat keine Auth, das LAN muss vertrauenswuerdig sein.",
+        "Fuer LAN-Zugriff ELDER_BERRY_ROBOT_TOKEN setzen und explizit "
+        "'--bind 0.0.0.0' angeben -- ohne Token verweigert der Start einen "
+        "Nicht-Loopback-Bind.",
     )
     parser.add_argument("--port", type=int, default=8000)
     args = parser.parse_args()
 
-    if args.bind == "0.0.0.0":
-        logger.warning(
-            "Simulator bindet auf 0.0.0.0 ohne Auth -- jeder im LAN "
-            "kann Motoren/Harmony steuern.",
-        )
-    elif args.bind in ("::", "0:0:0:0:0:0:0:0", "::0"):
-        logger.warning(
-            "Simulator bindet auf %s (IPv6-any) ohne Auth -- jeder im "
-            "Netzwerk kann Motoren/Harmony steuern.",
-            args.bind,
-        )
+    # Phase 103 (S1): fail-closed. Ohne ELDER_BERRY_ROBOT_TOKEN darf der
+    # Simulator nur auf Loopback binden; ein Nicht-Loopback-Bind ohne Token
+    # bricht mit Exit 2 ab (statt nur zu warnen). Mit Token ist 0.0.0.0
+    # bewusst erlaubt -- das Token wird an den RobotServer durchgereicht.
+    _env_token = os.environ.get("ELDER_BERRY_ROBOT_TOKEN")
+    _robot_token = _env_token.strip() if _env_token and _env_token.strip() else None
+    enforce_token_policy(
+        _robot_token,
+        args.bind,
+        token_env_name="ELDER_BERRY_ROBOT_TOKEN",
+        server_label="Robot-Simulator",
+        logger=logger,
+    )
 
-    sim = create_simulator(host=args.bind, port=args.port)
+    sim = create_simulator(
+        host=args.bind, port=args.port, robot_token=_robot_token
+    )
     uvicorn.run(sim.app, host=args.bind, port=args.port)

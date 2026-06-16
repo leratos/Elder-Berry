@@ -18,6 +18,7 @@ from __future__ import annotations
 import json
 import logging
 import sqlite3
+from collections.abc import Iterable
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
@@ -506,6 +507,26 @@ class ContactStore:
         "vcard_uid",
     )
 
+    # Phase 103 (S4): Allowlist aller Identifier, die in den (per f-String
+    # zusammengesetzten) INSERT/UPDATE-Statements als Spaltenname erscheinen
+    # duerfen. Heute kein Injection-Vektor (Spaltennamen stammen nur aus
+    # _ALL_FIELDS + den Literalen unten, Werte sind parametrisiert), aber der
+    # Guard verhindert, dass ein kuenftiges Refactor unbemerkt einen
+    # dynamischen Spaltennamen durchreicht.
+    _ALLOWED_COLUMNS: frozenset[str] = frozenset(_ALL_FIELDS) | {
+        "user_id",
+        "created_at",
+        "updated_at",
+        "id",
+    }
+
+    @staticmethod
+    def _assert_known_columns(cols: Iterable[str]) -> None:
+        """Verifiziert, dass jeder Spaltenname in der Allowlist liegt."""
+        unknown = [c for c in cols if c not in ContactStore._ALLOWED_COLUMNS]
+        if unknown:
+            raise ValueError(f"Unerlaubte SQL-Spaltennamen: {unknown!r}")
+
     def add(self, user_id: str, name: str, **kwargs: str) -> Contact:
         """Kontakt hinzufügen oder aktualisieren (Upsert per Name).
 
@@ -538,6 +559,9 @@ class ContactStore:
         col_str = ", ".join(cols)
         vals = [user_id] + [values[k] for k in values] + [now, now]
 
+        self._assert_known_columns(cols)
+        # B608 false positive: col_str enthaelt nur Allowlist-Spalten (oben
+        # via _assert_known_columns geprueft); alle Werte sind parametrisiert.
         cursor = self._conn.execute(
             f"INSERT INTO contacts ({col_str}) VALUES ({placeholders})",
             vals,
@@ -565,6 +589,9 @@ class ContactStore:
         set_parts = [f"{k} = ?" for k in updates]
         set_parts.append("updated_at = ?")
         vals = list(updates.values()) + [now, existing.id]
+        self._assert_known_columns(updates)
+        # B608 false positive: set_parts-Spalten nur aus der Allowlist; Werte
+        # parametrisiert via '?'.
         self._conn.execute(
             f"UPDATE contacts SET {', '.join(set_parts)} WHERE id = ?",
             vals,
@@ -590,6 +617,9 @@ class ContactStore:
         set_parts = [f"{k} = ?" for k in updates]
         set_parts.append("updated_at = ?")
         vals = list(updates.values()) + [now, contact_id]
+        self._assert_known_columns(updates)
+        # B608 false positive: set_parts-Spalten nur aus der Allowlist; Werte
+        # parametrisiert via '?'.
         self._conn.execute(
             f"UPDATE contacts SET {', '.join(set_parts)} WHERE id = ?",
             vals,
