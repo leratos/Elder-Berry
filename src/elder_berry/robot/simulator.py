@@ -238,7 +238,7 @@ def create_simulator(
     return server
 
 
-if __name__ == "__main__":
+if __name__ == "__main__":  # pragma: no cover - Script-Entrypoint (uvicorn.run)
     import argparse
     import os
 

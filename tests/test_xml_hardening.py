@@ -76,6 +76,19 @@ class TestNextcloudParsePropfindHardened:
         with pytest.raises(DefusedXmlException):
             safe_fromstring(DTD_ONLY)
 
+    def test_get_file_id_malicious_xml_raises_nextcloud_error(self):
+        # Deckt den fileid-Lookup-Pfad (_get_file_id) ab: gehaerteter Parser
+        # wirft -> except -> NextcloudError statt roher DefusedXmlException.
+        from elder_berry.tools.nextcloud_files import NextcloudFilesClient
+
+        client = NextcloudFilesClient(secret_store=_nc_secret_store())
+        resp = MagicMock(status_code=207, text=BILLION_LAUGHS)
+        with patch(
+            "elder_berry.tools.nextcloud_files.httpx.request", return_value=resp
+        ):
+            with pytest.raises(NextcloudError):
+                client._get_file_id("Dokumente/report.pdf")
+
     def test_benign_xml_still_parses(self):
         from elder_berry.tools.nextcloud_files import NextcloudFilesClient
 
