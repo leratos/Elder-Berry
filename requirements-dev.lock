@@ -40,6 +40,8 @@ colorama==0.4.6
     #   uvicorn
 cryptography==46.0.7
     # via elder-berry (pyproject.toml)
+defusedxml==0.7.1
+    # via elder-berry (pyproject.toml)
 distro==1.9.0
     # via anthropic
 docstring-parser==0.18.0

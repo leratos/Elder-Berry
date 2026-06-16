@@ -109,9 +109,15 @@ class TestNextcloudParsePropfindHardened:
 
 class TestCardDavListHrefsHardened:
     @pytest.mark.parametrize("payload", MALICIOUS)
-    def test_malicious_xml_yields_empty(self, payload):
+    def test_malicious_xml_raises_sync_error(self, payload):
+        # P1 (Codex PR #321): eine abgewehrte/nicht parsbare Antwort darf NICHT
+        # als leeres Adressbuch durchgehen (sonst loescht/dupliziert ein Sync).
+        # -> CardDAVSyncError, kein stilles [].
         pytest.importorskip("vobject", reason="vobject nicht installiert")
-        from elder_berry.tools.carddav_sync import CardDAVSyncClient
+        from elder_berry.tools.carddav_sync import (
+            CardDAVSyncClient,
+            CardDAVSyncError,
+        )
 
         store = MagicMock()
         store.get_or_none.side_effect = lambda key: {
@@ -125,6 +131,5 @@ class TestCardDavListHrefsHardened:
         with patch(
             "elder_berry.tools.carddav_sync.httpx.request", return_value=resp
         ):
-            # Gehaerteter Parser wirft -> except faengt -> leere Liste,
-            # statt die Entities/DTD zu verarbeiten.
-            assert client._list_vcf_hrefs() == []
+            with pytest.raises(CardDAVSyncError):
+                client._list_vcf_hrefs()

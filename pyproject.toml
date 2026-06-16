@@ -176,6 +176,11 @@ dev = [
     # Aufwand fuer dev-Setup ist gegen die Test-Coverage vernachlaessigbar.
     "beautifulsoup4>=4.14.3",
     "tinycss2>=1.5.1",
+    # Phase 103 (S2): carddav_sync/nextcloud_files/safe_xml importieren
+    # defusedxml top-level. Ohne diese Dep im dev-Set scheitert
+    # `pip install -e .[dev]` + `pytest tests/` bereits beim Collecten von
+    # test_xml_hardening/test_nextcloud_files (Codex PR #321 P2).
+    "defusedxml>=0.7.1",
 ]
 
 [tool.setuptools.packages.find]

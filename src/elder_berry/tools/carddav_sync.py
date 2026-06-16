@@ -60,6 +60,19 @@ _PROPFIND_BODY = (
 _EB_FIELDS = {"role", "formality", "notes"}
 
 
+# ── Exceptions ─────────────────────────────────────────────────────────
+
+
+class CardDAVSyncError(Exception):
+    """Harter CardDAV-Sync-Fehler, der einen mutierenden Pfad abbrechen muss.
+
+    Phase 103 (S2/P1): wird geworfen, wenn die Server-Antwort nicht sicher
+    verarbeitet werden kann (Netz-/HTTP-Fehler oder nicht parsbares/abgewehrtes
+    XML). Eine solche Antwort darf NICHT als "leeres Adressbuch" interpretiert
+    werden -- sonst loescht/dupliziert ein Sync/Reset Kontakte.
+    """
+
+
 # ── DTOs ───────────────────────────────────────────────────────────────
 
 
@@ -362,11 +375,16 @@ class CardDAVSyncClient:
         Für Clean-Slate-Migration nach Schema-Änderung.
         """
         result = SyncResult()
+        # Phase 103 (P1): ZUERST pullen, DANN loeschen. pull_contacts ->
+        # _list_vcf_hrefs wirft CardDAVSyncError bei unsicherer/fehlerhafter
+        # Server-Antwort -- in dem Fall darf NICHT geloescht werden (sonst
+        # Datenverlust durch einen faelschlich "leeren" Pull).
+        remote_data = self.pull_contacts(user_id)
+
         deleted = contact_store.delete_all(user_id)
         result.deleted = deleted
         logger.info("Reset: %d lokale Kontakte gelöscht", deleted)
 
-        remote_data = self.pull_contacts(user_id)
         for data in remote_data:
             try:
                 contact_store.add_or_update_by_vcard_uid(
@@ -748,7 +766,20 @@ class CardDAVSyncClient:
     # ── Hilfsmethoden ──────────────────────────────────────────────────
 
     def _list_vcf_hrefs(self) -> list[str]:
-        """PROPFIND auf CardDAV-URL → Liste von .vcf-Hrefs."""
+        """PROPFIND auf CardDAV-URL → Liste von .vcf-Hrefs.
+
+        Eine LEERE Liste bedeutet ausschliesslich "Adressbuch hat keine
+        .vcf-Eintraege" (valide, leere Multistatus-Antwort). Jeder echte
+        Fehler -- Netz/HTTP, nicht parsbares oder vom Haertungs-Parser
+        abgewehrtes XML -- wird als :class:`CardDAVSyncError` geworfen, NICHT
+        als leere Liste signalisiert. Sonst wuerde ein mutierender Sync/Reset
+        die Antwort faelschlich als "keine Remote-Kontakte" werten und
+        Kontakte loeschen/duplizieren (Codex PR #321, P1).
+
+        Raises:
+            CardDAVSyncError: bei HTTP-/Netzfehler oder unsicher/nicht
+                parsbarer Server-Antwort.
+        """
         try:
             resp = httpx.request(
                 "PROPFIND",
@@ -761,26 +792,33 @@ class CardDAVSyncClient:
                 content=_PROPFIND_BODY,
                 timeout=10.0,
             )
-            if resp.status_code not in (200, 207):
-                return []
-        except Exception as exc:
-            logger.warning("CardDAV PROPFIND fehlgeschlagen: %s", exc)
-            return []
+        except httpx.HTTPError as exc:
+            raise CardDAVSyncError(
+                f"CardDAV PROPFIND fehlgeschlagen: {exc}"
+            ) from exc
 
-        hrefs = []
+        if resp.status_code not in (200, 207):
+            raise CardDAVSyncError(
+                f"CardDAV PROPFIND lieferte HTTP {resp.status_code}"
+            )
+
         try:
             root = safe_fromstring(resp.text)
-            for response in root.findall(f"{_DAV}response"):
-                href_el = response.find(f"{_DAV}href")
-                if href_el is not None and href_el.text:
-                    href = href_el.text
-                    if href.endswith(".vcf"):
-                        hrefs.append(href)
         except (ET.ParseError, DefusedXmlException) as exc:
             # DefusedXmlException = gehaertete Abwehr (EntitiesForbidden/
-            # DTDForbidden) bei boesartiger Server-Antwort -> fail-closed.
-            logger.warning("CardDAV XML parse error: %s", exc)
+            # DTDForbidden); ParseError = kaputtes XML. Beides darf NICHT als
+            # leeres Adressbuch durchgehen -> abbrechen.
+            raise CardDAVSyncError(
+                f"CardDAV-Antwort nicht sicher parsebar: {exc}"
+            ) from exc
 
+        hrefs = []
+        for response in root.findall(f"{_DAV}response"):
+            href_el = response.find(f"{_DAV}href")
+            if href_el is not None and href_el.text:
+                href = href_el.text
+                if href.endswith(".vcf"):
+                    hrefs.append(href)
         return hrefs
 
     def _find_vcard_href(self, vcard_uid: str) -> str | None:
