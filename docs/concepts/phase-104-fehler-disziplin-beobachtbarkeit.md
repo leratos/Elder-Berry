@@ -26,11 +26,14 @@ Kontrollfluss-Idiom. **Genau eine** Stelle hat echtes Daten-/Funktions-Risiko.
 - **`tools/carddav_sync.py:799`** — breiter `except Exception: continue` im
   Fallback-Loop von `_find_vcard_href`. Ein transienter Netzfehler (httpx) ist
   nicht von „Href existiert nicht" unterscheidbar → Methode liefert `None`
-  („Kontakt nicht gefunden"), obwohl nur das Netz zuckte. **Fix:** auf
-  `httpx.HTTPError`/`RequestError` verengen + `logger.debug` vor `continue`
-  (lässt einen `AttributeError` aus `_href_to_url` bewusst durchschlagen). Offene
-  Semantik-Frage: soll ein echter Netzfehler die Suche **abbrechen** (raise) statt
-  still „nicht gefunden"?
+  („Kontakt nicht gefunden"), obwohl nur das Netz zuckte. **Folge (Codex-Review
+  PR #320):** `_update_existing_vcard` behandelt das `None` als „nicht gefunden"
+  und **legt einen neuen vCard an → Kontakt-Duplikat.** Loggen allein reicht
+  daher nicht. **Entscheidung:** transiente HTTP-Fehler (`httpx.HTTPError`/
+  `RequestError`) **propagieren/abbrechen** statt still `continue` — der Sync
+  bricht lieber sichtbar ab, als ein Duplikat zu erzeugen. Nur ein echtes
+  „Href 404/weg" zählt als „nicht gefunden". Test: transienter Fetch-Fehler →
+  `_find_vcard_href` propagiert (kein stilles `None`, kein Duplikat).
 
 ### Kleinere Diagnose-Lücken (Priorität 2, reine Log-Adds)
 
@@ -38,8 +41,14 @@ Kontrollfluss-Idiom. **Genau eine** Stelle hat echtes Daten-/Funktions-Risiko.
   (psutil-Disk-Block) → `logger.debug`.
 - `web/settings_dashboard.py:1008` — `except ValueError: pass` (ungültiger
   `STT_TIMEOUT` aus Secret-Store) → `logger.warning` (User-Config wird ignoriert).
-- `tools/caldav_tasks.py:207` — `except Exception: continue` in `_find_todo_by_uid`
-  → `logger.debug` analog zur Schwesterstelle `:195`.
+- `tools/caldav_tasks.py:207` — `except Exception: continue` in `_find_todo_by_uid`.
+  **Folge (Codex-Review PR #320):** der breite Catch schluckt auch die
+  retry-fähigen Connection-/Timeout-Fehler des Clients, sodass `_call_with_retry`
+  nie zum Zug kommt → `complete`/`reopen`/`update`/`delete` melden „nicht
+  gefunden" nach einem transienten CalDAV-Fehler. **Fix:** retry-fähige Fehler
+  vor dem `continue` **re-raisen** (bzw. den Catch auf die echten „UID nicht in
+  dieser Liste"-Fälle verengen) und nur dann loggen+weitergehen; nicht pauschal
+  `logger.debug` über alles.
 
 ### Bewusst korrekt – belassen (mit Begründungs-Kommentar/noqa)
 

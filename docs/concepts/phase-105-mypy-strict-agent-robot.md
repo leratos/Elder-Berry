@@ -67,6 +67,15 @@ Typabdeckung bekommen wie `core/`/`comms/`/`tools/`/`web/`.
 5. **Neue `ignore_missing_imports`-Einträge:** `lgpio` + `picamera2` explizit
    ergänzen (analog `pyautogui`/`pygame`). `aioharmony.*` ist bereits gedeckt;
    `sounddevice`/`numpy` ebenfalls.
+   - **`PIL.*` (Codex-Review PR #320):** `robot/camera_controller.py` und
+     `robot/simulator.py` importieren `PIL.Image`. Pillow ist nur in der
+     `computer-use`-Gruppe deklariert, die der `typecheck`-Job heute **nicht**
+     installiert. Sobald die Robot-Module in den mypy-Scope kommen, würde der
+     Job an `Cannot find implementation or library stub for module named 'PIL'`
+     scheitern, **bevor** die eigentlichen Annotationen geprüft werden. Daher
+     entweder `computer-use` im `typecheck`-Install ergänzen **oder** einen
+     bewussten `PIL.*`-Override setzen (empfohlen: `PIL.*`-Override, da Pillow
+     nur fürs Test-/Sim-Bild gebraucht wird und keine Typabdeckung beisteuert).
 
 ## Offene Entscheidungen (für Lera)
 

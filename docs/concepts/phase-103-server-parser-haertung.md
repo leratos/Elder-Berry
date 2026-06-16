@@ -83,11 +83,15 @@ vor `uvicorn.run`: `ELDER_BERRY_ROBOT_TOKEN` lesen, `enforce_token_policy(...)`.
 der Simulator mit Token bewusst auf `0.0.0.0` laufen. Aufrufer
 `scripts/demo_integration.py:151` (Loopback `127.0.0.1`) bricht nicht.
 
-**103-S1-c – AgentServer Defense-in-Depth.** `AgentServer.__init__` bekommt einen
-optionalen `bind_host: str | None = None`. Ist `agent_token` `None` UND `bind_host`
-gesetzt UND nicht Loopback → `ValueError` (Server darf nicht ohne Token für einen
-LAN-Bind konstruiert werden). Default `None` hält die bestehenden tokenlosen
-Test-Konstruktionen (`tests/test_agent_protocol.py`) grün.
+**103-S1-c – AgentServer fail-closed konstruieren.** `AgentServer.__init__`
+bekommt einen `bind_host`-Parameter mit **fail-closed**-Semantik: ist
+`agent_token` `None`, MUSS `bind_host` explizit gesetzt sein **und** Loopback
+sein, sonst `ValueError`. Damit scheitert auch ein ad-hoc-uvicorn-Wrapper, der
+`AgentServer(controller)` ohne Token/Bind baut (genau der vom Review genannte
+Pfad), statt eine ungeschützte App zu erzeugen, die später ans LAN bindet. Mit
+gesetztem Token ist `bind_host` frei (das Token schützt jeden Bind). Die
+tokenlosen Test-Konstruktionen in `tests/test_agent_protocol.py` setzen
+`bind_host="127.0.0.1"` (Loopback).
 
 > **Out-of-Scope (Follow-up):** Ein vollwertiges `scripts/start_agent.py` (analog
 > `start_rpi5.py`). Der AgentServer hat heute keinen produktiven Start; der
@@ -101,7 +105,7 @@ Test-Konstruktionen (`tests/test_agent_protocol.py`) grün.
 | `src/elder_berry/core/bind_policy.py` *(neu)* | `is_loopback_host`, `enforce_token_policy` (Logger injiziert) |
 | `scripts/start_rpi5.py` | Helfer als Re-Export-Wrapper auf `bind_policy` |
 | `src/elder_berry/robot/simulator.py` | `__main__`-Guard; `create_simulator(robot_token=None)` durchreichen |
-| `src/elder_berry/agent/server.py` | Konstruktor-Guard `bind_host` (Defense-in-Depth) |
+| `src/elder_berry/agent/server.py` | fail-closed Konstruktor-Guard (`bind_host` bei tokenlos verpflichtend + Loopback) |
 
 ### Tests (S1)
 
@@ -137,34 +141,46 @@ erteilt** (2026-06-16): hinzufügen.
 
 ### Lösung
 
-- `pyproject.toml`: `defusedxml>=0.7.1` in Gruppe `nextcloud` **und** in die
-  Sammelgruppe `server` (die `caldav`/`vobject` dupliziert; ohne Spiegelung
-  `ImportError` beim `.[server]`-Install, da der Import top-level steht). **Nicht**
-  in `tower` (führt `caldav`/`vobject` nicht; kein nextcloud-Importpfad).
-- `carddav_sync.py:21` und `nextcloud_files.py:14`: Import auf
-  `import defusedxml.ElementTree as ET` umstellen. Keine weiteren Änderungen am
-  Parsing-Code.
-- **Fail-closed-Entscheidung:** Die `except ET.ParseError`-Blöcke fangen
-  `defusedxml`-Härtungs-Exceptions (`EntitiesForbidden`/`DTDForbidden`, leiten von
-  `ValueError` ab, **nicht** von `ParseError`) **nicht**. Damit ein bösartiger
-  Server keine ungefangene Exception nach oben propagiert, werden die except-Blöcke
-  auf `defusedxml.common.DefusedXmlException` erweitert → saubere
-  `CardDavError`/`NextcloudError` bzw. „nichts gefunden", plus `logger.warning`.
+- **Zentraler gehärteter Parser** `src/elder_berry/tools/safe_xml.py` mit
+  `safe_fromstring(text) -> ET.Element`, das
+  `defusedxml.ElementTree.fromstring(text, forbid_dtd=True)` aufruft. Wichtig:
+  `defusedxml` blockt per Default nur Entity-Expansion (`forbid_entities`) und
+  externe Entities (`forbid_external`), **nicht** die DOCTYPE-/DTD-Deklaration
+  selbst (`forbid_dtd` ist defaultmäßig `False`). Erst `forbid_dtd=True` macht
+  die zugesagte DTD-Härtung wirksam. Ein reiner Import-Swap allein hätte einen
+  DTD-only-Response nicht abgewehrt.
+- `carddav_sync.py` und `nextcloud_files.py`: nutzen `safe_fromstring` an allen
+  drei Parse-Stellen (stdlib-`ET` bleibt für die getypte Element-/ParseError-API
+  importiert).
+- **Fail-closed an allen drei Stellen:** Die `except`-Blöcke fangen jetzt
+  `(ET.ParseError, DefusedXmlException)` → saubere `NextcloudError` bzw. „nichts
+  gefunden". Insbesondere wird **auch** `NextcloudFilesClient._parse_propfind`
+  (Verzeichnis-Listing, hatte vorher keinen umgebenden Catch) gewrappt, damit
+  bösartiges WebDAV-XML als `NextcloudError` endet statt als rohe
+  `DefusedXmlException` nach oben zu propagieren.
+- `pyproject.toml`: `defusedxml>=0.7.1` in `nextcloud`, `server` **und** `tower`.
+  `tower` muss dabei sein, weil `scripts/start_saleria.py` (Tower) bei
+  konfiguriertem `nextcloud_url` `NextcloudFilesClient` top-level importiert; ohne
+  die Dep schlüge `.[tower]` mit `ImportError` fehl.
 
 ### Betroffene Dateien (S2)
 
 | Datei | Änderung |
 |---|---|
-| `pyproject.toml` | `defusedxml>=0.7.1` in `nextcloud` + `server` |
-| `src/elder_berry/tools/carddav_sync.py` | Import-Swap; except auf `DefusedXmlException` |
-| `src/elder_berry/tools/nextcloud_files.py` | Import-Swap (2×); except auf `DefusedXmlException`; Docstring |
+| `src/elder_berry/tools/safe_xml.py` *(neu)* | `safe_fromstring` (defusedxml, `forbid_dtd=True`) |
+| `pyproject.toml` | `defusedxml>=0.7.1` in `nextcloud` + `server` + `tower` |
+| `src/elder_berry/tools/carddav_sync.py` | `safe_fromstring`; except auf `DefusedXmlException` |
+| `src/elder_berry/tools/nextcloud_files.py` | `safe_fromstring` (2×); `_parse_propfind` gewrappt; except erweitert; Docstring |
 
 ### Tests (S2)
 
 - `tests/test_carddav_sync.py` / `tests/test_nextcloud_files.py`: bestehende
   gutartige PROPFIND-Mocks bleiben grün (identisches Parsing).
-- Neuer Negativ-Test je Modul: bösartiges XML (DOCTYPE mit Entity-Expansion) →
-  erwartet `defusedxml`-Härtung statt Expansion, sauber gefangen.
+- `tests/test_xml_hardening.py` *(neu)*: drei bösartige Payloads
+  (Billion-Laughs, externe Entity, **reine DTD ohne Entities**) →
+  `_parse_propfind` wirft `NextcloudError`, `_list_vcf_hrefs` liefert `[]`. Der
+  DTD-only-Fall deckt gezielt `forbid_dtd=True` ab (ohne das Flag würde der
+  DOCTYPE ungehindert geparst).
 
 ## S4 – SQL-Allowlist-Guard
 
@@ -239,8 +255,8 @@ ohne expliziten Guard brüchig.
 2. Voller `pytest` grün; `ruff` + `mypy` (core/tools strict) auf geänderten Modulen.
 3. **S1-Akzeptanz:** `python -m elder_berry.robot.simulator --bind 0.0.0.0` ohne
    `ELDER_BERRY_ROBOT_TOKEN` bricht mit Exit 2 ab; mit Token läuft er.
-4. **S2-Akzeptanz:** bösartiges PROPFIND-XML (Entity-Expansion) wird von beiden
-   Modulen abgewehrt, nicht expandiert.
+4. **S2-Akzeptanz:** bösartiges PROPFIND-XML (Entity-Expansion, externe Entity
+   **und reine DTD**) wird von beiden Modulen abgewehrt, nicht expandiert/geparst.
 5. **S4-Akzeptanz:** `_assert_known_columns(['evil; DROP'])` wirft `ValueError`;
    Normalpfad unverändert.
 6. Append-only Journal-Eintrag mit ausgeführten Tests + nächstem Schritt.

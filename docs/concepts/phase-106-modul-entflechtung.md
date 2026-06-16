@@ -59,10 +59,16 @@ Test-Module, geringe Kopplung), dann `llm_flow` und `picks`.
 `tests/test_comms.py:1162/1197/1224` patcht `elder_berry.comms.message_handlers.logger`.
 Drei asserted `logger.error`-Aufrufe (command / command:status / llm) liegen in
 `handle_remote_command` bzw. `handle_assistant_message` → wandern in
-`CommandDispatchMixin`/`LlmFlowMixin`. **Lösung:** die Mixins importieren den
-**einen** Logger aus dem Wrapper-Modul (`from elder_berry.comms.message_handlers
-import logger`) statt je `getLogger(__name__)` — so bleibt der Patch gültig. Vor
-dem Split die Logger-Assertions inventarisieren.
+`CommandDispatchMixin`/`LlmFlowMixin`. **Lösung (korrigiert nach Codex-Review
+PR #320):** Ein `from elder_berry.comms.message_handlers import logger` in den
+Mixins reicht **nicht** — das kopiert die aktuelle Logger-Referenz zur
+Import-Zeit; ein späteres `patch("…message_handlers.logger")` ersetzt nur das
+Modul-Attribut, nicht die bereits kopierten Bindings, und die asserted Calls
+würden nicht beobachtet (Tests still falsch-grün). Stattdessen **dynamischer
+Lookup**: die Mixins referenzieren das Wrapper-Modul-Attribut zur Laufzeit
+(`from elder_berry.comms import message_handlers as _mh` → `_mh.logger.error(…)`),
+oder die Tests patchen explizit die je-Mixin-Logger. Vor dem Split die
+Logger-Assertions inventarisieren.
 
 ## Die übrigen 5 Dateien (je Ein-Satz-Ansatz)
 
