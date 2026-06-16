@@ -419,6 +419,8 @@ class ProposalStore:
     # ------------------------------------------------------------------
 
     def get_by_id(self, proposal_id: str) -> Proposal | None:
+        # B608 false positive: nur die import-validierte Konstante _PROPOSAL_COLS;
+        # proposal_id parametrisiert via '?'.
         row = self._conn.execute(
             "SELECT " + _PROPOSAL_COLS + " FROM plugin_proposals WHERE id = ?",
             (proposal_id,),
@@ -432,6 +434,8 @@ class ProposalStore:
         Dedupe-Prompt relevantesten zuerst (siehe Konzept §3.6).
         """
         placeholders = ", ".join("?" for _ in _ACTIVE_STATUSES)
+        # B608 false positive: _PROPOSAL_COLS ist import-validiert, placeholders
+        # eine reine '?'-Folge aus len(_ACTIVE_STATUSES); alle Werte via '?'.
         rows = self._conn.execute(
             f"SELECT {_PROPOSAL_COLS} FROM plugin_proposals "
             f"WHERE status IN ({placeholders}) "
@@ -446,6 +450,9 @@ class ProposalStore:
         """Liste aller Proposals, optional gefiltert nach Status."""
         if status is not None and status not in _VALID_STATUSES:
             raise InvalidStatusError(f"Ungueltiger Status: {status!r}")
+        # B608 false positive (beide Zweige): nur die import-validierte
+        # Konstante _PROPOSAL_COLS; status (gegen _VALID_STATUSES geprueft) und
+        # limit sind parametrisiert via '?'.
         if status is None:
             rows = self._conn.execute(
                 f"SELECT {_PROPOSAL_COLS} FROM plugin_proposals "
@@ -532,6 +539,9 @@ class ProposalStore:
         if not sanitized:
             return []
         try:
+            # B608 false positive: nur _PROPOSAL_COLS_PREFIXED (import-validiert);
+            # die FTS-Query ist via _sanitize_fts_query auf \w+ reduziert und
+            # parametrisiert via '?'.
             rows = self._conn.execute(
                 f"SELECT {_PROPOSAL_COLS_PREFIXED} "
                 "FROM plugin_proposals p "
@@ -636,3 +646,49 @@ _PROPOSAL_COLS_PREFIXED = (
     "p.rejected_reason, p.implemented_in, "
     "p.related_proposals"
 )
+
+# Phase 103 (S4): Allowlist + Konsistenz-Assert. Die SELECTs setzen
+# _PROPOSAL_COLS / _PROPOSAL_COLS_PREFIXED per f-String ein (bandit B608). Es
+# fliesst KEIN dynamischer Input in diese Konstanten, daher genuegt ein
+# einmaliger Assert beim Import: beide Konstanten duerfen nur erlaubte
+# Spaltennamen enthalten. Schuetzt gegen versehentlich eingeschleuste
+# Bezeichner und gegen Drift gegenueber _row_to_proposal.
+_ALLOWED_PROPOSAL_COLUMNS: frozenset[str] = frozenset(
+    {
+        "id",
+        "title",
+        "status",
+        "description_md",
+        "suggested_category",
+        "suggested_priority",
+        "created_at",
+        "updated_at",
+        "trigger_count",
+        "last_triggered_at",
+        "notified_at",
+        "last_confidence",
+        "rejected_reason",
+        "implemented_in",
+        "related_proposals",
+    }
+)
+
+
+def _columns_of(cols_sql: str) -> list[str]:
+    """Zerlegt eine SELECT-Spaltenliste (ggf. mit ``p.``-Prefix) in Namen."""
+    return [c.strip().removeprefix("p.") for c in cols_sql.split(",")]
+
+
+def _assert_proposal_columns_allowed() -> None:
+    """Verifiziert beide Spalten-Konstanten gegen die Allowlist (Import-Zeit)."""
+    for const in (_PROPOSAL_COLS, _PROPOSAL_COLS_PREFIXED):
+        unknown = [
+            c for c in _columns_of(const) if c not in _ALLOWED_PROPOSAL_COLUMNS
+        ]
+        if unknown:
+            raise ValueError(
+                f"Unerlaubte SQL-Spaltennamen in proposal_store: {unknown!r}"
+            )
+
+
+_assert_proposal_columns_allowed()

@@ -112,7 +112,13 @@ def mock_controller():
 
 @pytest.fixture
 def agent_server(mock_controller):
-    return AgentServer(controller=mock_controller, hostname="test-laptop")
+    # Phase 103 (S1): tokenlose Konstruktion erfordert einen expliziten
+    # Loopback-Bind. 127.0.0.1 ist der Test-/Dev-Default.
+    return AgentServer(
+        controller=mock_controller,
+        hostname="test-laptop",
+        bind_host="127.0.0.1",
+    )
 
 
 @pytest.fixture
@@ -454,10 +460,13 @@ class TestAgentServerTokenAuth:
     """AgentServer schützt Endpoints mit Token-Auth wenn agent_token gesetzt."""
 
     def _make_server_with_token(self, token: str | None):
+        # Phase 103 (S1): bei token=None muss bind_host (Loopback) explizit
+        # gesetzt sein; mit Token ist der Loopback-Bind ebenfalls gueltig.
         return AgentServer(
             controller=MockActionController(),
             hostname="test-laptop",
             agent_token=token,
+            bind_host="127.0.0.1",
         )
 
     def test_no_token_configured_allows_all(self):

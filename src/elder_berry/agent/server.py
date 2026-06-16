@@ -34,6 +34,7 @@ from elder_berry.agent.protocol import (
     ApiResponse,
     HealthResponse,
 )
+from elder_berry.core.bind_policy import is_loopback_host
 from elder_berry.web.rate_limiter import RateLimiter
 
 logger = logging.getLogger(__name__)
@@ -146,7 +147,29 @@ class AgentServer:
         controller: ActionController,
         hostname: str | None = None,
         agent_token: str | None = None,
+        bind_host: str | None = None,
     ) -> None:
+        # Phase 103 (S1): fail-closed. Ohne Token darf der AgentServer nur fuer
+        # einen Loopback-Bind konstruiert werden -- und der Bind muss EXPLIZIT
+        # deklariert werden. Sonst koennte ein ad-hoc-uvicorn-Wrapper, der
+        # AgentServer(controller) ohne Token/Bind baut, eine ungeschuetzte App
+        # erzeugen und sie spaeter ans LAN binden (alle Aktions-Endpoints --
+        # Tastatur/Maus/Fenster -- waeren ungeprueft). Mit gesetztem Token ist
+        # bind_host frei (das Token schuetzt jeden Bind).
+        if not agent_token:
+            if bind_host is None:
+                raise ValueError(
+                    "AgentServer ohne agent_token muss bind_host explizit "
+                    "setzen (nur Loopback erlaubt). Fuer LAN-Betrieb "
+                    "ELDER_BERRY_AGENT_TOKEN setzen."
+                )
+            if not is_loopback_host(bind_host):
+                raise ValueError(
+                    f"AgentServer ohne agent_token darf nicht auf nicht-"
+                    f"Loopback-Host '{bind_host}' gebunden werden. "
+                    f"ELDER_BERRY_AGENT_TOKEN setzen."
+                )
+
         self._controller = controller
         self._hostname = hostname or platform.node()
         self._start_time = time.monotonic()

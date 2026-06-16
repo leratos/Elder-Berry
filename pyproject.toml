@@ -108,6 +108,10 @@ web = [
 nextcloud = [
     "caldav>=3.2.1",
     "vobject>=0.9.9",
+    # Phase 103 (S2): defusedxml haertet das Parsen externer CardDAV-/WebDAV-
+    # Antworten (carddav_sync, nextcloud_files) gegen XXE / Entity-Expansion /
+    # DTD. Pure-Python Drop-in fuer xml.etree.ElementTree.
+    "defusedxml>=0.7.1",
 ]
 harmony = [
     "aioharmony>=1.0.8",
@@ -131,6 +135,11 @@ tower = [
     # Phase 86.1: css_decl_resolver fuer den Sanitizer (geplant 86.2),
     # gleicher Import-Pfad wie bs4.
     "tinycss2>=1.5.1",
+    # Phase 103 (S2): start_saleria importiert auf dem Tower
+    # NextcloudFilesClient (wenn nextcloud_url gesetzt); der defusedxml-
+    # Import in nextcloud_files steht top-level -> tower braucht die Dep,
+    # sonst ImportError beim '.[tower]'-Full-Install.
+    "defusedxml>=0.7.1",
 ]
 server = [
     "matrix-nio>=0.25.2",
@@ -144,6 +153,10 @@ server = [
     "beautifulsoup4>=4.14.3",
     "caldav>=3.2.1",
     "vobject>=0.9.9",
+    # Phase 103 (S2): siehe nextcloud-Gruppe -- server dupliziert die
+    # caldav/vobject-Deps und braucht defusedxml deshalb ebenfalls (der
+    # Import in carddav_sync/nextcloud_files steht top-level).
+    "defusedxml>=0.7.1",
     # Phase 86.1: server-Tower-Pipeline pullt html_email_sanitizer
     # (geplant 86.2) transitiv ueber email_client/IMAP. tinycss2
     # ist die CSS-Tokenisierungs-Dep dafuer.
@@ -163,6 +176,11 @@ dev = [
     # Aufwand fuer dev-Setup ist gegen die Test-Coverage vernachlaessigbar.
     "beautifulsoup4>=4.14.3",
     "tinycss2>=1.5.1",
+    # Phase 103 (S2): carddav_sync/nextcloud_files/safe_xml importieren
+    # defusedxml top-level. Ohne diese Dep im dev-Set scheitert
+    # `pip install -e .[dev]` + `pytest tests/` bereits beim Collecten von
+    # test_xml_hardening/test_nextcloud_files (Codex PR #321 P2).
+    "defusedxml>=0.7.1",
 ]
 
 [tool.setuptools.packages.find]
@@ -238,6 +256,8 @@ module = [
     "tinycss2.*",           # Phase 86.1: css_decl_resolver. Keine Stubs,
                             # oeffentliche Resolver-API arbeitet ueber
                             # tinycss2.ast.Node-Listen, intern getypt.
+    "defusedxml.*",         # Phase 103 (S2): XML-Haertung. Kein py.typed;
+                            # fromstring wird ueber stdlib-ET-Element annotiert.
 ]
 ignore_missing_imports = true
 
@@ -273,6 +293,7 @@ ignore_errors = true
 # --- Phase 76 strict: alle core/-Module ---
 [[tool.mypy.overrides]]
 module = [
+    "elder_berry.core.bind_policy",
     "elder_berry.core.log_sanitize",
     "elder_berry.core.prompts",
     "elder_berry.core.path_guard",
@@ -378,6 +399,7 @@ module = [
     "elder_berry.tools.css_decl_resolver",
     "elder_berry.tools.nextcloud_files",
     "elder_berry.tools.note_store",
+    "elder_berry.tools.safe_xml",
     "elder_berry.tools.recurrence",
     "elder_berry.tools.reminder_store",
     "elder_berry.tools.stirling_pdf",

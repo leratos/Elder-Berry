@@ -14,7 +14,11 @@ vobject = pytest.importorskip("vobject", reason="vobject nicht installiert")
 
 # E402: Import bewusst NACH importorskip – carddav_sync importiert vobject; bei
 # fehlendem Paket soll der Test sauber skippen statt beim Collect zu crashen.
-from elder_berry.tools.carddav_sync import CardDAVSyncClient, SyncResult  # noqa: E402
+from elder_berry.tools.carddav_sync import (  # noqa: E402
+    CardDAVSyncClient,
+    CardDAVSyncError,
+    SyncResult,
+)
 from elder_berry.tools.contact_store import Contact, ContactStore  # noqa: E402
 
 
@@ -885,3 +889,54 @@ class TestSyncResult:
         assert "2 gepullt" in s
         assert "1 Konflikte" in s
         assert "1 Fehler" in s
+
+
+class TestListVcfHrefsFailClosed:
+    """P1 (Codex PR #321): _list_vcf_hrefs darf Fehler NICHT als leeres
+    Adressbuch signalisieren, und reset_and_pull darf bei Pull-Fehler nicht
+    loeschen."""
+
+    def test_raises_on_bad_status(self, client):
+        bad = MagicMock(status_code=500)
+        with patch(
+            "elder_berry.tools.carddav_sync.httpx.request", return_value=bad
+        ):
+            with pytest.raises(CardDAVSyncError):
+                client._list_vcf_hrefs()
+
+    def test_raises_on_http_error(self, client):
+        import httpx
+
+        with patch(
+            "elder_berry.tools.carddav_sync.httpx.request",
+            side_effect=httpx.ConnectError("refused"),
+        ):
+            with pytest.raises(CardDAVSyncError):
+                client._list_vcf_hrefs()
+
+    def test_valid_empty_addressbook_returns_empty(self, client):
+        empty = MagicMock(
+            status_code=207,
+            text='<?xml version="1.0"?><d:multistatus xmlns:d="DAV:"/>',
+        )
+        with patch(
+            "elder_berry.tools.carddav_sync.httpx.request", return_value=empty
+        ):
+            assert client._list_vcf_hrefs() == []
+
+    def test_reset_and_pull_does_not_delete_on_propfind_failure(
+        self, client, tmp_path: Path
+    ):
+        store = ContactStore(db_path=tmp_path / "c.db")
+        store.add("@user:matrix.org", "Bestand", role="Vermieter")
+        bad = MagicMock(status_code=500)
+        try:
+            with patch(
+                "elder_berry.tools.carddav_sync.httpx.request", return_value=bad
+            ):
+                with pytest.raises(CardDAVSyncError):
+                    client.reset_and_pull(store, "@user:matrix.org")
+            # Kein Datenverlust: lokaler Kontakt ist NICHT geloescht worden.
+            assert store.find_by_name("@user:matrix.org", "Bestand") is not None
+        finally:
+            store.close()
