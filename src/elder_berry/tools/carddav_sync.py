@@ -840,12 +840,19 @@ class CardDAVSyncClient:
             try:
                 url = self._href_to_url(href)
                 resp = httpx.get(url, auth=self._auth, timeout=10.0)
-                if resp.status_code != 200:
-                    continue
-                if f"UID:{vcard_uid}" in resp.text:
-                    return href
-            except Exception:
+            except httpx.HTTPError as exc:
+                # Phase 104 (S3): ein transienter Fetch-Fehler ist NICHT von
+                # "href existiert nicht mehr" unterscheidbar. Still ueberspringen
+                # wuerde am Ende None liefern -> _update_existing_vcard legt
+                # faelschlich eine neue vCard an (Duplikat). Daher abbrechen.
+                raise CardDAVSyncError(
+                    f"vCard-Fetch fuer {href} fehlgeschlagen: {exc}"
+                ) from exc
+            # Echtes 404/weg (Status != 200) zaehlt als "nicht in diesem href".
+            if resp.status_code != 200:
                 continue
+            if f"UID:{vcard_uid}" in resp.text:
+                return href
 
         return None
 

@@ -727,6 +727,9 @@ class RobotServer:
                 )
                 behind = int(r.stdout.strip()) if r.returncode == 0 else 0
             except Exception:
+                # Phase 104 (Q2): best-effort -- konnte behind-count nicht
+                # ermitteln, nehme 0 an. Diagnose-Log statt stillem Schlucken.
+                logger.debug("git rev-list (behind-count) fehlgeschlagen", exc_info=True)
                 behind = 0
 
             if behind == 0:
@@ -779,8 +782,11 @@ class RobotServer:
                     steps.append("Dependencies installiert")
                 else:
                     steps.append(f"pip Warnung: {r.stderr[:200]}")
-            except Exception as e:
-                steps.append(f"pip Fehler: {e}")
+            except Exception:
+                # Phase 104 (Q2/Leak-Audit): rohe Exception NICHT in die
+                # HTTP-Antwort (steps -> message) schreiben; Detail ins Log.
+                logger.exception("pip install fehlgeschlagen")
+                steps.append("pip Fehler – Details im Log.")
 
             # 5. systemctl restart
             try:
@@ -790,8 +796,11 @@ class RobotServer:
                     stderr=subprocess.DEVNULL,
                 )
                 steps.append(f"Neustart via systemctl ({self._service_name})")
-            except Exception as e:
-                steps.append(f"Neustart fehlgeschlagen: {e}")
+            except Exception:
+                # Phase 104 (Q2/Leak-Audit): siehe oben -- Detail ins Log, nicht
+                # in die Antwort.
+                logger.exception("systemctl restart fehlgeschlagen")
+                steps.append("Neustart fehlgeschlagen – Details im Log.")
 
             return asdict(
                 ApiResponse(

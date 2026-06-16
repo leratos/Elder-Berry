@@ -281,5 +281,5 @@ class TodoStore:
         """Verbindung sauber schließen."""
         try:
             self._conn.close()
-        except Exception:
+        except Exception:  # noqa: BLE001 -- best-effort close, Fehler irrelevant
             pass

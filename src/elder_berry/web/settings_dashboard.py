@@ -1006,7 +1006,14 @@ class SettingsDashboard:
                 try:
                     return float(raw)
                 except ValueError:
-                    pass
+                    # Phase 104 (S3): ein vom User gesetzter, aber ungueltiger
+                    # Wert wird ignoriert -> sichtbar machen (warning), statt
+                    # still auf den Default zu fallen.
+                    logger.warning(
+                        "Ungueltiger %s-Wert %r, nutze Default",
+                        self.STT_TIMEOUT_KEY,
+                        raw,
+                    )
         if self._audio_pipeline is not None:
             return self._audio_pipeline.stt_timeout
         return self.DEFAULT_STT_TIMEOUT

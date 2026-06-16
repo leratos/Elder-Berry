@@ -1059,3 +1059,23 @@ class TestConnectionRecovery:
 
         assert result == []
         assert len(attempts) == 2
+
+
+class TestFindTodoByUidErrorHandling:
+    """Phase 104 (S3): _find_todo_by_uid darf retry-faehige Fehler nicht
+    schlucken (sonst meldet die Operation faelschlich 'nicht gefunden')."""
+
+    def test_retriable_error_propagates(self):
+        client, _ = _client_with_task_list()
+        tl = MagicMock()
+        tl.todo_by_uid.side_effect = ConnectionError("stale connection")
+        with patch.object(client, "_get_task_lists", return_value=[tl]):
+            with pytest.raises(ConnectionError):
+                client._find_todo_by_uid("u1")
+
+    def test_non_retriable_error_returns_none(self):
+        client, _ = _client_with_task_list()
+        tl = MagicMock()
+        tl.todo_by_uid.side_effect = ValueError("not in this list")
+        with patch.object(client, "_get_task_lists", return_value=[tl]):
+            assert client._find_todo_by_uid("u1") is None
