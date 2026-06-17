@@ -285,13 +285,11 @@ module = [
     "elder_berry.character.*",
     "elder_berry.llm.*",
     "elder_berry.memory.*",
-    # Phase 105-B1: robot.* durch Einzeleintraege ersetzt (wie comms in 76b).
-    # Noch nicht strict -- B2 (client/server/alexa) + spaeterer Tier
-    # (rpi5_avatar, gekoppelt an noch-nicht-striktes avatar/).
+    # Phase 105-B1/B2: robot.* durch Einzeleintraege ersetzt (wie comms in 76b).
+    # B2a (client/alexa_skill_handler) jetzt strict; server folgt in B2b;
+    # rpi5_avatar spaeterer Tier (gekoppelt an noch-nicht-striktes avatar/).
     "elder_berry.robot.rpi5_avatar",
-    "elder_berry.robot.client",
     "elder_berry.robot.server",
-    "elder_berry.robot.alexa_skill_handler",
     "elder_berry.server.*",
     "elder_berry.stt.*",
     "elder_berry.system.*",
@@ -463,6 +461,15 @@ module = [
     "elder_berry.robot.harmony_scene_manager",
     "elder_berry.robot.camera_controller",
     "elder_berry.robot.harmony_adapter",
+]
+strict = true
+
+# --- Phase 105-B2a strict: robot/ core (client + alexa_skill_handler) ---
+# server.py folgt in B2b; bleibt solange im ignore_errors-Block oben.
+[[tool.mypy.overrides]]
+module = [
+    "elder_berry.robot.client",
+    "elder_berry.robot.alexa_skill_handler",
 ]
 strict = true
 
