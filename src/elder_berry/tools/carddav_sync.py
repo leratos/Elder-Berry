@@ -848,9 +848,17 @@ class CardDAVSyncClient:
                 raise CardDAVSyncError(
                     f"vCard-Fetch fuer {href} fehlgeschlagen: {exc}"
                 ) from exc
-            # Echtes 404/weg (Status != 200) zaehlt als "nicht in diesem href".
-            if resp.status_code != 200:
+            # Phase 104 (Codex PR #322 P1): httpx.get wirft NICHT bei 5xx/429/
+            # Auth -- nur echtes "weg" (404/410) zaehlt als "nicht in diesem
+            # href". Andere Nicht-200 (5xx/429/401/403/Proxy) sind transiente
+            # Fehler und duerfen NICHT als "nicht gefunden" durchgehen (sonst
+            # Duplikat) -> fail-closed.
+            if resp.status_code in (404, 410):
                 continue
+            if resp.status_code != 200:
+                raise CardDAVSyncError(
+                    f"vCard-Fetch {href} lieferte HTTP {resp.status_code}"
+                )
             if f"UID:{vcard_uid}" in resp.text:
                 return href
 

@@ -551,3 +551,15 @@ class TestClose:
         s.add(USER, "Test")
         s.close()
         s.close()
+
+    def test_close_swallows_connection_error(self, tmp_path: Path) -> None:
+        # Phase 104 (S3): close() ist best-effort -- ein Fehler beim Schliessen
+        # darf nicht propagieren.
+        s = ContactStore(db_path=tmp_path / "c2.db")
+
+        class _Boom:
+            def close(self) -> None:
+                raise RuntimeError("boom")
+
+        s._conn = _Boom()  # type: ignore[assignment]
+        s.close()
