@@ -258,6 +258,13 @@ module = [
                             # tinycss2.ast.Node-Listen, intern getypt.
     "defusedxml.*",         # Phase 103 (S2): XML-Haertung. Kein py.typed;
                             # fromstring wird ueber stdlib-ET-Element annotiert.
+    # Phase 105-B1: RPi5-only Hardware-/Bild-Libs. Nicht im typecheck-Install
+    # (computer-use/picamera/lgpio sind plattform- bzw. RPi-gebunden) -> sonst
+    # import-not-found, bevor die robot/-Annotationen geprueft werden.
+    "lgpio.*",              # turntable_controller (RPi5-GPIO)
+    "picamera2.*",          # camera_controller (RPi-Kamera, libcamera)
+    "PIL.*",                # camera_controller + simulator (Test-/Sim-JPEG;
+                            # Pillow nur in computer-use-Gruppe, kein Stub-Wert)
 ]
 ignore_missing_imports = true
 
@@ -278,7 +285,13 @@ module = [
     "elder_berry.character.*",
     "elder_berry.llm.*",
     "elder_berry.memory.*",
-    "elder_berry.robot.*",
+    # Phase 105-B1: robot.* durch Einzeleintraege ersetzt (wie comms in 76b).
+    # Noch nicht strict -- B2 (client/server/alexa) + spaeterer Tier
+    # (rpi5_avatar, gekoppelt an noch-nicht-striktes avatar/).
+    "elder_berry.robot.rpi5_avatar",
+    "elder_berry.robot.client",
+    "elder_berry.robot.server",
+    "elder_berry.robot.alexa_skill_handler",
     "elder_berry.server.*",
     "elder_berry.stt.*",
     "elder_berry.system.*",
@@ -434,6 +447,22 @@ module = [
     "elder_berry.agent.protocol",
     "elder_berry.agent.client",
     "elder_berry.agent.server",
+]
+strict = true
+
+# --- Phase 105-B1 strict: robot/ trivial-Module ---
+# client/server/alexa_skill_handler folgen in B2; rpi5_avatar spaeter
+# (avatar/-Kopplung). Beide bleiben solange im ignore_errors-Block oben.
+[[tool.mypy.overrides]]
+module = [
+    "elder_berry.robot",                        # __init__.py
+    "elder_berry.robot.protocol",
+    "elder_berry.robot.harmony_layout_manager",
+    "elder_berry.robot.simulator",
+    "elder_berry.robot.turntable_controller",
+    "elder_berry.robot.harmony_scene_manager",
+    "elder_berry.robot.camera_controller",
+    "elder_berry.robot.harmony_adapter",
 ]
 strict = true
 

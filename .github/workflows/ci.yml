@@ -95,6 +95,7 @@ jobs:
     # Phase 76 + 76c: hartes Gate. Alle core/-, tools/- und web/-Module
     # sind strict getypt; ein Type-Fehler scheitert die Pipeline.
     # Phase 105-A: agent/ kommt strict dazu (netz-exponierter Laptop-Tier).
+    # Phase 105-B1: robot/-Trivial-Module strict (Rest noch ignore_errors).
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -120,8 +121,12 @@ jobs:
           python -m pip install --upgrade pip
           pip install -e ".[dev,tools,nextcloud,web,documents,agent]"
 
-      - name: Type-check core/+tools/+web/+comms/+agent/
-        run: mypy src/elder_berry/core src/elder_berry/tools src/elder_berry/web src/elder_berry/comms src/elder_berry/agent
+      - name: Type-check core/+tools/+web/+comms/+agent/+robot/
+        # robot/ enthaelt noch ignore_errors-Module (client/server/alexa/
+        # rpi5_avatar, B2 + spaeter); deren Funde sind unterdrueckt, die
+        # strikten 105-B1-Module werden hart geprueft. robot-Extra ist leer,
+        # alle robot-Deps sind Basis-Deps bzw. ignore_missing_imports.
+        run: mypy src/elder_berry/core src/elder_berry/tools src/elder_berry/web src/elder_berry/comms src/elder_berry/agent src/elder_berry/robot
 
   security:
     runs-on: ubuntu-latest

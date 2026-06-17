@@ -136,7 +136,7 @@ class HarmonySceneManager:
         scene = self.get_scene(name)
         steps = scene.get("steps", [])
 
-        result = {
+        result: dict[str, Any] = {
             "scene": name,
             "steps_total": len(steps),
             "steps_ok": 0,

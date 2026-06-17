@@ -12,6 +12,7 @@ import logging
 import threading
 import time
 from abc import ABC, abstractmethod
+from collections.abc import Callable
 
 logger = logging.getLogger(__name__)
 
@@ -154,7 +155,7 @@ class RPi5TurntableController(TurntableController):
 
     def _read_hall(self) -> bool:
         """Liest Hall-Sensor. Returns True wenn Magnet erkannt (LOW)."""
-        return self._lgpio.gpio_read(self._chip, HALL_PIN) == 0
+        return bool(self._lgpio.gpio_read(self._chip, HALL_PIN) == 0)
 
     def _step_motor(self, steps: int) -> int:
         """Bewegt Motor um N Half-Steps. Prueft _stop_requested pro Step.
@@ -252,7 +253,7 @@ class RPi5TurntableController(TurntableController):
         finally:
             self._is_moving = False
 
-    def _start_worker(self, target: callable) -> None:
+    def _start_worker(self, target: Callable[[], None]) -> None:
         """Startet Worker-Thread. Raises RuntimeError wenn bereits Rotation laeuft."""
         if self._is_moving:
             raise RuntimeError("Rotation laeuft bereits -- erst stop() aufrufen")
