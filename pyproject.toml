@@ -274,7 +274,6 @@ ignore_missing_imports = true
 [[tool.mypy.overrides]]
 module = [
     "elder_berry.actions.*",
-    "elder_berry.agent.*",
     "elder_berry.avatar.*",
     "elder_berry.character.*",
     "elder_berry.llm.*",
@@ -425,6 +424,16 @@ module = [
     "elder_berry.web.settings_token_middleware",
     "elder_berry.web.setup_tests",
     "elder_berry.web.setup_wizard",
+]
+strict = true
+
+# --- Phase 105-A strict: agent/ (Laptop-Tier, netz-exponierte Server-Pfade) ---
+[[tool.mypy.overrides]]
+module = [
+    "elder_berry.agent",            # __init__.py
+    "elder_berry.agent.protocol",
+    "elder_berry.agent.client",
+    "elder_berry.agent.server",
 ]
 strict = true
 

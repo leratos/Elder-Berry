@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 from pathlib import Path
+from typing import Any
 
 import httpx
 
@@ -84,7 +85,7 @@ class AgentClient:
     # --- Aktionen ---
 
     def execute_action(
-        self, action_type: str, params: dict | None = None
+        self, action_type: str, params: dict[str, Any] | None = None
     ) -> ActionResult:
         """Sendet einen Aktionsbefehl an den Laptop-Agent."""
         r = self._client.post(
