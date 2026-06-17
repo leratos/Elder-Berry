@@ -221,3 +221,14 @@ class TestClose:
         s.add(USER, "Test")
         s.close()
         s.close()  # Doppeltes close → kein Crash
+
+    def test_close_swallows_connection_error(self, tmp_path: Path) -> None:
+        # Phase 104 (S3): close() ist best-effort -- Fehler darf nicht propagieren.
+        s = TodoStore(db_path=tmp_path / "t2.db")
+
+        class _Boom:
+            def close(self) -> None:
+                raise RuntimeError("boom")
+
+        s._conn = _Boom()  # type: ignore[assignment]
+        s.close()

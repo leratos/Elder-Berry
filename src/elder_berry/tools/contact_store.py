@@ -829,7 +829,7 @@ class ContactStore:
         """Verbindung sauber schließen."""
         try:
             self._conn.close()
-        except Exception:
+        except Exception:  # noqa: BLE001 -- best-effort close, Fehler irrelevant
             pass
 
     def _get_by_rowid(self, rowid: int) -> Contact:

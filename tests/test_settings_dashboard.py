@@ -41,6 +41,24 @@ def client_no_local(router_no_local):
     return TestClient(dashboard.app)
 
 
+class TestSttTimeoutValidation:
+    """Phase 104 (S3): ungültiger STT_TIMEOUT-Wert wird geloggt, nicht still
+    verschluckt; Rückfall auf Default."""
+
+    def test_invalid_value_warns_and_uses_default(self, router_local, caplog):
+        import logging
+
+        class _Store:
+            def get_or_none(self, key):
+                return "not-a-number"
+
+        dash = SettingsDashboard(audio_router=router_local, secret_store=_Store())
+        with caplog.at_level(logging.WARNING):
+            result = dash._get_stt_timeout()
+        assert isinstance(result, float)
+        assert any("stt_timeout" in r.message for r in caplog.records)
+
+
 class TestDashboardHTML:
     """GET / – HTML-Dashboard."""
 

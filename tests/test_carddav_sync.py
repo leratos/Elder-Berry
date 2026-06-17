@@ -940,3 +940,47 @@ class TestListVcfHrefsFailClosed:
             assert store.find_by_name("@user:matrix.org", "Bestand") is not None
         finally:
             store.close()
+
+
+class TestFindVcardHrefFailClosed:
+    """Phase 104 (S3): der Fallback-Loop darf transiente Fetch-Fehler nicht
+    still als 'nicht gefunden' werten (sonst Duplikat beim Push)."""
+
+    def test_transient_fetch_error_raises(self, client):
+        import httpx
+
+        with (
+            patch.object(
+                client, "_list_vcf_hrefs", return_value=["/addressbook/x.vcf"]
+            ),
+            patch(
+                "elder_berry.tools.carddav_sync.httpx.get",
+                side_effect=httpx.ConnectError("refused"),
+            ),
+        ):
+            with pytest.raises(CardDAVSyncError):
+                client._find_vcard_href("ein-uid")
+
+    def test_404_treated_as_not_found(self, client):
+        resp = MagicMock(status_code=404)
+        with (
+            patch.object(
+                client, "_list_vcf_hrefs", return_value=["/addressbook/x.vcf"]
+            ),
+            patch("elder_berry.tools.carddav_sync.httpx.get", return_value=resp),
+        ):
+            assert client._find_vcard_href("ein-uid") is None
+
+    @pytest.mark.parametrize("status", [500, 502, 503, 429, 401, 403])
+    def test_transient_status_raises(self, client, status):
+        # httpx.get wirft bei diesen Stati NICHT von selbst -> der Handler muss
+        # fail-closen, sonst Duplikat (Codex PR #322 P1).
+        resp = MagicMock(status_code=status)
+        with (
+            patch.object(
+                client, "_list_vcf_hrefs", return_value=["/addressbook/x.vcf"]
+            ),
+            patch("elder_berry.tools.carddav_sync.httpx.get", return_value=resp),
+        ):
+            with pytest.raises(CardDAVSyncError):
+                client._find_vcard_href("ein-uid")

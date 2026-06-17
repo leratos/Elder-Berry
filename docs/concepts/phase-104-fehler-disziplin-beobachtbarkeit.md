@@ -104,3 +104,40 @@ nur die wirklich obsoleten entfernen. Reiner Prozess-Schritt am Phasenende.
 3. Q2-Stufe 1 (robot/agent) verengt + Leak-Audit dokumentiert; AST-Lint-Gate für
    comms eingeführt.
 4. Schuld-Marker im Journal; Journal-Abschlusseintrag.
+
+## Umsetzung (2026-06-16)
+
+**S3 – umgesetzt:**
+- `carddav_sync._find_vcard_href`: Fallback-Loop fängt nur noch
+  `httpx.HTTPError` und **propagiert** (`CardDAVSyncError`) statt still
+  `continue` → kein Duplikat bei transientem Fetch-Fehler; echtes 404 zählt
+  weiter als „nicht in diesem href".
+- `caldav_tasks._find_todo_by_uid`: spiegelt `_get_task_lists` —
+  `except self._RETRIABLE_ERRORS: raise` (retry-fähig propagieren) + enger
+  `except Exception` mit `logger.debug`.
+- `system_commands` (psutil-Disk) + `settings_dashboard._get_stt_timeout`
+  (ungültiger Wert): Diagnose-Log statt stillem `pass`.
+- `contact_store.close` / `todo_store.close`: `# noqa: BLE001`-Kommentar
+  (best-effort, bewusst) angeglichen.
+
+**Q2 – Leak-Audit umgesetzt:**
+- `robot/server.py` `/system/update`: **2 echte Leaks** behoben — `pip Fehler:
+  {e}` und `Neustart fehlgeschlagen: {e}` schrieben die rohe Exception in die
+  HTTP-Antwort (`steps` → `message`). Jetzt `logger.exception(...)` + generische
+  „… – Details im Log."-Meldung. Der stille `behind = 0`-Fallback bekommt ein
+  `logger.debug`.
+- `robot/alexa_skill_handler.py`: **Audit ergab keine Leaks** — alle Catches
+  loggen den Detail und geben eine sanitisierte `AlexaResult` zurück. Keine
+  Änderung nötig. `agent/server.py` ist bereits das Vorbild.
+- Die übrigen robot-Handler (Kamera, Git-Fetch/-Pull) loggen + sanitisieren
+  bereits; ein flächiges `logger.error→exception`-Refactoring wurde als
+  geringwertige Churn bewusst ausgelassen.
+
+**Q5 – kein Handlungsbedarf:** In `src/` existieren **null** echte
+`# TODO`/`# FIXME`/`# HACK`/`# XXX`-Marker. Die „~49" der Analyse waren
+Naming-False-Positives der Todo-Listen-Feature (`ContextSource.TODOS`,
+`VTODO`, `todo_store`, „TODO-Liste").
+
+**Bewusst verschoben (eigener Folgeschnitt):** das **comms-AST-Lint-Gate**
+(„`except Exception` ohne Log/Re-Raise") und die breite `message_handlers`-
+Verengung — zu groß/risikoreich für diese Phase (YAGNI oben).

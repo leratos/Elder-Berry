@@ -353,8 +353,10 @@ class SystemCommandHandler(CommandHandler):
                         )
                     except PermissionError:
                         continue
-            except ImportError:
-                pass
+            except ImportError:  # pragma: no cover - psutil ist harte Dependency
+                # Phase 104 (S3): psutil fehlt -> Disk-Block still uebersprungen.
+                # Diagnose-Log, damit die fehlende Disk-Info nachvollziehbar ist.
+                logger.debug("psutil nicht verfuegbar, Disk-Info uebersprungen")
 
             if info.top_processes:
                 lines.append("Top-Prozesse (CPU):")

@@ -204,7 +204,18 @@ class CalDAVTaskClient:
         for task_list in self._get_task_lists():
             try:
                 return task_list.todo_by_uid(uid)
-            except Exception:
+            except self._RETRIABLE_ERRORS:
+                # Phase 104 (S3): retry-faehige Verbindungs-/Timeout-Fehler NICHT
+                # schlucken -- sonst kommt _call_with_retry nie zum Zug und die
+                # Operation meldet faelschlich "nicht gefunden". Propagieren.
+                raise
+            except Exception as e:
+                # UID nicht in dieser Liste (o. ae.) -> naechste Liste probieren.
+                logger.debug(
+                    "todo_by_uid in '%s' fehlgeschlagen: %s",
+                    getattr(task_list, "name", "?"),
+                    e,
+                )
                 continue
         return None
 
