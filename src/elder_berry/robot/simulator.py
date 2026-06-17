@@ -15,6 +15,7 @@ from __future__ import annotations
 import logging
 import random
 import time
+from typing import Any
 
 from elder_berry.core.audio_analyzer import AmplitudeTrack
 from elder_berry.robot.camera_controller import CameraController
@@ -59,7 +60,7 @@ class SimulatedMotors(MotorController):
         self._active = False
         logger.info("[SIM] Motor: STOP")
 
-    def get_state(self) -> dict:
+    def get_state(self) -> dict[str, Any]:
         return {
             "active": self._active,
             "direction": self._direction,
@@ -86,7 +87,7 @@ class SimulatedAvatar(AvatarDisplay):
         self._speaking = is_speaking
         logger.info("[SIM] Avatar Speaking: %s", is_speaking)
 
-    def get_state(self) -> dict:
+    def get_state(self) -> dict[str, Any]:
         return {
             "emotion": self._emotion,
             "speaking": self._speaking,
@@ -115,7 +116,7 @@ class SimulatedSensors(SensorManager):
             is_low=pct < 20,
         )
 
-    def get_all(self) -> dict:
+    def get_all(self) -> dict[str, Any]:
         battery = self.get_battery()
         return {
             "battery": {

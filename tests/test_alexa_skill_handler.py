@@ -561,3 +561,32 @@ class TestAlexaRequestVerifierSignature:
 
         # Kein Fehler erwartet
         AlexaRequestVerifier._verify_signature(cert, sig_b64, body)
+
+    def test_non_rsa_cert_rejected(self):
+        # Phase 105-B2a: Alexa-Zertifikate sind RSA. Ein Nicht-RSA-Key (hier EC)
+        # muss vom isinstance(RSAPublicKey)-Guard sauber als ungueltig
+        # abgewiesen werden, statt erst beim verify-Call zu scheitern.
+        from cryptography.hazmat.primitives.asymmetric import ec
+        from cryptography.hazmat.backends import default_backend
+        from cryptography import x509
+        from cryptography.hazmat.primitives import hashes
+        from cryptography.x509.oid import NameOID
+
+        ec_key = ec.generate_private_key(ec.SECP256R1(), default_backend())
+        now = datetime.now(tz=timezone.utc)
+        cert = (
+            x509.CertificateBuilder()
+            .subject_name(x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, "test")]))
+            .issuer_name(x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, "test")]))
+            .public_key(ec_key.public_key())
+            .serial_number(x509.random_serial_number())
+            .not_valid_before(now)
+            .not_valid_after(now + timedelta(days=1))
+            .sign(ec_key, hashes.SHA256())
+        )
+        # Gueltiges Base64 (damit der Decode-Schritt passiert und der
+        # RSA-Guard greift, nicht der Base64-Check davor).
+        sig_b64 = base64.b64encode(b"dummy-signature").decode()
+
+        with pytest.raises(AlexaVerificationError, match="RSA"):
+            AlexaRequestVerifier._verify_signature(cert, sig_b64, b"body")

@@ -31,13 +31,15 @@ from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 from dataclasses import asdict
 from pathlib import Path
-from typing import Literal
+from typing import Any, Literal, cast
 
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
-from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
+from starlette.responses import Response
+from starlette.types import ASGIApp
 
 from elder_berry.core.audio_analyzer import DEFAULT_BUCKET_MS, AmplitudeTrack
 from elder_berry.core.log_sanitize import safe_log
@@ -185,7 +187,7 @@ class MotorController(ABC):
         pass
 
     @abstractmethod
-    def get_state(self) -> dict:
+    def get_state(self) -> dict[str, Any]:
         """Gibt aktuellen Motor-Zustand zurück."""
         pass
 
@@ -214,7 +216,7 @@ class AvatarDisplay(ABC):
         pass
 
     @abstractmethod
-    def get_state(self) -> dict:
+    def get_state(self) -> dict[str, Any]:
         """Gibt aktuellen Avatar-Zustand zurück."""
         pass
 
@@ -228,7 +230,7 @@ class SensorManager(ABC):
         pass
 
     @abstractmethod
-    def get_all(self) -> dict:
+    def get_all(self) -> dict[str, Any]:
         """Liest alle Sensoren."""
         pass
 
@@ -255,11 +257,13 @@ class RobotTokenMiddleware(BaseHTTPMiddleware):
     übersprungen (Backwards-Compat für Tests und Token-freie Deployments).
     """
 
-    def __init__(self, app, robot_token: str | None) -> None:
+    def __init__(self, app: ASGIApp, robot_token: str | None) -> None:
         super().__init__(app)
         self._token = robot_token
 
-    async def dispatch(self, request: Request, call_next):
+    async def dispatch(
+        self, request: Request, call_next: RequestResponseEndpoint
+    ) -> Response:
         if not self._token:
             return await call_next(request)
 
@@ -422,7 +426,7 @@ class RobotServer:
         """Registriert alle API-Endpoints."""
 
         @self.app.get("/health")
-        def health() -> dict:
+        def health() -> dict[str, Any]:
             uptime = time.monotonic() - self._start_time
             resp = HealthResponse(
                 status="ok",
@@ -432,7 +436,7 @@ class RobotServer:
             return asdict(resp)
 
         @self.app.get("/status")
-        def status() -> dict:
+        def status() -> dict[str, Any]:
             motor_state = self._motors.get_state()
             avatar_state = self._avatar.get_state()
             battery = self._sensors.get_battery()
@@ -450,7 +454,7 @@ class RobotServer:
             return asdict(robot_status)
 
         @self.app.post("/avatar/emotion")
-        def set_avatar(request: AvatarRequest) -> dict:
+        def set_avatar(request: AvatarRequest) -> dict[str, Any]:
             if request.emotion is not None:
                 # Phase 83.5: decision ist rein additives Logging/Debug – die
                 # Emotion selbst geht weiterhin als String an den AvatarDisplay,
@@ -485,7 +489,7 @@ class RobotServer:
             return asdict(resp)
 
         @self.app.post("/motor/drive")
-        def drive(request: DriveRequest) -> dict:
+        def drive(request: DriveRequest) -> dict[str, Any]:
             self._motors.drive(request.direction, request.speed)
             # safe_log + int-Cast bricht den Taint-Flow fuer beide
             # Felder. Pydantic Literal allein reicht CodeQL nicht --
@@ -504,7 +508,7 @@ class RobotServer:
             return asdict(resp)
 
         @self.app.post("/motor/stop")
-        def stop(request: StopRequest | None = None) -> dict:
+        def stop(request: StopRequest | None = None) -> dict[str, Any]:
             reason = request.reason if request else "manual"
             self._motors.stop()
             safe_reason = safe_log(reason)
@@ -513,17 +517,17 @@ class RobotServer:
             return asdict(resp)
 
         @self.app.get("/sensor/battery")
-        def battery() -> dict:
+        def battery() -> dict[str, Any]:
             return asdict(self._sensors.get_battery())
 
         @self.app.get("/sensor/all")
-        def sensors() -> dict:
+        def sensors() -> dict[str, Any]:
             return self._sensors.get_all()
 
         # --- Kamera ---
 
         @self.app.get("/camera/capture")
-        def camera_capture(quality: int = 85) -> dict:
+        def camera_capture(quality: int = 85) -> dict[str, Any]:
             """Nimmt ein Bild auf und gibt JPEG als Base64 zurück."""
             if not self._camera:
                 return asdict(
@@ -573,7 +577,7 @@ class RobotServer:
                 )
 
         @self.app.get("/camera/status")
-        def camera_status() -> dict:
+        def camera_status() -> dict[str, Any]:
             """Gibt den Kamera-Status zurück."""
             if not self._camera:
                 return {"available": False, "reason": "Keine Kamera konfiguriert"}
@@ -587,7 +591,7 @@ class RobotServer:
         # --- Drehteller ---
 
         @self.app.post("/turntable/rotate")
-        def turntable_rotate(request: TurntableRotateRequest) -> dict:
+        def turntable_rotate(request: TurntableRotateRequest) -> dict[str, Any]:
             if not self._turntable:
                 return asdict(
                     ApiResponse(
@@ -607,7 +611,11 @@ class RobotServer:
                     self._turntable.rotate_to(request.target_degrees)
                     msg = f"Rotation zu {request.target_degrees} Grad gestartet"
                 else:
-                    self._turntable.rotate_by(request.relative_degrees)
+                    # relative_degrees ist hier garantiert nicht None: der
+                    # Both-None-Fall wird oben bereits abgewiesen. cast bricht
+                    # nur die float|None-Annotation, kein Runtime-Verhalten --
+                    # es gibt also keinen echten None-Pfad zu rotate_by.
+                    self._turntable.rotate_by(cast(float, request.relative_degrees))
                     msg = f"Rotation um {request.relative_degrees} Grad gestartet"
                 return asdict(ApiResponse(success=True, message=msg))
             except RuntimeError as e:
@@ -619,7 +627,7 @@ class RobotServer:
                 )
 
         @self.app.post("/turntable/home")
-        def turntable_home() -> dict:
+        def turntable_home() -> dict[str, Any]:
             if not self._turntable:
                 return asdict(
                     ApiResponse(
@@ -644,7 +652,7 @@ class RobotServer:
                 )
 
         @self.app.post("/turntable/stop")
-        def turntable_stop() -> dict:
+        def turntable_stop() -> dict[str, Any]:
             if not self._turntable:
                 return asdict(
                     ApiResponse(
@@ -661,7 +669,7 @@ class RobotServer:
             )
 
         @self.app.get("/turntable/status")
-        def turntable_status() -> dict:
+        def turntable_status() -> dict[str, Any]:
             if not self._turntable:
                 return {
                     "available": False,
@@ -677,7 +685,7 @@ class RobotServer:
         # --- System ---
 
         @self.app.post("/system/update")
-        def system_update() -> dict:
+        def system_update() -> dict[str, Any]:
             """Git pull + pip install + systemctl restart."""
             if not self._project_root:
                 return asdict(
@@ -812,12 +820,12 @@ class RobotServer:
         # --- Harmony Hub ---
 
         @self.app.get("/harmony/status")
-        async def harmony_status() -> dict:
+        async def harmony_status() -> dict[str, Any]:
             """Harmony-Hub Status: Verbindung und aktuelle Aktivitaet."""
             if not self._harmony:
-                return JSONResponse(
-                    {"error": "Harmony nicht konfiguriert"},
+                raise HTTPException(
                     status_code=503,
+                    detail="Harmony nicht konfiguriert",
                 )
             current = await self._harmony.get_current_activity()
             return {
@@ -826,12 +834,12 @@ class RobotServer:
             }
 
         @self.app.get("/harmony/config")
-        async def harmony_config() -> dict:
+        async def harmony_config() -> dict[str, Any]:
             """Harmony-Hub Konfiguration: Aktivitaeten und Geraete."""
             if not self._harmony:
-                return JSONResponse(
-                    {"error": "Harmony nicht konfiguriert"},
+                raise HTTPException(
                     status_code=503,
+                    detail="Harmony nicht konfiguriert",
                 )
             activities = await self._harmony.list_activities()
             devices = await self._harmony.list_devices()
@@ -841,23 +849,23 @@ class RobotServer:
             }
 
         @self.app.post("/harmony/activity")
-        async def harmony_activity(request: HarmonyActivityRequest) -> dict:
+        async def harmony_activity(request: HarmonyActivityRequest) -> dict[str, Any]:
             """Startet eine Harmony-Aktivitaet."""
             if not self._harmony:
-                return JSONResponse(
-                    {"error": "Harmony nicht konfiguriert"},
+                raise HTTPException(
                     status_code=503,
+                    detail="Harmony nicht konfiguriert",
                 )
             success = await self._harmony.start_activity(request.activity)
             return {"success": success, "activity": request.activity}
 
         @self.app.post("/harmony/command")
-        async def harmony_command(request: HarmonyCommandRequest) -> dict:
+        async def harmony_command(request: HarmonyCommandRequest) -> dict[str, Any]:
             """Sendet einen Geraetebefehl ueber den Harmony Hub."""
             if not self._harmony:
-                return JSONResponse(
-                    {"error": "Harmony nicht konfiguriert"},
+                raise HTTPException(
                     status_code=503,
+                    detail="Harmony nicht konfiguriert",
                 )
             success = await self._harmony.send_command(
                 device=request.device,
@@ -867,32 +875,32 @@ class RobotServer:
             return {"success": success}
 
         @self.app.get("/harmony/config/detailed")
-        async def harmony_config_detailed() -> dict:
+        async def harmony_config_detailed() -> dict[str, Any]:
             """Vollstaendige Device-Config mit ControlGroups und Commands."""
             if not self._harmony:
-                return JSONResponse(
-                    {"error": "Harmony nicht konfiguriert"},
+                raise HTTPException(
                     status_code=503,
+                    detail="Harmony nicht konfiguriert",
                 )
             return self._harmony.get_detailed_config()
 
         @self.app.get("/harmony/layouts")
-        async def harmony_layouts() -> dict:
+        async def harmony_layouts() -> dict[str, Any]:
             """Aktuelle Fernbedienungs-Layouts."""
             if not self._harmony_layouts:
-                return JSONResponse(
-                    {"error": "Layouts nicht konfiguriert"},
+                raise HTTPException(
                     status_code=503,
+                    detail="Layouts nicht konfiguriert",
                 )
             return self._harmony_layouts.get_layouts()
 
         @self.app.post("/harmony/layouts")
-        async def harmony_save_layouts(request: dict) -> dict:
+        async def harmony_save_layouts(request: dict[str, Any]) -> dict[str, Any]:
             """Layouts speichern (ueberschreibt komplett)."""
             if not self._harmony_layouts:
-                return JSONResponse(
-                    {"error": "Layouts nicht konfiguriert"},
+                raise HTTPException(
                     status_code=503,
+                    detail="Layouts nicht konfiguriert",
                 )
             self._harmony_layouts.save_layouts(request)
             return {"success": True}
@@ -900,86 +908,86 @@ class RobotServer:
         # --- Harmony Szenen ---
 
         @self.app.get("/harmony/scenes")
-        async def harmony_scenes() -> dict:
+        async def harmony_scenes() -> dict[str, Any]:
             """Alle Szenen auflisten."""
             if not self._harmony_scenes:
-                return JSONResponse(
-                    {"error": "Szenen nicht konfiguriert"},
+                raise HTTPException(
                     status_code=503,
+                    detail="Szenen nicht konfiguriert",
                 )
             return {"scenes": self._harmony_scenes.list_scenes()}
 
         @self.app.post("/harmony/scenes")
-        async def harmony_save_scene(request: dict) -> dict:
+        async def harmony_save_scene(request: dict[str, Any]) -> dict[str, Any]:
             """Szene erstellen oder aktualisieren."""
             if not self._harmony_scenes:
-                return JSONResponse(
-                    {"error": "Szenen nicht konfiguriert"},
+                raise HTTPException(
                     status_code=503,
+                    detail="Szenen nicht konfiguriert",
                 )
             try:
                 self._harmony_scenes.save_scene(request)
                 return {"success": True}
             except ValueError as e:
                 logger.warning("Invalid harmony scene payload: %s", e)
-                return JSONResponse(
-                    {"error": "Ungueltige Szenen-Konfiguration"},
+                raise HTTPException(
                     status_code=400,
-                )
+                    detail="Ungueltige Szenen-Konfiguration",
+                ) from e
 
         @self.app.post("/harmony/scene/start")
         async def harmony_start_scene(
             request: HarmonySceneStartRequest,
-        ) -> dict:
+        ) -> dict[str, Any]:
             """Szene starten (sequenzielle Ausfuehrung)."""
             if not self._harmony_scenes:
-                return JSONResponse(
-                    {"error": "Szenen nicht konfiguriert"},
+                raise HTTPException(
                     status_code=503,
+                    detail="Szenen nicht konfiguriert",
                 )
             try:
                 result = await self._harmony_scenes.start_scene(request.name)
                 return {"success": True, **result}
             except SceneNotFoundError:
-                return JSONResponse(
-                    {"error": f"Szene '{request.name}' nicht gefunden"},
+                raise HTTPException(
                     status_code=404,
-                )
+                    detail=f"Szene '{request.name}' nicht gefunden",
+                ) from None
             except SceneExecutionError as e:
                 logger.exception(
                     "Harmony scene execution failed: %s (%s)",
                     safe_log(request.name),
                     safe_log(e),
                 )
-                return JSONResponse(
-                    {"error": "Szene konnte nicht ausgefuehrt werden"},
+                raise HTTPException(
                     status_code=503,
-                )
+                    detail="Szene konnte nicht ausgefuehrt werden",
+                ) from e
 
         @self.app.delete("/harmony/scene/{name}")
-        async def harmony_delete_scene(name: str) -> dict:
+        async def harmony_delete_scene(name: str) -> dict[str, Any]:
             """Szene loeschen."""
             if not self._harmony_scenes:
-                return JSONResponse(
-                    {"error": "Szenen nicht konfiguriert"},
+                raise HTTPException(
                     status_code=503,
+                    detail="Szenen nicht konfiguriert",
                 )
             try:
                 self._harmony_scenes.delete_scene(name)
                 return {"success": True}
             except SceneNotFoundError:
-                return JSONResponse(
-                    {"error": f"Szene '{name}' nicht gefunden"},
+                raise HTTPException(
                     status_code=404,
-                )
+                    detail=f"Szene '{name}' nicht gefunden",
+                ) from None
 
         @self.app.post("/harmony/off")
-        async def harmony_off() -> dict:
+        async def harmony_off() -> dict[str, Any]:
             """Schaltet alle Geraete aus (PowerOff)."""
             if not self._harmony:
-                return JSONResponse(
-                    {"error": "Harmony nicht konfiguriert"},
+                raise HTTPException(
                     status_code=503,
+                    detail="Harmony nicht konfiguriert",
                 )
             success = await self._harmony.power_off()
             return {"success": success}
@@ -987,7 +995,7 @@ class RobotServer:
         # --- Alexa Skill Endpoint ---
 
         @self.app.post("/saleria")
-        async def alexa_saleria(request: Request) -> dict:
+        async def alexa_saleria(request: Request) -> dict[str, Any]:
             """Alexa Custom Skill Endpoint.
 
             Verifiziert den Request (Signatur, Timestamp, ApplicationId)
@@ -1012,9 +1020,9 @@ class RobotServer:
                     await self._alexa_verifier.verify(headers, body_bytes, body_dict)
                 except AlexaVerificationError as exc:
                     logger.warning("Alexa-Verifikation fehlgeschlagen: %s", exc)
-                    return JSONResponse(
-                        {"error": "Unauthorized"},
+                    raise HTTPException(
                         status_code=401,
-                    )
+                        detail="Unauthorized",
+                    ) from exc
 
             return await self._alexa.handle_request(body_dict)

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import logging
-from typing import Literal
+from typing import Any, Literal, cast
 
 import httpx
 
@@ -24,7 +24,7 @@ DEFAULT_TIMEOUT = 5.0
 ROBOT_TOKEN_HEADER = "X-Saleria-Robot-Token"
 
 
-def _add_amplitude(payload: dict, audio_meta: AmplitudeTrack | None) -> None:
+def _add_amplitude(payload: dict[str, Any], audio_meta: AmplitudeTrack | None) -> None:
     """Hängt das Amplitude-Profil additiv an das ``/avatar/emotion``-Payload.
 
     No-op, wenn kein nutzbarer Track vorliegt (→ RandomLipSyncDriver, §4.4).
@@ -149,7 +149,7 @@ class RobotClient:
         fürs Server-Logging/Debug**, ohne Verhaltensänderung am RPi5 (§6.3).
         Ohne ``decision`` bleibt das Payload exakt rückwärtskompatibel.
         """
-        payload: dict = {"emotion": emotion}
+        payload: dict[str, Any] = {"emotion": emotion}
         if decision is not None:
             payload["decision"] = {
                 "emotion": decision.emotion.value,
@@ -169,7 +169,7 @@ class RobotClient:
         ``amplitude``/``amplitude_duration_ms`` mitgesendet, sodass der RPi5 den
         AmplitudeLipSyncDriver nutzt; ohne Track → RandomLipSyncDriver (§4.4).
         """
-        payload: dict = {"is_speaking": is_speaking}
+        payload: dict[str, Any] = {"is_speaking": is_speaking}
         _add_amplitude(payload, audio_meta)
         r = self._client.post("/avatar/emotion", json=payload)
         r.raise_for_status()
@@ -182,7 +182,7 @@ class RobotClient:
         audio_meta: AmplitudeTrack | None = None,
     ) -> ApiResponse:
         """Setzt Emotion und Sprechzustand (optional mit Amplitude-Profil)."""
-        payload: dict = {}
+        payload: dict[str, Any] = {}
         if emotion is not None:
             payload["emotion"] = emotion
         if is_speaking is not None:
@@ -218,11 +218,11 @@ class RobotClient:
         r.raise_for_status()
         return BatteryStatus(**r.json())
 
-    def get_sensors(self) -> dict:
+    def get_sensors(self) -> dict[str, Any]:
         """Holt alle Sensor-Daten."""
         r = self._client.get("/sensor/all")
         r.raise_for_status()
-        return r.json()
+        return cast(dict[str, Any], r.json())
 
     # --- Kamera ---
 
@@ -250,11 +250,11 @@ class RobotClient:
 
         return base64.b64decode(data["image_base64"])
 
-    def camera_status(self) -> dict:
+    def camera_status(self) -> dict[str, Any]:
         """Gibt den Kamera-Status vom RPi5 zurück."""
         r = self._client.get("/camera/status")
         r.raise_for_status()
-        return r.json()
+        return cast(dict[str, Any], r.json())
 
     # --- Drehteller ---
 
@@ -264,7 +264,7 @@ class RobotClient:
         relative_degrees: float | None = None,
     ) -> ApiResponse:
         """Drehteller rotieren (absolut oder relativ)."""
-        payload: dict = {}
+        payload: dict[str, Any] = {}
         if target_degrees is not None:
             payload["target_degrees"] = target_degrees
         if relative_degrees is not None:
@@ -285,15 +285,15 @@ class RobotClient:
         r.raise_for_status()
         return ApiResponse(**r.json())
 
-    def turntable_status(self) -> dict:
+    def turntable_status(self) -> dict[str, Any]:
         """Drehteller-Status abfragen."""
         r = self._client.get("/turntable/status")
         r.raise_for_status()
-        return r.json()
+        return cast(dict[str, Any], r.json())
 
     # --- Harmony Hub ---
 
-    def harmony_status(self) -> dict:
+    def harmony_status(self) -> dict[str, Any]:
         """GET /harmony/status → {"connected": bool, "current_activity": str|null}
 
         Phase 96: HTTP-/Transportfehler werden NICHT mehr verschluckt, sondern
@@ -302,31 +302,31 @@ class RobotClient:
         """
         r = self._client.get("/harmony/status")
         r.raise_for_status()
-        return r.json()
+        return cast(dict[str, Any], r.json())
 
-    def harmony_config(self) -> dict:
+    def harmony_config(self) -> dict[str, Any]:
         """GET /harmony/config → {"activities": [...], "devices": [...]}"""
         r = self._client.get("/harmony/config")
         r.raise_for_status()
-        return r.json()
+        return cast(dict[str, Any], r.json())
 
-    def harmony_config_detailed(self) -> dict:
+    def harmony_config_detailed(self) -> dict[str, Any]:
         """GET /harmony/config/detailed → Devices mit ControlGroups + Commands."""
         r = self._client.get("/harmony/config/detailed")
         r.raise_for_status()
-        return r.json()
+        return cast(dict[str, Any], r.json())
 
-    def harmony_layouts(self) -> dict:
+    def harmony_layouts(self) -> dict[str, Any]:
         """GET /harmony/layouts → Fernbedienungs-Layouts."""
         r = self._client.get("/harmony/layouts")
         r.raise_for_status()
-        return r.json()
+        return cast(dict[str, Any], r.json())
 
-    def harmony_save_layouts(self, layouts: dict) -> bool:
+    def harmony_save_layouts(self, layouts: dict[str, Any]) -> bool:
         """POST /harmony/layouts → Layouts speichern."""
         r = self._client.post("/harmony/layouts", json=layouts)
         r.raise_for_status()
-        return r.json().get("success", False)
+        return cast(bool, r.json().get("success", False))
 
     def harmony_start_activity(self, activity: str) -> bool:
         """POST /harmony/activity"""
@@ -335,7 +335,7 @@ class RobotClient:
             json={"activity": activity},
         )
         r.raise_for_status()
-        return r.json().get("success", False)
+        return cast(bool, r.json().get("success", False))
 
     def harmony_send_command(
         self,
@@ -349,42 +349,42 @@ class RobotClient:
             json={"device": device, "command": command, "repeat": repeat},
         )
         r.raise_for_status()
-        return r.json().get("success", False)
+        return cast(bool, r.json().get("success", False))
 
     # --- Harmony Szenen ---
 
-    def harmony_scenes(self) -> list[dict]:
+    def harmony_scenes(self) -> list[dict[str, Any]]:
         """GET /harmony/scenes → Liste aller Szenen."""
         r = self._client.get("/harmony/scenes")
         r.raise_for_status()
-        return r.json().get("scenes", [])
+        return cast(list[dict[str, Any]], r.json().get("scenes", []))
 
-    def harmony_save_scene(self, scene: dict) -> bool:
+    def harmony_save_scene(self, scene: dict[str, Any]) -> bool:
         """POST /harmony/scenes → Szene erstellen/aktualisieren."""
         r = self._client.post("/harmony/scenes", json=scene)
         r.raise_for_status()
-        return r.json().get("success", False)
+        return cast(bool, r.json().get("success", False))
 
-    def harmony_start_scene(self, name: str) -> dict:
+    def harmony_start_scene(self, name: str) -> dict[str, Any]:
         """POST /harmony/scene/start → Szene starten."""
         r = self._client.post(
             "/harmony/scene/start",
             json={"name": name},
         )
         r.raise_for_status()
-        return r.json()
+        return cast(dict[str, Any], r.json())
 
     def harmony_delete_scene(self, name: str) -> bool:
         """DELETE /harmony/scene/{name} → Szene löschen."""
         r = self._client.delete(f"/harmony/scene/{name}")
         r.raise_for_status()
-        return r.json().get("success", False)
+        return cast(bool, r.json().get("success", False))
 
     def harmony_power_off(self) -> bool:
         """POST /harmony/off"""
         r = self._client.post("/harmony/off")
         r.raise_for_status()
-        return r.json().get("success", False)
+        return cast(bool, r.json().get("success", False))
 
     # --- System ---
 

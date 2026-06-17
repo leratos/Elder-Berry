@@ -22,7 +22,7 @@ from __future__ import annotations
 import json
 import logging
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any, Optional, cast
 
 logger = logging.getLogger(__name__)
 
@@ -46,7 +46,7 @@ class HarmonyAdapter:
         self.hub_ip = hub_ip
         self.config_path = config_path
         self._client: Any = None  # aioharmony HarmonyAPI
-        self._config: dict = {}
+        self._config: dict[str, Any] = {}
         self._connected = False
 
     # -- Verbindung -------------------------------------------------------- #
@@ -201,7 +201,7 @@ class HarmonyAdapter:
                 current_id, current_name = current
                 if current_id == _POWER_OFF_ACTIVITY_ID:
                     return None
-                return current_name
+                return cast(str, current_name)
 
             current_id = current
             if current_id == _POWER_OFF_ACTIVITY_ID:
@@ -210,7 +210,7 @@ class HarmonyAdapter:
             # ID zu Name aufloesen
             for activity in self._get_activities():
                 if str(activity.get("id")) == str(current_id):
-                    return activity.get("label", str(current_id))
+                    return cast(str, activity.get("label", str(current_id)))
             return str(current_id)
         except Exception as e:
             logger.error("get_current_activity fehlgeschlagen: %s", e)
@@ -320,7 +320,7 @@ class HarmonyAdapter:
 
     # -- Detaillierte Config ------------------------------------------------ #
 
-    def get_detailed_config(self) -> dict:
+    def get_detailed_config(self) -> dict[str, Any]:
         """Vollstaendige Config fuer die PWA (Geraete-Modus + Aktivitaeten).
 
         Returns:
@@ -332,7 +332,7 @@ class HarmonyAdapter:
             act_id = str(activity.get("id", ""))
             if act_id == str(_POWER_OFF_ACTIVITY_ID):
                 continue
-            entry: dict = {
+            entry: dict[str, Any] = {
                 "id": act_id,
                 "label": activity.get("label", ""),
             }
@@ -375,12 +375,12 @@ class HarmonyAdapter:
         """Loest Device-ID zu Label auf, Fallback auf ID."""
         for dev in self._get_devices():
             if str(dev.get("id", "")) == device_id:
-                return dev.get("label", device_id)
+                return cast(str, dev.get("label", device_id))
         return device_id
 
     # -- Intern ------------------------------------------------------------ #
 
-    def _load_backup_config(self) -> dict:
+    def _load_backup_config(self) -> dict[str, Any]:
         """Laedt Konfiguration aus lokalem Backup-JSON."""
         if not self.config_path.exists():
             logger.warning("Backup-Config nicht gefunden: %s", self.config_path)
@@ -399,7 +399,7 @@ class HarmonyAdapter:
             logger.error("Backup-Config laden fehlgeschlagen: %s", e)
             return {}
 
-    def _get_activities(self) -> list[dict]:
+    def _get_activities(self) -> list[dict[str, Any]]:
         """Aktivitaeten aus Config extrahieren."""
         # aioharmony speichert unter config["activity"]
         activities = self._config.get("activity", [])
@@ -407,7 +407,7 @@ class HarmonyAdapter:
             return activities
         return []
 
-    def _get_devices(self) -> list[dict]:
+    def _get_devices(self) -> list[dict[str, Any]]:
         """Geraete aus Config extrahieren."""
         devices = self._config.get("device", [])
         if isinstance(devices, list):

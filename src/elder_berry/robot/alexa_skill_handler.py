@@ -84,7 +84,7 @@ class AlexaRequestVerifier:
         self,
         headers: dict[str, str],
         body_bytes: bytes,
-        body_dict: dict,
+        body_dict: dict[str, Any],
     ) -> None:
         """Vollständige Verifikation eines Alexa-Requests.
 
@@ -210,7 +210,7 @@ class AlexaRequestVerifier:
         cert: Certificate, signature_b64: str, body_bytes: bytes
     ) -> None:
         """Prüft die RSA-SHA256-Signatur des Request-Bodys."""
-        from cryptography.hazmat.primitives.asymmetric import padding
+        from cryptography.hazmat.primitives.asymmetric import padding, rsa
         from cryptography.hazmat.primitives import hashes
         from cryptography.exceptions import InvalidSignature
 
@@ -222,6 +222,15 @@ class AlexaRequestVerifier:
             ) from exc
 
         public_key = cert.public_key()
+        # Alexa-Zertifikate sind RSA. cert.public_key() liefert eine Union aller
+        # Key-Typen; nur RSAPublicKey hat verify(sig, data, padding, algorithm).
+        # Expliziter Guard statt type:ignore -- ein Nicht-RSA-Zertifikat wird so
+        # sauber als ungueltig abgewiesen (Security-Pfad), statt erst beim
+        # verify-Call in einen AttributeError zu laufen.
+        if not isinstance(public_key, rsa.RSAPublicKey):
+            raise AlexaVerificationError(
+                "Zertifikat-Public-Key ist kein RSA-Schlüssel"
+            )
         try:
             public_key.verify(
                 signature, body_bytes, padding.PKCS1v15(), hashes.SHA256()
@@ -234,7 +243,7 @@ class AlexaRequestVerifier:
             ) from exc
 
     @staticmethod
-    def _verify_timestamp(body: dict) -> None:
+    def _verify_timestamp(body: dict[str, Any]) -> None:
         """Prüft ob der Request-Timestamp max. 150 Sekunden alt ist."""
         ts_str = body.get("request", {}).get("timestamp", "")
         if not ts_str:
@@ -254,7 +263,7 @@ class AlexaRequestVerifier:
                 f"(Limit: {_TIMESTAMP_TOLERANCE_S}s)"
             )
 
-    def _verify_application_id(self, body: dict) -> None:
+    def _verify_application_id(self, body: dict[str, Any]) -> None:
         """Prüft die Skill-ApplicationId gegen den konfigurierten Wert."""
         app_id = body.get("session", {}).get("application", {}).get("applicationId", "")
         if app_id != self._application_id:
@@ -304,7 +313,7 @@ class AlexaSkillHandler:
 
     # -- Alexa Request Parsing --------------------------------------------- #
 
-    def parse_alexa_request(self, body: dict) -> tuple[str, str]:
+    def parse_alexa_request(self, body: dict[str, Any]) -> tuple[str, str]:
         """Extrahiert Request-Typ und Intent-Name aus Alexa-JSON.
 
         Returns
@@ -327,7 +336,7 @@ class AlexaSkillHandler:
 
     # -- Alexa Response Building ------------------------------------------- #
 
-    def build_alexa_response(self, result: AlexaResult) -> dict:
+    def build_alexa_response(self, result: AlexaResult) -> dict[str, Any]:
         """Baut Alexa-kompatible JSON-Response."""
         return {
             "version": "1.0",
@@ -342,7 +351,7 @@ class AlexaSkillHandler:
 
     # -- Command Dispatch -------------------------------------------------- #
 
-    async def handle_request(self, body: dict) -> dict:
+    async def handle_request(self, body: dict[str, Any]) -> dict[str, Any]:
         """Verarbeitet einen kompletten Alexa-Request.
 
         Returns

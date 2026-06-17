@@ -21,11 +21,14 @@ import platform
 import secrets
 import time
 from dataclasses import asdict
+from typing import Any
 
 from fastapi import FastAPI, File, Form, Request, UploadFile
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
-from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
+from starlette.responses import Response
+from starlette.types import ASGIApp
 
 from elder_berry.actions.base import ActionController
 from elder_berry.agent.protocol import (
@@ -61,11 +64,13 @@ class AgentTokenMiddleware(BaseHTTPMiddleware):
     übersprungen (Backwards-Compat für Tests und Token-freie Deployments).
     """
 
-    def __init__(self, app, agent_token: str | None) -> None:
+    def __init__(self, app: ASGIApp, agent_token: str | None) -> None:
         super().__init__(app)
         self._token = agent_token
 
-    async def dispatch(self, request: Request, call_next):
+    async def dispatch(
+        self, request: Request, call_next: RequestResponseEndpoint
+    ) -> Response:
         if not self._token:
             return await call_next(request)
 
@@ -118,7 +123,7 @@ class ActionRequestModel(BaseModel):
     """Request: Aktion ausführen."""
 
     action_type: str
-    params: dict = {}
+    params: dict[str, Any] = {}
 
 
 # ---------------------------------------------------------------------------
@@ -191,7 +196,7 @@ class AgentServer:
         """Registriert alle API-Endpoints."""
 
         @self.app.get("/health")
-        def health() -> dict:
+        def health() -> dict[str, Any]:
             uptime = time.monotonic() - self._start_time
             resp = HealthResponse(
                 status="ok",
@@ -201,7 +206,7 @@ class AgentServer:
             return asdict(resp)
 
         @self.app.get("/status")
-        def status() -> dict:
+        def status() -> dict[str, Any]:
             uptime = time.monotonic() - self._start_time
             agent_status = AgentStatus(
                 online=True,
@@ -212,7 +217,7 @@ class AgentServer:
             return asdict(agent_status)
 
         @self.app.post("/action/execute")
-        def execute_action(request: ActionRequestModel) -> dict:
+        def execute_action(request: ActionRequestModel) -> dict[str, Any]:
             result = self._execute(request.action_type, request.params)
             return asdict(result)
 
@@ -220,7 +225,7 @@ class AgentServer:
         async def play_audio(
             file: UploadFile = File(...),
             emotion: str = Form("neutral"),
-        ) -> dict:
+        ) -> dict[str, Any]:
             try:
                 wav_bytes = await file.read()
                 self._play_wav(wav_bytes)
@@ -235,7 +240,7 @@ class AgentServer:
                 )
             return asdict(resp)
 
-    def _execute(self, action_type: str, params: dict) -> ActionResult:
+    def _execute(self, action_type: str, params: dict[str, Any]) -> ActionResult:
         """Führt eine Aktion über den ActionController aus."""
         if action_type not in SUPPORTED_ACTIONS:
             return ActionResult(
@@ -267,7 +272,7 @@ class AgentServer:
                 message="Interner Fehler – Details im Log.",
             )
 
-    def _dispatch(self, action_type: str, params: dict):
+    def _dispatch(self, action_type: str, params: dict[str, Any]) -> Any:
         """Dispatcht Aktion an die richtige ActionController-Methode."""
         match action_type:
             case "press_key":
@@ -322,7 +327,11 @@ class AgentServer:
             sample_width = wf.getsampwidth()
             raw_data = wf.readframes(wf.getnframes())
 
-        dtype_map = {1: np.int8, 2: np.int16, 4: np.int32}
+        dtype_map: dict[int, type[np.signedinteger[Any]]] = {
+            1: np.int8,
+            2: np.int16,
+            4: np.int32,
+        }
         dtype = dtype_map.get(sample_width, np.int16)
         audio = np.frombuffer(raw_data, dtype=dtype)
 

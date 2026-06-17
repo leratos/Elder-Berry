@@ -5,6 +5,7 @@ from __future__ import annotations
 import io
 import logging
 from abc import ABC, abstractmethod
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -52,7 +53,7 @@ class RPi5Camera(CameraController):
         resolution: tuple[int, int] = (1920, 1080),
     ) -> None:
         self._resolution = resolution
-        self._camera = None
+        self._camera: Any = None  # picamera2.Picamera2 (lazy, untyped)
         self._initialized = False
 
     def _ensure_initialized(self) -> None:
