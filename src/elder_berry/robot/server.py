@@ -26,17 +26,15 @@ import secrets as _secrets
 import subprocess
 import sys
 import time
-from abc import ABC, abstractmethod
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 from dataclasses import asdict
 from pathlib import Path
-from typing import Any, Literal, cast
+from typing import Any, cast
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel, Field
 from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
 from starlette.responses import Response
 from starlette.types import ASGIApp
@@ -60,179 +58,52 @@ from elder_berry.robot.harmony_scene_manager import (
     SceneNotFoundError,
 )
 from elder_berry.robot.turntable_controller import TurntableController
+from elder_berry.robot.interfaces import (
+    AvatarDisplay,
+    MotorController,
+    SensorManager,
+)
 from elder_berry.robot.protocol import (
     ApiResponse,
-    BatteryStatus,
     HealthResponse,
     RobotStatus,
+)
+from elder_berry.robot.schemas import (
+    MAX_AMPLITUDE_SAMPLES,
+    AvatarDecision,
+    AvatarRequest,
+    DriveRequest,
+    HarmonyActivityRequest,
+    HarmonyCommandRequest,
+    HarmonySceneStartRequest,
+    StopRequest,
+    TurntableRotateRequest,
 )
 
 logger = logging.getLogger(__name__)
 
-
-# ---------------------------------------------------------------------------
-# Pydantic Models (für FastAPI Request-Validierung)
-# ---------------------------------------------------------------------------
-
-
-# Obergrenze für die Amplitude-Liste (§4.2: 50ms-Buckets). 6000 Buckets =
-# 5 Minuten Audio – weit über jedem realen TTS-Clip, deckelt aber den Speicher
-# bei tokenfreien Deployments (Pydantic weist Längere mit 422 ab, bevor
-# _build_amplitude_track die Liste kopiert). Codex P2.
-MAX_AMPLITUDE_SAMPLES = 6000
-
-
-class AvatarDecision(BaseModel):
-    """Phase 83.5: Aggregierte Emotions-Entscheidung des Bot-seitigen Resolvers.
-
-    Rein additiv und **nur fürs Server-Logging/Debug** gedacht (§6.3): trägt
-    Confidence und Quelle der vom :class:`EmotionResolver` abgeleiteten Emotion
-    mit. Der RPi5-``AvatarDisplay`` konsumiert dieses Feld **nicht** – die
-    Emotion selbst kommt weiterhin über ``AvatarRequest.emotion`` als String,
-    sodass das Verhalten am RPi5 (inkl. matrix_only) unverändert bleibt.
-    """
-
-    emotion: str
-    confidence: float
-    source: str
-
-
-class AvatarRequest(BaseModel):
-    """Request: Emotion und/oder Sprechzustand setzen.
-
-    Phase 83.4 (additiv, rückwärtskompatibel): ``amplitude`` trägt das
-    Amplitude-Profil (RMS pro 50ms-Bucket, 0.0–1.0) des gesprochenen Audios,
-    ``amplitude_duration_ms`` die Gesamtdauer. Beide nur im lokalen
-    Playback-Modus gesetzt (§0.2/B1); fehlen sie, fällt der Avatar auf den
-    RandomLipSyncDriver zurück (§4.4). ``amplitude`` ist längen-begrenzt
-    (:data:`MAX_AMPLITUDE_SAMPLES`), damit ein bösartiger/fehlerhafter Request
-    den (ggf. tokenfreien) RobotServer nicht über RAM lahmlegt.
-
-    Phase 83.5 (additiv): ``decision`` trägt die Resolver-Entscheidung
-    (Emotion + Confidence + Source) **nur fürs Logging** mit – keine
-    Verhaltensänderung am RPi5 (§6.3).
-    """
-
-    emotion: str | None = None
-    is_speaking: bool | None = None
-    amplitude: list[float] | None = Field(default=None, max_length=MAX_AMPLITUDE_SAMPLES)
-    amplitude_duration_ms: int | None = None
-    decision: AvatarDecision | None = None
-
-
-class DriveRequest(BaseModel):
-    """Request: Fahrbefehl.
-
-    ``direction`` ist auf eine feste Liste eingeschraenkt. Pydantic
-    weist alles andere mit 422 ab, bevor es zum MotorController kommt
-    -- das ist sowohl Defense-in-Depth (kein freier String aus dem
-    Internet steuert die Hardware) als auch log-injection-Mitigation
-    (CodeQL erkennt Literal-Constraints als Sanitizer).
-    """
-
-    direction: Literal["forward", "backward", "left", "right", "stop"]
-    speed: float = 0.5
-    duration: float | None = None
-
-
-class StopRequest(BaseModel):
-    """Request: Notfall-Stopp."""
-
-    reason: str = "manual"
-
-
-class TurntableRotateRequest(BaseModel):
-    """Request: Drehteller rotieren."""
-
-    target_degrees: float | None = None  # Absolute Position
-    relative_degrees: float | None = None  # Relative Rotation
-
-
-class HarmonyActivityRequest(BaseModel):
-    """Request: Harmony-Aktivitaet starten."""
-
-    activity: str  # z.B. "Fernsehen"
-
-
-class HarmonyCommandRequest(BaseModel):
-    """Request: Harmony-Geraetebefehl senden."""
-
-    device: str  # z.B. "Receiver"
-    command: str  # z.B. "VolumeUp"
-    repeat: int = 1
-
-
-class HarmonySceneStartRequest(BaseModel):
-    """Request: Szene starten."""
-
-    name: str  # z.B. "Gaming"
-
-
-# ---------------------------------------------------------------------------
-# Hardware-Abstraktionen (werden vom Simulator oder echten RPi implementiert)
-# ---------------------------------------------------------------------------
-
-
-class MotorController(ABC):
-    """ABC für Motorsteuerung."""
-
-    @abstractmethod
-    def drive(self, direction: str, speed: float) -> None:
-        """Fährt in die angegebene Richtung."""
-        pass
-
-    @abstractmethod
-    def stop(self) -> None:
-        """Stoppt alle Motoren."""
-        pass
-
-    @abstractmethod
-    def get_state(self) -> dict[str, Any]:
-        """Gibt aktuellen Motor-Zustand zurück."""
-        pass
-
-
-class AvatarDisplay(ABC):
-    """ABC für Avatar-Anzeige auf dem RPi5-Display."""
-
-    @abstractmethod
-    def set_emotion(self, emotion: str) -> None:
-        """Setzt die angezeigte Emotion."""
-        pass
-
-    @abstractmethod
-    def set_speaking(
-        self, is_speaking: bool, audio_meta: AmplitudeTrack | None = None
-    ) -> None:
-        """Aktiviert/deaktiviert Lip-Sync.
-
-        Args:
-            is_speaking: ``True`` während einer Sprech-Sitzung.
-            audio_meta: Phase 83.4 – optionales Amplitude-Profil für den
-                AmplitudeLipSyncDriver (nur Playback-Modus). ``None`` →
-                RandomLipSyncDriver-Fallback (§4.4). Implementierungen ohne
-                Lip-Sync (z.B. Simulator) ignorieren den Parameter.
-        """
-        pass
-
-    @abstractmethod
-    def get_state(self) -> dict[str, Any]:
-        """Gibt aktuellen Avatar-Zustand zurück."""
-        pass
-
-
-class SensorManager(ABC):
-    """ABC für Sensor-Abfragen."""
-
-    @abstractmethod
-    def get_battery(self) -> BatteryStatus:
-        """Liest Akku-Status."""
-        pass
-
-    @abstractmethod
-    def get_all(self) -> dict[str, Any]:
-        """Liest alle Sensoren."""
-        pass
+# Re-Exports (Phase 106): Die Pydantic-Request-Modelle und die Hardware-ABCs
+# wohnen jetzt in ``schemas.py`` bzw. ``interfaces.py``. ``__all__`` markiert
+# sie hier explizit als Re-Export, damit bestehende Importe
+# (``from elder_berry.robot.server import AvatarRequest`` etc.), Test-Patches
+# und mypy --no-implicit-reexport in den Importeuren stabil bleiben.
+__all__ = [
+    "MAX_AMPLITUDE_SAMPLES",
+    "AvatarDecision",
+    "AvatarRequest",
+    "DriveRequest",
+    "StopRequest",
+    "TurntableRotateRequest",
+    "HarmonyActivityRequest",
+    "HarmonyCommandRequest",
+    "HarmonySceneStartRequest",
+    "MotorController",
+    "AvatarDisplay",
+    "SensorManager",
+    "RobotTokenMiddleware",
+    "ROBOT_TOKEN_HEADER",
+    "RobotServer",
+]
 
 
 # ---------------------------------------------------------------------------

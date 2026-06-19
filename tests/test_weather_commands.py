@@ -488,14 +488,19 @@ class TestTimezoneAwareDisplay:
     def test_no_naked_astimezone_in_weather_commands(self):
         from pathlib import Path
 
-        src = (
+        cmd_dir = (
             Path(__file__).resolve().parent.parent
             / "src"
             / "elder_berry"
             / "comms"
             / "commands"
-            / "weather_commands.py"
-        ).read_text(encoding="utf-8")
+        )
+        # Phase 106: die astimezone(...)-Aufrufe wohnen jetzt in den
+        # weather/-Mixins (reminders.py, recurring.py); weather_commands.py
+        # ist nur noch der Shell. Den gesamten Weather-Command-Code pruefen.
+        sources = [cmd_dir / "weather_commands.py"]
+        sources += sorted((cmd_dir / "weather").glob("*.py"))
+        src = "\n".join(p.read_text(encoding="utf-8") for p in sources)
         # Keine nackten astimezone()-Aufrufe (kein '(' direkt gefolgt von ')')
         assert "astimezone()" not in src, (
             "Mindestens ein astimezone()-Aufruf ohne tz-Argument gefunden. "
