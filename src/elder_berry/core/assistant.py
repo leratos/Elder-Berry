@@ -1,19 +1,28 @@
-"""Assistant – Orchestrierung: User-Input → LLM → Aktion → TTS → Avatar → Robot."""
+"""Assistant – Orchestrierung: User-Input → LLM → Aktion → TTS → Avatar → Robot.
+
+Phase 106 (Modul-Entflechtung): Die Implementierung ist in Mixins geschnitten:
+- core/assistant_prompt.py   – PromptBuilderMixin (System-Prompt-Aufbau)
+- core/assistant_parsing.py  – ResponseParserMixin (LLM-Output-Parsing)
+- core/assistant_robot.py    – RobotActionMixin (Robot + TTS/Lip-Sync)
+``Assistant`` erbt diese Mixins; ``process()`` bleibt der Orchestrator. Damit
+bleiben die öffentliche API und die in Tests direkt aufgerufenen Methoden
+(``Assistant._find_last_json_object`` etc.) sowie ``SYSTEM_PROMPT_TEMPLATE``
+und ``elder_berry.core.assistant.Path`` (Patch-Target) am alten Importpfad.
+"""
 
 from __future__ import annotations
 
-import json
 import logging
-import re
-import tempfile
 from dataclasses import dataclass
-from datetime import datetime
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, cast
+from typing import TYPE_CHECKING, Any
 
 from elder_berry.actions.base import ActionController
 from elder_berry.actions.db import ActionsDB
-from elder_berry.core.audio_analyzer import AmplitudeTrack, AudioAnalyzer
+from elder_berry.core.assistant_parsing import ResponseParserMixin
+from elder_berry.core.assistant_prompt import PromptBuilderMixin
+from elder_berry.core.assistant_robot import RobotActionMixin
+from elder_berry.core.audio_analyzer import AudioAnalyzer
 from elder_berry.core.prompts import SYSTEM_PROMPT_TEMPLATE
 from elder_berry.llm.base import LLMClient
 from elder_berry.tts.base import TTSEngine
@@ -35,8 +44,10 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
+__all__ = ["Assistant", "AssistantResult", "SYSTEM_PROMPT_TEMPLATE"]
 
-# SYSTEM_PROMPT_TEMPLATE → ausgelagert nach core/prompts.py
+
+# SYSTEM_PROMPT_TEMPLATE → ausgelagert nach core/prompts.py, hier re-exportiert.
 
 
 @dataclass
@@ -58,13 +69,17 @@ class AssistantResult:
     """
 
 
-class Assistant:
+class Assistant(PromptBuilderMixin, ResponseParserMixin, RobotActionMixin):
     """
     Orchestriert den Ablauf: User-Input → LLM → Aktion → TTS → Avatar.
 
     Alle Abhängigkeiten werden per Konstruktor übergeben (DI).
     Optional: CharacterEngine für Persönlichkeit/Emotionen,
     AvatarRenderer für visuelle Darstellung.
+
+    Die Implementierung ist auf Mixins verteilt (Phase 106): Prompt-Aufbau,
+    LLM-Output-Parsing und die Robot-/TTS-Brücke. ``process()`` und die
+    PC-Aktions-Ausführung bleiben hier.
     """
 
     def __init__(
@@ -113,7 +128,7 @@ class Assistant:
         self._smart_context = smart_context
         self._proposal_store = proposal_store
         self._session_id: str = memory.new_session() if memory else ""
-        self._agent_online_cache: bool | None = None
+        self._agent_online_cache = None
 
     def process(
         self,
@@ -353,348 +368,6 @@ class Assistant:
             logger.error("TTS-Audio-Generierung fehlgeschlagen: %s", e)
             return None
 
-    def _build_system_prompt(
-        self,
-        memory_context: str = "",
-        chat_history: str = "",
-        smart_context: str = "",
-    ) -> str:
-        """Generiert System-Prompt – aus CharacterEngine oder Fallback-Template."""
-        db_actions = self._actions_db.list_all()
-        if db_actions:
-            lines = ["Registrierte Aktionen in der Datenbank:"]
-            for a in db_actions:
-                lines.append(f'- Trigger: "{a.trigger}" → Typ: {a.action_type}')
-            action_list = "\n".join(lines)
-        else:
-            action_list = "Keine zusätzlichen Aktionen in der Datenbank registriert."
-
-        robot_status = self._build_robot_status()
-        current_dt = datetime.now().strftime("%A, %d.%m.%Y %H:%M Uhr")
-
-        # Dynamischer Command-Block aus den Handler-Definitionen
-        remote_commands = ""
-        if self._remote_commands:
-            remote_commands = self._remote_commands.get_command_summary()
-
-        # Phase 77.5: Plugin-Inventar-Block fuer Phase-78-Dedupe-Check.
-        plugin_inventory = self._build_plugin_inventory_block()
-
-        # Phase 78: aktive Plugin-Vorschlaege + Anweisung fuer den
-        # <plugin-candidate>-Block am Antwortende.
-        active_proposals = self._build_active_proposals_block()
-        candidate_hint = self._build_plugin_candidate_hint()
-
-        # Phase 82 Etappe 2: action_sequence-Hint mit Few-Shots.
-        action_sequence_hint = self._build_action_sequence_hint()
-
-        if self._character:
-            prompt = self._character.build_system_prompt(
-                available_actions=action_list,
-                memory_context=memory_context,
-                remote_commands=remote_commands,
-            )
-            prompt = f"Aktuelles Datum und Uhrzeit: {current_dt}\n\n{prompt}"
-            mood_context = self._character.get_mood_context()
-            if mood_context:
-                prompt += f"\n\n{mood_context}"
-            if robot_status:
-                prompt += f"\n\n{robot_status}"
-            if smart_context:
-                prompt += f"\n\n{smart_context}"
-            if plugin_inventory:
-                prompt += f"\n\n{plugin_inventory}"
-            if active_proposals:
-                prompt += f"\n\n{active_proposals}"
-            if action_sequence_hint:
-                prompt += f"\n\n{action_sequence_hint}"
-            if candidate_hint:
-                prompt += f"\n\n{candidate_hint}"
-            if chat_history:
-                prompt += f"\n\n{chat_history}"
-            return prompt
-
-        full_prompt = SYSTEM_PROMPT_TEMPLATE.format(
-            action_list=action_list,
-            robot_status=robot_status,
-            current_datetime=current_dt,
-            memory_context=memory_context,
-            remote_commands=remote_commands,
-            smart_context=smart_context,
-        )
-        if plugin_inventory:
-            full_prompt += f"\n\n{plugin_inventory}"
-        if active_proposals:
-            full_prompt += f"\n\n{active_proposals}"
-        if action_sequence_hint:
-            full_prompt += f"\n\n{action_sequence_hint}"
-        if candidate_hint:
-            full_prompt += f"\n\n{candidate_hint}"
-        if chat_history:
-            full_prompt += f"\n\n{chat_history}"
-        return full_prompt
-
-    # Phase 77.5: Maximalzahl Zeilen im Plugin-Inventar-Block. Bei mehr
-    # Plugins wird auf "...(N weitere)" getrimmt -- 30 Zeilen entsprechen
-    # heute 24 Plugins + 6 Reserve fuer User-Plugins ohne Promptlaengen-
-    # Explosion (Konzept §3.4 / Risiko R2).
-    _PLUGIN_INVENTORY_MAX_LINES: int = 30
-
-    def _build_plugin_inventory_block(self) -> str:
-        """Baut den "Bereits geladene Plugins"-Block fuer den System-Prompt.
-
-        Phase-78-Voraussetzung: Saleria soll im Dedupe-Check (Self-
-        Suggestion) sehen, welche Capabilities bereits implementiert
-        sind, damit sie keine Vorschlaege fuer Builtins erzeugt.
-
-        Format:
-
-            [Bereits geladene Plugins (kein Vorschlag wenn Match):
-            - <name>: <category>
-            ...
-            - <name>: <category>]
-
-        Trim: bei mehr als ``_PLUGIN_INVENTORY_MAX_LINES - 1`` Plugin-
-        Zeilen wird auf den Header + Top-N + ``... (M weitere)`` gekuerzt
-        (Sortierung kommt aus ``load_plugins_with_sources`` -> Priority).
-        """
-        try:
-            from elder_berry.comms.commands.registry import (
-                load_plugins_with_sources,
-            )
-
-            loaded = load_plugins_with_sources()
-        except Exception as exc:
-            # Plugin-Registry darf den System-Prompt-Build nicht killen.
-            logger.warning("Plugin-Inventar-Block uebersprungen: %s", exc)
-            return ""
-
-        if not loaded:
-            return ""
-
-        header = "[Bereits geladene Plugins (kein Vorschlag wenn Match):"
-        # Header zaehlt mit -- darum -1 fuer die Plugin-Zeilen.
-        max_plugin_lines = self._PLUGIN_INVENTORY_MAX_LINES - 1
-
-        plugin_lines = [
-            f"- {entry.plugin.name}: {entry.plugin.category}" for entry in loaded
-        ]
-        if len(plugin_lines) > max_plugin_lines:
-            kept = plugin_lines[: max_plugin_lines - 1]
-            remaining = len(plugin_lines) - len(kept)
-            kept.append(f"- … ({remaining} weitere)")
-            plugin_lines = kept
-
-        # Schluss-Klammer ueber die letzte Zeile -- Block bleibt einzeilig
-        # parsebar fuer kuenftige Phase-78-Heuristik.
-        if plugin_lines:
-            plugin_lines[-1] = plugin_lines[-1] + "]"
-        return header + "\n" + "\n".join(plugin_lines)
-
-    # Phase 78: Cap auf 10-15 aktive Vorschlaege im System-Prompt.
-    # Bei mehr aktiven Vorschlaegen ist die Heuristik selbst das Problem
-    # (Threshold zu lasch, Halluzinationen) -- dann nachjustieren statt
-    # Cap erhoehen. Siehe Konzept §3.6.
-    _ACTIVE_PROPOSALS_MAX_LINES: int = 15
-
-    def _build_active_proposals_block(self) -> str:
-        """Baut den "Aktive Plugin-Vorschlaege"-Block fuer den System-Prompt.
-
-        Saleria nutzt diese Liste vor der Erstellung eines neuen
-        <plugin-candidate>-Blocks: Wenn die Anfrage zu einem bereits
-        offenen Vorschlag passt, soll sie KEINEN neuen Block emittieren
-        (Konzept §3.6).
-
-        Format:
-
-            [Aktive Plugin-Vorschlaege (kein neuer Vorschlag wenn Match):
-            - <intent>: <title> (<status>)
-            ...
-            - <intent>: <title> (<status>)]
-
-        Liefert "" wenn kein ProposalStore gesetzt ist oder keine
-        aktiven Vorschlaege existieren.
-        """
-        if self._proposal_store is None:
-            return ""
-        try:
-            active = self._proposal_store.list_active(
-                limit=self._ACTIVE_PROPOSALS_MAX_LINES
-            )
-        except Exception as exc:  # noqa: BLE001
-            logger.warning("Active-Proposals-Block uebersprungen: %s", exc)
-            return ""
-
-        if not active:
-            return ""
-
-        header = "[Aktive Plugin-Vorschlaege (kein neuer Vorschlag wenn Match):"
-        lines = [f"- {p.id}: {p.title} ({p.status})" for p in active]
-        if lines:
-            lines[-1] = lines[-1] + "]"
-        return header + "\n" + "\n".join(lines)
-
-    @staticmethod
-    def _build_action_sequence_hint() -> str:
-        """Erklaert action_sequence + on_failure-Strategien (Phase 82 Etappe 2).
-
-        Wird unkonditional in den System-Prompt eingefuegt (analog
-        ``_build_plugin_candidate_hint``). Saleria entscheidet pro
-        Anfrage, ob action_sequence der richtige Action-Typ ist.
-
-        Pflicht laut Konzept ``§5.2``:
-          - mindestens ein Few-Shot mit ``on_failure: stop`` und logischer
-            Step-Abhaengigkeit (sonst lernt Saleria die ``stop``-Strategie
-            nie -- der Pfad ist sonst tot).
-          - ein Few-Shot mit ``on_failure: continue`` (heterogene Sequenz).
-          - Negativ-Hinweis: nicht fuer 5x denselben Command nutzen --
-            dafuer reicht ``remote_command`` mit Newline-separiertem
-            ``command``-String, der Quick-Fix splittet automatisch.
-        """
-        return (
-            "Wenn der Nutzer mehrere UNABHAENGIGE Aktionen in einer Anfrage "
-            "verlangt ('mach X UND Y UND Z'), bundele sie in EINE Antwort "
-            "vom Typ action_sequence:\n"
-            '{"action": "action_sequence", "params": {'
-            '"steps": [{"action": "remote_command", "params": '
-            '{"command": "..."}}, ...], "on_failure": "continue"}, '
-            '"response": "Ich erledige das in 3 Schritten."}\n'
-            "\n"
-            "on_failure-Strategie:\n"
-            "- 'continue' (Default): bei einem Step-Fehler laufen die "
-            "anderen Steps weiter. Nutze das fuer heterogene Sequenzen, "
-            "deren Steps logisch unabhaengig sind.\n"
-            "- 'stop': beim ersten Fehler werden die restlichen Steps "
-            "uebersprungen. Nutze das, wenn Step N+1 logisch von Step N "
-            "abhaengt (sonst macht Step N+1 ohne Step N keinen Sinn).\n"
-            "\n"
-            "Beispiel (continue, heterogen):\n"
-            'User: \'schreib Notiz "Pizza-Rezept Link XY" UND setz '
-            'Reminder Samstag 10 Uhr UND erstell Todo "Hefe kaufen"\'\n'
-            '{"action": "action_sequence", "params": {"steps": ['
-            '{"action": "remote_command", "params": '
-            '{"command": "notiz: Pizza-Rezept Link XY"}}, '
-            '{"action": "remote_command", "params": '
-            '{"command": "erinnere mich am Samstag um 10:00: Pizza"}}, '
-            '{"action": "remote_command", "params": '
-            '{"command": "todo: Hefe kaufen"}}'
-            '], "on_failure": "continue"}, '
-            '"response": "Mach ich -- Notiz, Reminder und Todo."}\n'
-            "\n"
-            "Beispiel (stop, logisch abhaengig):\n"
-            'User: \'Trag Termin Mittwoch 14:00 "Zahnarzt" ein UND '
-            "erinner mich Mittwoch 13:00 daran'\n"
-            '{"action": "action_sequence", "params": {"steps": ['
-            '{"action": "remote_command", "params": '
-            '{"command": "termin: Zahnarzt Mittwoch 14:00"}}, '
-            '{"action": "remote_command", "params": '
-            '{"command": "erinnere mich am Mittwoch um 13:00: Zahnarzt"}}'
-            '], "on_failure": "stop"}, '
-            '"response": "Termin und Reminder zusammen -- wenn der Termin '
-            'nicht klappt, lass ich den Reminder weg."}\n'
-            "\n"
-            "Nutze action_sequence NICHT fuer 5x denselben Command (z.B. "
-            "'5 Todos fuer Pizza'). Dafuer reicht EIN remote_command mit "
-            "Newline-separiertem command-String -- das System splittet "
-            "das automatisch in Einzel-Calls und sammelt die Bilanz.\n"
-            "\n"
-            "Phase 82.1 -- gleichartige Items innerhalb einer heterogenen "
-            "Sequenz: Wenn der Nutzer mehrere gleichartige Items zusammen "
-            "mit anderen Aktionen verlangt (z.B. '3 Todos fuer Pizza UND "
-            "Notiz UND Reminder'), kannst du wahlweise (a) die Items als "
-            "EINZELNE Steps in der Sequenz emittieren, oder (b) die Items "
-            "als EINEN Step mit Newline-separiertem command-String "
-            "emittieren -- BEIDES funktioniert (das System splittet Multi-"
-            "Line auch innerhalb von Steps).\n"
-            "\n"
-            "Beispiel (Multi-Line in einem Step, kompakter):\n"
-            'User: \'3 Todos fuer Pizza UND schreib Notiz "Rezept-Link" '
-            "UND setz Reminder Samstag 10 Uhr'\n"
-            '{"action": "action_sequence", "params": {"steps": ['
-            '{"action": "remote_command", "params": '
-            '{"command": "todo: Zutaten kaufen, mittel, Einkauf\\n'
-            "todo: Pizzateig vorbereiten, mittel, Kochen\\n"
-            'todo: Pizza backen, mittel, Kochen"}}, '
-            '{"action": "remote_command", "params": '
-            '{"command": "notiz: Rezept-Link"}}, '
-            '{"action": "remote_command", "params": '
-            '{"command": "erinnere mich am Samstag um 10:00: Pizza"}}'
-            '], "on_failure": "continue"}, '
-            '"response": "Mach ich -- 3 Todos, Notiz, Reminder."}'
-        )
-
-    @staticmethod
-    def _build_plugin_candidate_hint() -> str:
-        """Anweisung an den LLM zum Erkennen von Plugin-Kandidaten (Konzept §3.4).
-
-        Wird unkonditional in den System-Prompt eingefuegt. Saleria
-        entscheidet pro Anfrage, ob der Block sinnvoll ist; der
-        Aggregator filtert per Confidence- und Smalltalk-Negativliste
-        erneut nach.
-        """
-        return (
-            "Pruefe am Ende deiner Antwort, ob die Anfrage eine wiederkehrende, "
-            "automatisierbare Aufgabe sein koennte, die als Plugin sinnvoll waere. "
-            "Wenn ja, haenge GENAU EINEN solchen Block ans Antwortende:\n"
-            '<plugin-candidate>{"intent":"snake_case_id","title":"Kurzer Titel",'
-            '"description":"2-3 Saetze, was die Capability tun wuerde.",'
-            '"category":"medien|system|productivity|...","confidence":0.0-1.0}'
-            "</plugin-candidate>\n"
-            "Wenn nein, lass den Block weg. Smalltalk, Witze, Komplimente, "
-            "Wetter-Plauderei sind KEINE Plugin-Kandidaten. Pruefe vorher die "
-            "Listen 'Bereits geladene Plugins' und 'Aktive Plugin-Vorschlaege' "
-            "-- bei Match keinen neuen Block emittieren."
-        )
-
-    # Phase 78: Regex zum Extrahieren des <plugin-candidate>-JSON-Blocks.
-    # Greedy-Stop am ersten </plugin-candidate>; ein Block pro Antwort.
-    _PLUGIN_CANDIDATE_RE = re.compile(
-        r"<plugin-candidate>\s*(\{.*?\})\s*</plugin-candidate>",
-        re.DOTALL,
-    )
-
-    @classmethod
-    def _extract_plugin_candidate(cls, text: str) -> tuple[str, dict[str, Any] | None]:
-        """Schneidet einen <plugin-candidate>-Block aus dem LLM-Output.
-
-        Returns:
-            (bereinigter_text, candidate_dict_oder_None).
-            candidate_dict enthaelt mindestens "intent", "title",
-            "confidence" und (sofern vom LLM geliefert) "description"
-            sowie "category". None wenn kein Block gefunden, JSON kaputt
-            oder Pflichtfelder fehlen.
-        """
-        match = cls._PLUGIN_CANDIDATE_RE.search(text)
-        if match is None:
-            return text, None
-
-        cleaned = (text[: match.start()] + text[match.end() :]).rstrip()
-        raw_json = match.group(1)
-        try:
-            data = json.loads(raw_json)
-        except json.JSONDecodeError as exc:
-            logger.warning("plugin-candidate JSON kaputt: %s -- %r", exc, raw_json)
-            return cleaned, None
-
-        if not isinstance(data, dict):
-            logger.warning("plugin-candidate kein dict: %r", data)
-            return cleaned, None
-
-        intent = data.get("intent")
-        title = data.get("title")
-        confidence = data.get("confidence")
-        if not isinstance(intent, str) or not intent.strip():
-            logger.debug("plugin-candidate ohne intent verworfen")
-            return cleaned, None
-        if not isinstance(title, str) or not title.strip():
-            logger.debug("plugin-candidate ohne title verworfen")
-            return cleaned, None
-        if not isinstance(confidence, (int, float)):
-            logger.debug("plugin-candidate ohne numerische confidence verworfen")
-            return cleaned, None
-
-        return cleaned, data
-
     def _get_memory_context(self, user_input: str) -> str:
         """Ruft relevante Erinnerungen aus dem Memory ab und formatiert sie."""
         if not self._memory:
@@ -778,89 +451,6 @@ class Assistant:
             self._session_id = self._memory.new_session()
         logger.info("Neue Session gestartet: %s", self._session_id)
 
-    def _parse_llm_response(self, raw: str) -> dict[str, Any]:
-        """
-        Parst JSON aus der LLM-Antwort.
-
-        Drei Versuche, in dieser Reihenfolge:
-
-        1. Der gesamte String als JSON (cleaner LLM-Output).
-        2. Das *letzte* vollstaendige top-level JSON-Object im String.
-           LLMs reflektieren manchmal laut nach -- Klartext und mehrere
-           JSON-Objects gemischt ('Wait, ich sollte das anders machen...
-           {neue-Antwort}'). Die letzte JSON ist typischerweise die
-           endgueltige Antwort.
-        3. Erstes ``{`` bis letztes ``}`` (alter Fallback, fuer Faelle
-           wo das einzige JSON von Klartext umschlossen ist).
-
-        ``strict=False`` toleriert Tab/LF/CR innerhalb von JSON-string-
-        values -- LLMs liefern Markdown-Antworten oft mit echten
-        Newlines statt ``\\n``-Escape-Sequences.
-        """
-        # Versuch 1: Gesamter String
-        try:
-            return cast(dict[str, Any], json.loads(raw, strict=False))
-        except json.JSONDecodeError:
-            pass
-
-        # Versuch 2: letztes top-level JSON-Object (LLM-Reflexionsfall)
-        last_obj = self._find_last_json_object(raw)
-        if last_obj is not None:
-            return last_obj
-
-        # Versuch 3: erstes { bis letztes } (legacy fallback)
-        start = raw.find("{")
-        end = raw.rfind("}")
-        if start != -1 and end != -1 and end > start:
-            try:
-                return cast(
-                    dict[str, Any],
-                    json.loads(raw[start : end + 1], strict=False),
-                )
-            except json.JSONDecodeError:
-                pass
-
-        # Fallback: Rohe Antwort als Text. raw[:500] ins Log, damit man
-        # sieht WARUM der Parser kapituliert (Trailing-Plugin-Block,
-        # exotische Escapes, ueberhaupt kein JSON, ...).
-        logger.warning(
-            "LLM-Antwort konnte nicht als JSON geparst werden: %r",
-            raw[:500],
-        )
-        return {"action": None, "params": {}, "response": raw}
-
-    @staticmethod
-    def _find_last_json_object(raw: str) -> dict[str, Any] | None:
-        """Sucht das letzte vollstaendige top-level JSON-Object im String.
-
-        Scannt von vorne mit ``json.JSONDecoder.raw_decode``, sammelt
-        alle erfolgreich geparsten JSON-Objects, gibt das letzte
-        zurueck. O(n) durch den String.
-
-        Hintergrund (Live-Befund 2026-05-08): Saleria emittierte zwei
-        JSON-Antworten mit einer ``Wait, ich sollte...``-Reflexion
-        dazwischen. ``rfind('}')`` greift dann ueber beide JSONs UND
-        den Klartext und scheitert. Diese Methode liefert die zweite
-        (finale) JSON.
-        """
-        decoder = json.JSONDecoder(strict=False)
-        last: dict[str, Any] | None = None
-        pos = 0
-        n = len(raw)
-        while pos < n:
-            brace = raw.find("{", pos)
-            if brace == -1:
-                break
-            try:
-                obj, consumed = decoder.raw_decode(raw[brace:])
-            except json.JSONDecodeError:
-                pos = brace + 1
-                continue
-            if isinstance(obj, dict):
-                last = cast(dict[str, Any], obj)
-            pos = brace + consumed
-        return last
-
     def _execute_action(self, action_type: str, params: dict[str, Any]) -> bool:
         """Führt eine Aktion aus. Agent-Route wenn verbunden, sonst lokal."""
         # Robot-Aktionen immer direkt routen
@@ -925,205 +515,3 @@ class Assistant:
         except Exception as e:
             logger.error("Aktion '%s' fehlgeschlagen: %s", action_type, e)
             return False
-
-    def _execute_robot_action(self, action_type: str, params: dict[str, Any]) -> bool:
-        """Führt Robot-spezifische Aktionen aus."""
-        match action_type:
-            case "robot_drive":
-                return self._robot_drive(
-                    params.get("direction", "forward"),
-                    params.get("speed", 0.5),
-                )
-            case "robot_stop":
-                return self._robot_stop(params.get("reason", "manual"))
-        return False
-
-    # --- Robot-Integration ---
-
-    def _robot_drive(self, direction: str, speed: float) -> bool:
-        """Sendet Fahrbefehl an den Roboter. Gibt False zurück wenn nicht verbunden."""
-        if not self._robot:
-            logger.warning("robot_drive: Kein RobotClient verbunden")
-            return False
-        try:
-            resp = self._robot.drive(direction, speed)
-            return resp.success
-        except Exception as e:
-            logger.error("robot_drive fehlgeschlagen: %s", e)
-            return False
-
-    def _robot_stop(self, reason: str) -> bool:
-        """Stoppt den Roboter. Gibt False zurück wenn nicht verbunden."""
-        if not self._robot:
-            logger.warning("robot_stop: Kein RobotClient verbunden")
-            return False
-        try:
-            resp = self._robot.stop(reason)
-            return resp.success
-        except Exception as e:
-            logger.error("robot_stop fehlgeschlagen: %s", e)
-            return False
-
-    def _robot_set_emotion(
-        self, emotion: str | None, decision: EmotionDecision | None = None
-    ) -> None:
-        """Synchronisiert Emotion zum RPi5-Display (fire-and-forget).
-
-        Phase 83.5: ``decision`` (nur im Resolver-Pfad gesetzt) wird additiv
-        mitgesendet – rein fürs Server-Logging/Debug (§6.3). Ohne ``decision``
-        bleibt der Aufruf 1-armig (``set_emotion(emotion)``), damit der
-        Legacy-/extract_emotion-Pfad und dessen Tests unverändert bleiben.
-        """
-        if not self._robot or not emotion:
-            return
-        try:
-            if decision is not None:
-                self._robot.set_emotion(emotion, decision=decision)
-            else:
-                self._robot.set_emotion(emotion)
-        except Exception as e:
-            logger.debug("Robot Emotion-Sync fehlgeschlagen: %s", e)
-
-    def _robot_set_speaking(
-        self, is_speaking: bool, audio_meta: AmplitudeTrack | None = None
-    ) -> None:
-        """Synchronisiert Sprechzustand zum RPi5-Display (fire-and-forget).
-
-        Phase 83.4: ``audio_meta`` (nur Playback-Modus) wird additiv mitgesendet
-        → AmplitudeLipSyncDriver auf dem RPi5; ohne Track → RandomLipSync (§4.4).
-        """
-        if not self._robot:
-            return
-        try:
-            self._robot.set_speaking(is_speaking, audio_meta=audio_meta)
-        except Exception as e:
-            logger.debug("Robot Speaking-Sync fehlgeschlagen: %s", e)
-
-    def _build_robot_status(self) -> str:
-        """Baut Robot-Status-Info für den System-Prompt. Leer wenn kein Robot."""
-        if not self._robot:
-            return ""
-        try:
-            if not self._robot.is_online():
-                return "Roboter-Status: OFFLINE (nicht erreichbar)"
-            parts = ["Roboter-Status: ONLINE"]
-            # Phase 102 (#739): Akku-Zeile nur bei aktiver Capability-Flag. Aus
-            # (Default) -> kein get_battery()-Call und kein (simulierter)
-            # Akku-Stand im System-Prompt.
-            if self._robot_battery_enabled:
-                battery = self._robot.get_battery()
-                parts.append(f"  Akku: {battery.percentage}% ({battery.voltage}V)")
-                if battery.is_low:
-                    parts.append("  WARNUNG: Akku niedrig! Zur Ladestation fahren.")
-                if battery.is_charging:
-                    parts.append("  Akku wird geladen.")
-            return "\n".join(parts)
-        except Exception as e:
-            logger.debug("Robot-Status Abfrage fehlgeschlagen: %s", e)
-            return "Roboter-Status: OFFLINE (Abfrage fehlgeschlagen)"
-
-    # --- Agent-Integration (Laptop) ---
-
-    def _is_agent_online(self) -> bool:
-        """Prüft ob der Laptop-Agent erreichbar ist (cached pro Request)."""
-        if not self._agent:
-            return False
-        if self._agent_online_cache is not None:
-            return self._agent_online_cache
-        try:
-            self._agent_online_cache = self._agent.is_online()
-            return self._agent_online_cache
-        except Exception:
-            self._agent_online_cache = False
-            return False
-
-    def _speak_with_lipsync(self, text: str, emotion: str | None) -> None:
-        """Playback-Pfad mit optionalem Amplitude-Lip-Sync (Phase 83.4).
-
-        Nur hier (lokaler Playback-Modus) wird ein Speaking-Signal gesendet
-        (§0.2/B1). Spielt der Laptop-Agent ab, generiert der Bot das Audio
-        **einmal** als WAV, baut daraus den AmplitudeTrack (sofern der
-        AudioAnalyzer verfügbar ist) und sendet ihn additiv per
-        ``set_speaking(True, audio_meta=...)`` an den RPi5. Ohne Agent / ohne WAV
-        / ohne Analyzer → kein Track → RandomLipSyncDriver (§4.4). Die Speaking-
-        Flanken (show_speaking / robot.set_speaking) bleiben wie bisher um die
-        TTS-Wiedergabe gewickelt (inkl. ``finally``-Reset bei Fehlern).
-
-        Vorbedingung: ``_tts is not None`` – gefiltert in ``process()``.
-        """
-        assert self._tts is not None
-        use_agent = bool(self._agent and self._is_agent_online())
-        audio_path = self._generate_tts_wav(text, emotion) if use_agent else None
-        # Der Laptop-Agent kann NUR WAV abspielen (AgentClient lädt als audio/wav
-        # hoch, AgentServer dekodiert via wave.open). Ein Nicht-WAV (z.B. eine
-        # ElevenLabs-.mp3 vom TTSRouter) darf nicht an den Agent gehen → dann
-        # lokal via speak() abspielen (Engine ist mp3-fähig), ohne Amplitude.
-        play_wav = (
-            audio_path
-            if audio_path is not None and audio_path.suffix.lower() == ".wav"
-            else None
-        )
-        track = self._build_amplitude_track(play_wav) if play_wav else None
-
-        if self._avatar:
-            self._avatar.show_speaking(True)
-        self._robot_set_speaking(True, track)
-        try:
-            if play_wav is not None and self._agent is not None:
-                self._agent.play_audio_file(play_wav, emotion=emotion or "neutral")
-            elif emotion:
-                self._tts.speak(text, emotion=emotion)
-            else:
-                self._tts.speak(text)
-        except Exception as e:
-            logger.error("TTS fehlgeschlagen: %s", e)
-        finally:
-            if self._avatar:
-                self._avatar.show_speaking(False)
-            self._robot_set_speaking(False)
-            if audio_path is not None:
-                audio_path.unlink(missing_ok=True)
-
-    def _generate_tts_wav(self, text: str, emotion: str | None) -> Path | None:
-        """Generiert das TTS-Audio einmal als Datei (für Agent-Playback + Analyse).
-
-        Gibt den **tatsächlich geschriebenen** Pfad zurück: ``generate_audio``
-        kann einen anderen Pfad liefern als den Platzhalter (z.B. schreibt der
-        ``TTSRouter``/ElevenLabs eine ``.mp3`` und gibt deren Pfad zurück). In
-        dem Fall wird der leere ``.wav``-Platzhalter aufgeräumt und der echte
-        Pfad genutzt – sonst spielte der Agent die leere Datei ab (Codex P2).
-
-        Returns ``None``, wenn die Engine keine Dateigenerierung unterstützt
-        (``NotImplementedError``) oder die Generierung scheitert → der Aufrufer
-        spielt dann lokal via ``speak()`` ab (ohne Amplitude-Track).
-        """
-        assert self._tts is not None
-        with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp:
-            tmp_path = Path(tmp.name)
-        try:
-            actual = self._tts.generate_audio(text, tmp_path, emotion=emotion)
-            result = actual if actual else tmp_path
-            if result != tmp_path:
-                # Engine schrieb woanders (z.B. .mp3) → Platzhalter aufräumen.
-                tmp_path.unlink(missing_ok=True)
-            return result
-        except NotImplementedError:
-            logger.debug("TTS generate_audio nicht verfügbar, lokaler Fallback")
-            tmp_path.unlink(missing_ok=True)
-            return None
-        except Exception as e:
-            logger.error("TTS-Audio-Generierung fehlgeschlagen: %s", e)
-            tmp_path.unlink(missing_ok=True)
-            return None
-
-    def _build_amplitude_track(self, wav_path: Path) -> AmplitudeTrack | None:
-        """Baut aus der WAV das Amplitude-Profil (83.4); ``None`` bei Problemen.
-
-        ``None`` (→ RandomLipSyncDriver, §4.4), wenn die Datei kein lesbares WAV
-        ist (z.B. eine ElevenLabs-.mp3) oder die Analyse scheitert.
-        """
-        try:
-            return self._audio_analyzer.profile(wav_path)
-        except Exception as e:
-            logger.debug("Amplitude-Analyse fehlgeschlagen: %s", e)
-            return None
