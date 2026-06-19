@@ -48,9 +48,11 @@ class _DashboardLike(Protocol):
     TIMEZONE_KEY: str
     STT_TIMEOUT_KEY: str
 
-    def get_timezone(self) -> str: ...
+    def get_timezone(self) -> str:
+        pass
 
-    def _get_stt_timeout(self) -> float: ...
+    def _get_stt_timeout(self) -> float:
+        pass
 
 
 def register_core_routes(app: FastAPI, dashboard: _DashboardLike) -> None:

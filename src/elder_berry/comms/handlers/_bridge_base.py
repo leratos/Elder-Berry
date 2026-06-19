@@ -7,7 +7,10 @@ Damit der Type-Checker das ohne ``self``-Tricks auflöst, deklariert diese Basis
 - die Signaturen der block-übergreifend aufgerufenen Methoden (Stubs).
 
 Die echten Implementierungen liegen in den Mixins bzw. im Shell und überschreiben
-die Stubs via MRO; die ``...``-Körper hier laufen nie. Kein Runtime-Verhalten.
+die Stubs via MRO; die ``raise NotImplementedError``-Körper hier laufen nie.
+Bewusst NICHT deklariert: ``_confirm`` (ConfirmationHandler) – kein Bridge-Mixin
+greift darauf zu (nur der Shell), und der Import der konkreten Klasse würde einen
+CodeQL ``py/unsafe-cyclic-import`` erzeugen.
 """
 
 from __future__ import annotations
@@ -22,7 +25,6 @@ if TYPE_CHECKING:
     from elder_berry.comms.chat_history import ChatHistory
     from elder_berry.comms.claude_agent import ClaudeAgent
     from elder_berry.comms.commands.base import CommandResult
-    from elder_berry.comms.confirmation_handlers import ConfirmationHandler
     from elder_berry.comms.message_channel import IncomingMessage, MessageChannel
     from elder_berry.comms.pending_confirmation import PendingConfirmationStore
     from elder_berry.comms.pending_initiative import PendingInitiativeStore
@@ -58,20 +60,22 @@ class BridgeHandlerBase:
     restart_cooldown_until: float
     _scheduler_mgr: SchedulerManager | None
     _in_llm_command: set[str]
-    _confirm: ConfirmationHandler
 
     # --- Block-übergreifend aufgerufene Methoden (Implementierung anderswo) ---
     async def handle_remote_command(
         self, msg: IncomingMessage, command: str
-    ) -> None: ...
+    ) -> None:
+        raise NotImplementedError
 
     async def _apply_command_side_effects(
         self, msg: IncomingMessage, result: CommandResult
-    ) -> None: ...
+    ) -> None:
+        raise NotImplementedError
 
     def _maybe_register_command_list(
         self, msg: IncomingMessage, result: CommandResult
-    ) -> None: ...
+    ) -> None:
+        raise NotImplementedError
 
     async def _handle_llm_enrichment(
         self,
@@ -81,7 +85,8 @@ class BridgeHandlerBase:
         prompt_instruction: str,
         error_log_msg: str,
         error_fallback_suffix: str,
-    ) -> None: ...
+    ) -> None:
+        raise NotImplementedError
 
     async def _handle_propose_action(
         self,
@@ -89,35 +94,43 @@ class BridgeHandlerBase:
         llm_result: AssistantResult,
         tmp_wav: Path | None,
         prefix: str = "",
-    ) -> None: ...
+    ) -> None:
+        raise NotImplementedError
 
     async def _dispatch_mail_pick(
         self, msg: IncomingMessage, item: dict[str, Any]
-    ) -> None: ...
+    ) -> None:
+        raise NotImplementedError
 
     async def _dispatch_note_pick(
         self, msg: IncomingMessage, item: dict[str, Any]
-    ) -> None: ...
+    ) -> None:
+        raise NotImplementedError
 
     async def _dispatch_route_pick(
         self, msg: IncomingMessage, list_type: str, item: dict[str, Any]
-    ) -> None: ...
+    ) -> None:
+        raise NotImplementedError
 
     async def _dispatch_nearby_pick(
         self, msg: IncomingMessage, item: dict[str, Any]
-    ) -> None: ...
+    ) -> None:
+        raise NotImplementedError
 
     def _try_parse_multi_line(
         self, command_text: str
-    ) -> list[tuple[str, str]] | None: ...
+    ) -> list[tuple[str, str]] | None:
+        raise NotImplementedError
 
     async def _execute_multi_line_commands(
         self, msg: IncomingMessage, parsed_lines: list[tuple[str, str]]
-    ) -> None: ...
+    ) -> None:
+        raise NotImplementedError
 
     async def _retry_llm_remote_command(
         self, msg: IncomingMessage, failed_command: str
-    ) -> str | None: ...
+    ) -> str | None:
+        raise NotImplementedError
 
     async def _propose_plugin_for_failed_command(
         self, msg: IncomingMessage, command_text: str

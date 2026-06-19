@@ -40,21 +40,27 @@ class _DashboardLike(Protocol):
     LLM_MODE_KEY: str
     TIMEZONE_KEY: str
 
-    def _setting_definitions(self) -> list[SettingDefinition]: ...
+    def _setting_definitions(self) -> list[SettingDefinition]:
+        pass
 
-    def _setting_definition_map(self) -> dict[str, SettingDefinition]: ...
+    def _setting_definition_map(self) -> dict[str, SettingDefinition]:
+        pass
 
-    def _get_setting_value(self, key: str) -> str | float: ...
+    def _get_setting_value(self, key: str) -> str | float:
+        pass
 
     def _validate_setting_value(
         self, definition: SettingDefinition, value: Any
-    ) -> str | float: ...
+    ) -> str | float:
+        pass
 
     def _store_setting_value(
         self, definition: SettingDefinition, value: str | float
-    ) -> None: ...
+    ) -> None:
+        pass
 
-    async def _get_monitor_status(self) -> dict[str, Any]: ...
+    async def _get_monitor_status(self) -> dict[str, Any]:
+        pass
 
 
 def register_settings_api_routes(app: FastAPI, dashboard: _DashboardLike) -> None:

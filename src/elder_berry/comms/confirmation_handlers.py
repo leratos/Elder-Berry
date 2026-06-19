@@ -34,8 +34,8 @@ from elder_berry.comms.handlers.confirmation_restart import ConfirmationRestartM
 from elder_berry.comms.pending_confirmation import PendingAction
 
 if TYPE_CHECKING:
+    from elder_berry.comms.handlers._confirmation_base import ConfirmationParent
     from elder_berry.comms.message_channel import IncomingMessage
-    from elder_berry.comms.message_handlers import BridgeMessageHandler
 
 logger = logging.getLogger(__name__)
 
@@ -90,7 +90,7 @@ class ConfirmationHandler(
         }
     )
 
-    def __init__(self, parent: BridgeMessageHandler) -> None:
+    def __init__(self, parent: ConfirmationParent) -> None:
         self._p = parent
 
     async def handle_confirm(
