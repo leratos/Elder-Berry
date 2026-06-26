@@ -6,7 +6,9 @@ from pathlib import Path
 try:
     import pygame
 except ImportError:
-    pygame = None  # type: ignore[assignment]
+    # unused-ignore: ohne installiertes pygame (CI-typecheck) ist die
+    # [assignment]-Unterdrueckung ueberfluessig, mit pygame noetig.
+    pygame = None  # type: ignore[assignment, unused-ignore]
 
 from elder_berry.avatar.base import AvatarRenderer
 from elder_berry.character.base import Emotion

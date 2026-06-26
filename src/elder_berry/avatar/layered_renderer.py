@@ -12,7 +12,10 @@ from pathlib import Path
 try:
     import pygame
 except ImportError:
-    pygame = None  # type: ignore[assignment]
+    # unused-ignore: pygame ist im CI-typecheck-Install nicht vorhanden
+    # (ignore_missing_imports -> Any), dann ist die [assignment]-Unterdrueckung
+    # ueberfluessig; mit pygame installiert (lokal/Prod) ist sie noetig.
+    pygame = None  # type: ignore[assignment, unused-ignore]
 
 from elder_berry.avatar.avatar_config_loader import EmotionLayers
 from elder_berry.avatar.base import AvatarRenderer
