@@ -281,14 +281,12 @@ ignore_missing_imports = true
 [[tool.mypy.overrides]]
 module = [
     "elder_berry.actions.*",
-    "elder_berry.avatar.*",
     "elder_berry.character.*",
     "elder_berry.llm.*",
     "elder_berry.memory.*",
     # Phase 105-B1/B2: robot.* durch Einzeleintraege ersetzt (wie comms in 76b).
-    # B2a (client/alexa) + B2b (server) strict; nur rpi5_avatar bleibt
-    # spaeterer Tier (gekoppelt an noch-nicht-striktes avatar/).
-    "elder_berry.robot.rpi5_avatar",
+    # B2a (client/alexa) + B2b (server) strict. Phase 107: rpi5_avatar geloest
+    # (avatar/ ist jetzt strict) -> in den robot-strict-Block unten verschoben.
     "elder_berry.server.*",
     "elder_berry.stt.*",
     "elder_berry.system.*",
@@ -447,6 +445,29 @@ module = [
 ]
 strict = true
 
+# --- Phase 107 strict: avatar/-Paket ---
+# Loest avatar.* aus dem ignore_errors-Block oben. EmotionLayers ist ab 107
+# vereinheitlicht (avatar_config_loader, von layered_renderer re-exportiert);
+# LayerSource-Protocol read-only (@property), sodass frozen-Dataclasses es
+# erfuellen. rpi5_avatar folgt in 107-Etappe 3 (war 105-Restposten).
+[[tool.mypy.overrides]]
+module = [
+    "elder_berry.avatar",                       # __init__.py
+    "elder_berry.avatar.attention",
+    "elder_berry.avatar.avatar_config_loader",
+    "elder_berry.avatar.base",
+    "elder_berry.avatar.briefing_mode",
+    "elder_berry.avatar.controller",
+    "elder_berry.avatar.crossfade_benchmark",
+    "elder_berry.avatar.idle_policy",
+    "elder_berry.avatar.layered_renderer",
+    "elder_berry.avatar.lip_sync",
+    "elder_berry.avatar.render_plan",
+    "elder_berry.avatar.sprite_renderer",
+    "elder_berry.avatar.state_machine",
+]
+strict = true
+
 # --- Phase 105-B1 strict: robot/ trivial-Module ---
 # client/server/alexa_skill_handler folgen in B2; rpi5_avatar spaeter
 # (avatar/-Kopplung). Beide bleiben solange im ignore_errors-Block oben.
@@ -464,12 +485,15 @@ module = [
 strict = true
 
 # --- Phase 105-B2a/B2b strict: robot/ core (client + alexa + server) ---
-# Nur noch rpi5_avatar bleibt non-strict (avatar/-Kopplung, spaeterer Tier).
+# Phase 107: rpi5_avatar ergaenzt -- avatar/ ist jetzt strict, die
+# EmotionLayers/LayerSource-Kopplung (frueher 182) ist aufgeloest. Damit ist
+# robot/ vollstaendig strict (kein ignore_errors-Modul mehr).
 [[tool.mypy.overrides]]
 module = [
     "elder_berry.robot.client",
     "elder_berry.robot.alexa_skill_handler",
     "elder_berry.robot.server",
+    "elder_berry.robot.rpi5_avatar",
 ]
 strict = true
 

@@ -6,7 +6,9 @@ from pathlib import Path
 try:
     import pygame
 except ImportError:
-    pygame = None  # type: ignore[assignment]
+    # unused-ignore: ohne installiertes pygame (CI-typecheck) ist die
+    # [assignment]-Unterdrueckung ueberfluessig, mit pygame noetig.
+    pygame = None  # type: ignore[assignment, unused-ignore]
 
 from elder_berry.avatar.base import AvatarRenderer
 from elder_berry.character.base import Emotion
@@ -119,7 +121,7 @@ class SpriteRenderer(AvatarRenderer):
         self._is_speaking = is_speaking
 
     def update(self) -> None:
-        if not self._running or self._screen is None:
+        if not self._running or self._screen is None or self._clock is None:
             return
 
         for event in pygame.event.get():

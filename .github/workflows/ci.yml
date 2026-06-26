@@ -121,12 +121,12 @@ jobs:
           python -m pip install --upgrade pip
           pip install -e ".[dev,tools,nextcloud,web,documents,agent]"
 
-      - name: Type-check core/+tools/+web/+comms/+agent/+robot/
-        # robot/ enthaelt noch ignore_errors-Module (client/server/alexa/
-        # rpi5_avatar, B2 + spaeter); deren Funde sind unterdrueckt, die
-        # strikten 105-B1-Module werden hart geprueft. robot-Extra ist leer,
-        # alle robot-Deps sind Basis-Deps bzw. ignore_missing_imports.
-        run: mypy src/elder_berry/core src/elder_berry/tools src/elder_berry/web src/elder_berry/comms src/elder_berry/agent src/elder_berry/robot
+      - name: Type-check core/+tools/+web/+comms/+agent/+robot/+avatar/
+        # Phase 107: avatar/ ist jetzt strict (EmotionLayers vereinheitlicht,
+        # LayerSource read-only) und rpi5_avatar aus dem ignore_errors-Block
+        # geloest -> robot/ ist vollstaendig strict. pygame/PIL sind via
+        # ignore_missing_imports gedeckt, daher kein avatar-Install-Extra noetig.
+        run: mypy src/elder_berry/core src/elder_berry/tools src/elder_berry/web src/elder_berry/comms src/elder_berry/agent src/elder_berry/robot src/elder_berry/avatar
 
   security:
     runs-on: ubuntu-latest

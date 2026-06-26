@@ -27,7 +27,9 @@ from dataclasses import dataclass
 try:
     import pygame
 except ImportError:  # pragma: no cover - pygame ist auf dem RPi5/Devhost da
-    pygame = None  # type: ignore[assignment]
+    # unused-ignore: ohne installiertes pygame (CI-typecheck) ist die
+    # [assignment]-Unterdrueckung ueberfluessig, mit pygame noetig.
+    pygame = None  # type: ignore[assignment, unused-ignore]
 
 from elder_berry.avatar.layered_renderer import (
     CrossfadeScope,

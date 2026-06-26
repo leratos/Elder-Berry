@@ -12,8 +12,12 @@ from pathlib import Path
 try:
     import pygame
 except ImportError:
-    pygame = None  # type: ignore[assignment]
+    # unused-ignore: pygame ist im CI-typecheck-Install nicht vorhanden
+    # (ignore_missing_imports -> Any), dann ist die [assignment]-Unterdrueckung
+    # ueberfluessig; mit pygame installiert (lokal/Prod) ist sie noetig.
+    pygame = None  # type: ignore[assignment, unused-ignore]
 
+from elder_berry.avatar.avatar_config_loader import EmotionLayers
 from elder_berry.avatar.base import AvatarRenderer
 from elder_berry.avatar.idle_policy import IdleBlinkOverrides
 from elder_berry.avatar.render_plan import (
@@ -22,6 +26,13 @@ from elder_berry.avatar.render_plan import (
     TransitionState,
 )
 from elder_berry.character.base import Emotion
+
+# ``EmotionLayers`` ist ab Phase 107 die EINE kanonische Klasse aus
+# ``avatar_config_loader``; hier nur re-exportiert, damit Bestands-Importe
+# (``from ...layered_renderer import EmotionLayers``) + die Annotation von
+# ``EMOTION_MAP`` denselben Typ wie ``config.emotions`` nutzen. Ein zweites,
+# strukturgleiches Dataclass hier erzeugte sonst den ``self._emotion_map``-
+# Typkonflikt (frueher layered_renderer-EmotionLayers vs. Loader-EmotionLayers).
 
 logger = logging.getLogger(__name__)
 
@@ -80,18 +91,6 @@ BREATH_AMPLITUDE = 2.0  # Pixel Auslenkung (±)
 # Buffer-Refactor + Width/Height-Tausch erfordern -- nicht
 # implementiert.
 ALLOWED_ROTATIONS = (0, 180)
-
-
-@dataclass(frozen=True)
-class EmotionLayers:
-    """Definiert welche Komponenten für eine Emotion verwendet werden."""
-
-    body: str
-    eye_left: str
-    eye_right: str
-    mouth: str
-    can_blink: bool
-    effect: str | None = None
 
 
 # Mapping: Emotion → Komponenten-Dateinamen (ohne Ordner-Prefix)
@@ -572,6 +571,7 @@ class LayeredSpriteRenderer(AvatarRenderer):
         Vollbild-``flip(True, True)`` (kein Resampling) **vor** dem ``display.flip``.
         Teil der pro-Frame-Render-Kosten – die FPS-Messung (§0.6) schließt ihn ein.
         """
+        assert self._screen is not None  # nur nach is-None-Guard aufgerufen
         if self._rotation == 180:
             rotated = pygame.transform.flip(self._screen, True, True)
             self._screen.blit(rotated, (0, 0))
@@ -675,6 +675,7 @@ class LayeredSpriteRenderer(AvatarRenderer):
         self._fade_surface(faded, alpha)
         x = (self._width - sw) // 2
         y = (self._height - sh) // 2 + y_offset
+        assert self._screen is not None  # nur nach is-None-Guard aufgerufen
         self._screen.blit(faded, (x, y))
 
     @staticmethod
@@ -742,6 +743,7 @@ class LayeredSpriteRenderer(AvatarRenderer):
         physikalisch korrekt. Kosten: zwei vorgewichtete Vollbild-Kompositionen
         pro Frame (in der RPi5-FPS-Messung zu prüfen; sonst MOUTH_ONLY/540x960).
         """
+        assert self._screen is not None  # nur nach is-None-Guard aufgerufen
         self._screen.fill(BG_COLOR)
         old_weight = OPAQUE_ALPHA - new_plan.alpha
         self._add_weighted_plan(old_plan, old_weight)
@@ -767,6 +769,7 @@ class LayeredSpriteRenderer(AvatarRenderer):
             scratch.fill(
                 (weight, weight, weight), special_flags=pygame.BLEND_RGB_MULT
             )
+        assert self._screen is not None  # nur nach is-None-Guard aufgerufen
         self._screen.blit(scratch, (0, 0), special_flags=pygame.BLEND_RGB_ADD)
 
     def _composite_mouth_only(
@@ -782,6 +785,7 @@ class LayeredSpriteRenderer(AvatarRenderer):
         """
         static_plan, fade_mouth_key = self._mouth_only_layers(old_plan, new_plan)
 
+        assert self._screen is not None  # nur nach is-None-Guard aufgerufen
         self._screen.fill(BG_COLOR)
         self._blit_plan_to(self._screen, static_plan)
 
@@ -801,6 +805,7 @@ class LayeredSpriteRenderer(AvatarRenderer):
         sw, sh = surface.get_size()
         x = (self._width - sw) // 2
         y = (self._height - sh) // 2 + y_offset
+        assert self._screen is not None  # nur nach is-None-Guard aufgerufen
         self._screen.blit(surface, (x, y))
 
     def _get_lip_sync_mouth(self, now: float) -> str:

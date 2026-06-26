@@ -54,15 +54,38 @@ def lerp_alpha(progress: float) -> int:
 class LayerSource(Protocol):
     """Strukturelle Sicht auf eine Emotion: liefert die Default-Layer-Keys.
 
-    Erfüllt von beiden ``EmotionLayers``-Varianten (``layered_renderer`` und
-    ``avatar_config_loader``) – beide haben dieselben Felder.
+    Erfüllt vom (vereinheitlichten) ``EmotionLayers`` (``avatar_config_loader``,
+    via ``layered_renderer`` re-exportiert) und von :class:`RenderPlan` selbst.
+
+    Die Member sind **read-only** (``@property``), damit ``frozen``-Dataclasses
+    wie ``EmotionLayers``/``RenderPlan`` das Protocol erfüllen – ein settable
+    Attribut würde mypy gegen das read-only-Attribut einer frozen-Dataclass
+    abweisen (``compose``-``arg-type``). Konsument ist nur lesend.
+
+    Die Property-Bodies sind bewusst reine Docstrings (statt ``...``): ein
+    bloßes ``...`` als Statement löst CodeQL ``py/ineffectual-statement`` aus;
+    ein Docstring ist als Stub-Body gleichwertig und alarmfrei.
     """
 
-    body: str
-    eye_left: str
-    eye_right: str
-    mouth: str
-    effect: str | None
+    @property
+    def body(self) -> str:
+        """Body-Komponenten-Key."""
+
+    @property
+    def eye_left(self) -> str:
+        """Key des linken Auges."""
+
+    @property
+    def eye_right(self) -> str:
+        """Key des rechten Auges."""
+
+    @property
+    def mouth(self) -> str:
+        """Mund-Key."""
+
+    @property
+    def effect(self) -> str | None:
+        """Optionaler Effekt-Key (``None`` = kein Effekt-Layer)."""
 
 
 @dataclass(frozen=True)

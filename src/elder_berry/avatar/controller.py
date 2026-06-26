@@ -36,6 +36,7 @@ from __future__ import annotations
 import logging
 import threading
 import time
+from typing import Any
 
 from elder_berry.avatar.base import AvatarRenderer
 from elder_berry.avatar.idle_policy import IdleBehaviorPolicy, IdleBlinkOverrides
@@ -118,7 +119,7 @@ class AvatarController(AvatarDisplay):
             self._legacy_speaking = is_speaking
             self._apply_speech_delta_locked(is_speaking, audio_meta)
 
-    def get_state(self) -> dict:
+    def get_state(self) -> dict[str, Any]:
         """Liefert den semantischen Zustand (Emotion, Speaking, Zähler)."""
         with self._lock:
             state = self._state_machine.state
