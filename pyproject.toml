@@ -20,7 +20,7 @@ dependencies = [
     # undokumentierten Typosquat-Dep ``fastar>=0.9.0`` in die ``[standard]``-
     # Extras-Liste ein. Lockfile pinnt schon auf 0.136.1, der CI-Audit
     # (`pip install -e .` ohne Lock) wuerde sonst aber 0.136.3 ziehen.
-    "fastapi!=0.136.3,>=0.137.0",
+    "fastapi!=0.136.3,>=0.138.0",
     "uvicorn[standard]>=0.49.0",
     "bcrypt>=5.0.0",    # Phase 58: Dashboard-Login (PW-Hash, Tower + CI)
     "keyring>=25.7.0",  # Phase 65 (M-1): Fernet-Masterkey im OS-Keyring
