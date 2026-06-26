@@ -1809,11 +1809,58 @@ distanz-korrekte, gefilterte Umkreissuche mit Pick-Liste und Maps-Link.
 - Konzept: `docs/concepts/phase-97-nearby-places-search.md`,
   Smoketest: `docs/concepts/phase-97-smoketest.md` (PRs #302–#305)
 
-> **Hinweis (Stand 2026-06-26):** Die Phasen 98–104 (LLM-Routing-Resilienz,
-> Mail 2.0, Sicherheits-/Parser-Härtung, Fehler-Disziplin) sind in dieser
-> Roadmap noch nicht nachgetragen; sie sind über ihre Konzept-Docs unter
-> `docs/concepts/` und das Bramble-Journal dokumentiert. Nachgetragen sind hier
-> die Typ-/Wartbarkeits-Phasen 105–107.
+## Phase 98 – LLM-Routing-Resilienz 🔁 ✅ ABGESCHLOSSEN
+
+Härtung des LLM-Routings (Cloud → lokaler Fallback, Privacy-Modus) plus
+strikte Typisierung der Routing-Module.
+
+- ✅ `llm.modes` + `llm.router` auf `mypy --strict` (eigener Tier-Block).
+- Konzept: `docs/concepts/phase-98-llm-routing-resilienz.md` (PR #308).
+
+## Phase 99 – CI-Ehrlichkeit 🧪 ✅ ABGESCHLOSSEN
+
+Schließt Befund Q4 (CI-Lint enger als lokal): die CI prüft jetzt denselben
+Umfang wie lokal.
+
+- ✅ Test-Job entskippt (172 zuvor übersprungene Tests laufen wieder).
+- ✅ Ruff-Ruleset als Single Source of Truth aus `pyproject.toml`
+  (`ruff check src/ tests/ scripts/ tower/`), kein Subset mehr.
+- PR #310.
+
+## Phase 100 + 101 – Mail 2.0 (Tier 0 + Tier 1) 📧 ✅ ABGESCHLOSSEN
+
+Aus Lese-/Antwort-Bot wird ein gehärteter, proaktiver Mail-Assistent.
+
+- ✅ **Tier 0 (Härtung, #311):** SMTP-Key-Mismatch behoben, IMAP-Socket-Timeout,
+  Empfänger-/Header-Validierung (`parseaddr` + CR/LF-Scrub), konfigurierbare
+  Signatur/Anzeigename, ehrlicher `\Seen`-Status (read-only), Silent-Swallows
+  geloggt.
+- ✅ **Tier 1 (#318):** `MailTriageClassifier` (`mails priorität`, über den
+  privacy-sicheren `LLMRouter`) + `MailWatcher` (proaktive Neue-Mail-
+  Benachrichtigung, LLM-frei, Baseline + UID-Dedup).
+- **Invariante:** Outbound-Empfänger nie aus LLM-Output/Mail-Body.
+- Konzept: `docs/concepts/phase-100-mail-2.0.md`.
+
+## Phase 102 – Akku-Anzeige als optionale Capability 🔋 ✅ ABGESCHLOSSEN
+
+- ✅ Akku-Telemetrie hinter einer Capability/Flag (Default **aus**); die
+  Akku-Zeile entfällt im Robot-Status, solange sie deaktiviert ist → schließt
+  das „Fake-Akku"-Leck (kein simulierter Akku-Wert mehr im System-Prompt).
+- PR #319 (Schritt 1 aus dem Sensor-Backlog).
+
+## Phase 103 + 104 – Sicherheits-/Parser-Härtung + Fehler-Disziplin 🛡️ ✅ ABGESCHLOSSEN
+
+Erste zwei Pakete der Remediation aus der Analyse 2026-06-09
+(`docs/concepts/security-quality-remediation-2026-06.md`).
+
+- ✅ **Phase 103 (#321):** S1 zentrale Bind-Policy (`core/bind_policy.py`,
+  fail-closed), S2 XML-Härtung gegen XXE/Billion-Laughs (`defusedxml`-Drop-in),
+  S4 Spalten-Allowlist gegen f-String-SQL.
+- ✅ **Phase 104 (#322):** S3 echte Silent-Swallows behoben (u. a. CardDAV
+  fail-closed), Q2 enge `except`-Disziplin, Q5 Schuld-Marker (TODO/FIXME) ins
+  Journal überführt.
+- Konzepte: `docs/concepts/phase-103-server-parser-haertung.md`,
+  `docs/concepts/phase-104-fehler-disziplin-beobachtbarkeit.md`.
 
 ## Phase 105 – mypy --strict für `agent/` + `robot/` 🔍 ✅ ABGESCHLOSSEN
 

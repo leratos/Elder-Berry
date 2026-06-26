@@ -225,8 +225,6 @@ Gates: `test` (Ubuntu+Windows, inkl. Coverage), `lint` (ruff), `typecheck`
 | 74 | Codecov-Integration | ✅ Fertig |
 | 75 + 75b | Repo-Hygiene, ruff-format Massen-Sweep (~300 Dateien) | ✅ Fertig |
 | 76 + 76b + 76c | mypy-Strict-Rollout (`core/`, `comms/`, `tools/`+`web/`), CI-Gate hart | ✅ Fertig |
-| 98 + 105 + 107 | mypy-Strict-Fortsetzung: LLM-Routing, `agent/`+`robot/`, `avatar/` (`robot/` jetzt vollständig strict) | ✅ Fertig |
-| 106 | Modul-Entflechtung der >1000-Zeilen-Dateien (6 Etappen, Mixin-Pakete) | ✅ Fertig |
 | 77 + 77.5 | Commands-Plugin-Registry (24 Builtin-Plugins, Discovery, Wizard) + Plugin-Inspector | ✅ Fertig |
 | 78 | Plugin-Self-Suggestion (ProposalStore + Trigger-Pipeline + Dashboard) | ✅ Fertig |
 | 79 | Richer Pseudocode für Vorschläge | ⏸️ ON HOLD |
@@ -244,6 +242,14 @@ Gates: `test` (Ubuntu+Windows, inkl. Coverage), `lint` (ruff), `typecheck`
 | 95 | Comms-Pattern-Stabilisierung (PatternSpec, Routing-Confidence, Handler-Gates) | ✅ Fertig |
 | 96 | RobotClient-Resilienz & RPi-Token-Provisionierung | ✅ Fertig |
 | 97 | Umkreissuche (Places API New, Pick → Maps-Link, Matrix-Standort-Share) | ✅ Fertig |
+| 98 | LLM-Routing-Resilienz (Fallback-Härtung + strict-Typisierung `modes`/`router`) | ✅ Fertig |
+| 99 | CI-Ehrlichkeit (Test-Job entskippt, Ruff-Ruleset zentral aus `pyproject`) | ✅ Fertig |
+| 100 + 101 | Mail 2.0 Tier 0 (Härtung) + Tier 1 (LLM-Triage `mails priorität` + Neue-Mail-Benachrichtigung) | ✅ Fertig |
+| 102 | Akku-Anzeige als optionale Capability (Default aus, schließt Fake-Akku-Leck) | ✅ Fertig |
+| 103 + 104 | Server-/Parser-Härtung (SSRF/XXE/SQL-Allowlist) + Fehler-Disziplin & Beobachtbarkeit | ✅ Fertig |
+| 105 | mypy-Strict für `agent/` + `robot/` | ✅ Fertig |
+| 106 | Modul-Entflechtung der >1000-Zeilen-Dateien (6 Etappen, Mixin-Pakete) | ✅ Fertig |
+| 107 | mypy-Strict für `avatar/` (+ `rpi5_avatar`; `robot/` jetzt vollständig strict) | ✅ Fertig |
 
 Vollständige Roadmap mit Details: **[PROJECT_ROADMAP.md](docs/PROJECT_ROADMAP.md)**
 Phasenchronik mit Beschreibungen: **[CHANGELOG.md](docs/CHANGELOG.md)**
