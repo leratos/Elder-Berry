@@ -190,8 +190,8 @@ pytest tests/ -q
 
 Aktuell >170 Testdateien im `tests/`-Verzeichnis. CI läuft mit vier
 Gates: `test` (Ubuntu+Windows, inkl. Coverage), `lint` (ruff), `typecheck`
-(`mypy --strict` für `core/`, `comms/`, `tools/`, `web`) und `security`
-(`pip-audit`).
+(`mypy --strict` für `core/`, `comms/`, `tools/`, `web/`, das LLM-Routing,
+`agent/`, `robot/` und `avatar/`) und `security` (`pip-audit`).
 
 ## Roadmap (Auszug)
 
@@ -225,6 +225,8 @@ Gates: `test` (Ubuntu+Windows, inkl. Coverage), `lint` (ruff), `typecheck`
 | 74 | Codecov-Integration | ✅ Fertig |
 | 75 + 75b | Repo-Hygiene, ruff-format Massen-Sweep (~300 Dateien) | ✅ Fertig |
 | 76 + 76b + 76c | mypy-Strict-Rollout (`core/`, `comms/`, `tools/`+`web/`), CI-Gate hart | ✅ Fertig |
+| 98 + 105 + 107 | mypy-Strict-Fortsetzung: LLM-Routing, `agent/`+`robot/`, `avatar/` (`robot/` jetzt vollständig strict) | ✅ Fertig |
+| 106 | Modul-Entflechtung der >1000-Zeilen-Dateien (6 Etappen, Mixin-Pakete) | ✅ Fertig |
 | 77 + 77.5 | Commands-Plugin-Registry (24 Builtin-Plugins, Discovery, Wizard) + Plugin-Inspector | ✅ Fertig |
 | 78 | Plugin-Self-Suggestion (ProposalStore + Trigger-Pipeline + Dashboard) | ✅ Fertig |
 | 79 | Richer Pseudocode für Vorschläge | ⏸️ ON HOLD |

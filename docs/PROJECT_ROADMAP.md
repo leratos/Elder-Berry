@@ -1808,3 +1808,50 @@ distanz-korrekte, gefilterte Umkreissuche mit Pick-Liste und Maps-Link.
 - ✅ Live-Smoketest bestanden (distanzsortierte nahe Treffer, Rückfrage-Flow)
 - Konzept: `docs/concepts/phase-97-nearby-places-search.md`,
   Smoketest: `docs/concepts/phase-97-smoketest.md` (PRs #302–#305)
+
+> **Hinweis (Stand 2026-06-26):** Die Phasen 98–104 (LLM-Routing-Resilienz,
+> Mail 2.0, Sicherheits-/Parser-Härtung, Fehler-Disziplin) sind in dieser
+> Roadmap noch nicht nachgetragen; sie sind über ihre Konzept-Docs unter
+> `docs/concepts/` und das Bramble-Journal dokumentiert. Nachgetragen sind hier
+> die Typ-/Wartbarkeits-Phasen 105–107.
+
+## Phase 105 – mypy --strict für `agent/` + `robot/` 🔍 ✅ ABGESCHLOSSEN
+
+Setzt den Tier-Rollout der Phasen 76/76b/76c/98 auf die netz-exponierten
+Server-Pakete fort (Befund Q3 der Remediation-Übersicht).
+
+- ✅ `agent/` (klein) und `robot/` (mittel) aus dem `ignore_errors`-Block
+  gelöst und strict typgeprüft; CI-`typecheck`-Scope um beide erweitert.
+- Echte Logik-Fixes mit Test abgesichert (z. B. `robot/server.py`-None-Guard,
+  `alexa_skill_handler` RSA-Key-`isinstance`-Guard).
+- Bewusst aufgeschoben: `robot/rpi5_avatar.py` (Kopplung an noch nicht-striktes
+  `avatar/`) → eigener späterer Tier (Phase 107).
+- Konzept: `docs/concepts/phase-105-mypy-strict-agent-robot.md` (PR #323).
+
+## Phase 106 – Modul-Entflechtung großer Dateien 🧱 ✅ ABGESCHLOSSEN
+
+Wartbarkeits-Remediation (Befund Q1): die sechs Dateien über ~1000 Zeilen in
+je ein dünnes Shell + Mixin-/Submodul-Paket zerlegt, öffentliche API und
+Test-Surface unverändert.
+
+- ✅ Zerlegt: `robot/server`-Schemas/Interfaces, `confirmation_handlers`,
+  `settings_dashboard`, `weather_commands`, `core/assistant`,
+  `message_handlers` (2387 → 569 Zeilen Shell + 7 Bridge-Mixins).
+- Jede neue Datei ≤ ~400 Zeilen; voller pytest grün (keine Verhaltensänderung).
+- Konzept: `docs/concepts/phase-106-modul-entflechtung.md` (PR #324).
+
+## Phase 107 – mypy --strict für `avatar/` 🔍 ✅ ABGESCHLOSSEN
+
+Schließt den in Phase 105 aufgeschobenen Q3-Rest: `avatar/` strict, danach
+`robot/rpi5_avatar` nachgezogen → `robot/` vollständig strict.
+
+- ✅ Baseline 16 Fehler / 4 Dateien (+1 in `rpi5_avatar`); meist mechanisch
+  (`self._screen`-None-Narrowing, nackte `dict`-Annotationen).
+- ✅ Design (Lera-Entscheid): die zwei byte-identischen `EmotionLayers`-Klassen
+  zu einer vereinheitlicht (kanonisch in `avatar_config_loader`, von
+  `layered_renderer` re-exportiert); `LayerSource`-Protocol auf read-only
+  `@property` umgestellt, sodass `frozen`-Dataclasses es erfüllen — löst den
+  früheren `rpi5_avatar:182`-Mismatch ohne `cast`/`# type: ignore`.
+- ✅ CI-`typecheck`-Scope um `src/elder_berry/avatar` erweitert; voller pytest
+  7324 passed, CodeQL grün.
+- Konzept: `docs/concepts/phase-107-mypy-strict-avatar.md` (PR #333).
