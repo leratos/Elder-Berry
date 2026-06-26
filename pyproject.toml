@@ -64,7 +64,7 @@ matrix = [
 ]
 remote = [
     "mss>=10.2.0",
-    "pyperclip>=1.9",
+    "pyperclip>=1.11.0",
     # Phase 85.4: gleiche Begruendung wie matrix-Gruppe -- remote-
     # Client-Pfade laden email_client transitiv.
     "beautifulsoup4>=4.15.0",
