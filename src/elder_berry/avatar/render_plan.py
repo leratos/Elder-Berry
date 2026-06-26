@@ -61,18 +61,31 @@ class LayerSource(Protocol):
     wie ``EmotionLayers``/``RenderPlan`` das Protocol erfüllen – ein settable
     Attribut würde mypy gegen das read-only-Attribut einer frozen-Dataclass
     abweisen (``compose``-``arg-type``). Konsument ist nur lesend.
+
+    Die Property-Bodies sind bewusst reine Docstrings (statt ``...``): ein
+    bloßes ``...`` als Statement löst CodeQL ``py/ineffectual-statement`` aus;
+    ein Docstring ist als Stub-Body gleichwertig und alarmfrei.
     """
 
     @property
-    def body(self) -> str: ...
+    def body(self) -> str:
+        """Body-Komponenten-Key."""
+
     @property
-    def eye_left(self) -> str: ...
+    def eye_left(self) -> str:
+        """Key des linken Auges."""
+
     @property
-    def eye_right(self) -> str: ...
+    def eye_right(self) -> str:
+        """Key des rechten Auges."""
+
     @property
-    def mouth(self) -> str: ...
+    def mouth(self) -> str:
+        """Mund-Key."""
+
     @property
-    def effect(self) -> str | None: ...
+    def effect(self) -> str | None:
+        """Optionaler Effekt-Key (``None`` = kein Effekt-Layer)."""
 
 
 @dataclass(frozen=True)
