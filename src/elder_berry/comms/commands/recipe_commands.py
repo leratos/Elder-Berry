@@ -437,7 +437,7 @@ class RecipeCommandHandler(CommandHandler):
                 ),
             )
 
-        preview = self._render_recipe(generated, score=None)
+        preview = self._render_recipe(generated, score=None, full=True)
         return CommandResult(
             command="recipe_lookup",
             success=True,
@@ -899,7 +899,9 @@ class RecipeCommandHandler(CommandHandler):
         )
 
     @staticmethod
-    def _render_recipe(recipe: dict[str, Any], score: float | None) -> str:
+    def _render_recipe(
+        recipe: dict[str, Any], score: float | None, *, full: bool = False
+    ) -> str:
         name = str(recipe.get("name") or recipe.get("title") or "Rezept")
         category = str(recipe.get("recipeCategory") or recipe.get("category") or "")
         recipe_yield = str(recipe.get("recipeYield") or "").strip()
@@ -914,7 +916,8 @@ class RecipeCommandHandler(CommandHandler):
 
         ingredients_raw = recipe.get("recipeIngredient") or []
         if isinstance(ingredients_raw, list):
-            ingredients = [str(x) for x in ingredients_raw[:8]]
+            ingredient_items = ingredients_raw if full else ingredients_raw[:8]
+            ingredients = [str(x) for x in ingredient_items]
         else:
             ingredients = []
 
@@ -928,7 +931,8 @@ class RecipeCommandHandler(CommandHandler):
         instructions_raw = recipe.get("recipeInstructions") or []
         instructions: list[str] = []
         if isinstance(instructions_raw, list):
-            for step in instructions_raw[:5]:
+            instruction_steps = instructions_raw if full else instructions_raw[:5]
+            for step in instruction_steps:
                 if isinstance(step, dict):
                     text = str(step.get("text") or "").strip()
                 else:
@@ -966,7 +970,8 @@ class RecipeCommandHandler(CommandHandler):
 
         if tools:
             lines.append("Utensilien:")
-            for item in tools[:8]:
+            tool_items = tools if full else tools[:8]
+            for item in tool_items:
                 lines.append(f"- {item}")
 
         if ingredients:

@@ -462,6 +462,22 @@ def test_render_recipe_formats_dict_instructions_and_score(handler):
     assert "1. Schritt 1" in txt
 
 
+def test_render_recipe_truncates_preview_but_full_keeps_all(handler):
+    recipe = {
+        "name": "Karottencremesuppe",
+        "recipeIngredient": [f"Zutat {i}" for i in range(1, 11)] + ["1 TL Kurkuma"],
+        "recipeInstructions": [f"Schritt {i}" for i in range(1, 10)],
+    }
+    # Suchtreffer-Vorschau: bewusst gekuerzt (gespeichertes Rezept liegt vollst. im Cookbook)
+    preview = handler._render_recipe(recipe, score=None)
+    assert "- 1 TL Kurkuma" not in preview
+    assert "9. Schritt 9" not in preview
+    # Entwurf: vollstaendig, damit Zutaten aus dem Text auch in der Liste stehen
+    full = handler._render_recipe(recipe, score=None, full=True)
+    assert "- 1 TL Kurkuma" in full
+    assert "9. Schritt 9" in full
+
+
 def test_render_recipe_includes_extended_fields(handler):
     txt = handler._render_recipe(
         {
