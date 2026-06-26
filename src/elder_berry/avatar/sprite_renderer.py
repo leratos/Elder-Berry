@@ -119,7 +119,7 @@ class SpriteRenderer(AvatarRenderer):
         self._is_speaking = is_speaking
 
     def update(self) -> None:
-        if not self._running or self._screen is None:
+        if not self._running or self._screen is None or self._clock is None:
             return
 
         for event in pygame.event.get():

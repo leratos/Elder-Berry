@@ -54,15 +54,25 @@ def lerp_alpha(progress: float) -> int:
 class LayerSource(Protocol):
     """Strukturelle Sicht auf eine Emotion: liefert die Default-Layer-Keys.
 
-    Erfüllt von beiden ``EmotionLayers``-Varianten (``layered_renderer`` und
-    ``avatar_config_loader``) – beide haben dieselben Felder.
+    Erfüllt vom (vereinheitlichten) ``EmotionLayers`` (``avatar_config_loader``,
+    via ``layered_renderer`` re-exportiert) und von :class:`RenderPlan` selbst.
+
+    Die Member sind **read-only** (``@property``), damit ``frozen``-Dataclasses
+    wie ``EmotionLayers``/``RenderPlan`` das Protocol erfüllen – ein settable
+    Attribut würde mypy gegen das read-only-Attribut einer frozen-Dataclass
+    abweisen (``compose``-``arg-type``). Konsument ist nur lesend.
     """
 
-    body: str
-    eye_left: str
-    eye_right: str
-    mouth: str
-    effect: str | None
+    @property
+    def body(self) -> str: ...
+    @property
+    def eye_left(self) -> str: ...
+    @property
+    def eye_right(self) -> str: ...
+    @property
+    def mouth(self) -> str: ...
+    @property
+    def effect(self) -> str | None: ...
 
 
 @dataclass(frozen=True)

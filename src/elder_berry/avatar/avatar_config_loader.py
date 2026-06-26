@@ -20,6 +20,7 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
 import yaml
 
@@ -144,7 +145,7 @@ def _load_one(config_path: Path) -> AvatarConfig | None:
         return None
 
 
-def _parse_config(data: dict) -> AvatarConfig:
+def _parse_config(data: dict[str, Any]) -> AvatarConfig:
     """Parst das YAML-Dict in ein AvatarConfig-Objekt."""
     # Emotions
     emotions: dict[Emotion, EmotionLayers] = {}

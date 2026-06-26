@@ -12,6 +12,7 @@ import logging
 import threading
 import time
 from pathlib import Path
+from typing import Any
 
 from elder_berry.avatar.attention import NoopAttentionProvider
 from elder_berry.avatar.briefing_mode import CasualBriefingModeProvider
@@ -130,7 +131,7 @@ class RPi5AvatarDisplay(AvatarDisplay):
             # Inline-Random fällt.
             self._audio_meta = audio_meta if is_speaking else None
 
-    def get_state(self) -> dict:
+    def get_state(self) -> dict[str, Any]:
         with self._lock:
             return {
                 "emotion": self._emotion,
