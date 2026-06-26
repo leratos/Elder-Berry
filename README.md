@@ -190,8 +190,8 @@ pytest tests/ -q
 
 Aktuell >170 Testdateien im `tests/`-Verzeichnis. CI läuft mit vier
 Gates: `test` (Ubuntu+Windows, inkl. Coverage), `lint` (ruff), `typecheck`
-(`mypy --strict` für `core/`, `comms/`, `tools/`, `web`) und `security`
-(`pip-audit`).
+(`mypy --strict` für `core/`, `comms/`, `tools/`, `web/`, das LLM-Routing,
+`agent/`, `robot/` und `avatar/`) und `security` (`pip-audit`).
 
 ## Roadmap (Auszug)
 
@@ -242,6 +242,14 @@ Gates: `test` (Ubuntu+Windows, inkl. Coverage), `lint` (ruff), `typecheck`
 | 95 | Comms-Pattern-Stabilisierung (PatternSpec, Routing-Confidence, Handler-Gates) | ✅ Fertig |
 | 96 | RobotClient-Resilienz & RPi-Token-Provisionierung | ✅ Fertig |
 | 97 | Umkreissuche (Places API New, Pick → Maps-Link, Matrix-Standort-Share) | ✅ Fertig |
+| 98 | LLM-Routing-Resilienz (Fallback-Härtung + strict-Typisierung `modes`/`router`) | ✅ Fertig |
+| 99 | CI-Ehrlichkeit (Test-Job entskippt, Ruff-Ruleset zentral aus `pyproject`) | ✅ Fertig |
+| 100 + 101 | Mail 2.0 Tier 0 (Härtung) + Tier 1 (LLM-Triage `mails priorität` + Neue-Mail-Benachrichtigung) | ✅ Fertig |
+| 102 | Akku-Anzeige als optionale Capability (Default aus, schließt Fake-Akku-Leck) | ✅ Fertig |
+| 103 + 104 | Server-/Parser-Härtung (SSRF/XXE/SQL-Allowlist) + Fehler-Disziplin & Beobachtbarkeit | ✅ Fertig |
+| 105 | mypy-Strict für `agent/` + `robot/` | ✅ Fertig |
+| 106 | Modul-Entflechtung der >1000-Zeilen-Dateien (6 Etappen, Mixin-Pakete) | ✅ Fertig |
+| 107 | mypy-Strict für `avatar/` (+ `rpi5_avatar`; `robot/` jetzt vollständig strict) | ✅ Fertig |
 
 Vollständige Roadmap mit Details: **[PROJECT_ROADMAP.md](docs/PROJECT_ROADMAP.md)**
 Phasenchronik mit Beschreibungen: **[CHANGELOG.md](docs/CHANGELOG.md)**

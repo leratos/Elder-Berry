@@ -2,8 +2,10 @@
 
 **Befund:** Q3 (Typabdeckung nur partiell strikt)
 **Branch (geplant):** `feature/phase-105-mypy-strict-agent-robot`
-**Status:** Konzept. Umsetzung nach Phase 104. Setzt das Tier-Rollout-Muster der
-Phasen 76/76b/76c/98 fort.
+**Status:** ✅ erledigt (PR #323 gemergt). Setzt das Tier-Rollout-Muster der
+Phasen 76/76b/76c/98 fort. Der bewusst aufgeschobene, an `avatar/` gekoppelte
+Rest (`rpi5_avatar.py:182`, zwei `EmotionLayers`-Klassen) wurde in **Phase 107**
+nachgezogen → `docs/concepts/phase-107-mypy-strict-avatar.md`.
 
 ## Ziel
 
@@ -81,6 +83,10 @@ Typabdeckung bekommen wie `core/`/`comms/`/`tools/`/`web/`.
 
 - `rpi5_avatar.py:182`: wegen `avatar/`-Kopplung in einen eigenen späteren Tier
   schieben (bis `avatar/` strict ist) oder lokalen `cast`/`# type: ignore` setzen?
+  → **Entschieden:** eigener späterer Tier. In **Phase 107** umgesetzt — die zwei
+  `EmotionLayers`-Klassen wurden vereinheitlicht und `LayerSource` auf read-only
+  `@property` umgestellt, womit der `:182`-Mismatch ohne `cast`/`# type: ignore`
+  entfiel.
 - `server.py` JSONResponse-Routen: Return-Annotation auf
   `dict[str, Any] | JSONResponse` aufweiten oder einheitlich `Response`? (Mögliche
   OpenAPI-Schema-Konsequenz prüfen.)

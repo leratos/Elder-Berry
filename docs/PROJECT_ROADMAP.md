@@ -1808,3 +1808,97 @@ distanz-korrekte, gefilterte Umkreissuche mit Pick-Liste und Maps-Link.
 - ✅ Live-Smoketest bestanden (distanzsortierte nahe Treffer, Rückfrage-Flow)
 - Konzept: `docs/concepts/phase-97-nearby-places-search.md`,
   Smoketest: `docs/concepts/phase-97-smoketest.md` (PRs #302–#305)
+
+## Phase 98 – LLM-Routing-Resilienz 🔁 ✅ ABGESCHLOSSEN
+
+Härtung des LLM-Routings (Cloud → lokaler Fallback, Privacy-Modus) plus
+strikte Typisierung der Routing-Module.
+
+- ✅ `llm.modes` + `llm.router` auf `mypy --strict` (eigener Tier-Block).
+- Konzept: `docs/concepts/phase-98-llm-routing-resilienz.md` (PR #308).
+
+## Phase 99 – CI-Ehrlichkeit 🧪 ✅ ABGESCHLOSSEN
+
+Schließt Befund Q4 (CI-Lint enger als lokal): die CI prüft jetzt denselben
+Umfang wie lokal.
+
+- ✅ Test-Job entskippt (172 zuvor übersprungene Tests laufen wieder).
+- ✅ Ruff-Ruleset als Single Source of Truth aus `pyproject.toml`
+  (`ruff check src/ tests/ scripts/ tower/`), kein Subset mehr.
+- PR #310.
+
+## Phase 100 + 101 – Mail 2.0 (Tier 0 + Tier 1) 📧 ✅ ABGESCHLOSSEN
+
+Aus Lese-/Antwort-Bot wird ein gehärteter, proaktiver Mail-Assistent.
+
+- ✅ **Tier 0 (Härtung, #311):** SMTP-Key-Mismatch behoben, IMAP-Socket-Timeout,
+  Empfänger-/Header-Validierung (`parseaddr` + CR/LF-Scrub), konfigurierbare
+  Signatur/Anzeigename, ehrlicher `\Seen`-Status (read-only), Silent-Swallows
+  geloggt.
+- ✅ **Tier 1 (#318):** `MailTriageClassifier` (`mails priorität`, über den
+  privacy-sicheren `LLMRouter`) + `MailWatcher` (proaktive Neue-Mail-
+  Benachrichtigung, LLM-frei, Baseline + UID-Dedup).
+- **Invariante:** Outbound-Empfänger nie aus LLM-Output/Mail-Body.
+- Konzept: `docs/concepts/phase-100-mail-2.0.md`.
+
+## Phase 102 – Akku-Anzeige als optionale Capability 🔋 ✅ ABGESCHLOSSEN
+
+- ✅ Akku-Telemetrie hinter einer Capability/Flag (Default **aus**); die
+  Akku-Zeile entfällt im Robot-Status, solange sie deaktiviert ist → schließt
+  das „Fake-Akku"-Leck (kein simulierter Akku-Wert mehr im System-Prompt).
+- PR #319 (Schritt 1 aus dem Sensor-Backlog).
+
+## Phase 103 + 104 – Sicherheits-/Parser-Härtung + Fehler-Disziplin 🛡️ ✅ ABGESCHLOSSEN
+
+Erste zwei Pakete der Remediation aus der Analyse 2026-06-09
+(`docs/concepts/security-quality-remediation-2026-06.md`).
+
+- ✅ **Phase 103 (#321):** S1 zentrale Bind-Policy (`core/bind_policy.py`,
+  fail-closed), S2 XML-Härtung gegen XXE/Billion-Laughs (`defusedxml`-Drop-in),
+  S4 Spalten-Allowlist gegen f-String-SQL.
+- ✅ **Phase 104 (#322):** S3 echte Silent-Swallows behoben (u. a. CardDAV
+  fail-closed), Q2 enge `except`-Disziplin, Q5 Schuld-Marker (TODO/FIXME) ins
+  Journal überführt.
+- Konzepte: `docs/concepts/phase-103-server-parser-haertung.md`,
+  `docs/concepts/phase-104-fehler-disziplin-beobachtbarkeit.md`.
+
+## Phase 105 – mypy --strict für `agent/` + `robot/` 🔍 ✅ ABGESCHLOSSEN
+
+Setzt den Tier-Rollout der Phasen 76/76b/76c/98 auf die netz-exponierten
+Server-Pakete fort (Befund Q3 der Remediation-Übersicht).
+
+- ✅ `agent/` (klein) und `robot/` (mittel) aus dem `ignore_errors`-Block
+  gelöst und strict typgeprüft; CI-`typecheck`-Scope um beide erweitert.
+- Echte Logik-Fixes mit Test abgesichert (z. B. `robot/server.py`-None-Guard,
+  `alexa_skill_handler` RSA-Key-`isinstance`-Guard).
+- Bewusst aufgeschoben: `robot/rpi5_avatar.py` (Kopplung an noch nicht-striktes
+  `avatar/`) → eigener späterer Tier (Phase 107).
+- Konzept: `docs/concepts/phase-105-mypy-strict-agent-robot.md` (PR #323).
+
+## Phase 106 – Modul-Entflechtung großer Dateien 🧱 ✅ ABGESCHLOSSEN
+
+Wartbarkeits-Remediation (Befund Q1): die sechs Dateien über ~1000 Zeilen in
+je ein dünnes Shell + Mixin-/Submodul-Paket zerlegt, öffentliche API und
+Test-Surface unverändert.
+
+- ✅ Zerlegt: `robot/server`-Schemas/Interfaces, `confirmation_handlers`,
+  `settings_dashboard`, `weather_commands`, `core/assistant`,
+  `message_handlers` (2387 → 569 Zeilen Shell + 7 Bridge-Mixins).
+- Jede neue Datei ≤ ~400 Zeilen; voller pytest grün (keine Verhaltensänderung).
+- Konzept: `docs/concepts/phase-106-modul-entflechtung.md` (PR #324).
+
+## Phase 107 – mypy --strict für `avatar/` 🔍 ✅ ABGESCHLOSSEN
+
+Schließt den in Phase 105 aufgeschobenen Q3-Rest: `avatar/` strict, danach
+`robot/rpi5_avatar` nachgezogen → `robot/` vollständig strict.
+
+- ✅ Baseline 16 Fehler / 4 Dateien (+1 in `rpi5_avatar`); meist mechanisch
+  (`self._screen`-None-Narrowing, nackte `dict`-Annotationen).
+- ✅ Design (Lera-Entscheid): die zwei byte-identischen `EmotionLayers`-Klassen
+  zu einer vereinheitlicht (kanonisch in `avatar_config_loader`, von
+  `layered_renderer` re-exportiert); `LayerSource`-Protocol auf read-only
+  `@property` umgestellt, sodass `frozen`-Dataclasses es erfüllen — löst den
+  früheren `rpi5_avatar:182`-Mismatch ohne `cast`/`# type: ignore`.
+- ✅ CI-`typecheck`-Scope um `src/elder_berry/avatar` erweitert; voller pytest
+  7324 passed, CodeQL grün.
+- Konzept: `docs/concepts/phase-107-mypy-strict-avatar.md` (PR #333).
