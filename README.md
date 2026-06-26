@@ -263,3 +263,8 @@ Cloud-APIs: **[NOTICE.md](NOTICE.md)**.
 - last-strawberry-DnD
 - Gym-Berry
 - **Elder-Berry** ← du bist hier
+
+## Autor / Maintainer
+
+Dieses Projekt wird von Marcus Kohtz (GitHub: leratos) als alleiniger Autor und
+Maintainer entwickelt. Identität/Impressum: https://signz-vision.de/impressum
