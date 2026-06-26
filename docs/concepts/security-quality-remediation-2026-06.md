@@ -15,7 +15,7 @@ Prüfung). Diese Übersicht bündelt die Befunde zu umsetzbaren Konzept-Paketen.
 | **S3** | Silent Exception Swallows | Offen (kleiner als gedacht**) | **104** |
 | **Q2** | Breite `except Exception` | Offen | **104** |
 | **Q5** | Schuld-Marker (TODO/FIXME) → Journal | Offen | **104** |
-| **Q3** | mypy-strict nur partiell (agent/robot) | Offen | **105** |
+| **Q3** | mypy-strict nur partiell (agent/robot) | ✅ **erledigt** (105 + 107) | **105** |
 | **Q1** | Sehr große Dateien | Offen (leicht gewachsen) | **106** |
 | S5 | Simulator 0.0.0.0 ohne Auth | In S1/Phase 103 mitbehandelt | 103 |
 | S6 | Bandit-False-Positives | Kein Handlungsbedarf | — |
@@ -56,6 +56,9 @@ Dependency, Encoding-/Timezone-Fallback). Nur **eine** Stelle
    einen echten S3-Fund und den netz-exponierten Q2-Hotspots (robot/agent),
    nicht mit dem riskanten comms-Cluster.
 3. **Phase 105 (Typen):** Q3. mypy-strict für agent (klein) und robot (mittel).
+   Der an `avatar/` gekoppelte Rest (`rpi5_avatar.py`, zwei `EmotionLayers`-
+   Klassen) wurde bewusst auf einen späteren Tier geschoben und in **Phase 107**
+   nachgezogen (`avatar/` strict, `robot/` damit vollständig strict).
 4. **Phase 106 (Wartbarkeit):** Q1. Modul-Entflechtung der >1000-Zeilen-Dateien,
    beginnend mit `message_handlers.py`. Größter Umbau, daher zuletzt.
 
@@ -73,4 +76,5 @@ Dependency, Encoding-/Timezone-Fallback). Nur **eine** Stelle
 - `docs/concepts/phase-103-server-parser-haertung.md` (S1, S2, S4)
 - `docs/concepts/phase-104-fehler-disziplin-beobachtbarkeit.md` (S3, Q2, Q5)
 - `docs/concepts/phase-105-mypy-strict-agent-robot.md` (Q3)
+- `docs/concepts/phase-107-mypy-strict-avatar.md` (Q3-Rest: avatar/ + rpi5_avatar)
 - `docs/concepts/phase-106-modul-entflechtung.md` (Q1)

@@ -66,9 +66,11 @@
   Konstruktor, TYPE_CHECKING für zirkuläre Imports. Phase 77 hat den
   Service-Container `HandlerContext` eingeführt, der allen Handlern
   einheitlich injiziert wird.
-- **mypy --strict (Phasen 76, 76b, 76c)**: `core/`, `comms/`, `tools/`
-  und `web/` werden im CI strict typgeprüft. Tier-Whitelist im
-  `pyproject.toml` macht die Erweiterung sichtbar.
+- **mypy --strict (Phasen 76/76b/76c/98/105/107)**: `core/`, `comms/`,
+  `tools/`, `web/`, das LLM-Routing (`llm.modes`/`llm.router`, Phase 98),
+  `agent/`, `robot/` und `avatar/` werden im CI strict typgeprüft. Tier-
+  Whitelist im `pyproject.toml` macht die Erweiterung sichtbar; `robot/`
+  ist seit Phase 107 vollständig strict (kein `ignore_errors`-Modul mehr).
 - **SQLite + WAL-Modus**: Für alle lokalen Stores (Notes, Contacts,
   Todos, Reminders, Actions, Proposals).
 - **FTS5 Volltext**: Für `NoteStore`, `ContactStore`, `ProposalStore`
@@ -237,7 +239,8 @@ scripts/
 └── demo_tts_live.py         # Interaktives TTS-Testing
 
 tests/                # 5418 Unit- + Integrationstests (~160 Testdateien, Stand Phase 81),
-                      # mypy --strict-Gate im CI für core/, comms/, tools/, web/
+                      # mypy --strict-Gate im CI für core/, comms/, tools/, web/,
+                      # llm-routing, agent/, robot/, avatar/ (Phasen 76–107)
 ```
 
 ## Hardware
