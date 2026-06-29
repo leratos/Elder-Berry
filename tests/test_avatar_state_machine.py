@@ -154,6 +154,19 @@ class TestConfidenceGate:
         sm.request_emotion(_decision(Emotion.ANGRY, confidence=0.7))
         assert sm.state.emotion is Emotion.ANGRY
 
+    def test_returns_true_on_switch(self):
+        assert _sm().request_emotion(_decision(Emotion.ANGRY)) is True
+
+    def test_returns_true_on_same_emotion(self):
+        sm = _sm()
+        sm.request_emotion(_decision(Emotion.ANGRY))
+        assert sm.request_emotion(_decision(Emotion.ANGRY)) is True
+
+    def test_returns_false_when_gated(self):
+        sm = _sm()
+        sm.request_emotion(_decision(Emotion.CHEERFUL))
+        assert sm.request_emotion(_decision(Emotion.ANGRY, confidence=0.2)) is False
+
 
 # ---------------------------------------------------------------------------
 # Sprech-Zähler (Counter statt Boolean, Race-Fix §2.3 #9)

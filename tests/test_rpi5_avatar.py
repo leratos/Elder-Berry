@@ -523,6 +523,34 @@ class TestEmotionForwardingGating:
             assert "neutral" in forwarded
             assert "angry" in forwarded
 
+    def test_confidence_change_reforwarded(self, mock_pygame, layered_assets):
+        """Phase 108: gleicher Emotion-String, höhere Confidence → erneut
+        ans Gate (sonst bliebe eine zuvor gegatete Emotion hängen).
+        """
+        from elder_berry.robot.rpi5_avatar import RPi5AvatarDisplay
+
+        with patch("elder_berry.robot.rpi5_avatar.AvatarController") as MockCtrl:
+            controller = MagicMock()
+            controller.current_idle_blink.return_value = IdleBlinkOverrides()
+            controller.current_transition.return_value = _no_transition()
+            MockCtrl.return_value = controller
+
+            avatar = RPi5AvatarDisplay(fullscreen=False, assets_dir=layered_assets)
+            avatar.set_emotion("angry", confidence=0.2)  # zunächst unsicher
+            avatar.start()
+            time.sleep(0.15)
+            avatar.set_emotion("angry", confidence=0.85)  # gleicher String, sicher
+            time.sleep(0.15)
+            avatar.stop()
+
+            confs = [
+                c.args[1]
+                for c in controller.set_emotion.call_args_list
+                if c.args[0] == "angry"
+            ]
+            assert 0.2 in confs
+            assert 0.85 in confs  # confidence-only-Änderung wurde erneut geforwardet
+
 
 # ---------------------------------------------------------------------------
 # Crossfade-Transition-Forwarding (Phase 83.3)

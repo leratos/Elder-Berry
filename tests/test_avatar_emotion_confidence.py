@@ -84,3 +84,56 @@ class TestEmotionConfidenceTransport:
         state = avatar.get_state()
         assert state["emotion"] == "sad"
         assert state["confidence"] == pytest.approx(1.0)
+
+    def test_mismatched_decision_emotion_ignores_confidence(self):
+        """decision.emotion != request.emotion → Confidence verworfen (→ 1.0)."""
+        server, avatar = _server_with_avatar()
+        client = TestClient(server.app)
+        r = client.post(
+            "/avatar/emotion",
+            json={
+                "emotion": "angry",
+                "decision": {
+                    "emotion": "cheerful",  # passt NICHT zum String
+                    "confidence": 0.1,
+                    "source": "llm_tag",
+                },
+            },
+        )
+        assert r.status_code == 200
+        state = avatar.get_state()
+        assert state["emotion"] == "angry"
+        assert state["confidence"] == pytest.approx(1.0)  # nicht 0.1
+
+    def test_out_of_range_confidence_rejected(self):
+        """confidence > 1.0 → 422 (Schema-Bound, token-freier Server-Schutz)."""
+        server, _ = _server_with_avatar()
+        client = TestClient(server.app)
+        r = client.post(
+            "/avatar/emotion",
+            json={
+                "emotion": "angry",
+                "decision": {
+                    "emotion": "angry",
+                    "confidence": 2.0,
+                    "source": "x",
+                },
+            },
+        )
+        assert r.status_code == 422
+
+    def test_negative_confidence_rejected(self):
+        server, _ = _server_with_avatar()
+        client = TestClient(server.app)
+        r = client.post(
+            "/avatar/emotion",
+            json={
+                "emotion": "angry",
+                "decision": {
+                    "emotion": "angry",
+                    "confidence": -0.5,
+                    "source": "x",
+                },
+            },
+        )
+        assert r.status_code == 422

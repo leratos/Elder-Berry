@@ -144,10 +144,16 @@ class AvatarController(AvatarDisplay):
         State-Mutation und Renderer-Forwarding laufen unter demselben Lock,
         damit ``get_state`` und das gerenderte Bild bei konkurrierenden Aufrufern
         nicht auseinanderlaufen.
+
+        Phase 108: ``show_emotion`` wird nur aufgerufen, wenn die StateMachine die
+        Decision **übernommen** hat (oder die Emotion bereits aktiv war). Eine vom
+        Confidence-Gate verworfene Emotion darf den Renderer nicht umschalten,
+        sonst zeigte das Display die abgelehnte Emotion, während ``get_state`` die
+        gehaltene meldet.
         """
         with self._lock:
-            self._state_machine.request_emotion(decision)
-            self._renderer.show_emotion(decision.emotion)
+            if self._state_machine.request_emotion(decision):
+                self._renderer.show_emotion(decision.emotion)
 
     def on_speech_started(self, audio_meta: AmplitudeTrack | None = None) -> None:
         """Beginn einer Sprech-Sitzung (semantischer Pfad).

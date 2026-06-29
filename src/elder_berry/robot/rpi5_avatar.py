@@ -194,7 +194,7 @@ class RPi5AvatarDisplay(AvatarDisplay):
             )
             logger.info("Render-Loop gestartet")
 
-            last_emotion: str | None = None
+            last_forwarded: tuple[str, float] | None = None
             while not self._stop_event.is_set() and self._renderer.is_running():
                 # State aus Lock lesen (Snapshot vom REST-Thread)
                 with self._lock:
@@ -203,15 +203,20 @@ class RPi5AvatarDisplay(AvatarDisplay):
                     speaking = self._speaking
                     audio_meta = self._audio_meta
 
-                # Controller statt direkter Renderer-Aufrufe. set_emotion nur
-                # bei Änderung weiterreichen: bei einem ungültigen Emotion-String
-                # würde der Fallback-Pfad sonst pro Frame eine Warnung loggen
-                # (Spam @ 30 FPS). set_speaking ist kantengetriggert und darf
-                # pro Frame aufgerufen werden; der Track wird auf der steigenden
-                # Flanke einmal in den Lip-Sync-Driver übernommen (83.4).
-                if emotion_str != last_emotion:
+                # Controller statt direkter Renderer-Aufrufe. set_emotion nur bei
+                # Änderung des (Emotion, Confidence)-Paares weiterreichen: ein
+                # konstanter Zustand würde sonst den Fallback-Pfad pro Frame eine
+                # Warnung loggen lassen (Spam @ 30 FPS). Phase 108: das Paar (statt
+                # nur des Strings) ist nötig, damit eine zuvor confidence-gegatete
+                # Emotion bei steigender Confidence (gleicher String, höherer Wert)
+                # erneut ans Gate geht – das ändert sich nur pro REST-Update
+                # (Turn-Takt), nicht pro Frame, bleibt also spam-frei. set_speaking
+                # ist kantengetriggert und darf pro Frame aufgerufen werden; der
+                # Track wird auf der steigenden Flanke einmal in den Lip-Sync-Driver
+                # übernommen (83.4).
+                if (emotion_str, emotion_conf) != last_forwarded:
                     controller.set_emotion(emotion_str, emotion_conf)
-                    last_emotion = emotion_str
+                    last_forwarded = (emotion_str, emotion_conf)
                 controller.set_speaking(speaking, audio_meta=audio_meta)
                 now = time.monotonic()
                 # 83.3: Crossfade-Transition pro Frame (Lock-gewrappt) lesen und

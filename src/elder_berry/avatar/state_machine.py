@@ -124,7 +124,7 @@ class AvatarStateMachine:
         """Der aktuelle (veränderliche) Zustand. Nur unter Lock lesen/mutieren."""
         return self._state
 
-    def request_emotion(self, decision: EmotionDecision) -> None:
+    def request_emotion(self, decision: EmotionDecision) -> bool:
         """Übernimmt die Emotion aus einer ``EmotionDecision``.
 
         - **Gleiche Emotion** → no-op (idempotent, kein ``last_change``-Update).
@@ -143,11 +143,18 @@ class AvatarStateMachine:
         Args:
             decision: Aggregiertes Emotions-Ergebnis (aus dem EmotionResolver
                 oder – im Legacy-Pfad – vom Controller synthetisiert).
+
+        Returns:
+            ``True``, wenn die angezeigte Emotion jetzt ``decision.emotion`` ist
+            (frisch übernommen **oder** bereits aktiv); ``False``, wenn die
+            Decision vom Confidence-Gate **verworfen** wurde und die alte Emotion
+            gehalten wird. Der Controller zeigt die Emotion nur bei ``True`` an
+            (Phase 108: verworfene Emotion darf den Renderer nicht umschalten).
         """
         new_emotion = decision.emotion
         old_emotion = self._state.emotion
         if new_emotion is old_emotion:
-            return
+            return True  # bereits angezeigt → Renderer darf idempotent zeigen
         # Phase 108: Confidence-Gate. Eine unsichere Decision (typisch: untagged
         # Turn, nur Tracker-Trend) überschreibt die aktuell gezeigte Emotion
         # nicht hart, sondern lässt sie stehen (emotionale Trägheit).
@@ -159,7 +166,7 @@ class AvatarStateMachine:
                 decision.source,
                 old_emotion.value,
             )
-            return
+            return False
         is_direct_cut = (old_emotion, new_emotion) in self.direct_cut_pairs
         logger.debug(
             "Emotion: %s → %s (conf=%.2f, src=%s, %s)",
@@ -174,6 +181,7 @@ class AvatarStateMachine:
         # alte Emotion als Fade-Quelle merken.
         self._state.previous_emotion = new_emotion if is_direct_cut else old_emotion
         self._state.last_change = time.monotonic()
+        return True
 
     def speech_increment(self) -> None:
         """Erhöht den Sprech-Zähler (Beginn einer Sprech-Sitzung)."""

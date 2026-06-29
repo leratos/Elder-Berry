@@ -329,14 +329,24 @@ class RobotServer:
             if request.emotion is not None:
                 # Phase 108: die Resolver-Confidence (sofern mitgesendet) wird an
                 # den AvatarDisplay durchgereicht und entscheidet dort im
-                # StateMachine-Gate über den Emotion-Wechsel. Ohne decision
-                # (Legacy-/String-only-Pfad) bleibt es bei 1.0 → Verhalten
-                # unverändert. Die Emotion selbst bleibt der String.
-                confidence = (
-                    request.decision.confidence
-                    if request.decision is not None
-                    else 1.0
-                )
+                # StateMachine-Gate über den Emotion-Wechsel. Sie wird aber NUR
+                # genutzt, wenn sich die Decision auf DIESELBE Emotion bezieht wie
+                # der gesetzte String – sonst (stale/mismatched Client) steuerte
+                # die Confidence einer anderen Emotion das Gate. Bei Mismatch oder
+                # ohne decision → 1.0 (string-only, schaltet immer wie der
+                # Legacy-Pfad). Die Emotion selbst bleibt der String.
+                decision = request.decision
+                if decision is not None and decision.emotion == request.emotion:
+                    confidence = decision.confidence
+                else:
+                    confidence = 1.0
+                    if decision is not None:
+                        logger.warning(
+                            "Avatar-Decision-Emotion %s != Request-Emotion %s — "
+                            "Confidence ignoriert (→ 1.0)",
+                            safe_log(decision.emotion),
+                            safe_log(request.emotion),
+                        )
                 self._avatar.set_emotion(request.emotion, confidence)
                 if request.decision is not None:
                     # confidence ist ein float aus dem Request-Body; CodeQL
