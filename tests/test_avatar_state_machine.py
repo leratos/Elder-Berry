@@ -6,6 +6,7 @@ from elder_berry.avatar.avatar_config_loader import EmotionLayers
 from elder_berry.avatar.state_machine import (
     DEFAULT_CROSSFADE_FRAMES,
     DEFAULT_DIRECT_CUT_PAIRS,
+    DEFAULT_MIN_SWITCH_CONFIDENCE,
     AvatarStateMachine,
 )
 from elder_berry.character.base import Emotion
@@ -31,8 +32,8 @@ def _emotion_map() -> dict[Emotion, EmotionLayers]:
     }
 
 
-def _decision(emotion: Emotion) -> EmotionDecision:
-    return EmotionDecision(emotion, 1.0, "test", {})
+def _decision(emotion: Emotion, confidence: float = 1.0) -> EmotionDecision:
+    return EmotionDecision(emotion, confidence, "test", {})
 
 
 def _sm() -> AvatarStateMachine:
@@ -90,6 +91,81 @@ class TestRequestEmotion:
         for emotion in (Emotion.CHEERFUL, Emotion.ANGRY, Emotion.SAD):
             sm.request_emotion(_decision(emotion))
             assert sm.state.emotion is emotion
+
+
+# ---------------------------------------------------------------------------
+# Confidence-Gate (Phase 108): unsichere Decision hält die etablierte Emotion
+# ---------------------------------------------------------------------------
+
+
+class TestConfidenceGate:
+    def test_default_threshold_is_035(self):
+        assert DEFAULT_MIN_SWITCH_CONFIDENCE == 0.35
+        assert _sm().min_switch_confidence == DEFAULT_MIN_SWITCH_CONFIDENCE
+
+    def test_low_confidence_does_not_switch(self):
+        """Eine unsichere Decision (untagged-Turn) hält die aktuelle Emotion."""
+        sm = _sm()
+        sm.request_emotion(_decision(Emotion.CHEERFUL))  # etabliert (conf 1.0)
+        stamp = sm.state.last_change
+        sm.request_emotion(_decision(Emotion.ANGRY, confidence=0.2))
+        assert sm.state.emotion is Emotion.CHEERFUL  # gehalten
+        assert sm.state.last_change == stamp  # kein Wechsel-Update
+
+    def test_high_confidence_switches(self):
+        sm = _sm()
+        sm.request_emotion(_decision(Emotion.ANGRY, confidence=0.8))
+        assert sm.state.emotion is Emotion.ANGRY
+
+    def test_zero_confidence_holds_neutral_fallback(self):
+        """confidence==0.0 (Resolver-Fallback) darf NEUTRAL nicht überschreiben."""
+        sm = _sm()
+        sm.request_emotion(_decision(Emotion.CHEERFUL))  # weg von NEUTRAL
+        sm.request_emotion(_decision(Emotion.NEUTRAL, confidence=0.0))
+        assert sm.state.emotion is Emotion.CHEERFUL  # 0.0 < 0.35 → gehalten
+
+    def test_boundary_at_threshold_switches(self):
+        """Genau auf der Schwelle (>=) schaltet die Emotion um."""
+        sm = _sm()
+        sm.request_emotion(
+            _decision(Emotion.ANGRY, confidence=DEFAULT_MIN_SWITCH_CONFIDENCE)
+        )
+        assert sm.state.emotion is Emotion.ANGRY
+
+    def test_just_below_threshold_holds(self):
+        sm = _sm()
+        sm.request_emotion(
+            _decision(
+                Emotion.ANGRY, confidence=DEFAULT_MIN_SWITCH_CONFIDENCE - 0.01
+            )
+        )
+        assert sm.state.emotion is Emotion.NEUTRAL  # gehalten
+
+    def test_legacy_confidence_one_always_switches(self):
+        """Legacy-/String-Pfad (confidence=1.0) passiert das Gate immer."""
+        sm = _sm()
+        sm.request_emotion(_decision(Emotion.SAD, confidence=1.0))
+        assert sm.state.emotion is Emotion.SAD
+
+    def test_custom_threshold_injectable(self):
+        sm = AvatarStateMachine(emotion_map=_emotion_map(), min_switch_confidence=0.6)
+        sm.request_emotion(_decision(Emotion.ANGRY, confidence=0.5))
+        assert sm.state.emotion is Emotion.NEUTRAL  # 0.5 < 0.6 → gehalten
+        sm.request_emotion(_decision(Emotion.ANGRY, confidence=0.7))
+        assert sm.state.emotion is Emotion.ANGRY
+
+    def test_returns_true_on_switch(self):
+        assert _sm().request_emotion(_decision(Emotion.ANGRY)) is True
+
+    def test_returns_true_on_same_emotion(self):
+        sm = _sm()
+        sm.request_emotion(_decision(Emotion.ANGRY))
+        assert sm.request_emotion(_decision(Emotion.ANGRY)) is True
+
+    def test_returns_false_when_gated(self):
+        sm = _sm()
+        sm.request_emotion(_decision(Emotion.CHEERFUL))
+        assert sm.request_emotion(_decision(Emotion.ANGRY, confidence=0.2)) is False
 
 
 # ---------------------------------------------------------------------------

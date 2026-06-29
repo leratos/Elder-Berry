@@ -88,15 +88,22 @@ class AvatarController(AvatarDisplay):
 
     # -- AvatarDisplay-Interface (REST-kompatibel) ----------------------------
 
-    def set_emotion(self, emotion: str) -> None:
-        """Legacy-Pfad: Emotion als String setzen (unbekannt → NEUTRAL)."""
+    def set_emotion(self, emotion: str, confidence: float = 1.0) -> None:
+        """REST-Pfad: Emotion als String setzen (unbekannt → NEUTRAL).
+
+        Phase 108: ``confidence`` (vom Bot-seitigen ``EmotionResolver``, über die
+        REST-Grenze durchgereicht) entscheidet im :class:`AvatarStateMachine`-
+        Confidence-Gate, ob die Emotion überhaupt umgeschaltet wird. Ohne
+        expliziten Wert (Legacy-/extract_emotion-Pfad) bleibt es bei ``1.0`` →
+        das Gate passiert immer, Verhalten unverändert.
+        """
         try:
             parsed = Emotion(emotion)
         except ValueError:
             logger.warning("Unbekannte Emotion '%s' → NEUTRAL", safe_log(emotion))
             parsed = Emotion.NEUTRAL
         self.on_emotion_decision(
-            EmotionDecision(parsed, 1.0, _LEGACY_SOURCE, {})
+            EmotionDecision(parsed, confidence, _LEGACY_SOURCE, {})
         )
 
     def set_speaking(
@@ -137,10 +144,16 @@ class AvatarController(AvatarDisplay):
         State-Mutation und Renderer-Forwarding laufen unter demselben Lock,
         damit ``get_state`` und das gerenderte Bild bei konkurrierenden Aufrufern
         nicht auseinanderlaufen.
+
+        Phase 108: ``show_emotion`` wird nur aufgerufen, wenn die StateMachine die
+        Decision **übernommen** hat (oder die Emotion bereits aktiv war). Eine vom
+        Confidence-Gate verworfene Emotion darf den Renderer nicht umschalten,
+        sonst zeigte das Display die abgelehnte Emotion, während ``get_state`` die
+        gehaltene meldet.
         """
         with self._lock:
-            self._state_machine.request_emotion(decision)
-            self._renderer.show_emotion(decision.emotion)
+            if self._state_machine.request_emotion(decision):
+                self._renderer.show_emotion(decision.emotion)
 
     def on_speech_started(self, audio_meta: AmplitudeTrack | None = None) -> None:
         """Beginn einer Sprech-Sitzung (semantischer Pfad).

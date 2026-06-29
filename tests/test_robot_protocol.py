@@ -312,8 +312,9 @@ class TestServerAvatarAmplitude:
         captured: dict = {}
 
         class CapturingAvatar(AvatarDisplay):
-            def set_emotion(self, emotion: str) -> None:
-                pass
+            def set_emotion(self, emotion: str, confidence: float = 1.0) -> None:
+                captured["emotion"] = emotion
+                captured["confidence"] = confidence
 
             def set_speaking(self, is_speaking, audio_meta=None) -> None:
                 captured["is_speaking"] = is_speaking
