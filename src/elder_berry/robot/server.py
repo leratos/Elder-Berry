@@ -327,10 +327,17 @@ class RobotServer:
         @self.app.post("/avatar/emotion")
         def set_avatar(request: AvatarRequest) -> dict[str, Any]:
             if request.emotion is not None:
-                # Phase 83.5: decision ist rein additives Logging/Debug – die
-                # Emotion selbst geht weiterhin als String an den AvatarDisplay,
-                # das RPi5-Verhalten (inkl. matrix_only) bleibt unverändert.
-                self._avatar.set_emotion(request.emotion)
+                # Phase 108: die Resolver-Confidence (sofern mitgesendet) wird an
+                # den AvatarDisplay durchgereicht und entscheidet dort im
+                # StateMachine-Gate über den Emotion-Wechsel. Ohne decision
+                # (Legacy-/String-only-Pfad) bleibt es bei 1.0 → Verhalten
+                # unverändert. Die Emotion selbst bleibt der String.
+                confidence = (
+                    request.decision.confidence
+                    if request.decision is not None
+                    else 1.0
+                )
+                self._avatar.set_emotion(request.emotion, confidence)
                 if request.decision is not None:
                     # confidence ist ein float aus dem Request-Body; CodeQL
                     # trackt request-Felder als getainted. safe_log auf den

@@ -2,9 +2,10 @@
 
 **Befund:** Der Avatar reagiert identitäts-binär; die seit Phase 83.5 **live
 berechnete** Emotion-Confidence wird nicht genutzt.
-**Branch (geplant):** `feature/phase-108-confidence-aware-emotion`
-**Status:** Konzept (Vorschlag, Lera-Wahl). Setzt die Reactive-AvatarEngine
-(Phasen 83.1–83.6) fort; alternativ als Sub-Phase **83.7** führbar.
+**Branch:** `feature/phase-108-confidence-aware-emotion`
+**Status:** **Tier 1 umgesetzt** (Lera-Go: Tier 1 zuerst, θ_low=0.35, Gate-only,
+Phasennummer 108). Tier 2/3 bleiben optionale Folge-Etappen. Setzt die
+Reactive-AvatarEngine (Phasen 83.1–83.6) fort.
 
 ## Ziel
 

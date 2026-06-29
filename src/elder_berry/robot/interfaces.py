@@ -41,8 +41,20 @@ class AvatarDisplay(ABC):
     """ABC für Avatar-Anzeige auf dem RPi5-Display."""
 
     @abstractmethod
-    def set_emotion(self, emotion: str) -> None:
-        """Setzt die angezeigte Emotion."""
+    def set_emotion(self, emotion: str, confidence: float = 1.0) -> None:
+        """Setzt die angezeigte Emotion.
+
+        Args:
+            emotion: Emotion-Key (String). Unbekannt → Implementierung wählt
+                einen Fallback (i. d. R. ``neutral``).
+            confidence: Phase 108 – Confidence der Bot-seitigen
+                ``EmotionDecision`` (0.0–1.0), über die REST-Grenze
+                durchgereicht. Eine unsichere Emotion (< Gate-Schwelle) hält die
+                etablierte Mimik, statt sie umzuschalten. Default ``1.0``
+                (Legacy-/String-only-Pfad) → immer umschalten, Verhalten
+                unverändert. Implementierungen ohne Confidence-Logik (Simulator)
+                dürfen den Wert ignorieren.
+        """
         pass
 
     @abstractmethod

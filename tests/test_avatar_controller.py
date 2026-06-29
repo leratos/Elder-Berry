@@ -110,6 +110,21 @@ class TestLegacySetEmotion:
             assert controller.get_state()["emotion"] == name
             renderer.show_emotion.assert_called_with(enum)
 
+    def test_default_confidence_switches(self, controller):
+        """Ohne confidence-Argument (Legacy) wird umgeschaltet (Default 1.0)."""
+        controller.set_emotion("angry")
+        assert controller.get_state()["emotion"] == "angry"
+
+    def test_low_confidence_holds_emotion(self, controller):
+        """Phase 108: eine unsichere Emotion (< Gate) hält den Zustand."""
+        controller.set_emotion("cheerful", confidence=1.0)  # etabliert
+        controller.set_emotion("angry", confidence=0.2)  # unsicher
+        assert controller.get_state()["emotion"] == "cheerful"
+
+    def test_high_confidence_switches(self, controller):
+        controller.set_emotion("angry", confidence=0.8)
+        assert controller.get_state()["emotion"] == "angry"
+
 
 # ---------------------------------------------------------------------------
 # Legacy-Pfad: set_speaking (kantengetriggert)
