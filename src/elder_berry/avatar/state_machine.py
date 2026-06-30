@@ -160,7 +160,11 @@ class AvatarStateMachine:
         if new_emotion is old_emotion:
             # Gleiche Emotion: kein Wechsel, aber die Anzeige-Tiefe (Phase 110)
             # ggf. aktualisieren (z.B. angry:0.4 → angry:0.8 vertieft den Blend).
-            self._state.intensity = decision.intensity
+            # Nur bei vertrauenswürdiger (= das Gate passierender) Decision: ein
+            # tag-loser Tracker-Turn (confidence ≤ Schwelle, intensity Default
+            # 1.0) darf einen gehaltenen milden Blend NICHT auf voll hochziehen.
+            if decision.confidence >= self.min_switch_confidence:
+                self._state.intensity = decision.intensity
             return True  # bereits angezeigt → Renderer darf idempotent zeigen
         # Phase 108: Confidence-Gate. Eine unsichere Decision (typisch: untagged
         # Turn, nur Tracker-Trend) überschreibt die aktuell gezeigte Emotion
@@ -256,6 +260,7 @@ class AvatarStateMachine:
                     progress=intensity,
                     previous=self._base_plan(Emotion.NEUTRAL),
                     current=current_base.with_alpha(lerp_alpha(intensity)),
+                    full_blend=True,  # immer Voll-Blend, auch im MOUTH_ONLY-Scope
                 )
             return TransitionState(
                 in_transition=False,

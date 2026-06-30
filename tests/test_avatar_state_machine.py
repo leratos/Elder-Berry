@@ -175,6 +175,16 @@ class TestIntensityBlend:
         sm.request_emotion(_decision(Emotion.ANGRY, intensity=0.8))  # gleiche Emotion
         assert sm.state.intensity == 0.8
 
+    def test_same_emotion_low_confidence_keeps_intensity(self):
+        # Ein tag-loser Tracker-Turn (confidence < Gate) auf die gleiche Emotion
+        # darf einen gehaltenen milden Blend NICHT auf voll hochziehen.
+        sm = _sm()
+        sm.request_emotion(_decision(Emotion.ANGRY, intensity=0.4))  # mild etabliert
+        sm.request_emotion(  # untagged angry-Trend: conf 0.2, intensity Default 1.0
+            _decision(Emotion.ANGRY, confidence=0.2, intensity=1.0)
+        )
+        assert sm.state.intensity == 0.4  # unverändert, nicht 1.0
+
     def test_gated_decision_keeps_old_intensity(self):
         sm = _sm()
         sm.request_emotion(_decision(Emotion.CHEERFUL, intensity=0.9))

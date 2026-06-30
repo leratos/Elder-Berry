@@ -211,7 +211,10 @@ class Assistant(PromptBuilderMixin, ResponseParserMixin, RobotActionMixin):
                 tag_intensity = self._character.parse_emotion_tag_with_intensity(
                     response_text
                 )
-                if tag_intensity is not None and tag_intensity[1] < 1.0:
+                # Nur eine echt schwache (0 < int < 1) Intensität synthetisieren.
+                # int == 0 ist „kein Signal" (sonst angry-State bei alpha-0-/
+                # Neutral-Render); int == 1 ist voll → decision=None (1-armig).
+                if tag_intensity is not None and 0.0 < tag_intensity[1] < 1.0:
                     from elder_berry.character.emotion_resolver import EmotionDecision
 
                     decision = EmotionDecision(

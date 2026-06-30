@@ -310,3 +310,21 @@ class TestLegacyPathUnchanged:
         _llm_returns(mock_llm, "[cheerful] Hi")
         assistant.process("Hallo")
         mock_robot.set_emotion.assert_called_once_with("cheerful")
+
+    def test_zero_intensity_not_synthesized_without_resolver(
+        self, mock_llm, mock_db, mock_controller, mock_tts, character, mock_robot
+    ):
+        # [angry:0.0] = kein Signal → keine synthetisierte (confident) Decision,
+        # sonst angry-State bei alpha-0-/Neutral-Render. 1-armig (decision=None).
+        assistant = _make_assistant(
+            llm=mock_llm,
+            db=mock_db,
+            controller=mock_controller,
+            tts=mock_tts,
+            character=character,
+            robot=mock_robot,
+            resolver=None,
+        )
+        _llm_returns(mock_llm, "[angry:0.0] egal")
+        assistant.process("Test")
+        mock_robot.set_emotion.assert_called_once_with("angry")
