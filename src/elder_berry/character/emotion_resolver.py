@@ -15,6 +15,12 @@ Confidence-Skala (deterministisch, Gewichte 0.7/0.2/0.1):
     * Tag + Widerspruch            → 0.7 (Tag gewinnt die Identität)
     * nur Tracker                  → bis 0.2
     * nichts                       → 0.0
+
+Phase 109: ein Tag kann eine Intensität tragen (``[emotion:staerke]``). Der
+Tag-Beitrag wird mit der Intensität (0.0–1.0) skaliert (``tag_weight *
+intensity``); die Skala oben gilt für die volle Intensität 1.0 (= bloßes
+``[emotion]``, rückwärtskompatibel). Eine schwache Emotion liefert so eine
+niedrige Confidence und wird vom Phase-108-Gate gehalten.
 """
 
 from __future__ import annotations
@@ -83,10 +89,21 @@ class EmotionResolver:
         scores: dict[Emotion, float] = defaultdict(float)
         raw: dict[str, float] = {}
 
-        tag = self._character.parse_emotion_tag(llm_response)  # Emotion | None
+        # Phase 109: Tag + optionale Intensität (0.0–1.0; ohne ``:x`` → 1.0).
+        parsed = self._character.parse_emotion_tag_with_intensity(llm_response)
+        tag: Emotion | None = None
+        intensity = 1.0
+        if parsed is not None:
+            tag, intensity = parsed
         if tag is not None:
-            scores[tag] += self._tag_weight
-            raw["llm_tag"] = self._tag_weight
+            # Die Intensität skaliert den Tag-Beitrag → die Confidence bekommt
+            # echte Bandbreite (steuert das Phase-108-Gate). Bare Tag (1.0) ist
+            # vollständig rückwärtskompatibel (Beitrag = tag_weight). Auf 3
+            # Nachkommastellen gerundet, damit Score/Confidence/raw_signals frei
+            # von Float-Rauschen bleiben (z.B. 0.7*0.4).
+            tag_score = round(self._tag_weight * intensity, 3)
+            scores[tag] += tag_score
+            raw["llm_tag"] = tag_score
 
         # Trend VOR record lesen, sonst verfälscht der eigene Eintrag die Ratio.
         dom, ratio = self._tracker.dominant_with_confidence()
@@ -110,7 +127,9 @@ class EmotionResolver:
             source = "fallback"
 
         if tag is not None:  # B4: heutige Aufzeichnungs-Semantik erhalten
-            self._character.set_mood(emotion)
+            # Phase 109: die explizite Intensität in den MoodState durchreichen
+            # (der Parameter existierte schon, wurde bisher mit Default gefüttert).
+            self._character.set_mood(emotion, intensity)
             self._tracker.record(emotion)  # record NACH Trend-Read
 
         return EmotionDecision(emotion, round(scores[emotion], 3), source, raw)
