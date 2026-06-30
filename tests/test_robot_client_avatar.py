@@ -92,13 +92,15 @@ class TestSetEmotionPayload:
             confidence=0.7,
             source="llm_tag",
             raw_signals={"llm_tag": 0.7},
+            intensity=0.4,
         )
         client.set_emotion("cheerful", decision=decision)
         body = posted[0]["json"]
         assert body["emotion"] == "cheerful"
-        # raw_signals werden bewusst NICHT übertragen (nur Logging-Trias).
+        # raw_signals werden bewusst NICHT übertragen; intensity (Phase 110) schon.
         assert body["decision"] == {
             "emotion": "cheerful",
             "confidence": 0.7,
             "source": "llm_tag",
+            "intensity": 0.4,
         }

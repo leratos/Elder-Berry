@@ -75,13 +75,22 @@ class SimulatedAvatar(AvatarDisplay):
         self._emotion = "neutral"
         self._speaking = False
         self._confidence = 1.0
+        self._intensity = 1.0
 
-    def set_emotion(self, emotion: str, confidence: float = 1.0) -> None:
-        # confidence (Phase 108): der Simulator hat kein Confidence-Gate, hält
-        # den Wert aber für get_state/Tests fest.
+    def set_emotion(
+        self, emotion: str, confidence: float = 1.0, intensity: float = 1.0
+    ) -> None:
+        # confidence/intensity (Phase 108/110): der Simulator hat kein Gate und
+        # keinen Blend, hält die Werte aber für get_state/Tests fest.
         self._emotion = emotion
         self._confidence = confidence
-        logger.info("[SIM] Avatar Emotion: %s (conf=%.2f)", emotion, confidence)
+        self._intensity = intensity
+        logger.info(
+            "[SIM] Avatar Emotion: %s (conf=%.2f, int=%.2f)",
+            emotion,
+            confidence,
+            intensity,
+        )
 
     def set_speaking(
         self, is_speaking: bool, audio_meta: AmplitudeTrack | None = None
@@ -96,6 +105,7 @@ class SimulatedAvatar(AvatarDisplay):
             "emotion": self._emotion,
             "speaking": self._speaking,
             "confidence": self._confidence,
+            "intensity": self._intensity,
         }
 
 

@@ -289,7 +289,9 @@ class TestLegacyPathUnchanged:
         assert call.args == ("angry",)
         decision = call.kwargs["decision"]
         assert isinstance(decision, EmotionDecision)
-        assert decision.confidence == pytest.approx(0.28)  # 0.7 * 0.4
+        # Modell B: getaggt → volle Confidence (schaltet), Intensität = Tiefe.
+        assert decision.confidence == pytest.approx(1.0)
+        assert decision.intensity == pytest.approx(0.4)
         assert decision.source == "legacy_intensity"
 
     def test_full_intensity_stays_one_arg_without_resolver(
@@ -308,3 +310,25 @@ class TestLegacyPathUnchanged:
         _llm_returns(mock_llm, "[cheerful] Hi")
         assistant.process("Hallo")
         mock_robot.set_emotion.assert_called_once_with("cheerful")
+
+    def test_zero_intensity_holds_via_gate_without_resolver(
+        self, mock_llm, mock_db, mock_controller, mock_tts, character, mock_robot
+    ):
+        # [angry:0.0] = kein Signal: Decision mit confidence 0.0 → das Gate hält
+        # die aktuelle Emotion (kein voller Switch, konsistent mit dem Resolver).
+        assistant = _make_assistant(
+            llm=mock_llm,
+            db=mock_db,
+            controller=mock_controller,
+            tts=mock_tts,
+            character=character,
+            robot=mock_robot,
+            resolver=None,
+        )
+        _llm_returns(mock_llm, "[angry:0.0] egal")
+        assistant.process("Test")
+        call = mock_robot.set_emotion.call_args
+        assert call.args == ("angry",)
+        decision = call.kwargs["decision"]
+        assert decision.confidence == 0.0  # Gate hält → kein Switch
+        assert decision.intensity == 0.0

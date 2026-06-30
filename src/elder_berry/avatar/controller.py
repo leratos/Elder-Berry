@@ -88,14 +88,16 @@ class AvatarController(AvatarDisplay):
 
     # -- AvatarDisplay-Interface (REST-kompatibel) ----------------------------
 
-    def set_emotion(self, emotion: str, confidence: float = 1.0) -> None:
+    def set_emotion(
+        self, emotion: str, confidence: float = 1.0, intensity: float = 1.0
+    ) -> None:
         """REST-Pfad: Emotion als String setzen (unbekannt → NEUTRAL).
 
-        Phase 108: ``confidence`` (vom Bot-seitigen ``EmotionResolver``, über die
-        REST-Grenze durchgereicht) entscheidet im :class:`AvatarStateMachine`-
-        Confidence-Gate, ob die Emotion überhaupt umgeschaltet wird. Ohne
-        expliziten Wert (Legacy-/extract_emotion-Pfad) bleibt es bei ``1.0`` →
-        das Gate passiert immer, Verhalten unverändert.
+        Phase 108: ``confidence`` entscheidet im :class:`AvatarStateMachine`-
+        Confidence-Gate, ob die Emotion umgeschaltet wird. Phase 110:
+        ``intensity`` (0.0–1.0) steuert die Anzeige-Tiefe (Blend Richtung
+        neutral). Ohne explizite Werte (Legacy-/extract_emotion-Pfad) bleibt es
+        bei ``1.0`` → Gate passiert immer, voll/opak, Verhalten unverändert.
         """
         try:
             parsed = Emotion(emotion)
@@ -103,7 +105,7 @@ class AvatarController(AvatarDisplay):
             logger.warning("Unbekannte Emotion '%s' → NEUTRAL", safe_log(emotion))
             parsed = Emotion.NEUTRAL
         self.on_emotion_decision(
-            EmotionDecision(parsed, confidence, _LEGACY_SOURCE, {})
+            EmotionDecision(parsed, confidence, _LEGACY_SOURCE, {}, intensity)
         )
 
     def set_speaking(

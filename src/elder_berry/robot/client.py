@@ -144,10 +144,10 @@ class RobotClient:
     ) -> ApiResponse:
         """Setzt die Avatar-Emotion auf dem RPi5-Display.
 
-        Phase 83.5: ``decision`` (Resolver-Entscheidung) wird additiv als
-        ``decision``-Objekt (Emotion + Confidence + Source) mitgesendet – **nur
-        fürs Server-Logging/Debug**, ohne Verhaltensänderung am RPi5 (§6.3).
-        Ohne ``decision`` bleibt das Payload exakt rückwärtskompatibel.
+        Phase 83.5/108/110: ``decision`` (Resolver-Entscheidung) wird additiv
+        mitgesendet. ``confidence`` steuert das StateMachine-Gate (Phase 108),
+        ``intensity`` die Anzeige-Tiefe/den Blend (Phase 110). Ohne ``decision``
+        bleibt das Payload rückwärtskompatibel (String-only → voll/opak).
         """
         payload: dict[str, Any] = {"emotion": emotion}
         if decision is not None:
@@ -155,6 +155,7 @@ class RobotClient:
                 "emotion": decision.emotion.value,
                 "confidence": decision.confidence,
                 "source": decision.source,
+                "intensity": decision.intensity,  # Phase 110: Anzeige-Tiefe
             }
         r = self._client.post("/avatar/emotion", json=payload)
         r.raise_for_status()

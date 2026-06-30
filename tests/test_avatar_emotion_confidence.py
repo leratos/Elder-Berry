@@ -137,3 +137,76 @@ class TestEmotionConfidenceTransport:
             },
         )
         assert r.status_code == 422
+
+
+class TestEmotionIntensityTransport:
+    """Phase 110: die Anzeige-Tiefe (intensity) erreicht den AvatarDisplay."""
+
+    def test_decision_intensity_reaches_avatar(self):
+        server, avatar = _server_with_avatar()
+        client = TestClient(server.app)
+        r = client.post(
+            "/avatar/emotion",
+            json={
+                "emotion": "angry",
+                "decision": {
+                    "emotion": "angry",
+                    "confidence": 0.7,
+                    "source": "llm_tag",
+                    "intensity": 0.4,
+                },
+            },
+        )
+        assert r.status_code == 200
+        assert avatar.get_state()["intensity"] == pytest.approx(0.4)
+
+    def test_default_intensity_is_one(self):
+        # decision ohne intensity-Feld (alter Client) → Default 1.0.
+        server, avatar = _server_with_avatar()
+        client = TestClient(server.app)
+        client.post(
+            "/avatar/emotion",
+            json={
+                "emotion": "cheerful",
+                "decision": {
+                    "emotion": "cheerful",
+                    "confidence": 0.7,
+                    "source": "llm_tag",
+                },
+            },
+        )
+        assert avatar.get_state()["intensity"] == pytest.approx(1.0)
+
+    def test_mismatched_decision_ignores_intensity(self):
+        server, avatar = _server_with_avatar()
+        client = TestClient(server.app)
+        client.post(
+            "/avatar/emotion",
+            json={
+                "emotion": "angry",
+                "decision": {
+                    "emotion": "cheerful",  # passt nicht zum String
+                    "confidence": 0.7,
+                    "source": "llm_tag",
+                    "intensity": 0.2,
+                },
+            },
+        )
+        assert avatar.get_state()["intensity"] == pytest.approx(1.0)  # nicht 0.2
+
+    def test_out_of_range_intensity_rejected(self):
+        server, _ = _server_with_avatar()
+        client = TestClient(server.app)
+        r = client.post(
+            "/avatar/emotion",
+            json={
+                "emotion": "angry",
+                "decision": {
+                    "emotion": "angry",
+                    "confidence": 0.7,
+                    "source": "x",
+                    "intensity": 2.0,
+                },
+            },
+        )
+        assert r.status_code == 422

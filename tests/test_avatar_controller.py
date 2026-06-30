@@ -139,6 +139,16 @@ class TestLegacySetEmotion:
         controller.set_emotion("angry", confidence=0.9)  # akzeptiert
         renderer.show_emotion.assert_called_once_with(Emotion.ANGRY)
 
+    def test_intensity_reaches_state(self, controller, state_machine):
+        # Phase 110: intensity fließt über set_emotion in den StateMachine-State.
+        controller.set_emotion("angry", confidence=0.9, intensity=0.4)
+        assert state_machine.state.emotion is Emotion.ANGRY
+        assert state_machine.state.intensity == 0.4
+
+    def test_default_intensity_is_one(self, controller, state_machine):
+        controller.set_emotion("cheerful")
+        assert state_machine.state.intensity == 1.0
+
 
 # ---------------------------------------------------------------------------
 # Legacy-Pfad: set_speaking (kantengetriggert)

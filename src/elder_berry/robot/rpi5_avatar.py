@@ -75,10 +75,12 @@ class RPi5AvatarDisplay(AvatarDisplay):
 
         # Thread-safe State (gelesen vom Render-Thread)
         self._emotion = "neutral"
-        # Confidence der zuletzt gesetzten Emotion (Phase 108). Vom REST-Thread
-        # gesetzt, vom Render-Thread an den Controller/das StateMachine-Gate
-        # gereicht. Default 1.0 → Legacy-/String-only-Pfad schaltet immer.
+        # Confidence (Phase 108, Gate) + Intensität (Phase 110, Anzeige-Tiefe/
+        # Blend) der zuletzt gesetzten Emotion. Vom REST-Thread gesetzt, vom
+        # Render-Thread an den Controller gereicht. Default 1.0 → Legacy-/
+        # String-only-Pfad schaltet voll/opak (unverändert).
         self._emotion_confidence = 1.0
+        self._emotion_intensity = 1.0
         self._speaking = False
         # Amplitude-Profil der laufenden Sprech-Sitzung (83.4, nur Playback-
         # Modus). Vom REST-Thread gesetzt, vom Render-Thread konsumiert.
@@ -118,16 +120,24 @@ class RPi5AvatarDisplay(AvatarDisplay):
 
     # -- AvatarDisplay Interface -----------------------------------------------
 
-    def set_emotion(self, emotion: str, confidence: float = 1.0) -> None:
+    def set_emotion(
+        self, emotion: str, confidence: float = 1.0, intensity: float = 1.0
+    ) -> None:
         with self._lock:
-            # confidence immer aktualisieren (auch bei gleichem Emotion-String),
-            # damit der Render-Thread beim nächsten Wechsel den aktuellen Wert
-            # ans Confidence-Gate gibt.
+            # confidence/intensity immer aktualisieren (auch bei gleichem
+            # Emotion-String), damit der Render-Thread beim nächsten Forward die
+            # aktuellen Werte ans Gate (108) bzw. den Blend (110) gibt.
             self._emotion_confidence = confidence
+            self._emotion_intensity = intensity
             if self._emotion != emotion:
                 self._emotion = emotion
                 self._emotion_changed.set()
-                logger.debug("Emotion → %s (conf=%.2f)", emotion, confidence)
+                logger.debug(
+                    "Emotion → %s (conf=%.2f, int=%.2f)",
+                    emotion,
+                    confidence,
+                    intensity,
+                )
 
     def set_speaking(
         self, is_speaking: bool, audio_meta: AmplitudeTrack | None = None
@@ -194,12 +204,13 @@ class RPi5AvatarDisplay(AvatarDisplay):
             )
             logger.info("Render-Loop gestartet")
 
-            last_forwarded: tuple[str, float] | None = None
+            last_forwarded: tuple[str, float, float] | None = None
             while not self._stop_event.is_set() and self._renderer.is_running():
                 # State aus Lock lesen (Snapshot vom REST-Thread)
                 with self._lock:
                     emotion_str = self._emotion
                     emotion_conf = self._emotion_confidence
+                    emotion_int = self._emotion_intensity
                     speaking = self._speaking
                     audio_meta = self._audio_meta
 
@@ -214,9 +225,9 @@ class RPi5AvatarDisplay(AvatarDisplay):
                 # ist kantengetriggert und darf pro Frame aufgerufen werden; der
                 # Track wird auf der steigenden Flanke einmal in den Lip-Sync-Driver
                 # übernommen (83.4).
-                if (emotion_str, emotion_conf) != last_forwarded:
-                    controller.set_emotion(emotion_str, emotion_conf)
-                    last_forwarded = (emotion_str, emotion_conf)
+                if (emotion_str, emotion_conf, emotion_int) != last_forwarded:
+                    controller.set_emotion(emotion_str, emotion_conf, emotion_int)
+                    last_forwarded = (emotion_str, emotion_conf, emotion_int)
                 controller.set_speaking(speaking, audio_meta=audio_meta)
                 now = time.monotonic()
                 # 83.3: Crossfade-Transition pro Frame (Lock-gewrappt) lesen und

@@ -9,6 +9,7 @@ from elder_berry.avatar.state_machine import (
     DEFAULT_MIN_SWITCH_CONFIDENCE,
     AvatarStateMachine,
 )
+from elder_berry.avatar.render_plan import lerp_alpha
 from elder_berry.character.base import Emotion
 from elder_berry.character.emotion_resolver import EmotionDecision
 
@@ -32,8 +33,10 @@ def _emotion_map() -> dict[Emotion, EmotionLayers]:
     }
 
 
-def _decision(emotion: Emotion, confidence: float = 1.0) -> EmotionDecision:
-    return EmotionDecision(emotion, confidence, "test", {})
+def _decision(
+    emotion: Emotion, confidence: float = 1.0, intensity: float = 1.0
+) -> EmotionDecision:
+    return EmotionDecision(emotion, confidence, "test", {}, intensity)
 
 
 def _sm() -> AvatarStateMachine:
@@ -153,6 +156,74 @@ class TestConfidenceGate:
         assert sm.state.emotion is Emotion.NEUTRAL  # 0.5 < 0.6 → gehalten
         sm.request_emotion(_decision(Emotion.ANGRY, confidence=0.7))
         assert sm.state.emotion is Emotion.ANGRY
+
+
+# ---------------------------------------------------------------------------
+# Intensitäts-Blend (Phase 110, Modell B): intensity = Anzeige-Tiefe
+# ---------------------------------------------------------------------------
+
+
+class TestIntensityBlend:
+    def test_request_emotion_stores_intensity(self):
+        sm = _sm()
+        sm.request_emotion(_decision(Emotion.ANGRY, intensity=0.6))
+        assert sm.state.intensity == 0.6
+
+    def test_same_emotion_updates_intensity(self):
+        sm = _sm()
+        sm.request_emotion(_decision(Emotion.ANGRY, intensity=0.4))
+        sm.request_emotion(_decision(Emotion.ANGRY, intensity=0.8))  # gleiche Emotion
+        assert sm.state.intensity == 0.8
+
+    def test_same_emotion_low_confidence_keeps_intensity(self):
+        # Ein tag-loser Tracker-Turn (confidence < Gate) auf die gleiche Emotion
+        # darf einen gehaltenen milden Blend NICHT auf voll hochziehen.
+        sm = _sm()
+        sm.request_emotion(_decision(Emotion.ANGRY, intensity=0.4))  # mild etabliert
+        sm.request_emotion(  # untagged angry-Trend: conf 0.2, intensity Default 1.0
+            _decision(Emotion.ANGRY, confidence=0.2, intensity=1.0)
+        )
+        assert sm.state.intensity == 0.4  # unverändert, nicht 1.0
+
+    def test_gated_decision_keeps_old_intensity(self):
+        sm = _sm()
+        sm.request_emotion(_decision(Emotion.CHEERFUL, intensity=0.9))
+        sm.request_emotion(  # confidence < Gate → verworfen
+            _decision(Emotion.ANGRY, confidence=0.2, intensity=0.3)
+        )
+        assert sm.state.emotion is Emotion.CHEERFUL
+        assert sm.state.intensity == 0.9  # unverändert
+
+    def test_full_intensity_settled_is_opaque(self):
+        sm = _sm()
+        sm.request_emotion(_decision(Emotion.ANGRY))  # intensity Default 1.0
+        ts = sm.transition_at(sm.state.last_change + 100.0)  # eingeschwungen
+        assert ts.in_transition is False
+        assert ts.current.alpha == 255
+        assert ts.previous == ts.current
+
+    def test_weak_intensity_settled_blends_toward_neutral(self):
+        sm = _sm()
+        sm.request_emotion(_decision(Emotion.ANGRY, intensity=0.4))
+        ts = sm.transition_at(sm.state.last_change + 100.0)  # eingeschwungen
+        assert ts.in_transition is True
+        assert ts.current.alpha == lerp_alpha(0.4)
+        # previous = neutral-Basis, current = angry-Basis (Blend Richtung neutral).
+        assert ts.previous.body == _emotion_map()[Emotion.NEUTRAL].body
+        assert ts.current.body == _emotion_map()[Emotion.ANGRY].body
+
+    def test_crossfade_uses_old_emotion_not_neutral(self):
+        # Während des Crossfades (vor dem Einschwingen) ist previous die ALTE
+        # Emotion (nicht neutral); der Intensitäts-Blend greift erst danach.
+        sm = _sm()
+        sm.request_emotion(_decision(Emotion.CHEERFUL))  # etabliert
+        sm.request_emotion(  # cheerful→sad ist KEIN direct-cut → crossfade
+            _decision(Emotion.SAD, intensity=0.4)
+        )
+        ts = sm.transition_at(sm.state.last_change)  # progress 0 → mitten im Fade
+        assert ts.in_transition is True
+        assert ts.previous.body == _emotion_map()[Emotion.CHEERFUL].body  # alt
+        assert ts.current.body == _emotion_map()[Emotion.SAD].body
 
     def test_returns_true_on_switch(self):
         assert _sm().request_emotion(_decision(Emotion.ANGRY)) is True

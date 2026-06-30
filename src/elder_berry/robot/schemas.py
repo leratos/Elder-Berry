@@ -36,6 +36,10 @@ class AvatarDecision(BaseModel):
     emotion: str
     confidence: float = Field(ge=0.0, le=1.0, allow_inf_nan=False)
     source: str
+    # Phase 110: Anzeige-Tiefe (Blend Richtung neutral). Wie confidence hart auf
+    # 0–1 gebunden + kein inf/NaN (token-freier Server-Schutz). Default 1.0 hält
+    # ältere Clients ohne intensity-Feld rückwärtskompatibel (= voll/opak).
+    intensity: float = Field(default=1.0, ge=0.0, le=1.0, allow_inf_nan=False)
 
 
 class AvatarRequest(BaseModel):
