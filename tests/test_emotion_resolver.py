@@ -96,6 +96,34 @@ class TestParseEmotionTagWithIntensity:
         assert engine.get_mood().current_emotion is Emotion.NEUTRAL
         assert engine.emotion_tracker.entry_count == 0
 
+    def test_negative_intensity_clamped_to_zero(self):
+        # Out-of-range (negativ) → Tag wird trotzdem erkannt + auf 0.0 geklemmt.
+        assert SaleriaEngine.parse_emotion_tag_with_intensity("[angry:-0.2] x") == (
+            Emotion.ANGRY,
+            0.0,
+        )
+
+    def test_malformed_intensity_defaults_to_full(self):
+        # Unparsbare Stärke → volle Intensität (kein Leck, Tag wird erkannt).
+        assert SaleriaEngine.parse_emotion_tag_with_intensity("[angry:abc] x") == (
+            Emotion.ANGRY,
+            1.0,
+        )
+
+    def test_empty_intensity_defaults_to_full(self):
+        assert SaleriaEngine.parse_emotion_tag_with_intensity("[angry:] x") == (
+            Emotion.ANGRY,
+            1.0,
+        )
+
+    def test_clean_response_strips_negative_intensity(self):
+        engine = SaleriaEngine()
+        assert engine.clean_response("[angry:-0.2] Grr") == "Grr"
+
+    def test_clean_response_strips_malformed_intensity(self):
+        engine = SaleriaEngine()
+        assert engine.clean_response("[cheerful:abc] Hi") == "Hi"
+
 
 # ---------------------------------------------------------------------------
 # EmotionTracker.dominant_with_confidence
@@ -258,6 +286,17 @@ class TestResolveIntensity:
         mood = engine.get_mood()
         assert mood.current_emotion is Emotion.CHEERFUL
         assert mood.intensity == 0.3
+
+    def test_zero_intensity_is_no_signal(self):
+        # [angry:0.0] = kein Signal → Fallback NEUTRAL, KEIN Mood/Tracker-Record.
+        resolver, engine = _resolver_with_seed()
+        decision = resolver.resolve_from_llm("[angry:0.0] kaum der Rede wert")
+        assert decision.emotion is Emotion.NEUTRAL
+        assert decision.confidence == 0.0
+        assert decision.source == "fallback"
+        assert decision.raw_signals == {}
+        assert engine.get_mood().current_emotion is Emotion.NEUTRAL
+        assert engine.emotion_tracker.entry_count == 0
 
 
 # ---------------------------------------------------------------------------

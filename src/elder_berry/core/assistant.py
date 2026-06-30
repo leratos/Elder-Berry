@@ -202,6 +202,27 @@ class Assistant(PromptBuilderMixin, ResponseParserMixin, RobotActionMixin):
                 emotion = decision.emotion
             else:
                 emotion = self._character.extract_emotion(response_text)
+                # Phase 109: auch ohne Resolver eine explizit schwache Tag-
+                # Intensität in eine (gleich skalierte) Confidence spiegeln, damit
+                # der Prompt-Hinweis "schwach = ruhig" auch im Fallback-Pfad gilt.
+                # Sonst sendet der Roboter 1.0 (voll umschalten) statt die schwache
+                # Emotion zu halten. Volle Intensität (bare Tag) bleibt decision=
+                # None → byte-identisch zum bisherigen Legacy-Verhalten.
+                tag_intensity = self._character.parse_emotion_tag_with_intensity(
+                    response_text
+                )
+                if tag_intensity is not None and tag_intensity[1] < 1.0:
+                    from elder_berry.character.emotion_resolver import (
+                        DEFAULT_TAG_WEIGHT,
+                        EmotionDecision,
+                    )
+
+                    decision = EmotionDecision(
+                        emotion,
+                        round(DEFAULT_TAG_WEIGHT * tag_intensity[1], 3),
+                        "legacy_intensity",
+                        {},
+                    )
             emotion_str = emotion.value
             response_text = self._character.clean_response(response_text)
 

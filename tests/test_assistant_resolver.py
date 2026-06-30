@@ -267,3 +267,44 @@ class TestLegacyPathUnchanged:
         # extract_emotion zeichnet wie bisher auf.
         assert character.get_mood().current_emotion is Emotion.CHEERFUL
         assert character.emotion_tracker.entry_count == 1
+
+    def test_weak_intensity_synthesizes_decision_without_resolver(
+        self, mock_llm, mock_db, mock_controller, mock_tts, character, mock_robot
+    ):
+        # Phase 109: ohne Resolver bekommt der Roboter bei schwacher Intensität
+        # trotzdem die (gleich skalierte) Confidence -> Gate hält die Emotion.
+        assistant = _make_assistant(
+            llm=mock_llm,
+            db=mock_db,
+            controller=mock_controller,
+            tts=mock_tts,
+            character=character,
+            robot=mock_robot,
+            resolver=None,
+        )
+        _llm_returns(mock_llm, "[angry:0.4] etwas genervt")
+        assistant.process("Test")
+
+        call = mock_robot.set_emotion.call_args
+        assert call.args == ("angry",)
+        decision = call.kwargs["decision"]
+        assert isinstance(decision, EmotionDecision)
+        assert decision.confidence == pytest.approx(0.28)  # 0.7 * 0.4
+        assert decision.source == "legacy_intensity"
+
+    def test_full_intensity_stays_one_arg_without_resolver(
+        self, mock_llm, mock_db, mock_controller, mock_tts, character, mock_robot
+    ):
+        # Bare Tag (volle Intensität) bleibt 1-armig -- byte-identisch zu früher.
+        assistant = _make_assistant(
+            llm=mock_llm,
+            db=mock_db,
+            controller=mock_controller,
+            tts=mock_tts,
+            character=character,
+            robot=mock_robot,
+            resolver=None,
+        )
+        _llm_returns(mock_llm, "[cheerful] Hi")
+        assistant.process("Hallo")
+        mock_robot.set_emotion.assert_called_once_with("cheerful")

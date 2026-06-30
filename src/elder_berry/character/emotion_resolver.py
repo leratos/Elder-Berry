@@ -34,6 +34,11 @@ from elder_berry.character.emotion_tracker import EmotionTracker
 
 logger = logging.getLogger(__name__)
 
+# Default-Gewicht des LLM-Tags im Scoring. Auch vom Legacy-/Fallback-Pfad
+# (``Assistant`` ohne Resolver) genutzt, um die Intensität → Confidence identisch
+# zu skalieren (Phase 109), damit ``[emotion:intensity]`` überall gleich wirkt.
+DEFAULT_TAG_WEIGHT = 0.7
+
 
 @dataclass(frozen=True)
 class EmotionDecision:
@@ -61,7 +66,7 @@ class EmotionResolver:
         self,
         character: CharacterEngine,
         emotion_tracker: EmotionTracker,
-        tag_weight: float = 0.7,
+        tag_weight: float = DEFAULT_TAG_WEIGHT,
         trend_weight: float = 0.2,
         sensor_weight: float = 0.1,
     ) -> None:
@@ -95,13 +100,15 @@ class EmotionResolver:
         intensity = 1.0
         if parsed is not None:
             tag, intensity = parsed
-        if tag is not None:
-            # Die Intensität skaliert den Tag-Beitrag → die Confidence bekommt
-            # echte Bandbreite (steuert das Phase-108-Gate). Bare Tag (1.0) ist
-            # vollständig rückwärtskompatibel (Beitrag = tag_weight). Auf 3
-            # Nachkommastellen gerundet, damit Score/Confidence/raw_signals frei
-            # von Float-Rauschen bleiben (z.B. 0.7*0.4).
-            tag_score = round(self._tag_weight * intensity, 3)
+        # Die Intensität skaliert den Tag-Beitrag → die Confidence bekommt echte
+        # Bandbreite (steuert das Phase-108-Gate). Bare Tag (1.0) ist vollständig
+        # rückwärtskompatibel (Beitrag = tag_weight). Auf 3 Nachkommastellen
+        # gerundet, damit Score/Confidence/raw_signals frei von Float-Rauschen
+        # bleiben (z.B. 0.7*0.4). Eine Intensität von 0 zählt als KEIN Signal
+        # (kein Score, kein Record), sonst verschmutzte ein Null-Tag den
+        # Mood/Tracker und spätere Trends.
+        tag_score = round(self._tag_weight * intensity, 3) if tag is not None else 0.0
+        if tag is not None and tag_score > 0.0:
             scores[tag] += tag_score
             raw["llm_tag"] = tag_score
 
@@ -126,9 +133,9 @@ class EmotionResolver:
         else:  # defensiv – bei vorhandenem Tag gewinnt der Tag immer (0.7 > 0.2)
             source = "fallback"
 
-        if tag is not None:  # B4: heutige Aufzeichnungs-Semantik erhalten
-            # Phase 109: die explizite Intensität in den MoodState durchreichen
-            # (der Parameter existierte schon, wurde bisher mit Default gefüttert).
+        if tag is not None and tag_score > 0.0:  # B4 + Phase 109 (kein Null-Tag)
+            # Die explizite Intensität in den MoodState durchreichen (der
+            # Parameter existierte schon, wurde bisher mit Default gefüttert).
             self._character.set_mood(emotion, intensity)
             self._tracker.record(emotion)  # record NACH Trend-Read
 

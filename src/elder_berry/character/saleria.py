@@ -17,9 +17,13 @@ from elder_berry.character.emotion_tracker import EmotionTracker
 logger = logging.getLogger(__name__)
 
 # Regex: findet [emotion]- und [emotion:intensity]-Tags (case-insensitive).
-# Gruppe 1 = Emotion, Gruppe 2 = optionale Intensität (0.0–1.0, Phase 109).
+# Gruppe 1 = Emotion, Gruppe 2 = optionaler Intensitäts-Rohwert (Phase 109).
+# Gruppe 2 matcht bewusst alles bis zur ``]`` (``[^\]]*``), nicht nur Ziffern:
+# so wird AUCH ein out-of-range/malformter Wert (z.B. ``-0.2``, ``abc``) noch als
+# Tag erkannt und damit von clean_response gestrippt + im Parser geklemmt –
+# statt als unmatchbarer Tag roh in Sprache/Display zu lecken.
 _EMOTION_TAG_RE = re.compile(
-    r"\[(" + "|".join(e.value for e in Emotion) + r")(?::(\d*\.?\d+))?\]",
+    r"\[(" + "|".join(e.value for e in Emotion) + r")(?::([^\]]*))?\]",
     re.IGNORECASE,
 )
 
@@ -155,7 +159,12 @@ class SaleriaEngine(CharacterEngine):
             # Unerreichbar: die Regex matcht nur gültige Emotion-Werte.
             return None
         raw = match.group(2)
-        intensity = 1.0 if raw is None else min(1.0, max(0.0, float(raw)))
+        if not raw:  # kein ``:x`` (None) oder leeres ``[emotion:]``
+            return emotion, 1.0
+        try:
+            intensity = min(1.0, max(0.0, float(raw)))  # out-of-range → geklemmt
+        except ValueError:
+            intensity = 1.0  # unparsbare Stärke → volle Intensität (Default)
         return emotion, intensity
 
     def extract_emotion(self, llm_response: str) -> Emotion:
