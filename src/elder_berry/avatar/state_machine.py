@@ -87,12 +87,16 @@ class AvatarState:
         speaking_count: Anzahl offener Sprech-Sitzungen (>= 0). > 0 = spricht.
         last_change: ``time.monotonic``-Zeitstempel des letzten Emotionswechsels
             (Startzeit des Crossfade-Fortschritts).
+        intensity: Anzeige-Tiefe der aktuellen Emotion (Phase 110, 0.0–1.0).
+            ``1.0`` = voll/opak; ``< 1.0`` blendet im eingeschwungenen Zustand
+            Richtung neutral (mildere Mimik).
     """
 
     emotion: Emotion = Emotion.NEUTRAL
     previous_emotion: Emotion = Emotion.NEUTRAL
     speaking_count: int = 0
     last_change: float = 0.0
+    intensity: float = 1.0
 
 
 @dataclass
@@ -154,10 +158,14 @@ class AvatarStateMachine:
         new_emotion = decision.emotion
         old_emotion = self._state.emotion
         if new_emotion is old_emotion:
+            # Gleiche Emotion: kein Wechsel, aber die Anzeige-Tiefe (Phase 110)
+            # ggf. aktualisieren (z.B. angry:0.4 → angry:0.8 vertieft den Blend).
+            self._state.intensity = decision.intensity
             return True  # bereits angezeigt → Renderer darf idempotent zeigen
         # Phase 108: Confidence-Gate. Eine unsichere Decision (typisch: untagged
         # Turn, nur Tracker-Trend) überschreibt die aktuell gezeigte Emotion
-        # nicht hart, sondern lässt sie stehen (emotionale Trägheit).
+        # nicht hart, sondern lässt sie stehen (emotionale Trägheit). Die
+        # Intensität einer verworfenen Decision wird NICHT übernommen.
         if decision.confidence < self.min_switch_confidence:
             logger.debug(
                 "Emotion-Wechsel verworfen (conf=%.2f < %.2f, src=%s): %s behalten",
@@ -177,6 +185,7 @@ class AvatarStateMachine:
             "cut" if is_direct_cut else "crossfade",
         )
         self._state.emotion = new_emotion
+        self._state.intensity = decision.intensity  # Phase 110: Anzeige-Tiefe
         # Bei hartem Schnitt previous == emotion ⇒ keine Transition; sonst die
         # alte Emotion als Fade-Quelle merken.
         self._state.previous_emotion = new_emotion if is_direct_cut else old_emotion
@@ -235,6 +244,19 @@ class AvatarStateMachine:
         """
         current_base = self._base_plan(self._state.emotion)
         if not self.is_in_transition(now):
+            # Phase 110: eingeschwungener Zustand. Bei intensity < 1.0 die Emotion
+            # als gehaltenen Blend Richtung neutral darstellen (mildere Mimik) –
+            # über DENSELBEN Zwei-Plan-Cross-Dissolve wie der Crossfade:
+            # previous = neutral (opak), current = Emotion mit alpha = lerp(int.).
+            # intensity == 1.0 bleibt opak (byte-identisch zu vor Phase 110).
+            intensity = self._state.intensity
+            if intensity < 1.0:
+                return TransitionState(
+                    in_transition=True,
+                    progress=intensity,
+                    previous=self._base_plan(Emotion.NEUTRAL),
+                    current=current_base.with_alpha(lerp_alpha(intensity)),
+                )
             return TransitionState(
                 in_transition=False,
                 progress=1.0,

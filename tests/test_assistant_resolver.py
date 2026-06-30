@@ -289,7 +289,9 @@ class TestLegacyPathUnchanged:
         assert call.args == ("angry",)
         decision = call.kwargs["decision"]
         assert isinstance(decision, EmotionDecision)
-        assert decision.confidence == pytest.approx(0.28)  # 0.7 * 0.4
+        # Modell B: getaggt → volle Confidence (schaltet), Intensität = Tiefe.
+        assert decision.confidence == pytest.approx(1.0)
+        assert decision.intensity == pytest.approx(0.4)
         assert decision.source == "legacy_intensity"
 
     def test_full_intensity_stays_one_arg_without_resolver(

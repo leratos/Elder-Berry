@@ -247,38 +247,41 @@ class TestResolveConfidenceScale:
 
 
 # ---------------------------------------------------------------------------
-# Resolver – Intensität skaliert den Tag-Beitrag (Phase 109)
+# Resolver – Intensität = Anzeige-Tiefe, Confidence intensitäts-unabhängig
+# (Phase 110, Modell B)
 # ---------------------------------------------------------------------------
 
 
 class TestResolveIntensity:
-    def test_bare_tag_is_full_intensity(self):
-        # Rückwärtskompatibel: bloßes [angry] = Intensität 1.0 = Beitrag 0.7.
+    def test_bare_tag_full_confidence_and_intensity(self):
+        # Bloßes [angry] = Intensität 1.0, volle tag_weight-Confidence.
         resolver, _ = _resolver_with_seed()
         decision = resolver.resolve_from_llm("[angry] Grr")
         assert decision.emotion is Emotion.ANGRY
         assert decision.confidence == 0.7
+        assert decision.intensity == 1.0
 
-    def test_weak_intensity_below_gate(self):
-        # [angry:0.4] → 0.7 * 0.4 = 0.28 (< Gate-Schwelle 0.35 → würde gehalten).
+    def test_weak_intensity_keeps_full_confidence(self):
+        # Modell B: [angry:0.4] schaltet (confidence 0.7), intensity = 0.4.
         resolver, _ = _resolver_with_seed()
         decision = resolver.resolve_from_llm("[angry:0.4] etwas genervt")
         assert decision.emotion is Emotion.ANGRY
-        assert decision.confidence == 0.28
-        assert decision.raw_signals == {"llm_tag": 0.28}
+        assert decision.confidence == 0.7  # intensitäts-UNABHÄNGIG
+        assert decision.intensity == 0.4
+        assert decision.raw_signals == {"llm_tag": 0.7}
 
-    def test_strong_intensity_above_gate(self):
-        # [angry:0.9] → 0.63 (> 0.35 → schaltet um).
+    def test_strong_intensity(self):
         resolver, _ = _resolver_with_seed()
         decision = resolver.resolve_from_llm("[angry:0.9] Schluss jetzt!")
-        assert decision.emotion is Emotion.ANGRY
-        assert decision.confidence == 0.63
+        assert decision.confidence == 0.7
+        assert decision.intensity == 0.9
 
-    def test_switch_point_half(self):
-        # Intensität 0.5 → exakt 0.35 (= Gate-Schwelle, schaltet gerade um).
-        resolver, _ = _resolver_with_seed()
-        decision = resolver.resolve_from_llm("[angry:0.5] hm")
-        assert decision.confidence == 0.35
+    def test_intensity_independent_of_trend(self):
+        # Tag + passender Trend → Confidence 0.9; Intensität bleibt der Tag-Wert.
+        resolver, _ = _resolver_with_seed(Emotion.ANGRY)
+        decision = resolver.resolve_from_llm("[angry:0.3] grummel")
+        assert decision.confidence == 0.9
+        assert decision.intensity == 0.3
 
     def test_intensity_recorded_in_mood(self):
         resolver, engine = _resolver_with_seed()
