@@ -16,9 +16,14 @@ from elder_berry.character.emotion_tracker import EmotionTracker
 
 logger = logging.getLogger(__name__)
 
-# Regex: findet [emotion]-Tags (case-insensitive)
+# Regex: findet [emotion]- und [emotion:intensity]-Tags (case-insensitive).
+# Gruppe 1 = Emotion, Gruppe 2 = optionaler Intensitäts-Rohwert (Phase 109).
+# Gruppe 2 matcht bewusst alles bis zur ``]`` (``[^\]]*``), nicht nur Ziffern:
+# so wird AUCH ein out-of-range/malformter Wert (z.B. ``-0.2``, ``abc``) noch als
+# Tag erkannt und damit von clean_response gestrippt + im Parser geklemmt –
+# statt als unmatchbarer Tag roh in Sprache/Display zu lecken.
 _EMOTION_TAG_RE = re.compile(
-    r"\[(" + "|".join(e.value for e in Emotion) + r")\]",
+    r"\[(" + "|".join(e.value for e in Emotion) + r")(?::([^\]]*))?\]",
     re.IGNORECASE,
 )
 
@@ -130,6 +135,37 @@ class SaleriaEngine(CharacterEngine):
         except ValueError:
             # Unerreichbar: die Regex matcht nur gültige Emotion-Werte.
             return None
+
+    @staticmethod
+    def parse_emotion_tag_with_intensity(
+        llm_response: str,
+    ) -> tuple[Emotion, float] | None:
+        """Liest das erste ``[emotion:intensity]``-Tag (Phase 109).
+
+        Wie :meth:`parse_emotion_tag` seiteneffektfrei, liefert aber zusätzlich
+        die optionale Intensität. Ohne ``:x`` gilt **1.0** (volle Intensität,
+        rückwärtskompatibel zum bloßen ``[emotion]``); der Wert wird hart auf
+        ``[0.0, 1.0]`` geklemmt.
+
+        Returns:
+            ``(emotion, intensity)`` oder ``None`` wenn kein gültiges Tag da ist.
+        """
+        match = _EMOTION_TAG_RE.search(llm_response)
+        if not match:
+            return None
+        try:
+            emotion = Emotion(match.group(1).lower())
+        except ValueError:
+            # Unerreichbar: die Regex matcht nur gültige Emotion-Werte.
+            return None
+        raw = match.group(2)
+        if not raw:  # kein ``:x`` (None) oder leeres ``[emotion:]``
+            return emotion, 1.0
+        try:
+            intensity = min(1.0, max(0.0, float(raw)))  # out-of-range → geklemmt
+        except ValueError:
+            intensity = 1.0  # unparsbare Stärke → volle Intensität (Default)
+        return emotion, intensity
 
     def extract_emotion(self, llm_response: str) -> Emotion:
         match = _EMOTION_TAG_RE.search(llm_response)
