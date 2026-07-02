@@ -110,6 +110,45 @@ class TestLegacySetEmotion:
             assert controller.get_state()["emotion"] == name
             renderer.show_emotion.assert_called_with(enum)
 
+    def test_default_confidence_switches(self, controller):
+        """Ohne confidence-Argument (Legacy) wird umgeschaltet (Default 1.0)."""
+        controller.set_emotion("angry")
+        assert controller.get_state()["emotion"] == "angry"
+
+    def test_low_confidence_holds_emotion(self, controller):
+        """Phase 108: eine unsichere Emotion (< Gate) hält den Zustand."""
+        controller.set_emotion("cheerful", confidence=1.0)  # etabliert
+        controller.set_emotion("angry", confidence=0.2)  # unsicher
+        assert controller.get_state()["emotion"] == "cheerful"
+
+    def test_high_confidence_switches(self, controller):
+        controller.set_emotion("angry", confidence=0.8)
+        assert controller.get_state()["emotion"] == "angry"
+
+    def test_rejected_emotion_not_shown_on_renderer(self, controller, renderer):
+        """Phase 108: eine gegatete Emotion darf den Renderer nicht umschalten."""
+        controller.set_emotion("cheerful", confidence=1.0)  # etabliert + gezeigt
+        renderer.show_emotion.reset_mock()
+        controller.set_emotion("angry", confidence=0.2)  # gegated
+        assert controller.get_state()["emotion"] == "cheerful"  # State gehalten
+        renderer.show_emotion.assert_not_called()  # Renderer NICHT umgeschaltet
+
+    def test_accepted_emotion_shown_on_renderer(self, controller, renderer):
+        controller.set_emotion("cheerful", confidence=1.0)
+        renderer.show_emotion.reset_mock()
+        controller.set_emotion("angry", confidence=0.9)  # akzeptiert
+        renderer.show_emotion.assert_called_once_with(Emotion.ANGRY)
+
+    def test_intensity_reaches_state(self, controller, state_machine):
+        # Phase 110: intensity fließt über set_emotion in den StateMachine-State.
+        controller.set_emotion("angry", confidence=0.9, intensity=0.4)
+        assert state_machine.state.emotion is Emotion.ANGRY
+        assert state_machine.state.intensity == 0.4
+
+    def test_default_intensity_is_one(self, controller, state_machine):
+        controller.set_emotion("cheerful")
+        assert state_machine.state.intensity == 1.0
+
 
 # ---------------------------------------------------------------------------
 # Legacy-Pfad: set_speaking (kantengetriggert)

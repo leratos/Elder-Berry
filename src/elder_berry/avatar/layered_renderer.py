@@ -438,7 +438,7 @@ class LayeredSpriteRenderer(AvatarRenderer):
             old_plan, new_plan = self._build_transition_plans(
                 now, transition, speaking_mouth, idle_blink
             )
-            self._render_crossfade(old_plan, new_plan)
+            self._render_crossfade(old_plan, new_plan, transition.full_blend)
         else:
             plan = self._build_plan(now, speaking_mouth, idle_blink)
             self.render(plan)
@@ -704,15 +704,17 @@ class LayeredSpriteRenderer(AvatarRenderer):
         static_plan = replace(new_plan, mouth=old_plan.mouth, alpha=OPAQUE_ALPHA)
         return static_plan, new_plan.mouth
 
-    def _render_crossfade(self, old_plan: RenderPlan, new_plan: RenderPlan) -> None:
+    def _render_crossfade(
+        self, old_plan: RenderPlan, new_plan: RenderPlan, full_blend: bool = False
+    ) -> None:
         """Komponiert das Crossfade-Frame und stellt es dar (§5)."""
         if self._screen is None:
             return
-        self._composite_crossfade_to_screen(old_plan, new_plan)
+        self._composite_crossfade_to_screen(old_plan, new_plan, full_blend)
         self._present()
 
     def _composite_crossfade_to_screen(
-        self, old_plan: RenderPlan, new_plan: RenderPlan
+        self, old_plan: RenderPlan, new_plan: RenderPlan, full_blend: bool = False
     ) -> None:
         """Komponiert ein Crossfade-Frame (+ 180°-Rotation) – **ohne** Present.
 
@@ -720,8 +722,12 @@ class LayeredSpriteRenderer(AvatarRenderer):
         ``display.flip``/``clock.tick`` bleiben außen vor. Die Reichweite
         (``self._crossfade_scope``) entscheidet hier – damit Renderer **und**
         Benchmark denselben Pfad für den jeweiligen Modus exerzieren.
+
+        Phase 110: ``full_blend`` erzwingt den Voll-Blend (Body/Augen/Mund/Effekt)
+        unabhängig vom Scope – nötig für den gehaltenen Intensitäts-Blend, der im
+        ``MOUTH_ONLY``-Fallback sonst ein volles Gesicht mit nur mildem Mund zeigte.
         """
-        if self._crossfade_scope is CrossfadeScope.MOUTH_ONLY:
+        if self._crossfade_scope is CrossfadeScope.MOUTH_ONLY and not full_blend:
             self._composite_mouth_only(old_plan, new_plan)
         else:
             self._composite_full(old_plan, new_plan)
