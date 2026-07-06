@@ -122,6 +122,25 @@ class CharacterEngine(ABC):
         """
         ...
 
+    @staticmethod
+    @abstractmethod
+    def parse_emotion_tag_with_intensity(
+        llm_response: str,
+    ) -> "tuple[Emotion, float] | None":
+        """Liest das erste ``[emotion:intensity]``-Tag (Phase 109).
+
+        Wie :meth:`parse_emotion_tag` seiteneffektfrei, liefert aber zusätzlich
+        die optionale Intensität (0.0–1.0). Ohne ``:x`` gilt **1.0** (volle
+        Intensität, rückwärtskompatibel zum bloßen ``[emotion]``).
+
+        Args:
+            llm_response: Rohe LLM-Antwort mit möglichen Emotions-Tags.
+
+        Returns:
+            ``(emotion, intensity)`` oder ``None`` wenn kein gültiges Tag da ist.
+        """
+        ...
+
     @abstractmethod
     def extract_emotion(self, llm_response: str) -> Emotion:
         """

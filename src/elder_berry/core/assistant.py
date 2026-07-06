@@ -202,6 +202,31 @@ class Assistant(PromptBuilderMixin, ResponseParserMixin, RobotActionMixin):
                 emotion = decision.emotion
             else:
                 emotion = self._character.extract_emotion(response_text)
+                # Phase 110: auch ohne Resolver eine explizit schwache Tag-
+                # Intensität an den RPi5 durchreichen, damit die mildere Mimik
+                # (Blend) auch im Fallback-Pfad sichtbar wird. Modell B: ein Tag
+                # schaltet immer (confidence 1.0); die Intensität steuert nur die
+                # Anzeige-Tiefe. Volle Intensität (bare Tag) bleibt decision=None
+                # → byte-identisch zum bisherigen Legacy-Verhalten.
+                tag_intensity = self._character.parse_emotion_tag_with_intensity(
+                    response_text
+                )
+                if tag_intensity is not None and tag_intensity[1] < 1.0:
+                    from elder_berry.character.emotion_resolver import EmotionDecision
+
+                    weak = tag_intensity[1]
+                    # Modell B: eine getaggte Emotion schaltet (confidence 1.0).
+                    # ABER Intensität 0 = „kein Signal": confidence 0.0, damit das
+                    # StateMachine-Gate die aktuelle Emotion HÄLT (konsistent mit
+                    # dem Resolver-Fallback) statt voll auf die Emotion zu
+                    # schalten und sie bei alpha 0 als neutral zu rendern.
+                    decision = EmotionDecision(
+                        emotion,
+                        1.0 if weak > 0.0 else 0.0,
+                        "legacy_intensity",
+                        {},
+                        weak,  # Phase 110: Anzeige-Tiefe
+                    )
             emotion_str = emotion.value
             response_text = self._character.clean_response(response_text)
 

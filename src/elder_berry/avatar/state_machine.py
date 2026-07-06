@@ -51,6 +51,16 @@ DEFAULT_CROSSFADE_FRAMES = 8
 # dupliziert, um einen Import-Zyklus Renderer↔StateMachine zu vermeiden.
 DEFAULT_FPS = 30
 
+# Phase 108 (Confidence-Gate): Mindest-Confidence einer EmotionDecision, damit
+# sie die aktuell gezeigte Emotion überhaupt überschreiben darf. Der
+# EmotionResolver liefert getaggte Turns mit ~0.7–0.9, einen nur aus dem
+# Tracker-Trend abgeleiteten (untagged) Turn mit ≤0.2 (und 0.0 im Fallback).
+# 0.35 trennt beide sauber: unsichere/untagged Turns halten die etablierte
+# Mimik, statt sie hart umzuschalten. Der Legacy-/extract_emotion-Pfad
+# synthetisiert ``confidence=1.0`` und passiert das Gate damit immer → Verhalten
+# ohne Resolver unverändert.
+DEFAULT_MIN_SWITCH_CONFIDENCE = 0.35
+
 # Emotionspaare, die sprunghaft wirken und daher auch mit Crossfade (83.3) hart
 # umgeschaltet werden sollen ("Schmiergesicht"-Vermeidung, §3.3). In 83.2 reiner
 # Datensatz – es wird ohnehin immer hart umgeschaltet.
@@ -77,12 +87,16 @@ class AvatarState:
         speaking_count: Anzahl offener Sprech-Sitzungen (>= 0). > 0 = spricht.
         last_change: ``time.monotonic``-Zeitstempel des letzten Emotionswechsels
             (Startzeit des Crossfade-Fortschritts).
+        intensity: Anzeige-Tiefe der aktuellen Emotion (Phase 110, 0.0–1.0).
+            ``1.0`` = voll/opak; ``< 1.0`` blendet im eingeschwungenen Zustand
+            Richtung neutral (mildere Mimik).
     """
 
     emotion: Emotion = Emotion.NEUTRAL
     previous_emotion: Emotion = Emotion.NEUTRAL
     speaking_count: int = 0
     last_change: float = 0.0
+    intensity: float = 1.0
 
 
 @dataclass
@@ -106,6 +120,7 @@ class AvatarStateMachine:
         default_factory=lambda: DEFAULT_DIRECT_CUT_PAIRS
     )
     fps: int = DEFAULT_FPS
+    min_switch_confidence: float = DEFAULT_MIN_SWITCH_CONFIDENCE
     _state: AvatarState = field(default_factory=AvatarState, init=False)
 
     @property
@@ -113,10 +128,14 @@ class AvatarStateMachine:
         """Der aktuelle (veränderliche) Zustand. Nur unter Lock lesen/mutieren."""
         return self._state
 
-    def request_emotion(self, decision: EmotionDecision) -> None:
+    def request_emotion(self, decision: EmotionDecision) -> bool:
         """Übernimmt die Emotion aus einer ``EmotionDecision``.
 
         - **Gleiche Emotion** → no-op (idempotent, kein ``last_change``-Update).
+        - **Confidence < :attr:`min_switch_confidence`** → no-op (Phase 108):
+          eine unsichere/untagged Decision hält die etablierte Emotion, statt
+          sie umzuschalten. Der Legacy-Pfad (``confidence == 1.0``) passiert das
+          Gate immer.
         - **(alt, neu) ∈ direct_cut_pairs** → harter Schnitt: ``previous_emotion``
           wird auf die neue Emotion gesetzt, sodass :meth:`transition_at` keine
           Transition meldet.
@@ -128,11 +147,38 @@ class AvatarStateMachine:
         Args:
             decision: Aggregiertes Emotions-Ergebnis (aus dem EmotionResolver
                 oder – im Legacy-Pfad – vom Controller synthetisiert).
+
+        Returns:
+            ``True``, wenn die angezeigte Emotion jetzt ``decision.emotion`` ist
+            (frisch übernommen **oder** bereits aktiv); ``False``, wenn die
+            Decision vom Confidence-Gate **verworfen** wurde und die alte Emotion
+            gehalten wird. Der Controller zeigt die Emotion nur bei ``True`` an
+            (Phase 108: verworfene Emotion darf den Renderer nicht umschalten).
         """
         new_emotion = decision.emotion
         old_emotion = self._state.emotion
         if new_emotion is old_emotion:
-            return
+            # Gleiche Emotion: kein Wechsel, aber die Anzeige-Tiefe (Phase 110)
+            # ggf. aktualisieren (z.B. angry:0.4 → angry:0.8 vertieft den Blend).
+            # Nur bei vertrauenswürdiger (= das Gate passierender) Decision: ein
+            # tag-loser Tracker-Turn (confidence ≤ Schwelle, intensity Default
+            # 1.0) darf einen gehaltenen milden Blend NICHT auf voll hochziehen.
+            if decision.confidence >= self.min_switch_confidence:
+                self._state.intensity = decision.intensity
+            return True  # bereits angezeigt → Renderer darf idempotent zeigen
+        # Phase 108: Confidence-Gate. Eine unsichere Decision (typisch: untagged
+        # Turn, nur Tracker-Trend) überschreibt die aktuell gezeigte Emotion
+        # nicht hart, sondern lässt sie stehen (emotionale Trägheit). Die
+        # Intensität einer verworfenen Decision wird NICHT übernommen.
+        if decision.confidence < self.min_switch_confidence:
+            logger.debug(
+                "Emotion-Wechsel verworfen (conf=%.2f < %.2f, src=%s): %s behalten",
+                decision.confidence,
+                self.min_switch_confidence,
+                decision.source,
+                old_emotion.value,
+            )
+            return False
         is_direct_cut = (old_emotion, new_emotion) in self.direct_cut_pairs
         logger.debug(
             "Emotion: %s → %s (conf=%.2f, src=%s, %s)",
@@ -143,10 +189,12 @@ class AvatarStateMachine:
             "cut" if is_direct_cut else "crossfade",
         )
         self._state.emotion = new_emotion
+        self._state.intensity = decision.intensity  # Phase 110: Anzeige-Tiefe
         # Bei hartem Schnitt previous == emotion ⇒ keine Transition; sonst die
         # alte Emotion als Fade-Quelle merken.
         self._state.previous_emotion = new_emotion if is_direct_cut else old_emotion
         self._state.last_change = time.monotonic()
+        return True
 
     def speech_increment(self) -> None:
         """Erhöht den Sprech-Zähler (Beginn einer Sprech-Sitzung)."""
@@ -200,6 +248,20 @@ class AvatarStateMachine:
         """
         current_base = self._base_plan(self._state.emotion)
         if not self.is_in_transition(now):
+            # Phase 110: eingeschwungener Zustand. Bei intensity < 1.0 die Emotion
+            # als gehaltenen Blend Richtung neutral darstellen (mildere Mimik) –
+            # über DENSELBEN Zwei-Plan-Cross-Dissolve wie der Crossfade:
+            # previous = neutral (opak), current = Emotion mit alpha = lerp(int.).
+            # intensity == 1.0 bleibt opak (byte-identisch zu vor Phase 110).
+            intensity = self._state.intensity
+            if intensity < 1.0:
+                return TransitionState(
+                    in_transition=True,
+                    progress=intensity,
+                    previous=self._base_plan(Emotion.NEUTRAL),
+                    current=current_base.with_alpha(lerp_alpha(intensity)),
+                    full_blend=True,  # immer Voll-Blend, auch im MOUTH_ONLY-Scope
+                )
             return TransitionState(
                 in_transition=False,
                 progress=1.0,

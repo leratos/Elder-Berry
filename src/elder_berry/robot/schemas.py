@@ -25,16 +25,21 @@ MAX_AMPLITUDE_SAMPLES = 6000
 class AvatarDecision(BaseModel):
     """Phase 83.5: Aggregierte Emotions-Entscheidung des Bot-seitigen Resolvers.
 
-    Rein additiv und **nur fürs Server-Logging/Debug** gedacht (§6.3): trägt
-    Confidence und Quelle der vom :class:`EmotionResolver` abgeleiteten Emotion
-    mit. Der RPi5-``AvatarDisplay`` konsumiert dieses Feld **nicht** – die
-    Emotion selbst kommt weiterhin über ``AvatarRequest.emotion`` als String,
-    sodass das Verhalten am RPi5 (inkl. matrix_only) unverändert bleibt.
+    Phase 108: ``confidence`` steuert jetzt das StateMachine-Confidence-Gate am
+    RPi5 (nicht mehr nur Logging). Da der RobotServer token-frei laufen kann,
+    wird der Wert hart auf ``0.0–1.0`` begrenzt und ``inf``/``NaN`` abgewiesen
+    (Pydantic → 422), damit ein fehlerhafter/bösartiger Client keinen
+    Out-of-range-Wert als Steuergröße einschleust (z.B. ``2.0``/``NaN``, die den
+    ``< threshold``-Check sonst unterliefen).
     """
 
     emotion: str
-    confidence: float
+    confidence: float = Field(ge=0.0, le=1.0, allow_inf_nan=False)
     source: str
+    # Phase 110: Anzeige-Tiefe (Blend Richtung neutral). Wie confidence hart auf
+    # 0–1 gebunden + kein inf/NaN (token-freier Server-Schutz). Default 1.0 hält
+    # ältere Clients ohne intensity-Feld rückwärtskompatibel (= voll/opak).
+    intensity: float = Field(default=1.0, ge=0.0, le=1.0, allow_inf_nan=False)
 
 
 class AvatarRequest(BaseModel):

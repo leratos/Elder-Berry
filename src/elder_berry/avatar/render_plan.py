@@ -198,9 +198,15 @@ class TransitionState:
         progress: Fortschritt ``0.0..1.0`` (``frame / crossfade_frames``).
         previous: Basis-Plan der **alten** Emotion (opak, ``alpha == 255``).
         current: Basis-Plan der **neuen** Emotion; ``alpha`` = lerp(progress).
+        full_blend: Phase 110 – ``True`` für einen **gehaltenen Intensitäts-Blend**
+            (previous = neutral, current = Emotion @ Intensität). Der Renderer
+            muss diesen Zustand **immer** als Voll-Blend (Body/Augen/Mund/Effekt)
+            komponieren, auch im ``MOUTH_ONLY``-Scope – sonst zeigte die mild
+            gemeinte Emotion ein volles Gesicht mit nur mildem Mund.
     """
 
     in_transition: bool
     progress: float
     previous: RenderPlan
     current: RenderPlan
+    full_blend: bool = False
