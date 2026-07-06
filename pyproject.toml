@@ -52,7 +52,7 @@ agent = [
 ]
 matrix = [
     "matrix-nio>=0.25.2",
-    "aiofiles>=23.0",
+    "aiofiles>=24.1.0",
     # Phase 85.4: HtmlEmailSanitizer wird ueber email_client transitiv
     # gezogen, sobald der Matrix-Bot remote_commands -> mail_commands
     # importiert. Ohne bs4 knallt der Import bei .[matrix]-Installs.
@@ -80,7 +80,7 @@ stt = [
     "numpy>=2.5.0",
 ]
 tools = [
-    "google-api-python-client>=2.197.0",
+    "google-api-python-client>=2.198.0",
     "google-auth-oauthlib>=1.4.0",
     "google-auth-httplib2>=0.4.0",
 ]
@@ -118,7 +118,7 @@ harmony = [
 ]
 tower = [
     "matrix-nio>=0.25.2",
-    "aiofiles>=23.0",
+    "aiofiles>=24.1.0",
     "python-multipart>=0.0.32",
     "coqui-tts>=0.27.5",
     "sounddevice>=0.5.5",
@@ -143,9 +143,9 @@ tower = [
 ]
 server = [
     "matrix-nio>=0.25.2",
-    "aiofiles>=23.0",
+    "aiofiles>=24.1.0",
     "chromadb>=1.5.9",
-    "google-api-python-client>=2.197.0",
+    "google-api-python-client>=2.198.0",
     "google-auth-oauthlib>=1.4.0",
     "google-auth-httplib2>=0.4.0",
     "pymupdf>=1.27.2.3",
