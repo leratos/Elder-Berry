@@ -778,7 +778,14 @@ def _plan(body, alpha=255):
     )
 
 
-def _transition(in_transition=True, progress=0.5, prev="relaxed", curr="angry", alpha=128):
+def _transition(
+    in_transition=True,
+    progress=0.5,
+    prev="relaxed",
+    curr="angry",
+    alpha=128,
+    full_blend=False,
+):
     from elder_berry.avatar.render_plan import TransitionState
 
     return TransitionState(
@@ -786,6 +793,7 @@ def _transition(in_transition=True, progress=0.5, prev="relaxed", curr="angry", 
         progress=progress,
         previous=_plan(prev),
         current=_plan(curr, alpha=alpha),
+        full_blend=full_blend,
     )
 
 
@@ -994,6 +1002,32 @@ class TestMouthOnlyFallback:
         # Statische Basis genau einmal (kein zweiter Voll-Plan), Mund als Sprite.
         assert spy_static.call_count == 1
         assert spy_mouth.call_count == 1
+
+    def test_full_blend_forces_full_composite_in_mouth_only(
+        self, mock_pygame, layered_assets
+    ):
+        """Phase 110: ein gehaltener Intensitäts-Blend (full_blend=True) nutzt den
+        Voll-Blend auch im MOUTH_ONLY-Scope (sonst volles Gesicht + milder Mund).
+        """
+        from unittest.mock import patch
+
+        from elder_berry.avatar.layered_renderer import (
+            CrossfadeScope,
+            LayeredSpriteRenderer,
+        )
+
+        r = LayeredSpriteRenderer(
+            assets_dir=layered_assets, crossfade_scope=CrossfadeScope.MOUTH_ONLY
+        )
+        r.initialize(512, 1024)
+        r._current_emotion = Emotion.ANGRY
+        with (
+            patch.object(r, "_composite_full") as full,
+            patch.object(r, "_composite_mouth_only") as mouth_only,
+        ):
+            r.update(transition=_transition(alpha=102, full_blend=True))
+        full.assert_called_once()
+        mouth_only.assert_not_called()
 
     def test_mouth_only_missing_mouth_component_is_safe(
         self, mock_pygame, layered_assets

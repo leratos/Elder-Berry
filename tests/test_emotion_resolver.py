@@ -48,6 +48,82 @@ class TestParseEmotionTag:
         assert engine.get_mood().current_emotion is Emotion.NEUTRAL
         assert engine.emotion_tracker.entry_count == 0
 
+    def test_intensity_tag_emotion_still_parsed(self):
+        # parse_emotion_tag (alt) ignoriert die Intensität, liefert die Emotion.
+        assert SaleriaEngine.parse_emotion_tag("[cheerful:0.5] Hi") is Emotion.CHEERFUL
+
+
+# ---------------------------------------------------------------------------
+# parse_emotion_tag_with_intensity (Phase 109)
+# ---------------------------------------------------------------------------
+
+
+class TestParseEmotionTagWithIntensity:
+    def test_no_tag_returns_none(self):
+        assert SaleriaEngine.parse_emotion_tag_with_intensity("nur Text") is None
+
+    def test_bare_tag_defaults_to_full_intensity(self):
+        assert SaleriaEngine.parse_emotion_tag_with_intensity("[angry] x") == (
+            Emotion.ANGRY,
+            1.0,
+        )
+
+    def test_explicit_intensity(self):
+        assert SaleriaEngine.parse_emotion_tag_with_intensity("[angry:0.4] x") == (
+            Emotion.ANGRY,
+            0.4,
+        )
+
+    def test_intensity_clamped_above_one(self):
+        assert SaleriaEngine.parse_emotion_tag_with_intensity("[angry:2.0] x") == (
+            Emotion.ANGRY,
+            1.0,
+        )
+
+    def test_leading_dot_intensity(self):
+        assert SaleriaEngine.parse_emotion_tag_with_intensity("[cheerful:.8] x") == (
+            Emotion.CHEERFUL,
+            0.8,
+        )
+
+    def test_clean_response_strips_intensity_tag(self):
+        engine = SaleriaEngine()
+        assert engine.clean_response("[cheerful:0.8] Na bitte") == "Na bitte"
+
+    def test_side_effect_free(self):
+        engine = SaleriaEngine()
+        engine.parse_emotion_tag_with_intensity("[angry:0.9] Grr")
+        assert engine.get_mood().current_emotion is Emotion.NEUTRAL
+        assert engine.emotion_tracker.entry_count == 0
+
+    def test_negative_intensity_clamped_to_zero(self):
+        # Out-of-range (negativ) → Tag wird trotzdem erkannt + auf 0.0 geklemmt.
+        assert SaleriaEngine.parse_emotion_tag_with_intensity("[angry:-0.2] x") == (
+            Emotion.ANGRY,
+            0.0,
+        )
+
+    def test_malformed_intensity_defaults_to_full(self):
+        # Unparsbare Stärke → volle Intensität (kein Leck, Tag wird erkannt).
+        assert SaleriaEngine.parse_emotion_tag_with_intensity("[angry:abc] x") == (
+            Emotion.ANGRY,
+            1.0,
+        )
+
+    def test_empty_intensity_defaults_to_full(self):
+        assert SaleriaEngine.parse_emotion_tag_with_intensity("[angry:] x") == (
+            Emotion.ANGRY,
+            1.0,
+        )
+
+    def test_clean_response_strips_negative_intensity(self):
+        engine = SaleriaEngine()
+        assert engine.clean_response("[angry:-0.2] Grr") == "Grr"
+
+    def test_clean_response_strips_malformed_intensity(self):
+        engine = SaleriaEngine()
+        assert engine.clean_response("[cheerful:abc] Hi") == "Hi"
+
 
 # ---------------------------------------------------------------------------
 # EmotionTracker.dominant_with_confidence
@@ -168,6 +244,62 @@ class TestResolveConfidenceScale:
         assert decision.emotion is Emotion.NEUTRAL
         assert decision.confidence == 0.0
         assert decision.source == "fallback"
+
+
+# ---------------------------------------------------------------------------
+# Resolver – Intensität = Anzeige-Tiefe, Confidence intensitäts-unabhängig
+# (Phase 110, Modell B)
+# ---------------------------------------------------------------------------
+
+
+class TestResolveIntensity:
+    def test_bare_tag_full_confidence_and_intensity(self):
+        # Bloßes [angry] = Intensität 1.0, volle tag_weight-Confidence.
+        resolver, _ = _resolver_with_seed()
+        decision = resolver.resolve_from_llm("[angry] Grr")
+        assert decision.emotion is Emotion.ANGRY
+        assert decision.confidence == 0.7
+        assert decision.intensity == 1.0
+
+    def test_weak_intensity_keeps_full_confidence(self):
+        # Modell B: [angry:0.4] schaltet (confidence 0.7), intensity = 0.4.
+        resolver, _ = _resolver_with_seed()
+        decision = resolver.resolve_from_llm("[angry:0.4] etwas genervt")
+        assert decision.emotion is Emotion.ANGRY
+        assert decision.confidence == 0.7  # intensitäts-UNABHÄNGIG
+        assert decision.intensity == 0.4
+        assert decision.raw_signals == {"llm_tag": 0.7}
+
+    def test_strong_intensity(self):
+        resolver, _ = _resolver_with_seed()
+        decision = resolver.resolve_from_llm("[angry:0.9] Schluss jetzt!")
+        assert decision.confidence == 0.7
+        assert decision.intensity == 0.9
+
+    def test_intensity_independent_of_trend(self):
+        # Tag + passender Trend → Confidence 0.9; Intensität bleibt der Tag-Wert.
+        resolver, _ = _resolver_with_seed(Emotion.ANGRY)
+        decision = resolver.resolve_from_llm("[angry:0.3] grummel")
+        assert decision.confidence == 0.9
+        assert decision.intensity == 0.3
+
+    def test_intensity_recorded_in_mood(self):
+        resolver, engine = _resolver_with_seed()
+        resolver.resolve_from_llm("[cheerful:0.3] na gut")
+        mood = engine.get_mood()
+        assert mood.current_emotion is Emotion.CHEERFUL
+        assert mood.intensity == 0.3
+
+    def test_zero_intensity_is_no_signal(self):
+        # [angry:0.0] = kein Signal → Fallback NEUTRAL, KEIN Mood/Tracker-Record.
+        resolver, engine = _resolver_with_seed()
+        decision = resolver.resolve_from_llm("[angry:0.0] kaum der Rede wert")
+        assert decision.emotion is Emotion.NEUTRAL
+        assert decision.confidence == 0.0
+        assert decision.source == "fallback"
+        assert decision.raw_signals == {}
+        assert engine.get_mood().current_emotion is Emotion.NEUTRAL
+        assert engine.emotion_tracker.entry_count == 0
 
 
 # ---------------------------------------------------------------------------

@@ -327,10 +327,31 @@ class RobotServer:
         @self.app.post("/avatar/emotion")
         def set_avatar(request: AvatarRequest) -> dict[str, Any]:
             if request.emotion is not None:
-                # Phase 83.5: decision ist rein additives Logging/Debug – die
-                # Emotion selbst geht weiterhin als String an den AvatarDisplay,
-                # das RPi5-Verhalten (inkl. matrix_only) bleibt unverändert.
-                self._avatar.set_emotion(request.emotion)
+                # Phase 108: die Resolver-Confidence (sofern mitgesendet) wird an
+                # den AvatarDisplay durchgereicht und entscheidet dort im
+                # StateMachine-Gate über den Emotion-Wechsel. Sie wird aber NUR
+                # genutzt, wenn sich die Decision auf DIESELBE Emotion bezieht wie
+                # der gesetzte String – sonst (stale/mismatched Client) steuerte
+                # die Confidence einer anderen Emotion das Gate. Bei Mismatch oder
+                # ohne decision → 1.0 (string-only, schaltet immer wie der
+                # Legacy-Pfad). Die Emotion selbst bleibt der String.
+                # Phase 110: ``intensity`` (Anzeige-Tiefe) wird wie confidence nur
+                # bei passender Decision-Emotion übernommen, sonst 1.0 (voll/opak).
+                decision = request.decision
+                if decision is not None and decision.emotion == request.emotion:
+                    confidence = decision.confidence
+                    intensity = decision.intensity
+                else:
+                    confidence = 1.0
+                    intensity = 1.0
+                    if decision is not None:
+                        logger.warning(
+                            "Avatar-Decision-Emotion %s != Request-Emotion %s — "
+                            "Confidence/Intensity ignoriert (→ 1.0)",
+                            safe_log(decision.emotion),
+                            safe_log(request.emotion),
+                        )
+                self._avatar.set_emotion(request.emotion, confidence, intensity)
                 if request.decision is not None:
                     # confidence ist ein float aus dem Request-Body; CodeQL
                     # trackt request-Felder als getainted. safe_log auf den
