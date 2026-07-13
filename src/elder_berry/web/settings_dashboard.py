@@ -474,9 +474,8 @@ class SettingsDashboard:
                     # Wert wird ignoriert -> sichtbar machen (warning), statt
                     # still auf den Default zu fallen.
                     logger.warning(
-                        "Ungueltiger %s-Wert %r, nutze Default",
+                        "Ungueltiger %s-Wert gesetzt, nutze Default",
                         self.STT_TIMEOUT_KEY,
-                        raw,
                     )
         if self._audio_pipeline is not None:
             return self._audio_pipeline.stt_timeout
