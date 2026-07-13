@@ -12,6 +12,7 @@ from typing import TYPE_CHECKING, Any, Protocol
 from fastapi import Body, Request
 from fastapi.responses import JSONResponse
 
+from elder_berry.core.log_sanitize import safe_log
 from elder_berry.llm.modes import LLM_MODES, normalize_llm_mode
 
 if TYPE_CHECKING:
@@ -79,10 +80,7 @@ def register_llm_routes(app: FastAPI, dashboard: _DashboardLike) -> None:
         new_mode = normalize_llm_mode(raw_mode if isinstance(raw_mode, str) else None)
         if new_mode is None:
             return JSONResponse(
-                {
-                    "error": f"Ungültiger Modus: {raw_mode}. "
-                    f"Erlaubt: {_ALLOWED_MODES}"
-                },
+                {"error": f"Ungültiger Modus: {raw_mode}. Erlaubt: {_ALLOWED_MODES}"},
                 status_code=400,
             )
         dashboard._llm_router.mode = new_mode
@@ -90,9 +88,11 @@ def register_llm_routes(app: FastAPI, dashboard: _DashboardLike) -> None:
             async with dashboard._write_lock:
                 dashboard._secret_store.set(dashboard.LLM_MODE_KEY, new_mode)
         client_host = request.client.host if request.client else "unbekannt"
+        # safe_log: new_mode ist zwar via normalize_llm_mode allowlist-normalisiert,
+        # aber CodeQL trackt es aus dem Request-Body (py/log-injection).
         logger.info(
             "AUDIT: LLM-Modus auf '%s' gesetzt von %s",
-            new_mode,
+            safe_log(new_mode),
             client_host,
         )
         return JSONResponse(

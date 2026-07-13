@@ -29,6 +29,8 @@ from datetime import datetime as _dt, timezone
 from typing import TYPE_CHECKING, Any
 from urllib.parse import urlparse
 
+from elder_berry.core.log_sanitize import safe_log
+
 if TYPE_CHECKING:
     from cryptography.x509 import Certificate
 
@@ -228,9 +230,7 @@ class AlexaRequestVerifier:
         # sauber als ungueltig abgewiesen (Security-Pfad), statt erst beim
         # verify-Call in einen AttributeError zu laufen.
         if not isinstance(public_key, rsa.RSAPublicKey):
-            raise AlexaVerificationError(
-                "Zertifikat-Public-Key ist kein RSA-Schlüssel"
-            )
+            raise AlexaVerificationError("Zertifikat-Public-Key ist kein RSA-Schlüssel")
         try:
             public_key.verify(
                 signature, body_bytes, padding.PKCS1v15(), hashes.SHA256()
@@ -398,7 +398,8 @@ class AlexaSkillHandler:
             )
             return self.build_alexa_response(result)
 
-        logger.info("Alexa-Intent: '%s'", intent_name)
+        # safe_log: intent_name stammt aus dem Alexa-Request-JSON (REST).
+        logger.info("Alexa-Intent: '%s'", safe_log(intent_name))
         result = await self._dispatch_intent(intent_name)
         return self.build_alexa_response(result)
 

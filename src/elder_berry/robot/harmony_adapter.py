@@ -24,6 +24,8 @@ import logging
 from pathlib import Path
 from typing import Any, Optional, cast
 
+from elder_berry.core.log_sanitize import safe_log
+
 logger = logging.getLogger(__name__)
 
 _DEFAULT_CONFIG_PATH = Path.home() / ".elder-berry" / "harmony_config.json"
@@ -146,9 +148,11 @@ class HarmonyAdapter:
 
         activity_id = self._find_activity_id(activity_name)
         if activity_id is None:
+            # safe_log: activity_name stammt aus HarmonyActivityRequest (REST) --
+            # CodeQL py/log-injection. CR/LF strippen gegen Log-Forgery.
             logger.error(
                 "Aktivitaet '%s' nicht gefunden. Verfuegbar: %s",
-                activity_name,
+                safe_log(activity_name),
                 ", ".join(self.list_activities_sync()),
             )
             return False
@@ -159,7 +163,11 @@ class HarmonyAdapter:
 
         try:
             await self._client.start_activity(int(activity_id))
-            logger.info("Aktivitaet gestartet: %s (ID: %s)", activity_name, activity_id)
+            logger.info(
+                "Aktivitaet gestartet: %s (ID: %s)",
+                safe_log(activity_name),
+                activity_id,
+            )
             return True
         except Exception as e:
             logger.error("start_activity fehlgeschlagen: %s", e)
@@ -258,9 +266,10 @@ class HarmonyAdapter:
 
         device_id = self._find_device_id(device)
         if device_id is None:
+            # safe_log: device/command stammen aus HarmonyCommandRequest (REST).
             logger.error(
                 "Geraet '%s' nicht gefunden. Verfuegbar: %s",
-                device,
+                safe_log(device),
                 ", ".join(await self.list_devices()),
             )
             return False
@@ -275,8 +284,8 @@ class HarmonyAdapter:
         if cmd_match is None:
             logger.error(
                 "Befehl '%s' fuer '%s' nicht gefunden. Verfuegbar: %s",
-                command,
-                device,
+                safe_log(command),
+                safe_log(device),
                 ", ".join(available_cmds[:10]),
             )
             return False
@@ -293,9 +302,9 @@ class HarmonyAdapter:
                 await self._client.send_commands(send_cmd)
             logger.info(
                 "Befehl gesendet: %s → %s (x%d)",
-                device,
+                safe_log(device),
                 cmd_match,
-                repeat,
+                int(repeat),
             )
             return True
         except Exception as e:
