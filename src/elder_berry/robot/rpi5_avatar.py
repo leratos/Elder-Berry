@@ -21,6 +21,7 @@ from elder_berry.avatar.idle_policy import IdleAction, IdleBehaviorPolicy
 from elder_berry.avatar.layered_renderer import CrossfadeScope, LayeredSpriteRenderer
 from elder_berry.avatar.state_machine import AvatarStateMachine
 from elder_berry.core.audio_analyzer import AmplitudeTrack
+from elder_berry.core.log_sanitize import safe_log
 from elder_berry.robot.server import AvatarDisplay
 
 logger = logging.getLogger(__name__)
@@ -132,11 +133,14 @@ class RPi5AvatarDisplay(AvatarDisplay):
             if self._emotion != emotion:
                 self._emotion = emotion
                 self._emotion_changed.set()
+                # safe_log/float: emotion + conf/int stammen aus AvatarRequest
+                # (REST) -- CodeQL py/log-injection. emotion CR/LF-strippen,
+                # Numerik via float() als Taint-Barriere (Format bleibt %.2f).
                 logger.debug(
                     "Emotion → %s (conf=%.2f, int=%.2f)",
-                    emotion,
-                    confidence,
-                    intensity,
+                    safe_log(emotion),
+                    float(confidence),
+                    float(intensity),
                 )
 
     def set_speaking(
@@ -182,9 +186,7 @@ class RPi5AvatarDisplay(AvatarDisplay):
             # sichtbare Verhalten bleibt identisch.
             idle_policy = IdleBehaviorPolicy(
                 idle_actions=[
-                    IdleAction(
-                        name=name, eye_left=eye_l, eye_right=eye_r, mouth=mouth
-                    )
+                    IdleAction(name=name, eye_left=eye_l, eye_right=eye_r, mouth=mouth)
                     for name, eye_l, eye_r, mouth in self._renderer.idle_actions
                 ],
                 can_blink={

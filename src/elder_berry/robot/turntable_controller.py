@@ -268,7 +268,9 @@ class RPi5TurntableController(TurntableController):
             raise RuntimeError("Nicht gehomed -- erst home() aufrufen")
         clamped = max(-MAX_DEGREES, min(MAX_DEGREES, degrees))
         if clamped != degrees:
-            logger.warning("rotate_to(%.1f) geclampt auf %.1f", degrees, clamped)
+            # float(): degrees stammt aus TurntableRotateRequest (REST) --
+            # Taint-Barriere gegen CodeQL py/log-injection (%.1f bleibt gueltig).
+            logger.warning("rotate_to(%.1f) geclampt auf %.1f", float(degrees), clamped)
         target_steps = degrees_to_steps(clamped)
         self._start_worker(lambda: self._run_rotate(target_steps))
 
@@ -281,8 +283,8 @@ class RPi5TurntableController(TurntableController):
         if clamped != target_deg:
             logger.warning(
                 "rotate_by(%.1f) -> Ziel %.1f geclampt auf %.1f",
-                degrees,
-                target_deg,
+                float(degrees),
+                float(target_deg),
                 clamped,
             )
         target_steps = degrees_to_steps(clamped)

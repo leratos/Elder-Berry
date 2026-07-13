@@ -18,6 +18,7 @@ import time
 from typing import Any
 
 from elder_berry.core.audio_analyzer import AmplitudeTrack
+from elder_berry.core.log_sanitize import safe_log
 from elder_berry.robot.camera_controller import CameraController
 from elder_berry.robot.protocol import BatteryStatus
 from elder_berry.robot.server import (
@@ -48,9 +49,11 @@ class SimulatedMotors(MotorController):
         self._direction = direction
         self._speed = max(0.0, min(1.0, speed))
         self._active = True
+        # safe_log: direction stammt aus DriveRequest (REST) -- CodeQL
+        # py/log-injection. self._speed ist bereits [0,1]-geclampt (numerisch).
         logger.info(
             "[SIM] Motor: %s @ %.0f%%",
-            direction,
+            safe_log(direction),
             self._speed * 100,
         )
 
@@ -85,11 +88,12 @@ class SimulatedAvatar(AvatarDisplay):
         self._emotion = emotion
         self._confidence = confidence
         self._intensity = intensity
+        # safe_log/float: emotion + conf/int stammen aus AvatarRequest (REST).
         logger.info(
             "[SIM] Avatar Emotion: %s (conf=%.2f, int=%.2f)",
-            emotion,
-            confidence,
-            intensity,
+            safe_log(emotion),
+            float(confidence),
+            float(intensity),
         )
 
     def set_speaking(
@@ -98,7 +102,7 @@ class SimulatedAvatar(AvatarDisplay):
         # audio_meta (83.4): der Simulator hat keinen Lip-Sync → ignoriert.
         del audio_meta
         self._speaking = is_speaking
-        logger.info("[SIM] Avatar Speaking: %s", is_speaking)
+        logger.info("[SIM] Avatar Speaking: %s", safe_log(is_speaking))
 
     def get_state(self) -> dict[str, Any]:
         return {
@@ -178,7 +182,9 @@ class SimulatedTurntable(TurntableController):
         current = steps_to_degrees(self._position_steps)
         target = max(-MAX_DEGREES, min(MAX_DEGREES, current + degrees))
         self._position_steps = degrees_to_steps(target)
-        logger.info("[SIM] Turntable: rotate_by(%.1f) -> %.1f", degrees, target)
+        # float(): degrees stammt aus TurntableRotateRequest (REST) -- Barriere
+        # gegen CodeQL py/log-injection (target ist geclampt/abgeleitet).
+        logger.info("[SIM] Turntable: rotate_by(%.1f) -> %.1f", float(degrees), target)
 
     def stop(self) -> None:
         self._is_moving = False
@@ -295,7 +301,5 @@ if __name__ == "__main__":  # pragma: no cover - Script-Entrypoint (uvicorn.run)
         logger=logger,
     )
 
-    sim = create_simulator(
-        host=args.bind, port=args.port, robot_token=_robot_token
-    )
+    sim = create_simulator(host=args.bind, port=args.port, robot_token=_robot_token)
     uvicorn.run(sim.app, host=args.bind, port=args.port)
