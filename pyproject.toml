@@ -51,7 +51,7 @@ agent = [
     "numpy>=2.5.1",
 ]
 matrix = [
-    "matrix-nio>=0.25.2",
+    "matrix-nio>=0.26.0",
     "aiofiles>=24.1.0",
     # Phase 85.4: HtmlEmailSanitizer wird ueber email_client transitiv
     # gezogen, sobald der Matrix-Bot remote_commands -> mail_commands
@@ -117,7 +117,7 @@ harmony = [
     "aioharmony>=1.0.8",
 ]
 tower = [
-    "matrix-nio>=0.25.2",
+    "matrix-nio>=0.26.0",
     "aiofiles>=24.1.0",
     "python-multipart>=0.0.32",
     "coqui-tts>=0.27.5",
@@ -142,7 +142,7 @@ tower = [
     "defusedxml>=0.7.1",
 ]
 server = [
-    "matrix-nio>=0.25.2",
+    "matrix-nio>=0.26.0",
     "aiofiles>=24.1.0",
     "chromadb>=1.5.9",
     "google-api-python-client>=2.198.0",
