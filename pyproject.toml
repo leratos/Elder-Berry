@@ -166,7 +166,7 @@ dev = [
     "pytest-timeout>=2.4.0",
     "pytest-cov>=7.1.0",  # Phase 74: Coverage-Messung fuer Codecov-Upload
     "pip-tools>=7.6.0",  # Phase 65 (M-3): Lockfile-Generierung via pip-compile
-    "mypy>=2.1.0",      # Phase 76: Type-Checking core/
+    "mypy>=2.3.0",      # Phase 76: Type-Checking core/
     "types-PyYAML",    # Stubs fuer YAML-Konfiguration
     "types-psutil",    # Stubs fuer system/info.py + startup_summary.py
     # Phase 86.2.1 (Codex-Folgefix): IMAPEmailClient importiert top-level
