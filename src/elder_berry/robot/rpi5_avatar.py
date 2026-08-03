@@ -204,9 +204,18 @@ class RPi5AvatarDisplay(AvatarDisplay):
                 ),
                 idle_policy=idle_policy,
             )
+            with self._lock:
+                initial_emotion = self._emotion
+                initial_conf = self._emotion_confidence
+                initial_int = self._emotion_intensity
+            controller.set_emotion(initial_emotion, initial_conf, initial_int)
             logger.info("Render-Loop gestartet")
 
-            last_forwarded: tuple[str, float, float] | None = None
+            last_forwarded: tuple[str, float, float] | None = (
+                initial_emotion,
+                initial_conf,
+                initial_int,
+            )
             while not self._stop_event.is_set() and self._renderer.is_running():
                 # State aus Lock lesen (Snapshot vom REST-Thread)
                 with self._lock:
