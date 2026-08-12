@@ -92,7 +92,7 @@ computer-use = [
     "mss>=10.2.0",
 ]
 web = [
-    "trafilatura>=2.1.0",
+    "trafilatura>=2.2.0",
     "beautifulsoup4>=4.15.0",
     # Phase 78 Etappe 3: Plugin-Vorschlaege im Dashboard. Saleria-
     # generierte Markdown-Specs werden server-side gerendert + ueber
@@ -149,7 +149,7 @@ server = [
     "google-auth-oauthlib>=1.4.0",
     "google-auth-httplib2>=0.4.0",
     "pymupdf>=1.28.2",
-    "trafilatura>=2.1.0",
+    "trafilatura>=2.2.0",
     "beautifulsoup4>=4.15.0",
     "caldav>=3.2.1",
     "vobject>=0.9.9",
