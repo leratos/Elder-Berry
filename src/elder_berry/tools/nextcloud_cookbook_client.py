@@ -26,6 +26,7 @@ from urllib.parse import quote
 import httpx
 
 from elder_berry.core.http_defaults import with_user_agent
+from elder_berry.core.log_sanitize import safe_log
 
 if TYPE_CHECKING:
     from elder_berry.core.secret_store import SecretStore
@@ -34,6 +35,11 @@ logger = logging.getLogger(__name__)
 
 _API_PATH = "index.php/apps/cookbook/api/v1"
 _RECIPES_DIR = "Recipes"
+
+#: Wieviel vom Fehler-Body ins Log geht. Genug, um ModSecurity-HTML von
+#: einer Nextcloud-JSON-Fehlermeldung zu unterscheiden, wenig genug, um das
+#: Log nicht mit einer kompletten Fehlerseite zu fluten.
+_ERROR_BODY_LOG_CHARS = 400
 
 
 class NextcloudCookbookError(Exception):
@@ -149,11 +155,41 @@ class NextcloudCookbookClient:
                 ) from exc2
 
         if resp.status_code >= 400:
+            self._log_error_response(method, path, resp)
             raise NextcloudCookbookError(
                 "Cookbook API error (HTTP %d)" % resp.status_code,
                 status_code=resp.status_code,
             )
         return resp
+
+    @staticmethod
+    def _log_error_response(method: str, target: str, resp: httpx.Response) -> None:
+        """Loggt Server-Header, Content-Type und gekuerzten Body bei HTTP-Fehlern.
+
+        Ohne das ist ein WAF-403 (ModSecurity antwortet mit HTML) nicht von
+        einem Nextcloud-403 (JSON) zu unterscheiden -- die Diagnose zu
+        #1343 brauchte deshalb manuelles curl auf dem Server. Der Body wird
+        auf ``_ERROR_BODY_LOG_CHARS`` gekuerzt; alles laeuft ueber
+        ``safe_log``, damit ein Fehler-Body keine Log-Zeilen faelschen kann.
+
+        Bleibt bewusst im Log: die Exception-Message (und damit der
+        Matrix-Chat) bekommt weiterhin nur den Status-Code, kein Echo von
+        Server-Interna.
+        """
+        try:
+            body = str(resp.text)[:_ERROR_BODY_LOG_CHARS]
+        except Exception:  # pragma: no cover - defensiv, Body ist schon gelesen
+            body = "<Body nicht lesbar>"
+        logger.error(
+            "Cookbook %s %s -> HTTP %d (server=%s, content-type=%s, body[:%d]=%s)",
+            safe_log(method),
+            safe_log(target),
+            resp.status_code,
+            safe_log(resp.headers.get("server", "?")),
+            safe_log(resp.headers.get("content-type", "?")),
+            _ERROR_BODY_LOG_CHARS,
+            safe_log(body),
+        )
 
     @staticmethod
     def _json(resp: httpx.Response) -> Any:
@@ -256,6 +292,7 @@ class NextcloudCookbookClient:
         # 201 = created, 405 = already exists (acceptable)
         if resp.status_code in (201, 405):
             return
+        self._log_error_response("MKCOL", url, resp)
         if resp.status_code in (401, 403):
             raise NextcloudCookbookError(
                 "Cookbook auth failed (HTTP %d)" % resp.status_code,
@@ -283,6 +320,8 @@ class NextcloudCookbookClient:
         except self._RETRIABLE_ERRORS as exc:
             raise NextcloudCookbookError("WebDAV upload failed: %s" % exc) from exc
 
+        if resp.status_code >= 400:
+            self._log_error_response("PUT", url, resp)
         if resp.status_code in (401, 403):
             raise NextcloudCookbookError(
                 "Cookbook auth failed (HTTP %d)" % resp.status_code,
@@ -312,6 +351,7 @@ class NextcloudCookbookClient:
             return True
         if resp.status_code == 404:
             return False
+        self._log_error_response("PROPFIND", url, resp)
         if resp.status_code in (401, 403):
             raise NextcloudCookbookError(
                 "Cookbook auth failed (HTTP %d)" % resp.status_code,
