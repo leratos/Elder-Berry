@@ -451,8 +451,9 @@ class TestWAFUserAgent:
         """Struktur-Guard: ein dritter Aufruf ohne UA faellt hier auf."""
         import ast
         import inspect
+        import sys
 
-        import elder_berry.tools.stirling_pdf as mod
+        mod = sys.modules[StirlingPDFClient.__module__]
 
         verbs = {
             "get",

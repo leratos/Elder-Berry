@@ -1044,8 +1044,9 @@ class TestWAFUserAgent:
         """Struktur-Guard: ein achter Aufruf ohne UA faellt hier auf."""
         import ast
         import inspect
+        import sys
 
-        import elder_berry.tools.carddav_sync as mod
+        mod = sys.modules[CardDAVSyncClient.__module__]
 
         verbs = {
             "get",

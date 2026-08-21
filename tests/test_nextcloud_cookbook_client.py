@@ -476,3 +476,52 @@ def test_exception_message_echot_keine_server_interna():
     assert str(exc_info.value) == "Cookbook API error (HTTP 403)"
     assert "ModSecurity" not in str(exc_info.value)
     assert "apache" not in str(exc_info.value).lower()
+
+
+def test_webdav_fehlerlog_echot_weder_host_noch_benutzernamen(caplog):
+    """CodeQL 440 (py/clear-text-logging-sensitive-data).
+
+    Der WebDAV-Fehlerpfad loggte die volle URL. Die wird aus
+    ``nextcloud_url`` und ``nextcloud_user`` gebaut -- beides
+    SecretStore-Werte, die CodeQL als Secret wertet (gleiche Klasse wie
+    #760/#764/#895). Geloggt wird jetzt nur noch der relative Pfad; der
+    traegt den gesamten diagnostischen Wert, ohne Host und Benutzernamen
+    ins Log zu schreiben.
+    """
+    resp = _error_response(
+        403,
+        body="<html><body>Access denied by ModSecurity</body></html>",
+        content_type="text/html",
+    )
+
+    with caplog.at_level("ERROR"), patch(_HTTPX_REQUEST) as mock_request:
+        mock_request.return_value = resp
+        with pytest.raises(NextcloudCookbookError):
+            NextcloudCookbookClient(_secret_store())._webdav_put(
+                "Recipes/rusty-nail.json", "{}"
+            )
+
+    # Der Pfad ist da (Diagnose bleibt moeglich) ...
+    assert "Recipes/rusty-nail.json" in caplog.text
+    # ... Host und Benutzername sind es nicht.
+    assert "cloud.example.com" not in caplog.text
+    assert "alice" not in caplog.text
+    assert "remote.php" not in caplog.text
+
+
+def test_webdav_mkcol_fehler_wird_geloggt(caplog):
+    """Auch der MKCOL-Fehlerpfad ist diagnostizierbar, nicht nur PUT."""
+    resp = _error_response(
+        403,
+        body="<html><body>Access denied by ModSecurity</body></html>",
+        content_type="text/html",
+    )
+
+    with caplog.at_level("ERROR"), patch(_HTTPX_REQUEST) as mock_request:
+        mock_request.return_value = resp
+        with pytest.raises(NextcloudCookbookError):
+            NextcloudCookbookClient(_secret_store())._webdav_mkcol("Recipes")
+
+    assert "MKCOL" in caplog.text
+    assert "text/html" in caplog.text
+    assert "cloud.example.com" not in caplog.text

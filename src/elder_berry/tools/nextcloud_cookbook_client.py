@@ -163,7 +163,7 @@ class NextcloudCookbookClient:
         return resp
 
     @staticmethod
-    def _log_error_response(method: str, target: str, resp: httpx.Response) -> None:
+    def _log_error_response(method: str, path: str, resp: httpx.Response) -> None:
         """Loggt Server-Header, Content-Type und gekuerzten Body bei HTTP-Fehlern.
 
         Ohne das ist ein WAF-403 (ModSecurity antwortet mit HTML) nicht von
@@ -171,6 +171,17 @@ class NextcloudCookbookClient:
         #1343 brauchte deshalb manuelles curl auf dem Server. Der Body wird
         auf ``_ERROR_BODY_LOG_CHARS`` gekuerzt; alles laeuft ueber
         ``safe_log``, damit ein Fehler-Body keine Log-Zeilen faelschen kann.
+
+        Args:
+            method: HTTP-Methode.
+            path: RELATIVER Pfad, nie eine volle URL. Die WebDAV-Basis wird
+                aus ``nextcloud_url`` und ``nextcloud_user`` gebaut; beides
+                sind SecretStore-Werte, die CodeQL als Secret wertet
+                (py/clear-text-logging-sensitive-data, gleiche Klasse wie
+                #760/#764/#895). Eine volle URL wuerde Host und Benutzernamen
+                ins Log schreiben und den Alert erneut ausloesen. Der
+                relative Pfad traegt den gesamten diagnostischen Wert.
+            resp: Die Fehler-Antwort.
 
         Bleibt bewusst im Log: die Exception-Message (und damit der
         Matrix-Chat) bekommt weiterhin nur den Status-Code, kein Echo von
@@ -183,7 +194,7 @@ class NextcloudCookbookClient:
         logger.error(
             "Cookbook %s %s -> HTTP %d (server=%s, content-type=%s, body[:%d]=%s)",
             safe_log(method),
-            safe_log(target),
+            safe_log(path),
             resp.status_code,
             safe_log(resp.headers.get("server", "?")),
             safe_log(resp.headers.get("content-type", "?")),
@@ -292,7 +303,7 @@ class NextcloudCookbookClient:
         # 201 = created, 405 = already exists (acceptable)
         if resp.status_code in (201, 405):
             return
-        self._log_error_response("MKCOL", url, resp)
+        self._log_error_response("MKCOL", remote_path, resp)
         if resp.status_code in (401, 403):
             raise NextcloudCookbookError(
                 "Cookbook auth failed (HTTP %d)" % resp.status_code,
@@ -321,7 +332,7 @@ class NextcloudCookbookClient:
             raise NextcloudCookbookError("WebDAV upload failed: %s" % exc) from exc
 
         if resp.status_code >= 400:
-            self._log_error_response("PUT", url, resp)
+            self._log_error_response("PUT", remote_path, resp)
         if resp.status_code in (401, 403):
             raise NextcloudCookbookError(
                 "Cookbook auth failed (HTTP %d)" % resp.status_code,
@@ -351,7 +362,7 @@ class NextcloudCookbookClient:
             return True
         if resp.status_code == 404:
             return False
-        self._log_error_response("PROPFIND", url, resp)
+        self._log_error_response("PROPFIND", remote_path, resp)
         if resp.status_code in (401, 403):
             raise NextcloudCookbookError(
                 "Cookbook auth failed (HTTP %d)" % resp.status_code,

@@ -726,8 +726,9 @@ def test_kein_httpx_aufruf_ohne_header():
     """
     import ast
     import inspect
+    import sys
 
-    import elder_berry.tools.nextcloud_files as mod
+    mod = sys.modules[NextcloudFilesClient.__module__]
 
     verbs = {
         "get",
