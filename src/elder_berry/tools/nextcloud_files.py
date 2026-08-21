@@ -25,12 +25,25 @@ import httpx
 # die getypte Element-/ParseError-API importiert.
 from defusedxml.common import DefusedXmlException
 
+from elder_berry.core.http_defaults import with_user_agent
 from elder_berry.tools.safe_xml import safe_fromstring
 
 if TYPE_CHECKING:
     from elder_berry.core.secret_store import SecretStore
 
 logger = logging.getLogger(__name__)
+
+
+def _propfind_headers(depth: str) -> dict[str, str]:
+    """WebDAV-PROPFIND-Header inklusive Elder-Berry-User-Agent (#1347).
+
+    Vier PROPFIND-Stellen in dieser Datei bauen dasselbe Dict und
+    unterscheiden sich nur im Depth. Hier gebuendelt, damit eine fuenfte
+    den User-Agent nicht vergessen kann -- ohne ihn blockt
+    ModSecurity-Regel 338800 den Request mit HTTP 403.
+    """
+    return with_user_agent({"Content-Type": "application/xml", "Depth": depth})
+
 
 MAX_UPLOAD_SIZE_BYTES = 100 * 1024 * 1024  # 100 MB
 
@@ -114,10 +127,7 @@ class NextcloudFilesClient:
                 "PROPFIND",
                 self._webdav_base,
                 auth=self._auth,
-                headers={
-                    "Content-Type": "application/xml",
-                    "Depth": "0",
-                },
+                headers=_propfind_headers("0"),
                 content=_PROPFIND_BODY,
                 timeout=10.0,
             )
@@ -147,6 +157,7 @@ class NextcloudFilesClient:
                     "MKCOL",
                     url,
                     auth=self._auth,
+                    headers=with_user_agent(),
                     timeout=10.0,
                 )
                 # 201=created, 405=already exists – both fine
@@ -183,7 +194,13 @@ class NextcloudFilesClient:
 
         url = self._webdav_url(remote_path.strip("/")) + "/"
         try:
-            resp = httpx.request("MKCOL", url, auth=self._auth, timeout=10.0)
+            resp = httpx.request(
+                "MKCOL",
+                url,
+                auth=self._auth,
+                headers=with_user_agent(),
+                timeout=10.0,
+            )
         except (httpx.ConnectError, httpx.TimeoutException) as exc:
             raise NextcloudConnectionError(f"Server nicht erreichbar: {exc}") from exc
 
@@ -214,7 +231,13 @@ class NextcloudFilesClient:
 
         url = self._webdav_url(remote_path.strip("/"))
         try:
-            resp = httpx.request("DELETE", url, auth=self._auth, timeout=15.0)
+            resp = httpx.request(
+                "DELETE",
+                url,
+                auth=self._auth,
+                headers=with_user_agent(),
+                timeout=15.0,
+            )
         except (httpx.ConnectError, httpx.TimeoutException) as exc:
             raise NextcloudConnectionError(f"Server nicht erreichbar: {exc}") from exc
 
@@ -258,10 +281,7 @@ class NextcloudFilesClient:
                 "MOVE",
                 source_url,
                 auth=self._auth,
-                headers={
-                    "Destination": dest_url,
-                    "Overwrite": "F",
-                },
+                headers=with_user_agent({"Destination": dest_url, "Overwrite": "F"}),
                 timeout=15.0,
             )
         except (httpx.ConnectError, httpx.TimeoutException) as exc:
@@ -322,6 +342,7 @@ class NextcloudFilesClient:
                 resp = httpx.put(
                     url,
                     auth=self._auth,
+                    headers=with_user_agent(),
                     content=fh.read(),
                     timeout=30.0,
                 )
@@ -357,7 +378,12 @@ class NextcloudFilesClient:
 
         url = self._webdav_url(remote_path)
         try:
-            resp = httpx.get(url, auth=self._auth, timeout=30.0)
+            resp = httpx.get(
+                url,
+                auth=self._auth,
+                headers=with_user_agent(),
+                timeout=30.0,
+            )
         except (httpx.ConnectError, httpx.TimeoutException) as exc:
             raise NextcloudConnectionError(f"Server nicht erreichbar: {exc}") from exc
 
@@ -464,10 +490,7 @@ class NextcloudFilesClient:
                 "PROPFIND",
                 url,
                 auth=self._auth,
-                headers={
-                    "Content-Type": "application/xml",
-                    "Depth": "1",
-                },
+                headers=_propfind_headers("1"),
                 content=_PROPFIND_BODY,
                 timeout=10.0,
             )
@@ -504,10 +527,7 @@ class NextcloudFilesClient:
                 "PROPFIND",
                 url,
                 auth=self._auth,
-                headers={
-                    "Content-Type": "application/xml",
-                    "Depth": "infinity",
-                },
+                headers=_propfind_headers("infinity"),
                 content=_PROPFIND_BODY,
                 timeout=30.0,
             )
@@ -577,10 +597,7 @@ class NextcloudFilesClient:
                 "PROPFIND",
                 url,
                 auth=self._auth,
-                headers={
-                    "Content-Type": "application/xml",
-                    "Depth": "0",
-                },
+                headers=_propfind_headers("0"),
                 content=propfind_body,
                 timeout=10.0,
             )
@@ -640,7 +657,7 @@ class NextcloudFilesClient:
             resp = httpx.get(
                 url,
                 auth=self._auth,
-                headers={"OCS-APIRequest": "true"},
+                headers=with_user_agent({"OCS-APIRequest": "true"}),
                 params={"term": query, "limit": limit},
                 timeout=30.0,
             )

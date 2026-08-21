@@ -16,6 +16,8 @@ from typing import TYPE_CHECKING, Any
 
 import httpx
 
+from elder_berry.core.http_defaults import with_user_agent
+
 if TYPE_CHECKING:
     from elder_berry.core.secret_store import SecretStore
 
@@ -71,7 +73,7 @@ class StirlingPDFClient:
         try:
             resp = httpx.get(
                 f"{self._base_url}/api/v1/info/status",
-                headers={"X-API-Key": self._api_key},
+                headers=with_user_agent({"X-API-Key": self._api_key}),
                 timeout=10.0,
             )
             return resp.status_code == 200
@@ -97,7 +99,7 @@ class StirlingPDFClient:
             StirlingPDFError: API-Fehler (4xx/5xx).
         """
         url = f"{self._base_url}/api/v1/{endpoint}"
-        headers = {"X-API-Key": self._api_key}
+        headers = with_user_agent({"X-API-Key": self._api_key})
 
         try:
             response = httpx.post(
