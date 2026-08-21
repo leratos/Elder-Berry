@@ -7,6 +7,8 @@ verifiziert: 403 mit ``python-httpx/*``, 200 mit dem Elder-Berry-UA).
 
 from __future__ import annotations
 
+import re
+
 from elder_berry import __version__
 from elder_berry.core.http_defaults import (
     PROJECT_URL,
@@ -94,3 +96,68 @@ def test_with_user_agent_erkennt_ua_case_insensitive():
 
     assert merged["user-agent"] == "Mozilla/5.0 (compatible; X/1.0)"
     assert "User-Agent" not in merged
+
+
+# ---------------------------------------------------------------------------
+# Guard gegen ModSecurity-Regel 338800
+# ---------------------------------------------------------------------------
+
+# UA-Blockliste der Regel 338800 ("Atomicorp.com WAF Rules: Blocked recon/fuzz
+# UA", /etc/apache2/modsecurity.d/rules/tortix/modsec/20_asl_useragents.conf),
+# uebernommen aus dem in #1343 protokollierten Regel-Treffer. Gemeint sind
+# Recon-/Fuzzing-Tools; "httpx" trifft als Kollateralschaden die
+# Python-Library gleichen Namens.
+_RULE_338800_BLOCKED_TOKENS = (
+    "httpx",
+    "nabuu",
+    "ffuf",
+    "gobuster",
+    "feroxbuster",
+    "wfuzz",
+    "jaeles",
+    "zgrab2",
+    "commix",
+    "xsstrike",
+    "kiterunner",
+    "katana",
+    "kr",
+)
+
+
+def _rule_338800_hits(user_agent: str) -> list[str]:
+    """Nachbau der Regel-Semantik: Token an Wortgrenzen, case-insensitive.
+
+    Die Wortgrenze ist der Kern des Befunds -- genau deshalb matcht
+    ``\bhttpx\b`` in ``python-httpx/0.27.0`` am Bindestrich.
+    """
+    return [
+        token
+        for token in _RULE_338800_BLOCKED_TOKENS
+        if re.search(rf"\b{re.escape(token)}\b", user_agent, re.IGNORECASE)
+    ]
+
+
+def test_user_agent_passiert_regel_338800():
+    """Der Kern des Bugfixes: unser UA steht auf keiner Blockliste."""
+    assert _rule_338800_hits(USER_AGENT) == []
+
+
+def test_guard_faengt_den_httpx_default_ua():
+    """Negativ-Kontrolle -- ohne sie waere der Guard oben vakuum.
+
+    Beweist, dass der Nachbau die Regel wirklich nachbildet: der
+    httpx-Default-UA (der Ist-Zustand vor dem Fix) wird erkannt.
+    """
+    assert _rule_338800_hits("python-httpx/0.27.0") == ["httpx"]
+    assert _rule_338800_hits("python-httpx/0.28.1") == ["httpx"]
+
+
+def test_guard_faengt_auch_andere_blockliste_tokens():
+    """Zweite Kontrolle: der Guard haengt nicht allein an 'httpx'."""
+    assert _rule_338800_hits("ffuf/2.1.0") == ["ffuf"]
+    assert _rule_338800_hits("Mozilla/5.0 (katana)") == ["katana"]
+
+
+def test_guard_ist_nicht_ueberempfindlich():
+    """'https' im UA darf nicht als 'httpx' durchgehen (sonst false positive)."""
+    assert _rule_338800_hits("Etwas/1.0 (+https://example.com)") == []

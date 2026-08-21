@@ -546,3 +546,28 @@ class TestErrors:
         client = NextcloudNotesClient(_make_secret_store())
         with pytest.raises(NextcloudNotesError):
             client.list_notes()
+
+
+# ── WAF-User-Agent (#1343 / #1345) ───────────────────────────────────
+
+
+def test_client_sendet_elder_berry_user_agent():
+    """In #1345 gegen die echte Instanz gemessen: 403 mit httpx-UA, 200 hiermit.
+
+    Dieser Test schliesst den dort offen gelassenen Rest: dass der Client
+    denselben UA tatsaechlich sendet.
+    """
+    from elder_berry.core.http_defaults import USER_AGENT
+
+    client = NextcloudNotesClient(secret_store=_make_secret_store())
+
+    with patch(_HTTPX_CLIENT) as mock_cls:
+        inner = MagicMock()
+        mock_cls.return_value.__enter__.return_value = inner
+        mock_cls.return_value.__exit__.return_value = False
+        inner.request.return_value = _make_response(200, [])
+        client.list_notes()
+
+    headers = mock_cls.call_args.kwargs["headers"]
+    assert headers["User-Agent"] == USER_AGENT
+    assert "httpx" not in headers["User-Agent"].lower()

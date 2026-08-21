@@ -343,3 +343,40 @@ class TestGymCommands:
         result = handler.execute("prs", "prs")
         assert result.success is True
         assert "Kreuzheben" in result.text
+
+
+# ---------------------------------------------------------------------------
+# WAF-User-Agent (#1343 / #1344)
+# ---------------------------------------------------------------------------
+
+
+def test_client_sendet_ua_und_behaelt_bearer_token():
+    """Der Merge-Fall aus #1344 -- BEIDE Header muessen am Client stehen.
+
+    gym_data ist die einzige Stelle im Paket, deren httpx.Client-Konstruktion
+    schon ein headers-Dict traegt. Wird es ersetzt statt gemerged,
+    verschwindet der Bearer-Token und wir tauschen 403 gegen 401 -- ein
+    Fehler, der ohne diesen Test unbemerkt durchginge.
+    """
+    from elder_berry.core.http_defaults import USER_AGENT
+
+    client = GymDataClient(secret_store=_make_store(), base_url=TEST_BASE_URL)
+
+    httpx_client = client._get_client()
+
+    assert httpx_client.headers["user-agent"] == USER_AGENT
+    assert httpx_client.headers["authorization"] == "Bearer test-token-123"
+
+
+def test_ua_bleibt_ueber_den_lazy_cache_erhalten():
+    """Der Client wird gecacht (self._client) -- der Header darf nicht driften."""
+    from elder_berry.core.http_defaults import USER_AGENT
+
+    client = GymDataClient(secret_store=_make_store(), base_url=TEST_BASE_URL)
+
+    first = client._get_client()
+    second = client._get_client()
+
+    assert first is second
+    assert second.headers["user-agent"] == USER_AGENT
+    assert second.headers["authorization"] == "Bearer test-token-123"
