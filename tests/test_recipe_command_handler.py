@@ -167,15 +167,31 @@ def test_lookup_empty_query_returns_hint(handler, cookbook):
     assert "Bitte ein Rezept" in (result.text or "")
 
 
-def test_lookup_search_error_returns_user_friendly_error(handler, cookbook, index):
+def test_lookup_search_error_degrades_to_draft_flow(
+    handler, cookbook, index, anthropic
+):
+    """Folgebefund 2 (#1343): Cookbook-Ausfall geht denselben Weg wie ein Miss.
+
+    Ersetzt den frueheren harten Abbruch ("Cookbook-Suche: Zugriff
+    verweigert"). Der genau so gebaute Entwurfsflow aus Phase 93 lag
+    ungenutzt daneben, waehrend Saleria im Chat nichts lieferte.
+    """
     cookbook.list_recipes.return_value = []
     index.search.return_value = None
     cookbook.search_recipes.side_effect = RuntimeError("boom")
+    anthropic.generate.return_value = (
+        '{"@context":"https://schema.org","@type":"Recipe","name":"Suppe",'
+        '"recipeCategory":"Vorspeise","recipeIngredient":["Wasser"],'
+        '"recipeInstructions":["Kochen"]}'
+    )
 
     result = handler.execute("recipe_lookup", "rezept suppe")
 
-    assert result.success is False
-    assert "Cookbook-Suche" in (result.text or "")
+    assert result.success is True
+    assert result.pending_confirmation is True
+    assert "Entwurf" in (result.text or "")
+    # Der Ausfall wird benannt, nicht als "nichts gefunden" getarnt.
+    assert "nicht erreichbar" in (result.text or "")
 
 
 def test_lookup_semantic_hit_fetch_fail_falls_back_to_api(handler, cookbook, index):
