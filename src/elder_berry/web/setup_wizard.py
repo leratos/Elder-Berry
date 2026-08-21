@@ -18,6 +18,9 @@ from starlette.responses import Response
 from elder_berry.web.setup_tests import EMAIL_PROVIDERS, SetupTests
 
 # Phase 63: Nominatim-User-Agent ist gemaess Nutzungsbedingungen Pflicht.
+# Bewusste Abweichung von core.http_defaults.USER_AGENT (#1343): Nominatims
+# Policy verlangt einen eigenen, dienstspezifisch identifizierenden UA mit
+# Kontaktbezug zur konkreten Nutzung -- nicht den generischen Projekt-UA.
 _NOMINATIM_USER_AGENT = "Elder-Berry/1.0 (self-hosted home assistant)"
 _NOMINATIM_URL = "https://nominatim.openstreetmap.org/search"
 _GEOCODE_MAX_QUERY_LEN = 200

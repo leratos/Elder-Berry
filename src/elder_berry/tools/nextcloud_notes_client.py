@@ -32,6 +32,8 @@ from typing import TYPE_CHECKING, Any
 
 import httpx
 
+from elder_berry.core.http_defaults import with_user_agent
+
 if TYPE_CHECKING:
     from elder_berry.core.secret_store import SecretStore
 
@@ -157,6 +159,7 @@ class NextcloudNotesClient:
             base_url=self._api_base,
             auth=self._auth,
             timeout=self._timeout,
+            headers=with_user_agent(),
         ) as client:
             return client.request(method, path, params=params, json=json_body)
 

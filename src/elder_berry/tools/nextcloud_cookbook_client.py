@@ -25,6 +25,8 @@ from urllib.parse import quote
 
 import httpx
 
+from elder_berry.core.http_defaults import with_user_agent
+
 if TYPE_CHECKING:
     from elder_berry.core.secret_store import SecretStore
 
@@ -107,6 +109,7 @@ class NextcloudCookbookClient:
             base_url=self._api_base,
             auth=self._auth,
             timeout=self._timeout,
+            headers=with_user_agent(),
         ) as client:
             return client.request(method, path, params=params, json=json_body)
 
@@ -244,6 +247,7 @@ class NextcloudCookbookClient:
                 "MKCOL",
                 url,
                 auth=self._auth,
+                headers=with_user_agent(),
                 timeout=self._timeout,
             )
         except self._RETRIABLE_ERRORS as exc:
@@ -270,7 +274,9 @@ class NextcloudCookbookClient:
                 "PUT",
                 url,
                 auth=self._auth,
-                headers={"Content-Type": "application/json; charset=utf-8"},
+                headers=with_user_agent(
+                    {"Content-Type": "application/json; charset=utf-8"}
+                ),
                 content=payload.encode("utf-8"),
                 timeout=self._timeout,
             )
@@ -296,7 +302,7 @@ class NextcloudCookbookClient:
                 "PROPFIND",
                 url,
                 auth=self._auth,
-                headers={"Depth": "0"},
+                headers=with_user_agent({"Depth": "0"}),
                 timeout=self._timeout,
             )
         except self._RETRIABLE_ERRORS as exc:
