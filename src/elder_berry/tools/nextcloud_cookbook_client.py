@@ -155,7 +155,7 @@ class NextcloudCookbookClient:
                 ) from exc2
 
         if resp.status_code >= 400:
-            self._log_error_response(method, path, resp)
+            self._log_error_response(method, resp, path=path)
             raise NextcloudCookbookError(
                 "Cookbook API error (HTTP %d)" % resp.status_code,
                 status_code=resp.status_code,
@@ -163,7 +163,12 @@ class NextcloudCookbookClient:
         return resp
 
     @staticmethod
-    def _log_error_response(method: str, path: str, resp: httpx.Response) -> None:
+    def _log_error_response(
+        method: str,
+        resp: httpx.Response,
+        *,
+        path: str | None = None,
+    ) -> None:
         """Loggt Server-Header, Content-Type und gekuerzten Body bei HTTP-Fehlern.
 
         Ohne das ist ein WAF-403 (ModSecurity antwortet mit HTML) nicht von
@@ -174,14 +179,21 @@ class NextcloudCookbookClient:
 
         Args:
             method: HTTP-Methode.
-            path: RELATIVER Pfad, nie eine volle URL. Die WebDAV-Basis wird
-                aus ``nextcloud_url`` und ``nextcloud_user`` gebaut; beides
-                sind SecretStore-Werte, die CodeQL als Secret wertet
-                (py/clear-text-logging-sensitive-data, gleiche Klasse wie
-                #760/#764/#895). Eine volle URL wuerde Host und Benutzernamen
-                ins Log schreiben und den Alert erneut ausloesen. Der
-                relative Pfad traegt den gesamten diagnostischen Wert.
             resp: Die Fehler-Antwort.
+            path: Nur der relative API-Pfad (z.B. ``search/rusty%20nail``).
+
+                Die WebDAV-Aufrufer uebergeben bewusst NICHTS. Ihr
+                ``remote_path`` haengt ueber ``_resolve_recipes_dir`` am
+                SecretStore-Key ``nextcloud_cookbook_folder``; frueher kam
+                zusaetzlich die aus ``nextcloud_url`` und ``nextcloud_user``
+                gebaute Basis mit. CodeQL wertet SecretStore-Werte als
+                Secret (py/clear-text-logging-sensitive-data, gleiche Klasse
+                wie #760/#764/#895) -- Alert 440 und, nach dem halben Fix,
+                444. Der Rezept-Ordner traegt zur eigentlichen Frage
+                ("WAF-403 oder Nextcloud-403?") ohnehin nichts bei; die
+                beantworten Methode, Server-Header, Content-Type und Body.
+                Der API-Pfad ist nicht SecretStore-abgeleitet und bleibt
+                drin -- er ist genau der Pfad, der in #1343 kaputt war.
 
         Bleibt bewusst im Log: die Exception-Message (und damit der
         Matrix-Chat) bekommt weiterhin nur den Status-Code, kein Echo von
@@ -191,10 +203,11 @@ class NextcloudCookbookClient:
             body = str(resp.text)[:_ERROR_BODY_LOG_CHARS]
         except Exception:  # pragma: no cover - defensiv, Body ist schon gelesen
             body = "<Body nicht lesbar>"
+        target = safe_log(path) if path else "-"
         logger.error(
             "Cookbook %s %s -> HTTP %d (server=%s, content-type=%s, body[:%d]=%s)",
             safe_log(method),
-            safe_log(path),
+            target,
             resp.status_code,
             safe_log(resp.headers.get("server", "?")),
             safe_log(resp.headers.get("content-type", "?")),
@@ -303,7 +316,7 @@ class NextcloudCookbookClient:
         # 201 = created, 405 = already exists (acceptable)
         if resp.status_code in (201, 405):
             return
-        self._log_error_response("MKCOL", remote_path, resp)
+        self._log_error_response("MKCOL", resp)
         if resp.status_code in (401, 403):
             raise NextcloudCookbookError(
                 "Cookbook auth failed (HTTP %d)" % resp.status_code,
@@ -332,7 +345,7 @@ class NextcloudCookbookClient:
             raise NextcloudCookbookError("WebDAV upload failed: %s" % exc) from exc
 
         if resp.status_code >= 400:
-            self._log_error_response("PUT", remote_path, resp)
+            self._log_error_response("PUT", resp)
         if resp.status_code in (401, 403):
             raise NextcloudCookbookError(
                 "Cookbook auth failed (HTTP %d)" % resp.status_code,
@@ -362,7 +375,7 @@ class NextcloudCookbookClient:
             return True
         if resp.status_code == 404:
             return False
-        self._log_error_response("PROPFIND", remote_path, resp)
+        self._log_error_response("PROPFIND", resp)
         if resp.status_code in (401, 403):
             raise NextcloudCookbookError(
                 "Cookbook auth failed (HTTP %d)" % resp.status_code,

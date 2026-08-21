@@ -478,15 +478,18 @@ def test_exception_message_echot_keine_server_interna():
     assert "apache" not in str(exc_info.value).lower()
 
 
-def test_webdav_fehlerlog_echot_weder_host_noch_benutzernamen(caplog):
-    """CodeQL 440 (py/clear-text-logging-sensitive-data).
+def test_webdav_fehlerlog_echot_nichts_aus_dem_secretstore(caplog):
+    """CodeQL 440 + 444 (py/clear-text-logging-sensitive-data).
 
-    Der WebDAV-Fehlerpfad loggte die volle URL. Die wird aus
-    ``nextcloud_url`` und ``nextcloud_user`` gebaut -- beides
-    SecretStore-Werte, die CodeQL als Secret wertet (gleiche Klasse wie
-    #760/#764/#895). Geloggt wird jetzt nur noch der relative Pfad; der
-    traegt den gesamten diagnostischen Wert, ohne Host und Benutzernamen
-    ins Log zu schreiben.
+    Der WebDAV-Fehlerpfad loggte erst die volle URL (Host + Benutzername
+    aus ``nextcloud_url``/``nextcloud_user``), nach dem halben Fix noch
+    den remote_path -- der haengt ueber _resolve_recipes_dir am
+    SecretStore-Key ``nextcloud_cookbook_folder``. Beides sind
+    SecretStore-Werte, die CodeQL als Secret wertet (#760/#764/#895).
+
+    Der WebDAV-Pfad loggt jetzt gar keinen Pfad mehr. Die Frage, fuer die
+    Etappe 3 das Logging gebaut hat -- WAF-403 oder Nextcloud-403? --
+    beantworten Methode, Server, Content-Type und Body vollstaendig.
     """
     resp = _error_response(
         403,
@@ -494,19 +497,45 @@ def test_webdav_fehlerlog_echot_weder_host_noch_benutzernamen(caplog):
         content_type="text/html",
     )
 
+    store = _secret_store(nextcloud_cookbook_folder="GeheimerOrdner")
+
     with caplog.at_level("ERROR"), patch(_HTTPX_REQUEST) as mock_request:
         mock_request.return_value = resp
         with pytest.raises(NextcloudCookbookError):
-            NextcloudCookbookClient(_secret_store())._webdav_put(
-                "Recipes/rusty-nail.json", "{}"
+            NextcloudCookbookClient(store)._webdav_put(
+                "GeheimerOrdner/rusty-nail.json", "{}"
             )
 
-    # Der Pfad ist da (Diagnose bleibt moeglich) ...
-    assert "Recipes/rusty-nail.json" in caplog.text
-    # ... Host und Benutzername sind es nicht.
+    # Die Diagnose bleibt moeglich ...
+    assert "PUT" in caplog.text
+    assert "text/html" in caplog.text
+    assert "ModSecurity" in caplog.text
+    # ... ohne irgendetwas aus dem SecretStore.
+    assert "GeheimerOrdner" not in caplog.text
     assert "cloud.example.com" not in caplog.text
     assert "alice" not in caplog.text
     assert "remote.php" not in caplog.text
+
+
+def test_api_fehlerlog_behaelt_den_pfad(caplog):
+    """Der API-Pfad ist nicht SecretStore-abgeleitet und bleibt im Log.
+
+    Er ist genau der Pfad, der in #1343 mit HTTP 403 starb -- ihn
+    mitzuloggen ist der Kern von Etappe 3.
+    """
+    resp = _error_response(
+        403,
+        body="<html><body>Access denied by ModSecurity</body></html>",
+        content_type="text/html",
+    )
+
+    with caplog.at_level("ERROR"), patch(_HTTPX_CLIENT) as mock_client_cls:
+        _install_httpx_client(mock_client_cls, response=resp)
+        with pytest.raises(NextcloudCookbookError):
+            NextcloudCookbookClient(_secret_store()).search_recipes("rusty nail")
+
+    assert "search/rusty%20nail" in caplog.text
+    assert "cloud.example.com" not in caplog.text
 
 
 def test_webdav_mkcol_fehler_wird_geloggt(caplog):
