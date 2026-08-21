@@ -412,3 +412,70 @@ class TestErrors:
 
         assert result.success is False
         assert "400" in result.message
+
+
+# ── WAF-User-Agent (#1347) ─────────────────────────────────────────────
+#
+# pdf.last-strawberry.com steht im Plesk-Domaininventar (#1345), liegt also
+# hinter derselben ModSecurity-Instanz. Beide Aufrufe tragen einen X-API-Key
+# -- ein ueberschriebener Key tauscht 403 gegen 401.
+
+
+class TestWAFUserAgent:
+    def test_status_probe_sendet_ua_und_behaelt_api_key(self, client):
+        from elder_berry.core.http_defaults import USER_AGENT
+
+        resp = MagicMock()
+        resp.status_code = 200
+        with patch("httpx.get", return_value=resp) as mock_get:
+            client.is_available()
+
+        headers = mock_get.call_args.kwargs["headers"]
+        assert headers["User-Agent"] == USER_AGENT
+        assert headers["X-API-Key"] == "test-key-123"
+
+    def test_api_call_sendet_ua_und_behaelt_api_key(self, client, sample_pdf):
+        from elder_berry.core.http_defaults import USER_AGENT
+
+        resp = MagicMock()
+        resp.status_code = 200
+        resp.content = b"%PDF-1.4 ergebnis"
+        with patch("httpx.post", return_value=resp) as mock_post:
+            client._call_api("general/merge-pdfs", files=[])
+
+        headers = mock_post.call_args.kwargs["headers"]
+        assert headers["User-Agent"] == USER_AGENT
+        assert headers["X-API-Key"] == "test-key-123"
+
+    def test_kein_httpx_aufruf_ohne_header(self):
+        """Struktur-Guard: ein dritter Aufruf ohne UA faellt hier auf."""
+        import ast
+        import inspect
+        import sys
+
+        mod = sys.modules[StirlingPDFClient.__module__]
+
+        verbs = {
+            "get",
+            "post",
+            "put",
+            "patch",
+            "delete",
+            "head",
+            "options",
+            "request",
+            "stream",
+        }
+        tree = ast.parse(inspect.getsource(mod))
+        ohne_header = [
+            node.lineno
+            for node in ast.walk(tree)
+            if isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Attribute)
+            and node.func.attr in verbs
+            and isinstance(node.func.value, ast.Name)
+            and node.func.value.id == "httpx"
+            and not any(kw.arg == "headers" for kw in node.keywords)
+        ]
+
+        assert ohne_header == [], f"httpx-Aufrufe ohne UA in Zeile {ohne_header}"

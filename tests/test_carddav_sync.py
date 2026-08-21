@@ -984,3 +984,91 @@ class TestFindVcardHrefFailClosed:
         ):
             with pytest.raises(CardDAVSyncError):
                 client._find_vcard_href("ein-uid")
+
+
+# ── WAF-User-Agent (#1347) ─────────────────────────────────────────────
+#
+# Sieben Modul-Level-httpx-Aufrufe, keine Client-Konstruktion. Die Inventur
+# in #1343 suchte nur nach httpx.Client( und uebersah die Datei -- der
+# gesamte CardDAV-Kontaktabgleich war seit dem Ruleset-Update blockiert.
+
+
+class TestWAFUserAgent:
+    def test_propfind_sendet_ua_und_behaelt_content_type_und_depth(self, client):
+        from elder_berry.core.http_defaults import USER_AGENT
+
+        resp = MagicMock()
+        resp.status_code = 207
+        with patch(
+            "elder_berry.tools.carddav_sync.httpx.request", return_value=resp
+        ) as mock_request:
+            client.is_available()
+
+        headers = mock_request.call_args.kwargs["headers"]
+        assert headers["User-Agent"] == USER_AGENT
+        assert headers["Content-Type"] == "application/xml"
+        assert headers["Depth"] == "0"
+
+    def test_vcard_put_sendet_ua_und_behaelt_vcard_content_type(self, client):
+        """Ein ueberschriebener Content-Type zerlegt die vCard-Schreiboperation."""
+        from elder_berry.core.http_defaults import USER_AGENT
+
+        resp = MagicMock()
+        resp.status_code = 201
+        contact = _make_contact()
+        with patch(
+            "elder_berry.tools.carddav_sync.httpx.put", return_value=resp
+        ) as mock_put:
+            client._create_new_vcard(contact)
+
+        headers = mock_put.call_args.kwargs["headers"]
+        assert headers["User-Agent"] == USER_AGENT
+        assert headers["Content-Type"] == "text/vcard; charset=utf-8"
+
+    def test_vcard_get_sendet_ua(self, client):
+        """Stelle ohne vorbestehende Header -- der UA kommt trotzdem mit."""
+        from elder_berry.core.http_defaults import USER_AGENT
+
+        resp = MagicMock()
+        resp.status_code = 404
+        with patch(
+            "elder_berry.tools.carddav_sync.httpx.get", return_value=resp
+        ) as mock_get:
+            client._href_to_url("/x.vcf")
+            with patch.object(client, "_find_vcard_href", return_value="/x.vcf"):
+                client._update_existing_vcard(_make_contact(vcard_uid="uid-1"))
+
+        assert mock_get.call_args.kwargs["headers"]["User-Agent"] == USER_AGENT
+
+    def test_kein_httpx_aufruf_ohne_header(self):
+        """Struktur-Guard: ein achter Aufruf ohne UA faellt hier auf."""
+        import ast
+        import inspect
+        import sys
+
+        mod = sys.modules[CardDAVSyncClient.__module__]
+
+        verbs = {
+            "get",
+            "post",
+            "put",
+            "patch",
+            "delete",
+            "head",
+            "options",
+            "request",
+            "stream",
+        }
+        tree = ast.parse(inspect.getsource(mod))
+        ohne_header = [
+            node.lineno
+            for node in ast.walk(tree)
+            if isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Attribute)
+            and node.func.attr in verbs
+            and isinstance(node.func.value, ast.Name)
+            and node.func.value.id == "httpx"
+            and not any(kw.arg == "headers" for kw in node.keywords)
+        ]
+
+        assert ohne_header == [], f"httpx-Aufrufe ohne UA in Zeile {ohne_header}"

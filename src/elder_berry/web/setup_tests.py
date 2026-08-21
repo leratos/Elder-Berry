@@ -22,6 +22,7 @@ from urllib.parse import urlparse
 
 import httpx
 
+from elder_berry.core.http_defaults import with_user_agent
 from elder_berry.core.log_sanitize import safe_log
 
 logger = logging.getLogger(__name__)
@@ -278,7 +279,11 @@ class SetupTests:
             }
         auth = (user, password)
         base = safe_url.rstrip("/")
-        async with httpx.AsyncClient(timeout=10, follow_redirects=False) as client:
+        async with httpx.AsyncClient(
+            timeout=10,
+            follow_redirects=False,
+            headers=with_user_agent(),
+        ) as client:
             # WebDAV -- isoliert: Fehler einer Probe darf die anderen nicht abbrechen.
             try:
                 r = await client.request(

@@ -334,3 +334,223 @@ def test_save_recipe_with_blank_filename_falls_back_to_recipe_json_name():
         )
 
     assert path.endswith("/recipe.json")
+
+
+# ---------------------------------------------------------------------------
+# WAF-User-Agent (#1343) -- Read-Pfad und WebDAV-Write-Pfad
+# ---------------------------------------------------------------------------
+
+
+def test_api_client_sendet_elder_berry_user_agent():
+    """Der Pfad, auf dem recipe_lookup in #1343 mit HTTP 403 starb."""
+    from elder_berry.core.http_defaults import USER_AGENT
+
+    with patch(_HTTPX_CLIENT) as mock_client_cls:
+        _install_httpx_client(mock_client_cls, response=_response(200, []))
+        NextcloudCookbookClient(_secret_store()).list_recipes()
+
+    headers = mock_client_cls.call_args.kwargs["headers"]
+    assert headers["User-Agent"] == USER_AGENT
+
+
+def test_webdav_put_merged_ua_in_den_content_type():
+    """Write-Pfad: der UA darf den Content-Type nicht verdraengen.
+
+    Nicht in #1343/#1344 inventarisiert -- der WebDAV-Pfad geht an
+    _send_api vorbei, war aber gegen denselben Host hinter derselben WAF
+    ebenfalls geblockt. Damit war auch das SPEICHERN tot, also genau der
+    Pfad, auf den Etappe 4 degradiert.
+    """
+    from elder_berry.core.http_defaults import USER_AGENT
+
+    with patch(_HTTPX_REQUEST) as mock_request:
+        mock_request.return_value = _response(201, None)
+        NextcloudCookbookClient(_secret_store())._webdav_put("Recipes/x.json", "{}")
+
+    headers = mock_request.call_args.kwargs["headers"]
+    assert headers["User-Agent"] == USER_AGENT
+    assert headers["Content-Type"] == "application/json; charset=utf-8"
+
+
+def test_webdav_propfind_merged_ua_in_den_depth_header():
+    from elder_berry.core.http_defaults import USER_AGENT
+
+    with patch(_HTTPX_REQUEST) as mock_request:
+        mock_request.return_value = _response(207, None)
+        NextcloudCookbookClient(_secret_store())._webdav_exists("Recipes/x.json")
+
+    headers = mock_request.call_args.kwargs["headers"]
+    assert headers["User-Agent"] == USER_AGENT
+    assert headers["Depth"] == "0"
+
+
+def test_webdav_mkcol_sendet_user_agent():
+    from elder_berry.core.http_defaults import USER_AGENT
+
+    with patch(_HTTPX_REQUEST) as mock_request:
+        mock_request.return_value = _response(201, None)
+        NextcloudCookbookClient(_secret_store())._webdav_mkcol("Recipes")
+
+    headers = mock_request.call_args.kwargs["headers"]
+    assert headers["User-Agent"] == USER_AGENT
+
+
+# ---------------------------------------------------------------------------
+# Fehler-Response wird geloggt (#1343, Folgebefund 1)
+# ---------------------------------------------------------------------------
+
+
+def _error_response(status_code, *, body, content_type, server="nginx"):
+    resp = MagicMock()
+    resp.status_code = status_code
+    resp.text = body
+    resp.headers = {"server": server, "content-type": content_type}
+    return resp
+
+
+def test_waf_403_ist_im_log_von_nextcloud_403_unterscheidbar(caplog):
+    """Genau die Unterscheidung, fuer die #1343 manuelles curl brauchte."""
+    waf = _error_response(
+        403,
+        body="<html><body>Access denied by ModSecurity</body></html>",
+        content_type="text/html",
+    )
+    nextcloud = _error_response(
+        403,
+        body='{"message":"Current user is not logged in"}',
+        content_type="application/json",
+    )
+
+    logs = []
+    for resp in (waf, nextcloud):
+        caplog.clear()
+        with (
+            caplog.at_level("ERROR"),
+            patch(_HTTPX_CLIENT) as mock_client_cls,
+        ):
+            _install_httpx_client(mock_client_cls, response=resp)
+            with pytest.raises(NextcloudCookbookError):
+                NextcloudCookbookClient(_secret_store()).list_recipes()
+        logs.append(caplog.text)
+
+    assert "text/html" in logs[0]
+    assert "ModSecurity" in logs[0]
+    assert "application/json" in logs[1]
+    assert "not logged in" in logs[1]
+    assert "nginx" in logs[0] and "nginx" in logs[1]
+
+
+def test_fehler_body_wird_gekuerzt_und_von_crlf_befreit(caplog):
+    """safe_log verhindert, dass ein fremder Body Log-Zeilen faelscht."""
+    resp = _error_response(
+        403,
+        body="A" * 5000 + "\r\nERROR gefaelschte Zeile",
+        content_type="text/html",
+    )
+
+    with (
+        caplog.at_level("ERROR"),
+        patch(_HTTPX_CLIENT) as mock_client_cls,
+    ):
+        _install_httpx_client(mock_client_cls, response=resp)
+        with pytest.raises(NextcloudCookbookError):
+            NextcloudCookbookClient(_secret_store()).list_recipes()
+
+    assert "gefaelschte Zeile" not in caplog.text
+    assert len(caplog.text) < 2000
+
+
+def test_exception_message_echot_keine_server_interna():
+    """Was in den Matrix-Chat geht, bleibt der nackte Status-Code."""
+    resp = _error_response(
+        403,
+        body="<html><body>ModSecurity rule 338800 at /etc/apache2</body></html>",
+        content_type="text/html",
+    )
+
+    with patch(_HTTPX_CLIENT) as mock_client_cls:
+        _install_httpx_client(mock_client_cls, response=resp)
+        with pytest.raises(NextcloudCookbookError) as exc_info:
+            NextcloudCookbookClient(_secret_store()).list_recipes()
+
+    assert str(exc_info.value) == "Cookbook API error (HTTP 403)"
+    assert "ModSecurity" not in str(exc_info.value)
+    assert "apache" not in str(exc_info.value).lower()
+
+
+def test_webdav_fehlerlog_echot_nichts_aus_dem_secretstore(caplog):
+    """CodeQL 440 + 444 (py/clear-text-logging-sensitive-data).
+
+    Der WebDAV-Fehlerpfad loggte erst die volle URL (Host + Benutzername
+    aus ``nextcloud_url``/``nextcloud_user``), nach dem halben Fix noch
+    den remote_path -- der haengt ueber _resolve_recipes_dir am
+    SecretStore-Key ``nextcloud_cookbook_folder``. Beides sind
+    SecretStore-Werte, die CodeQL als Secret wertet (#760/#764/#895).
+
+    Der WebDAV-Pfad loggt jetzt gar keinen Pfad mehr. Die Frage, fuer die
+    Etappe 3 das Logging gebaut hat -- WAF-403 oder Nextcloud-403? --
+    beantworten Methode, Server, Content-Type und Body vollstaendig.
+    """
+    resp = _error_response(
+        403,
+        body="<html><body>Access denied by ModSecurity</body></html>",
+        content_type="text/html",
+    )
+
+    store = _secret_store(nextcloud_cookbook_folder="GeheimerOrdner")
+
+    with caplog.at_level("ERROR"), patch(_HTTPX_REQUEST) as mock_request:
+        mock_request.return_value = resp
+        with pytest.raises(NextcloudCookbookError):
+            NextcloudCookbookClient(store)._webdav_put(
+                "GeheimerOrdner/rusty-nail.json", "{}"
+            )
+
+    # Die Diagnose bleibt moeglich ...
+    assert "PUT" in caplog.text
+    assert "text/html" in caplog.text
+    assert "ModSecurity" in caplog.text
+    # ... ohne irgendetwas aus dem SecretStore.
+    assert "GeheimerOrdner" not in caplog.text
+    assert "cloud.example.com" not in caplog.text
+    assert "alice" not in caplog.text
+    assert "remote.php" not in caplog.text
+
+
+def test_api_fehlerlog_behaelt_den_pfad(caplog):
+    """Der API-Pfad ist nicht SecretStore-abgeleitet und bleibt im Log.
+
+    Er ist genau der Pfad, der in #1343 mit HTTP 403 starb -- ihn
+    mitzuloggen ist der Kern von Etappe 3.
+    """
+    resp = _error_response(
+        403,
+        body="<html><body>Access denied by ModSecurity</body></html>",
+        content_type="text/html",
+    )
+
+    with caplog.at_level("ERROR"), patch(_HTTPX_CLIENT) as mock_client_cls:
+        _install_httpx_client(mock_client_cls, response=resp)
+        with pytest.raises(NextcloudCookbookError):
+            NextcloudCookbookClient(_secret_store()).search_recipes("rusty nail")
+
+    assert "search/rusty%20nail" in caplog.text
+    assert "cloud.example.com" not in caplog.text
+
+
+def test_webdav_mkcol_fehler_wird_geloggt(caplog):
+    """Auch der MKCOL-Fehlerpfad ist diagnostizierbar, nicht nur PUT."""
+    resp = _error_response(
+        403,
+        body="<html><body>Access denied by ModSecurity</body></html>",
+        content_type="text/html",
+    )
+
+    with caplog.at_level("ERROR"), patch(_HTTPX_REQUEST) as mock_request:
+        mock_request.return_value = resp
+        with pytest.raises(NextcloudCookbookError):
+            NextcloudCookbookClient(_secret_store())._webdav_mkcol("Recipes")
+
+    assert "MKCOL" in caplog.text
+    assert "text/html" in caplog.text
+    assert "cloud.example.com" not in caplog.text

@@ -32,6 +32,7 @@ import httpx
 # ParseError-API importiert.
 from defusedxml.common import DefusedXmlException
 
+from elder_berry.core.http_defaults import with_user_agent
 from elder_berry.tools.safe_xml import safe_fromstring
 
 if TYPE_CHECKING:
@@ -138,10 +139,9 @@ class CardDAVSyncClient:
                 "PROPFIND",
                 self._carddav_base,
                 auth=self._auth,
-                headers={
-                    "Content-Type": "application/xml",
-                    "Depth": "0",
-                },
+                headers=with_user_agent(
+                    {"Content-Type": "application/xml", "Depth": "0"}
+                ),
                 content=_PROPFIND_BODY,
                 timeout=10.0,
             )
@@ -218,7 +218,7 @@ class CardDAVSyncClient:
         resp = httpx.put(
             url,
             auth=self._auth,
-            headers={"Content-Type": "text/vcard; charset=utf-8"},
+            headers=with_user_agent({"Content-Type": "text/vcard; charset=utf-8"}),
             content=vcard_str.encode("utf-8"),
             timeout=15.0,
         )
@@ -253,7 +253,12 @@ class CardDAVSyncClient:
         url = self._href_to_url(href)
 
         # vCard laden
-        resp = httpx.get(url, auth=self._auth, timeout=15.0)
+        resp = httpx.get(
+            url,
+            auth=self._auth,
+            headers=with_user_agent(),
+            timeout=15.0,
+        )
         if resp.status_code != 200:
             logger.warning("GET vCard %s: HTTP %d", href, resp.status_code)
             return False
@@ -265,7 +270,7 @@ class CardDAVSyncClient:
         resp = httpx.put(
             url,
             auth=self._auth,
-            headers={"Content-Type": "text/vcard; charset=utf-8"},
+            headers=with_user_agent({"Content-Type": "text/vcard; charset=utf-8"}),
             content=updated_vcard.encode("utf-8"),
             timeout=15.0,
         )
@@ -350,6 +355,7 @@ class CardDAVSyncClient:
                 resp = httpx.get(
                     url,
                     auth=self._auth,
+                    headers=with_user_agent(),
                     timeout=15.0,
                 )
                 if resp.status_code != 200:
@@ -785,10 +791,9 @@ class CardDAVSyncClient:
                 "PROPFIND",
                 self._carddav_base,
                 auth=self._auth,
-                headers={
-                    "Content-Type": "application/xml",
-                    "Depth": "1",
-                },
+                headers=with_user_agent(
+                    {"Content-Type": "application/xml", "Depth": "1"}
+                ),
                 content=_PROPFIND_BODY,
                 timeout=10.0,
             )
@@ -839,7 +844,12 @@ class CardDAVSyncClient:
         for href in hrefs:
             try:
                 url = self._href_to_url(href)
-                resp = httpx.get(url, auth=self._auth, timeout=10.0)
+                resp = httpx.get(
+                    url,
+                    auth=self._auth,
+                    headers=with_user_agent(),
+                    timeout=10.0,
+                )
             except httpx.HTTPError as exc:
                 # Phase 104 (S3): ein transienter Fetch-Fehler ist NICHT von
                 # "href existiert nicht mehr" unterscheidbar. Still ueberspringen

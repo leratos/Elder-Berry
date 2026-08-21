@@ -84,6 +84,35 @@ class TestRecipePrivacy:
         assert "Privacy-Modus" in (result.text or "")
         anthropic.generate.assert_not_called()
 
+    def test_cookbook_ausfall_fuehrt_im_privacy_modus_nicht_in_die_cloud(self):
+        """Bugfix WAF-User-Agent, Etappe 4 (#1343): der Guard deckt den NEUEN Pfad.
+
+        Vorher endete ein Cookbook-Fehler in einem harten Abbruch und kam
+        nie in die Naehe von Anthropic. Seit der Degradation auf den
+        Entwurfsflow fuehrt ein Cookbook-403 dorthin -- der #765-Guard ist
+        damit die einzige Schranke. Steht er je nach _generate_recipe_json,
+        schickt ein WAF-Ausfall den Query still in die Cloud.
+        """
+        cookbook = MagicMock()
+        cookbook.list_recipes.return_value = []
+        cookbook.search_recipes.side_effect = RuntimeError("Cookbook API error (403)")
+        index = MagicMock()
+        index.search.return_value = None
+        anthropic = MagicMock()
+
+        handler = RecipeCommandHandler(
+            cookbook=cookbook,
+            anthropic_client=anthropic,
+            index=index,
+            privacy_state=ON,
+        )
+        result = handler.execute("recipe_lookup", "rezept rusty nail")
+
+        assert result.success is False
+        assert "Privacy-Modus" in (result.text or "")
+        assert "nicht erreichbar" in (result.text or "")
+        anthropic.generate.assert_not_called()
+
 
 class TestRoutePrivacy:
     def test_intent_parse_refuses_and_skips_parser(self):

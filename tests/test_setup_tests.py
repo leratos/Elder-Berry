@@ -522,3 +522,26 @@ class TestNextcloudRejectsBadURL:
         # KEIN HTTP-Request darf abgesetzt worden sein
         mocked.assert_not_called()
         mock_client.request.assert_not_called()
+
+
+class TestNextcloudUserAgent:
+    """WAF-User-Agent (#1343) an der Nextcloud-Probe."""
+
+    def test_probe_sendet_elder_berry_user_agent(self):
+        """Ein AsyncClient deckt WebDAV, CalDAV und CardDAV zugleich ab."""
+        from elder_berry.core.http_defaults import USER_AGENT
+
+        mock_response = MagicMock()
+        mock_response.status_code = 207
+
+        with patch("elder_berry.web.setup_tests.httpx.AsyncClient") as mock_cls:
+            mock_client = AsyncMock()
+            mock_client.request = AsyncMock(return_value=mock_response)
+            mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+            mock_client.__aexit__ = AsyncMock(return_value=False)
+            mock_cls.return_value = mock_client
+
+            _run(SetupTests.test_nextcloud("https://cloud.example.com", "user", "pass"))
+
+        headers = mock_cls.call_args.kwargs["headers"]
+        assert headers["User-Agent"] == USER_AGENT

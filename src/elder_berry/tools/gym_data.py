@@ -66,10 +66,23 @@ class GymDataClient:
 
         import httpx
 
+        # Bugfix WAF-User-Agent (#1343/#1344): Berry-Gym liegt auf demselben
+        # Strato-Server hinter derselben ModSecurity-Instanz wie die
+        # Nextcloud -- der httpx-Default-UA wird von Regel 338800 geblockt.
+        # with_user_agent() MERGED in die bestehenden Header; ein Ersetzen
+        # wuerde den Bearer-Token verlieren und 403 gegen 401 tauschen.
+        #
+        # Der Import steht bewusst hier statt auf Modul-Ebene: gym_data wird
+        # ueberall lazy bzw. nur unter TYPE_CHECKING importiert, und
+        # core/__init__ zieht ueber Assistant die actions/llm/tts-Kette
+        # (91 -> 1405 Module). Gleiche Begruendung wie beim httpx-Import
+        # zwei Zeilen darueber.
+        from elder_berry.core.http_defaults import with_user_agent
+
         token = self._store.get("berry_gym_api_token")
         self._client = httpx.Client(
             base_url=self._base_url,
-            headers={"Authorization": f"Bearer {token}"},
+            headers=with_user_agent({"Authorization": f"Bearer {token}"}),
             timeout=REQUEST_TIMEOUT,
         )
         return self._client

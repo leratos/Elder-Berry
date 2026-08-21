@@ -604,3 +604,153 @@ def test_move_no_credentials(no_creds_store):
 
     with pytest.raises(NextcloudError, match="Credentials"):
         c.move("Eingang/Scan.pdf", "Dokumente/Haus/Angebot.pdf")
+
+
+# ── WAF-User-Agent (#1347) ──────────────────────────────────────────────
+#
+# Modul-Level-httpx-Aufrufe haben keine Client-Konstruktion, an die der
+# Header andocken koennte -- er muss an JEDEN Aufruf. Die Inventur in #1343
+# suchte nur nach httpx.Client(-Konstruktionen und uebersah diese Datei
+# komplett; der gesamte Nextcloud-Dateizugriff war blockiert.
+
+
+def _sent_headers(mock_call) -> dict:
+    return mock_call.kwargs["headers"]
+
+
+@patch("elder_berry.tools.nextcloud_files.httpx.request")
+def test_propfind_sendet_ua_und_behaelt_content_type_und_depth(mock_request, client):
+    from elder_berry.core.http_defaults import USER_AGENT
+
+    mock_request.return_value = MagicMock(
+        status_code=207, text=SAMPLE_PROPFIND_RESPONSE
+    )
+
+    client.list_dir("/")
+
+    headers = _sent_headers(mock_request.call_args)
+    assert headers["User-Agent"] == USER_AGENT
+    assert headers["Content-Type"] == "application/xml"
+    assert headers["Depth"] == "1"
+
+
+@patch("elder_berry.tools.nextcloud_files.httpx.request")
+def test_move_sendet_ua_und_behaelt_destination_und_overwrite(mock_request, client):
+    """Ein ueberschriebener Destination-Header wuerde MOVE sinnlos machen."""
+    from elder_berry.core.http_defaults import USER_AGENT
+
+    resp = MagicMock()
+    resp.status_code = 201
+    mock_request.return_value = resp
+
+    client.move("a.txt", "b.txt")
+
+    headers = _sent_headers(mock_request.call_args)
+    assert headers["User-Agent"] == USER_AGENT
+    assert "Destination" in headers
+    assert headers["Overwrite"] == "F"
+
+
+@patch("elder_berry.tools.nextcloud_files.httpx.get")
+def test_ocs_volltextsuche_sendet_ua_und_behaelt_ocs_apirequest(mock_get, client):
+    """Ohne OCS-APIRequest lehnt Nextcloud die OCS-API ab -- Merge, kein Ersetzen."""
+    from elder_berry.core.http_defaults import USER_AGENT
+
+    resp = MagicMock()
+    resp.status_code = 200
+    resp.json.return_value = {"ocs": {"data": {"entries": []}}}
+    mock_get.return_value = resp
+
+    client.search_content("rechnung")
+
+    headers = _sent_headers(mock_get.call_args)
+    assert headers["User-Agent"] == USER_AGENT
+    assert headers["OCS-APIRequest"] == "true"
+
+
+@patch("elder_berry.tools.nextcloud_files.httpx.request")
+def test_mkcol_und_delete_senden_ua(mock_request, client):
+    """Stellen ohne vorbestehende Header -- der UA kommt trotzdem mit."""
+    from elder_berry.core.http_defaults import USER_AGENT
+
+    resp = MagicMock()
+    resp.status_code = 201
+    mock_request.return_value = resp
+    client.mkdir("Neu")
+    assert _sent_headers(mock_request.call_args)["User-Agent"] == USER_AGENT
+
+    resp.status_code = 204
+    client.delete("Alt")
+    assert _sent_headers(mock_request.call_args)["User-Agent"] == USER_AGENT
+
+
+@patch("elder_berry.tools.nextcloud_files.httpx.get")
+def test_download_sendet_ua(mock_get, client, tmp_path):
+    from elder_berry.core.http_defaults import USER_AGENT
+
+    resp = MagicMock()
+    resp.status_code = 200
+    resp.content = b"inhalt"
+    mock_get.return_value = resp
+
+    client.download("datei.txt", tmp_path)
+
+    assert _sent_headers(mock_get.call_args)["User-Agent"] == USER_AGENT
+
+
+@patch("elder_berry.tools.nextcloud_files.httpx.request")
+@patch("elder_berry.tools.nextcloud_files.httpx.put")
+def test_upload_sendet_ua(mock_put, mock_request, client, tmp_path):
+    from elder_berry.core.http_defaults import USER_AGENT
+
+    mkcol = MagicMock()
+    mkcol.status_code = 201
+    mock_request.return_value = mkcol
+    resp = MagicMock()
+    resp.status_code = 201
+    mock_put.return_value = resp
+
+    local = tmp_path / "datei.txt"
+    local.write_bytes(b"inhalt")
+    client.upload(local, "/")
+
+    assert _sent_headers(mock_put.call_args)["User-Agent"] == USER_AGENT
+
+
+def test_kein_httpx_aufruf_ohne_header():
+    """Struktur-Guard: 11 Aufrufe, jeder einzelne braucht den UA.
+
+    Ein zwoelfter Aufruf ohne ``headers=`` faellt hier auf, statt erst im
+    Betrieb als stiller 403 -- genau der Fehler, der diese Datei in #1343
+    durch die Inventur fallen liess.
+    """
+    import ast
+    import inspect
+    import sys
+
+    mod = sys.modules[NextcloudFilesClient.__module__]
+
+    verbs = {
+        "get",
+        "post",
+        "put",
+        "patch",
+        "delete",
+        "head",
+        "options",
+        "request",
+        "stream",
+    }
+    tree = ast.parse(inspect.getsource(mod))
+    ohne_header = [
+        node.lineno
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Attribute)
+        and node.func.attr in verbs
+        and isinstance(node.func.value, ast.Name)
+        and node.func.value.id == "httpx"
+        and not any(kw.arg == "headers" for kw in node.keywords)
+    ]
+
+    assert ohne_header == [], f"httpx-Aufrufe ohne User-Agent in Zeile {ohne_header}"

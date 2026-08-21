@@ -318,6 +318,7 @@ module = [
     "elder_berry.core.assistant",
     "elder_berry.core.audio_analyzer",
     "elder_berry.core.privacy_state",
+    "elder_berry.core.http_defaults",
 ]
 strict = true
 

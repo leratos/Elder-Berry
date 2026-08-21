@@ -348,15 +348,18 @@ class RecipeCommandHandler(CommandHandler):
         except Exception as exc:
             logger.debug("recipe index hydration skipped: %s", exc)
 
+        # Folgebefund 2 (#1343): Ein Cookbook-Ausfall nimmt fachlich denselben
+        # Weg wie ein Miss. Vorher starb recipe_lookup hier hart -- Saleria
+        # kuendigte das Rezept im Chat an ("bin gleich zurueck") und lieferte
+        # dann nichts, obwohl Phase 93 fuer "nicht gefunden" laengst einen
+        # Entwurfsflow gebaut hat.
+        cookbook_unreachable = False
         try:
             api_hits = self._cookbook.search_recipes(query, limit=20)
         except Exception as exc:
-            logger.error("cookbook search failed: %s", exc)
-            return CommandResult(
-                command="recipe_lookup",
-                success=False,
-                text=user_friendly_error(exc, "Cookbook-Suche"),
-            )
+            logger.error("cookbook search failed, degrading to draft flow: %s", exc)
+            api_hits = []
+            cookbook_unreachable = True
 
         top: CookbookRecipeSummary | None = None
         if isinstance(api_hits, list) and api_hits:
@@ -414,35 +417,53 @@ class RecipeCommandHandler(CommandHandler):
             except Exception as exc:
                 logger.warning("semantic hit could not be loaded: %s", exc)
 
-        # Phase 98: lokaler Cookbook-Treffer lief schon oben; die LLM-Generierung
-        # (Anthropic) ist im Privacy-Modus hart deaktiviert.
+        # Phase 98 (#765): lokaler Cookbook-Treffer lief schon oben; die
+        # LLM-Generierung (Anthropic) ist im Privacy-Modus hart deaktiviert.
+        # Der Guard steht bewusst VOR _generate_recipe_json und damit auch
+        # auf dem Ausfall-Pfad, den Folgebefund 2 neu hierher fuehrt: ein
+        # Cookbook-403 darf im Privacy-Modus keinen Cloud-Call ausloesen.
         if self._privacy_state is not None and self._privacy_state.is_enabled:
+            lead = (
+                "Das Cookbook ist gerade nicht erreichbar"
+                if cookbook_unreachable
+                else "Kein Rezept im lokalen Cookbook gefunden"
+            )
             return CommandResult(
                 command="recipe_lookup",
                 success=False,
                 text=(
-                    "Kein Rezept im lokalen Cookbook gefunden. Die LLM-Generierung "
-                    "ist im Privacy-Modus deaktiviert (nutzt die Cloud/Anthropic)."
+                    f"{lead}. Die LLM-Generierung ist im Privacy-Modus "
+                    "deaktiviert (nutzt die Cloud/Anthropic)."
                 ),
             )
 
         generated = self._generate_recipe_json(query)
         if generated is None:
+            lead = (
+                "Cookbook nicht erreichbar"
+                if cookbook_unreachable
+                else "Kein Rezept in Cookbook gefunden"
+            )
             return CommandResult(
                 command="recipe_lookup",
                 success=False,
                 text=(
-                    "Kein Rezept in Cookbook gefunden und kein LLM-Fallback moeglich. "
+                    f"{lead} und kein LLM-Fallback moeglich. "
                     "Pruefe ANTHROPIC_API_KEY oder lege das Rezept manuell im Cookbook an."
                 ),
             )
 
+        lead_draft = (
+            "Das Cookbook ist gerade nicht erreichbar."
+            if cookbook_unreachable
+            else "Kein passendes Rezept gefunden."
+        )
         preview = self._render_recipe(generated, score=None, full=True)
         return CommandResult(
             command="recipe_lookup",
             success=True,
             text=(
-                "Kein passendes Rezept gefunden. Ich habe einen Entwurf erstellt:\n\n"
+                f"{lead_draft} Ich habe einen Entwurf erstellt:\n\n"
                 f"{preview}\n\n"
                 "Soll ich das in Nextcloud Cookbook speichern? (ja/nein)"
             ),

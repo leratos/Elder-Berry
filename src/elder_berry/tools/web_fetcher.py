@@ -24,6 +24,12 @@ from elder_berry.core.url_validator import ensure_public_url
 
 logger = logging.getLogger(__name__)
 
+# Bewusste Abweichung von core.http_defaults.USER_AGENT (#1343): der
+# Web-Fetcher tarnt sich absichtlich als Browser, weil fremde Sites Bot-UAs
+# blocken. Der zentrale Elder-Berry-UA loest hier also ein anderes Problem
+# als er verursacht -- er gehoert an Requests gegen die EIGENE Infrastruktur.
+# Bekannt und ebenfalls bewusst: die Version ist hier hart kodiert und
+# driftet gegen elder_berry.__version__.
 _USER_AGENT = "Mozilla/5.0 (compatible; Elder-Berry/1.0)"
 _TIMEOUT = 10.0
 _MAX_REDIRECTS = 10
