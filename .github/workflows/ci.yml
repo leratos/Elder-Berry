@@ -160,8 +160,10 @@ jobs:
         # released (Fix Versions leer im Advisory). Wiederbewerten sobald
         # eine gepatchte pip-Version verfuegbar ist.
         #
-        # CVE-2026-45829: Pre-Auth Code-Injection im ChromaDB-HTTP-Server
+        # CVE-2026-45829/45833: Code-Injection im ChromaDB-HTTP-Server
         # (Endpoint /api/v2/.../collections) bei trust_remote_code=true.
+        # CVE-2026-45830/45831: fehlende tenant-/collection-boundary Checks
+        # in der ChromaDB-HTTP-Server-Autorisierung.
         # Elder-Berry nutzt ChromaDB ausschliesslich eingebettet via
         # chromadb.PersistentClient (lokal, in-process) -- der HTTP-Server
         # wird nie gestartet, HttpClient/trust_remote_code nirgends
@@ -172,3 +174,6 @@ jobs:
           pip-audit --desc on
           --ignore-vuln CVE-2026-3219
           --ignore-vuln CVE-2026-45829
+          --ignore-vuln CVE-2026-45830
+          --ignore-vuln CVE-2026-45831
+          --ignore-vuln CVE-2026-45833
