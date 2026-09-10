@@ -44,10 +44,51 @@
 
 | Tier | Gerät | Rolle | Kommunikation |
 |---|---|---|---|
-| Rootserver | Hetzner (Plesk, Ubuntu 24.04) | Synapse Matrix-Server, Alexa-Endpoint, Nginx-Proxy | Öffentliches Internet |
+| Rootserver | Strato (Plesk Obsidian, Ubuntu 24.04) | Synapse Matrix-Server, Nextcloud, Stirling-PDF, Berry-Gym, Alexa-Endpoint, Nginx-Proxy | Öffentliches Internet |
 | Tower | Windows-PC (RTX 4070 Ti Super) | Haupthirn: LLM, TTS/STT, Orchestrierung, PC-Steuerung | Matrix-Bridge |
 | Laptop | Windows-PC (RTX 4070) | Client: PC-Steuerung + Audio-Empfänger | AgentServer (FastAPI) |
 | RPi5 | Raspberry Pi 5 (4 GB) | Körper: Avatar-Display, Kamera, Drehteller, Harmony Hub | RobotServer (FastAPI, Port 8000) |
+
+Hetzner ist im Projekt **nicht** der Host, sondern das Backup-Ziel
+(Storage Box). Der Rootserver läuft bei Strato.
+
+### Netzwerkpfad Tower → Rootserver
+
+Ein großer Teil von Saleria's Datenquellen liegt **nicht** lokal, sondern auf
+dem Rootserver: Nextcloud (Dateien, Notizen, Kochbuch, CalDAV, CardDAV),
+Stirling-PDF und Berry-Gym. Die zugehörigen Tool-Clients auf dem Tower
+sprechen diese Dienste über das **öffentliche Internet** an, nicht über einen
+Tunnel oder ein internes Netz.
+
+Vor der Anwendung liegen dabei mehrere Schichten, die einen Request abweisen
+können, bevor er PHP überhaupt erreicht:
+
+```text
+[Tower: Tool-Clients]  ──HTTPS──>  [Plesk nginx]
+                                        │
+                                        v
+                                   [Apache + ModSecurity]
+                                    (Atomic/Tortix-Ruleset,
+                                     aktualisiert sich selbstständig)
+                                        │
+                                        v
+                                   [PHP / Nextcloud u.a.]
+```
+
+Konsequenzen, die bei Änderungen an Tool-Clients zu beachten sind:
+
+- **Gemeinsamer Single Point of Failure**: Cookbook, Notes, Files, CardDAV,
+  PDF und Berry-Gym sind keine unabhängigen Integrationen. Eine Regel auf
+  dieser Ebene trifft alle gleichzeitig.
+- **Diagnose-Regel**: Ein 403 ohne passenden Eintrag in `nextcloud.log`
+  bedeutet, dass der Request PHP nie erreicht hat — dann zuerst das
+  Apache-Error-Log und ModSecurity prüfen, nicht die Anwendung.
+- **Expliziter User-Agent Pflicht**: Ausgehende HTTP-Clients senden einen
+  eigenen User-Agent (`core/http_defaults.py`). Der httpx-Default
+  (`python-httpx/…`) kollidiert mit einer Scanner-Blockliste des Rulesets
+  und führt zu 403 auf allen Rootserver-Diensten.
+- Präzedenzfall mit vollständiger Analyse: Journal `elder-berry#1343`.
+
 ## Design-Patterns
 
 - **ABC + Implementierung + DI**: Durchgehend für alle Komponenten
@@ -186,7 +227,7 @@ src/elder_berry/
 │   └── assets/       # Sprite-Komponenten (body/, eye/, mouth/)
 ├── character/        # Charakter-Engine + Saleria Persönlichkeit
 ├── comms/            # Matrix, Remote Commands, Claude Agent, Alerts
-│   └── commands/     # Domain-spezifische Command-Plugins (24 Handler + Registry, Phase 77)
+│   └── commands/     # Domain-spezifische Command-Plugins (Registry, Phase 77)
 ├── core/             # Assistant-Orchestrator, SecretStore, TTSRouter, STTRouter
 ├── llm/              # LLM-Clients (Anthropic, Ollama, OpenRouter, Router)
 ├── memory/           # RAG-Gedächtnis (ChromaDB + Embeddings)
@@ -238,7 +279,7 @@ scripts/
 ├── check_public_readiness.py # Public-Repo-Audit (pre-push-Hook)
 └── demo_tts_live.py         # Interaktives TTS-Testing
 
-tests/                # 5418 Unit- + Integrationstests (~160 Testdateien, Stand Phase 81),
+tests/                # Unit- + Integrationstests,
                       # mypy --strict-Gate im CI für core/, comms/, tools/, web/,
                       # llm-routing, agent/, robot/, avatar/ (Phasen 76–107)
 ```
