@@ -168,7 +168,17 @@ jobs:
         # verwendet. Kein Fix released (Fix Versions leer im Advisory;
         # 1.5.9 ist die aktuellste PyPI-Version). Wiederbewerten sobald
         # eine gepatchte chromadb-Version verfuegbar ist.
+        #
+        # CVE-2026-45830 / CVE-2026-45831 / CVE-2026-45833: betreffen
+        # ChromaDB-Multi-Tenant-RBAC/Collection-Updates ueber den
+        # HTTP-Server. Elder-Berry verwendet nur PersistentClient lokal
+        # (kein Server, keine Tenant-RBAC, kein trust_remote_code-Path).
+        # Kein Fix released (Fix Versions leer im Advisory); bei
+        # gepatchter Version erneut bewerten.
         run: >-
           pip-audit --desc on
           --ignore-vuln CVE-2026-3219
           --ignore-vuln CVE-2026-45829
+          --ignore-vuln CVE-2026-45830
+          --ignore-vuln CVE-2026-45831
+          --ignore-vuln CVE-2026-45833

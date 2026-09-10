@@ -23,6 +23,8 @@ Zu Beginn jeder Session:
    wiederholen.
 2. `journal_context(project="elder-berry", n_recent=10)` lesen
    (Fallback: `journal_read(project="elder-berry", n=20)`).
+3. Wenn ein Auftrag auf Journal-Ids verweist, lies diese Einträge vollständig,
+   bevor du planst — sie sind die Spezifikation, nicht der Prompt.
 
 Dieses Dokument ergänzt den Guide nur um Projekt-Spezifika (Tech-Stack,
 Test-Runner, Build/Run, Repo-Layout, Branch-Konventionen).
@@ -50,6 +52,42 @@ Test-Runner, Build/Run, Repo-Layout, Branch-Konventionen).
   kennen glaubst.
 - Wenn der Nutzer ausdrücklich direkte Umsetzung verlangt, arbeite trotzdem
   kontrolliert: Kontext lesen, betroffene Dateien nennen, dann umsetzen.
+
+## Rollenteilung: Planung (cd) und Umsetzung (cc)
+
+- `cd` = claude-desktop (Claude-App/Projects): Planung, Konzepte, Scope- und
+  Architekturentscheidungen, Abnahmekriterien. Lesezugriff aufs Repo.
+  Schreibt keinen Produktivcode und editiert keine Code-Dateien.
+- `cc` = claude-code (VSCode): Branch, Code, Tests, Commits, PR-Vorbereitung.
+  Voller Repo-Zugriff.
+- Lera entscheidet, merged und ist die einzige Instanz mit Zugriff auf die
+  Live-Umgebung (Server-Logs, Produktivinstanz, Deploy).
+
+Übergabe läuft über das Journal, nicht über den Chat:
+
+- Spezifikationen, Scope-Entscheidungen und Abnahmekriterien stehen als
+  `journal_append` im Journal, bevor `cc` beauftragt wird.
+- Ein Journal-Eintrag verweist nie auf einen Chat. Verweist er auf einen
+  Folgeeintrag, muss dieser existieren, bevor der erste als Arbeitsgrundlage
+  dient.
+- Der Auftrag an `cc` zeigt auf Journal-Ids, statt die Spezifikation zu
+  wiederholen — zwei Fassungen laufen sonst auseinander.
+
+Vollständigkeitsaussagen nennen ihre Methode:
+
+- Wer eine Inventur ins Journal schreibt, nennt das Suchmuster und sagt
+  ausdrücklich, wonach nicht gesucht wurde. "29 Stellen" ist eine Behauptung,
+  "29 Stellen, Muster X, Modul-Level-Aufrufe nicht erfasst" ist ein Befund.
+- Übernimm eine fremde Bestandsaufnahme nicht als vollständig. Findest du
+  eine Lücke darin, prüfe, ob die Suchmethode systematisch weitere übersieht.
+
+Laufzeitdaten kommen von Lera:
+
+- Hängt eine Diagnose von Infrastruktur- oder Laufzeitdaten ab, formuliere
+  eine konkrete Messung inklusive Auswertungsregel (welches Ergebnis
+  bestätigt oder schließt welche Hypothese aus), statt weiter zu vermuten.
+- Mock-grüne Tests sind kein Nachweis gegen die Produktivinstanz. Vermerke
+  diesen Vorbehalt ausdrücklich im Journal-Eintrag.
 
 ## Code-Generierung
 
