@@ -846,9 +846,17 @@ def _init_matrix_channel(secrets):
     return channel, user_id, room_id
 
 
-def _init_productivity_services(secrets, default_user_id):
-    """Initialisiert Produktivitäts-Tools: Calendar, Email, Contacts, Todos, etc."""
+def _init_productivity_services(secrets, default_user_id, probe_failed=None):
+    """Initialisiert Produktivitäts-Tools: Calendar, Email, Contacts, Todos, etc.
+
+    ``probe_failed`` (optional, ``set[str]``): wird um die svc-Schlüssel der
+    Dienste ergänzt, deren Startprüfung bei vollständigen Zugangsdaten
+    fehlschlug (#1422 E2-neu). Bewusst nicht im svc-Dict -- svc ist die
+    Service-Registry und enthält nur Dienste.
+    """
     svc = {}
+    if probe_failed is None:
+        probe_failed = set()
 
     # Calendar: Nextcloud CalDAV (bevorzugt) oder Google Calendar (Fallback)
     calendar_client = None
@@ -906,6 +914,9 @@ def _init_productivity_services(secrets, default_user_id):
                 svc["email_sender"] = sender
                 logger.info("Email: SMTP verfügbar")
             else:
+                # from_secret_store wirft bei fehlendem email_user/-password,
+                # dieser Zweig hat also immer vollständige Zugangsdaten.
+                probe_failed.add("email_sender")
                 logger.warning("SMTP nicht erreichbar")
         except Exception as e:
             logger.warning("EmailSender nicht verfügbar: %s", e)
@@ -994,8 +1005,11 @@ def _init_productivity_services(secrets, default_user_id):
             if nc_notes.is_available():
                 svc["nextcloud_notes"] = nc_notes
                 logger.info("Nextcloud Notes: aktiv")
-            else:
+            elif nc_notes.has_credentials:
+                probe_failed.add("nextcloud_notes")
                 logger.warning("Nextcloud Notes: nicht erreichbar")
+            else:
+                logger.warning("Nextcloud Notes: Zugangsdaten unvollständig")
         except Exception as e:
             logger.warning("Nextcloud Notes nicht verfügbar: %s", e)
 
@@ -1021,9 +1035,12 @@ def _init_productivity_services(secrets, default_user_id):
             nc = NextcloudFilesClient(secret_store=secrets)
             if nc.is_available():
                 svc["nextcloud_files"] = nc
-                logger.info("Nextcloud Files: aktiv (%s)", secrets.get("nextcloud_url"))
-            else:
+                logger.info("Nextcloud Files: aktiv")
+            elif nc.has_credentials:
+                probe_failed.add("nextcloud_files")
                 logger.warning("Nextcloud Files: nicht erreichbar")
+            else:
+                logger.warning("Nextcloud Files: Zugangsdaten unvollständig")
         except Exception as e:
             logger.warning("Nextcloud Files nicht verfügbar: %s", e)
 
@@ -1035,9 +1052,12 @@ def _init_productivity_services(secrets, default_user_id):
             spdf = StirlingPDFClient(secret_store=secrets)
             if spdf.is_available():
                 svc["stirling_pdf"] = spdf
-                logger.info("Stirling-PDF: aktiv (%s)", secrets.get("stirling_pdf_url"))
-            else:
+                logger.info("Stirling-PDF: aktiv")
+            elif spdf.has_credentials:
+                probe_failed.add("stirling_pdf")
                 logger.warning("Stirling-PDF: nicht erreichbar")
+            else:
+                logger.warning("Stirling-PDF: Zugangsdaten unvollständig")
         except Exception as e:
             logger.warning("Stirling-PDF nicht verfügbar: %s", e)
 
@@ -1049,9 +1069,12 @@ def _init_productivity_services(secrets, default_user_id):
             carddav = CardDAVSyncClient(secret_store=secrets)
             if carddav.is_available():
                 svc["carddav_sync"] = carddav
-                logger.info("CardDAV Sync: aktiv (%s)", secrets.get("nextcloud_url"))
-            else:
+                logger.info("CardDAV Sync: aktiv")
+            elif carddav.has_credentials:
+                probe_failed.add("carddav_sync")
                 logger.debug("CardDAV Sync: nicht erreichbar")
+            else:
+                logger.warning("CardDAV Sync: Zugangsdaten unvollständig")
         except ImportError:
             logger.debug("CardDAV: vobject nicht installiert")
         except Exception as e:
@@ -1344,7 +1367,10 @@ def run_matrix(
     )
 
     # --- 2. Produktivitäts-Services ---
-    svc = _init_productivity_services(secrets, default_user_id)
+    probe_failed: set[str] = set()
+    svc = _init_productivity_services(
+        secrets, default_user_id, probe_failed=probe_failed
+    )
 
     # --- Tower-Agent (SSH-Tunnel zum Tower) ---
     # Vorgezogen: ComputerUseController in _init_context_and_tools bekommt ihn
@@ -1572,11 +1598,12 @@ def run_matrix(
         matrix_room_id=room_id,
         allowed_senders=allowed_senders,
         claude_agent=claude_agent,
+        probe_failed=probe_failed,
     )
     print()
     print(summary.render())
     print()
-    _maybe_send_summary_to_matrix(summary, channel, room_id)
+    _hand_summary_to_bridge(summary, bridge, room_id)
 
     logger.info("Matrix-Bridge startet – Saleria ist online")
     print("─── Saleria Matrix-Modus ───")
@@ -1736,9 +1763,14 @@ def _build_startup_summary(
     matrix_room_id,
     allowed_senders,
     claude_agent,
+    probe_failed=frozenset(),
 ):
     """Sammelt Komponenten-Status nach dem Init und gibt eine StartupSummary
-    zurück. Reine Introspektion – keine Seiteneffekte."""
+    zurück. Reine Introspektion – keine Seiteneffekte.
+
+    ``probe_failed``: svc-Schlüssel, deren Startprüfung bei vollständigen
+    Zugangsdaten fehlschlug (#1422) -> Status "fail" statt "nicht konfiguriert".
+    """
     from elder_berry.core.startup_summary import StartupSummary
 
     summary = StartupSummary()
@@ -1789,15 +1821,41 @@ def _build_startup_summary(
     # Optionale Services aus svc/tools
     _add_service(summary, "Kalender", svc.get("calendar"))
     _add_service(summary, "E-Mail (IMAP)", svc.get("email_client"))
-    _add_service(summary, "E-Mail (SMTP)", svc.get("email_sender"))
+    _add_service(
+        summary,
+        "E-Mail (SMTP)",
+        svc.get("email_sender"),
+        probe_failed="email_sender" in probe_failed,
+    )
     _add_service(summary, "Wetter", svc.get("weather"))
     _add_service(summary, "Fakten (FactStore)", svc.get("fact_store"))
-    _add_service(summary, "Notizen (Nextcloud)", svc.get("nextcloud_notes"))
+    _add_service(
+        summary,
+        "Notizen (Nextcloud)",
+        svc.get("nextcloud_notes"),
+        probe_failed="nextcloud_notes" in probe_failed,
+    )
     _add_service(summary, "Kontakte", svc.get("contact_store"))
     _add_service(summary, "Aufgaben", svc.get("task_client"))
     _add_service(summary, "Erinnerungen", svc.get("reminder_store"))
-    _add_service(summary, "Nextcloud Files", svc.get("nextcloud_files"))
-    _add_service(summary, "Stirling-PDF", svc.get("stirling_pdf"))
+    _add_service(
+        summary,
+        "Nextcloud Files",
+        svc.get("nextcloud_files"),
+        probe_failed="nextcloud_files" in probe_failed,
+    )
+    _add_service(
+        summary,
+        "CardDAV-Sync",
+        svc.get("carddav_sync"),
+        probe_failed="carddav_sync" in probe_failed,
+    )
+    _add_service(
+        summary,
+        "Stirling-PDF",
+        svc.get("stirling_pdf"),
+        probe_failed="stirling_pdf" in probe_failed,
+    )
     _add_service(summary, "Berry-Gym", svc.get("gym_client"))
     _add_service(summary, "Brave Search", tools.get("search_client"))
     _add_service(summary, "ClaudeAgent", claude_agent)
@@ -1805,44 +1863,32 @@ def _build_startup_summary(
     return summary
 
 
-def _add_service(summary, label: str, instance) -> None:
-    if instance is None:
-        summary.add(label, "warn", "nicht konfiguriert")
-    else:
+# #1422 E2-neu: beschreibt den Latch-Zustand (#1415 A), verspricht aber nicht,
+# dass ein Neustart die Ursache behebt (401/403 bleiben 401/403).
+_PROBE_FAILED_DETAIL = (
+    "konfiguriert, Startprüfung fehlgeschlagen – bis zum Neustart deaktiviert"
+)
+
+
+def _add_service(summary, label: str, instance, *, probe_failed=False) -> None:
+    if instance is not None:
         summary.add(label, "ok", type(instance).__name__)
+    elif probe_failed:
+        summary.add(label, "fail", _PROBE_FAILED_DETAIL)
+    else:
+        summary.add(label, "warn", "nicht konfiguriert")
 
 
-def _maybe_send_summary_to_matrix(summary, channel, room_id) -> None:
-    """Versucht best-effort, die Summary als Matrix-Nachricht zu schicken.
+def _hand_summary_to_bridge(summary, bridge, room_id) -> None:
+    """Übergibt die Startmeldung an die Bridge (#1418 E1).
 
-    Fehler werden geloggt, aber nicht propagiert – ein scheiternder
-    Send darf den Startup nicht blockieren.
-
-    Hinweis: ``MatrixChannel.send_text`` ist async; vor ``bridge.start()``
-    laeuft noch kein Event-Loop, daher ``asyncio.run`` fuer den
-    one-shot Send (vermeidet ``RuntimeWarning: coroutine ... was never
-    awaited`` im Bestand-Code).
+    Gesendet wird erst im Bridge-Loop nach dem Matrix-Connect -- vor
+    ``bridge.start()`` ist der Channel nicht verbunden, und der nio-Client
+    gehört zum Event-Loop der Bridge.
     """
-    import asyncio
-    import inspect
-
-    if channel is None or not room_id:
+    if not room_id:
         return
-    try:
-        message = summary.to_matrix_message()
-        send = getattr(channel, "send_text", None) or getattr(channel, "send", None)
-        if send is None:
-            logger.debug(
-                "Channel %s hat keine send-Methode – Summary nicht gesendet",
-                type(channel).__name__,
-            )
-            return
-        if inspect.iscoroutinefunction(send):
-            asyncio.run(send(room_id, message))
-        else:
-            send(room_id, message)
-    except Exception as exc:
-        logger.warning("Startup-Summary an Matrix senden fehlgeschlagen: %s", exc)
+    bridge.set_startup_message(room_id, summary.to_matrix_message())
 
 
 # ---------------------------------------------------------------------------
