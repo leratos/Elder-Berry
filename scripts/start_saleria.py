@@ -1035,7 +1035,7 @@ def _init_productivity_services(secrets, default_user_id, probe_failed=None):
             nc = NextcloudFilesClient(secret_store=secrets)
             if nc.is_available():
                 svc["nextcloud_files"] = nc
-                logger.info("Nextcloud Files: aktiv (%s)", secrets.get("nextcloud_url"))
+                logger.info("Nextcloud Files: aktiv")
             elif nc.has_credentials:
                 probe_failed.add("nextcloud_files")
                 logger.warning("Nextcloud Files: nicht erreichbar")
@@ -1052,7 +1052,7 @@ def _init_productivity_services(secrets, default_user_id, probe_failed=None):
             spdf = StirlingPDFClient(secret_store=secrets)
             if spdf.is_available():
                 svc["stirling_pdf"] = spdf
-                logger.info("Stirling-PDF: aktiv (%s)", secrets.get("stirling_pdf_url"))
+                logger.info("Stirling-PDF: aktiv")
             elif spdf.has_credentials:
                 probe_failed.add("stirling_pdf")
                 logger.warning("Stirling-PDF: nicht erreichbar")
@@ -1069,7 +1069,7 @@ def _init_productivity_services(secrets, default_user_id, probe_failed=None):
             carddav = CardDAVSyncClient(secret_store=secrets)
             if carddav.is_available():
                 svc["carddav_sync"] = carddav
-                logger.info("CardDAV Sync: aktiv (%s)", secrets.get("nextcloud_url"))
+                logger.info("CardDAV Sync: aktiv")
             elif carddav.has_credentials:
                 probe_failed.add("carddav_sync")
                 logger.debug("CardDAV Sync: nicht erreichbar")
