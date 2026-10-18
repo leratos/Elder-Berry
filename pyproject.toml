@@ -32,7 +32,7 @@ dependencies = [
 windows = [
     "pyautogui>=0.9.54",
     "PyGetWindow>=0.0.9",
-    "pycaw>=20251023",
+    "pycaw>=20260927",
     "comtypes>=1.4.16",
     "pyttsx3>=2.99",
 ]
@@ -126,7 +126,7 @@ tower = [
     "faster-whisper>=1.2.1",
     "pyautogui>=0.9.54",
     "PyGetWindow>=0.0.9",
-    "pycaw>=20251023",
+    "pycaw>=20260927",
     "comtypes>=1.4.16",
     "mss>=10.2.0",
     # Phase 85: HtmlEmailSanitizer fuer IMAPEmailClient -- robustes
