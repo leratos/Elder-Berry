@@ -123,7 +123,7 @@ class TestStartupSummaryRender:
 
 
 class TestStartupSummaryMatrix:
-    """Matrix-Markdown-Format."""
+    """Matrix-Klartext-Format (#1418 E3: keine Markdown-Marker)."""
 
     def test_empty_matrix_message(self):
         s = StartupSummary()
@@ -136,10 +136,23 @@ class TestStartupSummaryMatrix:
         s.add("LLM", "ok", "Anthropic")
         s.add("Email", "warn", "nicht konfiguriert")
         msg = s.to_matrix_message()
-        assert "**LLM**" in msg
-        assert "Anthropic" in msg
-        assert "**Email**" in msg
-        assert "nicht konfiguriert" in msg
+        assert "✓ LLM: Anthropic" in msg
+        assert "⚠ Email: nicht konfiguriert" in msg
+
+    def test_matrix_message_has_no_markdown_markers(self):
+        """Element zeigt Markdown ohne formatted_body roh -> keine ** / _-Marker."""
+        s = StartupSummary()
+        s.add("LLM", "ok", "Anthropic")
+        s.add("Nextcloud Files", "fail", "konfiguriert, Startprüfung fehlgeschlagen")
+        msg = s.to_matrix_message()
+        assert "**" not in msg
+        assert "_" not in msg
+        assert not any(line.startswith("- ") for line in msg.splitlines())
+
+    def test_empty_matrix_message_has_no_markdown_markers(self):
+        msg = StartupSummary().to_matrix_message()
+        assert "**" not in msg
+        assert "_" not in msg
 
     def test_matrix_message_summary_line(self):
         s = StartupSummary()
