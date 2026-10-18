@@ -105,6 +105,31 @@ class TestStartupMessage:
             for r in caplog.records
         )
 
+    def test_hanging_send_times_out_and_sync_loop_still_runs(self, caplog):
+        """Ein haengendes room_send darf den Bridge-Start nicht blockieren
+        (PR #388 Review): Timeout -> WARN, danach sync_loop."""
+        calls: list[str] = []
+        channel = _make_channel(calls)
+
+        async def _hang(room_id: str, text: str) -> None:
+            await asyncio.Event().wait()
+
+        channel.send_text = AsyncMock(side_effect=_hang)
+        bridge = _make_bridge(channel)
+        bridge.set_startup_message("!room:x", "Text")
+
+        with (
+            patch("elder_berry.comms.bridge._STARTUP_MESSAGE_TIMEOUT_S", 0.05),
+            caplog.at_level(logging.WARNING, logger="elder_berry.comms.bridge"),
+        ):
+            _run_async_main(bridge)
+
+        assert "sync_loop" in calls
+        assert any(
+            "Startup-Summary an Matrix senden fehlgeschlagen: Timeout" in r.getMessage()
+            for r in caplog.records
+        )
+
     def test_no_message_set_sends_nothing(self):
         calls: list[str] = []
         channel = _make_channel(calls)

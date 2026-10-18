@@ -68,6 +68,9 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
+# #1418 E1: Obergrenze fuer den best-effort Send der Startmeldung.
+_STARTUP_MESSAGE_TIMEOUT_S = 15.0
+
 # Regex: Text in Anführungszeichen extrahieren (erste Fundstelle)
 _QUOTED_TEXT_PATTERN = re.compile(r'"([^"]+)"')
 
@@ -274,12 +277,23 @@ class MatrixBridge:
         """Sendet die hinterlegte Startmeldung best-effort (#1418 E1).
 
         Ein Fehler wird nur geloggt -- der Sync-Loop muss trotzdem starten.
+        Der Send laeuft vor Callback-Registrierung und sync_loop(), daher mit
+        Obergrenze: ein haengendes room_send darf den Bridge-Start nicht
+        blockieren (PR #388 Review).
         """
         if self._startup_message is None:
             return
         room_id, text = self._startup_message
         try:
-            await self._channel.send_text(room_id, text)
+            await asyncio.wait_for(
+                self._channel.send_text(room_id, text),
+                timeout=_STARTUP_MESSAGE_TIMEOUT_S,
+            )
+        except TimeoutError:
+            logger.warning(
+                "Startup-Summary an Matrix senden fehlgeschlagen: Timeout nach %.0f s",
+                _STARTUP_MESSAGE_TIMEOUT_S,
+            )
         except Exception as e:
             logger.warning("Startup-Summary an Matrix senden fehlgeschlagen: %s", e)
 

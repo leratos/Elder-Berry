@@ -156,6 +156,13 @@ class NextcloudNotesClient:
             return True
         except NextcloudNotesError:
             return False
+        except Exception as exc:
+            # Nicht-retriable httpx-Fehler (z.B. InvalidURL bei kaputter
+            # nextcloud_url) liefen sonst durch -- dann fehlte der Dienst im
+            # Startup-Vermerk "Startpruefung fehlgeschlagen" (PR #388 Review).
+            # Muster wie NextcloudFilesClient/CardDAVSyncClient/StirlingPDFClient.
+            logger.warning("Nextcloud Notes availability check failed: %s", exc)
+            return False
 
     def _send(
         self,
