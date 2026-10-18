@@ -124,6 +124,16 @@ class NextcloudNotesClient:
         return bool(self._url and self._user and self._password)
 
     @property
+    def has_credentials(self) -> bool:
+        """Oeffentliche, lesende Sicht auf ``_has_credentials``.
+
+        Der Startup-Aufbau unterscheidet damit "Zugangsdaten unvollstaendig"
+        von "Startpruefung fehlgeschlagen" (#1422), ohne die
+        Schluesselliste zu duplizieren.
+        """
+        return self._has_credentials
+
+    @property
     def _api_base(self) -> str:
         """Basis-URL der Notes-API, mit abschliessendem Slash."""
         url = (self._url or "").rstrip("/")
@@ -145,6 +155,13 @@ class NextcloudNotesClient:
             self._request("GET", "notes")
             return True
         except NextcloudNotesError:
+            return False
+        except Exception as exc:
+            # Nicht-retriable httpx-Fehler (z.B. InvalidURL bei kaputter
+            # nextcloud_url) liefen sonst durch -- dann fehlte der Dienst im
+            # Startup-Vermerk "Startpruefung fehlgeschlagen" (PR #388 Review).
+            # Muster wie NextcloudFilesClient/CardDAVSyncClient/StirlingPDFClient.
+            logger.warning("Nextcloud Notes availability check failed: %s", exc)
             return False
 
     def _send(

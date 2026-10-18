@@ -66,6 +66,16 @@ class StirlingPDFClient:
     def _has_credentials(self) -> bool:
         return bool(self._base_url and self._api_key)
 
+    @property
+    def has_credentials(self) -> bool:
+        """Oeffentliche, lesende Sicht auf ``_has_credentials``.
+
+        Der Startup-Aufbau unterscheidet damit "Zugangsdaten unvollstaendig"
+        von "Startpruefung fehlgeschlagen" (#1422), ohne die
+        Schluesselliste zu duplizieren.
+        """
+        return self._has_credentials
+
     def is_available(self) -> bool:
         """Check if credentials are present and the server is reachable."""
         if not self._has_credentials:

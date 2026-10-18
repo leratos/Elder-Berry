@@ -2,7 +2,7 @@
 
 Sammelt während der ``init_*``-Aufrufe in ``scripts/start_saleria.py`` den
 Status jeder Komponente und rendert am Ende eine ASCII-Box. Die Summary
-kann zusätzlich als Markdown-Nachricht via Matrix verschickt werden.
+kann zusätzlich als Klartext-Nachricht via Matrix verschickt werden.
 
 Eigene Datei statt Inline-Funktion in ``start_saleria.py``, damit die
 Klasse testbar ist und später für ein ``/api/status``-Endpoint
@@ -128,23 +128,19 @@ class StartupSummary:
         return result
 
     def to_matrix_message(self) -> str:
-        """Rendert die Summary als Markdown-Nachricht für Matrix.
+        """Rendert die Summary als Klartext-Nachricht für Matrix.
 
         Verwendet eine kompakte Liste statt der ASCII-Box, weil
         Code-Blöcke in Matrix-Clients monospace gerendert werden.
+        Bewusst ohne Markdown-Marker (#1418 E3): ``MatrixChannel.send_text``
+        sendet nur ``body`` ohne ``formatted_body``, Element zeigt ``**``/``_``
+        sonst roh an.
         """
         if not self._entries:
-            return f"**{self.title}**\n\n_(keine Komponenten erfasst)_"
-        body_lines = [f"**{self.title}**", ""]
-        for entry in self._entries:
-            glyph = _STATUS_GLYPHS[entry.status]
-            line = f"- {glyph} **{entry.component}**"
-            if entry.detail:
-                line += f": {entry.detail}"
-            body_lines.append(line)
+            return f"{self.title}\n\n(keine Komponenten erfasst)"
         counts = self.counts()
-        body_lines.append("")
+        body_lines = [self.title, "", *self._format_lines(), ""]
         body_lines.append(
-            f"_{counts['ok']} ok · {counts['warn']} warn · {counts['fail']} fail_",
+            f"{counts['ok']} ok · {counts['warn']} warn · {counts['fail']} fail",
         )
         return "\n".join(body_lines)
