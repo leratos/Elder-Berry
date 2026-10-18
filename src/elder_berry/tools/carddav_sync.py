@@ -121,6 +121,16 @@ class CardDAVSyncClient:
         return bool(self._url and self._user and self._password)
 
     @property
+    def has_credentials(self) -> bool:
+        """Oeffentliche, lesende Sicht auf ``_has_credentials``.
+
+        Der Startup-Aufbau unterscheidet damit "Zugangsdaten unvollstaendig"
+        von "Startpruefung fehlgeschlagen" (#1422), ohne die
+        Schluesselliste zu duplizieren.
+        """
+        return self._has_credentials
+
+    @property
     def _carddav_base(self) -> str:
         """CardDAV base URL for the default addressbook."""
         url = (self._url or "").rstrip("/")

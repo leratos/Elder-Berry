@@ -147,6 +147,23 @@ class TestIsAvailable:
         client = NextcloudNotesClient(_make_secret_store())
         assert client.is_available() is False
 
+    @patch(_HTTPX_CLIENT)
+    def test_available_non_retriable_httpx_error(self, mock_client_cls):
+        """InvalidURL o.ae. darf nicht durchlaufen (PR #388 Review) --
+        sonst fehlt Notes im Startup-Vermerk 'Startpruefung fehlgeschlagen'."""
+        _install_client(
+            mock_client_cls,
+            request_side_effect=httpx.InvalidURL("Invalid URL 'http://['"),
+        )
+        client = NextcloudNotesClient(_make_secret_store())
+        assert client.is_available() is False
+
+    @patch(_HTTPX_CLIENT)
+    def test_available_client_construction_error(self, mock_client_cls):
+        mock_client_cls.side_effect = httpx.InvalidURL("Invalid URL")
+        client = NextcloudNotesClient(_make_secret_store())
+        assert client.is_available() is False
+
 
 # ── list_notes ───────────────────────────────────────────────────────
 

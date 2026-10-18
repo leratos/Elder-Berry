@@ -68,6 +68,9 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
+# #1418 E1: Obergrenze fuer den best-effort Send der Startmeldung.
+_STARTUP_MESSAGE_TIMEOUT_S = 15.0
+
 # Regex: Text in Anführungszeichen extrahieren (erste Fundstelle)
 _QUOTED_TEXT_PATTERN = re.compile(r'"([^"]+)"')
 
@@ -126,6 +129,9 @@ class MatrixBridge:
         self._running = False
         self._start_time: float = 0.0
         self._restart_cooldown_until: float = 0.0
+        # #1418 E1: Startmeldung (room_id, text), wird nach connect() im
+        # Bridge-Loop verschickt -- vorher wirft send_text "Nicht verbunden".
+        self._startup_message: tuple[str, str] | None = None
 
         self._chat_history = ChatHistory(
             max_messages=10,
@@ -206,6 +212,15 @@ class MatrixBridge:
     # Lifecycle
     # ------------------------------------------------------------------
 
+    def set_startup_message(self, room_id: str, text: str) -> None:
+        """Hinterlegt die Startmeldung, die nach dem Matrix-Connect einmal
+        gesendet wird (#1418 E1). Vor ``start()`` aufrufen.
+
+        Hintergrund: Der nio-Client gehoert zum Event-Loop der Bridge und ist
+        erst nach ``connect()`` in ``_async_main`` nutzbar.
+        """
+        self._startup_message = (room_id, text)
+
     def start(self) -> None:
         """Startet die Bridge in einem Hintergrund-Thread."""
         if self._running:
@@ -258,6 +273,30 @@ class MatrixBridge:
             self._loop.close()
             self._running = False
 
+    async def _send_startup_message(self) -> None:
+        """Sendet die hinterlegte Startmeldung best-effort (#1418 E1).
+
+        Ein Fehler wird nur geloggt -- der Sync-Loop muss trotzdem starten.
+        Der Send laeuft vor Callback-Registrierung und sync_loop(), daher mit
+        Obergrenze: ein haengendes room_send darf den Bridge-Start nicht
+        blockieren (PR #388 Review).
+        """
+        if self._startup_message is None:
+            return
+        room_id, text = self._startup_message
+        try:
+            await asyncio.wait_for(
+                self._channel.send_text(room_id, text),
+                timeout=_STARTUP_MESSAGE_TIMEOUT_S,
+            )
+        except TimeoutError:
+            logger.warning(
+                "Startup-Summary an Matrix senden fehlgeschlagen: Timeout nach %.0f s",
+                _STARTUP_MESSAGE_TIMEOUT_S,
+            )
+        except Exception as e:
+            logger.warning("Startup-Summary an Matrix senden fehlgeschlagen: %s", e)
+
     async def _async_main(self) -> None:
         """Async Hauptroutine: Connect, Callback registrieren, Sync-Loop starten."""
         await self._channel.connect()
@@ -283,6 +322,7 @@ class MatrixBridge:
             )
 
         await send_restart_notification(self._channel)
+        await self._send_startup_message()
 
         self._channel.on_message(self._handle_message)
         self._audio.set_message_callback(self._handle_message)
