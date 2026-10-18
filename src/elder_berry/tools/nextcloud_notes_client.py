@@ -124,6 +124,16 @@ class NextcloudNotesClient:
         return bool(self._url and self._user and self._password)
 
     @property
+    def has_credentials(self) -> bool:
+        """Oeffentliche, lesende Sicht auf ``_has_credentials``.
+
+        Der Startup-Aufbau unterscheidet damit "Zugangsdaten unvollstaendig"
+        von "Startpruefung fehlgeschlagen" (#1422), ohne die
+        Schluesselliste zu duplizieren.
+        """
+        return self._has_credentials
+
+    @property
     def _api_base(self) -> str:
         """Basis-URL der Notes-API, mit abschliessendem Slash."""
         url = (self._url or "").rstrip("/")
