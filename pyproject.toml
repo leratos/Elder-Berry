@@ -106,7 +106,7 @@ web = [
     "tinycss2>=1.5.1",
 ]
 nextcloud = [
-    "caldav>=3.2.1",
+    "caldav>=3.6.0",
     "vobject>=0.9.9",
     # Phase 103 (S2): defusedxml haertet das Parsen externer CardDAV-/WebDAV-
     # Antworten (carddav_sync, nextcloud_files) gegen XXE / Entity-Expansion /
@@ -151,7 +151,7 @@ server = [
     "pymupdf>=1.28.2",
     "trafilatura>=2.2.0",
     "beautifulsoup4>=4.15.0",
-    "caldav>=3.2.1",
+    "caldav>=3.6.0",
     "vobject>=0.9.9",
     # Phase 103 (S2): siehe nextcloud-Gruppe -- server dupliziert die
     # caldav/vobject-Deps und braucht defusedxml deshalb ebenfalls (der
