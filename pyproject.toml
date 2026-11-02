@@ -114,7 +114,7 @@ nextcloud = [
     "defusedxml>=0.7.1",
 ]
 harmony = [
-    "aioharmony>=1.0.8",
+    "aioharmony>=1.0.11",
 ]
 tower = [
     "matrix-nio>=0.26.0",
