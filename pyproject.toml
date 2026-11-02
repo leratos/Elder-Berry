@@ -37,7 +37,7 @@ windows = [
     "pyttsx3>=2.99",
 ]
 tts-neural = [
-    "coqui-tts>=0.27.5",
+    "coqui-tts>=0.28.0",
     "sounddevice>=0.5.6",
     "numpy>=2.5.3",
 ]
@@ -120,7 +120,7 @@ tower = [
     "matrix-nio>=0.26.0",
     "aiofiles>=24.1.0",
     "python-multipart>=0.0.32",
-    "coqui-tts>=0.27.5",
+    "coqui-tts>=0.28.0",
     "sounddevice>=0.5.6",
     "numpy>=2.5.3",
     "faster-whisper>=1.2.1",
