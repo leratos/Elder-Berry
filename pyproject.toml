@@ -14,8 +14,8 @@ dependencies = [
     "python-dotenv>=1.2.4",
     "PyYAML>=6.0.3",
     "cryptography>=50.0.2",
-    "anthropic>=1.4.0",
-    "tzdata>=2026.5",
+    "anthropic>=2.7.0",
+    "tzdata>=2026.6",
     # 0.136.3 ausgeschlossen: MAL-2026-4750 -- diese Version fuegte den
     # undokumentierten Typosquat-Dep ``fastar>=0.9.0`` in die ``[standard]``-
     # Extras-Liste ein. Lockfile pinnt schon auf 0.136.1, der CI-Audit
@@ -33,7 +33,7 @@ windows = [
     "pyautogui>=0.9.54",
     "PyGetWindow>=0.0.9",
     "pycaw>=20260927",
-    "comtypes>=1.4.16",
+    "comtypes>=1.5.0",
     "pyttsx3>=2.99",
 ]
 tts-neural = [
@@ -88,7 +88,7 @@ documents = [
     "pymupdf>=2.0",
 ]
 computer-use = [
-    "Pillow>=12.3.0",
+    "Pillow>=13.0.0",
     "mss>=10.2.0",
 ]
 web = [
@@ -127,7 +127,7 @@ tower = [
     "pyautogui>=0.9.54",
     "PyGetWindow>=0.0.9",
     "pycaw>=20260927",
-    "comtypes>=1.4.16",
+    "comtypes>=1.5.0",
     "mss>=10.2.0",
     # Phase 85: HtmlEmailSanitizer fuer IMAPEmailClient -- robustes
     # HTML-Stripping mit Hidden-Text-Filter statt naiver Regex.
