@@ -92,7 +92,7 @@ py -3.12 -m venv .venv
 pip install -e ".[tower]"   # Tower (Windows-Extras + TTS/STT + Matrix, Vollinstallation)
 
 # Andere Plattformen via Metapaketen:
-pip install -e ".[server]"  # Rootserver (Matrix + Cloud-Tools ohne Windows-Extras)
+pip install -e ".[server]"  # Rootserver (Matrix + Cloud-Tools + pygame-ce, ohne Windows-Extras)
 # RPi5: System-Python 3.13, siehe docs/rpi5_setup.md
 ```
 

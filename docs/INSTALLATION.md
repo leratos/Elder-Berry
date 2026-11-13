@@ -82,8 +82,13 @@ pip install -e ".[robot]"        # RPi5-Kommunikation (kein Extra-Paket nötig)
 pip install -e ".[agent]"        # Laptop-Agent-Server (multipart, sounddevice)
 # Metapaket-Gruppen:
 pip install -e ".[tower]"        # Vollinstallation Tower (Windows + TTS/STT + Matrix + Remote)
-pip install -e ".[server]"       # Vollinstallation Server (Matrix + Cloud-Tools)
+pip install -e ".[server]"       # Vollinstallation Server (Matrix + Cloud-Tools + pygame-ce für Selfie)
 ```
+
+> **pygame vs. pygame-ce:** `[server]` bringt `pygame-ce` mit (headless
+> Selfie-Render), `[avatar]` dagegen `pygame`. Beide Pakete teilen den
+> Importnamen `pygame` und dürfen nicht gemeinsam in einem venv landen –
+> `[server]` also nicht mit `[avatar]` kombinieren.
 
 ### 4. Ollama (optionaler Offline-Fallback)
 

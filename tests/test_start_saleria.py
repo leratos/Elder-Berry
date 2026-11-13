@@ -441,3 +441,60 @@ class TestInitLlmReadBack:
         self._patch_router(monkeypatch)
         router = init_llm(secret_store=_FakeStore({}))
         assert router.mode == "api_preferred"
+
+
+# ===========================================================================
+# init_avatar (elder-berry#1462)
+# ===========================================================================
+
+
+class TestInitAvatar:
+    """Fehlendes pygame muss sichtbar sein (WARNING statt DEBUG)."""
+
+    def test_no_avatar_flag_returns_none(self):
+        from start_saleria import init_avatar
+
+        assert init_avatar(no_avatar=True) is None
+
+    def test_missing_pygame_logs_warning(self, caplog):
+        import logging
+
+        from start_saleria import init_avatar
+
+        with caplog.at_level(logging.DEBUG, logger="saleria"):
+            with patch(
+                "elder_berry.avatar.layered_renderer.LayeredSpriteRenderer",
+                side_effect=ImportError("pygame nicht installiert"),
+            ):
+                assert init_avatar(no_avatar=False) is None
+
+        warnings = [r for r in caplog.records if r.levelno == logging.WARNING]
+        assert len(warnings) == 1
+        assert "pygame fehlt" in warnings[0].getMessage()
+
+    def test_other_error_logs_warning(self, caplog):
+        import logging
+
+        from start_saleria import init_avatar
+
+        with caplog.at_level(logging.DEBUG, logger="saleria"):
+            with patch(
+                "elder_berry.avatar.layered_renderer.LayeredSpriteRenderer",
+                side_effect=RuntimeError("kaputt"),
+            ):
+                assert init_avatar(no_avatar=False) is None
+
+        warnings = [r for r in caplog.records if r.levelno == logging.WARNING]
+        assert len(warnings) == 1
+        assert "kaputt" in warnings[0].getMessage()
+        assert "pygame fehlt" not in warnings[0].getMessage()
+
+    def test_success_returns_renderer(self):
+        from start_saleria import init_avatar
+
+        sentinel = MagicMock()
+        with patch(
+            "elder_berry.avatar.layered_renderer.LayeredSpriteRenderer",
+            return_value=sentinel,
+        ):
+            assert init_avatar(no_avatar=False) is sentinel

@@ -409,6 +409,9 @@ async def avatar(emotion: str = "neutral"):
     except ValueError:
         emo = Emotion.NEUTRAL
 
+    # Vor dem try binden: schlaegt NamedTemporaryFile fehl, waere tmp_path im
+    # finally sonst ungebunden (UnboundLocalError verdeckt den echten Fehler).
+    tmp_path: Path | None = None
     try:
         renderer = LayeredSpriteRenderer()
         with tempfile.NamedTemporaryFile(
@@ -425,7 +428,7 @@ async def avatar(emotion: str = "neutral"):
         logger.error("Avatar-Render Fehler: %s", e)
         raise HTTPException(status_code=500, detail="Avatar-Fehler") from e
     finally:
-        if tmp_path.exists():
+        if tmp_path is not None and tmp_path.exists():
             tmp_path.unlink()
 
 

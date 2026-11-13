@@ -161,6 +161,12 @@ server = [
     # (geplant 86.2) transitiv ueber email_client/IMAP. tinycss2
     # ist die CSS-Tokenisierungs-Dep dafuer.
     "tinycss2>=1.5.1",
+    # Bugfix Selfie ohne Tower (Journal elder-berry#1462): der 'avatar'-
+    # Command rendert auf dem Rootserver headless via LayeredSpriteRenderer.
+    # pygame-ce (wie auf dem RPi5, docs/rpi5_setup.md) statt pygame: beide
+    # teilen den Importnamen 'pygame' und duerfen NICHT gemeinsam auf einem
+    # Host landen -> [server] nicht mit [avatar] kombinieren.
+    "pygame-ce>=2.5.8",
 ]
 dev = [
     "pytest-timeout>=2.4.0",
