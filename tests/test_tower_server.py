@@ -560,3 +560,30 @@ class TestSystemUpdate:
 
         mock_popen.assert_called_once()
         assert mock_popen.call_args.kwargs.get("creationflags") == 0
+
+
+# ---------------------------------------------------------------------------
+# /avatar (elder-berry#1462: tmp_path im finally)
+# ---------------------------------------------------------------------------
+
+
+class TestAvatarEndpoint:
+    def test_tempfile_failure_returns_500_not_unbound_error(self, client):
+        """Scheitert NamedTemporaryFile, darf das finally nicht crashen.
+
+        Renderer gemockt -> laeuft auch ohne pygame (CI).
+        """
+        with patch("elder_berry.avatar.layered_renderer.LayeredSpriteRenderer"):
+            with patch.object(
+                _ts.tempfile, "NamedTemporaryFile", side_effect=OSError("disk full")
+            ):
+                resp = client.get("/avatar", params={"emotion": "neutral"})
+        assert resp.status_code == 500
+        assert resp.json()["detail"] == "Avatar-Fehler"
+
+    def test_render_returns_png(self, client):
+        pytest.importorskip("pygame")
+        resp = client.get("/avatar", params={"emotion": "cheerful"})
+        assert resp.status_code == 200
+        assert resp.headers["content-type"] == "image/png"
+        assert resp.content[:8] == b"\x89PNG\r\n\x1a\n"

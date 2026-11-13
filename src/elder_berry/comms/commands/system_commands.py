@@ -804,7 +804,10 @@ class SystemCommandHandler(CommandHandler):
                 image_path=tmp_path,
             )
         except Exception as e:
-            logger.error("Tower-Avatar fehlgeschlagen: %s", e)
+            # WARNING statt ERROR (elder-berry#1462): Ein ausgeschalteter Tower
+            # ist ein erwartbarer Fall und soll keinen Alert im Admin-Raum
+            # ausloesen (ErrorCollectorHandler reagiert erst ab ERROR).
+            logger.warning("Tower-Avatar fehlgeschlagen: %s", e)
             return None
 
     def _cmd_privacy(self, raw_text: str) -> CommandResult:

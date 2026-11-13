@@ -2,6 +2,7 @@
 
 import logging
 import math
+import os
 import random
 import time
 from collections.abc import Collection
@@ -10,6 +11,10 @@ from enum import Enum
 from pathlib import Path
 
 try:
+    # Begruessungszeile von pygame(-ce) unterdruecken (Lograuschen im Dienst,
+    # elder-berry#1462). Muss vor dem Import gesetzt sein; setdefault laesst
+    # einen explizit gesetzten Wert unangetastet.
+    os.environ.setdefault("PYGAME_HIDE_SUPPORT_PROMPT", "1")
     import pygame
 except ImportError:
     # unused-ignore: pygame ist im CI-typecheck-Install nicht vorhanden
@@ -880,12 +885,18 @@ class LayeredSpriteRenderer(AvatarRenderer):
         return output_path
 
     def _ensure_components_loaded(self) -> None:
-        """Stellt sicher dass Komponenten geladen sind (headless-kompatibel)."""
+        """Stellt sicher dass Komponenten geladen sind (headless-kompatibel).
+
+        Bewusst **kein** ``pygame.init()``: Das wuerde auch den Mixer starten,
+        und auf dem Rootserver ohne Soundkarte erzeugt ALSA dann bei jedem
+        Selfie Fehlerzeilen (elder-berry#1462). ``image.load``, ``Surface``,
+        ``transform.smoothscale`` und ``image.save`` brauchen keine
+        initialisierten Module. Der Live-Pfad (:meth:`initialize`, RPi5) ruft
+        ``pygame.init()`` weiterhin selbst auf und laedt die Komponenten dort,
+        sodass diese Methode dort sofort zurueckkehrt.
+        """
         if self._components:
             return
-
-        if not pygame.get_init():
-            pygame.init()
 
         # Komponenten laden ohne convert_alpha (braucht kein Display)
         subdirs = ("body", "eye", "mouth", "effect")

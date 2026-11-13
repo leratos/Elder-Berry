@@ -506,6 +506,31 @@ class TestAvatarCommand:
         if result.image_path and result.image_path.exists():
             result.image_path.unlink()
 
+    def test_avatar_tower_down_logs_warning_not_error(self, caplog):
+        """Tower aus = erwartbar -> WARNING, kein ERROR-Alert (elder-berry#1462)."""
+        import logging
+
+        tower = MagicMock()
+        tower.host = "127.0.0.1:12769"
+        handler = SystemCommandHandler(tower_agent=tower)
+
+        with caplog.at_level(
+            logging.DEBUG, logger="elder_berry.comms.commands.system_commands"
+        ):
+            with patch(
+                "httpx.get",
+                side_effect=ConnectionRefusedError(111, "Connection refused"),
+            ):
+                result = handler.execute("avatar", "avatar")
+
+        assert result.success is False
+        tower_records = [
+            r for r in caplog.records if "Tower-Avatar fehlgeschlagen" in r.message
+        ]
+        assert len(tower_records) == 1
+        assert tower_records[0].levelno == logging.WARNING
+        assert not [r for r in caplog.records if r.levelno >= logging.ERROR]
+
 
 # ---------------------------------------------------------------------------
 # Restart Command
