@@ -496,8 +496,17 @@ def init_avatar(no_avatar: bool):
         renderer = LayeredSpriteRenderer()
         logger.info("Avatar: LayeredSpriteRenderer")
         return renderer
-    except (ImportError, Exception) as e:
-        logger.debug("Avatar nicht verfügbar: %s", e)
+    except ImportError as e:
+        # elder-berry#1462: frueher nur DEBUG -> fehlendes pygame war im
+        # Dienst unsichtbar und das Selfie fiel ohne Tower stumm aus.
+        logger.warning(
+            "Avatar nicht verfügbar: pygame fehlt (Server: pip install -e "
+            "'.[server]', bringt pygame-ce mit) – Selfie nur via Tower: %s",
+            e,
+        )
+        return None
+    except Exception as e:
+        logger.warning("Avatar nicht verfügbar: %s", e)
         return None
 
 
