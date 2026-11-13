@@ -16,8 +16,10 @@ updates:
       time: "06:00"
       timezone: "Europe/Berlin"
     open-pull-requests-limit: 5
-    labels:
-      - "dependencies"
+    # Keine expliziten labels: Mit "labels:" setzt Dependabot nur Labels, die
+    # im Repo bereits existieren ("dependencies" fehlte -> Warnung in jedem
+    # PR, z.B. #404). Ohne den Schluessel vergibt Dependabot seine Default-
+    # Labels ("dependencies" + Oekosystem-Label) und legt sie selbst an.
     ignore:
       # aiofiles ist transitiv durch matrix-nio gedeckelt: matrix-nio
       # 0.25.2 (neueste, kein Update verfuegbar) verlangt aiofiles~=24.1
@@ -55,6 +57,4 @@ updates:
     directory: "/"
     schedule:
       interval: "monthly"
-    labels:
-      - "dependencies"
-      - "ci"
+    # labels bewusst weggelassen, siehe pip-Block oben.
