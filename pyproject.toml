@@ -336,6 +336,21 @@ module = [
 ]
 strict = true
 
+# --- Phase 111 (Ae8, #1474) strict: Bildgenerierung + Raumdisplay ---
+# Nur die zwei NEUEN llm/-Dateien, nicht ganz llm/ (Bestand ungeprueft,
+# Folgepunkt nach Phase 111). ignore_errors/follow_imports explizit, damit
+# der llm.*-Block oben (silent + ignore_errors) hier nicht greift.
+[[tool.mypy.overrides]]
+module = [
+    "elder_berry.llm.image_generator",
+    "elder_berry.llm.openrouter_image_generator",
+    "elder_berry.room_display",
+    "elder_berry.room_display.*",
+]
+strict = true
+ignore_errors = false
+follow_imports = "normal"
+
 # --- Phase 76b strict: alle comms/-Module ---
 # base.py + registry.py wurden bereits in Phase 77 (Plugin-Registry)
 # strict gestellt; in 76b folgten die uebrigen 47 Module.

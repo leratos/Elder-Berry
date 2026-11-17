@@ -1,0 +1,85 @@
+# Szenen fuer den Inhaltsmodus Grusel-Portrait (Phase 111, Konzept §4.5).
+#
+# Die Prompts sind nicht geheim. Der FESTE KERN (Gemaeldestil, Gesichter
+# erkennbar, Horror nur durch Atmosphaere, kein Blut/keine Verletzungen/keine
+# Gewalt, nicht fotorealistisch, 16:9) steht NICHT hier, sondern im Code
+# (scene_catalog.CORE_PROMPT) und wird jeder Szene angehaengt. So kann eine
+# Bearbeitung dieser Datei die Kernbedingungen nicht versehentlich entfernen.
+#
+# Szenen-IDs: nur a-z, 0-9 und _ (sie landen spaeter im Dateinamen der
+# Gemaelde). Stand: Entwuerfe aus Anhang A (#1470); getestet ist nur s1.
+# Fuer den Betrieb bleiben nach den Szenen-Tests (#1467) 4-6 Szenen.
+
+# Generierungs-Einstellungen. Sie liegen bewusst HIER und nicht in einer
+# frame_config.yaml: Szenen-Test-CLI und Betrieb lesen damit dieselbe Quelle
+# (§4.6), und das Ergebnis des ZDR-Checks (Ae4/D8) wird an genau einer Stelle
+# eingetragen.
+generation:
+  model: openai/gpt-image-2.6-flare
+  quality: low
+  # Ae4: bevorzugt ohne Datensammlung und mit Zero Data Retention. Ob flare
+  # damit einen Endpoint findet, prueft `portrait_scene_test.py --check-zdr`.
+  # Scheitert der Check, entscheidet Lera D8 -- erst dann hier aendern.
+  provider:
+    data_collection: deny
+    zdr: true
+
+scenes:
+  - id: s1_moonlit_parlour
+    title: Moonlit parlour
+    prompt: >-
+      Transform everyone in this photo into a haunted Victorian oil painting
+      portrait: deathly pale skin with a faint grey-green tint, dark hollow
+      shadows around the eyes, pale clouded eyes with a cold faint glow, fixed
+      unblinking stares and smiles that feel slightly wrong. Cold moonlight
+      through a tall window, a guttering candle with rising smoke, cobwebs, a
+      decaying canvas with mold stains and peeling paint. In the darkness
+      behind them, a faint ghostly figure, and a pale translucent hand resting
+      on a shoulder.
+
+  - id: s2_forgotten_library
+    title: Forgotten library
+    prompt: >-
+      Transform everyone in this photo into a haunted oil painting set in a
+      decaying candlelit library: towering shelves of rotting books, dust
+      drifting in the air, a tall shadowy figure half-hidden between the
+      shelves. Their skin is ashen, their eyes dim and glassy, their
+      expressions frozen in eerie calm.
+
+  - id: s3_crypt
+    title: Crypt
+    prompt: >-
+      Transform everyone in this photo into a haunted gothic oil painting in
+      an ancient stone crypt: a flickering oil lamp, low mist creeping over
+      the floor, black ravens perched on a cracked sarcophagus. Their faces
+      are pale as marble, their eyes catch the lamplight with a cold glint,
+      their stares fixed on the viewer.
+
+  - id: s4_abandoned_ballroom
+    title: Abandoned ballroom
+    prompt: >-
+      Transform everyone in this photo into a haunted baroque oil painting in
+      an abandoned ballroom, dressed in faded period costume: chandeliers
+      draped in cobwebs, cold blue light through broken windows, translucent
+      ghostly dancers frozen mid-step in the background. Their smiles are
+      polite but subtly wrong, their skin grey and waxen.
+
+  - id: s5_hall_of_mirrors
+    title: Hall of mirrors
+    # Risiko laut Anhang A: Das Modell koennte Gesichter in den Spiegeln
+    # verdoppeln; die Erkennbarkeit hat Vorrang.
+    prompt: >-
+      Transform everyone in this photo into a haunted Victorian oil painting
+      in a hall of tarnished mirrors: lightning flashes through a window, and
+      the reflections do not quite match the people — in the glass, dark
+      shapes stand where no one is. Pale skin, shadowed eyes, a faint uncanny
+      glow in their gaze.
+
+  - id: s6_attic_of_dolls
+    title: Attic of dolls
+    prompt: >-
+      Transform everyone in this photo into a haunted oil painting in a dusty
+      attic lit by a single lantern: rows of cracked porcelain dolls on the
+      shelves seem to turn their heads toward them, rain streaks the small
+      round window. Their faces are pallid, their eyes clouded, their
+      expressions eerily still.
