@@ -181,7 +181,12 @@ def test_camera_and_face_defaults(tmp_path):
     c = config.camera
     assert c.resolution == (2304, 1296)
     assert (c.rotation, c.hflip, c.vflip) == (0, False, False)
-    assert (c.autofocus, c.af_timeout_s, c.keep_warm) == (True, 2.0, True)
+    assert (c.autofocus, c.af_timeout_s, c.af_reuse_s, c.keep_warm) == (
+        True,
+        2.0,
+        2.0,
+        True,
+    )
     assert (c.burst, c.burst_interval_s, c.jpeg_quality, c.target_edge) == (
         3,
         0.4,

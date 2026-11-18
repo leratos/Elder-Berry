@@ -215,3 +215,55 @@ def test_close():
     camera.start()
     camera.close()
     assert fake.closed
+
+
+class FakeClock:
+    def __init__(self):
+        self.now = 0.0
+
+    def __call__(self):
+        return self.now
+
+
+def test_af_reused_within_window_once_per_burst():
+    """Ein AF-Zyklus pro Burst: Wiederverwendung innerhalb af_reuse_s."""
+    fake, clock = FakePicamera2(), FakeClock()
+    camera = RPi5Camera(
+        (64, 36),
+        autofocus=True,
+        af_reuse_s=2.0,
+        picamera2_factory=lambda: fake,
+        clock=clock,
+    )
+    for t in (0.0, 0.4, 0.8):  # ein Burst
+        clock.now = t
+        camera.capture_image()
+    assert fake.af_cycles == 1
+    assert camera.last_af_reused is True
+    clock.now = 3.0  # naechster Burst
+    camera.capture_image()
+    assert fake.af_cycles == 2
+    assert camera.last_af_reused is False
+
+
+def test_failed_af_is_not_reused():
+    fake, clock = FakePicamera2(wait_result=False), FakeClock()
+    camera = RPi5Camera(
+        (64, 36),
+        autofocus=True,
+        af_reuse_s=2.0,
+        picamera2_factory=lambda: fake,
+        clock=clock,
+    )
+    camera.capture_image()
+    clock.now = 0.4
+    camera.capture_image()
+    assert fake.af_cycles == 2  # unscharf -> beim naechsten Bild erneut
+
+
+def test_af_reuse_default_zero_focuses_every_capture():
+    fake = FakePicamera2()
+    camera = _camera(fake, autofocus=True)
+    for _ in range(3):
+        camera.capture_image()
+    assert fake.af_cycles == 3

@@ -98,6 +98,9 @@ camera:
   vflip: false
   autofocus: true        # nur wirksam, wenn die Kamera AfMode kennt
   af_timeout_s: 2.0
+  # Nach einem erfolgreichen AF-Zyklus so lange nicht neu fokussieren: ein
+  # Zyklus pro Burst statt pro Aufnahme (Burst 3 x 0,4 s ~ 1 s, §4.4).
+  af_reuse_s: 2.0
   keep_warm: true        # Kamera beim Start oeffnen (kein Lazy-Init beim Ausloesen)
   burst: 3
   burst_interval_s: 0.4

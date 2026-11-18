@@ -105,7 +105,9 @@ class RPi5Camera(CameraController):
         vflip: bool = False,
         autofocus: bool = False,
         af_timeout_s: float = 2.0,
+        af_reuse_s: float = 0.0,
         picamera2_factory: Callable[[], Any] | None = None,
+        clock: Callable[[], float] = time.monotonic,
     ) -> None:
         if rotation not in ALLOWED_ROTATIONS:
             raise ValueError(f"rotation muss eins von {ALLOWED_ROTATIONS} sein")
@@ -117,10 +119,17 @@ class RPi5Camera(CameraController):
         self._vflip = vflip
         self._autofocus = autofocus
         self._af_timeout_s = af_timeout_s
+        # Nach einem ERFOLGREICHEN AF-Zyklus so lange keinen neuen ausloesen
+        # (ein Zyklus pro Burst statt pro Aufnahme, §4.4 CAPTURE ~1 s).
+        # 0 = vor jeder Aufnahme fokussieren.
+        self._af_reuse_s = af_reuse_s
+        self._last_af_success_at: float | None = None
         self._factory = picamera2_factory or _default_picamera2_factory
+        self._clock = clock
         self.has_autofocus = False
         self.last_capture_s: float | None = None
         self.last_af_ok: bool | None = None
+        self.last_af_reused = False
 
     def _ensure_initialized(self) -> None:
         """Lazy-Init: Kamera erst beim ersten Aufruf starten."""
@@ -188,9 +197,18 @@ class RPi5Camera(CameraController):
 
     def _autofocus_cycle(self) -> None:
         """AF-Zyklus mit Timeout (Handbuch §5.3.4: autofocus_cycle(wait=False))."""
-        self.last_af_ok = None
+        self.last_af_reused = False
         if not (self._autofocus and self.has_autofocus):
+            self.last_af_ok = None
             return
+        now = self._clock()
+        if (
+            self._last_af_success_at is not None
+            and now - self._last_af_success_at < self._af_reuse_s
+        ):
+            self.last_af_reused = True  # Fokus aus dem letzten Zyklus gilt noch
+            return
+        self.last_af_ok = None
         try:
             job = self._camera.autofocus_cycle(wait=False)
             try:
@@ -198,6 +216,8 @@ class RPi5Camera(CameraController):
             except TypeError:  # aeltere picamera2 ohne timeout-Parameter
                 result = self._camera.wait(job)
             self.last_af_ok = bool(result)
+            if self.last_af_ok:
+                self._last_af_success_at = self._clock()
         except (TimeoutError, RuntimeError) as exc:
             self.last_af_ok = False
             logger.warning(

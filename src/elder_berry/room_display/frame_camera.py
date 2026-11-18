@@ -41,6 +41,7 @@ def build_camera(
         vflip=config.vflip,
         autofocus=config.autofocus,
         af_timeout_s=config.af_timeout_s,
+        af_reuse_s=config.af_reuse_s,
         picamera2_factory=picamera2_factory,
     )
     if config.keep_warm if start_now is None else start_now:
@@ -81,4 +82,5 @@ def af_status(camera: RPi5Camera) -> str:
         return "nein (Kamera ohne AfMode)"
     if camera.last_af_ok is None:
         return "ja (noch kein Zyklus)"
-    return "ja (scharf)" if camera.last_af_ok else "ja (NICHT scharf/Timeout)"
+    state = "ja (scharf)" if camera.last_af_ok else "ja (NICHT scharf/Timeout)"
+    return state + (", Fokus wiederverwendet" if camera.last_af_reused else "")

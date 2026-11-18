@@ -33,6 +33,7 @@ class CameraConfig:
     vflip: bool
     autofocus: bool
     af_timeout_s: float
+    af_reuse_s: float
     keep_warm: bool
     burst: int
     burst_interval_s: float
@@ -78,6 +79,7 @@ def parse_camera(data: Mapping[str, Any], source: str) -> CameraConfig:
         af_timeout_s=number_in_range(
             c.get("af_timeout_s"), f"{w}.af_timeout_s", 0.1, 10
         ),
+        af_reuse_s=number_in_range(c.get("af_reuse_s"), f"{w}.af_reuse_s", 0, 60),
         keep_warm=boolean(c.get("keep_warm"), f"{w}.keep_warm"),
         burst=int_in_range(c.get("burst"), f"{w}.burst", 1, 10),
         burst_interval_s=number_in_range(
