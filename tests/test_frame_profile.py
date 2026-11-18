@@ -143,3 +143,21 @@ def test_windowed_flag_is_passed_through(tmp_path):
     finally:
         frame_profile.run_with_config = original
     assert seen["windowed"] is True
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="SIGTERM-Zustellung nur POSIX")
+def test_naeherung_without_sensor_and_thermal_thread_stops(tmp_path, caplog):
+    """E3: Ansicht naeherung laeuft ohne I2C-Geraet; Thermal-Thread endet mit."""
+    caplog.set_level(logging.INFO)
+    timer = threading.Timer(0.5, signal.raise_signal, args=(signal.SIGTERM,))
+    timer.start()
+    try:
+        code = frame_profile.run_frame(
+            _args(frame_config=_short_config(tmp_path), frame_view="naeherung")
+        )
+    finally:
+        timer.cancel()
+    assert code == 0
+    assert "Naeherungsansicht:" in caplog.text  # mit oder ohne Sensor gestartet
+    assert "Temperatur: CPU" in caplog.text
+    assert not any(t.name == "thermal-monitor" for t in threading.enumerate())

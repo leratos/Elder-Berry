@@ -26,16 +26,29 @@ from typing import Any
 
 import yaml
 
+from elder_berry.room_display.config_values import FrameConfigError
+from elder_berry.room_display.sensor_config import (
+    ProximityConfig,
+    ThermalConfig,
+    parse_proximity,
+    parse_thermal,
+)
+
+__all__ = [
+    "FrameConfig",
+    "FrameConfigError",
+    "ProximityConfig",
+    "ThermalConfig",
+    "apply_overrides",
+    "load_frame_config",
+]
+
 DEFAULT_CONFIG_PATH = Path(__file__).resolve().parent / "frame_config.yaml"
 USER_CONFIG_PATH = Path.home() / ".elder-berry" / "frame_config.yaml"
 
 ALLOWED_ROTATIONS = (0, 90, 180, 270)
 ALLOWED_MODES = ("diagnostic",)
-DIAGNOSTIC_VIEWS = ("testbild", "ueberblendung")
-
-
-class FrameConfigError(ValueError):
-    """Die Konfiguration ist nicht lesbar oder enthaelt ungueltige Werte."""
+DIAGNOSTIC_VIEWS = ("testbild", "ueberblendung", "naeherung")
 
 
 @dataclass(frozen=True)
@@ -59,6 +72,8 @@ class FrameConfig:
     display: DisplaySettings
     mode: str
     diagnostic: DiagnosticSettings
+    proximity: ProximityConfig
+    thermal: ThermalConfig
     source: str
 
 
@@ -191,6 +206,8 @@ def _parse(data: Mapping[str, Any], source: str) -> FrameConfig:
                 diagnostic.get("hold_s", 1.0), f"{source}: diagnostic.hold_s", 0.0
             ),
         ),
+        proximity=parse_proximity(data, source),
+        thermal=parse_thermal(data, source),
         source=source,
     )
 

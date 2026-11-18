@@ -6,8 +6,9 @@ dem Logging-Setup auf; der Stamm-Pfad danach wird nicht betreten.
 Bewusst NICHT gestartet: RobotServer (kein Port 8000), Avatar-Display,
 Harmony, Drehteller, Tunnel; ``ELDER_BERRY_ROBOT_TOKEN`` wird nicht gelesen.
 
-In E2 laeuft als einziger Inhalt der Diagnosemodus (M3/M4'). Der
-Portrait-Modus folgt in E5.
+In E2/E3 laeuft als einziger Inhalt der Diagnosemodus (M3/M4' bzw. M5
+mit ``--frame-view naeherung``). Der Portrait-Modus folgt in E5. Die
+Temperaturueberwachung (E3) laeuft in jedem Modus mit.
 
 Overrides (nur fuer dieses Profil; ``--width``, ``--height`` und
 ``--rotation`` des Stamms werden ignoriert):
@@ -82,8 +83,15 @@ def run_with_config(config: FrameConfig, *, windowed: bool = False) -> int:
     # Lazy: Das Profil stamm soll pygame hierueber nie importieren.
     import pygame
 
+    from elder_berry.room_display.content_mode import ContentMode
     from elder_berry.room_display.diagnostic_mode import DiagnosticMode
     from elder_berry.room_display.frame_rate_meter import FrameRateMeter
+    from elder_berry.room_display.frame_sensors import (
+        ProximitySetup,
+        ThermalSetup,
+        build_proximity,
+        build_thermal,
+    )
     from elder_berry.room_display.oriented_display import OrientedDisplay
     from elder_berry.room_display.room_display_app import RoomDisplayApp
 
@@ -107,7 +115,12 @@ def run_with_config(config: FrameConfig, *, windowed: bool = False) -> int:
         )
         return 1
     previous: dict[signal.Signals, Any] = {}
+    proximity: ProximitySetup | None = None
+    thermal: ThermalSetup | None = None
     try:
+        thermal = build_thermal(config.thermal)
+        if thermal is not None:
+            thermal.monitor.start()
         desktop_sizes = [tuple(size) for size in pygame.display.get_desktop_sizes()]
         logger.info("Physische Displaygroesse (get_desktop_sizes): %s", desktop_sizes)
         screen = _open_screen(
@@ -118,14 +131,25 @@ def run_with_config(config: FrameConfig, *, windowed: bool = False) -> int:
         )
         display = OrientedDisplay(screen, config.display.rotation)
         meter = FrameRateMeter()
-        mode = DiagnosticMode(
-            config.diagnostic.view,
-            desktop_sizes=[(int(w), int(h)) for w, h in desktop_sizes],
-            meter=meter,
-            transition_s=config.display.transition_s,
-            hold_s=config.diagnostic.hold_s,
-            transitions=config.diagnostic.transitions,
-        )
+        mode: ContentMode
+        if config.diagnostic.view == "naeherung":
+            from elder_berry.room_display.proximity_diagnostic_mode import (
+                ProximityDiagnosticMode,
+            )
+
+            proximity = build_proximity(config.proximity)
+            mode = ProximityDiagnosticMode(
+                proximity.provider if proximity is not None else None
+            )
+        else:
+            mode = DiagnosticMode(
+                config.diagnostic.view,
+                desktop_sizes=[(int(w), int(h)) for w, h in desktop_sizes],
+                meter=meter,
+                transition_s=config.display.transition_s,
+                hold_s=config.diagnostic.hold_s,
+                transitions=config.diagnostic.transitions,
+            )
         app = RoomDisplayApp(display, mode, fps=config.display.fps, meter=meter)
 
         def _stop(signum: int, _frame: FrameType | None) -> None:
@@ -138,6 +162,12 @@ def run_with_config(config: FrameConfig, *, windowed: bool = False) -> int:
     finally:
         for restored, handler in previous.items():
             signal.signal(restored, handler)
+        if thermal is not None:
+            thermal.monitor.stop()
+            if thermal.bme280 is not None:
+                thermal.bme280.close()
+        if proximity is not None:
+            proximity.driver.close()
         pygame.quit()
         logger.info("Raumdisplay beendet.")
 

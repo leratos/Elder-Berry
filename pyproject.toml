@@ -48,9 +48,11 @@ avatar = [
 # --profile frame). pygame-ce bringt eigenes SDL mit kmsdrm mit.
 # NIE mit [avatar] kombinieren: pygame und pygame-ce teilen den Importnamen
 # 'pygame' und duerfen nicht gemeinsam in einem venv landen (wie [server]).
-# smbus2 kommt mit E3 (Sensorik), Pillow nach Ae7 erst mit E4 (Kamera).
+# smbus2 (E3): APDS-9960 + BME280 an I2C (MIT, py.typed). Pillow nach Ae7
+# erst mit E4 (Kamera).
 frame = [
     "pygame-ce>=2.5.8",
+    "smbus2>=0.6.1",
 ]
 robot = []
 agent = [
@@ -277,6 +279,8 @@ module = [
     # import-not-found, bevor die robot/-Annotationen geprueft werden.
     "lgpio.*",              # turntable_controller (RPi5-GPIO)
     "picamera2.*",          # camera_controller (RPi-Kamera, libcamera)
+    "smbus2.*",             # Phase 111 E3: APDS-9960/BME280 (lazy import);
+                            # im typecheck-Install nicht vorhanden ([frame])
     "PIL.*",                # camera_controller + simulator (Test-/Sim-JPEG;
                             # Pillow nur in computer-use-Gruppe, kein Stub-Wert)
 ]

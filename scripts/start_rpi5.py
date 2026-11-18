@@ -176,9 +176,9 @@ def parse_args() -> argparse.Namespace:
     )
     frame.add_argument(
         "--frame-view",
-        choices=["testbild", "ueberblendung"],
+        choices=["testbild", "ueberblendung", "naeherung"],
         default=None,
-        help="Diagnose-Ansicht: testbild (M3) oder ueberblendung (M4')",
+        help="Diagnose-Ansicht: testbild (M3), ueberblendung (M4') oder naeherung (M5)",
     )
     frame.add_argument(
         "--frame-windowed",
