@@ -9,6 +9,7 @@
 from __future__ import annotations
 
 import importlib.util
+import re
 import subprocess
 import sys
 import textwrap
@@ -199,7 +200,14 @@ def test_stamm_wiring_unchanged(stamm_wiring):
     }
     assert by_name["Camera"][1] == {"resolution": (1920, 1080)}
     assert by_name["Turntable"][1] == {"step_delay_ms": 2.0}
-    assert by_name["Harmony"][1] == {"hub_ip": "192.168.50.133"}
+    # Erwartungswert aus dem Stamm-Code statt als zweites IP-Literal im Repo
+    # (Public-Readiness-Check); der Test bleibt damit eine Regression auf
+    # "Konstruktor bekommt den im Stamm fest verdrahteten Wert".
+    hub_ip = re.search(
+        r'HarmonyAdapter\(hub_ip="([^"]+)"\)', START_RPI5.read_text("utf-8")
+    )
+    assert hub_ip is not None
+    assert by_name["Harmony"][1] == {"hub_ip": hub_ip.group(1)}
     server_kwargs = by_name["RobotServer"][1]
     assert server_kwargs["hostname"] == "elder-berry-rpi5"
     assert server_kwargs["service_name"] == "elder-berry"
