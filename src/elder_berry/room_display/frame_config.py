@@ -26,6 +26,12 @@ from typing import Any
 
 import yaml
 
+from elder_berry.room_display.camera_config import (
+    CameraConfig,
+    FaceConfig,
+    parse_camera,
+    parse_face,
+)
 from elder_berry.room_display.config_values import FrameConfigError
 from elder_berry.room_display.sensor_config import (
     ProximityConfig,
@@ -35,6 +41,8 @@ from elder_berry.room_display.sensor_config import (
 )
 
 __all__ = [
+    "CameraConfig",
+    "FaceConfig",
     "FrameConfig",
     "FrameConfigError",
     "ProximityConfig",
@@ -48,7 +56,7 @@ USER_CONFIG_PATH = Path.home() / ".elder-berry" / "frame_config.yaml"
 
 ALLOWED_ROTATIONS = (0, 90, 180, 270)
 ALLOWED_MODES = ("diagnostic",)
-DIAGNOSTIC_VIEWS = ("testbild", "ueberblendung", "naeherung")
+DIAGNOSTIC_VIEWS = ("testbild", "ueberblendung", "naeherung", "kamera")
 
 
 @dataclass(frozen=True)
@@ -74,6 +82,8 @@ class FrameConfig:
     diagnostic: DiagnosticSettings
     proximity: ProximityConfig
     thermal: ThermalConfig
+    camera: CameraConfig
+    face: FaceConfig
     source: str
 
 
@@ -208,6 +218,8 @@ def _parse(data: Mapping[str, Any], source: str) -> FrameConfig:
         ),
         proximity=parse_proximity(data, source),
         thermal=parse_thermal(data, source),
+        camera=parse_camera(data, source),
+        face=parse_face(data, source),
         source=source,
     )
 

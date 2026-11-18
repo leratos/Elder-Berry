@@ -7,7 +7,8 @@ Bewusst NICHT gestartet: RobotServer (kein Port 8000), Avatar-Display,
 Harmony, Drehteller, Tunnel; ``ELDER_BERRY_ROBOT_TOKEN`` wird nicht gelesen.
 
 In E2/E3 laeuft als einziger Inhalt der Diagnosemodus (M3/M4' bzw. M5
-mit ``--frame-view naeherung``). Der Portrait-Modus folgt in E5. Die
+mit ``--frame-view naeherung``, M6/D2 mit ``--frame-view kamera``). Der
+Portrait-Modus folgt in E5. Die
 Temperaturueberwachung (E3) laeuft in jedem Modus mit.
 
 Overrides (nur fuer dieses Profil; ``--width``, ``--height`` und
@@ -117,6 +118,7 @@ def run_with_config(config: FrameConfig, *, windowed: bool = False) -> int:
     previous: dict[signal.Signals, Any] = {}
     proximity: ProximitySetup | None = None
     thermal: ThermalSetup | None = None
+    camera: Any = None
     try:
         thermal = build_thermal(config.thermal)
         if thermal is not None:
@@ -141,6 +143,28 @@ def run_with_config(config: FrameConfig, *, windowed: bool = False) -> int:
             mode = ProximityDiagnosticMode(
                 proximity.provider if proximity is not None else None
             )
+        elif config.diagnostic.view == "kamera":
+            from elder_berry.room_display.camera_diagnostic_mode import (
+                CameraDiagnosticMode,
+            )
+            from elder_berry.room_display.frame_camera import (
+                af_status,
+                build_camera,
+                build_pipeline,
+            )
+
+            camera = build_camera(config.camera, start_now=True)
+            if camera is None:
+                mode = CameraDiagnosticMode(None)
+            else:
+                cam = camera
+                mode = CameraDiagnosticMode(
+                    build_pipeline(
+                        cam, config.camera, config.face, preview_without_face=True
+                    ),
+                    interval_s=config.camera.diagnostic_interval_s,
+                    af_status=lambda: af_status(cam),
+                )
         else:
             mode = DiagnosticMode(
                 config.diagnostic.view,
@@ -168,6 +192,8 @@ def run_with_config(config: FrameConfig, *, windowed: bool = False) -> int:
                 thermal.bme280.close()
         if proximity is not None:
             proximity.driver.close()
+        if camera is not None:
+            camera.close()
         pygame.quit()
         logger.info("Raumdisplay beendet.")
 

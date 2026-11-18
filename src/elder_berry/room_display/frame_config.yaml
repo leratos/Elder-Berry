@@ -31,6 +31,7 @@ mode:
   diagnostic:
     # testbild: M3 (Ausrichtung). ueberblendung: M4' (Bildrate).
     # naeherung: M5 (APDS-Kalibrierung, Live-Werte).
+    # kamera: M6 (Bildausschnitt) und D2-Messung (Dauer der Gesichtspruefung).
     view: testbild
     # Anzahl Ueberblendungen im Modus "ueberblendung"; danach endet das
     # Programm mit einer Zusammenfassung im Log.
@@ -81,3 +82,34 @@ thermal:
     bus: 1
     address: 0x76    # #1439
     warn_c: 50       # Gehaeuseluft, Platzhalter bis M8
+
+# Kamera (E4, §4.4 CAPTURE). Camera Module 3 (IMX708).
+camera:
+  enabled: true
+  # 2304x1296 = 2x2-Binning des IMX708: volles Sichtfeld, 16:9, schnelle
+  # Auslesung. Fuer Gesichter bei 40 cm reicht das reichlich; das Ergebnis
+  # wird ohnehin auf target_edge (1024 px) verkleinert. Volle 4608x2592
+  # kosten Zeit und Speicher ohne Nutzen fuer die Generierung.
+  resolution: [2304, 1296]
+  # Ausrichtung nach der Aufnahme per Pillow (Grad gegen den Uhrzeigersinn;
+  # erst spiegeln, dann drehen). Montage-abhaengig, wird mit M6 eingestellt.
+  rotation: 0
+  hflip: false
+  vflip: false
+  autofocus: true        # nur wirksam, wenn die Kamera AfMode kennt
+  af_timeout_s: 2.0
+  keep_warm: true        # Kamera beim Start oeffnen (kein Lazy-Init beim Ausloesen)
+  burst: 3
+  burst_interval_s: 0.4
+  jpeg_quality: 85
+  target_edge: 1024
+  diagnostic_interval_s: 2.0   # Abstand der Bursts in der Ansicht "kamera"
+
+# Gesichtspruefung (E4, D2): haar = OpenCV-Haar-Kaskade (apt python3-opencv
+# + opencv-data), none = keine Pruefung. Fehlt OpenCV, faellt haar einmal mit
+# WARNING auf none zurueck. Die Entscheidung haar/none trifft Lera nach der
+# Messung (< 300 ms je Bild auf dem Pi 5); es gibt keine Automatik.
+face:
+  detector: haar
+  cascade: null          # null = automatisch suchen
+  detect_width: 640      # Breite der Graustufenkopie fuer die Pruefung

@@ -48,8 +48,13 @@ avatar = [
 # --profile frame). pygame-ce bringt eigenes SDL mit kmsdrm mit.
 # NIE mit [avatar] kombinieren: pygame und pygame-ce teilen den Importnamen
 # 'pygame' und duerfen nicht gemeinsam in einem venv landen (wie [server]).
-# smbus2 (E3): APDS-9960 + BME280 an I2C (MIT, py.typed). Pillow nach Ae7
-# erst mit E4 (Kamera).
+# smbus2 (E3): APDS-9960 + BME280 an I2C (MIT, py.typed).
+# Bewusst NICHT hier (E4, Ae7): Pillow, numpy, picamera2 und OpenCV. Auf dem
+# Pi kommen sie per apt (python3-picamera2, python3-pil, python3-numpy,
+# python3-opencv + opencv-data; ob picamera2 Pillow/numpy selbst mitzieht,
+# klaert M-E0-1 ueber PIL.__file__) und das venv nutzt
+# --system-site-packages (Picamera2-Handbuch §2.2.1/§2.6.1). Eine zweite,
+# pip-installierte Kopie wuerde die apt-Version im venv verdecken.
 frame = [
     "pygame-ce>=2.5.8",
     "smbus2>=0.6.1",
@@ -279,6 +284,9 @@ module = [
     # import-not-found, bevor die robot/-Annotationen geprueft werden.
     "lgpio.*",              # turntable_controller (RPi5-GPIO)
     "picamera2.*",          # camera_controller (RPi-Kamera, libcamera)
+    "cv2.*",                # Phase 111 E4: OpenCV nur per apt auf dem Pi
+                            # (lazy import, Haar-Gesichtspruefung)
+    "libcamera.*",          # Phase 111 E4: AfModeEnum (apt, mit picamera2)
     "smbus2.*",             # Phase 111 E3: APDS-9960/BME280 (lazy import);
                             # im typecheck-Install nicht vorhanden ([frame])
     "PIL.*",                # camera_controller + simulator (Test-/Sim-JPEG;

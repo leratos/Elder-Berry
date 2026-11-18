@@ -161,3 +161,27 @@ def test_naeherung_without_sensor_and_thermal_thread_stops(tmp_path, caplog):
     assert "Naeherungsansicht:" in caplog.text  # mit oder ohne Sensor gestartet
     assert "Temperatur: CPU" in caplog.text
     assert not any(t.name == "thermal-monitor" for t in threading.enumerate())
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="SIGTERM-Zustellung nur POSIX")
+def test_kamera_view_without_camera_runs_and_stops(tmp_path, caplog, monkeypatch):
+    """E4: Ansicht kamera laeuft ohne picamera2 mit Hinweis und endet sauber."""
+    caplog.set_level(logging.INFO)
+
+    def no_picamera2():
+        raise ImportError("No module named 'picamera2'")
+
+    monkeypatch.setattr(
+        "elder_berry.robot.camera_controller._default_picamera2_factory", no_picamera2
+    )
+    timer = threading.Timer(0.5, signal.raise_signal, args=(signal.SIGTERM,))
+    timer.start()
+    try:
+        code = frame_profile.run_frame(
+            _args(frame_config=_short_config(tmp_path), frame_view="kamera")
+        )
+    finally:
+        timer.cancel()
+    assert code == 0
+    assert "Kamera nicht verfuegbar" in caplog.text
+    assert "Kamera-Ansicht: keine Kamera" in caplog.text
