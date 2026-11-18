@@ -1,0 +1,118 @@
+# Konfiguration des Geraeteprofils "frame" (Phase 111, Konzept §4.1).
+#
+# Default im Paket. Ein User-Override unter ~/.elder-berry/frame_config.yaml
+# muss nur die Schluessel enthalten, die abweichen; er wird pro Sektion ueber
+# diese Datei gelegt. Ungueltige Werte brechen den Start mit klarer Meldung ab.
+#
+# Die Generierungs-Einstellungen (Modell, Qualitaet, provider) stehen NICHT
+# hier, sondern in room_display/portrait/scenes.yaml (#1477 A1).
+
+display:
+  # Drehung des logischen Querbilds (1280x720) auf das Panel, in Grad
+  # gegen den Uhrzeigersinn: 0, 90, 180 oder 270. Planungs-Default ist M3-B
+  # (Panel nativ 720x1280 hochkant, Drehung in Software, §4.3). Ob 90 oder
+  # 270 richtig ist, zeigt das Testbild bei M3.
+  rotation: 90
+  # Ziel-Bildrate waehrend Ueberblendungen. Im Standbild wird nicht
+  # dauerhaft gerendert.
+  fps: 30
+  # Dauer einer Ueberblendung in Sekunden.
+  transition_s: 1.0
+  # SDL-Videotreiber. kmsdrm auf dem Pi ohne Desktop; null = Umgebung bzw.
+  # SDL-Default (z.B. fuer Tests mit SDL_VIDEODRIVER=dummy).
+  video_driver: kmsdrm
+  # Vollbild. false nur zum Debuggen am Desktop (Fenster).
+  fullscreen: true
+
+mode:
+  # In E2 gibt es nur den Diagnosemodus (Messungen M3/M4'). Der
+  # Portrait-Modus folgt in E5.
+  name: diagnostic
+  diagnostic:
+    # testbild: M3 (Ausrichtung). ueberblendung: M4' (Bildrate).
+    # naeherung: M5 (APDS-Kalibrierung, Live-Werte).
+    # kamera: M6 (Bildausschnitt) und D2-Messung (Dauer der Gesichtspruefung).
+    view: testbild
+    # Anzahl Ueberblendungen im Modus "ueberblendung"; danach endet das
+    # Programm mit einer Zusammenfassung im Log.
+    transitions: 10
+    # Standzeit zwischen zwei Ueberblendungen in Sekunden.
+    hold_s: 1.0
+
+# Naeherungssensor APDS-9960 (E3, Konzept §4.2/§4.4). Registerwerte =
+# Konfiguration B (#1440). Schwellen RELATIV zu thresholds.baseline.
+# ACHTUNG: Die Schwellen sind PLATZHALTER aus dem Steckbrett-Test (#1440,
+# Grundwert 128), VOR M5 NICHT KALIBRIERT. Nach M5 (bzw. nach dem Einbau)
+# die gemessenen Werte im User-Override ~/.elder-berry/frame_config.yaml
+# unter proximity.thresholds eintragen, nicht hier.
+proximity:
+  enabled: true
+  bus: 1
+  address: 0x39
+  registers:
+    atime: 0xDB
+    ppulse: 0xFF
+    control: 0x0D
+    enable: 0x07
+  # Offset-Register (-127..127), null = nicht schreiben. Nur nutzen, wenn
+  # der Grundwert nach dem Einbau stoert (#1440).
+  offset_ur: null
+  offset_dl: null
+  thresholds:
+    baseline: 128      # PDATA ohne Person
+    away_below: 10     # PDATA < baseline+10  -> AWAY
+    present_above: 12  # PDATA >= baseline+12 -> PRESENT
+    focused_off: 15    # FOCUSED aus unter baseline+15
+    focused_on: 30     # FOCUSED ein ab baseline+30 (entprellt)
+  debounce_ms: 150
+  sample_interval_ms: 50
+  saturation_value: 255
+  # Sensorfehler: so lange ununterbrochen gesaettigt bzw. FOCUSED.
+  fault_after_s: 60
+  # Rueckkehr: so lange ununterbrochen unter baseline+present_above.
+  fault_clear_s: 10
+
+# Temperaturueberwachung (E3, §4.8). Logzeile alle interval_s fuer M8/M9.
+thermal:
+  enabled: true
+  interval_s: 300
+  cpu_warn_c: 80
+  bme280:            # D1: minimal, streichbar
+    enabled: true
+    bus: 1
+    address: 0x76    # #1439
+    warn_c: 50       # Gehaeuseluft, Platzhalter bis M8
+
+# Kamera (E4, §4.4 CAPTURE). Camera Module 3 (IMX708).
+camera:
+  enabled: true
+  # 2304x1296 = 2x2-Binning des IMX708: volles Sichtfeld, 16:9, schnelle
+  # Auslesung. Fuer Gesichter bei 40 cm reicht das reichlich; das Ergebnis
+  # wird ohnehin auf target_edge (1024 px) verkleinert. Volle 4608x2592
+  # kosten Zeit und Speicher ohne Nutzen fuer die Generierung.
+  resolution: [2304, 1296]
+  # Ausrichtung nach der Aufnahme per Pillow (Grad gegen den Uhrzeigersinn;
+  # erst spiegeln, dann drehen). Montage-abhaengig, wird mit M6 eingestellt.
+  rotation: 0
+  hflip: false
+  vflip: false
+  autofocus: true        # nur wirksam, wenn die Kamera AfMode kennt
+  af_timeout_s: 2.0
+  # Nach einem erfolgreichen AF-Zyklus so lange nicht neu fokussieren: ein
+  # Zyklus pro Burst statt pro Aufnahme (Burst 3 x 0,4 s ~ 1 s, §4.4).
+  af_reuse_s: 2.0
+  keep_warm: true        # Kamera beim Start oeffnen (kein Lazy-Init beim Ausloesen)
+  burst: 3
+  burst_interval_s: 0.4
+  jpeg_quality: 85
+  target_edge: 1024
+  diagnostic_interval_s: 2.0   # Abstand der Bursts in der Ansicht "kamera"
+
+# Gesichtspruefung (E4, D2): haar = OpenCV-Haar-Kaskade (apt python3-opencv
+# + opencv-data), none = keine Pruefung. Fehlt OpenCV, faellt haar einmal mit
+# WARNING auf none zurueck. Die Entscheidung haar/none trifft Lera nach der
+# Messung (< 300 ms je Bild auf dem Pi 5); es gibt keine Automatik.
+face:
+  detector: haar
+  cascade: null          # null = automatisch suchen
+  detect_width: 640      # Breite der Graustufenkopie fuer die Pruefung

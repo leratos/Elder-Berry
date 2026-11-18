@@ -161,7 +161,7 @@ class TestRuns:
         _, model, quality, provider = h.factory_calls[0]
         assert model == "openai/gpt-image-2.6-flare"
         assert quality == "low"
-        assert provider == {"data_collection": "deny", "zdr": True}
+        assert provider == {"data_collection": "deny"}  # D8, #1482
 
     def test_no_zdr_sends_no_provider(self, tmp_path):
         h = Harness(tmp_path)

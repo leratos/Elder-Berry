@@ -49,7 +49,25 @@ jobs:
         if: runner.os == 'Windows'
         run: pip install -e ".[windows]"
 
+      - name: Install frame dependencies (pygame-ce, Linux)
+        # Phase 111 (§6, E2): pygame-Tests (OrientedDisplay, RoomDisplayApp,
+        # Diagnosemodus, Selfie-Render, Crossfade-Benchmark) laufen sonst nur
+        # lokal. Nur pygame-ce ueber [frame], NIE zusammen mit [avatar]
+        # (pygame) -- gleicher Importname. Windows bleibt ohne pygame; dort
+        # werden diese Tests weiter per importorskip uebersprungen.
+        if: runner.os == 'Linux'
+        # Phase 111 E4 (Ae7, offen seit #1477): Pillow explizit, damit die
+        # Pillow-Tests (Szenen-CLI, Kamera, PhotoPipeline) in CI laufen.
+        # [frame] deklariert Pillow bewusst nicht (auf dem Pi kommt es per
+        # apt). OpenCV wird in CI NICHT installiert: die Haar-Tests mit echter
+        # Kaskade laufen nur lokal/auf dem Pi (importorskip cv2).
+        run: pip install -e ".[frame]" "Pillow>=13.0.0"
+
       - name: Run tests
+        env:
+          # Headless-Runner: SDL ohne Display und ohne Soundkarte.
+          SDL_VIDEODRIVER: dummy
+          SDL_AUDIODRIVER: dummy
         run: >-
           python -m pytest tests/ -v --tb=short
           --cov=src/elder_berry --cov-report=xml --cov-report=term

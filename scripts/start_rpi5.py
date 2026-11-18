@@ -8,6 +8,7 @@ Verwendung:
     python scripts/start_rpi5.py                    # Fullscreen (Default)
     python scripts/start_rpi5.py --windowed         # Fenster-Modus (Debug)
     python scripts/start_rpi5.py --width 512 --height 1024  # Custom Resolution
+    python scripts/start_rpi5.py --profile frame    # Raumdisplay "Rahmen" (Phase 111)
 
 Plattformhinweis: Für RPi5 (Linux, Python 3.13).
 Kann zum Testen auch auf Windows laufen (--windowed).
@@ -140,6 +141,53 @@ def parse_args() -> argparse.Namespace:
             "30-FPS-Nachweis auf dem RPi5. Exit 0 = h\u00e4lt 30 FPS, sonst 1."
         ),
     )
+    # -- Phase 111: Geraeteprofil (Konzept §4.1, Ae9) -------------------------
+    parser.add_argument(
+        "--profile",
+        choices=["stamm", "frame"],
+        default="stamm",
+        help=(
+            "Geraeteprofil. 'stamm' (Default): Avatar-Display + RobotServer wie "
+            "bisher. 'frame': Raumdisplay 'Rahmen' -- kein RobotServer, kein "
+            "Avatar; --width/--height/--rotation werden ignoriert."
+        ),
+    )
+    frame = parser.add_argument_group("nur --profile frame")
+    frame.add_argument(
+        "--frame-config",
+        type=Path,
+        default=None,
+        help="frame_config.yaml (Default: Paket + ~/.elder-berry/frame_config.yaml)",
+    )
+    frame.add_argument(
+        "--frame-rotation",
+        type=int,
+        choices=[0, 90, 180, 270],
+        default=None,
+        help="Rotation des Querbilds aufs Panel (ueberschreibt die Konfiguration)",
+    )
+    frame.add_argument(
+        "--frame-fps", type=int, default=None, help="Ziel-FPS bei Ueberblendungen"
+    )
+    frame.add_argument(
+        "--frame-video-driver",
+        default=None,
+        help="SDL-Videotreiber, z.B. kmsdrm oder dummy",
+    )
+    frame.add_argument(
+        "--frame-view",
+        choices=["testbild", "ueberblendung", "naeherung", "kamera"],
+        default=None,
+        help=(
+            "Diagnose-Ansicht: testbild (M3), ueberblendung (M4'), "
+            "naeherung (M5) oder kamera (M6/D2)"
+        ),
+    )
+    frame.add_argument(
+        "--frame-windowed",
+        action="store_true",
+        help="Fenster statt Vollbild (Debug am Desktop)",
+    )
     return parser.parse_args()
 
 
@@ -150,6 +198,14 @@ def main() -> None:
         level=logging.INFO,
         format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
     )
+
+    # -- Phase 111: Profil "frame" zweigt hier ab (Konzept §4.1, Ae9) ----------
+    # Frueh-Ausstieg nach dem Muster --benchmark-crossfade: kein RobotServer,
+    # kein Avatar, kein uvicorn-Import. Der Stamm-Code danach bleibt textgleich.
+    if args.profile == "frame":
+        from elder_berry.room_display.frame_profile import run_frame
+
+        sys.exit(run_frame(args))
 
     from elder_berry.avatar.layered_renderer import CrossfadeScope
 
@@ -195,9 +251,7 @@ def main() -> None:
         # (gewaehlter Scope @ nativer Aufloesung), NICHT "irgendeine Variante".
         # Sonst meldet das Gate gruen, obwohl z.B. FULL@720 unter 30 bleibt und
         # der 540x960-Fallback im Normalstart nicht automatisch greift.
-        production = result_for(
-            results, crossfade_scope, args.width, args.height
-        )
+        production = result_for(results, crossfade_scope, args.width, args.height)
         production_holds = production is not None and production.holds_30fps
         if production_holds:
             logger.info(

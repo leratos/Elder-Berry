@@ -1,8 +1,8 @@
 # Phase 111 – Raumdisplay „Rahmen“ mit Inhaltsmodus Grusel-Portrait
 
-**Status:** freigegeben durch Lera am 2026-11-17; Entscheidungen D1–D7 getroffen (#1475), D8 nur bedingt offen (§10)
-**Branch:** `phase-111-raumdisplay-portrait`, drei Teil-PRs (D6)
-**Grundlage:** elder-berry #1443–#1468, insbesondere Preflight #1459, Auswertung #1460, Entscheidungen #1461 und #1467; Sensorwerte #1436–#1441; Selfie-Bugfix #1462–#1464; Preflight E0 #1473, Konzeptänderungen Ae1–Ae16 #1474, Entscheidungen D1–D7 #1475
+**Status:** freigegeben durch Lera am 2026-11-17; Entscheidungen D1–D7 getroffen (#1475), D8 entschieden (#1482, §10); Stand nach E4 (Abweichungen aus #1488, #1490, E4 eingearbeitet)
+**Branches:** ein Branch pro Teil-PR (D6, präzisiert #1487/#1489): Teil-PR 1 `phase-111-raumdisplay-portrait` (gemergt als #412), Teil-PR 2 `phase-111-raumdisplay-portrait-tpr2` (E2+E3+E4)
+**Grundlage:** elder-berry #1443–#1468, #1478–#1482 (ZDR-Check und D8), insbesondere Preflight #1459, Auswertung #1460, Entscheidungen #1461 und #1467; Sensorwerte #1436–#1441; Selfie-Bugfix #1462–#1464; Preflight E0 #1473, Konzeptänderungen Ae1–Ae16 #1474, Entscheidungen D1–D7 #1475
 **Quelle:** Diese Datei ist der Wortlaut von #1469 (ab „# Phase 111“) und #1470 mit den Änderungen aus #1474 und #1475, in die Abschnitte eingearbeitet. Die Journal-Einträge bleiben die Quelle.
 **Code-Stand der Aussagen:** am Code geprüft in E0 (#1473) auf main @ 5b2cce0.
 **Termine:** Party 2026-12-31 · Entscheidungstor Stufe 1: 2026-12-06 (#1461)
@@ -66,7 +66,10 @@ Architektonisch ist das der erste Ausschnitt der Geräteklasse **Raumdisplay** (
   - echte Sensoren (APDS, BME minimal, siehe D1), Kamera und `RoomDisplayApp` mit `PortraitMode`
   - **kein RobotServer (Port 8000).** In Phase 111 gibt es keinen Konsumenten (K1). Im fremden WLAN verkleinert das die Angriffsfläche. Diagnose läuft über SSH und journald.
   - kein `ELDER_BERRY_ROBOT_TOKEN`, kein Tunnel
-- Das Profil `frame` ignoriert `--width`, `--height` und `--rotation` des Stamms. Anzeige-Parameter wie Auflösung und Rotation sowie die Portrait-Parameter kommen aus `frame_config.yaml` mit eigenen CLI-Overrides. Default unter `room_display/frame_config.yaml`, User-Override unter `~/.elder-berry/frame_config.yaml` (Muster `avatar_config_loader`, Ae13).
+- Das Profil `frame` ignoriert `--width`, `--height` und `--rotation` des Stamms (mit WARNING, wenn sie vom Stamm-Default abweichen). Anzeige-Parameter wie Auflösung und Rotation sowie die Portrait-Parameter kommen aus `frame_config.yaml` mit eigenen CLI-Overrides: `--frame-config`, `--frame-rotation`, `--frame-fps`, `--frame-video-driver`, `--frame-view {testbild,ueberblendung,naeherung,kamera}`, `--frame-windowed`. Default unter `room_display/frame_config.yaml`, User-Override unter `~/.elder-berry/frame_config.yaml` (Ae13).
+- Abweichend vom Avatar-Muster wird der User-Override **pro Schlüssel** über den Default gelegt (er enthält nur die abweichenden Werte). Ungültige Werte brechen den Start mit einer klaren Meldung ab, statt still auf den Default zurückzufallen (#1488 A3). Sektionen: `display`, `mode`, `proximity`, `thermal` (E3), `camera`, `face` (E4).
+- Exit-Codes von `run_frame`: 0 normal und bei SIGTERM/SIGINT, 1 Display-Init fehlgeschlagen, 2 Konfiguration ungültig.
+- Bis E5 läuft im Profil `frame` nur der Diagnosemodus: `testbild` (M3), `ueberblendung` (M4′, endet nach N Überblendungen selbst mit Zusammenfassung, #1488 A4), `naeherung` (M5), `kamera` (M6/D2). Der APDS wird nur in `naeherung`, die Kamera nur in `kamera` geöffnet; die Temperaturüberwachung läuft in jedem Modus (#1490 A5).
 - `tests/test_start_rpi5_token.py` bleibt grün. Der Regressionstest „Stamm-Wiring unverändert“ wird neu geschrieben (Konstruktoraufrufe patchen und prüfen).
 - Autostart: eigene Unit `server/elder-berry-frame.service` mit Platzhalter-Header wie `server/*.service`, `Restart=always`, ohne `ELDER_BERRY_ROBOT_TOKEN`, ohne `DISPLAY` (Ae12). Die Inline-Vorlage aus `docs/rpi5_setup.md` wird nicht kopiert.
 
@@ -76,27 +79,35 @@ Paket `src/elder_berry/room_display/` für die Geräteklasse. Die Orte für Trei
 
 | Datei | Klasse | Zweck |
 |---|---|---|
-| `room_display/content_mode.py` | `ContentMode` (ABC) | `on_enter()`, `update(now)`, `render(display)`, `on_exit()`. Bewusst klein, damit ein Rezept-Modus später andocken kann |
-| `room_display/room_display_app.py` | `RoomDisplayApp` | pygame-ce/kmsdrm-Loop, hostet genau einen `ContentMode`, ignoriert alle Eingabe-Events (Touch, R12), blendet den Cursor aus, beendet sich bei SIGTERM sauber |
+| `room_display/content_mode.py` | `ContentMode` (ABC) | `on_enter(display)`, `update(now) -> bool` („neu zeichnen“), `render(display)`, `on_exit()`, dazu `is_animating()` und `wants_exit()` (#1488 A2). Bewusst klein, damit ein Rezept-Modus später andocken kann |
+| `room_display/room_display_app.py` | `RoomDisplayApp` | pygame-ce/kmsdrm-Loop, hostet genau einen `ContentMode`, ignoriert alle Eingabe-Events außer QUIT (Touch, R12), blendet den Cursor aus, beendet sich bei SIGTERM sauber. Rendert nur bei Änderung oder während einer Überblendung (Standbild: 10-Hz-Poll ohne Neuzeichnen) |
+| `room_display/crossfade.py`, `frame_rate_meter.py` | `Crossfade`, `FrameRateMeter` | Zeitachse einer Überblendung; FPS-Log während Überblendungen (höchstens 1/s: mittlere/minimale FPS, Frame-Dauer) |
+| `room_display/diagnostic_mode.py` | `DiagnosticMode` (`ContentMode`) | Messmodus M3 (Testbild) und M4′ (Überblend-Schleife mit Auswertung nach §7) |
+| `room_display/proximity_diagnostic_mode.py` | `ProximityDiagnosticMode` | Messmodus M5 (Live-PDATA, Schwellen absolut, Min/Mittel/Max pro Sekunde). Eigene Klasse statt Teil von `DiagnosticMode` (#1490 A1) |
+| `room_display/camera_diagnostic_mode.py` | `CameraDiagnosticMode` | Messmodus M6/D2: Burst alle 2 s (zeitgesteuert, nicht über FOCUSED, damit unabhängig von M5), Gesichtsrahmen, Aufnahme- und Prüfdauer, AF; „Diagnose – keine Speicherung“. Der Burst läuft synchron, die Anzeige steht dabei ca. 1 s |
+| `room_display/thermal_monitor.py` | `ThermalMonitor` | §4.8 Temperatur; eigener Daemon-Thread, weil `vcgencmd` ein Subprozess ist (#1490 A4) |
+| `room_display/frame_config.py` (+ `.yaml`), `sensor_config.py`, `camera_config.py`, `config_values.py` | Loader, `*Config`-Dataclasses | Konfiguration mit User-Override (§4.1); gemeinsame Prüfhelfer in `config_values.py` |
+| `room_display/frame_sensors.py`, `frame_camera.py` | Wiring-Funktionen | Bauen APDS/Provider, ThermalMonitor/BME bzw. Kamera/Detector/Pipeline aus der Konfiguration; fehlende Hardware → eine WARNING, weiter ohne |
 | `room_display/oriented_display.py` | `OrientedDisplay` | Logisch 1280×720 quer, physisch je nach M3 (§4.3). Standbilder werden **beim Laden** gedreht, nicht pro Frame |
 | `room_display/frame_profile.py` | `run_frame(args)` | Wiring des Profils `frame` (§4.1) |
 | `room_display/portrait/portrait_state_machine.py` | `PortraitStateMachine` | Reine Logik (§4.4), Uhr injiziert |
 | `room_display/portrait/portrait_mode.py` | `PortraitMode` (`ContentMode`) | Verbindet Zustandsmaschine, Sensor, Kamera, Generator und Anzeige. Die Generierung läuft in einem Worker-Thread und meldet ihr Ergebnis über eine Queue. Hält die Sperre nach `CREDIT_EXHAUSTED` bis zum Neustart |
 | `room_display/portrait/scene_catalog.py` + `scenes.yaml` | `SceneCatalog` | Lädt die Szenen, setzt den Prompt aus Szene und festem Kern zusammen, Auswahl per Shuffle-Bag ohne Wiederholung (§4.5) |
 | `room_display/portrait/painting_store.py` | `PaintingStore` | Legt Gemälde persistent ab, schreibt atomar und prüft den freien Speicher |
-| `room_display/portrait/photo_pipeline.py` | `PhotoPipeline` | Aufnahme in den RAM über ein schmales Protocol, Rotation, Verkleinerung auf 1024 px, Gesichtsprüfung. Kein Schreiben auf einen Datenträger |
-| `room_display/portrait/face_detector.py` | `FaceDetector` (ABC) plus `NullFaceDetector` | Gesichtsprüfung (#1449 Punkt 3). Die Implementierung hängt an D2 |
+| `room_display/portrait/photo_pipeline.py` | `PhotoPipeline`, `PhotoResult` | Burst (Default 3 × 0,4 s) über ein schmales Protocol (`capture_image`), Auswahl der Aufnahme mit dem größten Gesicht, ohne Gesicht Ergebnis „kein Gesicht“ (kein JPEG), Verkleinerung auf 1024 px, JPEG im RAM. Nicht gewählte Aufnahmen werden im `finally` verworfen, das Ergebnis per `release()`/Context-Manager. Kein Schreiben auf einen Datenträger, keine Bilddaten im Log. `preview_without_face` nur für die Diagnose |
+| `room_display/portrait/face_detector.py` | `FaceDetector` (ABC), `NullFaceDetector`, `build_face_detector` | Gesichtsprüfung (#1449 Punkt 3). `NullFaceDetector` prüft nicht (`performed=False`); die Pipeline nimmt dann die letzte Aufnahme und „Gesicht angenommen“. `build_face_detector` wählt `haar`/`none` nach Konfiguration; fehlt OpenCV oder die Kaskade: einmal WARNING, Rückfall auf `none`, keine Laufzeit-Umschaltung (D2) |
+| `room_display/portrait/haar_face_detector.py` | `HaarFaceDetector` | OpenCV-Haar (lazy `cv2`), Prüfung auf Graustufenkopie (Default 640 px breit), Dauer je Prüfung. Kaskade aus Konfiguration, `cv2.data.haarcascades` oder `/usr/share/opencv4/haarcascades` (apt `opencv-data`). OpenCV 5 (pip) hat keinen `CascadeClassifier` mehr → ebenfalls Rückfall |
 | `llm/image_generator.py` | `ImageGenerator` (ABC), `ImageRequest`, `ImageResult` | `generate(request) -> ImageResult`, Status `OK / REFUSED / ERROR / TIMEOUT / CREDIT_EXHAUSTED` (Ae1), Dauer, Kosten (`usage.cost`, falls geliefert). Der Generator ist zustandslos |
 | `llm/openrouter_image_generator.py` | `OpenRouterImageGenerator` | `POST /api/v1/images` mit den Feldern aus Ae3 (§4.6), `provider`-Optionen per Konfiguration (Ae4). httpx-Client, Schlüssel und Timeout (Default 90 s) per DI, `USER_AGENT`. Kein Streaming (E7) |
-| `robot/apds9960_proximity.py` | `Apds9960Proximity` | Minimaler smbus2-Treiber: Konfiguration B aus #1440 (PPULSE 0xFF, CONTROL 0x0D, ENABLE 0x07), PDATA lesen, optional Offset-Register |
-| `avatar/proximity_attention_provider.py` | `ProximityAttentionProvider` (`AttentionProvider`) | PDATA → `AWAY / PRESENT / FOCUSED` mit Schwellen, Hysterese und Entprellung; erkennt Sättigung als Sensorfehler |
+| `robot/apds9960_proximity.py` | `Apds9960Proximity` | Minimaler smbus2-Treiber: Konfiguration B aus #1440 (ATIME 0xDB, PPULSE 0xFF, CONTROL 0x0D, ENABLE 0x07) als Default. Schreibt zuerst ENABLE=0x00, zuletzt ENABLE (#1490 A3). ID-Abweichung → WARNING ohne Abbruch; PDATA lesen; Offset-Register optional (Vorzeichen-Betrag); Fehler als `Apds9960Error` (`OSError`) |
+| `avatar/proximity_attention_provider.py` | `ProximityAttentionProvider` (`AttentionProvider`) | PDATA → `AWAY / PRESENT / FOCUSED`, Schwellen **relativ** zu einem konfigurierten Grundwert, Hysterese, Entprellung (auch beim Wiedereintritt), Abtastung ≤ 1/50 ms ohne Thread, Sensorfehler (§4.4), Lesefehler gedrosselt geloggt. Defaults = Platzhalter vor M5 (away +10, present +12, focused +15/+30; #1490 A6) |
 | `robot/bme280_reader.py` | `Bme280Reader` | D1: nur Log und WARNING-Schwelle für die Gehäuseluft, Adresse **0x76** (#1439). **Kein** `SensorManager`: `get_battery()` passt nicht, `BatteryStatus` kennt „keine Batterie“ nicht (Ae11) |
-| `robot/camera_controller.py` | `RPi5Camera` (erweitert) | Aufnahme in den Speicher, Rotation/Flip per Konfiguration, Autofokus-Zyklus, Kamera bleibt warm. Nur `RPi5Camera` wird erweitert, die ABC `CameraController` bleibt unverändert (Ae10) |
+| `robot/camera_controller.py` | `RPi5Camera` (erweitert) | `capture_image()` → PIL-RGB im RAM (BGR-Korrektur), `rotation`/`hflip`/`vflip` per Pillow nach der Aufnahme (erst spiegeln, dann drehen, Grad gegen den Uhrzeigersinn), Autofokus nur wenn die Kamera `AfMode` kennt (`AfMode=Auto`, `autofocus_cycle(wait=False)` + `wait` mit Timeout, Picamera2-Handbuch §5.3.4; nach einem erfolgreichen Zyklus wird `af_reuse_s` lang nicht neu fokussiert, im Rahmen 2 s = ein Zyklus pro Burst), `start()` zum Warmhalten. Alle Erweiterungen per Default aus; ABC und `capture_jpeg` unverändert (Ae10) |
 | `scripts/portrait_scene_test.py` | CLI | Szenen-Tests mit **demselben** Generator und Katalog wie im Betrieb (§4.6). Ersetzt das Wegwerf-Skript |
 | `scripts/set_frame_api_key.py` | CLI | Setzt `openrouter_frame_api_key` im SecretStore des Rahmen-Pi (§4.6, Ae6, E6) |
 | `server/elder-berry-frame.service` | systemd-Unit | §4.1, Ae12 |
 
-Geänderte Dateien (vorläufig): `scripts/start_rpi5.py` (Profil), `pyproject.toml` (Extra `[frame]`, mypy-Overrides), `docs/` (Abschnitt Rahmen-Setup), CI (Job mit pygame-ce, mypy-Umfang: `room_display/` und **nur** die zwei neuen `llm/`-Dateien, Ae8).
+Geänderte Dateien: `scripts/start_rpi5.py` (Profil; der Diff enthält nur Hinzufügungen), `pyproject.toml` (Extra `[frame]` = pygame-ce + smbus2, mypy-Overrides inkl. `ignore_missing_imports` für `smbus2`, `cv2`, `libcamera`), CI (Linux-Test-Job mit `[frame]` + Pillow, §6; mypy-Umfang: `room_display/` und **nur** die zwei neuen `llm/`-Dateien, Ae8), später `docs/` (Abschnitt Rahmen-Setup, E6).
 
 ### 4.3 Anzeige und Querbetrieb – Verzweigung nach M3/M4
 
@@ -107,7 +118,13 @@ Das Panel ist nativ 720×1280 hochkant. Die Gemälde sind 16:9 quer. Der Rendere
 - **Zweig M3-A** (KMS liefert ein Querbild 1280×720): `OrientedDisplay` mit Rotation 0, Bilder werden 1:1 dargestellt.
 - **Zweig M3-B** (KMS liefert kein Querbild): `OrientedDisplay` mit Rotation 90 oder 270. Jedes Standbild wird **einmal beim Laden** auf 720×1280 gedreht. Überblendungen zwischen zwei schon gedrehten Bildern kosten dann pro Frame nicht mehr als im Zweig A. Pro Frame gedreht wird nur dynamisch zusammengesetzter Inhalt (Stufe 1).
 
-**Erwartung cd (nicht verifiziert):** Die vc4-Hardware des RPi dreht vermutlich nur 0/180, und SDL/kmsdrm wertet eine Rotation aus `cmdline.txt` vermutlich nicht aus. M3-B ist deshalb der Planungs-Default, M3-A ein möglicher Bonus. Der Plan hängt nicht am Ausgang von M3.
+**Erwartung cd (nicht verifiziert):** Die vc4-Hardware des RPi dreht vermutlich nur 0/180, und SDL/kmsdrm wertet eine Rotation aus `cmdline.txt` vermutlich nicht aus. M3-B ist deshalb der Planungs-Default (`display.rotation: 90`), M3-A ein möglicher Bonus. Der Plan hängt nicht am Ausgang von M3.
+
+**Zu testender Rotationseintrag (Raspberry-Pi-Doku Touch Display 2, abgerufen 2026-11-18, #1488):** `video=DSI-1:720x1280@60,rotate=<Grad im Uhrzeigersinn>` in `/boot/firmware/cmdline.txt` (Connector DSI-1 oder DSI-2 je nach Port). Laut Doku dreht `rotate=` **nur die Textkonsole**; Anwendungen, die direkt auf DRM schreiben, nutzen ihre eigenen Rotationsoptionen. Die Wirkung auf SDL/kmsdrm misst M3.
+
+**Drehsinn (#1488 A6):** `display.rotation` zählt in Grad **gegen** den Uhrzeigersinn (pygame-Konvention), `rotate=` in `cmdline.txt` **im** Uhrzeigersinn. Die Werte sind nicht austauschbar; maßgeblich ist das Testbild. Passt die Rotation nicht zur physischen Ausrichtung, gibt es eine WARNING.
+
+**Bildrate (#1488 A5):** Die gemessene FPS ist durch `display.fps` (Default 30) nach oben begrenzt; die M4′-Auswertung klassifiziert nach der **mittleren** FPS, die minimale steht in derselben Logzeile.
 
 **M4 wird aufgeteilt:**
 - M4 wie in #1459 (`--benchmark-crossfade`) misst den additiven Avatar-Crossfade. Das ist **nur für Stufe 1** relevant (Saleria-Ebene).
@@ -156,7 +173,7 @@ Das Panel ist nativ 720×1280 hochkant. Die Gemälde sind 16:9 quer. Der Rendere
 
 **Schutz gegen Dauerauslösung und Kosten:**
 - Die Hysterese der Schwellen (`FOCUSED` ein/aus) kommt aus der Kalibrierung M5 und steht in der Konfiguration.
-- Bleibt PDATA länger als 60 s gesättigt oder `FOCUSED`, gilt das als **Sensorfehler**: Auslösung aus, WARNING ins Log, der Rahmen läuft als reines Gemälde weiter. Hintergrund ist das Übersprechen mit Grundwert 128 bei Konfiguration B (#1440). Nach dem Einbau kann der Grundwert anders liegen.
+- Bleibt PDATA **ununterbrochen** länger als 60 s gesättigt oder `FOCUSED`, gilt das als **Sensorfehler**: Auslösung aus, eine WARNING ins Log, `current()` liefert UNKNOWN, der Rahmen läuft als reines Gemälde weiter. Ein einzelner gesättigter Wert ist kein Fehler (eine Hand direkt vor dem Sensor gibt 255, #1440 T4; #1490 A2). Zurück erst nach 10 s ununterbrochen unter Grundwert + `present_above` (INFO). Hintergrund ist das Übersprechen mit Grundwert 128 bei Konfiguration B (#1440). Nach dem Einbau kann der Grundwert anders liegen.
 - **Lokale Obergrenze** für Generierungen, Vorschlag 40 pro Stunde. Ist sie erreicht, folgt der Rückfall. Das ergänzt das Kreditlimit des Schlüssels und ersetzt es nicht.
 - Abrechnung (Ae5): Laut OpenRouter-Guide werden 502 und abgebrochene Streams nicht berechnet. Ob ein Request ohne Streaming nach einem Client-Timeout berechnet wird, ist nicht belegt; das Kreditlimit begrenzt den Schaden.
 
@@ -168,7 +185,7 @@ Das Panel ist nativ 720×1280 hochkant. Die Gemälde sind 16:9 quer. Der Rendere
 - Der **feste Kern** wird vom Code immer angehängt und nicht in jeder Szene wiederholt: Gemäldestil, alle Gesichter erkennbar, Horror nur durch Atmosphäre, kein Blut, keine Verletzungen, keine Gewalt, nicht fotorealistisch, 16:9. Formuliert ist er für eine **beliebige Personenzahl** („everyone in this photo“, vgl. Amulti #1452). Er steht im Code (`scene_catalog.CORE_PROMPT`), nicht in der YAML, damit eine Bearbeitung der Szenen ihn nicht entfernen kann.
 - Ein Test sichert ab, dass jeder zusammengesetzte Prompt die Kernbedingungen enthält.
 - Auswahl: Shuffle-Bag ohne Wiederholung, bis jede Szene einmal dran war. Beim Neumischen ist die erste Szene nie die zuletzt gezeigte. Nach einem Neustart darf sich eine Szene wiederholen.
-- Modell, Qualität und `provider`-Optionen stehen in der Sektion `generation` von `scenes.yaml`: `openai/gpt-image-2.6-flare`, Qualität `low` als Kandidat (#1451 Punkt 4), `provider: {data_collection: deny, zdr: true}` (Ae4). Sie liegen dort und nicht in `frame_config.yaml`, damit Szenen-Test-CLI und Betrieb dieselbe Quelle lesen und das Ergebnis des ZDR-Checks an genau einer Stelle steht (Entscheidung cc in E1). Die Endbewertung der Qualität erfolgt am 7-Zoll-Display. Die Ausgabe ist 1536×864 und wird auf 1280×720 skaliert.
+- Modell, Qualität und `provider`-Optionen stehen in der Sektion `generation` von `scenes.yaml`: `openai/gpt-image-2.6-flare`, Qualität `low` als Kandidat (#1451 Punkt 4), `provider: {data_collection: deny}` ohne `zdr` (D8, §4.6). Sie liegen dort und nicht in `frame_config.yaml`, damit Szenen-Test-CLI und Betrieb dieselbe Quelle lesen und Provider-Entscheidungen an genau einer Stelle stehen (Entscheidung cc in E1, #1477 A1). Die Endbewertung der Qualität erfolgt am 7-Zoll-Display. Die Ausgabe ist 1536×864 und wird auf 1280×720 skaliert.
 - Entwürfe für 6 Szenen stehen in **Anhang A** und in `scenes.yaml`. Getestet ist davon nur S1 (A+/Amulti).
 
 ### 4.6 Bildgenerierung und Schlüssel (#1461 Punkt 1)
@@ -182,14 +199,14 @@ Das Panel ist nativ 720×1280 hochkant. Die Gemälde sind 16:9 quer. Der Rendere
 - Einspielen des Schlüssels: `scripts/set_frame_api_key.py` (E6, Vorlage `scripts/set_dashboard_password.py`). Der Schlüssel wird per `getpass` verdeckt abgefragt und landet nicht in der Shell-History.
 - **Request (Ae3):** `POST https://openrouter.ai/api/v1/images` mit `model`, `prompt`, `input_references` (Data-URL), `aspect_ratio` „16:9“, `quality`, `n=1` und `output_format` „png“ (explizit). **Nicht** gesendet werden `size`, `resolution`, `seed` (für flare nicht in `supported_parameters`). Das Feld `user` wird nie mit Gästedaten gefüllt. `provider` nur, wenn konfiguriert (Ae4).
 - **Response** laut Doku (#1473 F10): `{"created", "data": [{"b64_json", "media_type"?}], "usage"?: {"cost"?}}`, nur `b64_json`, kein URL-Feld. Fehlerbody `{"error": {"code", "message", "metadata"?}}`; Moderation als 403 mit `metadata.reasons`. Wie eine Ablehnung durch das Safety-System von OpenAI selbst ankommt, ist nicht dokumentiert; die Szenen-Tests zeigen es.
-- **Datenschutz beim Anbieter (Ae4):** Bevorzugt wird `provider.data_collection="deny"` mit `provider.zdr=true` gesendet. Die Szenen-Test-CLI prüft einmal (`--check-zdr`), ob flare damit einen Endpoint findet. Funktioniert es, bleiben die Werte in der Konfiguration. Schlägt es fehl, entscheidet Lera D8 (§10).
+- **Datenschutz beim Anbieter (Ae4, D8):** Gesendet wird `provider.data_collection="deny"` **ohne** `zdr`. Der ZDR-Check ist gescheitert: flare hat bei OpenRouter nur den First-Party-Endpoint von OpenAI, und der gilt nicht als ZDR (HTTP 404 „Filter by Data Policy“, #1478/#1479). Mit `data_collection=deny` lief die Messung OK (HTTP 200, 11,6 s, 0,0206 USD, #1480). Was `deny` bedeutet und was nicht, steht in R6.
 - **Logging (Ae2):** Request- und Response-Bodies werden nie geloggt, auch nicht im Fehlerfall: Der Request enthält das Gästefoto als Data-URL, die Antwort das Bild als Base64. Nie Schlüssel, Bild-Bytes oder Base64. Den httpx-Logger auf WARNING setzen. Geloggt werden Dauer, HTTP-Status, Ergebniskategorie, `error.code`, Szene und Kosten.
 - **Szenen-Test-CLI** (`scripts/portrait_scene_test.py`, Ae6a):
   - Der Schlüssel wird bei jedem Lauf per `getpass` abgefragt, kein SecretStore, nichts persistiert.
   - Eingabe: Bilddatei(en). EXIF-Drehung und Verkleinerung auf 1024 px im RAM (Pillow).
   - Parameter: Szene oder „alle“, Anzahl der Läufe, Qualität, optional `--no-zdr`.
   - Ausgabe: CSV (Zeit, Eingabe, Lauf, Szene, Status, HTTP-Status, `error.code`, Dauer, Kosten, Bilddatei; **kein** `flagged_input`) und die Ergebnisbilder in einem Temp-Verzeichnis, dessen Pfad am Ende ausgegeben wird.
-  - Modus `--check-zdr`: ein einzelner Lauf mit `data_collection=deny` und `zdr=true`. Ausgabe „ZDR verfuegbar“ oder der Fehler. Grundlage für D8.
+  - Modus `--check-zdr` (Diagnose): ein einzelner Lauf mit `data_collection=deny` und `zdr=true`. Ausgabe „ZDR verfuegbar“ oder der Fehler. War die Grundlage für D8; für flare wird derzeit ein Fehlschlag erwartet (#1478).
   - Damit testet Lera die Szenen (1 und 2 Personen, je 2–3 Läufe, #1467) mit dem Prompt-Aufbau des Betriebs. **Voraussetzung:** Das Wegwerf-Skript aus `C:\Dev\Elder-Berry\scripts` ist entfernt (#1466); vor dem ersten Commit `git status` prüfen.
 - Streaming (#1451 Punkt 2) ist **optional** (E7) und kommt erst, wenn der Kern läuft. Die ABC bekommt dafür eine optionale Methode oder Unterklasse, damit der Kern nicht davon abhängt. Zweiter Nutzen laut Doku: Ein abgebrochener Stream wird nicht berechnet (Ae5).
 
@@ -200,21 +217,24 @@ Das Panel ist nativ 720×1280 hochkant. Die Gemälde sind 16:9 quer. Der Rendere
 - Am Rahmen gibt es **keinen** QR-Code und keinen Link.
 - **Galerie (D3):** nein. Während der Party zeigt der Rahmen nur das jeweils eigene Ergebnis; frühere Gemälde erscheinen nicht im Leerlauf. Es gibt dafür keinen Konfigurationsschalter.
 - **Weitergabe (D4):** Lera kopiert die Gemälde nach der Party per scp und löscht sie danach auf dem Pi. Die Weitergabe erfolgt über **einen** Nextcloud-Freigabelink für alle Gäste mit 30 Tagen Ablauf. Damit sehen alle Gäste alle Gemälde; Lera hat das in Kenntnis davon gewählt, dass Gemälde mehrere Gäste zeigen können (R7). Kein Code, Schritt in der Party-Checkliste (§4.8).
-- Was OpenRouter und OpenAI speichern, liegt außerhalb dieser Regel; `data_collection=deny` und `zdr=true` werden bevorzugt (Ae4). Lera liest die Richtlinien vor der Party (#1449).
+- Was OpenRouter und OpenAI speichern, liegt außerhalb dieser Regel; gesendet wird `data_collection=deny` ohne ZDR (D8, Einordnung in R6). Lera liest die Richtlinien vor der Party (#1449).
 
 ### 4.8 Abhängigkeiten, Setup, Betrieb
 
-- **pygame-Drift (#1464):** Rahmen-Pis dürfen nur pygame-ce haben. Neues Extra `[frame]` mit `pygame-ce` und `smbus2`; httpx ist Core. Das Extra `[frame]` wird nie mit `[avatar]` kombiniert, analog der Regel für `[server]` aus #1463. Der Stamm-Setup bleibt unverändert, die Drift dort ist ein Folgepunkt aus #1463.
+- **pygame-Drift (#1464):** Rahmen-Pis dürfen nur pygame-ce haben. Neues Extra `[frame]` mit `pygame-ce` und `smbus2` (MIT, typisiert); httpx ist Core. Pillow, numpy, picamera2 und OpenCV stehen **bewusst nicht** in `[frame]` (E4, Ae7): auf dem Pi kommen sie per apt, und eine zweite pip-Kopie würde die apt-Version im venv verdecken. Das Extra `[frame]` wird nie mit `[avatar]` kombiniert, analog der Regel für `[server]` aus #1463. Der Stamm-Setup bleibt unverändert, die Drift dort ist ein Folgepunkt aus #1463.
 - **Setup Rahmen-Pi (Ae7):**
   - venv mit `--system-site-packages`.
   - picamera2 ausdrücklich per apt (`python3-picamera2`).
   - Kein `python3-pygame` per apt; das venv hat nur pygame-ce.
-  - Pillow kommt auf dem Pi aus apt. Ob `[frame]` Pillow zusätzlich deklariert, entscheidet cc in E4 mit Begründung. Pflicht dabei: genau eine Pillow-Quelle im venv nachweisen, und die Pillow-Tests laufen in CI (heute hat der CI-Test-Job kein Pillow).
-  - bei D2(a): `python3-opencv` per apt.
+  - Pillow kommt auf dem Pi aus apt (`python3-pil`), nicht aus `[frame]` (E4). Genau eine Pillow-Quelle im venv: M-E0-1 prüft `PIL.__file__` (erwartet `/usr/lib/python3/dist-packages`). Die Pillow-Tests laufen in CI, weil der Linux-Test-Job Pillow explizit installiert.
+  - OpenCV **nur per apt**: `python3-opencv` und `opencv-data` (Haar-Kaskaden), nicht `opencv-python` per pip. Quelle: Picamera2-Handbuch §2.6.1 (Version 0.3.37) – Begründung dort ist die Kompatibilität mit dem Qt der apt-Installation. Ergänzende Einschätzung cc (nicht am Gerät geprüft): Eine pip-OpenCV kann ein eigenes numpy in das venv ziehen, das das apt-numpy verdeckt, gegen das picamera2 gebaut ist. Außerdem enthält OpenCV 5 aus pip keinen `CascadeClassifier` mehr.
+  - picamera2 laut Handbuch §2.2.1 ausdrücklich per apt; ein venv „should be created to inherit system packages (… --system-site-packages …)“.
+  - I2C aktivieren (`sudo raspi-config nonint do_i2c 0`), Benutzer in die Gruppen `i2c`, `video` und `render`.
 - **Setup-Doku Rahmen:** eigener Abschnitt mit Installation, I2C, Kamera, Unit, Schlüssel und WLAN.
 - **WLAN-Checkliste (#1467 Punkt 3):** Heim-WLAN, Partyort-WLAN und Handy-Hotspot vorab speichern. Vorher `nmcli general status` prüfen. SSH über den Hotspot vorab testen. Die IP über die Geräteliste des Handys finden. Neue Netze im Notfall per `nmtui` setzen.
-- **Party-Checkliste:** Schlüssel eingespielt und Limit gesetzt; Modellverfügbarkeit ohne Schlüssel per `GET https://openrouter.ai/api/v1/images/models` (grep `gpt-image-2.6-flare`) eine Woche vorher und am Partytag prüfen (Ae14); Szenen getestet; Rückfallbilder vorhanden; Stromversorgung ohne Unterspannung; nach der Party Schlüssel widerrufen, Gemälde per scp kopieren, auf dem Pi löschen und per Nextcloud-Link mit 30 Tagen Ablauf freigeben (D4).
-- Temperatur: CPU-Temperatur aus `/sys/class/thermal` und `vcgencmd get_throttled` alle 5 min ins Log. Dazu die BME-Gehäuseluft mit einer WARNING-Schwelle (D1, streichbar).
+- **Party-Checkliste:** Schlüssel eingespielt und Limit gesetzt; OpenRouter Data Policies des Kontos bzw. Workspaces des Rahmen-Schlüssels prüfen („Allow paid endpoints that train on request data“: AUS) – #1479 hat nur Leras Konto gesehen, ob für den Rahmen-Schlüssel ein anderer Workspace gilt, ist offen (D8); Modellverfügbarkeit ohne Schlüssel per `GET https://openrouter.ai/api/v1/images/models` (grep `gpt-image-2.6-flare`) eine Woche vorher und am Partytag prüfen (Ae14); Szenen getestet; Rückfallbilder vorhanden; Stromversorgung ohne Unterspannung; nach der Party Schlüssel widerrufen, Gemälde per scp kopieren, auf dem Pi löschen und per Nextcloud-Link mit 30 Tagen Ablauf freigeben (D4).
+- Temperatur (`ThermalMonitor`, E3): CPU-Temperatur aus `/sys/class/thermal/thermal_zone0/temp` und `vcgencmd get_throttled` alle 5 min ins Log, in jedem Modus. WARNING ab CPU 80 °C, bei `throttled != 0x0` (Bit 0/16 = Unterspannung, M9) und bei Gehäuseluft ≥ 50 °C (BME280, Platzhalter bis M8; D1). Fehlen Pfad oder Kommando, einmal INFO.
+- BME280 (`Bme280Reader`, D1 umgesetzt): nur Temperatur, Kompensation selbst nach der Integer-Formel des Datenblatts, getestet gegen das Rechenbeispiel (25,08 °C). Falsche Chip-ID (z. B. BMP280) → nicht verfügbar (#1490 A8).
 
 ### 4.9 Stufe 1 hinter dem Tor (nur Umriss)
 
@@ -232,9 +252,9 @@ Die Reihenfolge folgt dem kritischen Pfad. Die Szenen brauchen die längste Vorl
 |---|---|---|---|
 | **E0 Preflight** (cc, nur lesen) | erledigt: #1473 | nein | 11-17 |
 | **E1 Bildgenerierung + Szenen** | Konzeptdatei, `ImageGenerator`, `OpenRouterImageGenerator`, `SceneCatalog`, `scenes.yaml`, Szenen-Test-CLI mit `--check-zdr`, Tests, mypy-Umfang | nein | 11-22 |
-| **E2 Anzeige + Profil** | `--profile frame`, `frame_profile.py`, `frame_config.yaml`, `RoomDisplayApp`, `OrientedDisplay`, `ContentMode`, Überblendungen, FPS-Log, CI-Job pygame-ce; danach M3/M4′ | Rahmen-Pi + Display | 11-27 |
-| **E3 Sensorik** | `Apds9960Proximity`, `ProximityAttentionProvider`; als letzte Aufgabe `Bme280Reader` (D1, streichbar); danach M5 | APDS am Pi | 11-29 |
-| **E4 Kamera** | Erweiterung `RPi5Camera`, `PhotoPipeline`, `FaceDetector` (D2, Messwert mit Pi-Modell); vorher M-E0-1 und M-E0-3; danach M6 | Kamera am Pi | 11-29 |
+| **E2 Anzeige + Profil** | umgesetzt (#1488): `--profile frame`, `frame_profile.py`, `frame_config.yaml`, `RoomDisplayApp`, `OrientedDisplay`, `ContentMode`, Überblendungen, FPS-Log, CI mit pygame-ce. Abnahme nach M3/M4′ | Rahmen-Pi + Display | 11-27 |
+| **E3 Sensorik** | umgesetzt (#1490): `Apds9960Proximity`, `ProximityAttentionProvider`, Ansicht `naeherung`, `ThermalMonitor`, `Bme280Reader` (D1). Abnahme nach M5 | APDS am Pi | 11-29 |
+| **E4 Kamera** | umgesetzt (Auftrag #1492): Erweiterung `RPi5Camera`, `PhotoPipeline`, `FaceDetector`/`HaarFaceDetector`, Ansicht `kamera`. Der Code erkennt Autofokus und OpenCV zur Laufzeit; die **Umsetzung** hing deshalb nicht an M-E0-3. M-E0-1, M-E0-3, M6 und die D2-Messung gehören vor die **Abnahme** von E4 (#1492) | Kamera am Pi | 11-29 |
 | **E5 Portrait-Modus** | Zustandsmaschine, `PortraitMode` inkl. Kredit-Sperre, `PaintingStore`, Rückfälle, Obergrenze, Löschregel, Wiring; vorher M-E0-4 | alles | 12-03 |
 | **E6 Setup + Betrieb** | Extra `[frame]`, Setup-Doku, `server/elder-berry-frame.service`, `set_frame_api_key.py`, Checklisten; vorher M-E0-2 auf dem Rahmen-Pi | Pi | 12-04 |
 | **Abnahme Stufe 0** | A1–A12 (§9), Tor nach D5 | Test-Aufbau | **bis 12-06** |
@@ -243,7 +263,7 @@ Die Reihenfolge folgt dem kritischen Pfad. Die Szenen brauchen die längste Vorl
 
 **Einordnung cd:** Die Termine sind ambitioniert. Bis zum 12-06 bleiben 20 Tage, der Rahmen ist noch nicht gekauft, und das Pi-Modell der Rahmen-Hardware ist offen (#1445). E2–E4 brauchen einen Test-Aufbau (Pi, Display, Kamera, APDS am Steckbrett), aber **nicht** den fertigen Rahmen. Wie die Abnahme den Rahmen einbezieht, regelt D5.
 
-**PR-Schnitt (D6):** Ein Branch `phase-111-raumdisplay-portrait` mit drei Teil-PRs: (1) E1, (2) E2+E3+E4, (3) E5+E6. Jeder PR hat den Commit-Footer `Journal: elder-berry#<Auftrags-id>`, Review durch Codex, Merge durch Lera. Die Abweichung von der Präzedenz „ein PR pro Phase“ ist bewusst entschieden.
+**PR-Schnitt (D6):** Drei Teil-PRs: (1) E1, (2) E2+E3+E4, (3) E5+E6. Jeder PR hat den Commit-Footer `Journal: elder-berry#<Auftrags-id>`, Review durch Codex, Merge durch Lera. Die Abweichung von der Präzedenz „ein PR pro Phase“ ist bewusst entschieden. **Präzisiert (#1487/#1489):** ein Branch pro Teil-PR. Nach dem Squash-Merge von Teil-PR 1 (#412) wäre ein Weiterarbeiten auf dem alten Branch nur mit Force-Push gegangen; Teil-PR 2 läuft deshalb auf `phase-111-raumdisplay-portrait-tpr2`.
 
 ### E0 – Preflight-Fragen (erledigt, #1473)
 
@@ -264,7 +284,13 @@ F1 Änderungen seit b4a4012 · F2 Argumente von `start_rpi5.py` und Einhängen d
 - Kamera-Rotation und Verkleinerung mit Pillow (keine Hardware). Die Pillow-Tests müssen in CI laufen (Ae7).
 - Profil `stamm`: Das Wiring entspricht dem Stand vor Phase 111 (neuer Regressionstest, Konstruktoraufrufe gepatcht); `tests/test_start_rpi5_token.py` bleibt grün (Ae9).
 
-**pygame-Tests:** `OrientedDisplay` (Dreh-Mathematik, Bild beim Laden gedreht) und `RoomDisplayApp` (ignoriert Eingabe-Events) laufen mit `pytest.importorskip("pygame")` und `SDL_VIDEODRIVER=dummy`. Damit sie nicht nur lokal laufen, bekommt **CI einen Job mit pygame-ce** (Folgepunkt aus #1463, hier fällig). Der mypy-Umfang in CI wird um `room_display/` und die zwei neuen Dateien `llm/image_generator.py` und `llm/openrouter_image_generator.py` erweitert, **nicht** um ganz `llm/` (Ae8).
+**pygame-Tests:** `OrientedDisplay` (Dreh-Mathematik, Bild beim Laden gedreht), `RoomDisplayApp` (ignoriert Eingabe-Events) und die Diagnoseansichten laufen mit `pytest.importorskip("pygame")` und `SDL_VIDEODRIVER=dummy`. Der mypy-Umfang in CI wird um `room_display/` und die zwei neuen Dateien `llm/image_generator.py` und `llm/openrouter_image_generator.py` erweitert, **nicht** um ganz `llm/` (Ae8).
+
+**CI-Umfang (Stand E4):**
+- Linux-Test-Job: zusätzlich `.[frame]` (pygame-ce, smbus2) und Pillow, `SDL_VIDEODRIVER=dummy`, `SDL_AUDIODRIVER=dummy` (#1488 Variante b). Damit laufen alle pygame- und Pillow-Tests, auch die bisher übersprungenen aus dem Bestand. `[avatar]` wird in keinem Job installiert.
+- Windows-Test-Job: ohne pygame, smbus2-Fakes laufen, die pygame-/Pillow-Module werden übersprungen; der SIGTERM-Test ist POSIX-only.
+- OpenCV ist in **keinem** CI-Job installiert: Die zwei Tests mit echter Haar-Kaskade laufen nur lokal (mit OpenCV 4.x) bzw. auf dem Pi.
+- mypy wird lokal sowohl mit als auch ohne die optionalen Pakete geprüft, weil strict ohne sie anders urteilt (z. B. `Returning Any`).
 
 **Hardware-Tests:** Messungen M3–M9, M-E0-1 bis M-E0-4 und Abnahme durch Lera.
 
@@ -272,10 +298,12 @@ F1 Änderungen seit b4a4012 · F2 Argumente von `start_rpi5.py` und Einhängen d
 
 **M-E0-1 bis M-E0-4 (aus #1473, Ae15).** Befehle und Auswertungsregeln stehen in #1473 Abschnitt 4 und gelten unverändert. Reihenfolge:
 - **M-E0-2** (SecretStore-Pfad) vor E6, auf dem **Rahmen**-Pi. Nur `keyring.get_keyring()` abfragen, kein `SecretStore().get/.set`.
-- **M-E0-1** (Stamm-venv, picamera2/Pillow-Quelle) vor E4/E6.
-- **M-E0-3** (picamera2-Autofokus, OpenCV per apt) vor E4.
+- **M-E0-1** (Stamm-venv, picamera2/Pillow-Quelle) vor der **Abnahme** von E4 und vor E6.
+- **M-E0-3** (picamera2-Autofokus, OpenCV per apt) vor der **Abnahme** von E4 (präzisiert #1492: die Umsetzung erkennt AF und OpenCV zur Laufzeit und hängt nicht an der Messung). Ergänzung E4: OpenCV-Version und `CascadeClassifier` mitprüfen.
 - **M-E0-4** (Importzeit und RAM) vor E5. Ein Lazy-`llm/__init__` wäre eine Bestandsänderung und braucht Lera-OK.
 - E1 hängt an keiner dieser Messungen.
+
+**Werkzeuge im Profil `frame` (Befehle und Auswertung im Journal):** M3 und M4′ mit `--frame-view testbild` bzw. `ueberblendung` (#1488), M5 mit `--frame-view naeherung` (#1490; Schwellen danach unter `proximity.thresholds` im User-Override), M6 und die D2-Prüfdauer mit `--frame-view kamera` (E4).
 
 **M3 – Querbetrieb (präzisiert gegenüber #1459).** Auf dem Rahmen-Pi mit dem Display:
 1. `python -c "import pygame; pygame.display.init(); print(pygame.display.get_desktop_sizes())"` unter `SDL_VIDEODRIVER=kmsdrm`, einmal ohne und einmal mit Rotationseintrag. Welcher Eintrag (`cmdline.txt` `video=DSI-1:…,rotate=90` oder Overlay-Parameter) passt, legt cc in E2 nach der Raspberry-Pi-Doku fest.
@@ -321,7 +349,7 @@ Auswertung:
 | R3 | Ablehnungen auf der Party (Kostüme mit Kunstblut oder Spielzeugwaffen), trotz 0 von 15 im Test | Kategorie `REFUSED` führt zum Schockbild; Szenen-Tests; Kern ohne Gewalt |
 | R4 | APDS-Grundwert nach dem Einbau anders, Dauerauslösung frisst Guthaben | M5, Sättigungserkennung, Obergrenze pro Stunde, Kreditlimit, Kredit-Sperre nach 402 |
 | R5 | Schlüssel auf einem Gerät im fremden Haus, SecretStore ohne echten Schutz auf dem Pi; Keyring/Datei-Mismatch | eigener Schlüssel, Kreditlimit, Widerruf nach der Party (§4.6); `use_keyring=False` mit Abbruch-Schutz (Ae6); M-E0-2 |
-| R6 | Datenschutz beim Anbieter außerhalb eigener Kontrolle | Opt-in durch Annäherung, Gäste informiert (#1449); `data_collection=deny` + `zdr=true` bevorzugt (Ae4), sonst D8; Lera liest die Richtlinien |
+| R6 | Datenschutz beim Anbieter außerhalb eigener Kontrolle | Opt-in durch Annäherung, Gäste informiert (#1449); `data_collection=deny` ohne ZDR (D8). **Einordnung:** `deny` schließt Endpoints aus, die auf Request-Daten trainieren. Es heißt **nicht**, dass nichts gespeichert wird; was OpenAI außerhalb von ZDR vorübergehend aufbewahrt (z. B. zur Missbrauchskontrolle), steuert diese Option nicht, und es ist nicht geprüft. Lera liest die Richtlinien vor der Party; Data Policies des Rahmen-Schlüssels in der Checkliste (§4.8) |
 | R7 | Ein Gemälde zeigt mehrere Gäste, die Weitergabe betrifft also auch Dritte | D4: ein gemeinsamer Link, bewusst gewählt |
 | R8 | Querbetrieb oder Bildrate (M3/M4′) | Drehung beim Laden; Verzweigung in §4.3 und §7 |
 | R9 | pygame und pygame-ce gleichzeitig auf dem Rahmen-Pi | Extra `[frame]`, kein `python3-pygame` per apt, Setup-Doku, A11 |
@@ -349,13 +377,13 @@ Auswertung:
 ## 10. Entscheidungen (Lera, 2026-11-17, #1475)
 
 - **D1 BME280:** minimal und streichbar. `robot/bme280_reader.py` (`Bme280Reader`, kein `SensorManager`, Ae11) schreibt nur ins Log und warnt ab einer Schwelle. Letzte Aufgabe in E3; bei Zeitnot fällt sie weg, ohne dass Stufe 0 leidet. Die Hardware wird in jedem Fall eingebaut.
-- **D2 Gesichtsprüfung:** OpenCV-Haar per apt (`python3-opencv`), wenn die Prüfung in E4 auf dem Pi unter 300 ms je Bild liegt. Sonst `NullFaceDetector`. Ein Messwert mit Pi-Modell geht in die E4-Meldung. Voraussetzung ist M-E0-3.
+- **D2 Gesichtsprüfung:** OpenCV-Haar per apt (`python3-opencv`, `opencv-data`), wenn die Prüfung auf dem Pi unter 300 ms je Bild liegt. Sonst `NullFaceDetector`. Den Messwert liefert die Ansicht `kamera` (Logzeile „Prüfung [haar] mittel … max …“) auf dem Rahmen-Pi 5; die Entscheidung trifft Lera und trägt sie unter `face.detector` (`haar` | `none`) ein. Keine Umschaltung zur Laufzeit. Voraussetzung ist M-E0-3.
 - **D3 Galerie:** nein (§4.7). Es gibt keinen Konfigurationsschalter; die Funktion wird nicht gebaut.
 - **D4 Weitergabe:** scp durch Lera, danach Löschen auf dem Pi, ein Nextcloud-Freigabelink für alle Gäste mit 30 Tagen Ablauf (§4.7). Kein Code, Schritt in der Party-Checkliste (E6).
 - **D5 Tor:** Software auf dem Test-Aufbau (§9).
 - **D6 PR-Schnitt:** ein Branch, drei Teil-PRs (§5).
 - **D7 Sprache:** Diese Datei wird auf Deutsch geführt.
-- **D8 (bedingt offen, Ae4):** Nur falls der ZDR-Check in E1 scheitert: flare ohne ZDR bzw. mit `data_collection=allow`, oder ein anderes Modell. Die Gäste sind informiert (#1449); die Regel aus #1467 bleibt unberührt.
+- **D8 Datenpolitik beim Anbieter (Lera, 2026-11-18, #1482):** flare mit `provider.data_collection="deny"` **ohne** `zdr`. Begründung: Mit ZDR gibt es für flare keinen Endpoint, weil nur der First-Party-Endpoint von OpenAI existiert und dieser nicht als ZDR gilt (#1478); die Konto-Einstellungen erzwingen kein ZDR (#1479); die Messung mit `deny` war OK (#1480). Verworfen: flare ohne `provider`-Optionen (schützt nicht, falls jemand die Konto-Einstellung „paid endpoints that train“ ändert) und ein anderes Modell. Einordnung in R6. Die Gäste sind informiert (#1449); die Regel aus #1467 bleibt unberührt.
 
 Weiter offen außerhalb dieser Datei: Rahmenkauf und Pi-Modell (R1) sowie die Messungen M-E0-1 bis M-E0-4 (§7).
 
