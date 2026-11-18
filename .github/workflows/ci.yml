@@ -49,7 +49,20 @@ jobs:
         if: runner.os == 'Windows'
         run: pip install -e ".[windows]"
 
+      - name: Install frame dependencies (pygame-ce, Linux)
+        # Phase 111 (§6, E2): pygame-Tests (OrientedDisplay, RoomDisplayApp,
+        # Diagnosemodus, Selfie-Render, Crossfade-Benchmark) laufen sonst nur
+        # lokal. Nur pygame-ce ueber [frame], NIE zusammen mit [avatar]
+        # (pygame) -- gleicher Importname. Windows bleibt ohne pygame; dort
+        # werden diese Tests weiter per importorskip uebersprungen.
+        if: runner.os == 'Linux'
+        run: pip install -e ".[frame]"
+
       - name: Run tests
+        env:
+          # Headless-Runner: SDL ohne Display und ohne Soundkarte.
+          SDL_VIDEODRIVER: dummy
+          SDL_AUDIODRIVER: dummy
         run: >-
           python -m pytest tests/ -v --tb=short
           --cov=src/elder_berry --cov-report=xml --cov-report=term

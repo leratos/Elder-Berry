@@ -1,0 +1,38 @@
+# Konfiguration des Geraeteprofils "frame" (Phase 111, Konzept §4.1).
+#
+# Default im Paket. Ein User-Override unter ~/.elder-berry/frame_config.yaml
+# muss nur die Schluessel enthalten, die abweichen; er wird pro Sektion ueber
+# diese Datei gelegt. Ungueltige Werte brechen den Start mit klarer Meldung ab.
+#
+# Die Generierungs-Einstellungen (Modell, Qualitaet, provider) stehen NICHT
+# hier, sondern in room_display/portrait/scenes.yaml (#1477 A1).
+
+display:
+  # Drehung des logischen Querbilds (1280x720) auf das Panel, in Grad
+  # gegen den Uhrzeigersinn: 0, 90, 180 oder 270. Planungs-Default ist M3-B
+  # (Panel nativ 720x1280 hochkant, Drehung in Software, §4.3). Ob 90 oder
+  # 270 richtig ist, zeigt das Testbild bei M3.
+  rotation: 90
+  # Ziel-Bildrate waehrend Ueberblendungen. Im Standbild wird nicht
+  # dauerhaft gerendert.
+  fps: 30
+  # Dauer einer Ueberblendung in Sekunden.
+  transition_s: 1.0
+  # SDL-Videotreiber. kmsdrm auf dem Pi ohne Desktop; null = Umgebung bzw.
+  # SDL-Default (z.B. fuer Tests mit SDL_VIDEODRIVER=dummy).
+  video_driver: kmsdrm
+  # Vollbild. false nur zum Debuggen am Desktop (Fenster).
+  fullscreen: true
+
+mode:
+  # In E2 gibt es nur den Diagnosemodus (Messungen M3/M4'). Der
+  # Portrait-Modus folgt in E5.
+  name: diagnostic
+  diagnostic:
+    # testbild: M3 (Ausrichtung). ueberblendung: M4' (Bildrate).
+    view: testbild
+    # Anzahl Ueberblendungen im Modus "ueberblendung"; danach endet das
+    # Programm mit einer Zusammenfassung im Log.
+    transitions: 10
+    # Standzeit zwischen zwei Ueberblendungen in Sekunden.
+    hold_s: 1.0

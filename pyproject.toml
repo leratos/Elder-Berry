@@ -44,6 +44,14 @@ tts-neural = [
 avatar = [
     "pygame>=2.6.1",
 ]
+# Phase 111 (Ae7, #1474): Raumdisplay "Rahmen" (scripts/start_rpi5.py
+# --profile frame). pygame-ce bringt eigenes SDL mit kmsdrm mit.
+# NIE mit [avatar] kombinieren: pygame und pygame-ce teilen den Importnamen
+# 'pygame' und duerfen nicht gemeinsam in einem venv landen (wie [server]).
+# smbus2 kommt mit E3 (Sensorik), Pillow nach Ae7 erst mit E4 (Kamera).
+frame = [
+    "pygame-ce>=2.5.8",
+]
 robot = []
 agent = [
     "python-multipart>=0.0.33",
