@@ -74,10 +74,8 @@ class TestPackagedScenes:
         generation = SceneCatalog.load().generation
         assert generation.model == "openai/gpt-image-2.6-flare"
         assert generation.quality == "low"
-        assert dict(generation.provider_options) == {
-            "data_collection": "deny",
-            "zdr": True,
-        }
+        # D8 (#1482): deny ohne zdr
+        assert dict(generation.provider_options) == {"data_collection": "deny"}
 
     def test_every_composed_prompt_contains_core_terms(self):
         catalog = SceneCatalog.load()

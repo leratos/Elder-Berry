@@ -12,17 +12,17 @@
 
 # Generierungs-Einstellungen. Sie liegen bewusst HIER und nicht in einer
 # frame_config.yaml: Szenen-Test-CLI und Betrieb lesen damit dieselbe Quelle
-# (§4.6), und das Ergebnis des ZDR-Checks (Ae4/D8) wird an genau einer Stelle
-# eingetragen.
+# (§4.6), und Provider-Entscheidungen (Ae4/D8) stehen an genau einer Stelle.
 generation:
   model: openai/gpt-image-2.6-flare
   quality: low
-  # Ae4: bevorzugt ohne Datensammlung und mit Zero Data Retention. Ob flare
-  # damit einen Endpoint findet, prueft `portrait_scene_test.py --check-zdr`.
-  # Scheitert der Check, entscheidet Lera D8 -- erst dann hier aendern.
+  # D8 (Lera, 2026-11-18, elder-berry#1482): data_collection=deny OHNE zdr.
+  # flare hat nur den First-Party-Endpoint von OpenAI, und der ist nicht ZDR
+  # (#1478/#1479); mit deny lief die Messung OK (#1480). deny schliesst
+  # Endpoints aus, die auf Request-Daten trainieren -- es heisst NICHT, dass
+  # nichts gespeichert wird.
   provider:
     data_collection: deny
-    zdr: true
 
 scenes:
   - id: s1_moonlit_parlour

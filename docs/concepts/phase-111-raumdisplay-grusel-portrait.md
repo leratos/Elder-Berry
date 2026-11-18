@@ -1,8 +1,8 @@
 # Phase 111 – Raumdisplay „Rahmen“ mit Inhaltsmodus Grusel-Portrait
 
-**Status:** freigegeben durch Lera am 2026-11-17; Entscheidungen D1–D7 getroffen (#1475), D8 nur bedingt offen (§10)
+**Status:** freigegeben durch Lera am 2026-11-17; Entscheidungen D1–D7 getroffen (#1475), D8 entschieden (#1482, §10)
 **Branch:** `phase-111-raumdisplay-portrait`, drei Teil-PRs (D6)
-**Grundlage:** elder-berry #1443–#1468, insbesondere Preflight #1459, Auswertung #1460, Entscheidungen #1461 und #1467; Sensorwerte #1436–#1441; Selfie-Bugfix #1462–#1464; Preflight E0 #1473, Konzeptänderungen Ae1–Ae16 #1474, Entscheidungen D1–D7 #1475
+**Grundlage:** elder-berry #1443–#1468, #1478–#1482 (ZDR-Check und D8), insbesondere Preflight #1459, Auswertung #1460, Entscheidungen #1461 und #1467; Sensorwerte #1436–#1441; Selfie-Bugfix #1462–#1464; Preflight E0 #1473, Konzeptänderungen Ae1–Ae16 #1474, Entscheidungen D1–D7 #1475
 **Quelle:** Diese Datei ist der Wortlaut von #1469 (ab „# Phase 111“) und #1470 mit den Änderungen aus #1474 und #1475, in die Abschnitte eingearbeitet. Die Journal-Einträge bleiben die Quelle.
 **Code-Stand der Aussagen:** am Code geprüft in E0 (#1473) auf main @ 5b2cce0.
 **Termine:** Party 2026-12-31 · Entscheidungstor Stufe 1: 2026-12-06 (#1461)
@@ -168,7 +168,7 @@ Das Panel ist nativ 720×1280 hochkant. Die Gemälde sind 16:9 quer. Der Rendere
 - Der **feste Kern** wird vom Code immer angehängt und nicht in jeder Szene wiederholt: Gemäldestil, alle Gesichter erkennbar, Horror nur durch Atmosphäre, kein Blut, keine Verletzungen, keine Gewalt, nicht fotorealistisch, 16:9. Formuliert ist er für eine **beliebige Personenzahl** („everyone in this photo“, vgl. Amulti #1452). Er steht im Code (`scene_catalog.CORE_PROMPT`), nicht in der YAML, damit eine Bearbeitung der Szenen ihn nicht entfernen kann.
 - Ein Test sichert ab, dass jeder zusammengesetzte Prompt die Kernbedingungen enthält.
 - Auswahl: Shuffle-Bag ohne Wiederholung, bis jede Szene einmal dran war. Beim Neumischen ist die erste Szene nie die zuletzt gezeigte. Nach einem Neustart darf sich eine Szene wiederholen.
-- Modell, Qualität und `provider`-Optionen stehen in der Sektion `generation` von `scenes.yaml`: `openai/gpt-image-2.6-flare`, Qualität `low` als Kandidat (#1451 Punkt 4), `provider: {data_collection: deny, zdr: true}` (Ae4). Sie liegen dort und nicht in `frame_config.yaml`, damit Szenen-Test-CLI und Betrieb dieselbe Quelle lesen und das Ergebnis des ZDR-Checks an genau einer Stelle steht (Entscheidung cc in E1). Die Endbewertung der Qualität erfolgt am 7-Zoll-Display. Die Ausgabe ist 1536×864 und wird auf 1280×720 skaliert.
+- Modell, Qualität und `provider`-Optionen stehen in der Sektion `generation` von `scenes.yaml`: `openai/gpt-image-2.6-flare`, Qualität `low` als Kandidat (#1451 Punkt 4), `provider: {data_collection: deny}` ohne `zdr` (D8, §4.6). Sie liegen dort und nicht in `frame_config.yaml`, damit Szenen-Test-CLI und Betrieb dieselbe Quelle lesen und Provider-Entscheidungen an genau einer Stelle stehen (Entscheidung cc in E1, #1477 A1). Die Endbewertung der Qualität erfolgt am 7-Zoll-Display. Die Ausgabe ist 1536×864 und wird auf 1280×720 skaliert.
 - Entwürfe für 6 Szenen stehen in **Anhang A** und in `scenes.yaml`. Getestet ist davon nur S1 (A+/Amulti).
 
 ### 4.6 Bildgenerierung und Schlüssel (#1461 Punkt 1)
@@ -182,14 +182,14 @@ Das Panel ist nativ 720×1280 hochkant. Die Gemälde sind 16:9 quer. Der Rendere
 - Einspielen des Schlüssels: `scripts/set_frame_api_key.py` (E6, Vorlage `scripts/set_dashboard_password.py`). Der Schlüssel wird per `getpass` verdeckt abgefragt und landet nicht in der Shell-History.
 - **Request (Ae3):** `POST https://openrouter.ai/api/v1/images` mit `model`, `prompt`, `input_references` (Data-URL), `aspect_ratio` „16:9“, `quality`, `n=1` und `output_format` „png“ (explizit). **Nicht** gesendet werden `size`, `resolution`, `seed` (für flare nicht in `supported_parameters`). Das Feld `user` wird nie mit Gästedaten gefüllt. `provider` nur, wenn konfiguriert (Ae4).
 - **Response** laut Doku (#1473 F10): `{"created", "data": [{"b64_json", "media_type"?}], "usage"?: {"cost"?}}`, nur `b64_json`, kein URL-Feld. Fehlerbody `{"error": {"code", "message", "metadata"?}}`; Moderation als 403 mit `metadata.reasons`. Wie eine Ablehnung durch das Safety-System von OpenAI selbst ankommt, ist nicht dokumentiert; die Szenen-Tests zeigen es.
-- **Datenschutz beim Anbieter (Ae4):** Bevorzugt wird `provider.data_collection="deny"` mit `provider.zdr=true` gesendet. Die Szenen-Test-CLI prüft einmal (`--check-zdr`), ob flare damit einen Endpoint findet. Funktioniert es, bleiben die Werte in der Konfiguration. Schlägt es fehl, entscheidet Lera D8 (§10).
+- **Datenschutz beim Anbieter (Ae4, D8):** Gesendet wird `provider.data_collection="deny"` **ohne** `zdr`. Der ZDR-Check ist gescheitert: flare hat bei OpenRouter nur den First-Party-Endpoint von OpenAI, und der gilt nicht als ZDR (HTTP 404 „Filter by Data Policy“, #1478/#1479). Mit `data_collection=deny` lief die Messung OK (HTTP 200, 11,6 s, 0,0206 USD, #1480). Was `deny` bedeutet und was nicht, steht in R6.
 - **Logging (Ae2):** Request- und Response-Bodies werden nie geloggt, auch nicht im Fehlerfall: Der Request enthält das Gästefoto als Data-URL, die Antwort das Bild als Base64. Nie Schlüssel, Bild-Bytes oder Base64. Den httpx-Logger auf WARNING setzen. Geloggt werden Dauer, HTTP-Status, Ergebniskategorie, `error.code`, Szene und Kosten.
 - **Szenen-Test-CLI** (`scripts/portrait_scene_test.py`, Ae6a):
   - Der Schlüssel wird bei jedem Lauf per `getpass` abgefragt, kein SecretStore, nichts persistiert.
   - Eingabe: Bilddatei(en). EXIF-Drehung und Verkleinerung auf 1024 px im RAM (Pillow).
   - Parameter: Szene oder „alle“, Anzahl der Läufe, Qualität, optional `--no-zdr`.
   - Ausgabe: CSV (Zeit, Eingabe, Lauf, Szene, Status, HTTP-Status, `error.code`, Dauer, Kosten, Bilddatei; **kein** `flagged_input`) und die Ergebnisbilder in einem Temp-Verzeichnis, dessen Pfad am Ende ausgegeben wird.
-  - Modus `--check-zdr`: ein einzelner Lauf mit `data_collection=deny` und `zdr=true`. Ausgabe „ZDR verfuegbar“ oder der Fehler. Grundlage für D8.
+  - Modus `--check-zdr` (Diagnose): ein einzelner Lauf mit `data_collection=deny` und `zdr=true`. Ausgabe „ZDR verfuegbar“ oder der Fehler. War die Grundlage für D8; für flare wird derzeit ein Fehlschlag erwartet (#1478).
   - Damit testet Lera die Szenen (1 und 2 Personen, je 2–3 Läufe, #1467) mit dem Prompt-Aufbau des Betriebs. **Voraussetzung:** Das Wegwerf-Skript aus `C:\Dev\Elder-Berry\scripts` ist entfernt (#1466); vor dem ersten Commit `git status` prüfen.
 - Streaming (#1451 Punkt 2) ist **optional** (E7) und kommt erst, wenn der Kern läuft. Die ABC bekommt dafür eine optionale Methode oder Unterklasse, damit der Kern nicht davon abhängt. Zweiter Nutzen laut Doku: Ein abgebrochener Stream wird nicht berechnet (Ae5).
 
@@ -200,7 +200,7 @@ Das Panel ist nativ 720×1280 hochkant. Die Gemälde sind 16:9 quer. Der Rendere
 - Am Rahmen gibt es **keinen** QR-Code und keinen Link.
 - **Galerie (D3):** nein. Während der Party zeigt der Rahmen nur das jeweils eigene Ergebnis; frühere Gemälde erscheinen nicht im Leerlauf. Es gibt dafür keinen Konfigurationsschalter.
 - **Weitergabe (D4):** Lera kopiert die Gemälde nach der Party per scp und löscht sie danach auf dem Pi. Die Weitergabe erfolgt über **einen** Nextcloud-Freigabelink für alle Gäste mit 30 Tagen Ablauf. Damit sehen alle Gäste alle Gemälde; Lera hat das in Kenntnis davon gewählt, dass Gemälde mehrere Gäste zeigen können (R7). Kein Code, Schritt in der Party-Checkliste (§4.8).
-- Was OpenRouter und OpenAI speichern, liegt außerhalb dieser Regel; `data_collection=deny` und `zdr=true` werden bevorzugt (Ae4). Lera liest die Richtlinien vor der Party (#1449).
+- Was OpenRouter und OpenAI speichern, liegt außerhalb dieser Regel; gesendet wird `data_collection=deny` ohne ZDR (D8, Einordnung in R6). Lera liest die Richtlinien vor der Party (#1449).
 
 ### 4.8 Abhängigkeiten, Setup, Betrieb
 
@@ -213,7 +213,7 @@ Das Panel ist nativ 720×1280 hochkant. Die Gemälde sind 16:9 quer. Der Rendere
   - bei D2(a): `python3-opencv` per apt.
 - **Setup-Doku Rahmen:** eigener Abschnitt mit Installation, I2C, Kamera, Unit, Schlüssel und WLAN.
 - **WLAN-Checkliste (#1467 Punkt 3):** Heim-WLAN, Partyort-WLAN und Handy-Hotspot vorab speichern. Vorher `nmcli general status` prüfen. SSH über den Hotspot vorab testen. Die IP über die Geräteliste des Handys finden. Neue Netze im Notfall per `nmtui` setzen.
-- **Party-Checkliste:** Schlüssel eingespielt und Limit gesetzt; Modellverfügbarkeit ohne Schlüssel per `GET https://openrouter.ai/api/v1/images/models` (grep `gpt-image-2.6-flare`) eine Woche vorher und am Partytag prüfen (Ae14); Szenen getestet; Rückfallbilder vorhanden; Stromversorgung ohne Unterspannung; nach der Party Schlüssel widerrufen, Gemälde per scp kopieren, auf dem Pi löschen und per Nextcloud-Link mit 30 Tagen Ablauf freigeben (D4).
+- **Party-Checkliste:** Schlüssel eingespielt und Limit gesetzt; OpenRouter Data Policies des Kontos bzw. Workspaces des Rahmen-Schlüssels prüfen („Allow paid endpoints that train on request data“: AUS) – #1479 hat nur Leras Konto gesehen, ob für den Rahmen-Schlüssel ein anderer Workspace gilt, ist offen (D8); Modellverfügbarkeit ohne Schlüssel per `GET https://openrouter.ai/api/v1/images/models` (grep `gpt-image-2.6-flare`) eine Woche vorher und am Partytag prüfen (Ae14); Szenen getestet; Rückfallbilder vorhanden; Stromversorgung ohne Unterspannung; nach der Party Schlüssel widerrufen, Gemälde per scp kopieren, auf dem Pi löschen und per Nextcloud-Link mit 30 Tagen Ablauf freigeben (D4).
 - Temperatur: CPU-Temperatur aus `/sys/class/thermal` und `vcgencmd get_throttled` alle 5 min ins Log. Dazu die BME-Gehäuseluft mit einer WARNING-Schwelle (D1, streichbar).
 
 ### 4.9 Stufe 1 hinter dem Tor (nur Umriss)
@@ -321,7 +321,7 @@ Auswertung:
 | R3 | Ablehnungen auf der Party (Kostüme mit Kunstblut oder Spielzeugwaffen), trotz 0 von 15 im Test | Kategorie `REFUSED` führt zum Schockbild; Szenen-Tests; Kern ohne Gewalt |
 | R4 | APDS-Grundwert nach dem Einbau anders, Dauerauslösung frisst Guthaben | M5, Sättigungserkennung, Obergrenze pro Stunde, Kreditlimit, Kredit-Sperre nach 402 |
 | R5 | Schlüssel auf einem Gerät im fremden Haus, SecretStore ohne echten Schutz auf dem Pi; Keyring/Datei-Mismatch | eigener Schlüssel, Kreditlimit, Widerruf nach der Party (§4.6); `use_keyring=False` mit Abbruch-Schutz (Ae6); M-E0-2 |
-| R6 | Datenschutz beim Anbieter außerhalb eigener Kontrolle | Opt-in durch Annäherung, Gäste informiert (#1449); `data_collection=deny` + `zdr=true` bevorzugt (Ae4), sonst D8; Lera liest die Richtlinien |
+| R6 | Datenschutz beim Anbieter außerhalb eigener Kontrolle | Opt-in durch Annäherung, Gäste informiert (#1449); `data_collection=deny` ohne ZDR (D8). **Einordnung:** `deny` schließt Endpoints aus, die auf Request-Daten trainieren. Es heißt **nicht**, dass nichts gespeichert wird; was OpenAI außerhalb von ZDR vorübergehend aufbewahrt (z. B. zur Missbrauchskontrolle), steuert diese Option nicht, und es ist nicht geprüft. Lera liest die Richtlinien vor der Party; Data Policies des Rahmen-Schlüssels in der Checkliste (§4.8) |
 | R7 | Ein Gemälde zeigt mehrere Gäste, die Weitergabe betrifft also auch Dritte | D4: ein gemeinsamer Link, bewusst gewählt |
 | R8 | Querbetrieb oder Bildrate (M3/M4′) | Drehung beim Laden; Verzweigung in §4.3 und §7 |
 | R9 | pygame und pygame-ce gleichzeitig auf dem Rahmen-Pi | Extra `[frame]`, kein `python3-pygame` per apt, Setup-Doku, A11 |
@@ -355,7 +355,7 @@ Auswertung:
 - **D5 Tor:** Software auf dem Test-Aufbau (§9).
 - **D6 PR-Schnitt:** ein Branch, drei Teil-PRs (§5).
 - **D7 Sprache:** Diese Datei wird auf Deutsch geführt.
-- **D8 (bedingt offen, Ae4):** Nur falls der ZDR-Check in E1 scheitert: flare ohne ZDR bzw. mit `data_collection=allow`, oder ein anderes Modell. Die Gäste sind informiert (#1449); die Regel aus #1467 bleibt unberührt.
+- **D8 Datenpolitik beim Anbieter (Lera, 2026-11-18, #1482):** flare mit `provider.data_collection="deny"` **ohne** `zdr`. Begründung: Mit ZDR gibt es für flare keinen Endpoint, weil nur der First-Party-Endpoint von OpenAI existiert und dieser nicht als ZDR gilt (#1478); die Konto-Einstellungen erzwingen kein ZDR (#1479); die Messung mit `deny` war OK (#1480). Verworfen: flare ohne `provider`-Optionen (schützt nicht, falls jemand die Konto-Einstellung „paid endpoints that train“ ändert) und ein anderes Modell. Einordnung in R6. Die Gäste sind informiert (#1449); die Regel aus #1467 bleibt unberührt.
 
 Weiter offen außerhalb dieser Datei: Rahmenkauf und Pi-Modell (R1) sowie die Messungen M-E0-1 bis M-E0-4 (§7).
 

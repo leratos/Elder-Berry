@@ -10,7 +10,8 @@ Keyring-Modus unlesbar machen).
 
 Verwendung (Beispiele)::
 
-    # ZDR-Check: ein Lauf mit data_collection=deny + zdr=true (Grundlage D8)
+    # ZDR-Check (Diagnose): ein Lauf mit data_collection=deny + zdr=true.
+    # Fuer flare wird derzeit ein Fehlschlag erwartet (#1478, D8).
     python scripts/portrait_scene_test.py --check-zdr fotos/eine_person.jpg
 
     # Alle Szenen, je 2 Laeufe, mit zwei Eingabebildern
@@ -129,7 +130,11 @@ def build_parser() -> argparse.ArgumentParser:
     zdr.add_argument(
         "--check-zdr",
         action="store_true",
-        help="Ein Lauf mit data_collection=deny + zdr=true; meldet Erfolg oder Fehler",
+        help=(
+            "Diagnose: ein Lauf mit data_collection=deny + zdr=true; meldet "
+            "Erfolg oder Fehler. Erwartet derzeit einen Fehlschlag fuer "
+            "flare (elder-berry#1478)"
+        ),
     )
     parser.add_argument(
         "--scenes-file",
