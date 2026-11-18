@@ -244,3 +244,7 @@ server/borg-backup.sh
 # diesem Commit nicht mehr im oeffentlichen Repo. Siehe
 # docs/CHANGELOG.md fuer die kuratierte Phasen-Story.
 docs/journal.txt
+
+# Phase 111: Eingabefotos fuer die Szenen-Tests (scripts/portrait_scene_test.py).
+# Personenfotos -- duerfen nie ins Repo (elder-berry#1467).
+scripts/testmaterial/
