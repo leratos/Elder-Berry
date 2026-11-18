@@ -86,9 +86,15 @@ class Harness:
             image_loader=lambda path: b"\xff\xd8JPEG-" + path.name.encode(),
         )
 
-    def rows(self):
-        with (self.out / "results.csv").open(encoding="utf-8", newline="") as handle:
+    def rows(self, name="results.csv"):
+        with (self.out / name).open(encoding="utf-8", newline="") as handle:
             return list(csv.DictReader(handle))
+
+
+def _ok(payload: bytes) -> ImageResult:
+    return ImageResult(
+        status=ImageStatus.OK, duration_s=1.0, image_bytes=payload, http_status=200
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -231,6 +237,53 @@ class TestRuns:
     def test_no_secret_store_used(self):
         source = SCRIPT.read_text(encoding="utf-8")
         assert "SecretStore" not in source.split('"""', 2)[2]
+
+
+# ---------------------------------------------------------------------------
+# Keine Ueberschreibung (Codex-Befund PR #412)
+# ---------------------------------------------------------------------------
+
+
+class TestNoOverwrite:
+    def test_inputs_with_same_stem_get_distinct_files(self, tmp_path):
+        """foto.jpg aus zwei Ordnern + foto.png: drei Bilder, drei Dateien."""
+        h = Harness(tmp_path, [_ok(b"PNG-A"), _ok(b"PNG-B"), _ok(b"PNG-C")])
+        inputs = []
+        for sub, name in (("a", "foto.jpg"), ("b", "foto.jpg"), ("c", "foto.png")):
+            (tmp_path / sub).mkdir()
+            path = tmp_path / sub / name
+            path.write_bytes(b"raw")
+            inputs.append(path)
+
+        assert h.run(*inputs, "--scene", "s3_crypt") == 0
+
+        rows = h.rows()
+        assert [row["eingabe_nr"] for row in rows] == ["1", "2", "3"]
+        assert [row["eingabe"] for row in rows] == ["foto.jpg", "foto.jpg", "foto.png"]
+        files = [row["bilddatei"] for row in rows]
+        assert len(set(files)) == 3
+        assert [(h.out / f).read_bytes() for f in files] == [
+            b"PNG-A",
+            b"PNG-B",
+            b"PNG-C",
+        ]
+        assert files[0] == "01_foto_s3_crypt_01.png"
+
+    def test_reused_out_dir_keeps_previous_results(self, tmp_path):
+        h = Harness(tmp_path, [_ok(b"ERSTER-LAUF"), _ok(b"ZWEITER-LAUF")])
+        h.run(h.images[0], "--scene", "s3_crypt")
+        h.run(h.images[0], "--scene", "s3_crypt")
+
+        first, second = h.rows("results.csv"), h.rows("results_2.csv")
+        assert first[0]["bilddatei"] == "01_eine_s3_crypt_01.png"
+        assert second[0]["bilddatei"] == "01_eine_s3_crypt_01_2.png"
+        assert (h.out / first[0]["bilddatei"]).read_bytes() == b"ERSTER-LAUF"
+        assert (h.out / second[0]["bilddatei"]).read_bytes() == b"ZWEITER-LAUF"
+
+    def test_write_new_counts_up(self, tmp_path):
+        names = [cli._write_new(tmp_path, "x.png", bytes([i])) for i in range(3)]
+        assert names == ["x.png", "x_2.png", "x_3.png"]
+        assert (tmp_path / "x_3.png").read_bytes() == b"\x02"
 
 
 # ---------------------------------------------------------------------------

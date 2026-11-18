@@ -70,6 +70,7 @@ ZDR_PROVIDER_OPTIONS: dict[str, object] = {"data_collection": "deny", "zdr": Tru
 
 CSV_FIELDS = (
     "zeit",
+    "eingabe_nr",
     "eingabe",
     "lauf",
     "szene",
@@ -87,6 +88,15 @@ GeneratorFactory = Callable[[str, str, str, dict[str, object]], ImageGenerator]
 
 @dataclass(frozen=True)
 class InputImage:
+    """Ein vorbereitetes Eingabebild.
+
+    ``number`` ist die laufende Nummer (1-basiert) in der Reihenfolge der
+    Kommandozeile. Sie macht Ausgabedateien und CSV-Zeilen eindeutig, auch
+    wenn zwei Eingaben denselben Dateinamen haben (``foto.jpg`` aus zwei
+    Ordnern, ``foto.jpg`` und ``foto.png``).
+    """
+
+    number: int
     name: str
     jpeg: bytes = field(repr=False)
 
@@ -166,11 +176,35 @@ def default_generator_factory(
     )
 
 
+def _write_new(out_dir: Path, filename: str, data: bytes) -> str:
+    """Schreibt ``data`` exklusiv, ohne eine vorhandene Datei zu ersetzen.
+
+    Existiert ``filename`` schon (z.B. weil ``--out-dir`` wiederverwendet
+    wird), bekommt die neue Datei einen Zaehler angehaengt. Ein bezahltes
+    Ergebnis geht so nie durch Ueberschreiben verloren.
+
+    Returns:
+        Der tatsaechlich verwendete Dateiname.
+    """
+    stem, suffix = Path(filename).stem, Path(filename).suffix
+    candidate = filename
+    counter = 1
+    while True:
+        try:
+            with (out_dir / candidate).open("xb") as handle:
+                handle.write(data)
+            return candidate
+        except FileExistsError:
+            counter += 1
+            candidate = f"{stem}_{counter}{suffix}"
+
+
 def _row(
     image: InputImage, run: int, scene_id: str, result: ImageResult, image_file: str
 ) -> dict[str, str]:
     return {
         "zeit": datetime.now().isoformat(timespec="seconds"),
+        "eingabe_nr": str(image.number),
         "eingabe": image.name,
         "lauf": str(run),
         "szene": scene_id,
@@ -202,27 +236,39 @@ def run_scene_tests(
                 )
                 image_file = ""
                 if result.ok and result.image_bytes is not None:
-                    image_file = f"{Path(image.name).stem}_{scene_id}_{run:02d}.png"
-                    (out_dir / image_file).write_bytes(result.image_bytes)
+                    image_file = _write_new(
+                        out_dir,
+                        f"{image.number:02d}_{Path(image.name).stem}"
+                        f"_{scene_id}_{run:02d}.png",
+                        result.image_bytes,
+                    )
                 elif result.detail:
                     print(
-                        f"  {image.name} / {scene_id} / {run}: "
+                        f"  #{image.number} {image.name} / {scene_id} / {run}: "
                         f"{result.status.value} ({result.detail})",
                         file=sys.stderr,
                     )
                 rows.append(_row(image, run, scene_id, result, image_file))
                 print(
-                    f"{image.name} {scene_id} #{run}: {result.status.value} "
+                    f"#{image.number} {image.name} {scene_id} lauf {run}: "
+                    f"{result.status.value} "
                     f"{result.duration_s:.1f}s"
                 )
     return rows
 
 
-def write_csv(rows: Sequence[dict[str, str]], path: Path) -> None:
-    with path.open("w", newline="", encoding="utf-8") as handle:
-        writer = csv.DictWriter(handle, fieldnames=CSV_FIELDS)
-        writer.writeheader()
-        writer.writerows(rows)
+def write_csv(rows: Sequence[dict[str, str]], out_dir: Path) -> Path:
+    """Schreibt ``results.csv`` (bzw. ``results_2.csv`` ..., falls vorhanden).
+
+    Returns:
+        Pfad der geschriebenen CSV.
+    """
+    buffer = io.StringIO(newline="")
+    writer = csv.DictWriter(buffer, fieldnames=CSV_FIELDS)
+    writer.writeheader()
+    writer.writerows(rows)
+    name = _write_new(out_dir, "results.csv", buffer.getvalue().encode("utf-8"))
+    return out_dir / name
 
 
 def main(
@@ -261,7 +307,10 @@ def main(
         print(f"Fehler: Datei nicht gefunden: {missing[0]}", file=sys.stderr)
         return 2
     image_paths = args.images[:1] if args.check_zdr else args.images
-    images = [InputImage(path.name, image_loader(path)) for path in image_paths]
+    images = [
+        InputImage(number, path.name, image_loader(path))
+        for number, path in enumerate(image_paths, start=1)
+    ]
 
     if args.check_zdr:
         provider: dict[str, object] = dict(ZDR_PROVIDER_OPTIONS)
@@ -291,8 +340,8 @@ def main(
         close = getattr(generator, "close", None)
         if callable(close):
             close()
-    write_csv(rows, out_dir / "results.csv")
-    print(f"Ergebnisse: {out_dir}")
+    csv_path = write_csv(rows, out_dir)
+    print(f"Ergebnisse: {out_dir} (CSV: {csv_path.name})")
 
     if args.check_zdr:
         row = rows[0]
